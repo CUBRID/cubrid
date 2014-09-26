@@ -2045,6 +2045,8 @@ typedef unsigned int SESSION_ID;
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
 
+#define DB_MAX_PASSWORD_LENGTH 8
+
 /* Maximum allowable schema name. */
 #define DB_MAX_SCHEMA_LENGTH DB_MAX_USER_LENGTH
 
@@ -2068,6 +2070,12 @@ typedef unsigned int SESSION_ID;
 
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
+
+/* The upper limit for a numeber that can be represented by a numeric type */
+#define DB_NUMERIC_OVERFLOW_LIMIT 1e38
+
+/* The lower limit for a number that can be represented by a numeric type */
+#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
 
 /* The maximum precision that can be specified for a CHAR(n) domain. */
 #define DB_MAX_CHAR_PRECISION DB_MAX_STRING_LENGTH
@@ -2146,14 +2154,23 @@ typedef unsigned int SESSION_ID;
 /* This constant defines the default precision of DB_TYPE_TIME. */
 #define DB_TIME_PRECISION      8
 
+/* This constant defines the default precision of ECISIONTZ_PRECISION. */
+#define DB_TIMETZ_PRECISION   DB_TIME_PRECISION
+
 /* This constant defines the default precision of DB_TYPE_DATE. */
 #define DB_DATE_PRECISION      10
 
 /* This constant defines the default precision of DB_TYPE_TIMESTAMP. */
 #define DB_TIMESTAMP_PRECISION      19
 
+/* This constant defines the default precision of DB_TYPE_TIMESTAMPTZ. */
+#define DB_TIMESTAMPTZ_PRECISION   DB_TIMESTAMP_PRECISION
+
 /* This constant defines the default precision of DB_TYPE_DATETIME. */
 #define DB_DATETIME_PRECISION      23
+
+/* This constant defines the default precision of DB_TYPE_DATETIMETZ. */
+#define DB_DATETIMETZ_PRECISION    DB_DATETIME_PRECISION
 
 /* This constant defines the default scale of DB_TYPE_DATETIME. */
 #define DB_DATETIME_DECIMAL_SCALE      3
@@ -2216,6 +2233,12 @@ typedef unsigned int SESSION_ID;
 #define DB_MAKE_TIME(value, hour, minute, second) \
     db_make_time(value, hour, minute, second)
 
+#define DB_MAKE_TIMETZ(value, timetz_value) \
+    db_make_timetz(value, timetz_value)
+
+#define DB_MAKE_TIMELTZ(value, time_value) \
+    db_make_timeltz(value, time_value)
+
 #define DB_MAKE_ENCODED_TIME(value, time_value) \
     db_value_put_encoded_time(value, time_value)
 
@@ -2229,11 +2252,24 @@ typedef unsigned int SESSION_ID;
     db_make_timestamp(value, timeval)
 
 #define DB_MAKE_UTIME DB_MAKE_TIMESTAMP
+
+#define DB_MAKE_TIMESTAMPTZ(value, ts_tz) \
+    db_make_timestamptz(value, ts_tz)
+
+#define DB_MAKE_TIMESTAMPLTZ(value, timeval) \
+    db_make_timestampltz(value, timeval)
+
 #define DB_MAKE_MONETARY_AMOUNT(value, amount) \
     db_make_monetary(value, DB_CURRENCY_DEFAULT, amount)
 
 #define DB_MAKE_DATETIME(value, datetime_value) \
-  db_make_datetime(value, datetime_value)
+    db_make_datetime(value, datetime_value)
+
+#define DB_MAKE_DATETIMETZ(value, datetimetz_value) \
+    db_make_datetimetz(value, datetimetz_value)
+
+#define DB_MAKE_DATETIMELTZ(value, datetime_value) \
+    db_make_datetimeltz(value, datetime_value)
 
 #define DB_MAKE_MONETARY DB_MAKE_MONETARY_AMOUNT
 
@@ -2302,7 +2338,7 @@ typedef unsigned int SESSION_ID;
 
 #define DB_GET_INTEGER(value)           db_get_int(value)
 
-#define DB_GET_INT DB_GET_INTEGER
+#define DB_GET_INT                      DB_GET_INTEGER
 
 #define DB_GET_BIGINT(value)            db_get_bigint(value)
 
@@ -2341,12 +2377,18 @@ typedef unsigned int SESSION_ID;
 
 #define DB_GET_TIME(value)              db_get_time(value)
 
+#define DB_GET_TIMETZ(value)		db_get_timetz(value)
+
 #define DB_GET_DATE(value)              db_get_date(value)
 
 #define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
 
+#define DB_GET_TIMESTAMPTZ(value)	db_get_timestamptz(value)
+
 #define DB_GET_DATETIME(value)          db_get_datetime(value)
+
+#define DB_GET_DATETIMETZ(value)	db_get_datetimetz(value)
 
 #define DB_GET_MONETARY(value)          db_get_monetary(value)
 
@@ -2376,38 +2418,46 @@ typedef unsigned int SESSION_ID;
 
 #define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
 
+#define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
+
 #define DB_GET_ENUM_CODESET(value) db_get_enum_codeset(value)
 
 #define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
 
-#define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
-
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
-#define DB_INT16_MAX   0x7FFFL
-#define DB_UINT16_MAX  0xFFFFUL
+#define DB_INT16_MAX   0x7FFF
+#define DB_UINT16_MAX  0xFFFFU
 #define DB_INT32_MIN   (-(DB_INT32_MAX)-1)
-#define DB_INT32_MAX   0x7FFFFFFFL
+#define DB_INT32_MAX   0x7FFFFFFF
 #define DB_UINT32_MIN  0
-#define DB_UINT32_MAX  0xFFFFFFFFUL
+#define DB_UINT32_MAX  0xFFFFFFFFU
+#if (__WORDSIZE == 64) || defined(_WIN64)
 #define DB_BIGINT_MAX  9223372036854775807L
 #define DB_BIGINT_MIN  (-DB_BIGINT_MAX - 1L)
+#else /* (__WORDSIZE == 64) || defined(_WIN64) */
+#define DB_BIGINT_MAX  9223372036854775807LL
+#define DB_BIGINT_MIN  (-DB_BIGINT_MAX - 1LL)
+#endif /* (__WORDSIZE == 64) || defined(_WIN64) */
+#define DB_ENUM_ELEMENTS_MAX  512
+/* special ENUM index for PT_TO_ENUMERATION_VALUE function */
+#define DB_ENUM_OVERFLOW_VAL  0xFFFF
 
-#define DB_DATE_MIN        DB_UINT32_MIN
-#define DB_DATE_MAX        DB_UINT32_MAX
+/* DB_DATE_MIN and DB_DATE_MAX are calculated by julian_encode function
+   with arguments (1,1,1) and (12,31,9999) respectively. */
+#define DB_DATE_ZERO       DB_UINT32_MIN	/* 0 means zero date */
+#define DB_DATE_MIN        1721424
+#define DB_DATE_MAX        5373484
 
 #define DB_TIME_MIN        DB_UINT32_MIN
 #define DB_TIME_MAX        DB_UINT32_MAX
 
-#define DB_UTIME_MIN       (DB_UINT32_MIN + 1)
+#define DB_UTIME_ZERO      DB_DATE_ZERO	/* 0 means zero date */
+#define DB_UTIME_MIN       (DB_UTIME_ZERO + 1)
 #define DB_UTIME_MAX       DB_UINT32_MAX
 
-/* abnormal DB host status */
-#define DB_HS_NORMAL                    0x00000000
-#define DB_HS_CONN_TIMEOUT              0x00000001
-#define DB_HS_CONN_FAILURE              0x00000002
-#define DB_HS_MISMATCHED_RW_MODE        0x00000004
-#define DB_HS_HA_DELAYED                0x00000008
-#define DB_HS_NON_PREFFERED_HOSTS       0x00000010
+#define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
+    (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
+    (v) == DB_DEFAULT_UNIX_TIMESTAMP)
 
 /* This defines the basic type identifier constants.  These are used in
    the domain specifications of attributes and method arguments and
@@ -2452,12 +2502,18 @@ typedef enum
   DB_TYPE_BLOB = 33,
   DB_TYPE_CLOB = 34,
   DB_TYPE_ENUMERATION = 35,
+  DB_TYPE_TIMESTAMPTZ = 36,
+  DB_TYPE_TIMESTAMPLTZ = 37,
+  DB_TYPE_DATETIMETZ = 38,
+  DB_TYPE_DATETIMELTZ = 39,
+  DB_TYPE_TIMETZ = 40,
+  DB_TYPE_TIMELTZ = 41,
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
 
-  DB_TYPE_LAST = DB_TYPE_ENUMERATION
+  DB_TYPE_LAST = DB_TYPE_TIMELTZ
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -2486,16 +2542,31 @@ union db_domain_info
 };
 
 /* types used for the representation of bigint values. */
-typedef int64_t DB_BIGINT;
+typedef INT64 DB_BIGINT;
 
 /* Structure used for the representation of time values. */
 typedef unsigned int DB_TIME;
+
+typedef unsigned int TZ_ID;
+typedef struct db_timetz DB_TIMETZ;
+struct db_timetz
+{
+  DB_TIME time;
+  TZ_ID tz_id;			/* zone id */
+};
 
 /* Structure used for the representation of universal times.
    These are compatible with the Unix time_t definition. */
 typedef unsigned int DB_TIMESTAMP;
 
 typedef DB_TIMESTAMP DB_UTIME;
+
+typedef struct db_timestamptz DB_TIMESTAMPTZ;
+struct db_timestamptz
+{
+  DB_TIMESTAMP timestamp;	/* Unix timestamp */
+  TZ_ID tz_id;			/* zone id */
+};
 
 /* Structure used for the representation of date values. */
 typedef unsigned int DB_DATE;
@@ -2505,6 +2576,13 @@ struct db_datetime
 {
   unsigned int date;		/* date */
   unsigned int time;		/* time */
+};
+
+typedef struct db_datetimetz DB_DATETIMETZ;
+struct db_datetimetz
+{
+  DB_DATETIME datetime;
+  TZ_ID tz_id;			/* zone id */
 };
 
 /* Structure used for the representation of numeric values. */
@@ -2580,35 +2658,56 @@ struct db_midxkey
 
 /*
  * DB_ELO
- * This is memory representation of DB_ELO. It is in this file only for the
- * complier can catch the size of the structure. Users are not expected to
- * interprete or manipulate the member of DB_ELO structure.
+ * This is the run-time state structure for an ELO. The ELO is part of
+ * the implementation of large object type and not intended to be used
+ * directly by the API.
+ *
+ * NOTE:
+ *  1. LOID and related definition which were in storage_common.h moved here.
+ *  2. DB_ELO definition in dbi_compat.h does not expose the LOID and
+ *     related data type. BE CAREFUL when you change following definitions.
+ *     - VPID
+ *     - VFID
  */
-typedef struct loid_u LOID_U;
-struct loid_u
+
+typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
+struct vpid
 {
-  /* VPID */
-  struct
-  {
-    int pid;
-    short vid;
-  } vpid;
-  /* VFID */
-  struct
-  {
-    int fid;
-    short vid;
-  } vfid;
+  INT32 pageid;			/* Page identifier */
+  INT16 volid;			/* Volume identifier where the page reside */
 };
 
+typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
+struct vfid
+{
+  INT32 fileid;			/* File identifier */
+  INT16 volid;			/* Volume identifier where the file reside */
+};
+
+typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
+struct loid
+{
+  VPID vpid;			/* Real page identifier */
+  VFID vfid;			/* Real file identifier */
+};
+
+typedef enum db_elo_type DB_ELO_TYPE;
 typedef struct db_elo DB_ELO;
+
+enum db_elo_type
+{
+  ELO_NULL,
+  ELO_LO,
+  ELO_FBO
+};
+
 struct db_elo
 {
-  int64_t size;
-  LOID_U loid;
+  INT64 size;
+  LOID loid;
   char *locator;
   char *meta_data;
-  int type;
+  DB_ELO_TYPE type;
   int es_type;
 };
 
@@ -2704,9 +2803,12 @@ union db_data
   void *p;
   DB_OBJECT *op;
   DB_TIME time;
+  DB_TIMETZ timetz;
   DB_DATE date;
   DB_TIMESTAMP utime;
+  DB_TIMESTAMPTZ timestamptz;
   DB_DATETIME datetime;
+  DB_DATETIMETZ datetimetz;
   DB_MONETARY money;
   DB_COLLECTION *set;
   DB_COLLECTION *collect;
@@ -2809,6 +2911,7 @@ typedef char *DB_C_BIT;
 typedef DB_OBJECT DB_C_OBJECT;
 typedef DB_COLLECTION DB_C_SET;
 typedef DB_COLLECTION DB_C_COLLECTION;
+typedef DB_ELO DB_C_ELO;
 typedef struct db_c_time DB_C_TIME;
 struct db_c_time
 {
@@ -2825,19 +2928,33 @@ struct db_c_date
   int day;
 };
 
+/* identifiers for the default expression */
+typedef enum
+{
+  DB_DEFAULT_NONE = 0,
+  DB_DEFAULT_SYSDATE = 1,
+  DB_DEFAULT_SYSDATETIME = 2,
+  DB_DEFAULT_SYSTIMESTAMP = 3,
+  DB_DEFAULT_UNIX_TIMESTAMP = 4,
+  DB_DEFAULT_USER = 5,
+  DB_DEFAULT_CURR_USER = 6
+} DB_DEFAULT_EXPR_TYPE;
+
 typedef DB_DATETIME DB_C_DATETIME;
+typedef DB_DATETIMETZ DB_C_DATETIMETZ;
 typedef DB_TIMESTAMP DB_C_TIMESTAMP;
+typedef DB_TIMESTAMPTZ DB_C_TIMESTAMPTZ;
 typedef DB_MONETARY DB_C_MONETARY;
 typedef unsigned char *DB_C_NUMERIC;
 typedef void *DB_C_POINTER;
 typedef DB_IDENTIFIER DB_C_IDENTIFIER;
 
-/* Value manipulation */
 extern DB_VALUE *db_value_create (void);
 extern DB_VALUE *db_value_copy (DB_VALUE * value);
 extern int db_value_clone (DB_VALUE * src, DB_VALUE * dest);
 extern int db_value_clear (DB_VALUE * value);
 extern int db_value_free (DB_VALUE * value);
+extern int db_value_clear_array (DB_VALUE_ARRAY * value_array);
 extern void db_value_print (const DB_VALUE * value);
 extern int db_value_coerce (const DB_VALUE * src,
 			    DB_VALUE * dest,
@@ -2856,6 +2973,13 @@ extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type,
 				const int precision, const int scale,
 				const int codeset, const int collation_id,
 				const DB_ENUMERATION * enumeration);
+extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
+				    const int precision, const int scale,
+				    const int codeset,
+				    const int collation_id,
+				    DB_ENUMERATION * enumeration);
+extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type,
+				 const int precision, const int scale);
 extern int db_string_truncate (DB_VALUE * value, const int max_precision);
 extern DB_TYPE db_value_domain_type (const DB_VALUE * value);
 extern DB_TYPE db_value_type (const DB_VALUE * value);
@@ -2883,9 +3007,6 @@ extern int db_value_put_monetary_currency (DB_VALUE * value,
 extern int db_value_put_monetary_amount_as_double (DB_VALUE * value,
 						   const double amount);
 
-extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
-extern void db_value_fprint (FILE * fp, const DB_VALUE * value);
-
 /*
  * DB_MAKE_ value constructors.
  * These macros are provided to make the construction of DB_VALUE
@@ -2903,9 +3024,11 @@ extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
-extern int db_make_elo (DB_VALUE * value, DB_TYPE type, DB_ELO * elo);
+extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
 extern int db_make_time (DB_VALUE * value,
 			 const int hour, const int minute, const int second);
+extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
+extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
 extern int db_value_put_encoded_time (DB_VALUE * value,
 				      const DB_TIME * time_value);
 extern int db_make_date (DB_VALUE * value,
@@ -2913,9 +3036,17 @@ extern int db_make_date (DB_VALUE * value,
 extern int db_value_put_encoded_date (DB_VALUE * value,
 				      const DB_DATE * date_value);
 extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
+extern int db_make_timestampltz (DB_VALUE * value,
+				 const DB_C_TIMESTAMP ts_val);
+extern int db_make_timestamptz (DB_VALUE * value,
+				const DB_C_TIMESTAMPTZ * ts_tz_val);
 extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
-extern int db_make_monetary (DB_VALUE * value,
-			     const DB_CURRENCY type, const double amount);
+extern int db_make_datetimeltz (DB_VALUE * value,
+				const DB_DATETIME * datetime);
+extern int db_make_datetimetz (DB_VALUE * value,
+			       const DB_DATETIMETZ * datetimetz);
+extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type,
+			     const double amount);
 extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
 extern int db_make_error (DB_VALUE * value, const int errcode);
 extern int db_make_method_error (DB_VALUE * value,
@@ -2955,13 +3086,14 @@ extern int db_make_varnchar (DB_VALUE * value,
 			     const int collation_id);
 extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
-extern DB_CURRENCY db_get_currency_default (void);
-
-extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 extern int db_make_enumeration (DB_VALUE * value, unsigned short index,
 				DB_C_CHAR str, int size,
 				unsigned char codeset,
 				const int collation_id);
+
+extern DB_CURRENCY db_get_currency_default (void);
+
+extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
 /*
  * DB_GET_ accessor macros.
@@ -2980,8 +3112,11 @@ extern DB_COLLECTION *db_get_set (const DB_VALUE * value);
 extern DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value);
 extern DB_C_POINTER db_get_pointer (const DB_VALUE * value);
 extern DB_TIME *db_get_time (const DB_VALUE * value);
+extern DB_TIMETZ *db_get_timetz (const DB_VALUE * value);
 extern DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value);
+extern DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value);
 extern DB_DATETIME *db_get_datetime (const DB_VALUE * value);
+extern DB_DATETIMETZ *db_get_datetimetz (const DB_VALUE * value);
 extern DB_DATE *db_get_date (const DB_VALUE * value);
 extern DB_MONETARY *db_get_monetary (const DB_VALUE * value);
 extern int db_get_error (const DB_VALUE * value);
@@ -2991,44 +3126,113 @@ extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
 extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
 extern DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
 extern int db_get_string_size (const DB_VALUE * value);
-extern int db_string_put_cs_and_collation (DB_VALUE * value,
-					   const int codeset,
-					   const int collation_id);
-extern int db_get_string_codeset (const DB_VALUE * value);
-extern int db_get_string_collation (const DB_VALUE * value);
-
+extern DB_C_SHORT db_get_enum_short (const DB_VALUE * value);
+extern DB_C_CHAR db_get_enum_string (const DB_VALUE * value);
+extern int db_get_enum_string_size (const DB_VALUE * value);
 extern DB_C_CHAR db_get_method_error_msg (void);
 
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 
-extern DB_C_SHORT db_get_enum_short (const DB_VALUE * value);
-extern DB_C_CHAR db_get_enum_string (const DB_VALUE * value);
-extern int db_get_enum_string_size (const DB_VALUE * value);
-
+extern int db_string_put_cs_and_collation (DB_VALUE * value,
+					   const int codeset,
+					   const int collation_id);
 extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset,
 					 const int collation_id);
+extern int db_get_string_codeset (const DB_VALUE * value);
+extern int db_get_string_collation (const DB_VALUE * value);
+extern int valcnv_convert_value_to_string (DB_VALUE * value);
+
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
-/* DB_DATE functions */
-extern int db_date_encode (DB_DATE * date, int month, int day, int year);
-extern void db_date_decode (DB_DATE * date, int *monthp,
+
+
+extern void db_date_decode (const DB_DATE * date, int *monthp,
 			    int *dayp, int *yearp);
 extern int db_date_weekday (DB_DATE * date);
 extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);
+extern bool db_string_check_explicit_date (const char *str, int str_len);
 extern int db_string_to_date (const char *buf, DB_DATE * date);
+extern int db_string_to_date_ex (const char *buf, int str_len,
+				 DB_DATE * date);
+extern int db_date_parse_date (char const *str, int str_len, DB_DATE * date);
 
+/* DB_DATETIME functions */
+extern int db_datetime_encode (DB_DATETIME * datetime, int month, int day,
+			       int year, int hour, int minute, int second,
+			       int millisecond);
+extern int db_datetime_decode (const DB_DATETIME * datetime, int *month,
+			       int *day, int *year, int *hour, int *minute,
+			       int *second, int *millisecond);
+extern int db_datetime_to_string (char *buf, int bufsize,
+				  DB_DATETIME * datetime);
+extern int db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt,
+				    const TZ_ID * tz_id);
+extern int db_datetimeltz_to_string (char *buf, int bufsize,
+				     DB_DATETIME * dt);
+extern int db_datetime_to_string2 (char *buf, int bufsize,
+				   DB_DATETIME * datetime);
+extern int db_string_to_datetime (const char *str, DB_DATETIME * datetime);
+extern int db_string_to_datetime_ex (const char *str, int str_len,
+				     DB_DATETIME * datetime);
+extern int db_string_to_datetimetz (const char *str, DB_DATETIMETZ * dt_tz,
+				    bool * has_zone);
+extern int db_string_to_datetimetz_ex (const char *str, int str_len,
+				       DB_DATETIMETZ * dt_tz,
+				       bool * has_zone);
+extern int db_string_to_datetimeltz (const char *str, DB_DATETIME * datetime);
+extern int db_string_to_datetimeltz_ex (const char *str, int str_len,
+					DB_DATETIME * datetime);
+extern int db_date_parse_datetime_parts (char const *str, int str_len,
+					 DB_DATETIME * date,
+					 bool * is_explicit_time,
+					 bool * has_explicit_msec,
+					 bool * fits_as_timestamp,
+					 char const **endp);
+extern int db_date_parse_datetime (char const *str, int str_len,
+				   DB_DATETIME * datetime);
+extern int db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT i2,
+					  DB_DATETIME * result_datetime);
+extern int db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT i2,
+				   DB_DATETIME * result_datetime);
 /* DB_TIMESTAMP functions */
-#define db_utime_encode db_timestamp_encode
 extern int db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date,
 				DB_TIME * timeval);
-#define db_utime_decode db_timestamp_decode_ses
-extern void db_timestamp_decode_ses (DB_TIMESTAMP * utime,
+extern int db_timestamp_encode_ses (const DB_DATE * date,
+				    const DB_TIME * timeval,
+				    DB_TIMESTAMP * utime, TZ_ID * dest_tz_id);
+extern int db_timestamp_encode_utc (const DB_DATE * date,
+				    const DB_TIME * timeval,
+				    DB_TIMESTAMP * utime);
+extern int db_timestamp_decode_ses (const DB_TIMESTAMP * utime,
+				    DB_DATE * date, DB_TIME * timeval);
+extern void db_timestamp_decode_utc (const DB_TIMESTAMP * utime,
 				     DB_DATE * date, DB_TIME * timeval);
-#define db_utime_to_string db_timestamp_to_string
+extern int db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime,
+				      const TZ_REGION * tz_region,
+				      DB_DATE * date, DB_TIME * timeval);
+extern int db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime,
+					const TZ_ID * tz_id,
+					DB_DATE * date, DB_TIME * timeval);
 extern int db_timestamp_to_string (char *buf, int bufsize,
 				   DB_TIMESTAMP * utime);
-#define db_string_to_utime db_string_to_timestamp
+extern int db_timestamptz_to_string (char *buf, int bufsize,
+				     DB_TIMESTAMP * utime,
+				     const TZ_ID * tz_id);
+extern int db_timestampltz_to_string (char *buf, int bufsize,
+				      DB_TIMESTAMP * utime);
 extern int db_string_to_timestamp (const char *buf, DB_TIMESTAMP * utime);
+extern int db_string_to_timestamp_ex (const char *buf, int buf_len,
+				      DB_TIMESTAMP * utime);
+extern int db_date_parse_timestamp (char const *str, int str_len,
+				    DB_TIMESTAMP * utime);
+extern int db_string_to_timestamptz (const char *str, DB_TIMESTAMPTZ * ts_tz,
+				     bool * has_zone);
+extern int db_string_to_timestamptz_ex (const char *str, int str_len,
+					DB_TIMESTAMPTZ * ts_tz,
+					bool * has_zone);
+extern int db_string_to_timestampltz (const char *str, DB_TIMESTAMP * ts);
+extern int db_string_to_timestampltz_ex (const char *str, int str_len,
+					 DB_TIMESTAMP * ts);
 
 /* DB_TIME functions */
 extern int db_time_encode (DB_TIME * timeval,
@@ -3036,22 +3240,46 @@ extern int db_time_encode (DB_TIME * timeval,
 extern void db_time_decode (DB_TIME * timeval, int *hourp,
 			    int *minutep, int *secondp);
 extern int db_time_to_string (char *buf, int bufsize, DB_TIME * dbtime);
+extern int db_timetz_to_string (char *buf, int bufsize, DB_TIME * dbtime,
+				const TZ_ID * tz_id);
+extern int db_timeltz_to_string (char *buf, int bufsize, DB_TIME * time);
+extern bool db_string_check_explicit_time (const char *str, int str_len);
 extern int db_string_to_time (const char *buf, DB_TIME * dbtime);
+extern int db_string_to_time_ex (const char *buf, int buf_len,
+				 DB_TIME * dbtime);
+extern int db_string_to_timetz (const char *buf, DB_TIMETZ * time_tz,
+				bool * has_zone);
+extern int db_string_to_timetz_ex (const char *buf, int buf_len,
+				   DB_TIMETZ * time_tz, bool * has_zone);
+extern int db_string_to_timeltz (const char *buf, DB_TIME * time);
+extern int db_string_to_timeltz_ex (const char *buf, int buf_len,
+				    DB_TIME * time);
+extern int db_date_parse_time (char const *str, int str_len, DB_TIME * time,
+			       int *milisec);
 
-/* DB_DATETIME function */
-extern int db_datetime_encode (DB_DATETIME * datetime, int month, int day,
-			       int year, int hour, int minute, int second,
-			       int millisecond);
-extern int db_datetime_decode (DB_DATETIME * datetime, int *month, int *day,
-			       int *year, int *hour, int *minute, int *second,
-			       int *millisecond);
-extern int db_datetime_to_string (char *buf, int bufsize,
-				  DB_DATETIME * datetime);
-extern int db_string_to_datetime (const char *str, DB_DATETIME * datetime);
-extern int db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT i2,
-					  DB_DATETIME * result_datetime);
-extern int db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT i2,
-				   DB_DATETIME * result_datetime);
+/* Unix-like functions */
+extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);
+extern int db_strftime (char *s, int smax, const char *fmt,
+			DB_DATE * date, DB_TIME * timeval);
+extern void db_localtime (time_t * epoch_time,
+			  DB_DATE * date, DB_TIME * timeval);
+extern void db_localdatetime (time_t * epoch_time, DB_DATETIME * datetime);
+
+
+/* generic calculation functions */
+extern int julian_encode (int m, int d, int y);
+extern void julian_decode (int jul, int *monthp, int *dayp,
+			   int *yearp, int *weekp);
+extern int day_of_week (int jul_day);
+extern bool is_leap_year (int year);
+extern int db_tm_encode (struct tm *c_time_struct,
+			 DB_DATE * date, DB_TIME * timeval);
+extern int db_get_day_of_year (int year, int month, int day);
+extern int db_get_day_of_week (int year, int month, int day);
+extern int db_get_week_of_year (int year, int month, int day, int mode);
+extern int db_check_time_date_format (const char *format_s);
+extern int db_add_weeks_and_days_to_date (int *day, int *month, int *year,
+					  int weeks, int day_week);
 
 /* DB_ELO function */
 extern int db_create_fbo (DB_VALUE * value, DB_TYPE type);
