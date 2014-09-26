@@ -29283,8 +29283,7 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str,
 	  len = strlen (DB_PULL_STRING (src_str));
 	}
 
-      error_status = tz_get_timezone_offset ((unsigned char *)
-					     DB_PULL_STRING (src_str),
+      error_status = tz_get_timezone_offset (DB_PULL_STRING (src_str),
 					     len, res, datetime);
       if (error_status == NO_ERROR)
 	{

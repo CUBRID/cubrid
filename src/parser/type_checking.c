@@ -10683,8 +10683,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	if (arg2->node_type == PT_VALUE)
 	  {
 	    type_specifier =
-	      db_check_time_date_format (arg2->info.value.data_value.str->
-					 bytes);
+	      db_check_time_date_format ((char *) arg2->info.value.data_value.
+					 str->bytes);
 	  }
 	else
 	  {
@@ -16992,7 +16992,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    db_time_encode (&result_time, hour, minute, second);
 		    time_tz.time = result_time;
-		    time_tz.tz_id;
+		    /* keep time_tz.tz_id from arg1 */
 		    if (tz_timetz_fix_zone (&time_tz, &time_tz_fixed)
 			!= NO_ERROR)
 		      {
