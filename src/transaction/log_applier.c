@@ -4039,7 +4039,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
 	  if (is_mvcc_log == true)
 	    {
 	      mvcc_undoredo =
-		(struct log_mvcc_undoreo *) ((char *) pg->area + offset);
+		(struct log_mvcc_undoredo *) ((char *) pg->area + offset);
 	      undoredo = &mvcc_undoredo->undoredo;
 	    }
 	  else
