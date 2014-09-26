@@ -1825,6 +1825,17 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
   peek_val2 = NULL;
   peek_val3 = NULL;
 
+  if (thread_get_recursion_depth (thread_p)
+      > prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MAX_RECURSION_SQL_DEPTH, 1,
+	      prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH));
+
+      return V_ERROR;
+    }
+
+  thread_inc_recursion_depth (thread_p);
+
   switch (pr->type)
     {
     case T_PRED:
@@ -1851,7 +1862,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 
 	      if (result == V_FALSE || result == V_ERROR)
 		{
-		  return result;
+		  goto exit;
 		}
 	    }
 
@@ -1887,7 +1898,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 
 	      if (result == V_TRUE || result == V_ERROR)
 		{
-		  return result;
+		  goto exit;
 		}
 	    }
 
@@ -1965,11 +1976,13 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	      if (fetch_peek_dbval (thread_p, et_comp->lhs, vd, NULL, obj_oid,
 				    NULL, &peek_val1) != NO_ERROR)
 		{
-		  return V_ERROR;
+		  result = V_ERROR;
+		  goto exit;
 		}
 	      else if (db_value_is_null (peek_val1))
 		{
-		  return V_TRUE;
+		  result = V_TRUE;
+		  goto exit;
 		}
 
 	      if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
@@ -1996,7 +2009,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		  if (CHECK_REGU_VARIABLE_XASL_STATUS (et_comp->lhs) !=
 		      XASL_SUCCESS)
 		    {
-		      return V_ERROR;
+		      result = V_ERROR;
+		      goto exit;
 		    }
 
 		  srlist_id = et_comp->lhs->value.srlist_id;
@@ -2010,11 +2024,13 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 					obj_oid, NULL,
 					&peek_val1) != NO_ERROR)
 		    {
-		      return V_ERROR;
+		      result = V_ERROR;
+		      goto exit;
 		    }
 		  else if (db_value_is_null (peek_val1))
 		    {
-		      return V_UNKNOWN;
+		      result = V_UNKNOWN;
+		      goto exit;
 		    }
 
 		  result = ((db_set_size (DB_GET_SET (peek_val1)) > 0)
@@ -2032,14 +2048,16 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	      if (fetch_peek_dbval (thread_p, et_comp->lhs, vd, NULL, obj_oid,
 				    NULL, &peek_val1) != NO_ERROR)
 		{
-		  return V_ERROR;
+		  result = V_ERROR;
+		  goto exit;
 		}
 	      else if (db_value_is_null (peek_val1))
 		{
 		  if (et_comp->rel_op != R_EQ_TORDER
 		      && et_comp->rel_op != R_NULLSAFE_EQ)
 		    {
-		      return V_UNKNOWN;
+		      result = V_UNKNOWN;
+		      goto exit;
 		    }
 		}
 	    }
@@ -2049,14 +2067,16 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	      if (fetch_peek_dbval (thread_p, et_comp->rhs, vd, NULL, obj_oid,
 				    NULL, &peek_val2) != NO_ERROR)
 		{
-		  return V_ERROR;
+		  result = V_ERROR;
+		  goto exit;
 		}
 	      else if (db_value_is_null (peek_val2))
 		{
 		  if (et_comp->rel_op != R_EQ_TORDER
 		      && et_comp->rel_op != R_NULLSAFE_EQ)
 		    {
-		      return V_UNKNOWN;
+		      result = V_UNKNOWN;
+		      goto exit;
 		    }
 		}
 	    }
@@ -2096,11 +2116,13 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		if (fetch_peek_dbval (thread_p, et_alsm->elemset, vd, NULL,
 				      obj_oid, NULL, &peek_val2) != NO_ERROR)
 		  {
-		    return V_ERROR;
+		    result = V_ERROR;
+		    goto exit;
 		  }
 		else if (db_value_is_null (peek_val2))
 		  {
-		    return V_UNKNOWN;
+		    result = V_UNKNOWN;
+		    goto exit;
 		  }
 
 		rhs_type = DB_VALUE_TYPE (peek_val2);
@@ -2108,7 +2130,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		if (rhs_is_set && set_size (DB_GET_SET (peek_val2)) == 0)
 		  {
 		    /* empty set */
-		    return (et_alsm->eq_flag == F_ALL) ? V_TRUE : V_FALSE;
+		    result = (et_alsm->eq_flag == F_ALL) ? V_TRUE : V_FALSE;
+		    goto exit;
 		  }
 	      }
 	    else
@@ -2118,7 +2141,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		if (CHECK_REGU_VARIABLE_XASL_STATUS (et_alsm->elemset) !=
 		    XASL_SUCCESS)
 		  {
-		    return V_ERROR;
+		    result = V_ERROR;
+		    goto exit;
 		  }
 		else
 		  {
@@ -2126,7 +2150,9 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		    srlist_id = et_alsm->elemset->value.srlist_id;
 		    if (srlist_id->list_id->tuple_cnt == 0)
 		      {
-			return (et_alsm->eq_flag == F_ALL) ? V_TRUE : V_FALSE;
+			result =
+			  (et_alsm->eq_flag == F_ALL) ? V_TRUE : V_FALSE;
+			goto exit;
 		      }
 		  }
 	      }
@@ -2135,11 +2161,13 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	    if (fetch_peek_dbval (thread_p, et_alsm->elem, vd, NULL, obj_oid,
 				  NULL, &peek_val1) != NO_ERROR)
 	      {
-		return V_ERROR;
+		result = V_ERROR;
+		goto exit;
 	      }
 	    else if (db_value_is_null (peek_val1))
 	      {
-		return V_UNKNOWN;
+		result = V_UNKNOWN;
+		goto exit;
 	      }
 
 	    if (et_alsm->elemset->type == TYPE_LIST_ID)
@@ -2191,22 +2219,26 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	  if (fetch_peek_dbval (thread_p, et_like->src, vd, NULL, obj_oid,
 				NULL, &peek_val1) != NO_ERROR)
 	    {
-	      return V_ERROR;
+	      result = V_ERROR;
+	      goto exit;
 	    }
 	  else if (db_value_is_null (peek_val1))
 	    {
-	      return V_UNKNOWN;
+	      result = V_UNKNOWN;
+	      goto exit;
 	    }
 
 	  /* fetch pattern regular expression */
 	  if (fetch_peek_dbval (thread_p, et_like->pattern, vd, NULL, obj_oid,
 				NULL, &peek_val2) != NO_ERROR)
 	    {
-	      return V_ERROR;
+	      result = V_ERROR;
+	      goto exit;
 	    }
 	  else if (db_value_is_null (peek_val2))
 	    {
-	      return V_UNKNOWN;
+	      result = V_UNKNOWN;
+	      goto exit;
 	    }
 
 	  if (et_like->esc_char)
@@ -2215,7 +2247,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	      if (fetch_peek_dbval (thread_p, et_like->esc_char, vd, NULL,
 				    obj_oid, NULL, &peek_val3) != NO_ERROR)
 		{
-		  return V_ERROR;
+		  result = V_ERROR;
+		  goto exit;
 		}
 	    }
 	  /* evaluate regular expression match */
@@ -2244,6 +2277,10 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
     default:
       result = V_ERROR;
     }
+
+exit:
+
+  thread_dec_recursion_depth (thread_p);
 
   return result;
 }
