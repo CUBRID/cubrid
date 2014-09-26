@@ -70,6 +70,7 @@ $       49      tranlist
 $       50      prefetchlogdb
 $       51      gen_tz
 $       52      dump_tz
+$       53      restoreslave
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 在数据库名 '%2$s' 中有无效的长度或字符 '%1$c' \n
@@ -121,6 +122,7 @@ cubrid 管理工具，版本 %1$s\n\
     prefetchlogdb\n\
     gen_tz\n\
     dump_tz\n\
+    restoreslave\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -1136,4 +1138,22 @@ valid options:\n\
                             to a timezone having the supplied ZONE_ID or for\n\
                             ALL timzones. The ID of a timezone can be obtained\n\
                             from the list displayed using the -z option.\n
+
+$set 53 MSGCAT_UTIL_SET_RESTORESLAVE
+20 Restoreslave cancelled or an error occurred.\n
+21 Database restore has been completed. But failed to initialize applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
+22 The database name or the host name was not configured for HA.\n
+23 Wrong value '%1$s' for state of backup source node.\n
+60 \
+restoreslave: Restore a slave database.\n\
+usage: %1$s restoreslave [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -s, --source-state=STATE          state of backup source node; mandatory\n\
+                                    STATE may be 'master', 'slave', or 'replica'\n\
+  -h, --source-host-name=NAME       host name of backup source node; mandatory\n\
+      --list                        display a list of backup volumes without restoring\n\
+  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
+  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
 

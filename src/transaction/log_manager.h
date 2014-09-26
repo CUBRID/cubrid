@@ -95,7 +95,7 @@ log_create (THREAD_ENTRY * thread_p, const char *db_fullname,
 extern void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 		const char *logpath, const char *prefix_logname,
-		int ismedia_crash, time_t * stopat);
+		int ismedia_crash, BO_RESTART_ARG * r_args);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p,
 						 float compatibility,

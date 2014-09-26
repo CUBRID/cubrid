@@ -214,7 +214,8 @@ static int log_initialize_internal (THREAD_ENTRY * thread_p,
 				    const char *db_fullname,
 				    const char *logpath,
 				    const char *prefix_logname,
-				    int ismedia_crash, time_t * stopat,
+				    int ismedia_crash,
+				    BO_RESTART_ARG * r_args,
 				    bool init_emergency);
 #if defined(SERVER_MODE)
 static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -1139,10 +1140,10 @@ log_set_no_logging (void)
 void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 		const char *logpath, const char *prefix_logname,
-		int ismedia_crash, time_t * stopat)
+		int ismedia_crash, BO_RESTART_ARG * r_args)
 {
   (void) log_initialize_internal (thread_p, db_fullname, logpath,
-				  prefix_logname, ismedia_crash, stopat,
+				  prefix_logname, ismedia_crash, r_args,
 				  false);
 
   log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
@@ -1172,7 +1173,7 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 static int
 log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 			 const char *logpath, const char *prefix_logname,
-			 int ismedia_crash, time_t * stopat,
+			 int ismedia_crash, BO_RESTART_ARG * r_args,
 			 bool init_emergency)
 {
   LOG_RECORD_HEADER *eof;	/* End of log record */
@@ -1180,6 +1181,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   REL_COMPATIBILITY compat;
   int i;
   int error_code = NO_ERROR;
+  time_t *stopat = (r_args) ? &r_args->stopat : NULL;
 
 #if defined(CUBRID_DEBUG)
   /* Make sure that the recovery function array is synchronized.. */
@@ -1274,6 +1276,13 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
       logpb_fetch_header (thread_p, &log_Gl.hdr);
     }
 
+  if (ismedia_crash != false && (r_args) && r_args->restore_slave)
+    {
+      r_args->db_creation = log_Gl.hdr.db_creation;
+      LSA_COPY (&r_args->restart_repl_lsa,
+		&log_Gl.hdr.smallest_lsa_at_last_chkpt);
+    }
+
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
 
   /* Make sure that this is the desired log */
@@ -1329,7 +1338,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
       error_code = log_initialize_internal (thread_p, db_fullname, logpath,
 					    prefix_logname, ismedia_crash,
-					    stopat, init_emergency);
+					    r_args, init_emergency);
 
       return error_code;
     }

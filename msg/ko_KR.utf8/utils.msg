@@ -70,6 +70,7 @@ $       49      tranlist
 $       50      prefetchlogdb
 $       51      gen_tz
 $       52      dump_tz
+$       53      restoreslave
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -121,6 +122,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     prefetchlogdb\n\
     gen_tz\n\
     dump_tz\n\
+    restoreslave\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -1133,3 +1135,22 @@ valid options:\n\
                             to a timezone having the supplied ZONE_ID or for\n\
                             ALL timzones. The ID of a timezone can be obtained\n\
                             from the list displayed using the -z option.\n
+
+$set 53 MSGCAT_UTIL_SET_RESTORESLAVE
+20 Restoreslave cancelled or an error occurred.\n
+21 Database restore has been completed. But failed to initialize applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
+22 The database name or the host name was not configured for HA.\n
+23 Wrong value '%1$s' for state of backup source node.\n
+60 \
+restoreslave: Restore a slave database.\n\
+usage: %1$s restoreslave [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -s, --source-state=STATE          state of backup source node; mandatory\n\
+                                    STATE may be 'master', 'slave', or 'replica'\n\
+  -h, --source-host-name=NAME       host name of backup source node; mandatory\n\
+      --list                        display a list of backup volumes without restoring\n\
+  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
+  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+

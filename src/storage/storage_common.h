@@ -442,6 +442,10 @@ struct bo_restart_arg
 				   volumes to the path specified in the
 				   database-loc-file */
   bool restore_upto_bktime;
+
+  bool restore_slave;		/* restore slave */
+  INT64 db_creation;		/* database creation time */
+  LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
 };
 
 /* Magic default values */

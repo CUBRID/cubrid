@@ -2212,6 +2212,9 @@ extern void xlogpb_dump_stat (FILE * outfp);
 
 extern void logpb_dump (FILE * out_fp);
 
+extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, 
+	                 const char *logpath, const char *prefix_logname);
+
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash,
 			  time_t * stopat);
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,

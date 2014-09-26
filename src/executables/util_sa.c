@@ -100,6 +100,15 @@ static int print_backup_info (char *database_name,
 			      BO_RESTART_ARG * restart_arg);
 static int synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 			   int *new_sys_coll_cnt);
+
+static int delete_all_ha_apply_info (void);
+static int insert_ha_apply_info (char *database_name, char *source_host_name,
+				 INT64 database_creation, INT64 pageid,
+				 int offset);
+static bool check_ha_db_and_node_list (char *database_name,
+				       char *source_host_name);
+
+
 /*
  * util_admin_usage - display an usage of this utility
  *
@@ -977,6 +986,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
     utility_get_option_bool_value (arg_map,
 				   RESTORE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
+  restart_arg.restore_slave = false;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3687,6 +3697,427 @@ synccoll_force (void)
   AU_ENABLE (au_save);
   return status;
 }
+
+/*
+ * delete_all_ha_apply_info () - delete ha apply info
+ *   return:
+ */
+static int
+delete_all_ha_apply_info (void)
+{
+#define QUERY_BUF_SIZE		2048
+
+  int res, au_save;
+  DB_QUERY_RESULT *result;
+  DB_QUERY_ERROR query_error;
+  char query_buf[QUERY_BUF_SIZE];
+
+  snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s ;",
+	    CT_HA_APPLY_INFO_NAME);
+
+  AU_DISABLE (au_save);
+
+  res = db_execute (query_buf, &result, &query_error);
+  if (res >= 0)
+    {
+      int error;
+
+      error = db_query_end (result);
+      if (error != NO_ERROR)
+	{
+	  res = error;
+	}
+    }
+
+  AU_ENABLE (au_save);
+
+  return res;
+#undef QUERY_BUF_SIZE
+}
+
+/*
+ * insert_ha_apply_info () - insert ha apply info
+ *   return:
+ */
+static int
+insert_ha_apply_info (char *database_name, char *source_host_name,
+		      INT64 database_creation, INT64 pageid, int offset)
+{
+#define APPLY_INFO_VALUES	15
+#define QUERY_BUF_SIZE		2048
+
+  int i, res, au_save;
+  int in_value_idx;
+  char *copy_log_base;
+  char log_path[PATH_MAX];
+  char query_buf[QUERY_BUF_SIZE];
+  DB_VALUE in_value[APPLY_INFO_VALUES];
+  DB_DATETIME db_creation;
+  DB_QUERY_RESULT *result;
+  DB_QUERY_ERROR query_error;
+
+  db_localdatetime (&database_creation, &db_creation);
+  copy_log_base = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
+  if (copy_log_base == NULL || *copy_log_base == '\0')
+    {
+      copy_log_base = envvar_get ("DATABASES");
+      if (copy_log_base == NULL)
+	{
+	  copy_log_base = ".";
+	}
+    }
+
+  snprintf (log_path, PATH_MAX, "%s/%s_%s", copy_log_base, database_name,
+	    source_host_name);
+
+  snprintf (query_buf, sizeof (query_buf), "INSERT INTO %s "	/* INSERT */
+	    "( db_name, "	/* 1 */
+	    "  db_creation_time, "	/* 2 */
+	    "  copied_log_path, "	/* 3 */
+	    "  committed_lsa_pageid, "	/* 4 */
+	    "  committed_lsa_offset, "	/* 5 */
+	    "  committed_rep_pageid, "	/* 6 */
+	    "  committed_rep_offset, "	/* 7 */
+	    "  append_lsa_pageid, "	/* 8 */
+	    "  append_lsa_offset, "	/* 9 */
+	    "  eof_lsa_pageid, "	/* 10 */
+	    "  eof_lsa_offset, "	/* 11 */
+	    "  final_lsa_pageid, "	/* 12 */
+	    "  final_lsa_offset, "	/* 13 */
+	    "  required_lsa_pageid, "	/* 14 */
+	    "  required_lsa_offset, "	/* 15 */
+	    "  log_record_time, "	/* 16 */
+	    "  log_commit_time, "	/* 17 */
+	    "  last_access_time, "	/* 18 */
+	    "  status, "	/* 19 */
+	    "  insert_counter, "	/* 20 */
+	    "  update_counter, "	/* 21 */
+	    "  delete_counter, "	/* 22 */
+	    "  schema_counter, "	/* 23 */
+	    "  commit_counter, "	/* 24 */
+	    "  fail_counter, "	/* 25 */
+	    "  start_time ) "	/* 26 */
+	    " VALUES ( ?, "	/*  1. db_name */
+	    "   ?, "		/*  2. db_creation_time */
+	    "   ?, "		/*  3. copied_log_path */
+	    "   ?, "		/*  4. committed_lsa_pageid */
+	    "   ?, "		/*  5. committed_lsa_offset */
+	    "   ?, "		/*  6. committed_rep_pageid */
+	    "   ?, "		/*  7. committed_rep_offset */
+	    "   ?, "		/*  8. append_lsa_pageid */
+	    "   ?, "		/*  9. append_lsa_offset */
+	    "   ?, "		/* 10. eof_lsa_pageid */
+	    "   ?, "		/* 11. eof_lsa_offset */
+	    "   ?, "		/* 12. final_lsa_pageid */
+	    "   ?, "		/* 13. final_lsa_offset */
+	    "   ?, "		/* 14. required_lsa_pageid */
+	    "   ?, "		/* 15. required_lsa_offset */
+	    "   NULL, "		/* 16. log_record_time */
+	    "   NULL, "		/* 17. log_commit_time */
+	    "   NULL, "		/* 18. last_access_time */
+	    "   0, "		/* 19. status */
+	    "   0, "		/* 20. insert_counter */
+	    "   0, "		/* 21. update_counter */
+	    "   0, "		/* 22. delete_counter */
+	    "   0, "		/* 23. schema_counter */
+	    "   0, "		/* 24. commit_counter */
+	    "   0, "		/* 25. fail_counter */
+	    "   NULL "		/* 26. start_time */
+	    "   ) ;", CT_HA_APPLY_INFO_NAME);
+
+  in_value_idx = 0;
+
+  /* 1. db_name */
+  db_make_varchar (&in_value[in_value_idx++], 255,
+		   database_name,
+		   strlen (database_name),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+  /* 2. db_creation time */
+  db_make_datetime (&in_value[in_value_idx++], &db_creation);
+
+  /* 3. copied_log_path */
+  db_make_varchar (&in_value[in_value_idx++], 4096, log_path,
+		   strlen (log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+  /* 4 ~ 15. lsa */
+  for (i = 0; i < 6; i++)
+    {
+      db_make_bigint (&in_value[in_value_idx++], pageid);
+      db_make_int (&in_value[in_value_idx++], offset);
+    }
+
+  assert_release (in_value_idx == APPLY_INFO_VALUES);
+
+  AU_DISABLE (au_save);
+
+  res =
+    db_execute_with_values (query_buf, &result, &query_error, in_value_idx,
+			    &in_value[0]);
+  if (res >= 0)
+    {
+      int error;
+
+      error = db_query_end (result);
+      if (error != NO_ERROR)
+	{
+	  res = error;
+	}
+    }
+
+  AU_ENABLE (au_save);
+
+  for (i = 0; i < in_value_idx; i++)
+    {
+      db_value_clear (&in_value[i]);
+    }
+
+  return res;
+
+#undef APPLY_INFO_VALUES
+#undef QUERY_BUF_SIZE
+}
+
+/*
+ * check_ha_db_and_node_list () - check ha db list and ha node list
+ *   return:
+ */
+static bool
+check_ha_db_and_node_list (char *database_name, char *source_host_name)
+{
+  int i, j, status, num_nodes;
+  char **dbs;
+  HA_CONF ha_conf;
+  HA_NODE_CONF *nc;
+
+  memset ((void *) &ha_conf, 0, sizeof (HA_CONF));
+  status = util_make_ha_conf (&ha_conf);
+  if (status != NO_ERROR)
+    {
+      return false;
+    }
+
+  num_nodes = ha_conf.num_node_conf;
+  dbs = ha_conf.db_names;
+  nc = ha_conf.node_conf;
+
+  for (i = 0; dbs[i] != NULL; i++)
+    {
+      if (strcmp (dbs[i], database_name) != 0)
+	{
+	  continue;
+	}
+
+      for (j = 0; j < num_nodes; j++)
+	{
+	  if (strcmp (nc[j].node_name, source_host_name) != 0)
+	    {
+	      continue;
+	    }
+
+	  if (util_is_localhost (nc[j].node_name))
+	    {
+	      continue;
+	    }
+
+	  util_free_ha_conf (&ha_conf);
+	  return true;
+	}
+    }
+
+  util_free_ha_conf (&ha_conf);
+  return false;
+}
+
+/*
+ * restoreslave() - restoreslave main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+restoreslave (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  DB_DATETIME datetime;
+  bool init_ha_catalog;
+  int status, error_code;
+  char er_msg_file[PATH_MAX];
+  char db_creation_time[LINE_MAX];
+  char *database_name;
+  char *source_state;
+  char *source_host_name;
+  BO_RESTART_ARG restart_arg;
+
+  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+      goto error_exit;
+    }
+
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
+  source_host_name =
+    utility_get_option_string_value (arg_map, RESTORESLAVE_SOURCE_HOST_NAME_S,
+				     0);
+  source_state =
+    utility_get_option_string_value (arg_map, RESTORESLAVE_SOURCE_STATE_S, 0);
+
+  if (source_host_name == NULL || source_state == NULL)
+    {
+      goto print_restoreslave_usage;
+    }
+
+  if (strcasecmp (source_state, "master") == 0)
+    {
+      init_ha_catalog = true;
+    }
+  else if (strcasecmp (source_state, "slave") == 0
+	   || strcasecmp (source_state, "replica") == 0)
+    {
+      init_ha_catalog = false;
+    }
+  else
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_RESTORESLAVE,
+				       RESTORESLAVE_MSG_INVAILD_STATE),
+	       source_state);
+      goto error_exit;
+    }
+
+  restart_arg.restore_slave = true;
+  restart_arg.printtoc =
+    utility_get_option_bool_value (arg_map, RESTORESLAVE_LIST_S);
+  restart_arg.backuppath =
+    utility_get_option_string_value (arg_map, RESTORESLAVE_BACKUP_FILE_PATH_S,
+				     0);
+  restart_arg.level = 0;
+  restart_arg.verbose_file =
+    utility_get_option_string_value (arg_map, RESTORESLAVE_OUTPUT_FILE_S, 0);
+  restart_arg.newvolpath =
+    utility_get_option_bool_value (arg_map,
+				   RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S);
+  restart_arg.restore_upto_bktime = false;
+  restart_arg.stopat = time (NULL);
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_restoreslave_usage;
+    }
+
+  if (check_ha_db_and_node_list (database_name, source_host_name) == false)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_RESTORESLAVE,
+				       RESTORESLAVE_MSG_INVAILD_OPTIONS));
+      goto error_exit;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (restart_arg.printtoc)
+    {
+      error_code = print_backup_info (database_name, &restart_arg);
+      if (error_code != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_RESTORESLAVE,
+					   RESTORESLAVE_MSG_FAILURE));
+	  goto error_exit;
+	}
+
+      return EXIT_SUCCESS;
+    }
+
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+
+  status = boot_restart_from_backup (true, database_name, &restart_arg);
+  if (status == NULL_TRAN_INDEX)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_RESTORESLAVE,
+				       RESTORESLAVE_MSG_FAILURE));
+      goto error_exit;
+    }
+  else
+    {
+      boot_shutdown_server (true);
+    }
+
+  if (init_ha_catalog)
+    {
+      db_localdatetime (&restart_arg.db_creation, &datetime);
+      db_datetime_to_string (db_creation_time, LINE_MAX, &datetime);
+
+      if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_RESTORESLAVE,
+					   RESTORESLAVE_MSG_HA_CATALOG_FAIL),
+		   db_creation_time,
+		   restart_arg.restart_repl_lsa.pageid,
+		   restart_arg.restart_repl_lsa.offset);
+	  return EXIT_SUCCESS;
+	}
+
+      error_code = delete_all_ha_apply_info ();
+      if (error_code < 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_RESTORESLAVE,
+					   RESTORESLAVE_MSG_HA_CATALOG_FAIL),
+		   db_creation_time,
+		   restart_arg.restart_repl_lsa.pageid,
+		   restart_arg.restart_repl_lsa.offset);
+	  db_shutdown ();
+	  return EXIT_SUCCESS;
+	}
+
+      error_code =
+	insert_ha_apply_info (database_name, source_host_name,
+			      restart_arg.db_creation,
+			      restart_arg.restart_repl_lsa.pageid,
+			      restart_arg.restart_repl_lsa.offset);
+      if (error_code < 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_RESTORESLAVE,
+					   RESTORESLAVE_MSG_HA_CATALOG_FAIL),
+		   db_creation_time,
+		   restart_arg.restart_repl_lsa.pageid,
+		   restart_arg.restart_repl_lsa.offset);
+	  db_shutdown ();
+	  return EXIT_SUCCESS;
+	}
+
+      db_commit_transaction ();
+      db_shutdown ();
+    }
+
+  return EXIT_SUCCESS;
+
+print_restoreslave_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_RESTORESLAVE,
+				   RESTORESLAVE_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+  return EXIT_FAILURE;
+}
+
 
 /*
  * gen_tz() - generate time zone data as a C source file, to be compiled into

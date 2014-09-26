@@ -13221,3 +13221,77 @@ logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p)
 
   return ret_arv_num;
 }
+
+/*
+ * logpb_remove_all_in_log_path() - Delete all log volumes and files in log path
+ *
+ *   return: NO_ERROR if all OK, ER status otherwise
+ */
+int
+logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p,
+			      const char *db_fullname, const char *logpath,
+			      const char *prefix_logname)
+{
+  int i, error_code = NO_ERROR;
+  char vol_fullname[PATH_MAX];
+  struct log_header disk_hdr;
+  struct log_header *loghdr = NULL;
+
+  er_clear ();
+  error_code =
+    logpb_initialize_log_names (thread_p, db_fullname, logpath,
+				prefix_logname);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (fileio_is_volume_exist (log_Name_active)
+      && (log_Gl.append.vdes =
+	  fileio_mount (thread_p, db_fullname, log_Name_active,
+			LOG_DBLOG_ACTIVE_VOLID, true, false)) != NULL_VOLDES)
+    {
+      char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+      LOG_PAGE *log_pgptr;
+
+      aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+      if (log_Pb.pool == NULL)
+	{
+	  error_code = logpb_initialize_pool (thread_p);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto delete_fixed_logs;
+	    }
+	}
+      logpb_fetch_header_with_buffer (thread_p, &disk_hdr, log_pgptr);
+      logpb_finalize_pool ();
+      fileio_dismount (thread_p, log_Gl.append.vdes);
+      log_Gl.append.vdes = NULL_VOLDES;
+      loghdr = &disk_hdr;
+    }
+
+  if (loghdr != NULL)
+    {
+      for (i = loghdr->last_deleted_arv_num + 1; i < loghdr->nxarv_num; i++)
+	{
+	  fileio_make_log_archive_name (vol_fullname, log_Archive_path,
+					log_Prefix, i);
+	  fileio_unformat (thread_p, vol_fullname);
+	}
+    }
+
+delete_fixed_logs:
+
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
+    {
+      fileio_unformat (thread_p, log_Name_bg_archive);
+      fileio_unformat (thread_p, log_Name_removed_archive);
+    }
+
+  fileio_unformat (thread_p, log_Name_active);
+  fileio_unformat (thread_p, log_Name_info);
+
+  return NO_ERROR;
+}

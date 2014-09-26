@@ -82,7 +82,8 @@ typedef enum
   MSGCAT_UTIL_SET_TRANLIST = 49,
   MSGCAT_UTIL_SET_PREFETCHLOGDB = 50,
   MSGCAT_UTIL_SET_GEN_TZ = 51,
-  MSGCAT_UTIL_SET_DUMP_TZ = 52
+  MSGCAT_UTIL_SET_DUMP_TZ = 52,
+  MSGCAT_UTIL_SET_RESTORESLAVE = 53
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -647,6 +648,16 @@ typedef enum
   DUMP_TZ_MSG_USAGE = 60
 } MSGCAT_DUMP_TZ_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_RESTORESLAVE */
+typedef enum
+{
+  RESTORESLAVE_MSG_FAILURE = 20,
+  RESTORESLAVE_MSG_HA_CATALOG_FAIL = 21,
+  RESTORESLAVE_MSG_INVAILD_OPTIONS = 22,
+  RESTORESLAVE_MSG_INVAILD_STATE = 23,
+  RESTORESLAVE_MSG_USAGE = 60
+} MSGCAT_RESTORESLAVE_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -687,6 +698,7 @@ typedef enum
   PREFETCHLOGDB,
   GEN_TZ,
   DUMP_TZ,
+  RESTORESLAVE,
   LOGFILEDUMP
 } UTIL_INDEX;
 
@@ -886,6 +898,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_PREFETCHLOGDB		"prefetchlogdb"
 #define UTIL_OPTION_GEN_TZ			"gen_tz"
 #define UTIL_OPTION_DUMP_TZ			"dump_tz"
+#define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1435,6 +1448,20 @@ typedef struct _ha_config
 #define PREFETCH_LOG_PATH_S                      'L'
 #define PREFETCH_LOG_PATH_L                      "log-path"
 
+/* restoreslave option list */
+#define RESTORESLAVE_SOURCE_STATE_S                  's'
+#define RESTORESLAVE_SOURCE_STATE_L                  "source-state"
+#define RESTORESLAVE_SOURCE_HOST_NAME_S              'h'
+#define RESTORESLAVE_SOURCE_HOST_NAME_L              "source-host-name"
+#define RESTORESLAVE_LIST_S                          10601
+#define RESTORESLAVE_LIST_L                          "list"
+#define RESTORESLAVE_BACKUP_FILE_PATH_S              'B'
+#define RESTORESLAVE_BACKUP_FILE_PATH_L              "backup-file-path"
+#define RESTORESLAVE_OUTPUT_FILE_S                   'o'
+#define RESTORESLAVE_OUTPUT_FILE_L                   "output-file"
+#define RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S    'u'
+#define RESTORESLAVE_USE_DATABASE_LOCATION_PATH_L    "use-database-location-path"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1556,6 +1583,7 @@ extern int gen_tz (UTIL_FUNCTION_ARG * arg_map);
 extern int dump_tz (UTIL_FUNCTION_ARG * arg_map);
 extern int synccoll_force (void);
 extern int prefetchlogdb (UTIL_FUNCTION_ARG * arg_map);
+extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

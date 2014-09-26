@@ -3408,6 +3408,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       /*
        * RESTART FROM BACKUP
        */
+#if defined(SA_MODE)
+      if (r_args->restore_slave)
+	{
+	  (void) logpb_remove_all_in_log_path (thread_p, boot_Db_full_name,
+					       log_path, log_prefix);
+	}
+#endif /* SA_MODE */
       error_code = logpb_restore (thread_p, boot_Db_full_name, log_path,
 				  log_prefix, r_args);
       if (error_code != NO_ERROR)
@@ -3585,7 +3592,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    */
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix,
-		  from_backup, (r_args) ? &r_args->stopat : NULL);
+		  from_backup, r_args);
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {

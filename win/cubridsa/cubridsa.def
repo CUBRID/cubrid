@@ -166,6 +166,7 @@ EXPORTS
 	dump_tz
 	synccolldb
 	synccoll_force
+	restoreslave
 
 ;
 ;	enable below two functions when
