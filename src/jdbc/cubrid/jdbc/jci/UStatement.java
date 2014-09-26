@@ -60,7 +60,7 @@ public class UStatement {
 	private final static byte ASYNC_EXECUTE = 1;
 	private final static byte NORMAL = 0, GET_BY_OID = 1, GET_SCHEMA_INFO = 2,
 	        GET_AUTOINCREMENT_KEYS = 3;
-	private final static byte TRUE = -128, FALSE = 0;
+	private final static byte TRUE = 1, FALSE = 0;
 	private final static int DEFAULT_FETCH_SIZE = 100;
 
 	private final static byte EXEC_FLAG_ASYNC = 0x01,
