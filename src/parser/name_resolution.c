@@ -6624,7 +6624,7 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
   int i, start, end;
   PT_RESERVED_NAME_TYPE reserved_name_type;
 
-  if (parser == NULL && from == NULL || from->node_type != PT_SPEC)
+  if (parser == NULL || from == NULL || from->node_type != PT_SPEC)
     {
       assert (0);
       return NULL;
