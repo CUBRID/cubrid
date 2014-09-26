@@ -115,7 +115,7 @@ ut_str_to_bigint (char *str, INT64 * value)
       return (CCI_ER_TYPE_CONVERSION);
     }
 
-  if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
+  if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
     {
       *value = bi_val;
       return 0;
@@ -141,7 +141,7 @@ ut_str_to_ubigint (char *str, UINT64 * value)
       return (CCI_ER_TYPE_CONVERSION);
     }
 
-  if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
+  if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
     {
       *value = ubi_val;
       return 0;
@@ -167,7 +167,7 @@ ut_str_to_int (char *str, int *value)
       return (CCI_ER_TYPE_CONVERSION);
     }
 
-  if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
+  if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
     {
       *value = i_val;
       return 0;
@@ -193,7 +193,7 @@ ut_str_to_uint (char *str, unsigned int *value)
       return (CCI_ER_TYPE_CONVERSION);
     }
 
-  if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
+  if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
     {
       *value = ui_val;
       return 0;
@@ -224,7 +224,7 @@ ut_str_to_float (char *str, float *value)
       return (CCI_ER_TYPE_CONVERSION);
     }
 
-  if (*end_p == NULL || isspace ((int) *end_p))
+  if (*end_p == 0 || isspace ((int) *end_p))
     {
       *value = f_val;
       return 0;
@@ -255,7 +255,7 @@ ut_str_to_double (char *str, double *value)
       return (CCI_ER_TYPE_CONVERSION);
     }
 
-  if (*end_p == NULL || isspace ((int) *end_p))
+  if (*end_p == 0 || isspace ((int) *end_p))
     {
       *value = d_val;
       return 0;
@@ -315,7 +315,7 @@ ut_str_to_date (char *str, T_CCI_DATE * value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  if (*end_p != NULL && !isspace ((int) *end_p))
+  if (*end_p != 0 && !isspace ((int) *end_p))
     {
       return CCI_ER_TYPE_CONVERSION;
     }
@@ -376,7 +376,7 @@ ut_str_to_time (char *str, T_CCI_DATE * value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  if (*end_p != NULL && !isspace ((int) *end_p))
+  if (*end_p != 0 && !isspace ((int) *end_p))
     {
       return CCI_ER_TYPE_CONVERSION;
     }
@@ -504,7 +504,7 @@ ut_str_to_mtime (char *str, T_CCI_DATE * value)
       ms = 0;
     }
 
-  if (*end_p != NULL && !isspace ((int) *end_p))
+  if (*end_p != 0 && !isspace ((int) *end_p))
     {
       return CCI_ER_TYPE_CONVERSION;
     }
@@ -710,7 +710,7 @@ ut_str_to_oid (char *str, T_OBJECT * value)
     {
       return CCI_ER_TYPE_CONVERSION;
     }
-  if (*end_p != NULL)
+  if (*end_p != 0)
     {
       return CCI_ER_TYPE_CONVERSION;
     }
