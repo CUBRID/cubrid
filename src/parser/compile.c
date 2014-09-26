@@ -750,7 +750,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
 		      new_size * sizeof (LC_PREFETCH_FLAGS));
 	  return ER_FAILED;
 	}
-      lcks->flags = (LOCK *) ptr;
+      lcks->flags = (LC_PREFETCH_FLAGS *) ptr;
 
       lcks->allocated_count++;
     }

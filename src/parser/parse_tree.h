@@ -2509,7 +2509,7 @@ typedef enum
 typedef struct pt_reserved_name PT_RESERVED_NAME;
 struct pt_reserved_name
 {
-  char *name;
+  const char *name;
   PT_RESERVED_NAME_ID id;
   DB_TYPE type;
 };

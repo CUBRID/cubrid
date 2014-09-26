@@ -1215,7 +1215,13 @@ struct log_header
      /* eof_lsa */                               \
      {NULL_PAGEID, NULL_OFFSET},                 \
      /* smallest_lsa_at_last_chkpt */            \
-     {NULL_PAGEID, NULL_OFFSET}                  \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* mvcc_op_log_lsa */			 \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* last_block_oldest_mvccid */		 \
+     MVCCID_NULL,				 \
+     /* last_block_newest_mvccid */		 \
+     MVCCID_NULL				 \
   }
 
 struct log_arv_header
@@ -2212,8 +2218,10 @@ extern void xlogpb_dump_stat (FILE * outfp);
 
 extern void logpb_dump (FILE * out_fp);
 
-extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, 
-	                 const char *logpath, const char *prefix_logname);
+extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p,
+					 const char *db_fullname,
+					 const char *logpath,
+					 const char *prefix_logname);
 
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash,
 			  time_t * stopat);

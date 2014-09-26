@@ -213,7 +213,7 @@ int boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
 			    OID * rootclass_oid, HFID * rootclass_hfid,
 			    int client_lock_wait,
 			    TRAN_ISOLATION client_isolation);
-int boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
+int boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 			  int client_lock_wait,
 			  TRAN_ISOLATION client_isolation,
 			  TRAN_STATE * tran_state,

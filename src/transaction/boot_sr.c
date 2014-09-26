@@ -94,6 +94,7 @@
 #include "partition.h"
 #include "event_log.h"
 #include "tz_support.h"
+#include "tsc_timer.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"

@@ -4189,7 +4189,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   MVCCID lowest_active_mvccid = 0, highest_completed_mvccid = 0;
   unsigned int cnt_active_trans = 0;
   LOG_TDES *curr_tdes = NULL;
-  int tran_index, error_code = NO_ERROR;
+  int tran_index, error_code = NO_ERROR, rv;
   LOG_TDES *tdes;
   MVCCID curr_mvccid;
   MVCC_SNAPSHOT *snapshot = NULL;
@@ -4224,7 +4224,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
     }
 
   /* Start building the snapshot. See the note. */
-  csect_enter_as_reader (thread_p, CSECT_MVCC_ACTIVE_TRANS, INF_WAIT);
+  rv = csect_enter_as_reader (thread_p, CSECT_MVCC_ACTIVE_TRANS, INF_WAIT);
 
   highest_completed_mvccid = mvcc_table->highest_completed_mvccid;
   MVCCID_FORWARD (highest_completed_mvccid);
@@ -4360,8 +4360,9 @@ logtb_get_lowest_active_mvccid (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes = NULL;
   MVCC_INFO *elem = NULL;
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
+  int rv;
 
-  csect_enter_as_reader (thread_p, CSECT_MVCC_ACTIVE_TRANS, INF_WAIT);
+  rv = csect_enter_as_reader (thread_p, CSECT_MVCC_ACTIVE_TRANS, INF_WAIT);
 
   /* init lowest_active_mvccid */
   lowest_active_mvccid = mvcc_table->highest_completed_mvccid;

@@ -90,6 +90,9 @@ static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen,
 static char *or_unpack_var_table_internal (char *ptr, int nvars,
 					   OR_VARINFO * vars,
 					   int offset_size);
+static char or_mvcc_get_flag (RECDES * record);
+static void or_mvcc_set_flag (RECDES * record, char flags);
+static MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error);
 static int or_mvcc_set_insid (OR_BUF * buf,
 			      MVCC_REC_HEADER * mvcc_rec_header);
 static union DELID_CHN or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags,
@@ -100,7 +103,6 @@ static MVCCID or_mvcc_get_delete_id (RECDES * record);
 static int or_mvcc_get_next_version (OR_BUF * buf, int mvcc_flags, OID * oid);
 static int or_mvcc_set_next_version (OR_BUF * buf,
 				     MVCC_REC_HEADER * mvcc_rec_header);
-extern void or_mvcc_set_flag (RECDES * record, char flag);
 
 /*
  * classobj_get_prop - searches a property list for a value with the given name
@@ -593,7 +595,7 @@ or_mvcc_set_repid_and_flags (OR_BUF * buf,
  * return	   : MVCC flags.
  * record (in)	   : Record descriptor.
  */
-char
+static char
 or_mvcc_get_flag (RECDES * record)
 {
   assert (record != NULL && record->data != NULL
@@ -609,7 +611,7 @@ or_mvcc_get_flag (RECDES * record)
  * record (in) : Record descriptor.
  * flags (in)  : MVCC flags to set.
  */
-void
+static void
 or_mvcc_set_flag (RECDES * record, char flags)
 {
   OR_BUF orep, *buf;
@@ -641,7 +643,7 @@ or_mvcc_set_flag (RECDES * record, char flags)
  * mvcc_falgs(in)  : MVCC flags
  * error(out): NO_ERROR or error code
  */
-MVCCID
+static MVCCID
 or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -672,7 +674,7 @@ or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error)
  * buf (in/out)	   : or buffer
  * mvcc_rec_header(in) : MVCC record header
  */
-int
+static int
 or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -692,7 +694,7 @@ or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
  * mvcc_falgs(in)  : MVCC flags
  * error(out): NO_ERROR or error code
  */
-union DELID_CHN
+static union DELID_CHN
 or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
 {
   union DELID_CHN delid_or_chn;
@@ -749,7 +751,7 @@ or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
  * buf (in/out)	      : or buffer 
  * mvcc_rec_header(in): MVCC record header
  */
-int
+static int
 or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
   int error_code = NO_ERROR;
@@ -780,7 +782,7 @@ or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
  * mvcc_falgs(in)  : MVCC flags
  * oid(out)	   : OID of next version
  */
-int
+static int
 or_mvcc_get_next_version (OR_BUF * buf, int mvcc_flags, OID * oid)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -801,7 +803,7 @@ or_mvcc_get_next_version (OR_BUF * buf, int mvcc_flags, OID * oid)
  * buf (in/out)	      : or buffer
  * mvcc_rec_header(in): MVCC record header
  */
-int
+static int
 or_mvcc_set_next_version (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
   int error_code = NO_ERROR;

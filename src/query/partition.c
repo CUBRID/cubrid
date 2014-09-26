@@ -627,7 +627,7 @@ partition_cache_pruning_context (PRUNING_CONTEXT * pinfo,
 {
   PARTITION_CACHE_ENTRY *entry_p = NULL;
   OID *oid_key = NULL;
-  void *val;
+  const void *val;
 
   if (!PARTITION_IS_CACHE_INITIALIZED ())
     {

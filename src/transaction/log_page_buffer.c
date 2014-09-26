@@ -598,11 +598,12 @@ logpb_expand_pool (int num_new_buffers)
   float expand_rate;
   struct log_buffer **buffer_pool;
   int error_code = NO_ERROR;
+  int r;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
 
-  csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  r = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
 
   if (num_new_buffers <= 0)
     {
@@ -649,7 +650,7 @@ logpb_expand_pool (int num_new_buffers)
 	{
 	  return error_code;
 	}
-      csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+      r = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
       num_new_buffers -= LOG_MAX_NUM_CONTIGUOUS_BUFFERS;
     }
 
@@ -863,10 +864,11 @@ void
 logpb_finalize_pool (void)
 {
   struct log_bufarea *area;	/* Buffer area to free */
+  int r;
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
 
-  csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  r = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
   if (log_Pb.pool != NULL)
     {
       if (log_Gl.append.log_pgptr != NULL)
@@ -978,7 +980,7 @@ void
 logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 {
   register struct log_buffer *log_bufptr;	/* A log buffer */
-  int i;
+  int i, rv;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -993,7 +995,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
    */
   logpb_flush_pages_direct (thread_p);
 
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
@@ -1028,6 +1030,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
   int ixpool = -1;
   int num_unfixed = 1;
   int error_code = NO_ERROR;
+  int rv;
 
   assert (retry != NULL);
 
@@ -1073,7 +1076,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 		      log_Stat.log_buffer_flush_count_by_replacement++;
 		      logpb_flush_all_append_pages (thread_p);
 
-		      csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+		      rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 		      *retry = true;
 		      return NULL;
 		    }
@@ -1114,7 +1117,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 	}
       log_bufptr = NULL;
 
-      csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+      rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
     }
 
   return log_bufptr;
@@ -1165,13 +1168,14 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int fetch_mode)
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;	/* The corresponding
 						 * physical page
 						 */
+  int rv;
   bool retry;
 
   assert (pageid != NULL_PAGEID);
   assert ((fetch_mode == NEW_PAGE) || (fetch_mode == OLD_PAGE));
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 
   log_bufptr = (struct log_buffer *) mht_get (log_Pb.ht, &pageid);
   if (log_bufptr == NULL)
@@ -1286,6 +1290,7 @@ void
 logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 {
   struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  int rv;
 
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
@@ -1300,7 +1305,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
     }
 #endif /* CUBRID_DEBUG */
 
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 
   bufptr->dirty = true;
   if (free_page == FREE)
@@ -1324,12 +1329,13 @@ static bool
 logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
   struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  int rv;
   bool is_dirty;
 
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 
   is_dirty = (bool) bufptr->dirty;
 
@@ -1350,10 +1356,10 @@ static bool
 logpb_is_any_dirty (void)
 {
   register struct log_buffer *bufptr;	/* A log buffer */
-  int i;
+  int i, rv;
   bool ret;
 
-  csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
 
   ret = false;
   for (i = 0; i < log_Pb.num_buffers; i++)
@@ -1421,13 +1427,14 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
 		  int free_page)
 {
   struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  int rv;
 
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
@@ -1505,7 +1512,9 @@ error:
 void
 logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  int rv;
+
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 
   logpb_free_without_mutex (log_pgptr);
 
@@ -1575,12 +1584,14 @@ logpb_get_page_id (LOG_PAGE * log_pgptr)
 void
 logpb_dump (FILE * out_fp)
 {
+  int rv;
+
   if (log_Pb.pool == NULL)
     {
       return;
     }
 
-  csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
 
   logpb_dump_information (out_fp);
 
@@ -2140,6 +2151,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 {
   register struct log_buffer *log_bufptr = NULL;
   LOG_PAGE *ret_pgptr = NULL;
+  int rv;
 
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
@@ -2153,7 +2165,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
     }
 
   /* TODO: Can we use a latch free structure here? */
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 
   log_bufptr = (struct log_buffer *) mht_get (log_Pb.ht, &pageid);
   if (log_bufptr != NULL)
@@ -4590,8 +4602,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   INT64 flush_completed_time = 0;
   INT64 all_writer_thr_end_time = 0;
 
-#if defined(SERVER_MODE)
   int rv;
+#if defined(SERVER_MODE)
   LOGWR_ENTRY *entry;
 #endif /* SERVER_MODE */
 
@@ -4806,7 +4818,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   rv = pthread_mutex_lock (&flush_info->flush_mutex);
   hold_flush_mutex = true;
 
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
   hold_lpb_cs = true;
 
 #if defined(CUBRID_DEBUG)
@@ -4889,7 +4901,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 		  idxflush = -1;
 		}
 
-	      csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+	      rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
 	      hold_lpb_cs = true;
 	    }
 	}
@@ -5016,7 +5028,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * any more.
    */
 
-  csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
   hold_lpb_cs = true;
 
   for (i = 0; i < flush_info->num_toflush; i++)

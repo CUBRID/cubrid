@@ -4151,7 +4151,7 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
  *   server_credential(out):
  */
 int
-boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
+boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 		      int client_lock_wait, TRAN_ISOLATION client_isolation,
 		      TRAN_STATE * tran_state,
 		      BOOT_SERVER_CREDENTIAL * server_credential)

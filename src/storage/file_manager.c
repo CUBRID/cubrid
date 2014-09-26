@@ -2741,7 +2741,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 			  const void *file_des)
 {
   LOG_DATA_ADDR addr;		/* address of logging data */
-  bool old_val;
+  bool old_val, rv;
 
   /* Start a TOP SYSTEM OPERATION.
      This top system operation will be either ABORTED (case of failure) or
@@ -2781,7 +2781,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
       vfid = NULL;
     }
 
-  thread_set_check_interrupt (thread_p, old_val);
+  rv = thread_set_check_interrupt (thread_p, old_val);
 
   return vfid;
 }
@@ -3474,6 +3474,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   bool old_val;
   bool pb_invalid_temp_called = false;
   bool out_of_range = false;
+  bool rv;
   int cached_volid_bound = -1;
   int ret = NO_ERROR;
   DISK_PAGE_TYPE page_type;
@@ -4263,7 +4264,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 end:
 
-  thread_set_check_interrupt (thread_p, old_val);
+  rv = thread_set_check_interrupt (thread_p, old_val);
 
   return ret;
 
@@ -6971,6 +6972,7 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
   FILE_IS_NEW_FILE isfile_new;
   bool old_val = false;
   bool restore_check_interrupt = false;
+  bool rv;
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -7108,7 +7110,7 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   if (restore_check_interrupt == true)
     {
-      thread_set_check_interrupt (thread_p, old_val);
+      rv = thread_set_check_interrupt (thread_p, old_val);
     }
 
   return first_alloc_vpid;
@@ -7126,7 +7128,7 @@ exit_on_error:
 
   if (restore_check_interrupt == true)
     {
-      thread_set_check_interrupt (thread_p, old_val);
+      rv = thread_set_check_interrupt (thread_p, old_val);
     }
 
   return NULL;
@@ -7195,6 +7197,7 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
   bool old_val = false;
   bool restore_check_interrupt = false;
   bool is_tmp_file;
+  bool rv;
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -7402,7 +7405,7 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
 
   if (restore_check_interrupt == true)
     {
-      thread_set_check_interrupt (thread_p, old_val);
+      rv = thread_set_check_interrupt (thread_p, old_val);
     }
 
   return first_alloc_vpid;
@@ -7421,7 +7424,7 @@ exit_on_error:
 
   if (restore_check_interrupt == true)
     {
-      thread_set_check_interrupt (thread_p, old_val);
+      rv = thread_set_check_interrupt (thread_p, old_val);
     }
 
   return NULL;
@@ -7480,6 +7483,7 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
   int allocstate;
   bool old_val = false;
   bool restore_check_interrupt = false;
+  bool rv;
 
   if (npages <= 0 || desired_volid == NULL_VOLID ||
       fileio_get_volume_descriptor (desired_volid) == NULL_VOLDES)
@@ -7616,7 +7620,7 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   if (restore_check_interrupt == true)
     {
-      thread_set_check_interrupt (thread_p, old_val);
+      rv = thread_set_check_interrupt (thread_p, old_val);
     }
 
   return first_alloc_vpid;
@@ -7639,7 +7643,7 @@ exit_on_error:
 
   if (restore_check_interrupt == true)
     {
-      thread_set_check_interrupt (thread_p, old_val);
+      rv = thread_set_check_interrupt (thread_p, old_val);
     }
 
   return NULL;
@@ -7852,9 +7856,9 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p,
 					INT32 * first_aid_ptr,
 					INT32 ncont_page_entries)
 {
-  bool old_val;
   int ret = NO_ERROR;
   DISK_PAGE_TYPE page_type;
+  bool old_val, rv;
 
   if (log_start_system_op (thread_p) == NULL)
     {
@@ -7899,7 +7903,7 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p,
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
     }
 
-  thread_set_check_interrupt (thread_p, old_val);
+  rv = thread_set_check_interrupt (thread_p, old_val);
 
   mnt_file_page_deallocs (thread_p, ncont_page_entries);
 
@@ -8207,6 +8211,7 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
   FILE_TYPE file_type;
   bool old_val = false;
   bool restore_check_interrupt = false;
+  bool rv;
 
   isfile_new = file_isnew_with_type (thread_p, vfid, &file_type);
   if (isfile_new == FILE_ERROR)
@@ -8370,7 +8375,7 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   if (restore_check_interrupt == true)
     {
-      thread_set_check_interrupt (thread_p, old_val);
+      rv = thread_set_check_interrupt (thread_p, old_val);
     }
 
   return ret;
@@ -8391,7 +8396,7 @@ exit_on_error:
 
   if (restore_check_interrupt == true)
     {
-      thread_set_check_interrupt (thread_p, old_val);
+      rv = thread_set_check_interrupt (thread_p, old_val);
     }
 
   if (ret == NO_ERROR)
@@ -14108,8 +14113,9 @@ file_tmpfile_cache_get (THREAD_ENTRY * thread_p, VFID * vfid,
 {
   FILE_TEMPFILE_CACHE_ENTRY *p;
   int idx, prev;
+  int rv;
 
-  csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT);
 
   idx = file_Tempfile_cache.first_idx;
   prev = -1;
@@ -14155,8 +14161,9 @@ file_tmpfile_cache_put (THREAD_ENTRY * thread_p, const VFID * vfid,
 			FILE_TYPE file_type)
 {
   FILE_TEMPFILE_CACHE_ENTRY *p = NULL;
+  int rv;
 
-  csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT);
+  rv = csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT);
 
   if (file_Tempfile_cache.free_idx != -1)
     {

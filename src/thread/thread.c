@@ -5618,7 +5618,7 @@ thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 	  for (i = 0; i < meter->m_tracked_res_count; i++)
 	    {
 	      fprintf (outfp,
-		       "res_ptr=%d amount=%d first_caller=%s:%d\n",
+		       "res_ptr=%p amount=%d first_caller=%s:%d\n",
 		       meter->m_tracked_res[i].res_ptr,
 		       meter->m_tracked_res[i].amount,
 		       meter->m_tracked_res[i].caller_file,

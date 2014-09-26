@@ -22736,9 +22736,10 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
 				      DB_VALUE * prev_key, int *which_action)
 {
   int key_cnt;
-  bool found;
   int ret = NO_ERROR;
+  bool found;
   bool old_check_page_validation;
+  bool rv;
 #if !defined(NDEBUG)
   BTREE_NODE_HEADER *header = NULL;
 #endif
@@ -22756,7 +22757,7 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
   bts->P_page = pgbuf_fix (thread_p, &bts->P_vpid, OLD_PAGE,
 			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 
-  thread_set_check_page_validation (thread_p, old_check_page_validation);
+  rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
 
   if (bts->P_page == NULL)
     {
@@ -23003,10 +23004,11 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
 				      DB_VALUE * prev_key,
 				      OID * prev_oid_ptr, int *which_action)
 {
-  bool found;
   int leaf_not_change;
   int ret = NO_ERROR;
+  bool found;
   bool old_check_page_validation;
+  bool rv;
 
   /*
    * Following conditions are satisfied.
@@ -23020,7 +23022,7 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
   bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE,
 			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 
-  thread_set_check_page_validation (thread_p, old_check_page_validation);
+  rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
 
   if (bts->C_page == NULL)
     {
@@ -25547,28 +25549,29 @@ btree_rv_keyval_dump (FILE * fp, int length, void *data)
 	case MVCC_BTREE_DELETE_DELID:
 	  data = or_unpack_mvccid (data, &del_mvccid);
 	  fprintf (fp, " Logged by delete of DELID (del_mvccid=%lld) \n",
-		   del_mvccid);
+		   (long long int) del_mvccid);
 	  break;
 	case MVCC_BTREE_INSERT_DELID:
 	  data = or_unpack_mvccid (data, &del_mvccid);
 	  fprintf (fp, " Logged by insert of DELID  (del_mvccid=%lld) \n",
-		   del_mvccid);
+		   (long long int) del_mvccid);
 	  break;
 	case MVCC_BTREE_INSERT_OBJECT:
 	  data = or_unpack_mvccid (data, &ins_mvccid);
 	  fprintf (fp, " Logged by insert new object (ins_mvccid=%lld) \n",
-		   ins_mvccid);
+		   (long long int) ins_mvccid);
 	  break;
 	case MVCC_BTREE_DELETE_OBJECT:
 	  data = or_unpack_mvccid (data, &ins_mvccid);
 	  fprintf (fp, " Logged by delete object (ins_mvccid=%lld) \n",
-		   ins_mvccid);
+		   (long long int) ins_mvccid);
 	  break;
 	case MVCC_BTREE_RELOCATE_OBJ_AND_MVCC_INFO:
 	  data = or_unpack_mvccid (data, &ins_mvccid);
 	  data = or_unpack_mvccid (data, &del_mvccid);
 	  fprintf (fp, " Logged by insert new object (ins_mvccid=%lld, "
-		   "del_mvccid=%lld) \n", ins_mvccid, del_mvccid);
+		   "del_mvccid=%lld) \n", (long long int) ins_mvccid,
+		   (long long int) del_mvccid);
 	  break;
 	default:
 	  break;

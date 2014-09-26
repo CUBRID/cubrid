@@ -7966,10 +7966,10 @@ log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 	   time_val, log_header_p->db_release,
 	   log_header_p->db_compatibility, log_header_p->db_iopagesize,
 	   log_header_p->db_logpagesize, log_header_p->is_shutdown,
-	   log_header_p->next_trid, log_header_p->mvcc_next_id,
-	   log_header_p->avg_ntrans,
-	   log_header_p->avg_nlocks, log_header_p->npages,
-	   (long long int) log_header_p->fpageid,
+	   log_header_p->next_trid,
+	   (long long int) log_header_p->mvcc_next_id,
+	   log_header_p->avg_ntrans, log_header_p->avg_nlocks,
+	   log_header_p->npages, (long long int) log_header_p->fpageid,
 	   (long long int) log_header_p->append_lsa.pageid,
 	   log_header_p->append_lsa.offset,
 	   (long long int) log_header_p->chkpt_lsa.pageid,
@@ -8155,7 +8155,7 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp,
 	   "     MVCCID = %lld, \n"
 	   "     Prev_mvcc_op_log_lsa = (%lld, %d), \n"
 	   "     VFID = (%d, %d)",
-	   mvcc_undoredo->mvccid,
+	   (long long int) mvcc_undoredo->mvccid,
 	   (long long int)
 	   mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.offset,
@@ -8211,7 +8211,7 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
 	   "     MVCCID = %lld, \n"
 	   "     Prev_mvcc_op_log_lsa = (%lld, %d), \n"
 	   "     VFID = (%d, %d)",
-	   mvcc_undo->mvccid,
+	   (long long int) mvcc_undo->mvccid,
 	   (long long int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.offset,
 	   mvcc_undo->vacuum_info.vfid.volid,
@@ -8254,7 +8254,8 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
 	   mvcc_redo->redo.data.volid, mvcc_redo->redo.data.pageid,
 	   mvcc_redo->redo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_redo->redo.length));
-  fprintf (out_fp, "     MVCCID = %lld, \n", mvcc_redo->mvccid);
+  fprintf (out_fp, "     MVCCID = %lld, \n",
+	   (long long int) mvcc_redo->mvccid);
 
   redo_length = mvcc_redo->redo.length;
   rcvindex = mvcc_redo->redo.data.rcvindex;

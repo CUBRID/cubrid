@@ -1122,7 +1122,7 @@ pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
 				    const char *caller_file, int caller_line)
 {
   PAGE_PTR pgptr;
-  bool old_check_page_validation;
+  bool old_check_page_validation, rv;
 
   old_check_page_validation =
     thread_set_check_page_validation (thread_p, false);
@@ -1130,7 +1130,7 @@ pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
   pgptr = pgbuf_fix_debug (thread_p, vpid, newpg, request_mode, condition,
 			   caller_file, caller_line);
 
-  thread_set_check_page_validation (thread_p, old_check_page_validation);
+  rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
 
   return pgptr;
 }
@@ -1142,14 +1142,14 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p,
 				      PGBUF_LATCH_CONDITION condition)
 {
   PAGE_PTR pgptr;
-  bool old_check_page_validation;
+  bool old_check_page_validation, rv;
 
   old_check_page_validation =
     thread_set_check_page_validation (thread_p, false);
 
   pgptr = pgbuf_fix_release (thread_p, vpid, newpg, request_mode, condition);
 
-  thread_set_check_page_validation (thread_p, old_check_page_validation);
+  rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
 
   return pgptr;
 }
