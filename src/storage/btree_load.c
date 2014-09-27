@@ -3091,6 +3091,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	  log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM,
 				 &load_args->btid->sys_btid->vfid, pgptr, -1,
 				 length, data);
+	  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
 
 	  db_private_free (NULL, data);
 	}

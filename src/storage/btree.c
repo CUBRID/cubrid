@@ -10062,11 +10062,12 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
 				   key, &leaf_slot_id))
 	{
 	  /* key does not exist */
-	  log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->sys_btid->vfid,
-				 leaf_page, -1, 0, NULL);
-	  pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
 	  if (!thread_is_vacuum_worker (thread_p))
 	    {
+	      log_append_redo_data2 (thread_p, RVBT_NOOP,
+				     &btid->sys_btid->vfid, leaf_page, -1, 0,
+				     NULL);
+	      pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
 	      btree_set_unknown_key_error (thread_p, btid->sys_btid, key,
 					   "btree_delete_from_leaf: "
 					   "btree_search_leaf_page fails.");
@@ -10473,14 +10474,26 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
     }
 
   /* OID does not exist */
-  log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->sys_btid->vfid,
-			 prev_page, -1, 0, NULL);
-  pgbuf_set_dirty (thread_p, prev_page, FREE);
   if (!thread_is_vacuum_worker (thread_p))
     {
+      log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->sys_btid->vfid,
+			     prev_page, -1, 0, NULL);
+      pgbuf_set_dirty (thread_p, prev_page, FREE);
       btree_set_unknown_key_error (thread_p, btid->sys_btid, key,
 				   "btree_delete_from_leaf: "
 				   "caused by del_oid_offset == not found.");
+    }
+  else
+    {
+      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER
+		     | VACUUM_ER_LOG_WARNING,
+		     "VACUUM WARNING: Could not find object (%d, %d, %d) "
+		     "class (%d, %d, %d) in btid (%d, %d %d).",
+		     oid->volid, oid->pageid, oid->slotid,
+		     class_oid->volid, class_oid->pageid, class_oid->slotid,
+		     btid->sys_btid->root_pageid, btid->sys_btid->vfid.volid,
+		     btid->sys_btid->vfid.fileid);
+      pgbuf_unfix_and_init (thread_p, prev_page);
     }
 
   return ER_BTREE_UNKNOWN_KEY;
@@ -12648,6 +12661,7 @@ start_point:
 	}
       else
 	{
+	  assert (!thread_is_vacuum_worker (thread_p));
 	  log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->vfid, P, -1, 0,
 				 NULL);
 	  pgbuf_set_dirty (thread_p, P, DONT_FREE);
@@ -12717,6 +12731,7 @@ start_point:
     }
   else
     {
+      assert (!thread_is_vacuum_worker (thread_p));
       log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->vfid, P, -1, 0,
 			     NULL);
       pgbuf_set_dirty (thread_p, P, DONT_FREE);
@@ -26335,6 +26350,25 @@ btree_rv_dump_redo_insert_mvcc_delid (FILE * fp, int length, void *data)
  */
 int
 btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+{
+  assert (recv->pgptr != NULL);
+  pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * btree_rv_logical_nop () - Called on undo recovery for logical operation
+ *			     that do nothing.
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * recv (in)	 : Recovery data.
+ *
+ * NOTE: Unlike btree_rv_nop, this function doesn't have to set any page
+ *	 dirty (actually recv->pgptr is NULL).
+ */
+int
+btree_rv_logical_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   return NO_ERROR;
 }

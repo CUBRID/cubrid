@@ -536,6 +536,7 @@ extern int btree_rv_leafrec_redo_insert_oid (THREAD_ENTRY * thread_p,
 extern void btree_rv_leafrec_dump_insert_oid (FILE * fp, int length,
 					      void *data);
 extern int btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_logical_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 extern void btree_rv_dump_redo_insert_mvcc_delid (FILE * fp, int length,
 						  void *data);
