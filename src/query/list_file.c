@@ -4588,7 +4588,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	{
 	  assert_release (p->pos_descr.pos_no >= 0);
 	  assert_release (p->pos_descr.dom != NULL);
-	  assert_release (p->pos_descr.dom->type->id != DB_TYPE_VARIABLE);
+	  assert_release (p->pos_descr.dom->type != DB_TYPE_VARIABLE);
 
 	  subkey = &key_info_p->key[i];
 	  subkey->col = p->pos_descr.pos_no;
