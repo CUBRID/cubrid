@@ -2542,7 +2542,7 @@ union db_domain_info
 };
 
 /* types used for the representation of bigint values. */
-typedef INT64 DB_BIGINT;
+typedef int64_t DB_BIGINT;
 
 /* Structure used for the representation of time values. */
 typedef unsigned int DB_TIME;
@@ -2583,6 +2583,24 @@ struct db_datetimetz
 {
   DB_DATETIME datetime;
   TZ_ID tz_id;			/* zone id */
+};
+
+typedef enum tz_region_type TZ_REGION_TYPE;
+enum tz_region_type
+{
+  TZ_REGION_OFFSET = 0,
+  TZ_REGION_ZONE = 1
+};
+
+typedef struct tz_region TZ_REGION;
+struct tz_region
+{
+  TZ_REGION_TYPE type;          /* 0 : offset ; 1 : zone */
+  union
+  {
+    int offset;                 /* in seconds */
+    unsigned int zone_id;       /* geographical zone id */
+  };
 };
 
 /* Structure used for the representation of numeric values. */
@@ -2673,15 +2691,15 @@ struct db_midxkey
 typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
 struct vpid
 {
-  INT32 pageid;			/* Page identifier */
-  INT16 volid;			/* Volume identifier where the page reside */
+  int pageid;			/* Page identifier */
+  short volid;			/* Volume identifier where the page reside */
 };
 
 typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
 struct vfid
 {
-  INT32 fileid;			/* File identifier */
-  INT16 volid;			/* Volume identifier where the file reside */
+  int fileid;			/* File identifier */
+  short volid;			/* Volume identifier where the file reside */
 };
 
 typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
@@ -2703,7 +2721,7 @@ enum db_elo_type
 
 struct db_elo
 {
-  INT64 size;
+  int64_t size;
   LOID loid;
   char *locator;
   char *meta_data;
