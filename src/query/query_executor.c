@@ -13758,11 +13758,10 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   FILTER_INFO range_filter, key_filter, data_filter;
   MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
+  bool clear_list_id = false;
 
-  if (mvcc_Enabled == true)
-    {
-      OID_SET_NULL (&last_cached_class_oid);
-    }
+  assert (xasl->list_id->tuple_cnt == 1);
+  OID_SET_NULL (&last_cached_class_oid);
 
   if (QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
     {
@@ -13780,6 +13779,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data,
 				 V_TRUE, NULL);
       p_mvcc_reev_data = &mvcc_reev_data;
+
+      /* clear list id if all reevaluations result is false */
+      clear_list_id = true;
     }
 
   list = xasl->selected_upd_list;
@@ -14000,8 +14002,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      continue;
 		    }
 		}
-	      else if (p_mvcc_reev_data != NULL
-		       && p_mvcc_reev_data->filter_result != V_TRUE)
+	      else if (p_mvcc_reev_data->filter_result != V_TRUE)
 		{
 		  /* simply, skip this increment operation */
 		  er_log_debug (ARG_FILE_LINE,
@@ -14012,6 +14013,11 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				class_oid->volid, NO_ERROR);
 
 		  continue;
+		}
+	      else
+		{
+		  /* one tuple successfully reevaluated, do not clear list file */
+		  clear_list_id = false;
 		}
 	    }
 	  else
@@ -14071,10 +14077,14 @@ exit:
       qexec_failure_line (__LINE__, xasl_state);
       return ER_FAILED;
     }
-  else
+
+  if (clear_list_id)
     {
-      return NO_ERROR;
+      /* can't reevaluate any data, clear list file */
+      qfile_clear_list_id (xasl->list_id);
     }
+
+  return NO_ERROR;
 
 exit_on_error:
 
