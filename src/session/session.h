@@ -28,7 +28,6 @@
 #include "query_list.h"
 #include "query_manager.h"
 
-extern bool sessions_is_states_table_initialized (void);
 extern int session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key);

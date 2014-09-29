@@ -39,6 +39,7 @@
 #include "page_buffer.h"
 #include "log_manager.h"
 #include "critical_section.h"
+#include "lock_free.h"
 #include "mvcc.h"
 #if defined(SERVER_MODE)
 #include "thread.h"
@@ -80,10 +81,48 @@ struct spage_save_entry
 
 struct spage_save_head
 {				/* Head of a saving space */
+  SPAGE_SAVE_HEAD *rstack;	/* Pointer for retired stack of freelist */
+  SPAGE_SAVE_HEAD *next;	/* Next entry in hash bucket */
+  pthread_mutex_t mutex;	/* Mutex protecting "total_saved" and "first" */
+  UINT64 del_id;		/* delete transaction ID (for lock free) */
+
   VPID vpid;			/* Page and volume where the space is saved */
   int total_saved;		/* Total saved space by all transactions */
   SPAGE_SAVE_ENTRY *first;	/* First saving space entry */
 };
+
+/*
+ * Savings hash table
+ */
+static SPAGE_SAVE_HEAD *spage_save_head_alloc ();
+static int spage_save_head_free (SPAGE_SAVE_HEAD * entry_p);
+static int spage_save_head_init (SPAGE_SAVE_HEAD * entry_p);
+static int spage_save_head_uninit (SPAGE_SAVE_HEAD * entry_p);
+
+static LF_ENTRY_DESCRIPTOR spage_saving_entry_descriptor = {
+  /* signature of SPAGE_SAVE_HEAD */
+  offsetof (SPAGE_SAVE_HEAD, rstack),
+  offsetof (SPAGE_SAVE_HEAD, next),
+  offsetof (SPAGE_SAVE_HEAD, del_id),
+  offsetof (SPAGE_SAVE_HEAD, vpid),
+  offsetof (SPAGE_SAVE_HEAD, mutex),
+
+  /* mutex flags */
+  LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE,
+
+  /* function callbacks */
+  spage_save_head_alloc,
+  spage_save_head_free,
+  spage_save_head_init,
+  spage_save_head_uninit,
+  lf_callback_vpid_copy,
+  lf_callback_vpid_compare,
+  lf_callback_vpid_hash,
+  NULL				/* no inserts */
+};
+
+static LF_FREELIST spage_saving_freelist = LF_FREELIST_INITIALIZER;
+static LF_HASH_TABLE spage_saving_ht = LF_HASH_TABLE_INITIALIZER;
 
 /* context for slotted page header scan */
 typedef struct spage_header_context SPAGE_HEADER_CONTEXT;
@@ -101,8 +140,6 @@ struct spage_slots_context
   PAGE_PTR pgptr;		/* The page load by pgbuf_fix */
   SPAGE_SLOT *slot;		/* Iterator about slot in the page */
 };
-
-static MHT_TABLE *spage_Mht_saving;	/* Memory hash table for savings */
 
 static int spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * sphdr,
 			     PAGE_PTR pgptr, int save);
@@ -214,6 +251,81 @@ static void spage_reduce_contiguous_free_space (PAGE_PTR pgptr, int space);
 static void spage_verify_header (PAGE_PTR page_p);
 
 /*
+ * spage_save_head_alloc () - callback for allocation of a SPAGE_SAVE_HEAD
+ *                            object
+ *   returns: pointer to new SPAGE_SAVE_HEAD or NULL on error
+ */
+static SPAGE_SAVE_HEAD *
+spage_save_head_alloc ()
+{
+  SPAGE_SAVE_HEAD *entry_p;
+
+  entry_p = (SPAGE_SAVE_HEAD *) malloc (sizeof (SPAGE_SAVE_HEAD));
+  if (entry_p != NULL)
+    {
+      pthread_mutex_init (&entry_p->mutex, NULL);
+    }
+
+  return entry_p;
+}
+
+/*
+ * spage_save_head_free () - callback for deallocation of a SPAGE_SAVE_HEAD
+ *   returns: error code or NO_ERROR
+ *   entry_p(in): entry to deallocate
+ */
+static int
+spage_save_head_free (SPAGE_SAVE_HEAD * entry_p)
+{
+  free (entry_p);
+  return NO_ERROR;
+}
+
+/*
+ * spage_save_head_init () - initialization callback for SPAGE_SAVE_HEAD
+ *   returns: error code or NO_ERROR
+ *   entry_p(in): entry to initialize
+ */
+static int
+spage_save_head_init (SPAGE_SAVE_HEAD * entry_p)
+{
+  if (entry_p != NULL)
+    {
+      entry_p->vpid.pageid = NULL_PAGEID;
+      entry_p->vpid.volid = NULL_PAGEID;
+      entry_p->first = NULL;
+      entry_p->total_saved = 0;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * spage_save_head_uninit () - uninitialization callback for SPAGE_SAVE_HEAD
+ *   returns: error code or NO_ERROR
+ *   entry_p(in): entry to uninitializa
+ */
+static int
+spage_save_head_uninit (SPAGE_SAVE_HEAD * entry_p)
+{
+  SPAGE_SAVE_ENTRY *list, *next;
+
+  if (entry_p != NULL)
+    {
+      list = entry_p->first;
+
+      while (list)
+	{
+	  next = list->next;
+	  free (list);
+	  list = next;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * spage_verify_header () -
  *   return:
  *
@@ -275,29 +387,34 @@ spage_is_valid_anchor_type (const INT16 anchor_type)
 void
 spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 {
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_ENTRY *entry, *current;
   SPAGE_SAVE_HEAD *head;
 
   assert (first_save_entry != NULL);
 
   entry = (SPAGE_SAVE_ENTRY *) first_save_entry;
-
-  if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) != NO_ERROR)
-    {
-      assert (false);
-      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_GENERIC_ERROR, 0);
-
-      return;
-    }
-
   while (entry != NULL)
     {
+      /* we are about to access a lock-free pointer; make sure it's
+         retained until we're done with it */
+      (void) lf_tran_start (t_entry, false);
+
       current = entry;
       head = entry->head;
       entry = entry->tran_next_save;
 
       assert (current->tranid == logtb_find_current_tranid (thread_p));
+
+      /* since we only remove hash entries when they are empty AND each
+       * transaction uses only one thread (and thus cannot call this function
+       * concurrently), we can assume that the entry we just fetched is valid
+       * and in the hash table */
+      pthread_mutex_lock (&head->mutex);
+
+      /* mutex acquired, no need for lock-free transaction */
+      (void) lf_tran_end (t_entry);
 
       /* Delete the current node from save entry list */
       if (current->prev == NULL)
@@ -307,8 +424,26 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 	  /* There is no more entry. Delete save head and go to next entry */
 	  if (head->first == NULL)
 	    {
-	      (void) mht_rem (spage_Mht_saving, &(head->vpid), NULL, NULL);
-	      free_and_init (head);
+	      int success = 0;
+
+	      if (lf_hash_delete (t_entry, &spage_saving_ht, &head->vpid,
+				  &success) != NO_ERROR)
+		{
+		  /* we don't have clear operations on this hash table, this
+		     shouldn't happen */
+		  pthread_mutex_unlock (&head->mutex);
+		  assert_release (false);
+		  return;
+		}
+	      if (!success)
+		{
+		  /* we don't have clear operations on this hash table, this
+		     shouldn't happen */
+		  pthread_mutex_unlock (&head->mutex);
+		  assert_release (false);
+		  return;
+		}
+
 	      free_and_init (current);
 	      continue;
 	    }
@@ -336,39 +471,8 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 	    }
 	}
       free_and_init (current);
+      pthread_mutex_unlock (&head->mutex);
     }
-  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
-}
-
-/*
- * spage_free_all_saved_spaces_helper () - Release all savings
- *   return: NO_ERROR
- *
- *   vpid_key(in):  Volume and page identifier
- *   ent(in): Head entry information
- *   tid(in): Transaction identifier or NULL_TRANID
- */
-static int
-spage_free_all_saved_spaces_helper (const void *vpid_key, void *ent,
-				    void *tid)
-{
-  SPAGE_SAVE_ENTRY *entry, *current;
-
-  entry = ((SPAGE_SAVE_HEAD *) ent)->first;
-
-  while (entry != NULL)
-    {
-      current = entry;
-      entry = entry->next;
-
-      free_and_init (current);
-    }
-
-  /* Release the head of savings */
-  (void) mht_rem (spage_Mht_saving, vpid_key, NULL, NULL);
-  free_and_init (ent);
-
-  return NO_ERROR;
 }
 
 /*
@@ -392,6 +496,8 @@ static int
 spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
 		  PAGE_PTR page_p, int space)
 {
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_HEAD *head_p;
   SPAGE_SAVE_ENTRY *entry_p;
   VPID *vpid_p;
@@ -418,28 +524,24 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
     }
 
   vpid_p = pgbuf_get_vpid_ptr (page_p);
-  if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) != NO_ERROR)
+
+  /* retrieve a hash entry for specified VPID */
+  if (lf_hash_find_or_insert (t_entry, &spage_saving_ht, vpid_p,
+			      &head_p) != NO_ERROR)
     {
-      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+  else if (head_p == NULL)
+    {
       return ER_FAILED;
     }
 
-  head_p = (SPAGE_SAVE_HEAD *) mht_get (spage_Mht_saving, vpid_p);
-  if (head_p == NULL)
+  if (head_p->first == NULL)
     {
-      head_p = (SPAGE_SAVE_HEAD *) malloc (sizeof (*head_p));
-      if (head_p == NULL)
-	{
-	  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
-	  return ER_FAILED;
-	}
-
       entry_p = (SPAGE_SAVE_ENTRY *) malloc (sizeof (*entry_p));
       if (entry_p == NULL)
 	{
-	  free_and_init (head_p);
-	  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
+	  pthread_mutex_unlock (&head_p->mutex);
 	  return ER_FAILED;
 	}
 
@@ -449,8 +551,6 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
        * add first entry into hash
        */
 
-      head_p->vpid.volid = vpid_p->volid;
-      head_p->vpid.pageid = vpid_p->pageid;
       head_p->total_saved = space;
       head_p->first = entry_p;
 
@@ -477,9 +577,8 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
 	  entry_p->tran_next_save = NULL;
 	}
 
-      (void) mht_put (spage_Mht_saving, &(head_p->vpid), head_p);
-
-      csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
+      /* all done, unlock entry */
+      pthread_mutex_unlock (&head_p->mutex);
       return NO_ERROR;
     }
 
@@ -510,7 +609,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
       entry_p = malloc (sizeof (*entry_p));
       if (entry_p == NULL)
 	{
-	  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
+	  pthread_mutex_unlock (&head_p->mutex);
 	  return ER_FAILED;
 	}
 
@@ -551,7 +650,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
   assert (head_p->total_saved >= 0);
   assert (entry_p->saved >= 0);
 
-  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
+  pthread_mutex_unlock (&head_p->mutex);
 
   return NO_ERROR;
 }
@@ -615,6 +714,8 @@ static int
 spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
 			PAGE_PTR page_p, int *saved_by_other_trans)
 {
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_HEAD *head_p;
   SPAGE_SAVE_ENTRY *entry_p;
   VPID *vpid_p;
@@ -642,18 +743,15 @@ spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
   my_saved_space = 0;
   total_saved = 0;
 
-  if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) != NO_ERROR)
-    {
-      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_GENERIC_ERROR, 0);
-      /* TODO: missing to return ?? */
-    }
-
   /*
    * Get the saved space held by the head of the save entries. This is
    * the aggregate value of spaces saved on all entries.
    */
-  head_p = (SPAGE_SAVE_HEAD *) mht_get (spage_Mht_saving, vpid_p);
+  if (lf_hash_find (t_entry, &spage_saving_ht, vpid_p, &head_p) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   if (head_p != NULL)
     {
       entry_p = head_p->first;
@@ -667,14 +765,15 @@ spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
 	  entry_p = entry_p->next;
 	}
       total_saved += head_p->total_saved;
+
+      /* done with entry, unlock mutex */
+      pthread_mutex_unlock (&head_p->mutex);
     }
 
   /* Saved space should be 0 or positive. */
   assert (my_saved_space >= 0);
   assert (total_saved >= 0);
   assert (total_saved >= my_saved_space);
-
-  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
 
   if (saved_by_other_trans != NULL)
     {
@@ -698,18 +797,17 @@ static void
 spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp,
 					VPID * vpid_p)
 {
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_ENTRY *entry_p;
   SPAGE_SAVE_HEAD *head_p;
 
-  if (csect_enter_as_reader (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) !=
-      NO_ERROR)
+  if (lf_hash_find (t_entry, &spage_saving_ht, vpid_p, &head_p) != NO_ERROR)
     {
-      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_GENERIC_ERROR, 0);
+      assert_release (false);
       return;
     }
 
-  head_p = (SPAGE_SAVE_HEAD *) mht_get (spage_Mht_saving, vpid_p);
   if (head_p != NULL)
     {
       fprintf (fp,
@@ -725,9 +823,10 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp,
 		   entry_p->tranid, entry_p->saved);
 	  entry_p = entry_p->next;
 	}
-    }
 
-  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
+      /* unlock entry */
+      pthread_mutex_unlock (&head_p->mutex);
+    }
 }
 
 /*
@@ -743,28 +842,25 @@ spage_boot (THREAD_ENTRY * thread_p)
   assert (sizeof (SPAGE_HEADER) % DOUBLE_ALIGNMENT == 0);
   assert (sizeof (SPAGE_SLOT) == INT_ALIGNMENT);
 
-  if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) != NO_ERROR)
+  /* initialize freelist */
+  r = lf_freelist_init (&spage_saving_freelist, 100, 100,
+			&spage_saving_entry_descriptor, &spage_saving_Ts);
+  if (r != NO_ERROR)
     {
-      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      return r;
     }
 
-  if (spage_Mht_saving != NULL)
+  /* initialize hash table */
+  r = lf_hash_init (&spage_saving_ht, &spage_saving_freelist, 4547,
+		    &spage_saving_entry_descriptor);
+  if (r != NO_ERROR)
     {
-      (void) mht_clear (spage_Mht_saving, NULL, NULL);
-    }
-  else
-    {
-      spage_Mht_saving = mht_create ("Page space saving table", 50,
-				     pgbuf_hash_vpid, pgbuf_compare_vpid);
+      lf_freelist_destroy (&spage_saving_freelist);
+      return r;
     }
 
-  r = ((spage_Mht_saving != NULL) ? NO_ERROR : ER_FAILED);
-
-  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
-
-  return r;
+  /* all ok */
+  return NO_ERROR;
 }
 
 /*
@@ -777,22 +873,9 @@ spage_boot (THREAD_ENTRY * thread_p)
 void
 spage_finalize (THREAD_ENTRY * thread_p)
 {
-  TRANID tranid = NULL_TRANID;
-
-  if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) != NO_ERROR)
-    {
-      return;
-    }
-
-  if (spage_Mht_saving != NULL)
-    {
-      (void) mht_map (spage_Mht_saving, spage_free_all_saved_spaces_helper,
-		      &tranid);
-      mht_destroy (spage_Mht_saving);
-      spage_Mht_saving = NULL;
-    }
-
-  csect_exit (thread_p, CSECT_SPAGE_SAVESPACE);
+  /* destroy everything */
+  lf_hash_destroy (&spage_saving_ht);
+  lf_freelist_destroy (&spage_saving_freelist);
 }
 
 /*

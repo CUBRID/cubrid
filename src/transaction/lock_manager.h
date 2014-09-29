@@ -96,6 +96,8 @@ struct lk_entry
   LOCK granted_mode;		/* granted lock mode                */
   LOCK blocked_mode;		/* blocked lock mode                */
   int count;			/* number of lock requests          */
+  UINT64 del_id;		/* delete transaction ID (for latch free) */
+  LK_ENTRY *stack;		/* pointer to retired stack         */
   LK_ENTRY *next;		/* next entry                       */
   LK_ENTRY *tran_next;		/* list of locks that trans. holds  */
   LK_ENTRY *tran_prev;		/* list of locks that trans. holds  */
@@ -170,22 +172,33 @@ typedef enum
 } LOCK_RESOURCE_TYPE;
 
 /*
+ * Lock Resource key structure
+ */
+typedef struct lk_res_key LK_RES_KEY;
+struct lk_res_key
+{
+  LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
+  OID oid;
+  OID class_oid;
+  BTID btid;
+};
+
+/*
  * Lock Resource Entry Structure
  */
 typedef struct lk_res LK_RES;
 struct lk_res
 {
-  pthread_mutex_t res_mutex;	/* resource mutex */
-  LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
-  OID oid;
-  OID class_oid;
-  BTID btid;
+  LK_RES_KEY key;		/* lock resource's hash key */
   LOCK total_holders_mode;	/* total mode of the holders */
   LOCK total_waiters_mode;	/* total mode of the waiters */
   LK_ENTRY *holder;		/* lock holder list */
   LK_ENTRY *waiter;		/* lock waiter list */
   LK_ENTRY *non2pl;		/* non2pl list */
+  pthread_mutex_t res_mutex;	/* resource mutex */
   LK_RES *hash_next;		/* for hash chain */
+  LK_RES *stack;		/* for freelist */
+  UINT64 del_id;		/* delete transaction ID (for latch free) */
 };
 
 #if defined(SERVER_MODE)

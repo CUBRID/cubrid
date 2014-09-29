@@ -533,8 +533,8 @@ vacuum_initialize (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid,
 
   /* Initialize the log block data buffer */
   vacuum_Block_data_buffer =
-    lock_free_circular_queue_create (VACUUM_BLOCK_DATA_BUFFER_CAPACITY,
-				     sizeof (VACUUM_DATA_ENTRY));
+    lf_circular_queue_create (VACUUM_BLOCK_DATA_BUFFER_CAPACITY,
+			      sizeof (VACUUM_DATA_ENTRY));
   if (vacuum_Block_data_buffer == NULL)
     {
       goto error;
@@ -542,8 +542,8 @@ vacuum_initialize (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid,
 
   /* Initialize job queue */
   vacuum_Job_queue =
-    lock_free_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY,
-				     sizeof (VACUUM_LOG_BLOCKID));
+    lf_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY,
+			      sizeof (VACUUM_LOG_BLOCKID));
   if (vacuum_Job_queue == NULL)
     {
       goto error;
@@ -607,14 +607,14 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
   /* Destroy log blocks data buffer */
   if (vacuum_Block_data_buffer != NULL)
     {
-      lock_free_circular_queue_destroy (vacuum_Block_data_buffer);
+      lf_circular_queue_destroy (vacuum_Block_data_buffer);
       vacuum_Block_data_buffer = NULL;
     }
 
   /* Destroy job queue */
   if (vacuum_Job_queue != NULL)
     {
-      lock_free_circular_queue_destroy (vacuum_Job_queue);
+      lf_circular_queue_destroy (vacuum_Job_queue);
       vacuum_Job_queue = NULL;
     }
 
@@ -1690,8 +1690,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 		 block_data.newest_mvccid);
 
   /* Push new block into block data buffer */
-  if (!lock_free_circular_queue_produce
-      (vacuum_Block_data_buffer, &block_data))
+  if (!lf_circular_queue_produce (vacuum_Block_data_buffer, &block_data))
     {
       /* Push failed, the buffer must be full */
       /* TODO: Set a new message error for full block data buffer */
@@ -1791,7 +1790,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
       blockid = VACUUM_DATA_ENTRY_BLOCKID (entry);
 
 #if defined (SERVER_MODE)
-      if (!lock_free_circular_queue_produce (vacuum_Job_queue, &blockid))
+      if (!lf_circular_queue_produce (vacuum_Job_queue, &blockid))
 	{
 	  /* Safe guard, should never happen */
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER,
@@ -2226,7 +2225,7 @@ vacuum_start_new_job (THREAD_ENTRY * thread_p)
   VACUUM_LOCK_DATA ();
 
   /* Loop as long as job queue is not empty */
-  while (lock_free_circular_queue_consume (vacuum_Job_queue, &blockid))
+  while (lf_circular_queue_consume (vacuum_Job_queue, &blockid))
     {
       /* Execute vacuum job */
       entry = vacuum_get_vacuum_data_entry (blockid);
@@ -3461,8 +3460,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p,
 	  entry = VACUUM_DATA_GET_ENTRY (vacuum_Data->n_table_entries);
 
 	  /* Get a block from buffer */
-	  if (!lock_free_circular_queue_consume (vacuum_Block_data_buffer,
-						 entry))
+	  if (!lf_circular_queue_consume (vacuum_Block_data_buffer, entry))
 	    {
 	      /* Buffer is empty */
 	      break;
@@ -3569,8 +3567,8 @@ vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p, bool ignore_duplicate)
    */
   while (n_blocks < VACUUM_RECOVER_BLOCKS_MAX_COUNT)
     {
-      if (!lock_free_circular_queue_consume (vacuum_Block_data_buffer,
-					     &recover_blocks[n_blocks]))
+      if (!lf_circular_queue_consume
+	  (vacuum_Block_data_buffer, &recover_blocks[n_blocks]))
 	{
 	  /* No more entries */
 	  break;

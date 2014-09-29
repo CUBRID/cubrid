@@ -1268,6 +1268,20 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->on_trace = false;
   entry_p->clear_trace = false;
 
+  /* transaction entries */
+  entry_p->tran_entries[THREAD_TS_SPAGE_SAVING] =
+    lf_tran_request_entry (&spage_saving_Ts);
+  entry_p->tran_entries[THREAD_TS_OBJ_LOCK_RES] =
+    lf_tran_request_entry (&obj_lock_res_Ts);
+  entry_p->tran_entries[THREAD_TS_OBJ_LOCK_ENT] =
+    lf_tran_request_entry (&obj_lock_ent_Ts);
+  entry_p->tran_entries[THREAD_TS_CATALOG] =
+    lf_tran_request_entry (&catalog_Ts);
+  entry_p->tran_entries[THREAD_TS_SESSIONS] =
+    lf_tran_request_entry (&sessions_Ts);
+  entry_p->tran_entries[THREAD_TS_FREE_SORT_LIST] =
+    lf_tran_request_entry (&free_sort_list_Ts);
+
   return NO_ERROR;
 }
 
@@ -1279,6 +1293,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 static int
 thread_finalize_entry (THREAD_ENTRY * entry_p)
 {
+  LF_TRAN_ENTRY *tran_entry;
   int r, i, error = NO_ERROR;
 
   entry_p->index = -1;
@@ -1345,6 +1360,16 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   (void) thread_rc_track_finalize (entry_p);
 
   db_destroy_private_heap (entry_p, entry_p->private_heap_id);
+
+  /* transaction entries */
+  for (i = 0; i < THREAD_TS_COUNT; i++)
+    {
+      if (lf_tran_return_entry (entry_p->tran_entries[i]) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      entry_p->tran_entries[i] = 0;
+    }
 
   return error;
 }
@@ -2363,6 +2388,33 @@ thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag)
     }
 
   return old_val;
+}
+
+/*
+ * thread_get_tran_entry () - get specific lock free transaction entry
+ *   returns: transaction entry or NULL on error
+ *   thread_p(in): thread entry or NULL for current thread
+ *   entry(in): transaction entry index
+ */
+LF_TRAN_ENTRY *
+thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  if (entry_idx >= 0 && entry_idx < THREAD_TS_LAST)
+    {
+      return thread_p->tran_entries[entry_idx];
+    }
+  else
+    {
+      assert (false);
+      return NULL;
+    }
 }
 
 /*

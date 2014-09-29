@@ -153,6 +153,15 @@ extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 #if defined(SA_MODE)
 int thread_Recursion_depth = 0;
 
+LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &spage_saving_Ts, 0},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_res_Ts, 0},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_ent_Ts, 0},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &catalog_Ts, 0},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0}
+};
+
 extern void boot_client_all_finalize (bool is_er_final);
 #endif /* SA_MODE */
 
@@ -3277,6 +3286,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
+  error_code = lf_initialize_transaction_systems ();
+  if (error_code != NO_ERROR)
+    {
+      cfg_free_directory (dir);
+      return error_code;
+    }
+
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
     {

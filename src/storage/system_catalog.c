@@ -47,6 +47,7 @@
 #include "xserver_interface.h"
 #include "statistics_sr.h"
 #include "partition.h"
+#include "lock_free.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -174,18 +175,56 @@ struct catalog_max_space
 typedef struct catalog_key CATALOG_KEY;
 struct catalog_key
 {
+  /* actual key */
   PAGEID page_id;
   VOLID volid;
   PGSLOTID slot_id;
   REPR_ID repr_id;
+
+  /* these are part of the data, but we want them inserted atomically */
+  VPID r_page_id;		/* location of representation */
+  PGSLOTID r_slot_id;
 };				/* class identifier + representation identifier */
 
 /* catalog value for the hash table */
-typedef struct catalog_value CATALOG_VALUE;
-struct catalog_value
+typedef struct catalog_entry CATALOG_ENTRY;
+struct catalog_entry
 {
-  VPID page_id;			/* location of representation */
-  PGSLOTID slot_id;
+  CATALOG_ENTRY *stack;		/* used for freelist */
+  CATALOG_ENTRY *next;		/* next in hash chain */
+  UINT64 del_id;		/* delete transaction ID (for lock free) */
+  CATALOG_KEY key;		/* key of catalog entry */
+};
+
+/* handling functions for catalog key and entry */
+static void *catalog_entry_alloc ();
+static int catalog_entry_free (void *ent);
+static int catalog_entry_init (void *ent);
+static int catalog_entry_uninit (void *ent);
+static int catalog_key_copy (void *src, void *dest);
+static int catalog_key_compare (void *key1, void *key2);
+static unsigned int catalog_key_hash (void *key, int htsize);
+
+/* catalog entry descriptor */
+static LF_ENTRY_DESCRIPTOR catalog_entry_Descriptor = {
+  /* offsets */
+  offsetof (CATALOG_ENTRY, stack),
+  offsetof (CATALOG_ENTRY, next),
+  offsetof (CATALOG_ENTRY, del_id),
+  offsetof (CATALOG_ENTRY, key),
+  0,
+
+  /* mutex flags */
+  LF_EM_NOT_USING_MUTEX,
+
+  catalog_entry_alloc,
+  catalog_entry_free,
+  catalog_entry_init,
+  catalog_entry_uninit,
+  catalog_key_copy,
+  catalog_key_compare,
+  catalog_key_hash,
+  NULL				/* no inserts */
 };
 
 typedef struct catalog_class_id_list CATALOG_CLASS_ID_LIST;
@@ -229,12 +268,8 @@ static PGLENGTH catalog_Max_record_size;	/* Maximum Record Size */
  * SECTIONS, because there can not be simultaneous updaters and readers
  * for the same class representation information.
  */
-static MHT_TABLE *catalog_Hash_table = NULL;	/* Catalog memory hash table */
-static pthread_mutex_t catalog_Hash_table_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static CATALOG_KEY catalog_Keys[CATALOG_KEY_VALUE_ARRAY_SIZE];	/* array of catalog keys */
-static CATALOG_VALUE catalog_Values[CATALOG_KEY_VALUE_ARRAY_SIZE];	/* array of catalog values */
-static int catalog_key_value_entry_point;	/* entry point in the key and val arrays */
+static LF_FREELIST catalog_Hash_freelist = LF_FREELIST_INITIALIZER;
+static LF_HASH_TABLE catalog_Hash_table = LF_HASH_TABLE_INITIALIZER;
 
 static CATALOG_MAX_SPACE catalog_Max_space;	/* Global space information */
 static pthread_mutex_t catalog_Max_space_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -256,8 +291,6 @@ static PAGE_PTR catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
 static int catalog_get_key_list (THREAD_ENTRY * thread_p, void *key,
 				 void *val, void *args);
 static void catalog_free_key_list (CATALOG_CLASS_ID_LIST * clsid_list);
-static int catalog_compare (const void *key1, const void *key2);
-static unsigned int catalog_hash (const void *key, unsigned int htsize);
 static int catalog_put_record_into_page (THREAD_ENTRY * thread_p,
 					 CATALOG_RECORD * ct_recordp,
 					 int next,
@@ -983,27 +1016,106 @@ catalog_free_key_list (CATALOG_CLASS_ID_LIST * class_id_list)
 }
 
 /*
+ * catalog_entry_alloc () - allocate a catalog entry
+ *   returns: new pointer or NULL on error
+ */
+static void *
+catalog_entry_alloc ()
+{
+  return malloc (sizeof (CATALOG_ENTRY));
+}
+
+/*
+ * catalog_entry_free () - free a catalog entry
+ *   returns: error code or NO_ERROR
+ *   ent(in): entry to free
+ */
+static int
+catalog_entry_free (void *ent)
+{
+  free (ent);
+  return NO_ERROR;
+}
+
+/*
+ * catalog_entry_init () - initialize a catalog entry
+ *   returns: error code or NO_ERROR
+ *   ent(in): entry to initialize
+ */
+static int
+catalog_entry_init (void *ent)
+{
+  /* TO BE FILLED IN IF NECESSARY */
+  return NO_ERROR;
+}
+
+/*
+ * catalog_entry_uninit () - uninitialize a catalog entry
+ *   returns: error code or NO_ERROR
+ *   ent(in): entry to uninitialize
+ */
+static int
+catalog_entry_uninit (void *ent)
+{
+  /* TO BE FILLED IN IF NECESSARY */
+  return NO_ERROR;
+}
+
+/*
+ * catalog_key_copy () - copy a key
+ *   returns: error code or NO_ERROR
+ *   src(in): source key
+ *   dest(in): destination key
+ */
+static int
+catalog_key_copy (void *src, void *dest)
+{
+  CATALOG_KEY *src_k = (CATALOG_KEY *) src;
+  CATALOG_KEY *dest_k = (CATALOG_KEY *) dest;
+
+  if (src_k == NULL || dest_k == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* copy key members */
+  dest_k->page_id = src_k->page_id;
+  dest_k->repr_id = src_k->repr_id;
+  dest_k->slot_id = src_k->slot_id;
+  dest_k->volid = src_k->volid;
+
+  /* copy data members */
+  VPID_COPY (&dest_k->r_page_id, &src_k->r_page_id);
+  dest_k->r_slot_id = src_k->r_slot_id;
+
+  return NO_ERROR;
+}
+
+/*
  * catalog_compare () - Compare two catalog keys
  *   return: int (true or false)
  *   key1(in): First catalog key
  *   key2(in): Second catalog key
  */
 static int
-catalog_compare (const void *key1, const void *key2)
+catalog_key_compare (void *key1, void *key2)
 {
   const CATALOG_KEY *k1, *k2;
 
   k1 = (const CATALOG_KEY *) key1;
   k2 = (const CATALOG_KEY *) key2;
 
+  /* only compare key members */
   if (k1->page_id == k2->page_id && k1->slot_id == k2->slot_id
       && k1->repr_id == k2->repr_id && k1->volid == k2->volid)
     {
-      return true;
+      /* equal */
+      return 0;
     }
   else
     {
-      return false;
+      /* not equal */
+      return 1;
     }
 }
 
@@ -1016,7 +1128,7 @@ catalog_compare (const void *key1, const void *key2)
  * Note: Generate a hash number for the given key for the given hash table size.
  */
 static unsigned int
-catalog_hash (const void *key, unsigned int hash_table_size)
+catalog_key_hash (void *key, int hash_table_size)
 {
   const CATALOG_KEY *k1 = (const CATALOG_KEY *) key;
   unsigned int hash_res;
@@ -1953,17 +2065,19 @@ catalog_adjust_directory_count (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 static void
 catalog_delete_key (OID * class_id_p, REPR_ID repr_id)
 {
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
   CATALOG_KEY catalog_key;
-  int rv;
 
   catalog_key.page_id = class_id_p->pageid;
   catalog_key.volid = class_id_p->volid;
   catalog_key.slot_id = class_id_p->slotid;
   catalog_key.repr_id = repr_id;
 
-  rv = pthread_mutex_lock (&catalog_Hash_table_lock);
-  mht_rem (catalog_Hash_table, (void *) &catalog_key, NULL, NULL);
-  pthread_mutex_unlock (&catalog_Hash_table_lock);
+  if (lf_hash_delete (t_entry, &catalog_Hash_table, &catalog_key, NULL)
+      != NO_ERROR)
+    {
+      assert (false);
+    }
 }
 
 static char *
@@ -2261,10 +2375,12 @@ static int
 catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 				 CATALOG_REPR_ITEM * repr_item_p)
 {
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
   PAGE_PTR page_p;
   RECDES record;
   OID oid;
-  CATALOG_VALUE *catalog_value_p;
+  CATALOG_ENTRY *catalog_value_p;
   int repr_pos, repr_count;
   char *repr_p;
   CATALOG_KEY catalog_key;
@@ -2275,21 +2391,25 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
   catalog_key.slot_id = class_id_p->slotid;
   catalog_key.repr_id = repr_item_p->repr_id;
 
-  rv = pthread_mutex_lock (&catalog_Hash_table_lock);
-  catalog_value_p =
-    (CATALOG_VALUE *) mht_get (catalog_Hash_table, (void *) &catalog_key);
-
-  if (catalog_value_p != NULL)
+  if (lf_hash_find
+      (t_entry, &catalog_Hash_table, &catalog_key,
+       &catalog_value_p) != NO_ERROR)
     {
-      repr_item_p->page_id.volid = catalog_value_p->page_id.volid;
-      repr_item_p->page_id.pageid = catalog_value_p->page_id.pageid;
-      repr_item_p->slot_id = catalog_value_p->slot_id;
-      pthread_mutex_unlock (&catalog_Hash_table_lock);
+      return ER_FAILED;
+    }
+  else if (catalog_value_p != NULL)
+    {
+      /* entry already exists */
+      repr_item_p->page_id.volid = catalog_value_p->key.r_page_id.volid;
+      repr_item_p->page_id.pageid = catalog_value_p->key.r_page_id.pageid;
+      repr_item_p->slot_id = catalog_value_p->key.r_slot_id;
+
+      /* end transaction */
+      return lf_tran_end (t_entry);
     }
   else
     {
-      pthread_mutex_unlock (&catalog_Hash_table_lock);
-
+      /* fresh entry, fetch data for it */
       page_p =
 	catalog_get_representation_record_after_search (thread_p, class_id_p,
 							&record,
@@ -2321,29 +2441,20 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
       repr_item_p->slot_id = CATALOG_GET_REPR_ITEM_SLOTID (repr_p);
       pgbuf_unfix_and_init (thread_p, page_p);
 
-      rv = pthread_mutex_lock (&catalog_Hash_table_lock);
+      /* set entry info for further use */
+      catalog_key.r_page_id.pageid = repr_item_p->page_id.pageid;
+      catalog_key.r_page_id.volid = repr_item_p->page_id.volid;
+      catalog_key.r_slot_id = repr_item_p->slot_id;
 
-      if (catalog_key_value_entry_point >= (CATALOG_KEY_VALUE_ARRAY_SIZE - 1)
-	  || mht_count (catalog_Hash_table) > CATALOG_HASH_SIZE)
+      /* insert value */
+      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, &catalog_key,
+				  &catalog_value_p) != NO_ERROR)
 	{
-	  /* hash table full */
-	  (void) mht_clear (catalog_Hash_table, NULL, NULL);
-	  catalog_key_value_entry_point = 0;
+	  return ER_FAILED;
 	}
-
-      catalog_Keys[catalog_key_value_entry_point] = catalog_key;
-      catalog_Values[catalog_key_value_entry_point].page_id.pageid =
-	repr_item_p->page_id.pageid;
-      catalog_Values[catalog_key_value_entry_point].page_id.volid =
-	repr_item_p->page_id.volid;
-      catalog_Values[catalog_key_value_entry_point].slot_id =
-	repr_item_p->slot_id;
-
-      if (mht_put (catalog_Hash_table,
-		   (void *) &catalog_Keys[catalog_key_value_entry_point],
-		   (void *) &catalog_Values[catalog_key_value_entry_point]) ==
-	  NULL)
+      else if (catalog_value_p == NULL)
 	{
+	  /* impossible case */
 #if defined(CT_DEBUG)
 	  er_log_debug (ARG_FILE_LINE,
 			"ct_get_repritem: Insertion to hash table"
@@ -2351,15 +2462,14 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 			class_id_p->pageid, class_id_p->volid,
 			class_id_p->slotid, repr_item_p->repr_id);
 #endif /* CT_DEBUG */
+
+	  return ER_FAILED;
 	}
       else
 	{
-	  catalog_key_value_entry_point++;
+	  return lf_tran_end (t_entry);
 	}
-      pthread_mutex_unlock (&catalog_Hash_table_lock);
     }
-
-  return NO_ERROR;
 }
 
 static int
@@ -2587,9 +2697,11 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count,
 void
 catalog_initialize (CTID * catalog_id_p)
 {
-  if (catalog_Hash_table != NULL)
+  int ret;
+
+  if (catalog_Hash_table.hash_size > 0)
     {
-      catalog_finalize ();
+      lf_hash_destroy (&catalog_Hash_table);
     }
 
   VFID_COPY (&catalog_Id.xhid, &catalog_id_p->xhid);
@@ -2598,9 +2710,12 @@ catalog_initialize (CTID * catalog_id_p)
   catalog_Id.vfid.volid = catalog_id_p->vfid.volid;
   catalog_Id.hpgid = catalog_id_p->hpgid;
 
-  catalog_Hash_table = mht_create ("Cat_Hash_Table", CATALOG_HASH_SIZE,
-				   catalog_hash, catalog_compare);
-  catalog_key_value_entry_point = 0;
+  ret = lf_freelist_init (&catalog_Hash_freelist, 1, 100,
+			  &catalog_entry_Descriptor, &catalog_Ts);
+  assert (ret == NO_ERROR);
+  ret = lf_hash_init (&catalog_Hash_table, &catalog_Hash_freelist,
+		      CATALOG_HASH_SIZE, &catalog_entry_Descriptor);
+  assert (ret == NO_ERROR);
 
   catalog_Max_record_size =
     spage_max_record_size () - CATALOG_PAGE_HEADER_SIZE -
@@ -2621,11 +2736,8 @@ catalog_initialize (CTID * catalog_id_p)
 void
 catalog_finalize (void)
 {
-  if (catalog_Hash_table != NULL)
-    {
-      (void) mht_destroy (catalog_Hash_table);
-      catalog_Hash_table = NULL;
-    }
+  lf_hash_destroy (&catalog_Hash_table);
+  lf_freelist_destroy (&catalog_Hash_freelist);
 }
 
 /*
@@ -5068,15 +5180,13 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 static void
 catalog_clear_hash_table ()
 {
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
   int rv;
 
-  rv = pthread_mutex_lock (&catalog_Hash_table_lock);
-  if (catalog_Hash_table != NULL)
+  if (lf_hash_clear (t_entry, &catalog_Hash_table) != NO_ERROR)
     {
-      (void) mht_clear (catalog_Hash_table, NULL, NULL);
-      catalog_key_value_entry_point = 0;
+      assert (false);
     }
-  pthread_mutex_unlock (&catalog_Hash_table_lock);
 }
 
 

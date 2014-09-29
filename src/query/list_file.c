@@ -177,12 +177,26 @@ static QFILE_LIST_CACHE_CANDIDATE qfile_List_cache_candidate =
 static QFILE_LIST_CACHE_ENTRY_POOL qfile_List_cache_entry_pool =
   { NULL, 0, 0 };
 
-#if defined(SERVER_MODE)
-static pthread_mutex_t qfile_Free_sort_list_mutex = PTHREAD_MUTEX_INITIALIZER;
-#endif /* SERVER_MODE */
-static SORT_LIST *qfile_Free_sort_list = NULL;
-static int qfile_Free_sort_list_total = 0;
-static int qfile_Free_sort_list_count = 0;
+/* sort list freelist */
+static LF_FREELIST qfile_sort_list_Freelist;
+
+static void *qfile_alloc_sort_list ();
+static int qfile_dealloc_sort_list (void *sort_list);
+
+static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
+  offsetof (SORT_LIST, local_next),
+  offsetof (SORT_LIST, next),
+  offsetof (SORT_LIST, del_id),
+  0,				/* does not have a key, not used in a hash table */
+  0,				/* does not have a mutex */
+  LF_EM_NOT_USING_MUTEX,
+  qfile_alloc_sort_list,
+  qfile_dealloc_sort_list,
+  NULL,
+  NULL,
+  NULL, NULL, NULL,		/* no key */
+  NULL				/* no inserts */
+};
 
 /*
  * Query File Manager Constants/Global Variables
@@ -435,7 +449,7 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p,
       len = qfile_get_sort_list_size (src_list_id_p->sort_list);
       if (len > 0)
 	{
-	  dest = qfile_allocate_sort_list (len);
+	  dest = qfile_allocate_sort_list (NULL, len);
 	  if (dest == NULL)
 	    {
 	      free_and_init (dest_list_id_p->type_list.domp);
@@ -522,7 +536,7 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
 
   if (list_id_p->sort_list)
     {
-      qfile_free_sort_list (list_id_p->sort_list);
+      qfile_free_sort_list (NULL, list_id_p->sort_list);
       list_id_p->sort_list = NULL;
     }
 
@@ -562,45 +576,25 @@ qfile_free_list_id (QFILE_LIST_ID * list_id_p)
  * Note: The area allocated for sort_list is freed.
  */
 void
-qfile_free_sort_list (SORT_LIST * sort_list_p)
+qfile_free_sort_list (THREAD_ENTRY * thread_p, SORT_LIST * sort_list_p)
 {
-  SORT_LIST *p;
-  int count;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
+  LF_TRAN_ENTRY *t_entry;
+  SORT_LIST *tmp;
 
-  if (sort_list_p == NULL)
+  /* get tran entry */
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FREE_SORT_LIST);
+
+  while (sort_list_p != NULL)
     {
-      return;
-    }
+      tmp = sort_list_p;
+      sort_list_p = sort_list_p->next;
+      tmp->next = NULL;
 
-  for (p = sort_list_p, count = 1; p->next != NULL; p = p->next)
-    {
-      count++;
-    }
-
-  rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
-
-  /* TODO: introduce other param rather than MAX_THREADS */
-  if (qfile_Free_sort_list_count < thread_num_worker_threads ())
-    {
-      p->next = qfile_Free_sort_list;
-      qfile_Free_sort_list = sort_list_p;
-      qfile_Free_sort_list_count += count;
-
-      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
-    }
-  else
-    {
-      qfile_Free_sort_list_total -= count;
-      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
-
-      while (sort_list_p != NULL)
+      if (lf_freelist_retire (t_entry, &qfile_sort_list_Freelist, tmp) !=
+	  NO_ERROR)
 	{
-	  p = sort_list_p;
-	  sort_list_p = p->next;
-	  free_and_init (p);
+	  assert (false);
+	  return;
 	}
     }
 }
@@ -616,94 +610,66 @@ qfile_free_sort_list (SORT_LIST * sort_list_p)
  *       since the linked list is allocated in a contigous region.
  */
 SORT_LIST *
-qfile_allocate_sort_list (int count)
+qfile_allocate_sort_list (THREAD_ENTRY * thread_p, int count)
 {
-  SORT_LIST *s, *p;
-  int i;
-  int num_remains;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
+  LF_TRAN_ENTRY *t_entry;
+  SORT_LIST *head = NULL, *tail = NULL, *tmp;
 
   if (count <= 0)
     {
       return NULL;
     }
 
+  /* fetch tran entry */
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FREE_SORT_LIST);
+
   /* allocate complete list */
-  if (qfile_Free_sort_list != NULL)
+  while (count > 0)
     {
-      rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
-
-      if (qfile_Free_sort_list != NULL)
+      tmp = lf_freelist_claim (t_entry, &qfile_sort_list_Freelist);
+      if (tmp == NULL)
 	{
-	  if (count <= qfile_Free_sort_list_count)
-	    {
-	      s = p = qfile_Free_sort_list;
-	      for (i = 1; i < count; i++)
-		{
-		  p = p->next;
-		}
-
-	      qfile_Free_sort_list = p->next;
-	      qfile_Free_sort_list_count -= count;
-	      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
-	      p->next = NULL;
-	    }
-	  else
-	    {
-	      num_remains = count - qfile_Free_sort_list_count;
-	      s = qfile_Free_sort_list;
-	      qfile_Free_sort_list = NULL;
-	      qfile_Free_sort_list_count = 0;
-	      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
-
-	      for (i = 0; i < num_remains; i++)
-		{
-		  p = (SORT_LIST *) malloc (sizeof (SORT_LIST));
-		  if (p == NULL)
-		    {
-		      qfile_free_sort_list (s);
-		      return NULL;
-		    }
-		  p->next = s;
-		  s = p;
-		}
-	      if (i > 0)
-		{
-		  rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
-		  qfile_Free_sort_list_total += i;
-		  pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
-		}
-	    }
-	  return s;
-	}
-
-      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
-    }
-
-  s = NULL;
-  for (i = 0; i < count; i++)
-    {
-      p = (SORT_LIST *) malloc (sizeof (SORT_LIST));
-      if (p == NULL)
-	{
-	  qfile_free_sort_list (s);
+	  assert (false);
 	  return NULL;
 	}
 
-      p->next = s;
-      s = p;
+      if (head == NULL)
+	{
+	  head = tmp;
+	  tail = tmp;
+	}
+      else
+	{
+	  tail->next = tmp;
+	  tail = tmp;
+	}
+
+      count--;
     }
 
-  if (i > 0)
-    {
-      rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
-      qfile_Free_sort_list_total += count;
-      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
-    }
+  return head;
+}
 
-  return s;
+/*
+ * qfile_alloc_sort_list () - allocate a sort list
+ *   returns: new sort list
+ */
+static void *
+qfile_alloc_sort_list ()
+{
+  return malloc (sizeof (SORT_LIST));
+}
+
+/*
+ * qfile_dealloc_sort_list () - deallocate a sort list
+ *   returns: error code or NO_ERROR
+ *   sort_list(in): sort list to free
+ */
+static int
+qfile_dealloc_sort_list (void *sort_list)
+{
+  free (sort_list);
+  return NO_ERROR;
 }
 
 /*
@@ -1404,28 +1370,12 @@ qfile_initialize (void)
   qfile_Max_tuple_page_size = QFILE_MAX_TUPLE_SIZE_IN_PAGE;
   qfile_Xasl_page_size = spage_max_record_size () - QFILE_PAGE_HEADER_SIZE;
 
-  rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
-
-  if (qfile_Free_sort_list == NULL)
+  if (lf_freelist_init
+      (&qfile_sort_list_Freelist, 10, 100, &qfile_sort_list_entry_desc,
+       &free_sort_list_Ts) != NO_ERROR)
     {
-      /* TODO: introduce param rather than 10 */
-      for (i = 0; i < 10; i++)
-	{
-	  sort_list_p = (SORT_LIST *) malloc (sizeof (SORT_LIST));
-	  if (sort_list_p == NULL)
-	    {
-	      break;
-	    }
-
-	  sort_list_p->next = qfile_Free_sort_list;
-	  qfile_Free_sort_list = sort_list_p;
-	}
-
-      qfile_Free_sort_list_total = i;
-      qfile_Free_sort_list_count = i;
+      return ER_FAILED;
     }
-
-  pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
 
   return true;
 }
@@ -1436,20 +1386,7 @@ qfile_initialize (void)
 void
 qfile_finalize (void)
 {
-  SORT_LIST *sort_list_p;
-
-  while (qfile_Free_sort_list != NULL)
-    {
-      sort_list_p = qfile_Free_sort_list;
-      qfile_Free_sort_list = sort_list_p->next;
-      sort_list_p->next = NULL;
-      qfile_Free_sort_list_count--;
-      qfile_Free_sort_list_total--;
-      free_and_init (sort_list_p);
-    }
-
-  assert (qfile_Free_sort_list_count == 0);
-  assert (qfile_Free_sort_list_total == 0);
+  lf_freelist_destroy (&qfile_sort_list_Freelist);
 }
 
 /*
@@ -1540,7 +1477,7 @@ qfile_open_list (THREAD_ENTRY * thread_p,
       len = list_id_p->type_list.type_cnt;
       if (len > 0)
 	{
-	  dest_sort_list_p = qfile_allocate_sort_list (len);
+	  dest_sort_list_p = qfile_allocate_sort_list (thread_p, len);
 	  if (dest_sort_list_p == NULL)
 	    {
 	      free_and_init (list_id_p->type_list.domp);
@@ -1563,7 +1500,7 @@ qfile_open_list (THREAD_ENTRY * thread_p,
       len = qfile_get_sort_list_size (sort_list_p);
       if (len > 0)
 	{
-	  dest_sort_list_p = qfile_allocate_sort_list (len);
+	  dest_sort_list_p = qfile_allocate_sort_list (thread_p, len);
 	  if (dest_sort_list_p == NULL)
 	    {
 	      free_and_init (list_id_p->type_list.domp);

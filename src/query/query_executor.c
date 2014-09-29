@@ -3845,7 +3845,8 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   else
     {
       /* allocate space for  sort list */
-      orderby_list = qfile_allocate_sort_list (list_id->type_list.type_cnt);
+      orderby_list =
+	qfile_allocate_sort_list (thread_p, list_id->type_list.type_cnt);
       if (orderby_list == NULL)
 	{
 	  error = ER_FAILED;
@@ -4001,7 +4002,7 @@ exit_on_error:
   /* free temporarily allocated areas */
   if (orderby_alloc == true)
     {
-      qfile_free_sort_list (orderby_list);
+      qfile_free_sort_list (thread_p, orderby_list);
     }
 
 #if !defined(NDEBUG)
@@ -4190,7 +4191,8 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
       plist = &agg_hash_context->part_list_id->type_list;
       proc = &xasl->proc.buildlist;
       gby_col = groupby_list;
-      sort_list = sort_col = qfile_allocate_sort_list (proc->g_hkey_size);
+      sort_list = sort_col =
+	qfile_allocate_sort_list (NULL, proc->g_hkey_size);
       if (sort_list == NULL)
 	{
 	  gbstate->state = ER_FAILED;
@@ -4213,7 +4215,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 	{
 	  gbstate->state = ER_FAILED;
 	}
-      qfile_free_sort_list (sort_list);
+      qfile_free_sort_list (NULL, sort_list);
     }
 
   return gbstate;
@@ -19671,7 +19673,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (xasl->list_id->sort_list)
     {
-      qfile_free_sort_list (xasl->list_id->sort_list);
+      qfile_free_sort_list (thread_p, xasl->list_id->sort_list);
       xasl->list_id->sort_list = NULL;
     }
 
@@ -19679,7 +19681,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       if (connect_by->start_with_list_id->sort_list)
 	{
-	  qfile_free_sort_list (connect_by->start_with_list_id->sort_list);
+	  qfile_free_sort_list (thread_p,
+				connect_by->start_with_list_id->sort_list);
 	  connect_by->start_with_list_id->sort_list = NULL;
 	}
     }
@@ -19769,7 +19772,7 @@ exit_on_error:
 
   if (xasl->list_id->sort_list)
     {
-      qfile_free_sort_list (xasl->list_id->sort_list);
+      qfile_free_sort_list (thread_p, xasl->list_id->sort_list);
       xasl->list_id->sort_list = NULL;
     }
 
@@ -19777,7 +19780,8 @@ exit_on_error:
     {
       if (connect_by->start_with_list_id->sort_list)
 	{
-	  qfile_free_sort_list (connect_by->start_with_list_id->sort_list);
+	  qfile_free_sort_list (thread_p,
+				connect_by->start_with_list_id->sort_list);
 	  connect_by->start_with_list_id->sort_list = NULL;
 	}
     }

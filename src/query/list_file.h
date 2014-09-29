@@ -128,10 +128,11 @@ extern QFILE_LIST_ID *qfile_clone_list_id (const QFILE_LIST_ID * list_id,
 
 /* Free routines */
 extern void qfile_free_list_id (QFILE_LIST_ID * list_id);
-extern void qfile_free_sort_list (SORT_LIST * sort_list);
+extern void qfile_free_sort_list (THREAD_ENTRY * thread_p,
+				  SORT_LIST * sort_list);
 
 /* Alloc routines */
-extern SORT_LIST *qfile_allocate_sort_list (int cnt);
+extern SORT_LIST *qfile_allocate_sort_list (THREAD_ENTRY * thread_p, int cnt);
 
 /* sort_list related routines */
 extern bool qfile_is_sort_list_covered (SORT_LIST * covering_list,

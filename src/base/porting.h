@@ -697,6 +697,8 @@ extern "C"
 	(InterlockedCompareExchange64(ptr, swap_val, cmp_val) == cmp_val)
 #define ATOMIC_INC_64(ptr, amount) \
 	(InterlockedExchangeAdd64(ptr, amount) + amount)
+#define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
+	(InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == cmp_val)
 #else				/* _WIN64 */
 /*
  * These functions are used on Windows 32bit OS.
@@ -716,6 +718,8 @@ extern "C"
 	(win32_compare_exchange64(ptr, swap_val, cmp_val) == cmp_val)
 #define ATOMIC_INC_64(ptr, amount) \
 	(win32_exchange_add64(ptr, amount) + amount)
+#define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
+	(InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == cmp_val)
 #endif				/* _WIN64 */
 
 #else				/* WINDOWS */
@@ -737,6 +741,9 @@ extern "C"
 	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
 #define ATOMIC_INC_64(ptr, amount) \
 	__sync_add_and_fetch(ptr, amount)
+
+#define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
+	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
 
 #else				/* HAVE_GCC_ATOMIC_BUILTINS */
 /*

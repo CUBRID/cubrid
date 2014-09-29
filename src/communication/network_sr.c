@@ -1398,6 +1398,13 @@ net_server_start (const char *server_name)
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
   mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
+  if (lf_initialize_transaction_systems () != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG
+	("Failed to initialize lock free transaction systems\n");
+      status = -1;
+      goto end;
+    }
   if (thread_initialize_manager () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");

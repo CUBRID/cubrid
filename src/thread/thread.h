@@ -39,10 +39,27 @@
 #include "system_parameter.h"
 #endif /* SERVER_MODE */
 
+#include "lock_free.h"
+
+enum
+{
+  THREAD_TS_SPAGE_SAVING = 0,
+  THREAD_TS_OBJ_LOCK_RES,
+  THREAD_TS_OBJ_LOCK_ENT,
+  THREAD_TS_CATALOG,
+  THREAD_TS_SESSIONS,
+  THREAD_TS_FREE_SORT_LIST,
+  THREAD_TS_LAST
+};
+
+#define THREAD_TS_COUNT  THREAD_TS_LAST
+
 #if !defined(SERVER_MODE)
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) thread_get_current_entry_index()
 
 extern int thread_Recursion_depth;
+
+extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 
 #define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)
@@ -88,6 +105,8 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_set_vacuum_worker_state(thread_p, state)
 #define thread_set_vacuum_worker_drop_file_version(thread_p, version)
 #define thread_get_vacuum_worker_count() (0)
+
+#define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
 
 #else /* !SERVER_MODE */
 
@@ -319,6 +338,9 @@ struct thread_entry
   int trace_format;
   bool on_trace;
   bool clear_trace;
+
+  /* for lock free structures */
+  LF_TRAN_ENTRY *tran_entries[THREAD_TS_COUNT];
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
@@ -505,6 +527,9 @@ extern void thread_rc_track_meter (THREAD_ENTRY * thread_p,
 				   int rc_idx, int mgr_idx);
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
+
+extern LF_TRAN_ENTRY *thread_get_tran_entry (THREAD_ENTRY * thread_p,
+					     int entry_idx);
 
 extern void thread_trace_on (THREAD_ENTRY * thread_p);
 extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);

@@ -59,14 +59,12 @@ enum
   CSECT_DISK_REFRESH_GOODVOL,	/* Latch for refreshing good volume cache */
   CSECT_CNV_FMT_LEXER,		/* Latch for value/string format translation lexer */
   CSECT_HEAP_CHNGUESS,		/* Latch for schema change */
-  CSECT_SPAGE_SAVESPACE,	/* Latch for slotted page saving space */
 
   CSECT_TRAN_TABLE,		/* Latch for transaction table */
   CSECT_CT_OID_TABLE,
   CSECT_SCANID_BITMAP,
   CSECT_HA_SERVER_STATE,	/* Latch for HA server mode change */
   CSECT_COMPACTDB_ONE_INSTANCE,	/* Latch for compactdb */
-  CSECT_SESSION_STATE,		/* Latch for session state table */
   CSECT_ACL,			/* Latch for accessible IP list table */
   CSECT_QPROC_FILTER_PRED_CACHE,	/* Latch for PRED XASL cache */
   CSECT_PARTITION_CACHE,	/* Latch for partitions cache */
