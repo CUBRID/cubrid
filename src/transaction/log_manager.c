@@ -2272,6 +2272,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && !thread_is_vacuum_worker (thread_p)
       && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
@@ -2533,6 +2534,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
+      && !thread_is_vacuum_worker (thread_p)
       && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
@@ -4060,6 +4062,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
       if (result == LOG_RESULT_TOPOP_COMMIT)
 	{
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	      && !thread_is_vacuum_worker (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
@@ -4096,6 +4099,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
       else
 	{
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	      && !thread_is_vacuum_worker (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      repl_log_abort_after_lsa (tdes,
@@ -4151,6 +4155,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	{
 	  state = TRAN_UNACTIVE_ABORTED;
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	      && !thread_is_vacuum_worker (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      repl_log_abort_after_lsa (tdes,
@@ -5779,6 +5784,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
       log_cleanup_modified_class_list (thread_p, tdes, true, false);
 
       if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	  && !thread_is_vacuum_worker (thread_p)
 	  && log_does_allow_replication () == true)
 	{
 	  /* for the replication agent guarantee the order of transaction */
