@@ -4867,10 +4867,17 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
+  if (log_start_system_op (thread_p) == NULL)
+    {
+      return NULL;
+    }
+
   last_pgptr = heap_get_last_page (thread_p, hfid, heap_hdr, scan_cache,
 				   &last_vpid);
   if (last_pgptr == NULL)
     {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
       /* something went wrong, return error */
       return NULL;
     }
@@ -4891,14 +4898,18 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   tolast.last_pgptr = last_pgptr;
   tolast.heap_hdr = heap_hdr;
 
-  if (file_alloc_pages (thread_p, &hfid->vfid, &vpid, 1,
-			&last_vpid, heap_vpid_init_new, &tolast) == NULL)
+  if (file_alloc_pages_with_outer_sys_op (thread_p, &hfid->vfid, &vpid, 1,
+					  &last_vpid, heap_vpid_init_new,
+					  &tolast) == NULL)
     {
       /* Unable to allocate a new page */
       if (last_pgptr != NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, last_pgptr);
 	}
+
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
       return NULL;
     }
 
@@ -4966,6 +4977,8 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
    * Because file_alloc_page was committed with top operation.
    * The added page will be used later by other insert operation.
    */
+
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
   return new_pgptr;		/* new_pgptr is lock and fetch */
 }

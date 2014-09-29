@@ -397,6 +397,24 @@ static int file_allocset_alloc_pages (THREAD_ENTRY * thread_p,
 				      VPID * first_new_vpid, INT32 npages,
 				      const VPID * near_vpid,
 				      FILE_ALLOC_VPIDS * alloc_vpids);
+static VPID *file_alloc_pages_internal (THREAD_ENTRY * thread_p,
+					const VFID * vfid,
+					VPID * first_alloc_vpid,
+					INT32 npages,
+					const VPID * near_vpid,
+					int with_sys_op,
+					bool (*fun) (THREAD_ENTRY
+						     * thread_p,
+						     const VFID *
+						     vfid,
+						     const
+						     FILE_TYPE
+						     file_type,
+						     const VPID *
+						     first_alloc_vpid,
+						     INT32
+						     npages,
+						     void *args), void *args);
 static DISK_ISVALID file_allocset_find_page (THREAD_ENTRY * thread_p,
 					     PAGE_PTR fhdr_pgptr,
 					     PAGE_PTR allocset_pgptr,
@@ -6964,6 +6982,64 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 			       const VPID * first_alloc_vpid, INT32 npages,
 			       void *args), void *args)
 {
+  return file_alloc_pages_internal (thread_p, vfid, first_alloc_vpid, npages,
+				    near_vpid, FILE_WITHOUT_OUTER_SYSTEM_OP,
+				    fun, args);
+}
+
+/*
+ * file_alloc_pages_with_outer_sys_op () - Allocate a user page
+ *   return: first_alloc_vpid or NULL
+ *   vfid(in): Complete file identifier.
+ *   first_alloc_vpid(in): Identifier of first contiguous allocated pages
+ *   npages(in): Number of pages to allocate
+ *   near_vpid(in): Allocate the pages as close as the value of this parameter.
+ *                  Hint only, it may be ignored.
+ *   fun(in): Function to be called to initialize the page
+ *   args(in): Additional arguments to be passed to fun
+ *
+ */
+VPID *
+file_alloc_pages_with_outer_sys_op (THREAD_ENTRY * thread_p,
+				    const VFID * vfid,
+				    VPID * first_alloc_vpid, INT32 npages,
+				    const VPID * near_vpid,
+				    bool (*fun) (THREAD_ENTRY * thread_p,
+						 const VFID * vfid,
+						 const FILE_TYPE file_type,
+						 const VPID *
+						 first_alloc_vpid,
+						 INT32 npages, void *args),
+				    void *args)
+{
+  return file_alloc_pages_internal (thread_p, vfid, first_alloc_vpid, npages,
+				    near_vpid, FILE_WITH_OUTER_SYSTEM_OP,
+				    fun, args);
+}
+
+/*
+ * file_alloc_pages () - Allocate a user page
+ *   return: first_alloc_vpid or NULL
+ *   vfid(in): Complete file identifier.
+ *   first_alloc_vpid(in): Identifier of first contiguous allocated pages
+ *   npages(in): Number of pages to allocate
+ *   near_vpid(in): Allocate the pages as close as the value of this parameter.
+ *                  Hint only, it may be ignored.
+ *   with_sys_op(in):
+ *   fun(in): Function to be called to initialize the page
+ *   args(in): Additional arguments to be passed to fun
+ *
+ */
+static VPID *
+file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
+			   VPID * first_alloc_vpid, INT32 npages,
+			   const VPID * near_vpid, int with_sys_op,
+			   bool (*fun) (THREAD_ENTRY * thread_p,
+					const VFID * vfid,
+					const FILE_TYPE file_type,
+					const VPID * first_alloc_vpid,
+					INT32 npages, void *args), void *args)
+{
   FILE_HEADER *fhdr;
   PAGE_PTR fhdr_pgptr = NULL;
   VPID vpid;
@@ -6981,10 +7057,13 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
    * (old file)
    */
 
-  if (log_start_system_op (thread_p) == NULL)
+  if (with_sys_op == FILE_WITHOUT_OUTER_SYSTEM_OP)
     {
-      VPID_SET_NULL (first_alloc_vpid);
-      return NULL;
+      if (log_start_system_op (thread_p) == NULL)
+	{
+	  VPID_SET_NULL (first_alloc_vpid);
+	  return NULL;
+	}
     }
 
   if (npages <= 0)
@@ -7097,15 +7176,18 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
       goto exit_on_error;
     }
 
-  if (isfile_new == FILE_NEW_FILE
-      && file_type != FILE_TMP && file_type != FILE_TMP_TMP
-      && logtb_is_current_active (thread_p) == true)
+  if (with_sys_op == FILE_WITHOUT_OUTER_SYSTEM_OP)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-    }
-  else
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      if (isfile_new == FILE_NEW_FILE
+	  && file_type != FILE_TMP && file_type != FILE_TMP_TMP
+	  && logtb_is_current_active (thread_p) == true)
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	}
+      else
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	}
     }
 
   if (restore_check_interrupt == true)
@@ -7117,7 +7199,10 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 
 exit_on_error:
 
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+  if (with_sys_op == FILE_WITHOUT_OUTER_SYSTEM_OP)
+    {
+      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+    }
 
   if (fhdr_pgptr)
     {
