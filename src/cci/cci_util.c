@@ -776,14 +776,14 @@ ut_date_tz_to_str (T_CCI_DATE_TZ * value, T_CCI_U_TYPE u_type, char *str,
   if (u_type == CCI_U_TYPE_DATETIMETZ || u_type == CCI_U_TYPE_TIMETZ
       || u_type == CCI_U_TYPE_TIMESTAMPTZ)
     {
-      int rem_size;
+      int remain_size;
       ut_date_to_str ((T_CCI_DATE *) value, u_type, str, size);
 
-      rem_size = size - strlen (str);
-      if (rem_size > 1)
+      remain_size = size - strlen (str);
+      if (remain_size > 1)
 	{
 	  *str++ = ' ';
-	  strncat (str, value->tz, rem_size - 1);
+	  strncat (str, value->tz, remain_size - 1);
 	}
     }
 }
