@@ -2344,15 +2344,14 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       logtb_clear_tdes (thread_p, tdes);
 
       tdes->isloose_end = chkpt_one->isloose_end;
-      if (chkpt_one->state != TRAN_ACTIVE
-	  && chkpt_one->state != TRAN_UNACTIVE_ABORTED
-	  && chkpt_one->state != TRAN_UNACTIVE_COMMITTED)
+      if (chkpt_one->state == TRAN_ACTIVE
+	  || chkpt_one->state == TRAN_UNACTIVE_ABORTED)
 	{
-	  tdes->state = chkpt_one->state;
+	  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
 	}
       else
 	{
-	  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+	  tdes->state = chkpt_one->state;
 	}
       LSA_COPY (&tdes->head_lsa, &chkpt_one->head_lsa);
       LSA_COPY (&tdes->tail_lsa, &chkpt_one->tail_lsa);
@@ -4475,6 +4474,17 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
+	      tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
+	      if (tran_index != NULL_TRAN_INDEX)
+		{
+#if !defined (NDEBUG)
+		  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+		  assert (tdes && tdes->state != TRAN_ACTIVE);
+#endif
+		  logtb_free_tran_index (thread_p, tran_index);
+		}
+
 	      if (stopat != NULL && *stopat != -1)
 		{
 
@@ -4499,6 +4509,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      LSA_SET_NULL (&lsa);
 		    }
 		}
+
 	      break;
 
 	    case LOG_MVCC_UNDO_DATA:
@@ -4651,7 +4662,8 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       if (tdes != NULL && tdes->trid != NULL_TRANID
 	  && (tdes->state == TRAN_UNACTIVE_WILL_COMMIT
 	      || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
-	      || tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
+	      || tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+	      || tdes->state == TRAN_UNACTIVE_COMMITTED))
 	{
 	  LSA_SET_NULL (&first_postpone_to_apply);
 
@@ -4683,6 +4695,15 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 		}
 	      else if (tdes->coord == NULL)
 		{		/* If this is a local transaction */
+		  (void) log_complete (thread_p, tdes, LOG_COMMIT,
+				       LOG_DONT_NEED_NEWTRID);
+		  logtb_free_tran_index (thread_p, tdes->tran_index);
+		}
+	    }
+	  else if (tdes->state == TRAN_UNACTIVE_COMMITTED)
+	    {
+	      if (tdes->coord == NULL)
+		{
 		  (void) log_complete (thread_p, tdes, LOG_COMMIT,
 				       LOG_DONT_NEED_NEWTRID);
 		  logtb_free_tran_index (thread_p, tdes->tran_index);

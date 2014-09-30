@@ -450,7 +450,6 @@ static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
 					       LOG_TDES * tdes,
 					       int with_lock);
 
-
 static void logpb_start_append (THREAD_ENTRY * thread_p,
 				LOG_RECORD_HEADER * header);
 static void logpb_end_append (THREAD_ENTRY * thread_p,
@@ -2048,7 +2047,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 
   /*
    * This If block ensure belows,
-   *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list) 
+   *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list)
    *  case 2. EOL record which is written temporarily by
    *          logpb_flush_all_append_pages is cleared so there is no EOL
    *          in log page (in delayed_free_log_pgptr)
@@ -2060,8 +2059,8 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 
       assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
 
-      /* 
-       * copy prior lsa list to log page buffer to ensure that required 
+      /*
+       * copy prior lsa list to log page buffer to ensure that required
        * pageid is in log page buffer
        */
       if (pageid >= log_Gl.hdr.append_lsa.pageid)	/* retry with mutex */
@@ -2070,7 +2069,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	}
 
       /*
-       * calling logpb_copy_page in LOG_CS boundary ensures exclusive running 
+       * calling logpb_copy_page in LOG_CS boundary ensures exclusive running
        * with logpb_flush_all_append_pages.
        */
       ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
@@ -8516,6 +8515,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       goto error_cannot_chkpt;
     }
 
+  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+
   /* CHECKPOINT THE TRANSACTION TABLE */
 
   LSA_SET_NULL (&smallest_lsa);
@@ -8612,6 +8613,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
+	  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
 	  TR_TABLE_CS_EXIT (thread_p);
 	  goto error_cannot_chkpt;
 	}
@@ -8648,6 +8650,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 			  if (ptr == NULL)
 			    {
 			      free_and_init (chkpt_trans);
+			      pthread_mutex_unlock (&log_Gl.prior_info.
+						    prior_lsa_mutex);
 			      TR_TABLE_CS_EXIT (thread_p);
 			      goto error_cannot_chkpt;
 			    }
@@ -8679,8 +8683,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tmp_chkpt.ntops = ntops;
   length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
 
-  TR_TABLE_CS_EXIT (thread_p);
-
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_END_CHKPT,
 					RV_NOT_DEFINED, NULL,
 					length_all_chkpt_trans,
@@ -8695,15 +8697,21 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	{
 	  free_and_init (chkpt_topops);
 	}
-
+      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+      TR_TABLE_CS_EXIT (thread_p);
       LOG_CS_EXIT (thread_p);
+
       return NULL_PAGEID;
     }
 
   chkpt = (struct log_chkpt *) node->data_header;
   *chkpt = tmp_chkpt;
 
-  prior_lsa_next_record (thread_p, node, tdes);
+  prior_lsa_next_record_with_lock (thread_p, node, tdes);
+
+  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+
+  TR_TABLE_CS_EXIT (thread_p);
 
   free_and_init (chkpt_trans);
 

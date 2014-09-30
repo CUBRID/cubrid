@@ -19112,7 +19112,7 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "Unable to find relocation/home object"
-			    " for relocated_oid=%d|%d|%\n",
+			    " for relocated_oid=%d|%d|%d\n",
 			    (int) chk->unfound_reloc_oids[i].volid,
 			    chk->unfound_reloc_oids[i].pageid,
 			    (int) chk->unfound_reloc_oids[i].slotid);
