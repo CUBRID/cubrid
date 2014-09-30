@@ -1558,7 +1558,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
     {
       au_obj = mop->op;
       if ((obj_get (au_obj, "grantor", &value) != NO_ERROR)
-	  || (db_get_object (&value) != grantor))
+	  || !ws_is_same_object (db_get_object (&value), grantor))
 	{
 	  continue;
 	}
@@ -3556,7 +3556,7 @@ find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor)
       if (db_get_object (&element) == class_mop)
 	{
 	  set_get_element (grants, GRANT_ENTRY_SOURCE (i), &element);
-	  if (db_get_object (&element) == grantor)
+	  if (ws_is_same_object (db_get_object (&element), grantor))
 	    {
 	      position = i;
 	    }
@@ -3723,7 +3723,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 		    }
 
 		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
-		      && db_get_object (&value) == gowner)
+		      && ws_is_same_object (db_get_object (&value), gowner))
 		    {
 		      existing = j;
 		    }
@@ -6983,7 +6983,7 @@ au_export_users (FILE * outfp)
 		  continue;
 		}
 
-	      if (db_get_object (&gvalue) == Au_public_user)
+	      if (ws_is_same_object (db_get_object (&gvalue), Au_public_user))
 		{
 		  continue;
 		}
