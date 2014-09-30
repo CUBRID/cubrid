@@ -22,10 +22,11 @@
  * lock_free.c : Lock-free structures.
  */
 
+#include <pthread.h>
+#include <assert.h>
 #include "lock_free.h"
 #include "error_manager.h"
 #include "error_code.h"
-#include <assert.h>
 
 /*
  * Global lock free transaction systems systems
@@ -351,7 +352,7 @@ lf_tran_end (LF_TRAN_ENTRY * entry)
  * lf_initialize_transaction_systems () - initialize global transaction systems
  */
 int
-lf_initialize_transaction_systems ()
+lf_initialize_transaction_systems (void)
 {
   if (tran_systems_initialized)
     {
@@ -624,7 +625,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
     {
       if (lf_freelist_transport (tran_entry, freelist) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  return NULL;
 	}
     }
 

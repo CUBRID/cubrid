@@ -191,7 +191,7 @@ extern LF_TRAN_SYSTEM catalog_Ts;
 extern LF_TRAN_SYSTEM sessions_Ts;
 extern LF_TRAN_SYSTEM free_sort_list_Ts;
 
-extern int lf_initialize_transaction_systems ();
+extern int lf_initialize_transaction_systems (void);
 
 /*
  * Lock free stack
