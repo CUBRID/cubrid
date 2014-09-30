@@ -734,10 +734,19 @@ tz_get_session_tz_region (TZ_REGION * tz_region)
 
 #if !defined(SERVER_MODE)
   session_tz_region = tz_get_client_tz_region_session ();
+  *tz_region = *session_tz_region;
 #else
   session_tz_region = tz_get_server_tz_region_session ();
+  if (session_tz_region != NULL)
+    {
+      *tz_region = *session_tz_region;
+    }
+  else
+    {
+      /* TODO : A session could not be found with this thread, use UTC */
+      *tz_region = *tz_get_utc_tz_region ();
+    }
 #endif
-  *tz_region = *session_tz_region;
 }
 
 /*
