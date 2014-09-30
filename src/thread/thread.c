@@ -1293,7 +1293,6 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 static int
 thread_finalize_entry (THREAD_ENTRY * entry_p)
 {
-  LF_TRAN_ENTRY *tran_entry;
   int r, i, error = NO_ERROR;
 
   entry_p->index = -1;
@@ -5498,6 +5497,16 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 
       meter = &(track->meter[rc_idx][mgr_idx]);
 
+      /* If it reaches the threshold just stop tracking and clear */
+      if (meter->m_amount + amount > meter->m_threshold)
+	{
+	  #if 0
+	    assert (0);
+	  #endif
+	  thread_rc_track_finalize (thread_p);
+	  return;
+	}
+
       meter->m_amount += amount;
 
 #if 1				/* TODO - */
@@ -5515,8 +5524,6 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
       THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter,
 				    0 <= meter->m_amount);
 #endif
-      THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter,
-				    meter->m_amount <= meter->m_threshold);
 
 #if !defined(NDEBUG)
       switch (rc_idx)
