@@ -22,8 +22,14 @@
  * lock_free.c : Lock-free structures.
  */
 
+#include "config.h"
+
+#if !defined (WINDOWS)
 #include <pthread.h>
+#endif
 #include <assert.h>
+
+#include "porting.h"
 #include "lock_free.h"
 #include "error_manager.h"
 #include "error_code.h"
