@@ -2977,6 +2977,7 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *sm_cons = NULL;
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
+  int is_global = 0;
 
   assert (ctemplate != NULL);
 
@@ -3003,8 +3004,16 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
       goto error_exit;
     }
 
+  error =
+	sm_is_global_only_constraint (ctemplate->op, sm_constraint, &is_global,
+				      ctemplate);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   /* The global constraint is not included in the partitioned class. */
-  if (sm_is_global_only_constraint (sm_constraint) == false)
+  if (is_global == 0)
     {
       error = rename_constraints_partitioned_class (ctemplate, old_name,
 						    new_name, element_type);

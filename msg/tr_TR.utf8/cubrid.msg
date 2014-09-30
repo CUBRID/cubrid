@@ -1235,7 +1235,8 @@ $ LOADDB
 1166 The specified combination of date and time do not exist (during daylight saving interval).
 1167 Comment string cannot have more than 1024 bytes.
 1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Son Hata
+1169 Partition key attributes must be present in the index key.
+1170 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

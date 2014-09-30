@@ -1011,7 +1011,6 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
     {
       OID partition_info;
       REPR_ID repr_id;
-      int is_global_index = 0;
 
       /* check if we are dealing with a partition class in which the unique
        * constraint stands as a local index and each partition has it's own btree
@@ -1023,35 +1022,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 	}
       if (!OID_ISNULL (&partition_info) && partition_local_index != NULL)
 	{
-	  if (partition_is_global_index (thread_p, NULL, source_class, btid,
-					 NULL, &is_global_index) != NO_ERROR)
-	    {
-	      if (OID_EQ (class_, source_class))
-		{
-		  /* it has been attempted to check the hierarchy for a partition
-		   * class and its local btree. It was not found in the source
-		   * class and is surely not an inherited one.
-		   */
-		  er_clear ();
-		  *partition_local_index = 1;
-		  goto end;
-		}
-	      else
-		{
-		  goto error;
-		}
-	    }
-	  else
-	    {
-	      if (is_global_index == 1)
-		{
-		  /* this should not happen, since the btid has been searched and
-		   * was not found, the index must have been a local one.
-		   */
-		  goto error;
-		}
-	      *partition_local_index = 1;
-	    }
+	  *partition_local_index = 1;
 	}
       else
 	{

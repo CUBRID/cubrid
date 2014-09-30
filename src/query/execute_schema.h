@@ -81,8 +81,8 @@ struct client_update_info
   CLIENT_UPDATE_INFO *next;	/* next assignment from the same class */
 };
 
-extern int do_drop_partition (MOP class_, int drop_sub_flag,
-			      bool is_cascade_constraints);
+extern int do_drop_partitioned_class (MOP class_, int drop_sub_flag,
+				      bool is_cascade_constraints);
 extern int do_is_partitioned_subclass (int *is_partitioned,
 				       const char *classname, char *keyattr);
 extern int do_get_partition_parent (DB_OBJECT * const classop,

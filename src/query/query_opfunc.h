@@ -168,8 +168,6 @@ struct hierarchy_aggregate_helper
 {
   BTID *btids;			/* hierarchy indexes */
   HFID *hfids;			/* HFIDs for classes in the hierarchy */
-  bool is_global_index;		/* if the index used for optimization is a global
-				 * index or not */
   int count;			/* number of classes in the hierarchy */
 };
 
