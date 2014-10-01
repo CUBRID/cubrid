@@ -96,18 +96,54 @@ lf_callback_vpid_copy (VPID * src, VPID * dest)
  * lf_tran_system_init () - initialize a transaction system
  *   returns: error code or NO_ERROR
  *   sys(in): tran system to initialize
+ *   max_threads(in): maximum number of threads that will use this system
  */
 int
-lf_tran_system_init (LF_TRAN_SYSTEM * sys)
+lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
 {
   int i;
 
   assert (sys != NULL);
 
-  memset (sys->entries, 0, LF_TRAN_MAX_THREADS * sizeof (LF_TRAN_ENTRY));
-  memset (sys->bitfield, 0, LF_TRAN_BITFIELD_SIZE * sizeof (unsigned int));
+  sys->entry_count = max_threads;
+  if (max_threads % LF_TRAN_BITFIELD_WORD_SIZE != 0)
+    {
+      sys->entry_count += LF_TRAN_BITFIELD_WORD_SIZE;
+      sys->entry_count -= max_threads % LF_TRAN_BITFIELD_WORD_SIZE;
+    }
 
-  for (i = 0; i < LF_TRAN_MAX_THREADS; i++)
+  /* initialize entry array */
+  sys->entries =
+    (LF_TRAN_ENTRY *) malloc (sizeof (LF_TRAN_ENTRY) * sys->entry_count);
+  if (sys->entries == NULL)
+    {
+      sys->entry_count = 0;
+      return ER_FAILED;
+    }
+  else
+    {
+      memset (sys->entries, 0, sys->entry_count * sizeof (LF_TRAN_ENTRY));
+    }
+
+  /* initialize bitfield */
+  sys->bitfield =
+    (unsigned int *) malloc ((sys->entry_count / LF_TRAN_BITFIELD_WORD_SIZE) *
+			     sizeof (unsigned int));
+  if (sys->bitfield == NULL)
+    {
+      sys->entry_count = 0;
+      free (sys->entries);
+      sys->entries = NULL;
+      return ER_FAILED;
+    }
+  else
+    {
+      memset (sys->bitfield, 0,
+	      (sys->entry_count / LF_TRAN_BITFIELD_WORD_SIZE) *
+	      sizeof (unsigned int));
+    }
+
+  for (i = 0; i < sys->entry_count; i++)
     {
       sys->entries[i].tran_system = sys;
       sys->entries[i].entry_idx = i;
@@ -128,23 +164,43 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys)
 /*
  * lf_tran_system_destroy () - destroy a tran system
  *   sys(in): tran system
+ *
+ * NOTE: If (edesc == NULL) then there may be some memory leaks. Make sure the
+ * function is called with NULL edesc only at shutdown, or after collecting all
+ * retired entries.
  */
 void
 lf_tran_system_destroy (LF_TRAN_SYSTEM * sys, LF_ENTRY_DESCRIPTOR * edesc)
 {
   int i;
 
-  assert (sys != NULL && edesc != NULL);
+  assert (sys != NULL);
 
-  for (i = 0; i < LF_TRAN_MAX_THREADS; i++)
+  if (edesc != NULL)
     {
-      void *curr = sys->entries[i].retired_list, *next = NULL;
-      while (curr != NULL)
+      for (i = 0; i < sys->entry_count; i++)
 	{
-	  next = (void *) OF_GET_PTR (curr, edesc->of_local_next);
-	  edesc->f_free (curr);
-	  curr = next;
+	  void *curr = sys->entries[i].retired_list, *next = NULL;
+	  while (curr != NULL)
+	    {
+	      next = (void *) OF_GET_PTR (curr, edesc->of_local_next);
+	      edesc->f_free (curr);
+	      curr = next;
+	    }
 	}
+    }
+  sys->entry_count = 0;
+
+  if (sys->entries != NULL)
+    {
+      free (sys->entries);
+      sys->entries = NULL;
+    }
+
+  if (sys->bitfield != NULL)
+    {
+      free (sys->bitfield);
+      sys->bitfield = NULL;
     }
 
   return;
@@ -163,13 +219,15 @@ lf_tran_request_entry (LF_TRAN_SYSTEM * sys)
   int i, chunk_idx, slot_idx;
 
   assert (sys != NULL);
+  assert (sys->entry_count > 0);
+  assert (sys->entries != NULL && sys->bitfield != NULL);
 
 restart:			/* wait-free process */
   chunk_idx = -1;
   slot_idx = -1;
 
   /* find first chunk with an empty slot */
-  for (i = 0; i < LF_TRAN_BITFIELD_SIZE; i++)
+  for (i = 0; i < sys->entry_count / LF_TRAN_BITFIELD_WORD_SIZE; i++)
     {
       chunk = VOLATILE_ACCESS (sys->bitfield[i], unsigned int);
       if (~chunk)
@@ -278,7 +336,7 @@ lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys)
   int i, j;
 
   /* determine minimum value of all min_cdi fields in system entries */
-  for (i = 0; i < LF_TRAN_BITFIELD_SIZE; i++)
+  for (i = 0; i < sys->entry_count / LF_TRAN_BITFIELD_WORD_SIZE; i++)
     {
       if (sys->bitfield[i])
 	{
@@ -358,39 +416,62 @@ lf_tran_end (LF_TRAN_ENTRY * entry)
  * lf_initialize_transaction_systems () - initialize global transaction systems
  */
 int
-lf_initialize_transaction_systems (void)
+lf_initialize_transaction_systems (int max_threads)
 {
   if (tran_systems_initialized)
     {
       return NO_ERROR;
     }
 
-  if (lf_tran_system_init (&spage_saving_Ts) != NO_ERROR)
+  if (lf_tran_system_init (&spage_saving_Ts, max_threads) != NO_ERROR)
     {
+      lf_destroy_transaction_systems ();
       return ER_FAILED;
     }
-  if (lf_tran_system_init (&obj_lock_res_Ts) != NO_ERROR)
+  if (lf_tran_system_init (&obj_lock_res_Ts, max_threads) != NO_ERROR)
     {
+      lf_destroy_transaction_systems ();
       return ER_FAILED;
     }
-  if (lf_tran_system_init (&obj_lock_ent_Ts) != NO_ERROR)
+  if (lf_tran_system_init (&obj_lock_ent_Ts, max_threads) != NO_ERROR)
     {
+      lf_destroy_transaction_systems ();
       return ER_FAILED;
     }
-  if (lf_tran_system_init (&catalog_Ts) != NO_ERROR)
+  if (lf_tran_system_init (&catalog_Ts, max_threads) != NO_ERROR)
     {
+      lf_destroy_transaction_systems ();
       return ER_FAILED;
     }
-  if (lf_tran_system_init (&sessions_Ts) != NO_ERROR)
+  if (lf_tran_system_init (&sessions_Ts, max_threads) != NO_ERROR)
     {
+      lf_destroy_transaction_systems ();
       return ER_FAILED;
     }
-  if (lf_tran_system_init (&free_sort_list_Ts) != NO_ERROR)
+  if (lf_tran_system_init (&free_sort_list_Ts, max_threads) != NO_ERROR)
     {
+      lf_destroy_transaction_systems ();
       return ER_FAILED;
     }
 
   tran_systems_initialized = true;
+  return NO_ERROR;
+}
+
+/*
+ * lf_destroy_transaction_systems () - destroy global transaction systems
+ */
+void
+lf_destroy_transaction_systems (void)
+{
+  lf_tran_system_destroy (&spage_saving_Ts, NULL);
+  lf_tran_system_destroy (&obj_lock_res_Ts, NULL);
+  lf_tran_system_destroy (&obj_lock_ent_Ts, NULL);
+  lf_tran_system_destroy (&catalog_Ts, NULL);
+  lf_tran_system_destroy (&sessions_Ts, NULL);
+  lf_tran_system_destroy (&free_sort_list_Ts, NULL);
+
+  tran_systems_initialized = false;
   return NO_ERROR;
 }
 
@@ -2102,7 +2183,12 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	  else
 	    {
 	      /* end */
-	      return lf_tran_end (tran_entry);
+	      if (lf_tran_end (tran_entry) != NO_ERROR)
+		{
+		  /* nothing we can report here, but shouldn't happen */
+		  assert (false);
+		}
+	      return NULL;
 	    }
 	}
 

@@ -114,8 +114,6 @@ struct lf_entry_descriptor
  * Lock free transaction based memory garbage collector
  */
 #define LF_NULL_TRANSACTION_ID	      ULONG_MAX
-#define LF_TRAN_MAX_THREADS	      1024
-#define LF_TRAN_BITFIELD_SIZE	      (LF_TRAN_MAX_THREADS / sizeof (unsigned int))
 #define LF_TRAN_BITFIELD_WORD_SIZE    (sizeof (unsigned int) * 8)
 
 typedef struct lf_tran_system LF_TRAN_SYSTEM;
@@ -147,10 +145,13 @@ struct lf_tran_entry
 struct lf_tran_system
 {
   /* pointer array to thread dtran entries */
-  LF_TRAN_ENTRY entries[LF_TRAN_MAX_THREADS];
+  LF_TRAN_ENTRY *entries;
 
   /* bitfield for entries array */
-  unsigned int bitfield[LF_TRAN_BITFIELD_SIZE];
+  unsigned int *bitfield;
+
+  /* capacity */
+  int entry_count;
 
   /* global delete ID for all delete operations */
   UINT64 global_transaction_id;
@@ -166,11 +167,11 @@ struct lf_tran_system
 };
 
 #define LF_TRAN_SYSTEM_INITIALIZER \
-  { { LF_TRAN_ENTRY_INITIALIZER }, { 0 }, 0, 0, 100, 0 }
+  { NULL, NULL, 0, 0, 0, 100, 0 }
 
 #define LF_TRAN_CLEANUP_NECESSARY(e) ((e)->tran_system->min_active_transaction_id > (e)->last_cleanup_id)
 
-extern int lf_tran_system_init (LF_TRAN_SYSTEM * sys);
+extern int lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads);
 extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys,
 				    LF_ENTRY_DESCRIPTOR * edesc);
 
@@ -191,7 +192,8 @@ extern LF_TRAN_SYSTEM catalog_Ts;
 extern LF_TRAN_SYSTEM sessions_Ts;
 extern LF_TRAN_SYSTEM free_sort_list_Ts;
 
-extern int lf_initialize_transaction_systems (void);
+extern int lf_initialize_transaction_systems (int max_threads);
+extern void lf_destroy_transaction_systems (void);
 
 /*
  * Lock free stack

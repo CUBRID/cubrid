@@ -3286,13 +3286,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
-  error_code = lf_initialize_transaction_systems ();
-  if (error_code != NO_ERROR)
-    {
-      cfg_free_directory (dir);
-      return error_code;
-    }
-
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
     {

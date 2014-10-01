@@ -647,6 +647,13 @@ thread_initialize_manager (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
+  /* initialize lock-free transaction systems */
+  r = lf_initialize_transaction_systems (thread_Manager.num_total);
+  if (r != NO_ERROR)
+    {
+      return r;
+    }
+
   /* initialize master thread */
   r = thread_initialize_entry (tsd_ptr);
   if (r != NO_ERROR)
@@ -1161,6 +1168,8 @@ thread_final_manager (void)
       assert (thread_Vacuum_worker_thread_entries == NULL);
       assert (thread_Vacuum_worker_threads == NULL);
     }
+
+  lf_destroy_transaction_systems ();
 
 #ifndef HPUX
   pthread_key_delete (css_Thread_key);

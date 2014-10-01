@@ -750,7 +750,7 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads)
       return fail ("too many threads");
     }
 
-  if (lf_tran_system_init (&ts) != NO_ERROR)
+  if (lf_tran_system_init (&ts, nthreads) != NO_ERROR)
     {
       return fail ("transaction system init");
     }
@@ -799,7 +799,7 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads)
       {
 	active++;
       }
-    for (i = 0; i < LF_TRAN_MAX_THREADS; i++)
+    for (i = 0; i < ts.entry_count; i++)
       {
 	for (e = (XENTRY *) ts.entries[i].retired_list; e != NULL;
 	     e = e->stack)
@@ -861,7 +861,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
       return fail ("too many threads");
     }
 
-  if (lf_tran_system_init (&ts) != NO_ERROR)
+  if (lf_tran_system_init (&ts, nthreads) != NO_ERROR)
     {
       return fail ("transaction system init");
     }
@@ -941,7 +941,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
       {
 	acount++;
       }
-    for (i = 0; i < LF_TRAN_MAX_THREADS; i++)
+    for (i = 0; i < ts.entry_count; i++)
       {
 	for (e = ts.entries[i].retired_list; e != NULL; e = e->stack)
 	  {
@@ -1005,7 +1005,7 @@ test_hash_iterator ()
   begin ("hash table iterator");
 
   /* initialization */
-  if (lf_tran_system_init (&ts) != NO_ERROR)
+  if (lf_tran_system_init (&ts, NUM_THREADS) != NO_ERROR)
     {
       return fail ("transaction system init");
     }
