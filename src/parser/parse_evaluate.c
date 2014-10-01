@@ -145,6 +145,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
   CURSOR_ID cursor_id;
   int cursor_status, degree = 0, col;
   PT_NODE *select_list = NULL, *subquery;
+  QUERY_ID query_id_self = parser->query_id;
   int error = NO_ERROR;
 
   subquery = parser_copy_tree (parser, subquery_in);
@@ -155,6 +156,8 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
       return NULL;
     }
 
+  query_id_self = parser->query_id;
+  parser->query_id = NULL_QUERY_ID;
   error = do_select (parser, subquery);
   if (error == NO_ERROR)
     {
@@ -236,7 +239,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
       regu_free_listid (list_id);
     }
 
-  pt_end_query (parser);
+  pt_end_query (parser, query_id_self);
 
   if (vals)
     {
@@ -942,6 +945,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
   PT_TYPE_ENUM type1, type2, type3;
   TP_DOMAIN *domain;
   PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
+  QUERY_ID query_id_self = parser->query_id;
   MOP serial_mop;
   DB_IDENTIFIER *serial_oid_p;
   const char *serial_name = NULL;
@@ -1341,6 +1345,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  break;
 	}
 
+      query_id_self = parser->query_id;
+      parser->query_id = NULL_QUERY_ID;
       error = do_select (parser, temp);
       if (error == NO_ERROR)
 	{
@@ -1357,11 +1363,15 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 
 	  regu_free_listid ((QFILE_LIST_ID *) temp->etc);
-	  pt_end_query (parser);
+	  pt_end_query (parser, query_id_self);
 	}
-      else if (!pt_has_error (parser))
+      else
 	{
-	  PT_ERRORc (parser, tree, db_error_string (3));
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORc (parser, tree, db_error_string (3));
+	    }
+	  parser->query_id = query_id_self;
 	}
 
       parser_free_tree (parser, temp);

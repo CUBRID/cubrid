@@ -176,6 +176,8 @@ db_open_local (void)
       return NULL;
     }
 
+  assert (session->parser->query_id == NULL_QUERY_ID);
+
   session->stage = NULL;
   session->dimension = 0;
   session->stmt_ndx = 0;
@@ -1803,8 +1805,14 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
    */
   er_clear ();
 
-  /* now, we have a statement to execute */
   parser = session->parser;
+
+  /* initialization */
+  assert (parser != NULL);
+  parser->query_id = NULL_QUERY_ID;
+  parser->is_in_and_list = false;
+
+  /* now, we have a statement to execute */
   statement = session->statements[stmt_ndx];
 
   /* if the statement was not compiled and prepared, do it */
@@ -3897,8 +3905,7 @@ db_validate (DB_OBJECT * vc)
 void
 db_free_query (DB_SESSION * session)
 {
-  pt_end_query (session->parser);
-
+  pt_end_query (session->parser, NULL_QUERY_ID);
 }
 
 /*

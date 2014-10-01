@@ -3300,6 +3300,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool need_schema_replication = false;
   int suppress_repl_error;
 
+  assert (parser->query_id == NULL_QUERY_ID);
+
   /* If it is an internally created statement,
      set its host variable info again to search host variables at parent parser */
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
@@ -6772,6 +6774,8 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from,
   QFILE_LIST_ID *result = NULL;
   int err = NO_ERROR;
 
+  assert (parser->query_id == NULL_QUERY_ID);
+
   if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var
       &&
       ((statement =
@@ -6796,11 +6800,14 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from,
 	{
 	  /* This enables authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
+
+	  assert (parser->query_id == NULL_QUERY_ID);
 	  if (do_select (parser, statement) < NO_ERROR)
 	    {
 	      /* query failed, an error has already been set */
 	      statement = NULL;
 	    }
+
 	  AU_DISABLE (parser->au_save);
 	}
     }
@@ -6810,6 +6817,7 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from,
       result = (QFILE_LIST_ID *) statement->etc;
       parser_free_tree (parser, statement);
     }
+
   return result;
 }
 
@@ -8033,11 +8041,13 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
   int i;
   XASL_NODE *xasl = NULL;
   int count = 0;
-  QUERY_ID query_id = NULL_QUERY_ID;
+  QUERY_ID query_id_self = parser->query_id;
   QFILE_LIST_ID *list_id = NULL;
   PT_NODE *cl_name_node = NULL, *spec = NULL;
 
   XASL_STREAM stream;
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   init_xasl_stream (&stream);
 
@@ -8080,7 +8090,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
       assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
       error = prepare_and_execute_query (stream.xasl_stream,
 					 stream.xasl_stream_size,
-					 &query_id,
+					 &parser->query_id,
 					 parser->host_var_count +
 					 parser->auto_param_count,
 					 parser->host_variables, &list_id,
@@ -8088,7 +8098,6 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 					 ASYNC_UNEXECUTABLE);
       AU_RESTORE (au_save);
     }
-  parser->query_id = query_id;
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
   if (stream.xasl_stream)
@@ -8117,7 +8126,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 	}
       regu_free_listid (list_id);
     }
-  pt_end_query (parser);
+  pt_end_query (parser, query_id_self);
 
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
@@ -8383,8 +8392,13 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       if (lhs->info.name.meta_class != PT_META_ATTR)
 	{
-	  PT_NODE *hint_arg = statement->info.update.waitsecs_hint;
+	  QUERY_ID query_id_self;
+	  PT_NODE *hint_arg;
 
+	  query_id_self = parser->query_id;
+	  parser->query_id = NULL_QUERY_ID;
+
+	  hint_arg = statement->info.update.waitsecs_hint;
 	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
@@ -8438,6 +8452,7 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (!oid_list)
 	    {
+	      parser->query_id = query_id_self;
 	      /* an error should be set already, don't lose it */
 	      error = ER_GENERIC_ERROR;
 	      goto exit_on_error;
@@ -8447,7 +8462,7 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = update_objs_for_list_file (parser, oid_list, statement);
 
 	  regu_free_listid (oid_list);
-	  pt_end_query (parser);
+	  pt_end_query (parser, query_id_self);
 	}
       else
 	{
@@ -9074,6 +9089,9 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
   PT_NODE *hint_arg;
+  QUERY_ID query_id_self = parser->query_id;
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -9165,8 +9183,8 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
+	  assert (parser->query_id == NULL_QUERY_ID);
 	  list_id = NULL;
-	  parser->query_id = -1;
 
 	  /* check host variables are filled :
 	     values from orderby_for may not have been auto-parameterized
@@ -9266,7 +9284,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      regu_free_listid (list_id);
 	    }
 	  /* end the query; reset query_id and call qmgr_end_query() */
-	  pt_end_query (parser);
+	  pt_end_query (parser, query_id_self);
 	}
 
       /* accumulate intermediate results */
@@ -9351,6 +9369,8 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
   QFILE_LIST_ID *result = NULL;
   int ret = NO_ERROR;
 
+  assert (parser->query_id == NULL_QUERY_ID);
+
   statement =
     pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec,
 			 delete_stmt->info.delete_.class_specs,
@@ -9374,11 +9394,14 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
 	{
 	  /* This enables authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
+
+	  assert (parser->query_id == NULL_QUERY_ID);
 	  if (do_select (parser, statement) < NO_ERROR)
 	    {
 	      /* query failed, an error has already been set */
 	      statement = NULL;
 	    }
+
 	  AU_DISABLE (parser->au_save);
 	}
     }
@@ -9505,6 +9528,9 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       return NO_ERROR;
     }
+
+  assert (parser->query_id != NULL_QUERY_ID);
+  assert (parser->query_id == list_id->query_id);
 
   spec = statement->info.delete_.spec;
   while (spec)
@@ -9687,11 +9713,13 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   XASL_NODE *xasl = NULL;
   DB_OBJECT *class_obj;
   int count = 0;
-  QUERY_ID query_id = NULL_QUERY_ID;
+  QUERY_ID query_id_self = parser->query_id;
   QFILE_LIST_ID *list_id = NULL;
   const PT_NODE *node;
 
   XASL_STREAM stream;
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   init_xasl_stream (&stream);
 
@@ -9725,7 +9753,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
       error = prepare_and_execute_query (stream.xasl_stream,
 					 stream.xasl_stream_size,
-					 &query_id,
+					 &parser->query_id,
 					 parser->host_var_count +
 					 parser->auto_param_count,
 					 parser->host_variables,
@@ -9734,7 +9762,6 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 					 ASYNC_UNEXECUTABLE);
       AU_RESTORE (au_save);
     }
-  parser->query_id = query_id;
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
   if (stream.xasl_stream)
@@ -9763,7 +9790,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       regu_free_listid (list_id);
     }
 
-  pt_end_query (parser);
+  pt_end_query (parser, query_id_self);
 
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
@@ -9872,6 +9899,11 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
+      QUERY_ID query_id_self;
+
+      query_id_self = parser->query_id;
+      parser->query_id = NULL_QUERY_ID;
+
       hint_arg = statement->info.delete_.waitsecs_hint;
       if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
@@ -9903,6 +9935,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (!oid_list)
 	{
+	  parser->query_id = query_id_self;
 	  /* an error should be set already, don't lose it */
 	  return error;
 	}
@@ -9910,7 +9943,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* delete each oid */
       error = delete_list_by_oids (parser, statement, oid_list);
       regu_free_listid (oid_list);
-      pt_end_query (parser);
+      pt_end_query (parser, query_id_self);
     }
 
   return error;
@@ -10348,6 +10381,9 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_waitsecs;
   PT_NODE *hint_arg;
   int query_flag;
+  QUERY_ID query_id_self = parser->query_id;
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -10430,7 +10466,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
-      parser->query_id = -1;
+      assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
       err = execute_query (statement->xasl_id,
 			   &parser->query_id,
@@ -10438,6 +10474,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 			   parser->auto_param_count,
 			   parser->host_variables, &list_id, query_flag,
 			   NULL, NULL);
+
       AU_RESTORE (au_save);
 
       /* in the case of OID list deletion, now delete the selected OIDs */
@@ -10508,14 +10545,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  regu_free_listid (list_id);
 	}
       /* end the query; reset query_id and call qmgr_end_query() */
-      if (parser->query_id > 0)
-	{
-	  if (er_errid () != ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      qmgr_end_query (parser->query_id);
-	    }
-	  parser->query_id = -1;
-	}
+      pt_end_query (parser, query_id_self);
 
       /* accumulate intermediate results */
       if (err >= NO_ERROR)
@@ -10937,13 +10967,15 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
   int count = 0;
-  QUERY_ID query_id = NULL_QUERY_ID;
+  QUERY_ID query_id_self = parser->query_id;
   QFILE_LIST_ID *list_id = NULL;
   int i = 0;
   int j = 0, k = 0;
   PT_NODE *odku_assignments = NULL;
 
   XASL_STREAM stream;
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   init_xasl_stream (&stream);
 
@@ -10993,15 +11025,13 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
       error = prepare_and_execute_query (stream.xasl_stream,
 					 stream.xasl_stream_size,
-					 &query_id,
+					 &parser->query_id,
 					 (parser->host_var_count +
 					  parser->auto_param_count),
 					 parser->host_variables,
 					 &list_id, query_flag);
       AU_RESTORE (au_save);
     }
-
-  parser->query_id = query_id;
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
   if (stream.xasl_stream)
@@ -11035,7 +11065,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  pt_end_query (parser);
+  pt_end_query (parser, query_id_self);
 
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
@@ -11936,7 +11966,7 @@ do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
   if (oids_count == 0)
     {
       assert (oids == NULL);
-      return 0;
+      return NO_ERROR;
     }
 
   update_stmt->info.update.object = ws_mop (oids, NULL);
@@ -12728,10 +12758,13 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   DB_ATTDESC **attr_descs = NULL;
   ODKU_TUPLE_VALUE_ARG odku_arg;
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
+  QUERY_ID query_id_self = parser->query_id;
   int obj_count = 0;
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
+
+  assert (parser != NULL);
 
   if (values_list == NULL || values_list->node_type != PT_NODE_LIST
       || values_list->info.node_list.list_type != PT_IS_SUBQUERY
@@ -12815,9 +12848,12 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 	    }
 
 	  /* execute the subquery */
+	  query_id_self = parser->query_id;
+	  parser->query_id = NULL_QUERY_ID;
 	  error = do_select (parser, qry);
 	  if (error < NO_ERROR || qry->etc == NULL)
 	    {
+	      parser->query_id = query_id_self;
 	      return error;
 	    }
 	}
@@ -13115,7 +13151,7 @@ cleanup:
     }
 
   regu_free_listid ((QFILE_LIST_ID *) qry->etc);
-  pt_end_query (parser);
+  pt_end_query (parser, query_id_self);
 
   return cnt;
 }
@@ -13675,6 +13711,9 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   QUERY_FLAG query_flag;
+  QUERY_ID query_id_self = parser->query_id;
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -13708,8 +13747,8 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       do_send_plan_trace_to_session (parser);
     }
 
+  assert (parser->query_id == NULL_QUERY_ID);
   list_id = NULL;
-  parser->query_id = -1;
 
   err = execute_query (statement->xasl_id, &parser->query_id,
 		       parser->host_var_count +
@@ -13733,7 +13772,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* end the query; reset query_id and call qmgr_end_query() */
-  pt_end_query (parser);
+  pt_end_query (parser, query_id_self);
 
   if ((err < NO_ERROR) && er_errid () != NO_ERROR)
     {
@@ -14072,10 +14111,11 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *into_label;
   DB_VALUE *vals, *v;
   int save;
-  QUERY_ID query_id = NULL_QUERY_ID;
   QUERY_FLAG query_flag;
   XASL_STREAM stream;
   bool query_trace = false;
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   init_xasl_stream (&stream);
 
@@ -14163,13 +14203,12 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      error = prepare_and_execute_query (stream.xasl_stream,
 						 stream.xasl_stream_size,
-						 &query_id,
+						 &parser->query_id,
 						 parser->host_var_count +
 						 parser->auto_param_count,
 						 parser->host_variables,
 						 &list_id, query_flag);
 	    }
-	  parser->query_id = query_id;
 	  statement->etc = list_id;
 
 	  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
@@ -14473,6 +14512,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   CURSOR_ID cursor_id;
   bool query_trace = false;
 
+  assert (parser->query_id == NULL_QUERY_ID);
   assert (pt_node_to_cmd_type (statement) == CUBRID_STMT_EXECUTE_PREPARE);
 
   /* check if it is not necessary to execute this statement */
@@ -14530,7 +14570,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 				   checking for method */
-  parser->query_id = -1;
+  assert (parser->query_id == NULL_QUERY_ID);
   list_id = NULL;
 
   CACHE_TIME_RESET (&clt_cache_time);
@@ -14631,6 +14671,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   CACHE_TIME clt_cache_time;
   bool query_trace = false;
 
+  assert (parser->query_id == NULL_QUERY_ID);
+
   /* check if it is not necessary to execute this statement,
      e.g. false where or not prepared correctly */
   if (!statement->xasl_id)
@@ -14722,7 +14764,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 				   checking for method */
-  parser->query_id = -1;
+
+  assert (parser->query_id == NULL_QUERY_ID);
   list_id = NULL;
 
   CACHE_TIME_RESET (&clt_cache_time);
@@ -15084,10 +15127,11 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   XASL_NODE *xasl = NULL;
   QFILE_LIST_ID *list_id = NULL;
   int save;
-  QUERY_ID query_id = NULL_QUERY_ID;
   QUERY_FLAG query_flag;
 
   XASL_STREAM stream;
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   init_xasl_stream (&stream);
 
@@ -15139,7 +15183,7 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (IS_SYNC_EXEC_MODE (query_flag));
   error = prepare_and_execute_query (stream.xasl_stream,
 				     stream.xasl_stream_size,
-				     &query_id,
+				     &parser->query_id,
 				     parser->host_var_count +
 				     parser->auto_param_count,
 				     parser->host_variables,
@@ -15150,7 +15194,6 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  parser->query_id = query_id;
   statement->etc = list_id;
 
 end:
@@ -15496,7 +15539,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *hint_arg;
   QUERY_ID ins_query_id = NULL_QUERY_ID;
   QUERY_ID upd_query_id = NULL_QUERY_ID;
-  QUERY_ID save_query_id;
+  QUERY_ID query_id_self = parser->query_id;
   int no_vals, no_consts;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
@@ -15683,11 +15726,13 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* enable authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
-	  save_query_id = parser->query_id;
+
+	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
 	  err = do_select (parser, ins_select_stmt);
 	  ins_query_id = parser->query_id;
-	  parser->query_id = save_query_id;
+	  parser->query_id = query_id_self;
+
 	  AU_DISABLE (parser->au_save);
 
 	  if (err < NO_ERROR)
@@ -15737,12 +15782,15 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* enable authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
-	  save_query_id = parser->query_id;
+
+	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
 	  err = do_select (parser, upd_select_stmt);
 	  upd_query_id = parser->query_id;
-	  parser->query_id = save_query_id;
+	  parser->query_id = query_id_self;
+
 	  AU_DISABLE (parser->au_save);
+
 	  if (err < NO_ERROR)
 	    {
 	      /* query failed, an error has already been set */
@@ -15778,7 +15826,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* do update part */
   if (statement->info.merge.update.assignment && !insert_only)
     {
-      save_query_id = parser->query_id;
+      query_id_self = parser->query_id;
       parser->query_id = upd_query_id;
       if (statement->info.merge.update.do_class_attrs)
 	{
@@ -15798,8 +15846,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       parser->query_id = upd_query_id;
-      pt_end_query (parser);
-      parser->query_id = save_query_id;
+      pt_end_query (parser, query_id_self);
     }
 
   /* do insert part */
@@ -15808,7 +15855,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       PT_NODE *save_list;
       PT_MISC_TYPE save_type;
-      QUERY_ID save_query_id;
 
       /* save node list */
       save_type = values_list->info.node_list.list_type;
@@ -15819,11 +15865,11 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       obt_begin_insert_values ();
       /* execute subquery & insert its results into target class */
-      save_query_id = parser->query_id;
+      query_id_self = parser->query_id;
       parser->query_id = ins_query_id;
       err = insert_subquery_results (parser, statement, values_list, flat,
 				     &savepoint_name);
-      parser->query_id = save_query_id;
+      parser->query_id = query_id_self;
       if (parser->abort)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -16350,9 +16396,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_waitsecs;
   PT_NODE *ins_select_stmt = NULL, *hint_arg;
   QUERY_ID ins_query_id = NULL_QUERY_ID;
-  QUERY_ID save_query_id;
+  QUERY_ID query_id_self = parser->query_id;
   bool insert_only =
     (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
+
+  assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -16413,8 +16461,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  obt_begin_insert_values ();
 	}
 
+      assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
-      parser->query_id = -1;
 
       err = execute_query (statement->xasl_id, &parser->query_id,
 			   parser->host_var_count + parser->auto_param_count,
@@ -16441,7 +16489,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  list_id = NULL;
 	}
       /* end the query; reset query_id and call qmgr_end_query() */
-      pt_end_query (parser);
+      pt_end_query (parser, query_id_self);
     }
   else
     {
@@ -16464,8 +16512,9 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
+
+	  assert (parser->query_id == NULL_QUERY_ID);
 	  list_id = NULL;
-	  parser->query_id = -1;
 	  err =
 	    execute_query (statement->xasl_id, &parser->query_id,
 			   parser->host_var_count + parser->auto_param_count,
@@ -16512,11 +16561,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  ins_select_stmt->etc = NULL;
 
-	  save_query_id = parser->query_id;
-	  parser->query_id = -1;
+	  query_id_self = parser->query_id;
+	  parser->query_id = NULL_QUERY_ID;
 	  err = do_select (parser, ins_select_stmt);
 	  ins_query_id = parser->query_id;
-	  parser->query_id = save_query_id;
+	  parser->query_id = query_id_self;
 
 	  if (err < NO_ERROR)
 	    {
@@ -16592,7 +16641,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  list_id = NULL;
 		}
 	    }
-	  pt_end_query (parser);
+	  pt_end_query (parser, query_id_self);
 	}
 
       /* insert part */
@@ -16602,7 +16651,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_NODE *save_list;
 	  PT_MISC_TYPE save_type;
-	  QUERY_ID save_query_id;
 
 	  /* save node list */
 	  save_type = values_list->info.node_list.list_type;
@@ -16614,12 +16662,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  AU_SAVE_AND_DISABLE (au_save);
 
 	  obt_begin_insert_values ();
-	  save_query_id = parser->query_id;
+	  query_id_self = parser->query_id;
 	  parser->query_id = ins_query_id;
 	  /* execute subquery & insert its results into target class */
 	  err = insert_subquery_results (parser, statement, values_list, flat,
 					 &savepoint_name);
-	  parser->query_id = save_query_id;
+	  parser->query_id = query_id_self;
 	  if (parser->abort)
 	    {
 	      assert (er_errid () != NO_ERROR);

@@ -192,7 +192,7 @@ extern "C"
   extern void pt_frob_error (PARSER_CONTEXT * parser,
 			     const PT_NODE * statement, const char *fmt, ...);
 
-  extern void pt_end_query (PARSER_CONTEXT * parser);
+  extern void pt_end_query (PARSER_CONTEXT * parser, QUERY_ID query_id_self);
 
   extern void pt_set_host_variables (PARSER_CONTEXT * parser,
 				     int count, DB_VALUE * values);

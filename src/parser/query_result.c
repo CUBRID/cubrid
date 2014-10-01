@@ -1222,19 +1222,29 @@ pt_free_query_etc_area (PARSER_CONTEXT * parser, PT_NODE * query)
 /*
  * pt_end_query() -
  *   return:
- *   query(in): parser context
+ *   parser(in): parser context
+ *   query_id_self(in):
  */
 void
-pt_end_query (PARSER_CONTEXT * parser)
+pt_end_query (PARSER_CONTEXT * parser, QUERY_ID query_id_self)
 {
+  assert (parser != NULL);
+  assert (query_id_self != 0);
+  assert (query_id_self == NULL_QUERY_ID || query_id_self > 0);
+
   if (parser->query_id > 0)
     {
       if (er_errid () != ER_LK_UNILATERALLY_ABORTED)
 	{
 	  qmgr_end_query (parser->query_id);
 	}
-      parser->query_id = -1;
     }
+  else
+    {
+      assert (parser->query_id == 0);
+    }
+
+  parser->query_id = query_id_self;
 }
 
 

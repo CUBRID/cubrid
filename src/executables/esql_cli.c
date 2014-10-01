@@ -1070,7 +1070,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
     {
       /* directly given statement */
       session = db_open_buffer (stmt);
-      if (!(session))
+      if (!session)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();

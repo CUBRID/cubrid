@@ -1809,7 +1809,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
     }
   else if (type == STRING_INPUT)
     {				/* string pointer input */
-      if (!(session = db_open_buffer ((const char *) stream)))
+      session = db_open_buffer ((const char *) stream);
+      if (!session)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
@@ -1822,7 +1823,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
   else
     {				/* command buffer input */
       stmts = csql_edit_contents_get ();
-      if (!(session = db_open_buffer (stmts)))
+      session = db_open_buffer (stmts);
+      if (!session)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
@@ -2798,7 +2800,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
       if (p[0] == '\0')
 	{
-	  csql_arg->passwd = (char *) NULL;  /* to fit into db_login protocol */
+	  csql_arg->passwd = (char *) NULL;	/* to fit into db_login protocol */
 	}
       else
 	{
