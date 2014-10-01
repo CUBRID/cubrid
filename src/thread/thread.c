@@ -5140,8 +5140,8 @@ error:
     {
       free (tracked_res_chunk);
     }
-  return NULL;
 #endif /* !NDEBUG */
+  return NULL;
 }
 
 /*
@@ -5500,9 +5500,9 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
       /* If it reaches the threshold just stop tracking and clear */
       if (meter->m_amount + amount > meter->m_threshold)
 	{
-	  #if 0
-	    assert (0);
-	  #endif
+#if 0
+	  assert (0);
+#endif
 	  thread_rc_track_finalize (thread_p);
 	  return;
 	}
