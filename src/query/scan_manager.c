@@ -181,7 +181,7 @@ static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				  DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
 static void scan_init_scan_id (SCAN_ID * scan_id,
-			       bool mvcc_select_lock_needed,
+			       bool force_select_lock,
 			       SCAN_OPERATION_TYPE scan_op_type, int fixed,
 			       int grouped, QPROC_SINGLE_FETCH single_fetch,
 			       DB_VALUE * join_dbval, VAL_LIST * val_list,
@@ -347,7 +347,6 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
   memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
   isidp->duplicate_key_locked = false;
   scan_init_iss (isidp);
-  isidp->for_update = false;
   isidp->scan_cache.mvcc_snapshot = mvcc_snapshot;
   isidp->mvcc_need_locks = false;
 }
@@ -3231,8 +3230,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      int num_attrs_range,
 		      ATTR_ID * attrids_range,
 		      HEAP_CACHE_ATTRINFO * cache_range,
-		      bool iscan_oid_order, QUERY_ID query_id,
-		      bool for_update)
+		      bool iscan_oid_order, QUERY_ID query_id)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp;
@@ -3345,7 +3343,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   /* indicator whether covering index is used or not */
-  coverage_enabled = (indx_info->coverage != 0) && (scan_op_type == S_SELECT);
+  coverage_enabled = (indx_info->coverage != 0) && (scan_op_type == S_SELECT)
+    && !mvcc_select_lock_needed;
   scan_id->stats.loose_index_scan = indx_info->ils_prefix_len > 0;
 
   /* is a single range? */
@@ -3517,7 +3516,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   }
 
   isidp->duplicate_key_locked = false;
-  isidp->for_update = for_update;
 
   return ret;
 

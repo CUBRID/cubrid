@@ -18415,12 +18415,6 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
 	  xasl->upd_del_class_cnt = node->info.query.upd_del_class_cnt;
 	  xasl->mvcc_reev_extra_cls_cnt =
 	    node->info.query.mvcc_reev_extra_cls_cnt;
-
-	  if (PT_SELECT_INFO_IS_FLAGED
-	      (node, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
-	    {
-	      XASL_SET_FLAG (xasl, XASL_SELECT_MVCC_LOCK_NEEDED);
-	    }
 	}
 
       /* set as zero correlation-level; this uncorrelated subquery need to
@@ -20919,10 +20913,13 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
+      /* These two lines disable reevaluation on UPDATE. To activate it just remove
+       * them
+       */
       PT_SELECT_INFO_SET_FLAG (aptr_statement,
 			       PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-
       abort_reevaluation = true;
+
       if (abort_reevaluation)
 	{
 	  /* In order to abort reevaluation is enough to clear reevaluation flags
@@ -20937,6 +20934,24 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       cl_name_node = cl_name_node->next)
 	    {
 	      cl_name_node->info.spec.flag &= ~PT_SPEC_FLAG_MVCC_COND_REEV;
+	    }
+	}
+
+      /* In case of locking at select stage add flag used at SELECT ...
+       * FOR UPDATE clause to each spec from which rows will be deleted. This
+       * will ensure that rows will be locked at SELECT stage.
+       */
+      if (PT_SELECT_INFO_IS_FLAGED
+	  (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
+	{
+	  for (cl_name_node = aptr_statement->info.query.q.select.from;
+	       cl_name_node != NULL; cl_name_node = cl_name_node->next)
+	    {
+	      if (cl_name_node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+		{
+		  cl_name_node->info.spec.flag |=
+		    PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+		}
 	    }
 	}
 
@@ -21576,6 +21591,9 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
 
+  /* These two lines disable reevaluation on UPDATE. To activate it just remove
+   * them
+   */
   PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
   abort_reevaluation = true;
 
@@ -21594,6 +21612,23 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  p->info.spec.flag &=
 	    ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV);
+	}
+    }
+
+  /* In case of locking at select stage add flag used at SELECT ... FOR UPDATE
+   * clause to each spec from which rows will be updated. This will ensure that
+   * rows will be locked at SELECT stage.
+   */
+  if (PT_SELECT_INFO_IS_FLAGED
+      (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
+    {
+      for (p = aptr_statement->info.query.q.select.from; p != NULL;
+	   p = p->next)
+	{
+	  if (p->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	    {
+	      p->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	    }
 	}
     }
 

@@ -916,7 +916,7 @@ static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				  XASL_STATE * xasl_state);
 static int qexec_open_scan (THREAD_ENTRY * thread_p,
 			    ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list,
-			    VAL_DESCR * vd, bool mvcc_select_lock_needed,
+			    VAL_DESCR * vd, bool force_select_lock,
 			    int fixed, int grouped, bool iscan_oid_order,
 			    SCAN_ID * s_id, QUERY_ID query_id,
 			    SCAN_OPERATION_TYPE scan_op_type);
@@ -7351,7 +7351,7 @@ exit_on_error:
  *   curr_spec(in)      : Access Specification Node
  *   val_list(in)       : Value list pointer
  *   vd(in)     : Value descriptor
- *   mvcc_select_lock_needed(in)  :
+ *   force_select_lock(in)  :
  *   fixed(in)  : Fixed scan flag
  *   grouped(in)        : Grouped scan flag
  *   iscan_oid_order(in)       :
@@ -7363,12 +7363,13 @@ exit_on_error:
 static int
 qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 		 VAL_LIST * val_list, VAL_DESCR * vd,
-		 bool mvcc_select_lock_needed, int fixed, int grouped,
+		 bool force_select_lock, int fixed, int grouped,
 		 bool iscan_oid_order, SCAN_ID * s_id, QUERY_ID query_id,
 		 SCAN_OPERATION_TYPE scan_op_type)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
+  bool mvcc_select_lock_needed = false;
 
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
@@ -7377,6 +7378,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 	{
 	  goto exit_on_error;
 	}
+    }
+  if (force_select_lock)
+    {
+      mvcc_select_lock_needed = true;
+    }
+  else
+    {
+      mvcc_select_lock_needed =
+	(curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE);
     }
 
   switch (curr_spec->type)
@@ -7541,10 +7551,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 				    curr_spec->s.cls_node.num_attrs_range,
 				    curr_spec->s.cls_node.attrids_range,
 				    curr_spec->s.cls_node.cache_range,
-				    iscan_oid_order, query_id,
-				    (curr_spec->
-				     flags & ACCESS_SPEC_FLAG_FOR_UPDATE ?
-				     true : false)) != NO_ERROR)
+				    iscan_oid_order, query_id) != NO_ERROR)
 
 	    {
 	      goto exit_on_error;
@@ -8699,10 +8706,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			      spec->s.cls_node.num_attrs_range,
 			      spec->s.cls_node.attrids_range,
 			      spec->s.cls_node.cache_range,
-			      iscan_oid_order, query_id,
-			      (spec->
-			       flags & ACCESS_SPEC_FLAG_FOR_UPDATE ? true :
-			       false));
+			      iscan_oid_order, query_id);
 
     }
   else if (spec->type == TARGET_CLASS_ATTR)
@@ -9842,7 +9846,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   savepoint_used = 1;
 
   specp = xasl->spec_list;
-  /* mvcc_select_lock_needed = false */
+  /* force_select_lock = false */
   assert (xasl->scan_op_type == S_SELECT);
   if (qexec_open_scan
       (thread_p, specp, xasl->val_list, &xasl_state->vd, false,
@@ -10911,7 +10915,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   specp = xasl->spec_list;
   assert (xasl->scan_op_type == S_SELECT);
-  /* mvcc_select_lock_needed = false */
+  /* force_select_lock = false */
   if (qexec_open_scan (thread_p, specp, xasl->val_list,
 		       &xasl_state->vd, false,
 		       specp->fixed_scan,
@@ -12487,7 +12491,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       scan_cache_inited = true;
 
       assert (xasl->scan_op_type == S_SELECT);
-      /* mvcc_select_lock_needed = false */
+      /* force_select_lock = false */
       if (qexec_open_scan (thread_p, specp, xasl->val_list,
 			   &xasl_state->vd, false,
 			   specp->fixed_scan,
@@ -14902,7 +14906,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
   XASL_NODE *fixed_scan_xasl = NULL;
-  bool iscan_oid_order, mvcc_select_lock_needed = false;
+  bool iscan_oid_order, force_select_lock = false;
   bool has_index_scan = false;
   int old_wait_msecs, wait_msecs;
   int error;
@@ -14913,16 +14917,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    * Pre_processing
    */
 
-  if (XASL_IS_FLAGED (xasl, XASL_SELECT_MVCC_LOCK_NEEDED))
-    {
-      mvcc_select_lock_needed = true;
-    }
-  else if (xasl->selected_upd_list != NULL
-	   && !QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
+  if (xasl->selected_upd_list != NULL
+      && !QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
     {
       /* reevaluate at select since can't reevaluate in execute_selupd_list */
       lock_start_instant_lock_mode (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-      mvcc_select_lock_needed = true;
+      force_select_lock = true;
     }
 
   if (xasl->limit_row_count)
@@ -15444,7 +15444,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  if (qexec_open_scan (thread_p, specp,
 					       xptr->merge_val_list,
 					       &xasl_state->vd,
-					       mvcc_select_lock_needed,
+					       force_select_lock,
 					       specp->fixed_scan,
 					       specp->grouped_scan,
 					       iscan_oid_order,
@@ -15482,7 +15482,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  if (qexec_open_scan (thread_p, specp,
 					       xptr->val_list,
 					       &xasl_state->vd,
-					       mvcc_select_lock_needed,
+					       force_select_lock,
 					       specp->fixed_scan,
 					       specp->grouped_scan,
 					       iscan_oid_order,

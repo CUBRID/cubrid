@@ -602,8 +602,7 @@ static int btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				 KEY_VAL_RANGE * key_val_range,
 				 FILTER_INFO * filter,
 				 bool need_construct_btid_int, char *copy_buf,
-				 int copy_buf_len, bool for_update,
-				 bool mvcc_need_locks);
+				 int copy_buf_len, bool mvcc_need_locks);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p,
 					 BTREE_SCAN * bts);
 static int btree_find_next_index_record_holding_current (THREAD_ENTRY *
@@ -21235,7 +21234,6 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
  *   need_construct_btid_int(in):
  *   copy_buf(in):
  *   copy_buf_len(in):
- *   bool for_update(in): true if FOR UPDATE clause is active
  *   bool mvcc_need_locks(in): true if need locks in MVCC during index scan
  *
  * Note: Initialize a new B+-tree scan structure for an index scan.
@@ -21246,7 +21244,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		      OID * class_oid, KEY_VAL_RANGE * key_val_range,
 		      FILTER_INFO * filter,
 		      bool need_construct_btid_int, char *copy_buf,
-		      int copy_buf_len, bool for_update, bool mvcc_need_locks)
+		      int copy_buf_len, bool mvcc_need_locks)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
@@ -21503,13 +21501,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
     }
 
 
-  if (for_update)
-    {
-      bts->lock_mode = U_LOCK;
-      bts->key_lock_mode = NX_LOCK;
-      bts->escalated_mode = X_LOCK;
-    }
-  else if (readonly_purpose)
+  if (readonly_purpose)
     {
       bts->lock_mode = S_LOCK;
       bts->key_lock_mode = S_LOCK;
@@ -23885,7 +23877,7 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid,
 	btree_initialize_bts (thread_p, bts, btid, 1,
 			      class_oids_ptr, NULL, NULL, false,
 			      index_scan_id_p->copy_buf,
-			      index_scan_id_p->copy_buf_len, false,
+			      index_scan_id_p->copy_buf_len,
 			      index_scan_id_p->mvcc_need_locks);
       if (error_code != NO_ERROR)
 	{
@@ -28907,7 +28899,6 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 				filter, need_construct_btid_int,
 				index_scan_id_p->copy_buf,
 				index_scan_id_p->copy_buf_len,
-				index_scan_id_p->for_update,
 				index_scan_id_p->mvcc_need_locks) != NO_ERROR)
 	{
 	  goto error;
