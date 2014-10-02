@@ -13807,6 +13807,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	         if this case is fixed, it does not need to be checked */
 	      er_log_debug (ARG_FILE_LINE,
 			    "qexec_execute_selupd_list: OID is null\n");
+	      clear_list_id = false;
 	      continue;
 	    }
 
