@@ -69,7 +69,7 @@ struct lf_entry_descriptor
   /* offset of "next" pointer used in local lists */
   unsigned int of_local_next;
 
-  /* offset of "next" poiner */
+  /* offset of "next" pointer */
   unsigned int of_next;
 
   /* offset of transaction id of delete operation */
@@ -93,7 +93,7 @@ struct lf_entry_descriptor
   /* initialization callback; can be NULL */
   LF_ENTRY_INITIALIZE_FUNC f_init;
 
-  /* uninitialisation callback; can be NULL */
+  /* uninitialization callback; can be NULL */
   LF_ENTRY_UNINITIALIZE_FUNC f_uninit;
 
   /* copy function for keys */
@@ -105,8 +105,8 @@ struct lf_entry_descriptor
   /* hash function for keys */
   LF_ENTRY_HASH_FUNC f_hash;
 
-  /* callback for lf_insert with existing key
-   * NOTE: when NULL, lf_insert will spin until existing entry is deleted*/
+  /* callback for lf_insert with existing key */
+  /* NOTE: when NULL, lf_insert will spin until existing entry is deleted */
   LF_ENTRY_DUPLICATE_KEY_HANDLER f_duplicate;
 };
 
