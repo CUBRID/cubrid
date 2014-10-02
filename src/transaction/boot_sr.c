@@ -131,6 +131,7 @@ struct boot_dbparm
   VOLID last_volid;		/* Next volume identifier */
   VOLID temp_last_volid;	/* Next temporary volume identifier. This goes
 				 * from a higher number to a lower number */
+  int vacuum_data_npages;	/* Number of pages for vacuum data file */
   VFID vacuum_data_vfid;	/* Vacuum data file identifier */
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
 };
@@ -3582,7 +3583,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
        * recovery.
        */
       error_code =
-	vacuum_initialize (thread_p, &boot_Db_parm->vacuum_data_vfid,
+	vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages,
+			   &boot_Db_parm->vacuum_data_vfid,
 			   &boot_Db_parm->dropped_files_vfid);
       if (error_code != NO_ERROR)
 	{
@@ -5753,10 +5755,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   VOLID db_volid = NULL_VOLID;
   RECDES recdes;
   int error_code;
-  int vacuum_data_npages;
   DBDEF_VOL_EXT_INFO ext_info;
-  VFID vacuum_data_vfid, dropped_files_vfid;
-  VPID vacuum_data_vpid, dropped_files_vpid;
   bool ignore_old;
 
   assert (client_credential != NULL);
@@ -5838,6 +5837,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   OID_SET_NULL (&boot_Db_parm->rootclass_oid);
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
+  /* Get parameter value for vacuum data file size. Save it to boot_Db_parm
+   * to keep the value persistent even if the server is restarted and the
+   * value in config file is changed.
+   */
+  boot_Db_parm->vacuum_data_npages =
+    prm_get_integer_value (PRM_ID_VACUUM_DATA_PAGES);
   VFID_SET_NULL (&boot_Db_parm->vacuum_data_vfid);
   VFID_SET_NULL (&boot_Db_parm->dropped_files_vfid);
 
@@ -5886,23 +5891,26 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 
   if (mvcc_Enabled)
     {
-      /* TODO: Compute vacuum data npages */
-      vacuum_data_npages = prm_get_integer_value (PRM_ID_VACUUM_DATA_PAGES);
-
-      /* Create files required for vacuum */
-      if (file_create (thread_p, &vacuum_data_vfid, vacuum_data_npages,
-		       FILE_DROPPED_FILES, NULL, &vacuum_data_vpid,
-		       -vacuum_data_npages) == NULL
-	  || file_create (thread_p, &dropped_files_vfid, 1, FILE_VACUUM_DATA,
-			  NULL, &dropped_files_vpid, 1) == NULL)
+      /* Create file for vacuum data */
+      if (vacuum_create_file_for_vacuum_data (thread_p,
+					      boot_Db_parm->
+					      vacuum_data_npages,
+					      &boot_Db_parm->vacuum_data_vfid)
+	  != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      /* Save VFID's in boot_Db_parm */
-      VFID_COPY (&boot_Db_parm->vacuum_data_vfid, &vacuum_data_vfid);
-      VFID_COPY (&boot_Db_parm->dropped_files_vfid, &dropped_files_vfid);
+      /* Create file for dropped files (tracked by vacuum) */
+      if (vacuum_create_file_for_dropped_files (thread_p,
+						&boot_Db_parm->
+						dropped_files_vfid)
+	  != NO_ERROR)
+	{
+	  goto error;
+	}
 
+      /* Update boot_Db_parm */
       if (heap_update (thread_p, &boot_Db_parm->hfid,
 		       &boot_Db_parm->rootclass_oid, boot_Db_parm_oid,
 		       &recdes, NULL, &ignore_old, NULL,
@@ -5911,11 +5919,23 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 	  goto error;
 	}
 
-      if (vacuum_init_vacuum_files (thread_p, &vacuum_data_vfid,
-				    &dropped_files_vfid) != NO_ERROR)
+      /* TODO: Currently MVCC operation is used in stand-alone including for
+       *       creating database. Vacuum will have to track changes to clean
+       *       up. Remove initialize/load from here when stand-alone is fixed
+       *       to use non-MVCC type operations.
+       */
+      vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages,
+			 &boot_Db_parm->vacuum_data_vfid,
+			 &boot_Db_parm->dropped_files_vfid);
+      if (vacuum_load_data_from_disk (thread_p) != NO_ERROR)
 	{
 	  goto error;
 	}
+      if (vacuum_load_dropped_files_from_disk (thread_p) != NO_ERROR)
+	{
+	  goto error;
+	}
+      /* TODO: Remove code until here */
     }
 
   /*

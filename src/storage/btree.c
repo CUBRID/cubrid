@@ -10037,7 +10037,7 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
 				   key, &leaf_slot_id))
 	{
 	  /* key does not exist */
-	  if (!thread_is_vacuum_worker (thread_p))
+	  if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 	    {
 	      log_append_redo_data2 (thread_p, RVBT_NOOP,
 				     &btid->sys_btid->vfid, leaf_page, -1, 0,
@@ -10449,7 +10449,7 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
     }
 
   /* OID does not exist */
-  if (!thread_is_vacuum_worker (thread_p))
+  if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->sys_btid->vfid,
 			     prev_page, -1, 0, NULL);
@@ -11881,7 +11881,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
        * find out if we have deleted a key or not.
        */
       if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk)
-	  && !thread_is_vacuum_worker (thread_p))
+	  && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 	{
 	  assert (!MVCC_BTREE_DELETE_REMOVE_DELID (mvcc_args));
 	  if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
@@ -11954,7 +11954,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
    * values.
    */
   if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk)
-      && !thread_is_vacuum_worker (thread_p))
+      && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
@@ -12636,7 +12636,7 @@ start_point:
 	}
       else
 	{
-	  assert (!thread_is_vacuum_worker (thread_p));
+	  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
 	  log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->vfid, P, -1, 0,
 				 NULL);
 	  pgbuf_set_dirty (thread_p, P, DONT_FREE);
@@ -12706,7 +12706,7 @@ start_point:
     }
   else
     {
-      assert (!thread_is_vacuum_worker (thread_p));
+      assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
       log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->vfid, P, -1, 0,
 			     NULL);
       pgbuf_set_dirty (thread_p, P, DONT_FREE);
@@ -13199,7 +13199,7 @@ key_deletion:
   pgbuf_unfix_and_init (thread_p, P);
 
   if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk)
-      && !thread_is_vacuum_worker (thread_p))
+      && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
@@ -26886,7 +26886,15 @@ btree_set_unknown_key_error (THREAD_ENTRY * thread_p,
   assert (btid != NULL);
   assert (key != NULL);
 
-  if (log_is_in_crash_recovery () || thread_is_vacuum_worker (thread_p))
+  /* If this is vacuum worker, we can expect many such error. Don't spam the
+   * log with them.
+   */
+  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+    {
+      return;
+    }
+
+  if (log_is_in_crash_recovery ())
     {
       severity = ER_WARNING_SEVERITY;
     }

@@ -100,12 +100,6 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_rc_track_dump_all(thread_p, outfp)
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
 
-#define thread_is_process_log_for_vacuum(thread_p) false
-#define thread_is_vacuum_worker(thread_p) false
-#define thread_set_vacuum_worker_state(thread_p, state)
-#define thread_set_vacuum_worker_drop_file_version(thread_p, version)
-#define thread_get_vacuum_worker_count() (0)
-
 #define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
 
 #else /* !SERVER_MODE */
@@ -238,6 +232,9 @@ struct thread_resource_track
 #endif
 };
 
+/* Forward definition of struct vacuum_worker to fix compile error. */
+struct vacuum_worker;
+
 typedef struct thread_entry THREAD_ENTRY;
 
 /* stats for event logging */
@@ -324,6 +321,8 @@ struct thread_entry
   char *log_data_ptr;
   int log_data_length;
 
+  struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
+
   /* resource track info */
   THREAD_RC_TRACK *track;
   int track_depth;
@@ -366,18 +365,6 @@ typedef void *CSS_THREAD_ARG;
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
-
-typedef enum vacuum_worker_state VACUUM_WORKER_STATE;
-enum vacuum_worker_state
-{
-  VACUUM_WORKER_STATE_INACTIVE,	/* Vacuum worker is inactive */
-  VACUUM_WORKER_STATE_WAKING,	/* Vacuum worker was sent a signal to wake up
-				 */
-  VACUUM_WORKER_STATE_PROCESS_LOG,	/* Vacuum worker processes log data */
-  VACUUM_WORKER_STATE_EXECUTE	/* Vacuum worker executes cleanup based
-				 * on processed data
-				 */
-};
 
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
@@ -469,16 +456,6 @@ extern void thread_wakeup_vacuum_master_thread (void);
 extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 
 extern bool thread_is_page_flush_thread_available (void);
-
-extern bool thread_is_process_log_for_vacuum (THREAD_ENTRY * thread_p);
-extern bool thread_is_vacuum_worker (THREAD_ENTRY * thread_p);
-extern void thread_set_vacuum_worker_state (THREAD_ENTRY * thread_p,
-					    VACUUM_WORKER_STATE new_state);
-extern void thread_set_vacuum_worker_drop_file_version (THREAD_ENTRY *
-							thread_p,
-							INT32 version);
-extern INT32 thread_get_min_dropped_files_version (void);
-extern int thread_get_vacuum_worker_count (void);
 
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 

@@ -132,21 +132,7 @@ static DAEMON_THREAD_MONITOR
   thread_Vacuum_master_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
 static DAEMON_THREAD_MONITOR *thread_Vacuum_worker_threads = NULL;
-static INT32 thread_Available_vacuum_workers_count = 0;
-
-typedef struct vacuum_thread_entry VACUUM_WORKER_THREAD_ENTRY;
-struct vacuum_thread_entry
-{
-  THREAD_ENTRY *thread_p;
-  DAEMON_THREAD_MONITOR *monitor;
-  INT32 drop_files_version;	/* last dropped file version seen by this
-				 * worker.
-				 */
-  VACUUM_WORKER_STATE state;
-};
-static VACUUM_WORKER_THREAD_ENTRY *thread_Vacuum_worker_thread_entries = NULL;
-static int thread_Vacuum_worker_count = -1;
-
+static INT32 thread_Vacuum_worker_assigned_daemons = 0;
 
 static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
@@ -253,8 +239,6 @@ static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
 static void thread_reset_nrequestors_of_log_flush_thread (void);
 static void thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR *
 					      monitor);
-static VACUUM_WORKER_THREAD_ENTRY
-  * thread_get_vacuum_thread_entry (THREAD_ENTRY * thread_p);
 
 static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
 static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p,
@@ -422,11 +406,9 @@ thread_initialize_manager (void)
       if (mvcc_Enabled)
 	{
 	  /* Initialize vacuum workers */
-	  /* Get the number of vacuum workers from system parameters */
-	  thread_Vacuum_worker_count =
-	    prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
-	  /* Allocate memory for thread monitors */
-	  size = thread_Vacuum_worker_count * sizeof (DAEMON_THREAD_MONITOR);
+
+	  /* Allocate memory for vacuum worker thread monitors */
+	  size = VACUUM_MAX_WORKER_COUNT * sizeof (DAEMON_THREAD_MONITOR);
 	  thread_Vacuum_worker_threads =
 	    (DAEMON_THREAD_MONITOR *) malloc (size);
 	  if (thread_Vacuum_worker_threads == NULL)
@@ -435,37 +417,12 @@ thread_initialize_manager (void)
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
-
-	  /* Allocate memory for vacuum thread entries */
-	  size =
-	    thread_Vacuum_worker_count * sizeof (VACUUM_WORKER_THREAD_ENTRY);
-	  thread_Vacuum_worker_thread_entries =
-	    (VACUUM_WORKER_THREAD_ENTRY *) malloc (size);
-	  if (thread_Vacuum_worker_thread_entries == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  /* Initialize thread monitors and vacuum thread entries */
-	  for (i = 0; i < thread_Vacuum_worker_count; i++)
+	  /* Initialize thread monitors */
+	  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
 	    {
 	      thread_initialize_daemon_monitor
 		(&thread_Vacuum_worker_threads[i]);
-	      thread_Vacuum_worker_thread_entries[i].monitor =
-		&thread_Vacuum_worker_threads[i];
-	      thread_Vacuum_worker_thread_entries[i].thread_p = NULL;
-	      thread_Vacuum_worker_thread_entries[i].state =
-		VACUUM_WORKER_STATE_INACTIVE;
-	      thread_Vacuum_worker_thread_entries[i].drop_files_version = -1;
-	      /* Increment the number of available vacuum workers */
-	      thread_Available_vacuum_workers_count++;
 	    }
-	}
-      else
-	{
-	  thread_Vacuum_worker_count = 0;
 	}
 
       /* Initialize daemons */
@@ -473,7 +430,7 @@ thread_initialize_manager (void)
       if (mvcc_Enabled)
 	{
 	  /* Vacuum master thread and vacuum workers must be added */
-	  thread_Manager.num_daemons += thread_Vacuum_worker_count + 1;
+	  thread_Manager.num_daemons += VACUUM_MAX_WORKER_COUNT + 1;
 	}
       size = thread_Manager.num_daemons * sizeof (THREAD_DAEMON);
       thread_Daemons = (THREAD_DAEMON *) malloc (size);
@@ -562,7 +519,7 @@ thread_initialize_manager (void)
 	    thread_vacuum_master_thread;
 
 	  /* Initialize vacuum worker daemons */
-	  for (i = 0; i < thread_Vacuum_worker_count; i++, daemon_index++)
+	  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++, daemon_index++)
 	    {
 	      thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_WORKER;
 	      thread_Daemons[daemon_index].daemon_monitor =
@@ -696,10 +653,9 @@ thread_initialize_manager (void)
 int
 thread_start_workers (void)
 {
-  int i, vacuum_thread_index = 0;
+  int i;
   int thread_index, r;
   THREAD_ENTRY *thread_p = NULL;
-  VACUUM_WORKER_THREAD_ENTRY *vacuum_thread_p = NULL;
   pthread_attr_t thread_attr;
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
   size_t ts_size;
@@ -806,24 +762,10 @@ thread_start_workers (void)
 	  return ER_CSS_PTHREAD_MUTEX_LOCK;
 	}
 
-      if (thread_Daemons[i].type == THREAD_DAEMON_VACUUM_WORKER)
-	{
-	  assert (mvcc_Enabled);
-	  vacuum_thread_p =
-	    &thread_Vacuum_worker_thread_entries[vacuum_thread_index++];
-	  vacuum_thread_p->thread_p = thread_p;
-
-	  r = pthread_create (&thread_p->tid, &thread_attr,
-			      thread_Daemons[i].daemon_function,
-			      vacuum_thread_p);
-	}
-      else
-	{
-	  /* If win32, then "thread_attr" is ignored, else "p->thread_handle".
-	   */
-	  r = pthread_create (&thread_p->tid, &thread_attr,
-			      thread_Daemons[i].daemon_function, thread_p);
-	}
+      /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
+      r =
+	pthread_create (&thread_p->tid, &thread_attr,
+			thread_Daemons[i].daemon_function, thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -840,8 +782,6 @@ thread_start_workers (void)
 	  return ER_CSS_PTHREAD_MUTEX_UNLOCK;
 	}
     }
-
-  assert (vacuum_thread_index == thread_Vacuum_worker_count);
 
   /* destroy thread_attribute */
   r = pthread_attr_destroy (&thread_attr);
@@ -1160,12 +1100,10 @@ thread_final_manager (void)
   free_and_init (thread_Daemons);
   if (mvcc_Enabled)
     {
-      free_and_init (thread_Vacuum_worker_thread_entries);
       free_and_init (thread_Vacuum_worker_threads);
     }
   else
     {
-      assert (thread_Vacuum_worker_thread_entries == NULL);
       assert (thread_Vacuum_worker_threads == NULL);
     }
 
@@ -1291,6 +1229,8 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_entries[THREAD_TS_FREE_SORT_LIST] =
     lf_tran_request_entry (&free_sort_list_Ts);
 
+  entry_p->vacuum_worker = NULL;
+
   return NO_ERROR;
 }
 
@@ -1364,6 +1304,9 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
       free_and_init (entry_p->log_data_ptr);
       entry_p->log_data_length = 0;
     }
+
+  /* Vacuum worker resources are released by vacuum */
+  entry_p->vacuum_worker = NULL;
 
   (void) thread_rc_track_finalize (entry_p);
 
@@ -2881,16 +2824,12 @@ thread_vacuum_worker_thread (void *arg_p)
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr = NULL;
 #endif /* !HPUX */
-  VACUUM_WORKER_THREAD_ENTRY *vacuum_thread_p = NULL;
   DAEMON_THREAD_MONITOR *thread_monitor = NULL;
   int rv = 0;
+  INT32 daemon_index = 0;
 
   /* Read vacuum thread entry argument */
-  vacuum_thread_p = (VACUUM_WORKER_THREAD_ENTRY *) arg_p;
-  tsd_ptr = vacuum_thread_p->thread_p;
-
-  /* Get thread monitor for current vacuum worker */
-  thread_monitor = vacuum_thread_p->monitor;
+  tsd_ptr = (THREAD_ENTRY *) arg_p;
 
   /* wait until THREAD_CREATE() finishes */
   rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
@@ -2899,6 +2838,16 @@ thread_vacuum_worker_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_VACUUM_WORKER;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+
+  /* Assign one vacuum worker daemon monitor to current thread */
+  do
+    {
+      /* Is atomic operation required? */
+      daemon_index = thread_Vacuum_worker_assigned_daemons;
+    }
+  while (!ATOMIC_CAS_32 (&thread_Vacuum_worker_assigned_daemons,
+			 daemon_index, daemon_index + 1));
+  thread_monitor = &thread_Vacuum_worker_threads[daemon_index];
   thread_monitor->is_available = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -2909,8 +2858,6 @@ thread_vacuum_worker_thread (void *arg_p)
 
       rv = pthread_mutex_lock (&thread_monitor->lock);
       thread_monitor->is_running = false;
-      vacuum_thread_p->state = VACUUM_WORKER_STATE_INACTIVE;
-      ATOMIC_INC_32 (&thread_Available_vacuum_workers_count, 1);
       pthread_cond_wait (&thread_monitor->cond, &thread_monitor->lock);
 
       if (tsd_ptr->shutdown)
@@ -2946,34 +2893,25 @@ void
 thread_wakeup_vacuum_worker_threads (int n_workers)
 {
   int rv, i;
+  int vacuum_worker_count =
+    prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
 
-  if (thread_Available_vacuum_workers_count == 0 || n_workers <= 0)
+  if (n_workers <= 0)
     {
       /* No available worker or no workers required */
       return;
     }
 
-  for (i = 0; i < thread_get_vacuum_worker_count (); i++)
+  for (i = 0; i < vacuum_worker_count; i++)
     {
       rv = pthread_mutex_lock (&thread_Vacuum_worker_threads[i].lock);
-      if (!thread_Vacuum_worker_threads[i].is_running
-	  && (thread_Vacuum_worker_thread_entries[i].state
-	      == VACUUM_WORKER_STATE_INACTIVE))
+      if (!thread_Vacuum_worker_threads[i].is_running)
 	{
-	  /* Decrement available vacuum workers count */
-	  ATOMIC_INC_32 (&thread_Available_vacuum_workers_count, -1);
-	  /* Change state of worker from inactive to waking to avoid
-	   * signaling it again on next call.
-	   */
-	  thread_Vacuum_worker_thread_entries[i].state =
-	    VACUUM_WORKER_STATE_WAKING;
 	  pthread_cond_signal (&thread_Vacuum_worker_threads[i].cond);
 	  pthread_mutex_unlock (&thread_Vacuum_worker_threads[i].lock);
 
 	  /* Decrement the required number of workers */
-	  n_workers--;
-
-	  if (thread_Available_vacuum_workers_count == 0 || n_workers == 0)
+	  if (--n_workers == 0)
 	    {
 	      /* Stop */
 	      return;
@@ -2985,226 +2923,6 @@ thread_wakeup_vacuum_worker_threads (int n_workers)
 	  pthread_mutex_unlock (&thread_Vacuum_worker_threads[i].lock);
 	}
     }
-}
-
-/*
- * thread_get_vacuum_thread_entry () - Get the vacuum worker equivalent for
- *				       the given thread entry.
- *
- * return	 : Vacuum worker or NULL if the thread entry doesn't belong to
- *		   a vacuum worker.
- * thread_p (in) : Thread entry.
- */
-static VACUUM_WORKER_THREAD_ENTRY *
-thread_get_vacuum_thread_entry (THREAD_ENTRY * thread_p)
-{
-  int vacuum_worker_index;
-
-  if (mvcc_Enabled == false || !thread_is_manager_initialized ())
-    {
-      /* Vacuum thread entries can only exist in the context of MVCC and if
-       * the thread manager was initialized.
-       */
-      return NULL;
-    }
-  if (thread_p == NULL)
-    {
-      /* Try to get current thread entry info */
-      thread_p = thread_get_thread_entry_info ();
-    }
-  if (thread_p == NULL)
-    {
-      /* No thread entry info */
-      return NULL;
-    }
-  if (thread_Vacuum_worker_thread_entries[0].thread_p == NULL)
-    {
-      /* Threads have not been yet started */
-      return NULL;
-    }
-  /* Vacuum workers have successive indexes in thread array. The index of
-   * current thread must be between the first and the last vacuum thread
-   * entry.
-   */
-  vacuum_worker_index =
-    thread_p->index - thread_Vacuum_worker_thread_entries[0].thread_p->index;
-  if (vacuum_worker_index < 0
-      || vacuum_worker_index >= thread_Vacuum_worker_count)
-    {
-      /* Not a vacuum worker */
-      return NULL;
-    }
-  /* Return vacuum worker thread entry */
-  return &thread_Vacuum_worker_thread_entries[vacuum_worker_index];
-}
-
-/*
- * thread_is_process_log_for_vacuum () - Returns true if the thread
- *					       belongs to a vacuum worker and
- *					       if the worker is in process log
- *					       block phase. In this phase it
- *					       shouldn't use locks to read
- *					       log data.
- *
- * return	 : True if thread is a vacuum worker and if it is in process
- *		   log data phase.
- * thread_p (in) : Thread to check.
- *
- * NOTE: This is an optimization to avoid blocking logging while vacuum
- *	 workers read data from "cold" log pages in order to vacuum database.
- *	 In the phase of vacuuming however, it still requires locks.
- */
-bool
-thread_is_process_log_for_vacuum (THREAD_ENTRY * thread_p)
-{
-  VACUUM_WORKER_THREAD_ENTRY *vacuum_thread_p = NULL;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      if (thread_p == NULL)
-	{
-	  return false;
-	}
-    }
-
-  if (thread_p->type == TT_VACUUM_WORKER)
-    {
-      /* Check vacuum worker state */
-      vacuum_thread_p = thread_get_vacuum_thread_entry (thread_p);
-      if (vacuum_thread_p == NULL)
-	{
-	  /* Should not happen */
-	  assert_release (false);
-	  return false;
-	}
-      return (vacuum_thread_p->state == VACUUM_WORKER_STATE_PROCESS_LOG);
-    }
-
-  if (thread_p->type == TT_VACUUM_MASTER)
-    {
-      /* Check vacuum master state */
-      return vacuum_is_master_in_process_log_phase ();
-    }
-
-  /* Only vacuum master/workers process log pages for other reason than adding
-   * new log entries.
-   */
-  return false;
-}
-
-/*
- * thread_is_vacuum_worker () - Return whether thread entry belongs to a
- *				vacuum worker.
- *
- * return	 : True if thread entry belongs to a vacuum worker.
- * thread_p (in) : Thread entry info. If NULL, current thread entry info will
- *		   be considered.
- */
-bool
-thread_is_vacuum_worker (THREAD_ENTRY * thread_p)
-{
-  return (thread_get_vacuum_thread_entry (thread_p) != NULL);
-}
-
-/*
- * thread_set_vacuum_worker_state () - Set whether the vacuum worker is in
- *				       process log phase.
- *
- * return		     : Error code.
- * thread_p (in)	     : Thread entry.
- * is_process_log_phase (in) : True if worker should process log data for
- *			       vacuum, false if worker vacuum database.
- */
-void
-thread_set_vacuum_worker_state (THREAD_ENTRY * thread_p,
-				VACUUM_WORKER_STATE new_state)
-{
-  VACUUM_WORKER_THREAD_ENTRY *vacuum_thread_p =
-    thread_get_vacuum_thread_entry (thread_p);
-  if (vacuum_thread_p == NULL)
-    {
-      /* TODO: Add vacuum error logging */
-      assert (false);
-      return;
-    }
-  vacuum_thread_p->state = new_state;
-}
-
-/*
- * thread_set_vacuum_worker_drop_file_version () - Set dropped file version to
- *						   vacuum worker thread.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * version (in)	 : New version.
- */
-void
-thread_set_vacuum_worker_drop_file_version (THREAD_ENTRY * thread_p,
-					    INT32 version)
-{
-  VACUUM_WORKER_THREAD_ENTRY *vacuum_thread_p =
-    thread_get_vacuum_thread_entry (thread_p);
-  if (vacuum_thread_p == NULL)
-    {
-      /* TODO: Add vacuum error logging */
-      assert (false);
-      return;
-    }
-  vacuum_thread_p->drop_files_version = version;
-}
-
-/*
- * thread_get_min_dropped_files_version () - Get the current minimum of
- *					     dropped file version seen by
- *					     active vacuum worker threads.
- *
- * return : Minimum dropped files version of all active workers.
- */
-INT32
-thread_get_min_dropped_files_version (void)
-{
-  int i;
-  INT32 min_version = -1;
-  VACUUM_WORKER_THREAD_ENTRY *vacuum_thread_p = NULL;
-
-  /* TODO: Give an appropriate name for the reserved min_version starting
-   * value
-   */
-
-  if (thread_Vacuum_worker_count <= 0)
-    {
-      /* No workers are active */
-      return min_version;
-    }
-
-  for (i = 0; i < thread_Vacuum_worker_count; i++)
-    {
-      vacuum_thread_p = &thread_Vacuum_worker_thread_entries[i];
-      if ((vacuum_thread_p->state != VACUUM_WORKER_STATE_INACTIVE)
-	  && (min_version == -1
-	      || vacuum_compare_dropped_files_version (min_version,
-						       vacuum_thread_p->
-						       drop_files_version) >
-	      0))
-	{
-	  min_version = vacuum_thread_p->drop_files_version;
-	}
-    }
-
-  return min_version;
-}
-
-/*
- * thread_get_vacuum_worker_count () - Get vacuum worker thread count.
- *
- * return    : Vacuum worker thread count.
- */
-int
-thread_get_vacuum_worker_count (void)
-{
-  assert (thread_is_manager_initialized ());
-  return thread_Vacuum_worker_count;
 }
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION

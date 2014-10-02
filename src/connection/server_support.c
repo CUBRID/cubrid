@@ -1991,15 +1991,11 @@ shutdown:
       node = log_Gl.prior_info.prior_list_header;
       while (node != NULL)
 	{
-	  /* TODO: This is temporary disabled, because vacuum workers are
-	   *       still active and they are currently considered active
-	   *       transaction.
-	   *       Add assert back after changing vacuum workers to system
-	   *       transactions.
+	  /* All active transaction should have been stopped. Only system
+	   * transactions and vacuum workers are still running.
 	   */
-#if 0
-	  assert (node->log_header.trid == LOG_SYSTEM_TRANID);
-#endif
+	  assert (node->log_header.trid == LOG_SYSTEM_TRANID
+		  || LOG_IS_VACUUM_WORKER_TRANID (node->log_header.trid));
 	  node = node->next;
 	}
     }

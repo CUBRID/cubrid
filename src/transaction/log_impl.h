@@ -48,6 +48,7 @@
 #include "query_list.h"
 #include "lock_manager.h"
 #include "connection_globals.h"
+#include "vacuum.h"
 
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -57,7 +58,7 @@
 #define NUM_SYSTEM_TRANS 1
 #define NUM_NON_SYSTEM_TRANS (css_get_max_conn ())
 #define MAX_NTRANS \
-  (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS + thread_get_vacuum_worker_count ())
+  (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS)
 
 #if defined(SERVER_MODE)
 #define LOG_CS_ENTER(thread_p) \
@@ -107,12 +108,12 @@
  * NOTE: It is considered that a vacuum worker holds a "shared" lock.
  */
 #define LOG_CS_OWN(thread_p) \
-  (thread_is_process_log_for_vacuum (thread_p) \
+  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
    || csect_check_own (thread_p, CSECT_LOG) >= 1)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) \
   (csect_check_own (thread_p, CSECT_LOG) == 1)
 #define LOG_CS_OWN_READ_MODE(thread_p) \
-  (thread_is_process_log_for_vacuum (thread_p) \
+  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
    || csect_check_own (thread_p, CSECT_LOG) == 2)
 
 #define LOG_ARCHIVE_CS_OWN(thread_p) \
@@ -214,8 +215,11 @@
 #define LOG_2PC_OBTAIN_LOCKS      true
 #define LOG_2PC_DONT_OBTAIN_LOCKS false
 
-#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery system transaction index */
-#define LOG_SYSTEM_TRANID     0	/* The recovery system transaction       */
+#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system
+				 * transaction index. */
+#define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system
+				 * transaction.
+				 */
 
 #if defined(SERVER_MODE)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
@@ -289,6 +293,20 @@
 #define LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS(tdes) \
   ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
    || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+
+/* Reserved vacuum workers transaction identifiers.
+ * Vacuum workers each need one TRANID to have their system operations
+ * isolated and identifiable. Even though usually vacuum workers never undo
+ * their work, system operations still need to be undone (if server crashes
+ * in the middle of the operation).
+ * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
+ * under NULL_TRANID are reserved for vacuum workers.
+ */
+#define LOG_LAST_VACUUM_WORKER_TRANID (NULL_TRANID - 1)
+#define LOG_FIRST_VACUUM_WORKER_TRANID (NULL_TRANID - VACUUM_MAX_WORKER_COUNT)
+#define LOG_IS_VACUUM_WORKER_TRANID(trid) \
+  (trid <= LOG_LAST_VACUUM_WORKER_TRANID \
+   && trid >= LOG_FIRST_VACUUM_WORKER_TRANID)
 
 #define LOG_SET_DATA_ADDR(data_addr, page, vol_file_id, off) \
   do \
@@ -2491,4 +2509,7 @@ extern void logtb_mvcc_reset_count_optim_state (THREAD_ENTRY * thread_p);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p,
 				     LOG_TDES * tdes);
 extern int logtb_find_log_records_count (int tran_index);
+
+extern void logtb_initialize_vacuum_worker_tdes (LOG_TDES * tdes,
+						 TRANID trid);
 #endif /* _LOG_IMPL_H_ */

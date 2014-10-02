@@ -2155,7 +2155,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
-  if (!thread_is_process_log_for_vacuum (thread_p))
+  if (!VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
     {
       /* TODO: Avoid any locks for vacuum workers. Investigate if any unwanted
        *       consequences are possible.
@@ -2180,7 +2180,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, log_pgptr);
     }
 
-  if (!thread_is_process_log_for_vacuum (thread_p))
+  if (!VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
     {
       /* TODO: Avoid any locks for vacuum workers. Investigate if any unwanted
        *       consequences are possible.
@@ -2210,7 +2210,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   assert (pageid != NULL_PAGEID);
   assert (LOG_CS_OWN (thread_p));
 
-  if (thread_is_process_log_for_vacuum (thread_p))
+  if (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
     {
       /* This is added here to block others from creating new archive
        * or mounting/dismounting archives while the vacuum workers is
@@ -2265,7 +2265,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	}
     }
 
-  if (thread_is_process_log_for_vacuum (thread_p))
+  if (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
     {
       LOG_CS_EXIT (thread_p);
     }
@@ -2273,7 +2273,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   return log_pgptr;
 
 error:
-  if (thread_is_process_log_for_vacuum (thread_p))
+  if (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
     {
       LOG_CS_EXIT (thread_p);
     }
@@ -4285,8 +4285,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
 
       /* Check if the block of log data is changed */
       if (!LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa)
-	  && (VACUUM_GET_LOG_BLOCKID (log_Gl.hdr.mvcc_op_log_lsa.pageid)
-	      != VACUUM_GET_LOG_BLOCKID (start_lsa.pageid)))
+	  && (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid)
+	      != vacuum_get_log_blockid (start_lsa.pageid)))
 	{
 	  /* Notify vacuum of a new block */
 	  vacuum_produce_log_block_data (thread_p,
@@ -6600,7 +6600,7 @@ logpb_is_archive_available (int arv_num)
 {
   int i;
 
-  assert (LOG_CS_OWN (NULL));
+  assert (LOG_CS_OWN (thread_get_thread_entry_info ()));
 
   if (arv_num >= log_Gl.hdr.nxarv_num || arv_num < 0)
     {
@@ -7745,7 +7745,7 @@ logpb_add_archive_page_info (THREAD_ENTRY * thread_p,
 {
   int rear;
 
-  assert (LOG_CS_OWN (NULL));
+  assert (LOG_CS_OWN (thread_get_thread_entry_info ()));
 
   rear = logpb_Arv_page_info_table.rear;
 
@@ -7780,7 +7780,7 @@ logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p,
 {
   int i, count;
 
-  assert (LOG_CS_OWN (NULL));
+  assert (LOG_CS_OWN (thread_get_thread_entry_info ()));
 
   for (i = logpb_Arv_page_info_table.rear, count = 0;
        count < logpb_Arv_page_info_table.item_count;
@@ -7817,7 +7817,7 @@ logpb_get_remove_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID safe_pageid,
   LOG_PAGE *arv_hdr_pgptr;
   int vdes, arv_num;
 
-  assert (LOG_CS_OWN (NULL));
+  assert (LOG_CS_OWN (thread_get_thread_entry_info ()));
 
   arv_num = logpb_get_archive_num_from_info_table (thread_p, safe_pageid);
 
@@ -13144,7 +13144,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
   LOG_PAGE *arv_hdr_pgptr;
   char arv_name[PATH_MAX];
 
-  assert (LOG_CS_OWN (NULL));
+  assert (LOG_CS_OWN (thread_get_thread_entry_info ()));
 
   LOG_ARCHIVE_CS_ENTER (thread_p);
   arv_num = logpb_find_oldest_available_arv_num (thread_p);
@@ -13213,7 +13213,7 @@ logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p)
   int arv_num;
   int ret_arv_num = -1;
 
-  assert (LOG_CS_OWN (NULL));
+  assert (LOG_CS_OWN (thread_get_thread_entry_info ()));
 
   arv_num = log_Gl.hdr.nxarv_num - 1;
 

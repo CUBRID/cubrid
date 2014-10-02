@@ -592,6 +592,35 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logtb_initialize_vacuum_worker_tdes () - Allocate a transaction descriptor
+ *					    for vacuum workers to use when
+ *					    starting system operations.
+ *
+ * return    : Void.
+ * tdes (in) : Transaction descriptor.
+ * trid (in) : Transaction identifier.
+ */
+void
+logtb_initialize_vacuum_worker_tdes (LOG_TDES * tdes, TRANID trid)
+{
+  /* Check trid is a valid vacuum worker TRANID. */
+  assert (LOG_IS_VACUUM_WORKER_TRANID (trid));
+
+  /* Initialize transaction descriptor. */
+  logtb_initialize_tdes (tdes, LOG_SYSTEM_TRAN_INDEX);
+
+  /* Set TRANID. */
+  tdes->trid = trid;
+
+  /* Set transaction state to active. */
+  tdes->state = TRAN_ACTIVE;
+
+  /* Set client ID's to NULL. */
+  logtb_set_client_ids_all (&tdes->client, -1, NULL, NULL, NULL, NULL, NULL,
+			    -1);
+}
+
+/*
  * logtb_undefine_trantable - undefine the transaction table
  *
  * return: nothing
@@ -1255,6 +1284,18 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
+  VACUUM_WORKER *worker;
+
+  if (LOG_IS_VACUUM_WORKER_TRANID (trid))
+    {
+      /* This must be the log of a vacuum worker system operation. Use
+       * vacuum worker transaction descriptor.
+       */
+      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
+      /* Set worker state to recovery. */
+      worker->state = VACUUM_WORKER_STATE_RECOVERY;
+      return worker->tdes;
+    }
 
   /*
    * If this is the first time, the transaction is seen. Assign a new
@@ -1357,7 +1398,7 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
     {
       if (mvcc_Enabled)
 	{
-	  if (!thread_is_vacuum_worker (thread_p))
+	  if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 	    {
 	      logtb_release_mvcc_info (thread_p);
 	    }
@@ -4720,7 +4761,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
       LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
       if (tdes->tran_index == LOG_SYSTEM_TRAN_INDEX
-	  || thread_is_vacuum_worker (thread_p))
+	  || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 	{
 	  /* System transactions do not have snapshots */
 	  return NULL;
@@ -5060,9 +5101,12 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
   LOG_LSA *max = NULL;		/* The maximum LSA value  */
+  TRANID trid;
+  VACUUM_WORKER *worker = NULL;
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
 
+  /* Check active transactions. */
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       if (i != LOG_SYSTEM_TRAN_INDEX)
@@ -5077,6 +5121,22 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
 	    {
 	      max = &tdes->undo_nxlsa;
 	    }
+	}
+    }
+  /* Check vacuum worker transactions. */
+  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID;
+       trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
+    {
+      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
+      if (worker->state != VACUUM_WORKER_STATE_RECOVERY)
+	{
+	  /* Worker doesn't need any recovery. */
+	  continue;
+	}
+      tdes = worker->tdes;
+      if (max == NULL || LSA_LT (max, &tdes->undo_nxlsa))
+	{
+	  max = &tdes->undo_nxlsa;
 	}
     }
 
@@ -5148,7 +5208,7 @@ logtb_allocate_mvcc_info (THREAD_ENTRY * thread_p)
 
   assert (tdes != NULL);
 
-  if (thread_is_vacuum_worker (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       /* MVCC info is not required */
       if (tdes->mvcc_info != NULL)

@@ -530,7 +530,7 @@ log_does_allow_replication (void)
   int ha_state;
 
   /* Vacuum workers are not allowed to reach this code */
-  assert (!thread_is_vacuum_worker (thread_get_thread_entry_info ()));
+  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_get_thread_entry_info ()));
 
   if (ha_mode == -1)
     {

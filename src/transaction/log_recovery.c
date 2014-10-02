@@ -264,7 +264,27 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 				 */
   bool is_zip = false;
   int error_code = NO_ERROR;
-  LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
+  int save_thread_type = 0;
+
+  if (thread_p == NULL)
+    {
+      /* Thread entry info is required. */
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
+    {
+      /* Convert thread to a vacuum worker. */
+      VACUUM_CONVERT_THREAD_TO_VACUUM_WORKER (thread_p,
+					      vacuum_rv_get_worker_by_trid
+					      (thread_p, tdes->trid),
+					      save_thread_type);
+    }
+  else
+    {
+      /* Convert thread to active transaction worker. */
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
+    }
 
   if (MVCCID_IS_VALID (rcv->mvcc_id))
     {
@@ -321,11 +341,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			     "log_rv_undo_record");
-	  if (rcv->pgptr != NULL)
-	    {
-	      pgbuf_unfix (thread_p, rcv->pgptr);
-	    }
-	  return;
+	  goto end;
 	}
       /* Copy the data */
       logpb_copy_from_log (thread_p, area, rcv->length, log_lsa, log_page_p);
@@ -343,6 +359,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			     "log_rv_undo_record");
+	  goto end;
 	}
     }
 
@@ -390,6 +407,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 				 (long long int) rcv->mvcc_id,
 				 (int) vpid.pageid, (int) vpid.volid,
 				 (int) rcv->offset, (int) rcv->length);
+	      goto end;
 	    }
 	}
       else
@@ -414,15 +432,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 				 "log_rv_undo_record");
-	      if (area != NULL)
-		{
-		  free_and_init (area);
-		}
-	      if (rcv->pgptr != NULL)
-		{
-		  pgbuf_unfix (thread_p, rcv->pgptr);
-		}
-	      return;
+	      goto end;
 	    }
 
 #if defined(CUBRID_DEBUG)
@@ -476,6 +486,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	      1, fileio_get_volume_label (rcv_vpid->volid, PEEK));
     }
 
+end:
   if (area != NULL)
     {
       free_and_init (area);
@@ -484,6 +495,16 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
   if (rcv->pgptr != NULL)
     {
       pgbuf_unfix (thread_p, rcv->pgptr);
+    }
+
+  /* Convert thread back to system transaction. */
+  if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
+    {
+      VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
+    }
+  else
+    {
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
     }
 }
 
@@ -4632,6 +4653,105 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 }
 
 /*
+ * log_recovery_finish_postpone () - Finish postpone during recovery for one
+ *				     transaction descriptor.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * tdes (in)	 : Transaction descriptor.
+ */
+static void
+log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  LOG_LSA first_postpone_to_apply;
+
+  if (tdes == NULL || tdes->trid == NULL_TRANID)
+    {
+      /* Nothing to do */
+      return;
+    }
+  if (tdes->state != TRAN_UNACTIVE_WILL_COMMIT
+      && tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
+      && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+      && tdes->state != TRAN_UNACTIVE_COMMITTED)
+    {
+      /* Nothing to finish */
+      return;
+    }
+
+  LSA_SET_NULL (&first_postpone_to_apply);
+
+  if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT
+      || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+    {
+      /*
+       * The transaction was the one that was committing
+       */
+      log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
+					&tdes->posp_nxlsa, tdes);
+
+      log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
+		       LOG_COMMIT_WITH_POSTPONE);
+
+      /*
+       * Are there any postpone client actions that need to be done at the
+       * client machine ?
+       */
+      if (!LSA_ISNULL (&tdes->client_posp_lsa))
+	{
+	  log_append_commit_client_loose_ends (thread_p, tdes);
+	  /*
+	   * Now the client transaction manager should request the postpone
+	   * actions until all of them become exhausted.
+	   */
+	}
+      else if (tdes->coord == NULL)
+	{			/* If this is a local transaction */
+	  (void) log_complete (thread_p, tdes, LOG_COMMIT,
+			       LOG_DONT_NEED_NEWTRID);
+	  logtb_free_tran_index (thread_p, tdes->tran_index);
+	}
+    }
+  else if (tdes->state == TRAN_UNACTIVE_COMMITTED)
+    {
+      if (tdes->coord == NULL)
+	{
+	  (void) log_complete (thread_p, tdes, LOG_COMMIT,
+			       LOG_DONT_NEED_NEWTRID);
+	  logtb_free_tran_index (thread_p, tdes->tran_index);
+	}
+    }
+  else
+    {
+      /*
+       * A top system operation of the transaction was the one that was
+       * committing
+       */
+      assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
+
+      log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
+					&tdes->topops.
+					stack[tdes->topops.last].posp_lsa,
+					tdes);
+
+      log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
+		       LOG_COMMIT_TOPOPE_WITH_POSTPONE);
+      LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
+      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
+      if (tdes->topops.last < 0)
+	{
+	  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+	}
+
+      /*
+       * The rest of the transaction will be aborted using the recovery undo
+       * process.
+       */
+    }
+}
+
+/*
  * log_recovery_finish_all_postpone - FINISH COMMITTING TRANSACTIONS WITH
  *                                   UNFINISH POSTPONE ACTIONS
  *
@@ -4649,97 +4769,44 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 {
   int i;
   int save_tran_index;
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA first_postpone_to_apply;
+  int save_thread_type = 0;
+  TRANID trid;
+  LOG_TDES *tdes = NULL;	/* Transaction descriptor */
+  VACUUM_WORKER *worker = NULL;
 
   /* Finish committing transactions with unfinished postpone actions */
+  thread_p = thread_p != NULL ? thread_p : thread_get_thread_entry_info ();
 
   save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
       tdes = LOG_FIND_TDES (i);
-      if (tdes != NULL && tdes->trid != NULL_TRANID
-	  && (tdes->state == TRAN_UNACTIVE_WILL_COMMIT
-	      || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
-	      || tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
-	      || tdes->state == TRAN_UNACTIVE_COMMITTED))
+      if (tdes == NULL || tdes->trid == NULL_TRANID)
 	{
-	  LSA_SET_NULL (&first_postpone_to_apply);
-
-	  LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
-
-	  if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT
-	      || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-	    {
-	      /*
-	       * The transaction was the one that was committing
-	       */
-	      log_recovery_find_first_postpone (thread_p,
-						&first_postpone_to_apply,
-						&tdes->posp_nxlsa, tdes);
-
-	      log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
-			       LOG_COMMIT_WITH_POSTPONE);
-	      /*
-	       * Are there any postpone client actions that need to be done at the
-	       * client machine ?
-	       */
-	      if (!LSA_ISNULL (&tdes->client_posp_lsa))
-		{
-		  log_append_commit_client_loose_ends (thread_p, tdes);
-		  /*
-		   * Now the client transaction manager should request the postpone
-		   * actions until all of them become exhausted.
-		   */
-		}
-	      else if (tdes->coord == NULL)
-		{		/* If this is a local transaction */
-		  (void) log_complete (thread_p, tdes, LOG_COMMIT,
-				       LOG_DONT_NEED_NEWTRID);
-		  logtb_free_tran_index (thread_p, tdes->tran_index);
-		}
-	    }
-	  else if (tdes->state == TRAN_UNACTIVE_COMMITTED)
-	    {
-	      if (tdes->coord == NULL)
-		{
-		  (void) log_complete (thread_p, tdes, LOG_COMMIT,
-				       LOG_DONT_NEED_NEWTRID);
-		  logtb_free_tran_index (thread_p, tdes->tran_index);
-		}
-	    }
-	  else
-	    {
-	      /*
-	       * A top system operation of the transaction was the one that was
-	       * committing
-	       */
-	      log_recovery_find_first_postpone (thread_p,
-						&first_postpone_to_apply,
-						&tdes->topops.
-						stack[tdes->topops.
-						      last].posp_lsa, tdes);
-
-	      log_do_postpone (thread_p, tdes,
-			       &first_postpone_to_apply,
-			       LOG_COMMIT_TOPOPE_WITH_POSTPONE);
-	      LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
-	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-	      LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
-	      if (tdes->topops.last < 0)
-		{
-		  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-		}
-	      /*
-	       * The rest of the transaction will be aborted using the recovery undo
-	       * process
-	       */
-	    }
+	  continue;
 	}
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
+      log_recovery_finish_postpone (thread_p, tdes);
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
     }
-
-  LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
+  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID;
+       trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
+    {
+      /* Convert thread to vacuum worker */
+      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
+      if (worker->state != VACUUM_WORKER_STATE_RECOVERY)
+	{
+	  /* Nothing to do */
+	  continue;
+	}
+      VACUUM_CONVERT_THREAD_TO_VACUUM_WORKER (thread_p, worker,
+					      save_thread_type);
+      tdes = worker->tdes;
+      log_recovery_finish_postpone (thread_p, tdes);
+      /* Restore thread */
+      VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
+    }
 }
 
 /*
@@ -4769,11 +4836,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   LOG_LSA rcv_lsa;		/* Address of redo log record */
   LOG_LSA prev_tranlsa;		/* prev LSA of transaction */
   LOG_TDES *tdes;		/* Transaction descriptor */
-  int last_tranlogrec;		/* Is this last log record ? */
   int tran_index;
   int data_header_size = 0;
   LOG_ZIP *undo_unzip_ptr = NULL;
   bool is_mvcc_op;
+  VACUUM_WORKER *worker = NULL;
+  TRANID trid;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -4816,6 +4884,17 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
+  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID;
+       trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
+    {
+      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
+      if (worker->state == VACUUM_WORKER_STATE_RECOVERY
+	  && LSA_ISNULL (&worker->tdes->undo_nxlsa))
+	{
+	  /* Nothing to recover for this worker */
+	  vacuum_rv_finish_worker_recovery (thread_p, trid);
+	}
+    }
 
   /*
    * GO BACKWARDS, undoing records
@@ -4855,23 +4934,26 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 	  LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
 
-	  tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
-	  if (tran_index == NULL_TRAN_INDEX)
+	  if (LOG_IS_VACUUM_WORKER_TRANID (log_rec->trid))
 	    {
-#if defined(CUBRID_DEBUG)
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_undo: SYSTEM ERROR for"
-			    " log located at %lld|%d\n",
-			    (long long int) log_lsa.pageid, log_lsa.offset);
-#endif /* CUBRID_DEBUG */
-	      logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
+	      worker = vacuum_rv_get_worker_by_trid (thread_p, log_rec->trid);
+	      if (worker->state == VACUUM_WORKER_STATE_RECOVERY)
+		{
+		  tdes = worker->tdes;
+		}
+	      else
+		{
+		  /* State is wrong */
+		  assert (false);
+		  tdes = NULL;
+		}
 	    }
 	  else
 	    {
-	      tdes = LOG_FIND_TDES (tran_index);
-	      if (tdes == NULL)
+	      /* Active worker transaction */
+	      tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
+	      if (tran_index == NULL_TRAN_INDEX)
 		{
-		  /* This looks like a system error in the analysis phase */
 #if defined(CUBRID_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
 				"log_recovery_undo: SYSTEM ERROR for"
@@ -4880,6 +4962,22 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 				log_lsa.offset);
 #endif /* CUBRID_DEBUG */
 		  logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
+		}
+	      else
+		{
+		  tdes = LOG_FIND_TDES (tran_index);
+		  if (tdes == NULL)
+		    {
+		      /* This looks like a system error in the analysis phase */
+#if defined(CUBRID_DEBUG)
+		      er_log_debug (ARG_FILE_LINE,
+				    "log_recovery_undo: SYSTEM ERROR for"
+				    " log located at %lld|%d\n",
+				    (long long int) log_lsa.pageid,
+				    log_lsa.offset);
+#endif /* CUBRID_DEBUG */
+		      logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
+		    }
 		}
 	    }
 
@@ -4898,14 +4996,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		   * The transaction was active at the time of the crash. The
 		   * transaction is unilaterally aborted by the system
 		   */
-		  if (prev_tranlsa.pageid == NULL_PAGEID)
-		    {
-		      last_tranlogrec = true;
-		    }
-		  else
-		    {
-		      last_tranlogrec = false;
-		    }
 
 		  if (log_rec->type == LOG_MVCC_UNDOREDO_DATA
 		      || log_rec->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
@@ -4976,33 +5066,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr,
 				      rcvindex, &rcv_vpid, &rcv, &rcv_lsa,
 				      tdes, undo_unzip_ptr);
-
-		  /* Is this the end of the transaction ? */
-		  if (last_tranlogrec == true)
-		    {
-		      /* Are they any loose ends to be done in the client ? */
-		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
-			{
-			  log_append_abort_client_loose_ends (thread_p, tdes);
-			  /*
-			   * Now the client transaction manager should request all
-			   * client undo actions on the client machine
-			   */
-			}
-		      else
-			{
-			  if (tdes->mvcc_info != NULL)
-			    {
-			      /* Clear MVCCID */
-			      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-			    }
-
-			  (void) log_complete (thread_p, tdes, LOG_ABORT,
-					       LOG_DONT_NEED_NEWTRID);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
-			}
-		    }
 		  break;
 
 		case LOG_MVCC_UNDO_DATA:
@@ -5015,14 +5078,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		   * The transaction was active at the time of the crash. The
 		   * transaction is unilaterally aborted by the system
 		   */
-		  if (prev_tranlsa.pageid == NULL_PAGEID)
-		    {
-		      last_tranlogrec = true;
-		    }
-		  else
-		    {
-		      last_tranlogrec = false;
-		    }
 
 		  /* Get the DATA HEADER */
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER),
@@ -5081,33 +5136,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr,
 				      rcvindex, &rcv_vpid, &rcv, &rcv_lsa,
 				      tdes, undo_unzip_ptr);
-
-		  /* Is this the end of the transaction ? */
-		  if (last_tranlogrec == true)
-		    {
-		      /* Are they any loose ends to be done in the client ? */
-		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
-			{
-			  log_append_abort_client_loose_ends (thread_p, tdes);
-			  /*
-			   * Now the client transaction manager should request all
-			   * client undo actions on the client machine
-			   */
-			}
-		      else
-			{
-			  if (tdes->mvcc_info != NULL)
-			    {
-			      /* Clear MVCCID */
-			      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-			    }
-
-			  (void) log_complete (thread_p, tdes, LOG_ABORT,
-					       LOG_DONT_NEED_NEWTRID);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
-			}
-		    }
 		  break;
 
 		case LOG_CLIENT_NAME:
@@ -5125,40 +5153,14 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_UNLOCK_ABORT:
 		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_DUMMY_OVF_RECORD:
-		  /* Not for UNDO .. Go to previous record */
-
-		  /* Is this the end of the transaction ? */
-		  if (LSA_ISNULL (&prev_tranlsa))
-		    {
-		      /* Are there any loose ends to be done in the client ? */
-		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
-			{
-			  log_append_abort_client_loose_ends (thread_p, tdes);
-			  /*
-			   * Now the client transaction manager should request all
-			   * client undo actions on the client machine
-			   */
-			}
-		      else
-			{
-			  if (tdes->mvcc_info != NULL)
-			    {
-			      /* Clear MVCCID */
-			      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-			    }
-
-			  (void) log_complete (thread_p, tdes, LOG_ABORT,
-					       LOG_DONT_NEED_NEWTRID);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
-			}
-		    }
+		  /* Not for UNDO ... */
+		  /* Break switch to go to previous record */
 		  break;
 
 		case LOG_COMPENSATE:
 		  /* Only for REDO .. Go to next undo record
 		   * Need to read the compensating record to set the next
-		   * undo address
+		   * undo address.
 		   */
 
 		  /* Get the DATA HEADER */
@@ -5171,36 +5173,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  compensate =
 		    (struct log_compensate *) ((char *) log_pgptr->area +
 					       log_lsa.offset);
-		  /* Is this the end of the transaction ? */
-		  if (LSA_ISNULL (&compensate->undo_nxlsa))
-		    {
-		      /* Are there any loose ends to be done in the client ? */
-		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
-			{
-			  log_append_abort_client_loose_ends (thread_p, tdes);
-			  /*
-			   * Now the client transaction manager should request all
-			   * client undo actions on the client machine
-			   */
-			}
-		      else
-			{
-			  if (tdes->mvcc_info != NULL)
-			    {
-			      /* Clear MVCCID */
-			      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-			    }
-
-			  (void) log_complete (thread_p, tdes, LOG_ABORT,
-					       LOG_DONT_NEED_NEWTRID);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
-			}
-		    }
-		  else
-		    {
-		      LSA_COPY (&prev_tranlsa, &compensate->undo_nxlsa);
-		    }
+		  LSA_COPY (&prev_tranlsa, &compensate->undo_nxlsa);
 		  break;
 
 		case LOG_LCOMPENSATE:
@@ -5220,37 +5193,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    ((struct log_logical_compensate *) ((char *) log_pgptr->
 							area +
 							log_lsa.offset));
-
-		  /* Is this the end of the transaction ? */
-		  if (LSA_ISNULL (&logical_comp->undo_nxlsa))
-		    {
-		      /* Are there any loose ends to be done in the client ? */
-		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
-			{
-			  log_append_abort_client_loose_ends (thread_p, tdes);
-			  /*
-			   * Now the client transaction manager should request all
-			   * client undo actions on the client machine
-			   */
-			}
-		      else
-			{
-			  if (tdes->mvcc_info != NULL)
-			    {
-			      /* Clear MVCCID */
-			      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-			    }
-
-			  (void) log_complete (thread_p, tdes, LOG_ABORT,
-					       LOG_DONT_NEED_NEWTRID);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
-			}
-		    }
-		  else
-		    {
-		      LSA_COPY (&prev_tranlsa, &logical_comp->undo_nxlsa);
-		    }
+		  LSA_COPY (&prev_tranlsa, &logical_comp->undo_nxlsa);
 		  break;
 
 		case LOG_COMMIT_TOPOPE:
@@ -5270,36 +5213,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  top_result =
 		    ((struct log_topop_result *) ((char *) log_pgptr->area +
 						  log_lsa.offset));
-		  /* Is this the end of the transaction ? */
-		  if (LSA_ISNULL (&top_result->lastparent_lsa))
-		    {
-		      /* Are there any loose ends to be done in the client ? */
-		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
-			{
-			  log_append_abort_client_loose_ends (thread_p, tdes);
-			  /*
-			   * Now the client transaction manager should request all
-			   * client undo actions on the client machine
-			   */
-			}
-		      else
-			{
-			  if (tdes->mvcc_info != NULL)
-			    {
-			      /* Clear MVCCID */
-			      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-			    }
-
-			  (void) log_complete (thread_p, tdes, LOG_ABORT,
-					       LOG_DONT_NEED_NEWTRID);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
-			}
-		    }
-		  else
-		    {
-		      LSA_COPY (&prev_tranlsa, &top_result->lastparent_lsa);
-		    }
+		  LSA_COPY (&prev_tranlsa, &top_result->lastparent_lsa);
 		  break;
 
 		case LOG_RUN_POSTPONE:
@@ -5344,7 +5258,15 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  (void) log_complete (thread_p, tdes, LOG_ABORT,
 				       LOG_DONT_NEED_NEWTRID);
-		  logtb_free_tran_index (thread_p, tran_index);
+		  if (LOG_IS_VACUUM_WORKER_TRANID (log_rec->trid))
+		    {
+		      vacuum_rv_finish_worker_recovery (thread_p,
+							log_rec->trid);
+		    }
+		  else
+		    {
+		      logtb_free_tran_index (thread_p, tran_index);
+		    }
 		  tdes = NULL;
 		  break;
 
@@ -5371,7 +5293,15 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  (void) log_complete (thread_p, tdes, LOG_ABORT,
 				       LOG_DONT_NEED_NEWTRID);
-		  logtb_free_tran_index (thread_p, tran_index);
+		  if (LOG_IS_VACUUM_WORKER_TRANID (log_rec->trid))
+		    {
+		      vacuum_rv_finish_worker_recovery (thread_p,
+							log_rec->trid);
+		    }
+		  else
+		    {
+		      logtb_free_tran_index (thread_p, tran_index);
+		    }
 		  tdes = NULL;
 		  break;
 		}
@@ -5379,7 +5309,48 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	      /* Just in case, it was changed */
 	      if (tdes != NULL)
 		{
-		  LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
+		  /* Is this the end of transaction? */
+		  if (LSA_ISNULL (&prev_tranlsa))
+		    {
+		      /* Are there any loose ends to be done in the client ?
+		       */
+		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
+			{
+			  assert (!LOG_IS_VACUUM_WORKER_TRANID
+				  (log_rec->trid));
+			  log_append_abort_client_loose_ends (thread_p, tdes);
+			  /*
+			   * Now the client transaction manager should request
+			   * all client undo actions on the client machine.
+			   */
+			}
+		      else
+			{
+			  if (tdes->mvcc_info != NULL)
+			    {
+			      /* Clear MVCCID */
+			      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
+			    }
+			  (void) log_complete (thread_p, tdes, LOG_ABORT,
+					       LOG_DONT_NEED_NEWTRID);
+			  if (LOG_IS_VACUUM_WORKER_TRANID (log_rec->trid))
+			    {
+			      vacuum_rv_finish_worker_recovery (thread_p,
+								log_rec->
+								trid);
+			    }
+			  else
+			    {
+			      logtb_free_tran_index (thread_p, tran_index);
+			      tdes = NULL;
+			    }
+			}
+		    }
+		  else
+		    {
+		      /* Update transaction next undo LSA */
+		      LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
+		    }
 		}
 	    }
 
@@ -6645,8 +6616,8 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 
   /* Recover vacuum data information */
   if (LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa)
-      || (VACUUM_GET_LOG_BLOCKID (log_Gl.hdr.mvcc_op_log_lsa.pageid)
-	  != VACUUM_GET_LOG_BLOCKID (mvcc_op_lsa->pageid)))
+      || (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid)
+	  != vacuum_get_log_blockid (mvcc_op_lsa->pageid)))
     {
       /* A new block is started */
       if (!LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
