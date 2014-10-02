@@ -602,7 +602,7 @@ static LK_RES_KEY lock_create_search_key (OID * oid, OID * class_oid,
 					  BTID * btid);
 
 /* object lock entry */
-static void *lock_alloc_entry ();
+static void *lock_alloc_entry (void);
 static int lock_dealloc_entry (void *res);
 static int lock_init_entry (void *res);
 static int lock_uninit_entry (void *res);
@@ -625,7 +625,7 @@ LF_ENTRY_DESCRIPTOR obj_lock_entry_desc = {
 /*
  * Object lock resource
  */
-static void *lock_alloc_resource ();
+static void *lock_alloc_resource (void);
 static int lock_dealloc_resource (void *res);
 static int lock_init_resource (void *res);
 static int lock_uninit_resource (void *res);
@@ -711,7 +711,7 @@ lock_create_search_key (OID * oid, OID * class_oid, BTID * btid)
 }
 
 static void *
-lock_alloc_entry ()
+lock_alloc_entry (void)
 {
   return malloc (sizeof (LK_ENTRY));
 }
@@ -764,7 +764,7 @@ lock_uninit_entry (void *entry)
 }
 
 static void *
-lock_alloc_resource ()
+lock_alloc_resource (void)
 {
   LK_RES *res_ptr = (LK_RES *) malloc (sizeof (LK_RES));
   if (res_ptr != NULL)
@@ -1410,7 +1410,8 @@ lock_remove_resource (LK_RES * res_ptr)
   int success = 0, rc;
 
   rc =
-    lf_hash_delete (t_entry, &lk_Gl.obj_hash_table, &res_ptr->key, &success);
+    lf_hash_delete (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key,
+		    &success);
   if (!success)
     {
       /* this should not happen, as the hash entry is mutex protected and no
@@ -3422,8 +3423,10 @@ lock_internal_hold_lock_object_instant (int tran_index, const OID * oid,
     }
 
   /* search hash table */
-  search_key = lock_create_search_key (oid, class_oid, NULL);
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, &search_key, &res_ptr);
+  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid, NULL);
+  rv =
+    lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key,
+		  (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       return rv;
@@ -3646,10 +3649,11 @@ start:
     }
 
   /* find or add the lockable object in the lock table */
-  search_key = lock_create_search_key (oid, class_oid, btid);
+  search_key =
+    lock_create_search_key ((OID *) oid, (OID *) class_oid, (BTID *) btid);
   rv =
-    lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table, &search_key,
-			    &res_ptr);
+    lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table,
+			    (void *) &search_key, (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       return rv;
@@ -8682,7 +8686,7 @@ lock_find_tran_hold_entry (int tran_index, const OID * oid, bool is_class)
     }
 
   /* search hash */
-  search_key = lock_create_search_key (oid, NULL, NULL);
+  search_key = lock_create_search_key ((OID *) oid, NULL, NULL);
   if (search_key.type != LOCK_RESOURCE_ROOT_CLASS)
     {
       /* override type; we don't insert here, so class_oid is neither passed to
@@ -8690,7 +8694,9 @@ lock_find_tran_hold_entry (int tran_index, const OID * oid, bool is_class)
       search_key.type =
 	(is_class ? LOCK_RESOURCE_CLASS : LOCK_RESOURCE_INSTANCE);
     }
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, &search_key, &res_ptr);
+  rv =
+    lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key,
+		  (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       return NULL;
@@ -11145,8 +11151,10 @@ lock_internal_hold_object_instant_get_granted_mode (int tran_index,
     }
 
   /* check if the lockable object is in object lock table */
-  search_key = lock_create_search_key (oid, class_oid, NULL);
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, &search_key, &res_ptr);
+  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid, NULL);
+  rv =
+    lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key,
+		  (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       return LK_NOTGRANTED_DUE_ERROR;
@@ -11391,10 +11399,11 @@ start:
     }
 
   /* check if the lockable object is in object lock table */
-  search_key = lock_create_search_key (oid, class_oid, btid);
+  search_key =
+    lock_create_search_key ((OID *) oid, (OID *) class_oid, (BTID *) btid);
   rv =
-    lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table, &search_key,
-			    &res_ptr);
+    lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table,
+			    (void *) &search_key, (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       return LK_NOTGRANTED_DUE_ERROR;
@@ -12628,8 +12637,10 @@ lock_get_total_holders_mode (const OID * oid, const OID * class_oid)
     OID_EQ (class_oid, oid_Root_class_oid);
 
   /* search hash */
-  search_key = lock_create_search_key (oid, class_oid, NULL);
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, &search_key, &res_ptr);
+  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid, NULL);
+  rv =
+    lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key,
+		  (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       /* hopefully will never happen */
@@ -12690,8 +12701,10 @@ lock_get_all_except_transaction (const OID * oid, const OID * class_oid,
     OID_EQ (class_oid, oid_Root_class_oid);
 
   /* search hash */
-  search_key = lock_create_search_key (oid, class_oid, NULL);
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, &search_key, &res_ptr);
+  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid, NULL);
+  rv =
+    lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key,
+		  (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       /* hopefully will never happen */

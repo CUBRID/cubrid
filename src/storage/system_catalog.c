@@ -197,7 +197,7 @@ struct catalog_entry
 };
 
 /* handling functions for catalog key and entry */
-static void *catalog_entry_alloc ();
+static void *catalog_entry_alloc (void);
 static int catalog_entry_free (void *ent);
 static int catalog_entry_init (void *ent);
 static int catalog_entry_uninit (void *ent);
@@ -1020,7 +1020,7 @@ catalog_free_key_list (CATALOG_CLASS_ID_LIST * class_id_list)
  *   returns: new pointer or NULL on error
  */
 static void *
-catalog_entry_alloc ()
+catalog_entry_alloc (void)
 {
   return malloc (sizeof (CATALOG_ENTRY));
 }
@@ -2073,8 +2073,8 @@ catalog_delete_key (OID * class_id_p, REPR_ID repr_id)
   catalog_key.slot_id = class_id_p->slotid;
   catalog_key.repr_id = repr_id;
 
-  if (lf_hash_delete (t_entry, &catalog_Hash_table, &catalog_key, NULL)
-      != NO_ERROR)
+  if (lf_hash_delete
+      (t_entry, &catalog_Hash_table, (void *) &catalog_key, NULL) != NO_ERROR)
     {
       assert (false);
     }
@@ -2392,8 +2392,8 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
   catalog_key.repr_id = repr_item_p->repr_id;
 
   if (lf_hash_find
-      (t_entry, &catalog_Hash_table, &catalog_key,
-       &catalog_value_p) != NO_ERROR)
+      (t_entry, &catalog_Hash_table, (void *) &catalog_key,
+       (void **) &catalog_value_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2447,8 +2447,9 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
       catalog_key.r_slot_id = repr_item_p->slot_id;
 
       /* insert value */
-      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, &catalog_key,
-				  &catalog_value_p) != NO_ERROR)
+      if (lf_hash_find_or_insert
+	  (t_entry, &catalog_Hash_table, (void *) &catalog_key,
+	   (void **) &catalog_value_p) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}

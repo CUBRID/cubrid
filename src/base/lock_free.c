@@ -49,8 +49,9 @@ static bool tran_systems_initialized = false;
 /*
  * Macro definitions
  */
-#define OF_GET_REF(p,o)	    (void * volatile *) (((char *)(p)) + (o))
-#define OF_GET_PTR(p,o)	    (*OF_GET_REF (p,o))
+#define OF_GET_REF(p,o)		(void * volatile *) (((char *)(p)) + (o))
+#define OF_GET_PTR(p,o)		(void *) (((char *)(p)) + (o))
+#define OF_GET_PTR_DEREF(p,o)	(*OF_GET_REF (p,o))
 
 /*
  * lf_callback_vpid_hash () - hash a VPID
@@ -59,9 +60,10 @@ static bool tran_systems_initialized = false;
  *   htsize(in): hash table size
  */
 unsigned int
-lf_callback_vpid_hash (VPID * vpid, int htsize)
+lf_callback_vpid_hash (void *vpid, int htsize)
 {
-  return ((vpid->pageid | ((unsigned int) vpid->volid) << 24) % htsize);
+  VPID *lvpid = (VPID *) vpid;
+  return ((lvpid->pageid | ((unsigned int) lvpid->volid) << 24) % htsize);
 }
 
 /*
@@ -71,10 +73,12 @@ lf_callback_vpid_hash (VPID * vpid, int htsize)
  *   vpid_2(in): second vpid
  */
 int
-lf_callback_vpid_compare (VPID * vpid_1, VPID * vpid_2)
+lf_callback_vpid_compare (void *vpid_1, void *vpid_2)
 {
-  return !((vpid_1->pageid == vpid_2->pageid)
-	   && (vpid_1->volid == vpid_2->volid));
+  VPID *lvpid_1 = (VPID *) vpid_1;
+  VPID *lvpid_2 = (VPID *) vpid_2;
+  return !((lvpid_1->pageid == lvpid_2->pageid)
+	   && (lvpid_1->volid == lvpid_2->volid));
 }
 
 /*
@@ -84,10 +88,10 @@ lf_callback_vpid_compare (VPID * vpid_1, VPID * vpid_2)
  *   dest(in): destination to copy to
  */
 int
-lf_callback_vpid_copy (VPID * src, VPID * dest)
+lf_callback_vpid_copy (void *src, void *dest)
 {
-  dest->pageid = src->pageid;
-  dest->volid = src->volid;
+  ((VPID *) dest)->pageid = ((VPID *) src)->pageid;
+  ((VPID *) dest)->volid = ((VPID *) src)->volid;
 
   return NO_ERROR;
 }
@@ -183,7 +187,7 @@ lf_tran_system_destroy (LF_TRAN_SYSTEM * sys, LF_ENTRY_DESCRIPTOR * edesc)
 	  void *curr = sys->entries[i].retired_list, *next = NULL;
 	  while (curr != NULL)
 	    {
-	      next = (void *) OF_GET_PTR (curr, edesc->of_local_next);
+	      next = (void *) OF_GET_PTR_DEREF (curr, edesc->of_local_next);
 	      edesc->f_free (curr);
 	      curr = next;
 	    }
@@ -472,7 +476,6 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&free_sort_list_Ts, NULL);
 
   tran_systems_initialized = false;
-  return NO_ERROR;
 }
 
 /*
@@ -491,7 +494,7 @@ lf_stack_push (void **top, void *entry, LF_ENTRY_DESCRIPTOR * edesc)
   do
     {
       rtop = *((void *volatile *) top);
-      OF_GET_PTR (entry, edesc->of_local_next) = rtop;
+      OF_GET_PTR_DEREF (entry, edesc->of_local_next) = rtop;
     }
   while (!ATOMIC_CAS_ADDR (top, rtop, entry));
 
@@ -527,11 +530,11 @@ lf_stack_pop (void **top, LF_ENTRY_DESCRIPTOR * edesc)
 	  return NULL;
 	}
 
-      prev = OF_GET_PTR (rtop, edesc->of_local_next);	/* MARK */
+      prev = OF_GET_PTR_DEREF (rtop, edesc->of_local_next);	/* MARK */
       if (ATOMIC_CAS_ADDR (top, rtop, prev))
 	{
 	  /* clear link */
-	  OF_GET_PTR (rtop, edesc->of_local_next) = NULL;
+	  OF_GET_PTR_DEREF (rtop, edesc->of_local_next) = NULL;
 
 	  /* return success */
 	  return rtop;
@@ -571,7 +574,7 @@ lf_freelist_alloc_block (LF_FREELIST * freelist)
 	}
 
       /* of_prev of new entry points to tail; new entry becomes tail */
-      OF_GET_PTR (new_entry, edesc->of_local_next) = tail;
+      OF_GET_PTR_DEREF (new_entry, edesc->of_local_next) = tail;
       tail = new_entry;
 
       /* store first entry as head */
@@ -585,7 +588,7 @@ lf_freelist_alloc_block (LF_FREELIST * freelist)
   do
     {
       top = VOLATILE_ACCESS (freelist->available, void *);
-      OF_GET_PTR (head, edesc->of_local_next) = top;
+      OF_GET_PTR_DEREF (head, edesc->of_local_next) = top;
     }
   while (!ATOMIC_CAS_ADDR (&freelist->available, top, tail));
 
@@ -667,7 +670,7 @@ lf_freelist_destroy (LF_FREELIST * freelist)
       do
 	{
 	  /* save next entry */
-	  next = OF_GET_PTR (entry, edesc->of_local_next);
+	  next = OF_GET_PTR_DEREF (entry, edesc->of_local_next);
 
 	  /* discard current entry */
 	  edesc->f_free (entry);
@@ -703,7 +706,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
     {
       entry = tran_entry->temp_entry;
       tran_entry->temp_entry = NULL;
-      OF_GET_PTR (entry, edesc->of_next) = NULL;
+      OF_GET_PTR_DEREF (entry, edesc->of_next) = NULL;
       return entry;
     }
 
@@ -734,7 +737,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	    }
 
 	  /* initialize next */
-	  OF_GET_PTR (entry, edesc->of_next) = NULL;
+	  OF_GET_PTR_DEREF (entry, edesc->of_next) = NULL;
 
 	  /* done! */
 	  return entry;
@@ -800,7 +803,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist,
     }
 
   /* set transaction index of entry */
-  tran_id = (UINT64 *) OF_GET_REF (entry, edesc->of_del_tran_id);
+  tran_id = (UINT64 *) OF_GET_PTR (entry, edesc->of_del_tran_id);
   *tran_id = tran_entry->transaction_id;
 
   /* push to local list */
@@ -857,12 +860,13 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 
   /* walk private list and unlink old entries */
   for (list = tran_entry->retired_list; list != NULL;
-       list = OF_GET_PTR (list, edesc->of_local_next))
+       list = OF_GET_PTR_DEREF (list, edesc->of_local_next))
     {
 
       if (aval_first == NULL)
 	{
-	  UINT64 *del_id = OF_GET_REF (list, edesc->of_del_tran_id);
+	  UINT64 *del_id =
+	    (UINT64 *) OF_GET_PTR (list, edesc->of_del_tran_id);
 	  assert (del_id != NULL);
 
 	  if (*del_id < min_tran_id)
@@ -892,7 +896,7 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
       if (list_trailer != NULL)
 	{
 	  /* unlink found part of list */
-	  OF_GET_PTR (list_trailer, edesc->of_local_next) = NULL;
+	  OF_GET_PTR_DEREF (list_trailer, edesc->of_local_next) = NULL;
 	}
       else
 	{
@@ -904,7 +908,7 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
       do
 	{
 	  old_head = VOLATILE_ACCESS (freelist->available, void *);
-	  OF_GET_PTR (aval_last, edesc->of_local_next) = old_head;
+	  OF_GET_PTR_DEREF (aval_last, edesc->of_local_next) = old_head;
 	}
       while (!ATOMIC_CAS_ADDR (&freelist->available, old_head, aval_first));
 
@@ -949,14 +953,14 @@ restart_search:
   /* search */
   while (curr != NULL)
     {
-      if (edesc->f_key_cmp (key, OF_GET_REF (curr, edesc->of_key)) == 0)
+      if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	{
 	  /* found! */
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_REF (curr, edesc->of_mutex);
+		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      pthread_mutex_lock (entry_mutex);
 	    }
 
@@ -997,7 +1001,7 @@ lf_io_list_find_or_insert (void **list_p, void *new_entry,
   assert (new_entry != NULL && entry != NULL);
 
   /* extract key from new entry */
-  key = OF_GET_REF (new_entry, edesc->of_key);
+  key = OF_GET_PTR (new_entry, edesc->of_key);
 
   /* by default, not found */
   (*entry) = NULL;
@@ -1012,14 +1016,14 @@ restart_search:
       /* is this the droid we are looking for? */
       if (curr != NULL)
 	{
-	  if (edesc->f_key_cmp (key, OF_GET_REF (curr, edesc->of_key)) == 0)
+	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	    {
 	      /* found! */
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
 		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_REF (curr, edesc->of_mutex);
+		    (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  pthread_mutex_lock (entry_mutex);
 		}
 
@@ -1039,7 +1043,7 @@ restart_search:
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_REF ((*entry), edesc->of_mutex);
+		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 	      pthread_mutex_lock (entry_mutex);
 	    }
 
@@ -1050,7 +1054,7 @@ restart_search:
 		{
 		  /* link failed, unlock mutex */
 		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_REF ((*entry),
+		    (pthread_mutex_t *) OF_GET_PTR ((*entry),
 						    edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
@@ -1105,14 +1109,14 @@ restart_search:
   /* search */
   while (curr != NULL)
     {
-      if (edesc->f_key_cmp (key, OF_GET_REF (curr, edesc->of_key)) == 0)
+      if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	{
 	  /* found! */
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_REF (curr, edesc->of_mutex);
+		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      pthread_mutex_lock (entry_mutex);
 
 	      /* mutex has been locked, no need to keep transaction */
@@ -1121,7 +1125,7 @@ restart_search:
 		  return ER_FAILED;
 		}
 
-	      if (ADDR_HAS_MARK (OF_GET_PTR (curr, edesc->of_next)))
+	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		{
 		  /* while waiting for lock, somebody else deleted the
 		     entry; restart the search */
@@ -1200,7 +1204,7 @@ restart_search:
       /* is this the droid we are looking for? */
       if (curr != NULL)
 	{
-	  if (edesc->f_key_cmp (key, OF_GET_REF (curr, edesc->of_key)) == 0)
+	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	    {
 	      if ((*entry) != NULL)
 		{
@@ -1217,7 +1221,7 @@ restart_search:
 		{
 		  /* entry has a mutex protecting it's members; lock it */
 		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_REF (curr, edesc->of_mutex);
+		    (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  pthread_mutex_lock (entry_mutex);
 
 		  /* mutex has been locked, no need to keep transaction alive */
@@ -1226,7 +1230,7 @@ restart_search:
 		      return ER_FAILED;
 		    }
 
-		  if (ADDR_HAS_MARK (OF_GET_PTR (curr, edesc->of_next)))
+		  if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		    {
 		      /* while waiting for lock, somebody else deleted the
 		         entry; restart the search */
@@ -1247,7 +1251,7 @@ restart_search:
 		}
 
 	      assert (edesc->
-		      f_key_cmp (key, OF_GET_REF (curr, edesc->of_key)) == 0);
+		      f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0);
 	      (*entry) = curr;
 	      return NO_ERROR;
 	    }
@@ -1278,7 +1282,7 @@ restart_search:
 
 	      /* set it's key */
 	      if (edesc->f_key_copy (key,
-				     OF_GET_REF (*entry,
+				     OF_GET_PTR (*entry,
 						 edesc->of_key)) != NO_ERROR)
 		{
 		  return ER_FAILED;
@@ -1289,7 +1293,7 @@ restart_search:
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_REF ((*entry), edesc->of_mutex);
+		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 	      pthread_mutex_lock (entry_mutex);
 	    }
 
@@ -1300,7 +1304,7 @@ restart_search:
 		{
 		  /* link failed, unlock mutex */
 		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_REF ((*entry),
+		    (pthread_mutex_t *) OF_GET_PTR ((*entry),
 						    edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
@@ -1406,7 +1410,7 @@ restart_search:
     {
       if (curr != NULL)
 	{
-	  if (edesc->f_key_cmp (key, OF_GET_REF (curr, edesc->of_key)) == 0)
+	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	    {
 	      /* found an entry with the same key */
 	      if (edesc->f_duplicate != NULL)
@@ -1446,7 +1450,7 @@ restart_search:
 	{
 	  /* end of bucket, we must insert */
 	  /* set entry's key */
-	  if (edesc->f_key_copy (key, OF_GET_REF (*entry, edesc->of_key)) !=
+	  if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) !=
 	      NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -1456,7 +1460,7 @@ restart_search:
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_REF ((*entry), edesc->of_mutex);
+		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 	      pthread_mutex_lock (entry_mutex);
 	    }
 
@@ -1467,7 +1471,7 @@ restart_search:
 		{
 		  /* link failed, unlock mutex */
 		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_REF ((*entry),
+		    (pthread_mutex_t *) OF_GET_PTR ((*entry),
 						    edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
@@ -1549,7 +1553,7 @@ restart_search:
   while (curr != NULL)
     {
       /* is this the droid we are looking for? */
-      if (edesc->f_key_cmp (key, OF_GET_REF (curr, edesc->of_key)) == 0)
+      if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	{
 	  /* fetch next entry */
 	  next_p = (void **) OF_GET_REF (curr, edesc->of_next);
@@ -1577,7 +1581,7 @@ restart_search:
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE)
 	    {
 	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_REF (curr, edesc->of_mutex);
+		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      pthread_mutex_lock (entry_mutex);
 
 	      /* since we set the mark, nobody else can delete it, so we have
@@ -1591,7 +1595,7 @@ restart_search:
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE)
 		{
 		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_REF (curr, edesc->of_mutex);
+		    (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
 
@@ -1619,7 +1623,7 @@ restart_search:
 	  if (edesc->mutex_flags & LF_EM_FLAG_UNLOCK_AFTER_DELETE)
 	    {
 	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_REF (curr, edesc->of_mutex);
+		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      pthread_mutex_unlock (entry_mutex);
 	    }
 
@@ -1717,7 +1721,7 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist,
       int i;
 
       /* put backbuffer in a "locked" state */
-      for (i = 0; i < hash_size; i++)
+      for (i = 0; i < (int) hash_size; i++)
 	{
 	  table->backbuffer[i] = ADDR_WITH_MARK (NULL);
 	}
@@ -1754,7 +1758,7 @@ lf_hash_destroy (LF_HASH_TABLE * table)
 
 	  while (entry != NULL)
 	    {
-	      next = OF_GET_PTR (entry, table->entry_desc->of_next);
+	      next = OF_GET_PTR_DEREF (entry, table->entry_desc->of_next);
 
 	      if (table->entry_desc->f_uninit != NULL)
 		{
@@ -1993,7 +1997,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
   table->backbuffer = old_buckets;
 
   /* clear bucket buffer, containing remains of old entries marked for delete */
-  for (i = 0; i < table->hash_size; i++)
+  for (i = 0; i < (int) table->hash_size; i++)
     {
       assert (table->buckets[i] == ADDR_WITH_MARK (NULL));
       table->buckets[i] = NULL;
@@ -2003,7 +2007,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
    * on the entries will not be disturbed since the actual deletion is
    * performed when the entries are no longer handled by active transactions
    */
-  for (i = 0; i < table->hash_size; i++)
+  for (i = 0; i < (int) table->hash_size; i++)
     {
       do
 	{
@@ -2013,7 +2017,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 
       while (curr)
 	{
-	  next_p = OF_GET_REF (curr, edesc->of_next);
+	  next_p = (void **) OF_GET_REF (curr, edesc->of_next);
 
 	  /* unlink from hash chain */
 	  do
@@ -2026,7 +2030,8 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 	  if ((edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	      || (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE))
 	    {
-	      mutex_p = OF_GET_REF (curr, edesc->of_mutex);
+	      mutex_p =
+		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 
 	      pthread_mutex_lock (mutex_p);
 	      pthread_mutex_unlock (mutex_p);
@@ -2046,7 +2051,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 	    }
 	  else
 	    {
-	      OF_GET_PTR (ret_tail, edesc->of_local_next) = curr;
+	      OF_GET_PTR_DEREF (ret_tail, edesc->of_local_next) = curr;
 	      ret_tail = curr;
 	      ret_count++;
 	    }
@@ -2067,14 +2072,14 @@ unlock_and_exit:
 	}
 
       for (curr = ret_head; curr != NULL;
-	   curr = OF_GET_PTR (curr, edesc->of_local_next))
+	   curr = OF_GET_PTR_DEREF (curr, edesc->of_local_next))
 	{
 	  UINT64 *del_id =
-	    (UINT64 *) OF_GET_REF (curr, edesc->of_del_tran_id);
+	    (UINT64 *) OF_GET_PTR (curr, edesc->of_del_tran_id);
 	  *del_id = tran->transaction_id;
 	}
 
-      OF_GET_PTR (ret_tail, edesc->of_local_next) = tran->retired_list;
+      OF_GET_PTR_DEREF (ret_tail, edesc->of_local_next) = tran->retired_list;
       tran->retired_list = ret_head;
 
       ATOMIC_INC_32 (&table->freelist->retired_cnt, ret_count);
@@ -2146,12 +2151,12 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	    {
 	      /* follow house rules: lock mutex */
 	      pthread_mutex_t *mx;
-	      mx = OF_GET_REF (it->curr, edesc->of_mutex);
+	      mx = (pthread_mutex_t *) OF_GET_PTR (it->curr, edesc->of_mutex);
 	      pthread_mutex_unlock (mx);
 	    }
 
 	  /* load next entry */
-	  next_p = OF_GET_REF (it->curr, edesc->of_next);
+	  next_p = (void **) OF_GET_REF (it->curr, edesc->of_next);
 	  it->curr = *(void *volatile *) next_p;
 	  it->curr = ADDR_STRIP_MARK (it->curr);
 	}
@@ -2173,7 +2178,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 
 	  /* load next bucket */
 	  it->bucket_index++;
-	  if (it->bucket_index < it->hash_table->hash_size)
+	  if (it->bucket_index < (int) it->hash_table->hash_size)
 	    {
 	      it->curr =
 		VOLATILE_ACCESS (it->hash_table->buckets[it->bucket_index],
@@ -2197,10 +2202,10 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      pthread_mutex_t *mx;
-	      mx = OF_GET_REF (it->curr, edesc->of_mutex);
+	      mx = (pthread_mutex_t *) OF_GET_PTR (it->curr, edesc->of_mutex);
 	      pthread_mutex_lock (mx);
 
-	      if (ADDR_HAS_MARK (OF_GET_PTR (it->curr, edesc->of_next)))
+	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (it->curr, edesc->of_next)))
 		{
 		  /* deleted in the meantime, skip it */
 		  pthread_mutex_unlock (mx);

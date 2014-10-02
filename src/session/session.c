@@ -130,7 +130,7 @@ struct session_state
 };
 
 /* session state manipulation functions */
-static void *session_state_alloc ();
+static void *session_state_alloc (void);
 static int session_state_free (void *st);
 static int session_state_init (void *st);
 static int session_state_uninit (void *st);
@@ -202,7 +202,7 @@ static SESSION_STATE *session_get_session_state (THREAD_ENTRY * thread_p);
  *   returns: new pointer or NULL on error
  */
 static void *
-session_state_alloc ()
+session_state_alloc (void)
 {
   SESSION_STATE *state;
 
@@ -429,7 +429,7 @@ session_key_increment (void *key, void *existing)
 
   if (key == NULL)
     {
-      return NULL;
+      return ER_FAILED;
     }
   else
     {
@@ -559,7 +559,9 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
   key->id = next_session_id;
 
   /* insert new entry into hash table */
-  ret = lf_hash_insert (t_entry, &sessions.sessions_table, key, &session_p);
+  ret =
+    lf_hash_insert (t_entry, &sessions.sessions_table, (void *) key,
+		    (void **) &session_p);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -625,7 +627,9 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
 
   er_log_debug (ARG_FILE_LINE, "removing session %u", key->id);
 
-  error = lf_hash_find (t_entry, &sessions.sessions_table, key, &session_p);
+  error =
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) key,
+		  (void **) &session_p);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
@@ -642,7 +646,9 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
       return ER_SES_SESSION_EXPIRED;
     }
 
-  error = lf_hash_delete (t_entry, &sessions.sessions_table, key, &success);
+  error =
+    lf_hash_delete (t_entry, &sessions.sessions_table, (void *) key,
+		    &success);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
@@ -684,7 +690,9 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
   er_log_debug (ARG_FILE_LINE, "updating timeout for session_id %u\n",
 		key->id);
 
-  error = lf_hash_find (t_entry, &sessions.sessions_table, key, &session_p);
+  error =
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) key,
+		  (void **) &session_p);
   if (error != NO_ERROR)
     {
       return error;
@@ -728,7 +736,9 @@ session_set_session_key (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
   er_log_debug (ARG_FILE_LINE, "set related socket for session_id %u\n",
 		key->id);
 
-  error = lf_hash_find (t_entry, &sessions.sessions_table, key, &session_p);
+  error =
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) key,
+		  (void **) &session_p);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
@@ -775,7 +785,8 @@ session_remove_expired_sessions (struct timeval *timeout)
 	  /* remove previously iterated state; this must be done after we've
 	     iterated over it so we don't hold a mutex */
 	  if (lf_hash_find (t_entry, &sessions.sessions_table,
-			    &prev_state->key, &session_p) != NO_ERROR)
+			    (void *) &prev_state->key,
+			    (void **) &session_p) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -785,7 +796,7 @@ session_remove_expired_sessions (struct timeval *timeout)
 	    }
 
 	  if (lf_hash_delete
-	      (t_entry, &sessions.sessions_table, &prev_state->key,
+	      (t_entry, &sessions.sessions_table, (void *) &prev_state->key,
 	       &success) != NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -2002,7 +2013,9 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
       return ER_FAILED;
     }
 
-  ret = lf_hash_find (t_entry, &sessions.sessions_table, &key, &state_p);
+  ret =
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) &key,
+		  (void **) &state_p);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -2680,7 +2693,9 @@ session_get_session_state (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
-  error = lf_hash_find (t_entry, &sessions.sessions_table, &key, &state_p);
+  error =
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) &key,
+		  (void **) &state_p);
   if (error != NO_ERROR)
     {
       assert (false);

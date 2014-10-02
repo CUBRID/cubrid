@@ -30,9 +30,9 @@
 /*
  * Some common hash, copy and compare functions
  */
-extern unsigned int lf_callback_vpid_hash (VPID * vpid, int htsize);
-extern int lf_callback_vpid_compare (VPID * vpid_1, VPID * vpid_2);
-extern int lf_callback_vpid_copy (VPID * src, VPID * dest);
+extern unsigned int lf_callback_vpid_hash (void *vpid, int htsize);
+extern int lf_callback_vpid_compare (void *vpid_1, void *vpid_2);
+extern int lf_callback_vpid_copy (void *src, void *dest);
 
 /*
  * Volatile access to a variable
@@ -114,7 +114,7 @@ struct lf_entry_descriptor
  * Lock free transaction based memory garbage collector
  */
 #define LF_NULL_TRANSACTION_ID	      ULONG_MAX
-#define LF_TRAN_BITFIELD_WORD_SIZE    (sizeof (unsigned int) * 8)
+#define LF_TRAN_BITFIELD_WORD_SIZE    (int) (sizeof (unsigned int) * 8)
 
 typedef struct lf_tran_system LF_TRAN_SYSTEM;
 typedef struct lf_tran_entry LF_TRAN_ENTRY;

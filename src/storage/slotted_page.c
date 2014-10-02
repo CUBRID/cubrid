@@ -94,10 +94,10 @@ struct spage_save_head
 /*
  * Savings hash table
  */
-static SPAGE_SAVE_HEAD *spage_save_head_alloc ();
-static int spage_save_head_free (SPAGE_SAVE_HEAD * entry_p);
-static int spage_save_head_init (SPAGE_SAVE_HEAD * entry_p);
-static int spage_save_head_uninit (SPAGE_SAVE_HEAD * entry_p);
+static void *spage_save_head_alloc (void);
+static int spage_save_head_free (void *entry_p);
+static int spage_save_head_init (void *entry_p);
+static int spage_save_head_uninit (void *entry_p);
 
 static LF_ENTRY_DESCRIPTOR spage_saving_entry_descriptor = {
   /* signature of SPAGE_SAVE_HEAD */
@@ -255,8 +255,8 @@ static void spage_verify_header (PAGE_PTR page_p);
  *                            object
  *   returns: pointer to new SPAGE_SAVE_HEAD or NULL on error
  */
-static SPAGE_SAVE_HEAD *
-spage_save_head_alloc ()
+static void *
+spage_save_head_alloc (void)
 {
   SPAGE_SAVE_HEAD *entry_p;
 
@@ -266,7 +266,7 @@ spage_save_head_alloc ()
       pthread_mutex_init (&entry_p->mutex, NULL);
     }
 
-  return entry_p;
+  return (void *) entry_p;
 }
 
 /*
@@ -275,7 +275,7 @@ spage_save_head_alloc ()
  *   entry_p(in): entry to deallocate
  */
 static int
-spage_save_head_free (SPAGE_SAVE_HEAD * entry_p)
+spage_save_head_free (void *entry_p)
 {
   free (entry_p);
   return NO_ERROR;
@@ -287,14 +287,16 @@ spage_save_head_free (SPAGE_SAVE_HEAD * entry_p)
  *   entry_p(in): entry to initialize
  */
 static int
-spage_save_head_init (SPAGE_SAVE_HEAD * entry_p)
+spage_save_head_init (void *entry_p)
 {
-  if (entry_p != NULL)
+  SPAGE_SAVE_HEAD *head_p = (SPAGE_SAVE_HEAD *) entry_p;
+
+  if (head_p != NULL)
     {
-      entry_p->vpid.pageid = NULL_PAGEID;
-      entry_p->vpid.volid = NULL_PAGEID;
-      entry_p->first = NULL;
-      entry_p->total_saved = 0;
+      head_p->vpid.pageid = NULL_PAGEID;
+      head_p->vpid.volid = NULL_PAGEID;
+      head_p->first = NULL;
+      head_p->total_saved = 0;
     }
 
   return NO_ERROR;
@@ -306,13 +308,14 @@ spage_save_head_init (SPAGE_SAVE_HEAD * entry_p)
  *   entry_p(in): entry to uninitializa
  */
 static int
-spage_save_head_uninit (SPAGE_SAVE_HEAD * entry_p)
+spage_save_head_uninit (void *entry_p)
 {
+  SPAGE_SAVE_HEAD *head_p = (SPAGE_SAVE_HEAD *) entry_p;
   SPAGE_SAVE_ENTRY *list, *next;
 
-  if (entry_p != NULL)
+  if (head_p != NULL)
     {
-      list = entry_p->first;
+      list = head_p->first;
 
       while (list)
 	{
@@ -426,8 +429,9 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 	    {
 	      int success = 0;
 
-	      if (lf_hash_delete (t_entry, &spage_saving_ht, &head->vpid,
-				  &success) != NO_ERROR)
+	      if (lf_hash_delete
+		  (t_entry, &spage_saving_ht, (void *) &head->vpid,
+		   &success) != NO_ERROR)
 		{
 		  /* we don't have clear operations on this hash table, this
 		     shouldn't happen */
@@ -526,8 +530,8 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
   vpid_p = pgbuf_get_vpid_ptr (page_p);
 
   /* retrieve a hash entry for specified VPID */
-  if (lf_hash_find_or_insert (t_entry, &spage_saving_ht, vpid_p,
-			      &head_p) != NO_ERROR)
+  if (lf_hash_find_or_insert (t_entry, &spage_saving_ht, (void *) vpid_p,
+			      (void **) &head_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -747,7 +751,9 @@ spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
    * Get the saved space held by the head of the save entries. This is
    * the aggregate value of spaces saved on all entries.
    */
-  if (lf_hash_find (t_entry, &spage_saving_ht, vpid_p, &head_p) != NO_ERROR)
+  if (lf_hash_find
+      (t_entry, &spage_saving_ht, (void *) vpid_p,
+       (void **) &head_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -802,7 +808,9 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp,
   SPAGE_SAVE_ENTRY *entry_p;
   SPAGE_SAVE_HEAD *head_p;
 
-  if (lf_hash_find (t_entry, &spage_saving_ht, vpid_p, &head_p) != NO_ERROR)
+  if (lf_hash_find
+      (t_entry, &spage_saving_ht, (void *) vpid_p,
+       (void **) &head_p) != NO_ERROR)
     {
       assert_release (false);
       return;

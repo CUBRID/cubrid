@@ -3829,7 +3829,7 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 	}
       else
 	{
-	  assert (redo_data_length <= sizeof (redo_data_buffer));
+	  assert (redo_data_length <= (int) sizeof (redo_data_buffer));
 	  redo_data_p = redo_data_buffer;
 	  logpb_copy_from_log (thread_p, redo_data_p, redo_data_length,
 			       &log_lsa, log_page_p);

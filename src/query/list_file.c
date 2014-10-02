@@ -180,7 +180,7 @@ static QFILE_LIST_CACHE_ENTRY_POOL qfile_List_cache_entry_pool =
 /* sort list freelist */
 static LF_FREELIST qfile_sort_list_Freelist;
 
-static void *qfile_alloc_sort_list ();
+static void *qfile_alloc_sort_list (void);
 static int qfile_dealloc_sort_list (void *sort_list);
 
 static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
@@ -655,7 +655,7 @@ qfile_allocate_sort_list (THREAD_ENTRY * thread_p, int count)
  *   returns: new sort list
  */
 static void *
-qfile_alloc_sort_list ()
+qfile_alloc_sort_list (void)
 {
   return malloc (sizeof (SORT_LIST));
 }

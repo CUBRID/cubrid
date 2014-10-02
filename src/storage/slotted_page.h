@@ -229,6 +229,7 @@ extern SPAGE_SLOT *spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id);
 #if !defined(NDEBUG)
 extern bool spage_check_num_slots (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 #endif
+extern int spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 extern int spage_get_record_length (PAGE_PTR pgptr, PGSLOTID slotid);
 extern int spage_get_record_offset (PAGE_PTR page_p, PGSLOTID slot_id);
 extern int spage_get_space_for_record (PAGE_PTR page_p, PGSLOTID slot_id);
