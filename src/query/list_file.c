@@ -2612,7 +2612,13 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 
   VPID_SET (&vpid, vol_id, page_id);
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (query_id >= SHRT_MAX)
+
+  if (query_id == NULL_QUERY_ID)
+    {
+      assert (false);
+      return ER_QPROC_UNKNOWN_QUERYID;
+    }
+  else if (query_id >= SHRT_MAX)
     {
       tfile_vfid_p = (QMGR_TEMP_FILE *) query_id;
       goto get_page;

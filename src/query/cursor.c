@@ -1583,7 +1583,7 @@ cursor_get_current_oid (CURSOR_ID * cursor_id_p, DB_VALUE * value_p)
 int
 cursor_next_tuple (CURSOR_ID * cursor_id_p)
 {
-  if (cursor_id_p == NULL)
+  if (cursor_id_p == NULL || cursor_id_p->query_id == NULL_QUERY_ID)
     {
       assert (0);
       return DB_CURSOR_ERROR;
