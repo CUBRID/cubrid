@@ -2987,7 +2987,8 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 	      (void) heap_get_class_oid (thread_p, &class_oid, oid_p,
 					 SNAPSHOT_TYPE_MVCC);
 
-	      if (!OID_EQ (&class_oid, &ct_Class.classoid))
+	      if (!OID_EQ (&class_oid, &ct_Class.classoid)
+		  && !OID_ISNULL (&class_oid))
 		{
 		  subset_p = catcls_allocate_or_value (size);
 		  if (subset_p != NULL)
