@@ -3477,7 +3477,6 @@ static bool
 vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
 {
   int i;
-  VACUUM_DATA_ENTRY *entry;
 
   if (vacuum_Data == NULL)
     {
@@ -3485,18 +3484,11 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
       return false;
     }
 
-  for (i = 0; i < vacuum_Data->n_table_entries; i++)
+  for (i = 0; i < vacuum_Assigned_workers_count; i++)
     {
-      entry = VACUUM_DATA_GET_ENTRY (i);
-
-      if (VACUUM_BLOCK_STATUS_IS_RUNNING (entry))
+      if (vacuum_Workers[i].state != VACUUM_WORKER_STATE_INACTIVE)
 	{
-	  /* Found a running job, return true */
 	  return true;
-	}
-      else if (VACUUM_BLOCK_STATUS_IS_REQUESTED (entry))
-	{
-	  VACUUM_BLOCK_STATUS_SET_AVAILABLE (entry);
 	}
     }
 

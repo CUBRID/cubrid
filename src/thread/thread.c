@@ -132,7 +132,7 @@ static DAEMON_THREAD_MONITOR
   thread_Vacuum_master_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
 static DAEMON_THREAD_MONITOR *thread_Vacuum_worker_threads = NULL;
-static INT32 thread_Vacuum_worker_assigned_daemons = 0;
+static int thread_First_vacuum_worker_thread_index = -1;
 
 static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
@@ -753,6 +753,16 @@ thread_start_workers (void)
     {
       thread_Daemons[i].daemon_monitor->thread_index = thread_index;
       thread_p = &thread_Manager.thread_array[thread_index];
+
+      if (thread_Daemons[i].type == THREAD_DAEMON_VACUUM_WORKER
+	  && thread_First_vacuum_worker_thread_index < 0)
+	{
+	  /* Save the thread index of the first vacuum worker. It will be
+	   * needed to identify the daemon for each vacuum worker based on
+	   * thread index when the threads are started.
+	   */
+	  thread_First_vacuum_worker_thread_index = thread_index;
+	}
 
       r = pthread_mutex_lock (&thread_p->th_entry_lock);
       if (r != 0)
@@ -2839,14 +2849,12 @@ thread_vacuum_worker_thread (void *arg_p)
   tsd_ptr->type = TT_VACUUM_WORKER;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
-  /* Assign one vacuum worker daemon monitor to current thread */
-  do
-    {
-      /* Is atomic operation required? */
-      daemon_index = thread_Vacuum_worker_assigned_daemons;
-    }
-  while (!ATOMIC_CAS_32 (&thread_Vacuum_worker_assigned_daemons,
-			 daemon_index, daemon_index + 1));
+  /* Assign one vacuum worker daemon monitor to current thread based on
+   * thread index. The workers in thread array must be in the same order as
+   * their daemons.
+   */
+  daemon_index = tsd_ptr->index - thread_First_vacuum_worker_thread_index;
+  assert (daemon_index >= 0 && daemon_index < VACUUM_MAX_WORKER_COUNT);
   thread_monitor = &thread_Vacuum_worker_threads[daemon_index];
   thread_monitor->is_available = true;
 
