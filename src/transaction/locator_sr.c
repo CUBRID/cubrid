@@ -2408,19 +2408,25 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  /*
 	   * AN INSTANCE
 	   */
-	  switch (lock)
+	  if (lock <= S_LOCK)
 	    {
-	    case IS_LOCK:
-	      lock = S_LOCK;
-	      break;
-
-	    case IX_LOCK:
-	    case SIX_LOCK:
+	      if (heap_is_mvcc_disabled_for_class (class_oid))
+		{
+		  /* MVCC is disabled for this class, request S_LOCK on
+		   * instance.
+		   */
+		  lock = S_LOCK;
+		}
+	      else
+		{
+		  /* MVCC is enabled and S_LOCK is not required. */
+		  lock = NULL_LOCK;
+		}
+	    }
+	  else if (lock == IX_LOCK || lock == SIX_LOCK)
+	    {
+	      /* Set X_LOCK on instance */
 	      lock = X_LOCK;
-	      break;
-
-	    default:
-	      break;
 	    }
 	}
     }
@@ -4238,10 +4244,11 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 	{
 	  (void) partition_init_pruning_context (&pcontext);
 	  clear_pcontext = true;
-	  error_code = partition_load_pruning_context(thread_p,
-						      &index->fk->ref_class_oid,
-						      DB_PARTITIONED_CLASS,
-						      &pcontext);
+	  error_code = partition_load_pruning_context (thread_p,
+						       &index->fk->
+						       ref_class_oid,
+						       DB_PARTITIONED_CLASS,
+						       &pcontext);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -4252,9 +4259,10 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 
 	  if (pcontext.partitions != NULL)
 	    {
-	      error_code = partition_prune_unique_btid (&pcontext, key_dbvalue,
-							&part_oid, &class_hfid,
-							&local_btid);
+	      error_code =
+		partition_prune_unique_btid (&pcontext, key_dbvalue,
+					     &part_oid, &class_hfid,
+					     &local_btid);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;

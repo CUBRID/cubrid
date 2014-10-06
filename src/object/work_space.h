@@ -768,6 +768,7 @@ extern void ws_free_flush_error (WS_FLUSH_ERR * flush_err);
 extern int ws_get_mvcc_snapshot_version (void);
 extern void ws_increment_mvcc_snapshot_version (void);
 extern bool ws_is_mop_fetched_with_current_snapshot (MOP mop);
+extern void ws_set_mop_fetched_with_current_snapshot (MOP mop);
 extern MOP ws_mvcc_latest_version (MOP mop);
 
 extern bool ws_is_same_object (MOP mop1, MOP mop2);

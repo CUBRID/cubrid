@@ -5834,6 +5834,19 @@ ws_is_mop_fetched_with_current_snapshot (MOP mop)
 }
 
 /*
+ * ws_set_mop_fetched_with_current_snapshot () - Set current snapshot version
+ *						 to mop.
+ *
+ * return   : Void.
+ * mop (in) : Mop fetched with current snapshot.
+ */
+void
+ws_set_mop_fetched_with_current_snapshot (MOP mop)
+{
+  mop->mvcc_snapshot_version = ws_MVCC_snapshot_version;
+}
+
+/*
  * ws_mvcc_latest_version () - If the current mop is a duplicate for an object
  *			       a link is created for the newer mop. Follow
  *			       the link to find the newest mop for current

@@ -211,6 +211,9 @@ static int locator_add_to_oidset_when_temp_oid (MOP mop, void *data);
 static LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name,
 						     OID * class_oid);
 static bool locator_reverse_dirty_link (void);
+
+static bool locator_can_skip_fetch_from_server (MOP mop, LOCK * lock);
+
 /*
  * locator_reserve_class_name () -
  *    return:
@@ -376,11 +379,12 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
 	  lock = X_LOCK;
 	}
 
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) && lock <= S_LOCK)
+      if (lock <= S_LOCK)
 	{
 	  /* MVCC does not use shared locks on instances */
 	  lock = NULL_LOCK;
 	}
+      ws_set_mop_fetched_with_current_snapshot (mop);
     }
 
 
@@ -513,6 +517,12 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 	      else
 		{
 		  lock = lockset->reqobj_inst_lock;
+		  if (lock <= S_LOCK)
+		    {
+		      /* Object instances are not locked for read in MVCC */
+		      lock = NULL_LOCK;
+		      ws_set_mop_fetched_with_current_snapshot (mop);
+		    }
 		}
 
 	      assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
@@ -532,7 +542,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
       /*
        * If were not able to find the object. We need to start looking from
        * the very beginning of the lists, and stop the searching one object
-       * before where the current search stoped.
+       * before where the current search stopped.
        *
        * If we have already search both lists from the very beginning stop.
        */
@@ -606,6 +616,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 	    }
 	}
 
+      /* TODO: Do we need to demote locks instance locks here to NULL_LOCK? */
       ws_set_lock (mop, lock);
     }
 }
@@ -626,7 +637,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
  *              a more powerful lock. In any other case, the object locator in
  *              the server is invoked to acquire the desired lock and possibly
  *              to bring the desired object along with some other objects that
- *              may be prefetched.
+ *              may be pre-fetched.
  */
 static int
 locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
@@ -635,7 +646,6 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
   LOCATOR_CACHE_LOCK cache_lock;	/* Cache the lock */
   OID *oid;			/* OID of object to lock                  */
   int chn;			/* Cache coherency number of object       */
-  LOCK current_lock;		/* Current lock cached for desired object */
   MOBJ object;			/* The desired object                     */
   MOP class_mop;		/* Class mop of object to lock            */
   OID *class_oid;		/* Class identifier of object to lock     */
@@ -646,7 +656,6 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
   LC_COPYAREA *fetch_area;	/* Area where objects are received        */
   int error_code = NO_ERROR;
   bool is_prefetch;
-  bool mvcc_enabled;
 
   mop = ws_mvcc_latest_version (mop);
   oid = ws_oid (mop);
@@ -674,8 +683,10 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
     {
       /* The object has been deleted */
       if (do_Trigger_involved == false)
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
-		oid->volid, oid->pageid, oid->slotid);
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
+		  oid->volid, oid->pageid, oid->slotid);
+	}
       error_code = ER_FAILED;
       goto end;
     }
@@ -689,40 +700,10 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
 
   class_mop = ws_class_mop (mop);
 
-  current_lock = ws_get_lock (mop);
-  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-
-  mvcc_enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
-
-  if (object != NULL)
+  if (locator_can_skip_fetch_from_server (mop, &lock))
     {
-      /* There is already an object fetched, check if a request for server
-       * is really necessary
-       */
-      if (current_lock != NULL_LOCK
-	  && (((lock = lock_Conv[lock][current_lock]) == current_lock)
-	      || OID_ISTEMP (oid)))
-	{
-	  /* Object is fetched and locked, and no lock upgrade is required */
-	  /* Skip fetch from server */
-	  goto end;
-	}
-
-      if (mvcc_enabled		/* MVCC is enabled */
-	  /* And object is not a class */
-	  && class_mop != NULL && class_mop != sm_Root_class_mop
-	  /* And the required lock is not greater than a shared lock */
-	  && lock <= S_LOCK
-	  /* And current object was already fetched using current snapshot */
-	  && ws_is_mop_fetched_with_current_snapshot (mop))
-	{
-	  /* When MVCC is enabled, shared lock on instances are not used.
-	   * However, if object was already fetched using current snapshot,
-	   * it is not required to re-fetch them.
-	   * Go to server only if required lock is greater than a shared lock.
-	   */
-	  goto end;
-	}
+      /* No need to fetch object from server */
+      goto end;
     }
 
   /* We must invoke the transaction object locator on the server */
@@ -1070,18 +1051,70 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
       lock = lock_Conv[lock][current_lock];
       assert (lock != NA_LOCK);
 
-      if (object == NULL || current_lock == NULL_LOCK
-	  || (lock != current_lock && !OID_ISTEMP (oid)))
+      if (locator_can_skip_fetch_from_server (mop, &lock))
 	{
+	  continue;
+	}
 
-	  /*
-	   * We must invoke the transaction object locator on the server for this
-	   * object.
+      /*
+       * We must invoke the transaction object locator on the server for this
+       * object.
+       */
+
+      /* Find the cache coherency numbers for fetching purposes */
+      if (object == NULL && WS_IS_DELETED (mop))
+	{
+	  /* Isn't this a duplicate check of ws_find == WS_FIND_MOP_DELETED?
 	   */
+	  if (quit_on_errors == false)
+	    {
+	      continue;
+	    }
+	  else
+	    {
+	      /* The object has been deleted */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
+		      oid->slotid);
+	      error_code = ER_HEAP_UNKNOWN_OBJECT;
+	      break;
+	    }
+	}
 
-	  /* Find the cache coherency numbers for fetching purposes */
+      COPY_OID (&reqobjs->oid, oid);
+      reqobjs->chn = ws_chn (object);
 
-	  if (object == NULL && WS_IS_DELETED (mop))
+      if (reqobjs->chn > NULL_CHN && sm_is_reuse_oid_class (mop))
+	{
+	  /* Since an already cached object of a reuse_oid table may be
+	   * deleted  after it is cached to my workspace and then another
+	   * object may occupy its slot, unfortunately the cached CHN has no
+	   * meaning.
+	   * When the new object occasionally has the same CHN with that of
+	   * the cached object and we don't fetch the object from server
+	   * again, we will incorrectly reuse the cached deleted object.
+	   *
+	   * We need to refetch the cached object if it is an instance of
+	   * reuse_oid table. Server will fetch the object since client passes
+	   * NULL_CHN.
+	   */
+	  reqobjs->chn = NULL_CHN;
+	}
+
+      /*
+       * Get the class information for the desired object, just in case we
+       * need to bring it from the server.
+       */
+
+      if (class_mop == NULL)
+	{
+	  /* Don't know the class. Server must figure it out */
+	  reqobjs->class_index = -1;
+	}
+      else
+	{
+	  class_oid = ws_oid (class_mop);
+	  if (ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED)
 	    {
 	      if (quit_on_errors == false)
 		{
@@ -1089,92 +1122,42 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
 		}
 	      else
 		{
-		  /* The object has been deleted */
+		  /* The class has been deleted */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
-			  oid->slotid);
-		  error_code = ER_HEAP_UNKNOWN_OBJECT;
+			  ER_HEAP_UNKNOWN_CLASS_OF_INSTANCE, 3,
+			  oid->volid, oid->pageid, oid->slotid);
+		  error_code = ER_HEAP_UNKNOWN_CLASS_OF_INSTANCE;
 		  break;
 		}
 	    }
 
-	  COPY_OID (&reqobjs->oid, oid);
-	  reqobjs->chn = ws_chn (object);
+	  COPY_OID (&reqclasses->oid, class_oid);
+	  reqclasses->chn = ws_chn (class_obj);
 
-	  if (reqobjs->chn > NULL_CHN && sm_is_reuse_oid_class (mop))
+	  /* Check for duplication in list of classes of requested objects */
+	  for (j = 0; j < lockset->num_classes_of_reqobjs; j++)
 	    {
-	      /* Since an already cached object of a reuse_oid table may be deleted 
-	       * after it is cached to my workspace and then another object 
-	       * may occupy its slot, unfortunately the cached CHN has no meaning. 
-	       * When the new object occasionally has the same CHN with that of 
-	       * the cached object and we don't fetch the object from server again, 
-	       * we will incorrectly reuse the cached deleted object. 
-	       *
-	       * We need to refetch the cached object if it is an instance of reuse_oid
-	       * table. Server will fetch the object since client passes NULL_CHN.
-	       */
-	      reqobjs->chn = NULL_CHN;
+	      if (OID_EQ (class_oid, &lockset->classes[j].oid))
+		{
+		  break;	/* The class is already in the class array */
+		}
 	    }
 
-	  /*
-	   * Get the class information for the desired object, just in case we
-	   * need to bring it from the server
-	   */
-
-	  if (class_mop == NULL)
+	  if (j >= lockset->num_classes_of_reqobjs)
 	    {
-	      /* Don't know the class. Server must figure it out */
-	      reqobjs->class_index = -1;
+	      /* Class is not in the list */
+	      reqobjs->class_index = lockset->num_classes_of_reqobjs;
+	      lockset->num_classes_of_reqobjs++;
+	      reqclasses++;
 	    }
 	  else
 	    {
-	      class_oid = ws_oid (class_mop);
-	      if (ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED)
-		{
-		  if (quit_on_errors == false)
-		    {
-		      continue;
-		    }
-		  else
-		    {
-		      /* The class has been deleted */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_HEAP_UNKNOWN_CLASS_OF_INSTANCE, 3,
-			      oid->volid, oid->pageid, oid->slotid);
-		      error_code = ER_HEAP_UNKNOWN_CLASS_OF_INSTANCE;
-		      break;
-		    }
-		}
-
-	      COPY_OID (&reqclasses->oid, class_oid);
-	      reqclasses->chn = ws_chn (class_obj);
-
-	      /* Check for duplication in list of classes of requested
-	       * objects */
-	      for (j = 0; j < lockset->num_classes_of_reqobjs; j++)
-		{
-		  if (OID_EQ (class_oid, &lockset->classes[j].oid))
-		    {
-		      break;	/* The class is already in the class array */
-		    }
-		}
-
-	      if (j >= lockset->num_classes_of_reqobjs)
-		{
-		  /* Class is not in the list */
-		  reqobjs->class_index = lockset->num_classes_of_reqobjs;
-		  lockset->num_classes_of_reqobjs++;
-		  reqclasses++;
-		}
-	      else
-		{
-		  /* Class is already in the list */
-		  reqobjs->class_index = j;
-		}
+	      /* Class is already in the list */
+	      reqobjs->class_index = j;
 	    }
-	  lockset->num_reqobjs++;
-	  reqobjs++;
 	}
+      lockset->num_reqobjs++;
+      reqobjs++;
     }
 
   /*
@@ -1569,6 +1552,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level,
   if (object != NULL && current_lock != NULL_LOCK && conv_lock == current_lock
       && WS_MOP_GET_COMPOSITION_FETCH (mop))
     {
+      /* TODO: Is snapshot version relevant here? */
       level = (int) WS_MOP_GET_PRUNE_LEVEL (mop);
       if (level <= 0 || level >= prune_level)
 	{
@@ -1984,7 +1968,6 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
   LOCATOR_CACHE_LOCK cache_lock;	/* Cache the lock                */
   OID *oid;			/* OID of object to lock                 */
   int chn;			/* Cache coherency number of object      */
-  LOCK current_lock;		/* Current lock cached for desired obj   */
   MOBJ object;			/* The desired object                    */
   MOP class_mop;		/* Class mop of object to lock           */
   OID *class_oid;		/* Class identifier of object to lock    */
@@ -2044,14 +2027,8 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 
   class_mop = ws_class_mop (mop);
 
-  current_lock = ws_get_lock (mop);
-  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-
-  if (object != NULL && current_lock != NULL_LOCK
-      && ((lock = lock_Conv[lock][current_lock]) == current_lock
-	  || OID_ISTEMP (oid)))
+  if (locator_can_skip_fetch_from_server (mop, &lock))
     {
-      assert (lock != NA_LOCK);
       return LC_EXIST;
     }
 
@@ -2064,6 +2041,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
   /* Find the cache coherency numbers for fetching purposes */
   if (object == NULL && WS_IS_DELETED (mop))
     {
+      /* Isn't this a duplicate check of ws_find == WS_FIND_MOP_DELETED? */
       return LC_DOESNOT_EXIST;
     }
 
@@ -3851,7 +3829,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p,
       /* Update the object mvcc snapshot version, so it won't be re-fetched
        * while current snapshot is still valid.
        */
-      (*mop_p)->mvcc_snapshot_version = ws_get_mvcc_snapshot_version ();
+      ws_set_mop_fetched_with_current_snapshot (*mop_p);
     }
 
   return error_code;
@@ -4374,8 +4352,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 				  ws_set_class (new_mop, new_class_mop);
 
 				  /* Update MVCC snapshot version */
-				  new_mop->mvcc_snapshot_version =
-				    ws_get_mvcc_snapshot_version ();
+				  ws_set_mop_fetched_with_current_snapshot
+				    (new_mop);
 				}
 			    }
 			}
@@ -7185,5 +7163,56 @@ locator_reverse_dirty_link (void)
       return true;
     }
 
+  return false;
+}
+
+/*
+ * locator_can_skip_fetch_from_server () - Check whether object fetch from
+ *					   server can be skipped based on
+ *					   locks and snapshot version.
+ *
+ * return	 : True if server fetch can be skipped. False otherwise.
+ * mop (in)	 : Mop that 
+ * lock (in/out) : Required lock. Output is results of lock convention
+ *		   between input lock and current lock.
+ */
+static bool
+locator_can_skip_fetch_from_server (MOP mop, LOCK * lock)
+{
+  MOP class_mop = ws_class_mop (mop);
+  LOCK crt_lock = ws_get_lock (mop);
+  OID *oid = ws_oid (mop);
+  MOBJ object = NULL;
+
+  assert (*lock >= NULL_LOCK);
+  assert (crt_lock >= NULL_LOCK);
+
+  /* Should we check the result of ws_find here? */
+  (void) ws_find (mop, &object);
+  if (object == NULL)
+    {
+      /* Object is not fetched or was deleted */
+      return false;
+    }
+
+  /* Check lock */
+  *lock = lock_Conv[*lock][crt_lock];
+  if (crt_lock != NULL_LOCK && (*lock == crt_lock || OID_ISTEMP (oid)))
+    {
+      /* Object was already locked and lock doesn't need to be promoted */
+      return true;
+    }
+
+  if (class_mop != NULL && class_mop != sm_Root_class_mop && *lock <= S_LOCK)
+    {
+      /* When MVCC is enabled, shared lock on instances are not used.
+       * However, if object was already fetched using current snapshot,
+       * it is not required to re-fetch them.
+       * Go to server only if required lock is greater than a shared lock.
+       */
+      return ws_is_mop_fetched_with_current_snapshot (mop);
+    }
+
+  /* We are here because we need to upgrade lock on object. */
   return false;
 }

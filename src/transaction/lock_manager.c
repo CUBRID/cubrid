@@ -7524,6 +7524,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
 #endif
+  bool is_mvcc_disabled_for_class = false;
 
   if (lockset == NULL)
     {
@@ -7722,26 +7723,31 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 		  goto error;
 		}
 	    }
-
-	  /* hold the lock on the given instance */
-	  granted = lock_internal_perform_lock_object (thread_p,
-						       tran_index,
-						       &ins_lockinfo[i].oid,
-						       &ins_lockinfo[i].
-						       class_oid, NULL,
-						       ins_lockinfo[i].lock,
-						       wait_msecs,
-						       &inst_entry,
-						       class_entry);
-	  if (granted != LK_GRANTED)
+	  is_mvcc_disabled_for_class =
+	    heap_is_mvcc_disabled_for_class (&ins_lockinfo[i].class_oid);
+	  if (is_mvcc_disabled_for_class || ins_lockinfo[i].lock > S_LOCK)
 	    {
-	      if (lockset->quit_on_errors == false
-		  && granted == LK_NOTGRANTED_DUE_TIMEOUT)
+	      /* Get lock if MVCC is disabled or otherwise if required lock is
+	       * stronger than S_LOCK.
+	       */
+	      /* hold the lock on the given instance */
+	      granted =
+		lock_internal_perform_lock_object (thread_p, tran_index,
+						   &ins_lockinfo[i].oid,
+						   &ins_lockinfo[i].class_oid,
+						   NULL, ins_lockinfo[i].lock,
+						   wait_msecs, &inst_entry,
+						   class_entry);
+	      if (granted != LK_GRANTED)
 		{
-		  OID_SET_NULL (ins_lockinfo[i].org_oidp);
-		  continue;
+		  if (lockset->quit_on_errors == false
+		      && granted == LK_NOTGRANTED_DUE_TIMEOUT)
+		    {
+		      OID_SET_NULL (ins_lockinfo[i].org_oidp);
+		      continue;
+		    }
+		  goto error;
 		}
-	      goto error;
 	    }
 	}
     }
