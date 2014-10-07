@@ -39,9 +39,7 @@
 enum
 {
   ARITH_EXP = 0,
-  LARITH_EXP = 1,
-  AGG_EXP = 2,
-  LAGG_EXP = 3
+  AGG_EXP = 1
 };
 
 #define HASH_NUMBER 128
@@ -105,9 +103,8 @@ static bool qdump_print_oid (OID * oidptr);
 static bool qdump_print_predicate (PRED_EXPR * predptr);
 static const char *qdump_relation_operator_string (int op);
 static const char *qdump_arith_operator_string (OPERATOR_TYPE opcode);
-static bool qdump_print_arith_expression (int type, ARITH_TYPE * arith_p);
-static bool qdump_print_aggregate_expression (int type,
-					      AGGREGATE_TYPE * aggptr);
+static bool qdump_print_arith_expression (ARITH_TYPE * arith_p);
+static bool qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr);
 static bool qdump_print_arith (int type, void *ptr);
 static bool qdump_print_term (PRED_EXPR * pred_ptr);
 static const char *qdump_bool_operator_string (BOOL_OP bool_op);
@@ -1064,22 +1061,20 @@ qdump_regu_type_string (REGU_DATATYPE type)
       return "TYPE_CONSTANT";
     case TYPE_ORDERBY_NUM:
       return "TYPE_ORDERBY_NUM";
-    case TYPE_AGGREGATE:
-      return "TYPE_AGGREGATE";
     case TYPE_INARITH:
       return "TYPE_INARITH";
     case TYPE_OUTARITH:
       return "TYPE_OUTARITH";
-    case TYPE_LIST_ID:
-      return "TYPE_LIST_ID";
     case TYPE_ATTR_ID:
       return "TYPE_ATTR_ID";
-    case TYPE_SHARED_ATTR_ID:
-      return "TYPE_SHARED_ATTR_ID";
     case TYPE_CLASS_ATTR_ID:
       return "TYPE_CLASS_ATTR_ID";
+    case TYPE_SHARED_ATTR_ID:
+      return "TYPE_SHARED_ATTR_ID";
     case TYPE_POSITION:
       return "TYPE_POSITION";
+    case TYPE_LIST_ID:
+      return "TYPE_LIST_ID";
     case TYPE_POS_VALUE:
       return "TYPE_POS_VALUE";
     case TYPE_OID:
@@ -1088,6 +1083,10 @@ qdump_regu_type_string (REGU_DATATYPE type)
       return "TYPE_CLASSOID";
     case TYPE_FUNC:
       return "TYPE_FUNC";
+    case TYPE_REGUVAL_LIST:
+      return "TYPE_REGUVAL_LIST";
+    case TYPE_REGU_VAR_LIST:
+      return "TYPE_REGU_VAR_LIST";
     default:
       return "undefined";
     }
@@ -1255,10 +1254,6 @@ qdump_print_value (REGU_VARIABLE * value_p)
     case TYPE_CONSTANT:
     case TYPE_ORDERBY_NUM:
       qdump_print_db_value (value_p->value.dbvalptr);
-      return true;
-
-    case TYPE_AGGREGATE:
-      qdump_print_arith (AGG_EXP, (void *) value_p->value.aggptr);
       return true;
 
     case TYPE_INARITH:
@@ -1460,10 +1455,6 @@ qdump_print_value_type_addr (REGU_VARIABLE * regu_var_p)
     case TYPE_CONSTANT:
     case TYPE_ORDERBY_NUM:
       addr = (void *) regu_var_p->value.dbvalptr;
-      break;
-
-    case TYPE_AGGREGATE:
-      addr = (void *) regu_var_p->value.aggptr;
       break;
 
     case TYPE_INARITH:
@@ -1850,7 +1841,7 @@ qdump_arith_operator_string (OPERATOR_TYPE opcode)
 }
 
 static bool
-qdump_print_arith_expression (int type, ARITH_TYPE * arith_p)
+qdump_print_arith_expression (ARITH_TYPE * arith_p)
 {
   fprintf (foutput, "[%s]",
 	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (arith_p->value)));
@@ -1898,10 +1889,10 @@ qdump_print_arith_expression (int type, ARITH_TYPE * arith_p)
       fprintf (foutput, ")");
     }
 
-  if (type == LARITH_EXP)
+  if (arith_p->next != NULL)
     {
       fprintf (foutput, "; ");
-      if (!qdump_print_arith (LARITH_EXP, (void *) arith_p->next))
+      if (!qdump_print_arith (ARITH_EXP, (void *) arith_p->next))
 	{
 	  return false;
 	}
@@ -1911,7 +1902,7 @@ qdump_print_arith_expression (int type, ARITH_TYPE * arith_p)
 }
 
 static bool
-qdump_print_aggregate_expression (int type, AGGREGATE_TYPE * aggptr)
+qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr)
 {
   fprintf (foutput, "[%s]",
 	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
@@ -1940,10 +1931,10 @@ qdump_print_aggregate_expression (int type, AGGREGATE_TYPE * aggptr)
 
   fprintf (foutput, ")");
 
-  if (type == LAGG_EXP)
+  if (aggptr->next != NULL)
     {
       fprintf (foutput, "; ");
-      if (!qdump_print_arith (LAGG_EXP, aggptr->next))
+      if (!qdump_print_arith (AGG_EXP, aggptr->next))
 	{
 	  return false;
 	}
@@ -1966,13 +1957,13 @@ qdump_print_arith (int type, void *ptr)
       return true;
     }
 
-  if (type == ARITH_EXP || type == LARITH_EXP)
+  if (type == ARITH_EXP)
     {
-      return qdump_print_arith_expression (type, (ARITH_TYPE *) ptr);
+      return qdump_print_arith_expression ((ARITH_TYPE *) ptr);
     }
-  else if (type == AGG_EXP || type == LAGG_EXP)
+  else if (type == AGG_EXP)
     {
-      return qdump_print_aggregate_expression (type, (AGGREGATE_TYPE *) ptr);
+      return qdump_print_aggregate_expression ((AGGREGATE_TYPE *) ptr);
     }
 
   return true;
@@ -2306,7 +2297,7 @@ qdump_print_build_list_node (XASL_NODE * xasl_p)
   if (node_p->g_agg_list)
     {
       fprintf (foutput, "-->having agg list:");
-      qdump_print_arith (LAGG_EXP, (void *) node_p->g_agg_list);
+      qdump_print_arith (AGG_EXP, (void *) node_p->g_agg_list);
       fprintf (foutput, "\n");
     }
 
@@ -2356,7 +2347,7 @@ qdump_print_build_value_node (XASL_NODE * xasl_p)
   if (node_p->agg_list)
     {
       fprintf (foutput, "-->agg list:");
-      qdump_print_arith (LAGG_EXP, (void *) node_p->agg_list);
+      qdump_print_arith (AGG_EXP, (void *) node_p->agg_list);
       fprintf (foutput, "\n");
     }
 

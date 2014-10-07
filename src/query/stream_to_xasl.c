@@ -5868,6 +5868,8 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
   regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5988,24 +5990,6 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr,
 	    stx_restore_arith_type (thread_p,
 				    &xasl_unpack_info->packed_xasl[offset]);
 	  if (regu_var->value.arithptr == NULL)
-	    {
-	      goto error;
-	    }
-	}
-      break;
-
-    case TYPE_AGGREGATE:
-      ptr = or_unpack_int (ptr, &offset);
-      if (offset == 0)
-	{
-	  regu_var->value.aggptr = NULL;
-	}
-      else
-	{
-	  regu_var->value.aggptr =
-	    stx_restore_aggregate_type (thread_p, &xasl_unpack_info->
-					packed_xasl[offset]);
-	  if (regu_var->value.aggptr == NULL)
 	    {
 	      goto error;
 	    }

@@ -160,7 +160,6 @@ typedef enum
 				   list; act same as TYPE_CONSTANT */
   TYPE_INARITH,			/* use arithptr */
   TYPE_OUTARITH,		/* use arithptr */
-  TYPE_AGGREGATE,		/* use aggptr */
   TYPE_ATTR_ID,			/* use attr_descr */
   TYPE_CLASS_ATTR_ID,		/* use attr_descr */
   TYPE_SHARED_ATTR_ID,		/* use attr_descr */
@@ -193,6 +192,8 @@ struct regu_variable_node
 						   flag used in context of COLLATE modifier */
 #define REGU_VARIABLE_ANALYTIC_WINDOW     0x10	/* for analytic window func */
 #define REGU_VARIABLE_INFER_COLLATION	  0x20	/* infer collation for default parameter */
+#define REGU_VARIABLE_FETCH_ALL_CONST     0x40	/* is all constant */
+#define REGU_VARIABLE_FETCH_NOT_CONST     0x80	/* is not constant */
   int flags;			/* flags */
 #define REGU_VARIABLE_IS_FLAGED(e, f)    ((e)->flags & (short) (f))
 #define REGU_VARIABLE_SET_FLAG(e, f)     (e)->flags |= (short) (f)

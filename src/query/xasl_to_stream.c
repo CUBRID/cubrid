@@ -5037,6 +5037,8 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 
   ptr = or_pack_int (ptr, regu_var->type);
 
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
   ptr = or_pack_int (ptr, regu_var->flags);
 
   offset = xts_save_db_value (regu_var->vfetch_to);
@@ -5105,15 +5107,6 @@ xts_pack_regu_variable_value (char *ptr, const REGU_VARIABLE * regu_var)
     case TYPE_INARITH:
     case TYPE_OUTARITH:
       offset = xts_save_arith_type (regu_var->value.arithptr);
-      if (offset == ER_FAILED)
-	{
-	  return NULL;
-	}
-      ptr = or_pack_int (ptr, offset);
-      break;
-
-    case TYPE_AGGREGATE:
-      offset = xts_save_aggregate_type (regu_var->value.aggptr);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -6918,10 +6911,6 @@ xts_get_regu_variable_value_size (const REGU_VARIABLE * regu_var)
     case TYPE_INARITH:
     case TYPE_OUTARITH:
       size = PTR_SIZE;		/* arithptr */
-      break;
-
-    case TYPE_AGGREGATE:
-      size = PTR_SIZE;		/* aggptr */
       break;
 
     case TYPE_FUNC:

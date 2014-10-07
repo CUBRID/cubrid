@@ -3251,7 +3251,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred,
     }
 
   /* the TYPE_CONSTANT regu variable must be instnum, otherwise it would not
-   * be accepted by the parser*/
+   * be accepted by the parser */
 
   /* switch the ops to transform into instnum rel_op value/hostvar */
   if (rhs->type == TYPE_CONSTANT)

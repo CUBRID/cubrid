@@ -2144,6 +2144,10 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       return pg_cnt;
     }
 
+  /* clear run-time setting info */
+  REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
+  REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+
   switch (regu_var->type)
     {
     case TYPE_ATTR_ID:		/* fetch object attribute value */
@@ -2167,12 +2171,6 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
     case TYPE_OUTARITH:
       pg_cnt +=
 	qexec_clear_arith_list (xasl_p, regu_var->value.arithptr, final);
-      break;
-    case TYPE_AGGREGATE:
-      pr_clear_value (regu_var->value.aggptr->accumulator.value);
-      pg_cnt +=
-	qexec_clear_regu_var (xasl_p, &regu_var->value.aggptr->operand,
-			      final);
       break;
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
@@ -8437,10 +8435,6 @@ qexec_reset_regu_variable (REGU_VARIABLE * var)
       qexec_reset_regu_variable (var->value.arithptr->rightptr);
       qexec_reset_regu_variable (var->value.arithptr->thirdptr);
       /* use arithptr */
-      break;
-    case TYPE_AGGREGATE:
-      /* use aggptr */
-      qexec_reset_regu_variable (&var->value.aggptr->operand);
       break;
     case TYPE_FUNC:
       /* use funcp */
@@ -19787,12 +19781,6 @@ qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p,
 						connect_by_ptr);
       break;
 
-    case TYPE_AGGREGATE:
-      qexec_replace_prior_regu_vars_prior_expr (thread_p,
-						&regu->value.aggptr->operand,
-						xasl, connect_by_ptr);
-      break;
-
     case TYPE_FUNC:
       {
 	REGU_VARIABLE_LIST r = regu->value.funcp->operand;
@@ -19849,11 +19837,6 @@ qexec_replace_prior_regu_vars (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu,
 					 regu->value.arithptr->thirdptr,
 					 xasl);
 	}
-      break;
-
-    case TYPE_AGGREGATE:
-      qexec_replace_prior_regu_vars (thread_p,
-				     &regu->value.aggptr->operand, xasl);
       break;
 
     case TYPE_FUNC:

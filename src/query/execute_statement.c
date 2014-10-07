@@ -16971,8 +16971,8 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser,
 	{
 	  continue;
 	}
-      assert (value_list->node_type == PT_NODE_LIST
-	      && value_list->info.node_list.list_type == PT_IS_VALUE);
+      assert (value_list->node_type == PT_NODE_LIST);
+      assert (value_list->info.node_list.list_type == PT_IS_VALUE);
       eval.value_list = value_list->info.node_list.list;
       eval.crt_attr_index = 0;
 

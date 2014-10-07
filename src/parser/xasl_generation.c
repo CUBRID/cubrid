@@ -23446,12 +23446,6 @@ pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior,
 	}
       break;
 
-    case TYPE_AGGREGATE:
-      list =
-	pt_get_var_regu_variable_p_list (&regu->value.aggptr->operand,
-					 is_prior, err);
-      break;
-
     case TYPE_FUNC:
       {
 	REGU_VARIABLE_LIST *r = &regu->value.funcp->operand;

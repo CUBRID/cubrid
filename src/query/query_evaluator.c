@@ -209,7 +209,7 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
       break;
 
     default:
-      /* check for host values to coerce 1-time,
+      /* check for constant values to coerce 1-time,
        * then reduce many-times coerce at tp_value_compare_with_error ()
        */
       if (et_comp != NULL)
@@ -218,10 +218,13 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
 	  assert (et_comp->rhs != NULL);
 
 #if 0				/* TODO - do not delete me for future */
-	  /* check iff value_1 is host_var to coerce
+	  /* check iff value_1 is constant to coerce
 	   */
-	  if (et_comp->lhs->type == TYPE_POS_VALUE)
+	  if (REGU_VARIABLE_IS_FLAGED (et_comp->lhs,
+				       REGU_VARIABLE_FETCH_ALL_CONST))
 	    {
+	      assert (!REGU_VARIABLE_IS_FLAGED (et_comp->lhs,
+						REGU_VARIABLE_FETCH_NOT_CONST));
 	      vtype1 = DB_VALUE_DOMAIN_TYPE (dbval1);
 	      vtype2 = DB_VALUE_DOMAIN_TYPE (dbval2);
 	      if (vtype1 != vtype2)
@@ -257,10 +260,13 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
 	    }
 #endif
 
-	  /* check iff value_2 is host_var to coerce
+	  /* check iff value_2 is constant to coerce
 	   */
-	  if (et_comp->rhs->type == TYPE_POS_VALUE)
+	  if (REGU_VARIABLE_IS_FLAGED (et_comp->rhs,
+				       REGU_VARIABLE_FETCH_ALL_CONST))
 	    {
+	      assert (!REGU_VARIABLE_IS_FLAGED (et_comp->rhs,
+						REGU_VARIABLE_FETCH_NOT_CONST));
 	      vtype1 = DB_VALUE_DOMAIN_TYPE (dbval1);
 	      vtype2 = DB_VALUE_DOMAIN_TYPE (dbval2);
 	      if (vtype1 != vtype2)

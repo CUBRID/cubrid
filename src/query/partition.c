@@ -2699,11 +2699,6 @@ partition_set_cache_info_for_expr (REGU_VARIABLE * var, ATTR_ID attr_id,
 						attr_id, attr_info);
       break;
 
-    case TYPE_AGGREGATE:
-      (void) partition_set_cache_info_for_expr (&var->value.aggptr->operand,
-						attr_id, attr_info);
-      break;
-
     case TYPE_FUNC:
       {
 	REGU_VARIABLE_LIST op = var->value.funcp->operand;
@@ -2771,9 +2766,6 @@ partition_get_attribute_id (REGU_VARIABLE * var)
 	}
 
       return attr_id;
-
-    case TYPE_AGGREGATE:
-      return partition_get_attribute_id (&var->value.aggptr->operand);
 
     case TYPE_FUNC:
       {
