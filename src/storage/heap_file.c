@@ -1102,7 +1102,7 @@ heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 			    const VPID * home_vpid_p, const OID * oid_p,
 			    PAGE_PTR * hdr_pgptr_p, const VPID * hdr_vpid_p,
 			    HEAP_SCANCACHE * scan_cache, int *again_count,
-			    int again_max) __attribute__ ((always_inline));
+			    int again_max) __attribute__ ((ALWAYS_INLINE));
 static INLINE int
 heap_try_fetch_forward_page (THREAD_ENTRY * thread_p,
 			     PAGE_PTR * home_pgptr_p,
@@ -1112,7 +1112,7 @@ heap_try_fetch_forward_page (THREAD_ENTRY * thread_p,
 			     const OID * fwd_oid_p,
 			     HEAP_SCANCACHE * scan_cache,
 			     int *again_count,
-			     int again_max) __attribute__ ((always_inline));
+			     int again_max) __attribute__ ((ALWAYS_INLINE));
 static INLINE int
 heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
 					 PAGE_PTR * home_pgptr_p,
@@ -1126,7 +1126,7 @@ heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
 					 HEAP_SCANCACHE * scan_cache,
 					 int *again_count,
 					 int again_max)
-__attribute__ ((always_inline));
+__attribute__ ((ALWAYS_INLINE));
 
 /*
  * heap_hash_vpid () - Hash a page identifier

@@ -41,6 +41,12 @@ extern "C"
 #define __attribute__(X)
 #endif
 
+#if defined (__GNUC__) && defined (NDEBUG)
+#define ALWAYS_INLINE always_inline
+#else
+#define ALWAYS_INLINE
+#endif
+
 #if defined (__GNUC__)
 #define STATIC_INLINE static inline
 #define INLINE inline

@@ -228,9 +228,16 @@ static void spage_dump_record (FILE * Fp, PAGE_PTR page_p, PGSLOTID slot_id,
 
 static bool spage_is_unknown_slot (PGSLOTID slotid, SPAGE_HEADER * sphdr,
 				   SPAGE_SLOT * sptr);
-static SPAGE_SLOT *spage_find_slot (PAGE_PTR pgptr, SPAGE_HEADER * sphdr,
-				    PGSLOTID slotid,
-				    bool is_unknown_slot_check);
+static INLINE SPAGE_SLOT *spage_find_slot (PAGE_PTR pgptr,
+					   SPAGE_HEADER * sphdr,
+					   PGSLOTID slotid,
+					   bool is_unknown_slot_check)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE int spage_find_slot_for_insert (THREAD_ENTRY * thread_p,
+					      PAGE_PTR pgptr, RECDES * recdes,
+					      PGSLOTID * slotid,
+					      void **slotptr, int *used_space)
+  __attribute__ ((ALWAYS_INLINE));
 static SCAN_CODE spage_get_record_data (PAGE_PTR pgptr, SPAGE_SLOT * sptr,
 					RECDES * recdes, int ispeeking);
 static SCAN_CODE spage_get_record_mvcc_data (PAGE_PTR page_p,
@@ -248,7 +255,8 @@ static int spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			     const RECDES * recdes, bool is_append);
 static void spage_add_contiguous_free_space (PAGE_PTR pgptr, int space);
 static void spage_reduce_contiguous_free_space (PAGE_PTR pgptr, int space);
-static void spage_verify_header (PAGE_PTR page_p);
+static INLINE void spage_verify_header (PAGE_PTR page_p)
+  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * spage_save_head_alloc () - callback for allocation of a SPAGE_SAVE_HEAD
@@ -334,7 +342,7 @@ spage_save_head_uninit (void *entry_p)
  *
  *   page_p(in): Pointer to slotted page
  */
-static void
+STATIC_INLINE void
 spage_verify_header (PAGE_PTR page_p)
 {
   char header_info[1024];
@@ -1937,7 +1945,7 @@ spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *   out_slot_p(out): Pointer to slotted array
  *   out_used_space_p(out): Pointer to int
  */
-int
+STATIC_INLINE int
 spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 			    RECDES * record_descriptor_p,
 			    PGSLOTID * out_slot_id_p, void **out_slot_p,
@@ -1980,7 +1988,7 @@ spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *   record_descriptor_p(in): Pointer to a record descriptor
  *   slot_p(in): Pointer to slotted array
  */
-int
+static int
 spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 		   RECDES * record_descriptor_p, void *slot_p)
 {
@@ -5048,7 +5056,7 @@ spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p,
  *   slot_id(in): Slot identifier of desired record
  *   is_unknown_slot_check(in):
  */
-static SPAGE_SLOT *
+STATIC_INLINE SPAGE_SLOT *
 spage_find_slot (PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
 		 PGSLOTID slot_id, bool is_unknown_slot_check)
 {

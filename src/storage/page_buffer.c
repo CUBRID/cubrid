@@ -560,7 +560,7 @@ static PGBUF_PS_INFO ps_info;
 #define AOUT_HASH_IDX(vpid, list) ((vpid)->pageid % list->num_hashes)
 
 static INLINE unsigned int
-pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((always_inline));
+pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
 static bool pgbuf_is_temporary_volume (VOLID volid);
 static int pgbuf_initialize_bcb_table (void);

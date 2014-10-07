@@ -31,6 +31,8 @@
 #include <string.h>
 #if defined(LINUX)
 #include <sys/epoll.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #endif /* LINUX */
 
 #include "porting.h"
