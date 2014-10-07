@@ -135,384 +135,71 @@ static int rv;
 
 #endif /* !CUBRID_DEBUG */
 
-#define HEAP_SET_RELOCATE_DELETE_INFO(mvcc_relocate_delete, p_datasource_oid,  \
-				      p_next_version) \
-  do  {	\
-  (mvcc_relocate_delete)->mvcc_delete_oid = p_datasource_oid; \
-  (mvcc_relocate_delete)->next_version = p_next_version;	\
-  }while(0)
-
-#define MVCC_GET_DELETE_INFO(p_mvcc_delete_info, p_row_delid, \
-			      p_next_row_version, p_satisfies_del_result) \
-  do { \
-    assert ((p_mvcc_delete_info) != NULL); \
-    if ((p_row_delid) != NULL) \
-      { \
-	*(p_row_delid) = (p_mvcc_delete_info)->row_delid; \
-      }	\
-    if ((p_next_row_version) != NULL) \
-      {	\
-	COPY_OID (p_next_row_version,	\
-		  &((p_mvcc_delete_info)->next_row_version)); \
-      } \
-    if ((p_satisfies_del_result) != NULL) \
-      { \
-	*(p_satisfies_del_result) = \
-	  ((p_mvcc_delete_info)->satisfies_delete_result);  \
-      }	\
-  }while (0)
-
-#define MVCC_SET_DELETE_INFO(p_mvcc_delete_info, row_delete_id, \
-			     p_next_row_version, satisfies_del_result)  \
-  do {	\
-    assert (((p_mvcc_delete_info) != NULL)  \
-	    && ((p_next_row_version) != NULL));	\
-    (p_mvcc_delete_info)->row_delid = row_delete_id;  \
-    COPY_OID (&(p_mvcc_delete_info)->next_row_version, p_next_row_version); \
-    (p_mvcc_delete_info)->satisfies_delete_result = satisfies_del_result; \
-    }while(0)
-
- /* TO DO :We need to reevaluate relation between primary key * and foreign key. */
-#define MVCC_REEV_COND_AND_ASSIGNEMENT(mvcc_reev_data, p_curr_row_version,  \
-				       recdes, mvcc_header, ev_res) \
-  do{ \
-      ev_res = true;  \
-      if ((mvcc_reev_data) != NULL) \
-	{ \
-	  assert (((mvcc_header) != NULL) \
-		  && ((p_curr_row_version) != NULL)); \
-	  ev_res = V_TRUE;  \
-	  if (!MVCC_IS_REC_INSERTED_BY_ME (thread_p, (mvcc_header))) \
-	    { \
-	      if ((mvcc_reev_data)->primary_key != NULL)	\
-		{ \
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-			  ER_MVCC_ROW_INVALID_FOR_DELETE, 3,  \
-			  (curr_row_version).volid, \
-			  (curr_row_version).pageid,  \
-			  (curr_row_version.slotid)); \
-		  ev_res = V_ERROR; \
-		} \
-	      else  \
-		{ \
-		switch ((mvcc_reev_data)->type) \
-		  { \
-		  case REEV_DATA_SCAN:  \
-		    ev_res =  \
-		      mvcc_reevaluate_filters (thread_p,  \
-					       (mvcc_reev_data)-> \
-						select_reev_data, \
-					       p_curr_row_version, recdes);  \
-		    (mvcc_reev_data)->filter_result = ev_res; \
-		    break;  \
-		  case REEV_DATA_UPDDEL:	\
-		    ev_res =  \
-		    heap_mvcc_reev_cond_assigns (thread_p,  \
-						 &(scan_cache)->class_oid,  \
-						 p_curr_row_version, \
-						 scan_cache, recdes,  \
-						 (mvcc_reev_data)-> \
-						  upddel_reev_data); \
-		    (mvcc_reev_data)->filter_result = ev_res; \
-		    break;  \
-		  default:  \
-		    break;  \
-		  }  \
-		} \
-	    } \
-	  else	\
-	    { \
-	      (mvcc_reev_data)->filter_result = V_TRUE; \
-	    } \
-	} \
-    }while(0)
-
-#define HEAP_GET_FROM_PAGE_NO_SNAPSHOT(thread_p, p_curr_row_version, recdes,  \
-				       p_mvcc_header, scan_cache, ispeeking,  \
-				       scan_code) \
-  do{ \
-    MVCC_SNAPSHOT *saved_snapshot;  \
-    int save_cache_last_fix_page;  \
-    assert ((scan_cache) != NULL); \
-    assert ((scan_cache)->pgptr != NULL); \
-    assert ((p_curr_row_version) != NULL); \
-    assert ((p_mvcc_header) != NULL); \
-    assert ((recdes) != NULL); \
-    saved_snapshot = (scan_cache)->mvcc_snapshot; \
-    (scan_cache)->mvcc_snapshot = NULL; \
-    save_cache_last_fix_page = (scan_cache)->cache_last_fix_page; \
-    (scan_cache)->cache_last_fix_page = true;	\
-    scan_code = heap_get (thread_p, p_curr_row_version, recdes,	\
-			  scan_cache, ispeeking, NULL_CHN);  \
-    if ((mvcc_reev_data) != NULL)	\
-      {	\
-	or_mvcc_get_header (recdes, p_mvcc_header);  \
-      }	\
-    (scan_cache)->cache_last_fix_page = save_cache_last_fix_page; \
-    (scan_cache)->mvcc_snapshot = saved_snapshot; \
-    }while(0)
-
-/*
-   * Don't retrieve the object when the object has the same cache
-   * coherency number given by the caller. That is, the caller has the
-   * object cached.
-   */
-
-#define HEAP_GET_MVCC_RECORD_HEADER(thread_p, pgptr, slotid, p_mvcc_header, \
-				    mvcc_snapshot, scan) \
-  do{ \
-    RECDES recdes;  \
-    assert ((pgptr) != NULL); \
-    assert ((p_mvcc_header) != NULL); \
-    scan = spage_get_record_mvcc (pgptr, slotid, &recdes, PEEK);  \
-    if (scan == S_SUCCESS)  \
-      {	\
-	or_mvcc_get_header (&recdes, p_mvcc_header);	\
-	if (((mvcc_snapshot) != NULL) \
-	    && ((mvcc_snapshot)->snapshot_fnc != NULL))	\
-	  {	\
-	    if ((mvcc_snapshot)->snapshot_fnc (thread_p, p_mvcc_header,	\
-					       mvcc_snapshot) == false) \
-	      { \
-		scan = S_SNAPSHOT_NOT_SATISFIED;  \
-	      } \
-	  } \
-      }	\
-  }while(0)
-
-#define HEAP_OVF_GET_MVCC_RECORD_HEADER(thread_p, p_mvcc_header,  \
-					ovf_first_page, mvcc_snapshot, scan) \
-  do{ \
-      RECDES recdes;  \
-      assert (p_mvcc_header != NULL); \
-      assert (ovf_first_page != NULL); \
-      recdes.data = overflow_get_first_page_data (ovf_first_page);  \
-      recdes.length = OR_HEADER_SIZE (recdes.data); \
-      or_mvcc_get_header (&recdes, p_mvcc_header);  \
-      scan = S_SUCCESS;	\
-      if ((mvcc_snapshot) != NULL)  \
-	{ \
-	  if ((mvcc_snapshot)->snapshot_fnc (thread_p, p_mvcc_header, \
-					     mvcc_snapshot) != true) \
-	    { \
-	      scan = S_SNAPSHOT_NOT_SATISFIED;	\
-	    } \
-	} \
-    }while (0)
-
-/* try to fetch header page, having home page already fetched */
-/* TO DO - fix er_clear */
-#define HEAP_TRY_FETCH_HEADER_PAGE(thread_p, home_page, home_vpid, oid, \
-				   hdr_pgptr, hdr_vpid, scan_cache, \
-				   again_count, again_max, error_code) \
-  do{ \
-  error_code = NO_ERROR;  \
-  hdr_pgptr = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,  \
-  PGBUF_CONDITIONAL_LATCH);	\
-  if (hdr_pgptr == NULL)  \
-      {	\
-      pgbuf_unfix_and_init (thread_p, home_page); \
-      hdr_pgptr = heap_scan_pb_lock_and_fetch (thread_p, &hdr_vpid, OLD_PAGE,	\
-					       X_LOCK, scan_cache); \
-      if (hdr_pgptr == NULL)	\
-	{ \
-	  error_code = er_errid (); \
-	  if (error_code == ER_PB_BAD_PAGEID)  \
-	    { \
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,	\
-	      3, hdr_vpid.volid, hdr_vpid.pageid, 0);  \
-	      error_code = ER_HEAP_UNKNOWN_OBJECT;  \
-	    } \
-	} \
-      else  \
-	{ \
-	home_page = pgbuf_fix (thread_p, &home_vpid, OLD_PAGE,  \
-	PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH); \
-	if (home_page == NULL)  \
-	  { \
-	  pgbuf_unfix_and_init (thread_p, hdr_pgptr); \
-	  if (again_count++ >= again_max) \
-	      { \
-	      error_code = er_errid ();	\
-	      if (error_code == ER_PB_BAD_PAGEID)  \
-		  { \
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-		  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid, \
-		  oid->slotid);	\
-		  error_code = ER_HEAP_UNKNOWN_OBJECT;	\
-		  } \
-		else if (error_code == NO_ERROR) \
-		  { \
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-		  ER_PAGE_LATCH_ABORTED, 2, home_vpid.volid,  \
-		  home_vpid.pageid);  \
-		  error_code = ER_PAGE_LATCH_ABORTED; \
-		  } \
-	      } \
-	  } \
-	} \
-      }	\
-  }while (0)
-
-/* try to fetch forward page, having home page already fetched */
-#define HEAP_TRY_FETCH_FORWARD_PAGE(thread_p, home_page, home_vpid, oid, \
-				    fwd_page, fwd_vpid, fwd_oid, scan_cache,  \
-				    again_count, again_max, error_code) \
-  do{ \
-    error_code = NO_ERROR;  \
-    fwd_page = pgbuf_fix (thread_p, &(fwd_vpid), OLD_PAGE,  \
-			      PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);  \
-    if ((fwd_page) == NULL) \
-      {	\
-	pgbuf_unfix_and_init (thread_p, home_page);  \
-	fwd_page = heap_scan_pb_lock_and_fetch (thread_p, &(fwd_vpid),  \
-						    OLD_PAGE, X_LOCK, \
-						    scan_cache);  \
-	if ((fwd_page) == NULL)	\
-	  { \
-	    error_code = er_errid (); \
-	    if ((error_code) == ER_PB_BAD_PAGEID)  \
-	    { \
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,	\
-		      3, (fwd_oid)->volid, (fwd_oid)->pageid,	\
-		      (fwd_oid)->slotid);  \
-	      error_code = ER_HEAP_UNKNOWN_OBJECT;  \
-	    } \
-	   }  \
-	else  \
-	  {	\
-	    home_page = pgbuf_fix (thread_p, &(home_vpid), OLD_PAGE,	\
-				   PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH); \
-	    if (home_page == NULL)	\
-	      { \
-		pgbuf_unfix_and_init (thread_p, fwd_page);  \
-		if ((again_count)++ >= (again_max)) \
-		  {	\
-		    error_code = er_errid (); \
-		    if ((error_code) == ER_PB_BAD_PAGEID)  \
-		      { \
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-			  ER_HEAP_UNKNOWN_OBJECT, 3, (oid)->volid,  \
-			  (oid)->pageid, (oid)->slotid);  \
-			error_code = ER_HEAP_UNKNOWN_OBJECT;  \
-		      } \
-		    else if ((error_code) == NO_ERROR) \
-		      { \
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-			  ER_PAGE_LATCH_ABORTED, 2, (home_vpid).volid,  \
-			  (home_vpid).pageid);  \
-			error_code = ER_PAGE_LATCH_ABORTED; \
-		      } \
-		  }	\
-	      } \
-	    } \
-      }	\
-  }while(0)
-
-/* try to fetch header and forward page, having home page already fetched */
-#define HEAP_TRY_FETCH_HEADER_WITH_FORWARD_PAGE(thread_p, home_page, home_vpid,	\
-						oid, hdr_pgptr, hdr_vpid, \
-						fwd_page, fwd_vpid, fwd_oid, \
-						scan_cache, again_count,  \
-						again_max, error_code) \
-  do{ \
-      error_code = NO_ERROR;  \
-      hdr_pgptr = pgbuf_fix (thread_p, &(hdr_vpid), OLD_PAGE, PGBUF_LATCH_WRITE,  \
-			     PGBUF_CONDITIONAL_LATCH);	\
-      if ((hdr_pgptr) == NULL)  \
-	{ \
-	  pgbuf_unfix_and_init (thread_p, home_page);	\
-	  pgbuf_unfix_and_init (thread_p, fwd_page);	\
-	  hdr_pgptr = \
-	    heap_scan_pb_lock_and_fetch (thread_p, &hdr_vpid, OLD_PAGE, X_LOCK, \
-					 scan_cache); \
-	  if ((hdr_pgptr) == NULL)  \
-	  { \
-	    error_code = er_errid (); \
-	    if (error_code == ER_PB_BAD_PAGEID)  \
-	    { \
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,	\
-		      3, (hdr_vpid).volid, (hdr_vpid).pageid, 0);  \
-	      error_code = ER_HEAP_UNKNOWN_OBJECT;  \
-	    } \
-	   }  \
-	  else  \
-	    { \
-	      home_page = pgbuf_fix (thread_p, &(home_vpid), OLD_PAGE,  \
-				     PGBUF_LATCH_WRITE,	\
-				     PGBUF_CONDITIONAL_LATCH);	\
-	      if (home_page == NULL)  \
-		{	\
-		  pgbuf_unfix_and_init (thread_p, hdr_pgptr); \
-		  if (again_count++ >= again_max)	\
-		    { \
-		      error_code = er_errid ();	\
-		      if (error_code == ER_PB_BAD_PAGEID)	\
-			{ \
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-			    ER_HEAP_UNKNOWN_OBJECT, 3, (oid)->volid,  \
-			    (oid)->pageid, (oid)->slotid);  \
-			  error_code = ER_HEAP_UNKNOWN_OBJECT;	\
-			} \
-		      else if (error_code == NO_ERROR) \
-			{ \
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-				  ER_PAGE_LATCH_ABORTED, 2, \
-				  (home_vpid).volid, (home_vpid).pageid);	\
-			  error_code = ER_PAGE_LATCH_ABORTED; \
-			} \
-		    } \
-		}	\
-	      else  \
-		{ \
-		  fwd_page = pgbuf_fix (thread_p, &(fwd_vpid), OLD_PAGE, \
-					PGBUF_LATCH_WRITE,  \
-					PGBUF_CONDITIONAL_LATCH);  \
-		  if ((fwd_page) == NULL) \
-		    {	\
-		      pgbuf_unfix_and_init (thread_p, hdr_pgptr); \
-		      pgbuf_unfix_and_init (thread_p, home_page); \
-		      if (again_count++ >= again_max)	\
-			{ \
-			  error_code = er_errid ();	\
-			  if (error_code == ER_PB_BAD_PAGEID)	\
-			    { \
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-				      ER_HEAP_UNKNOWN_OBJECT, 3, (fwd_oid)->volid, \
-				      (fwd_oid)->pageid, (fwd_oid)->slotid);  \
-			      error_code = ER_HEAP_UNKNOWN_OBJECT;	\
-			    } \
-			  else if (er_errid () == NO_ERROR) \
-			    { \
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, \
-				      ER_PAGE_LATCH_ABORTED, 2, (fwd_vpid).volid, \
-				      (fwd_vpid).pageid); \
-			    } \
-			} \
-		    } \
-		} \
-	    } \
-	} \
-  }while (0)
-
-#define HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE(p_mvcc_rec_header) \
-  do{ \
-    if (!MVCC_IS_FLAG_SET (p_mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))  \
+#define HEAP_SET_RELOCATE_DELETE_INFO(mvcc_relocate_delete, datasource_oid_p, \
+				      next_version_p) \
+  do \
     { \
-      MVCC_SET_FLAG_BITS (p_mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);	\
-      MVCC_SET_INSID (p_mvcc_rec_header, MVCCID_NULL);	\
+      (mvcc_relocate_delete)->mvcc_delete_oid = (datasource_oid_p); \
+      (mvcc_relocate_delete)->next_version = (next_version_p); \
     } \
-    if (!MVCC_IS_FLAG_SET (p_mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID	\
-			   | OR_MVCC_FLAG_VALID_LONG_CHN))  \
+  while (0)
+
+#define MVCC_GET_DELETE_INFO(mvcc_delete_info_p, row_delid_p, \
+			     next_row_version_p, satisfies_del_result_p) \
+  do \
     { \
-      MVCC_SET_FLAG_BITS (p_mvcc_rec_header, OR_MVCC_FLAG_VALID_LONG_CHN);  \
+      assert ((mvcc_delete_info_p) != NULL); \
+      if ((row_delid_p) != NULL) \
+        { \
+	  *(row_delid_p) = (mvcc_delete_info_p)->row_delid; \
+        }	\
+      if ((next_row_version_p) != NULL) \
+        {	\
+	  COPY_OID ((next_row_version_p), \
+		    &((mvcc_delete_info_p)->next_row_version)); \
+        } \
+      if ((satisfies_del_result_p) != NULL) \
+        { \
+	  *(satisfies_del_result_p) = \
+	    ((mvcc_delete_info_p)->satisfies_delete_result); \
+        } \
     } \
-    if (!MVCC_IS_FLAG_SET (p_mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION))	\
+  while (0)
+
+#define MVCC_SET_DELETE_INFO(mvcc_delete_info_p, row_delete_id, \
+			     next_row_version_p, satisfies_del_result) \
+  do \
     { \
-      MVCC_SET_FLAG_BITS (p_mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION);  \
-      MVCC_SET_NEXT_VERSION (p_mvcc_rec_header, &oid_Null_oid);	\
+      assert (((mvcc_delete_info_p) != NULL) \
+	      && ((next_row_version_p) != NULL)); \
+      (mvcc_delete_info_p)->row_delid = (row_delete_id); \
+      COPY_OID (&(mvcc_delete_info_p)->next_row_version, (next_row_version_p)); \
+      (mvcc_delete_info_p)->satisfies_delete_result = (satisfies_del_result); \
     } \
-  }while (0)
+  while (0)
+
+#define HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE(mvcc_rec_header_p) \
+  do \
+    { \
+      if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_INSID)) \
+	{ \
+	  MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_INSID); \
+	  MVCC_SET_INSID (mvcc_rec_header_p, MVCCID_NULL); \
+	} \
+      if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID \
+			     | OR_MVCC_FLAG_VALID_LONG_CHN)) \
+	{ \
+	  MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_LONG_CHN); \
+	} \
+      if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_NEXT_VERSION)) \
+	{ \
+	  MVCC_SET_FLAG_BITS (mvcc_rec_header_p, \
+			      OR_MVCC_FLAG_VALID_NEXT_VERSION); \
+	  MVCC_SET_NEXT_VERSION (mvcc_rec_header_p, &oid_Null_oid); \
+	} \
+    } \
+  while (0)
+
 
 typedef enum
 {
@@ -763,14 +450,17 @@ static HEAP_CLASSREPR_CACHE heap_Classrepr_cache = {
 #define REPR_HASH(class_oid) (OID_PSEUDO_KEY(class_oid)%CLASSREPR_HASH_SIZE)
 
 #define HEAP_MAYNEED_DECACHE_GUESSED_LASTREPRS(class_oid, hfid) \
-  do {                                                        \
-    if (heap_Classrepr != NULL && (hfid) != NULL) {             \
-      if (heap_Classrepr->rootclass_hfid == NULL)               \
-	heap_Classrepr->rootclass_hfid = boot_find_root_heap();   \
-      if (HFID_EQ((hfid), heap_Classrepr->rootclass_hfid))      \
-	(void) heap_classrepr_decache_guessed_last(class_oid);  \
-    }                                                         \
-  } while (0)
+  do \
+    { \
+      if (heap_Classrepr != NULL && (hfid) != NULL) \
+	{ \
+	  if (heap_Classrepr->rootclass_hfid == NULL) \
+	    heap_Classrepr->rootclass_hfid = boot_find_root_heap (); \
+	  if (HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid)) \
+	    (void) heap_classrepr_decache_guessed_last (class_oid); \
+	} \
+    } \
+  while (0)
 
 #define HEAP_CHNGUESS_FUDGE_MININDICES (100)
 #define HEAP_NBITS_IN_BYTE	     (8)
@@ -874,15 +564,15 @@ static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
 
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
-					     VPID * vpid_ptr, int new_page,
-					     LOCK lock,
+					     const VPID * vpid_ptr,
+					     int new_page, LOCK lock,
 					     HEAP_SCANCACHE * scan_cache);
 #else /* !NDEBUG */
 #define heap_scan_pb_lock_and_fetch(...) \
   heap_scan_pb_lock_and_fetch_debug (__VA_ARGS__, ARG_FILE_LINE)
 
 static PAGE_PTR heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p,
-						   VPID * vpid_ptr,
+						   const VPID * vpid_ptr,
 						   int new_page, LOCK lock,
 						   HEAP_SCANCACHE *
 						   scan_cache,
@@ -1382,6 +1072,61 @@ static int heap_mvcc_insert_into_page (THREAD_ENTRY * thread_p,
 				       RECDES * recdes, const HFID * hfid,
 				       PAGE_PTR page, PGSLOTID * slotid);
 
+static DB_LOGICAL
+heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p,
+				    HEAP_SCANCACHE * scan_cache,
+				    MVCC_REEV_DATA * mvcc_reev_data,
+				    MVCC_REC_HEADER * mvcc_header,
+				    OID * p_curr_row_version,
+				    RECDES * recdes);
+static SCAN_CODE
+heap_get_from_page_no_snapshot (THREAD_ENTRY * thread_p,
+				HEAP_SCANCACHE * scan_cache,
+				MVCC_REEV_DATA * mvcc_reev_data_p,
+				MVCC_REC_HEADER * mvcc_header_p,
+				OID * curr_row_version_oid_p, RECDES * recdes,
+				int ispeeking);
+static SCAN_CODE
+heap_get_mvcc_record_header (THREAD_ENTRY * thread_p,
+			     MVCC_REC_HEADER * mvcc_header_p,
+			     MVCC_SNAPSHOT * mvcc_snapshot_p,
+			     PAGE_PTR pgptr, PGSLOTID slotid);
+static SCAN_CODE
+heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p,
+				 MVCC_REC_HEADER * mvcc_header_p,
+				 MVCC_SNAPSHOT * mvcc_snapshot_p,
+				 PAGE_PTR ovf_first_pgptr);
+
+static INLINE int
+heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
+			    const VPID * home_vpid_p, const OID * oid_p,
+			    PAGE_PTR * hdr_pgptr_p, const VPID * hdr_vpid_p,
+			    HEAP_SCANCACHE * scan_cache, int *again_count,
+			    int again_max) __attribute__ ((always_inline));
+static INLINE int
+heap_try_fetch_forward_page (THREAD_ENTRY * thread_p,
+			     PAGE_PTR * home_pgptr_p,
+			     const VPID * home_vpid_p,
+			     const OID * oid_p, PAGE_PTR * fwd_pgptr_p,
+			     const VPID * fwd_vpid_p,
+			     const OID * fwd_oid_p,
+			     HEAP_SCANCACHE * scan_cache,
+			     int *again_count,
+			     int again_max) __attribute__ ((always_inline));
+static INLINE int
+heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
+					 PAGE_PTR * home_pgptr_p,
+					 const VPID * home_vpid_p,
+					 const OID * oid_p,
+					 PAGE_PTR * hdr_pgptr_p,
+					 const VPID * hdr_vpid_p,
+					 PAGE_PTR * fwd_pgptr_p,
+					 const VPID * fwd_vpid_p,
+					 const OID * fwd_oid_p,
+					 HEAP_SCANCACHE * scan_cache,
+					 int *again_count,
+					 int again_max)
+__attribute__ ((always_inline));
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -1752,14 +1497,14 @@ end:
  */
 #if defined (NDEBUG)
 static PAGE_PTR
-heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, VPID * vpid_ptr,
+heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr,
 			     int new_page, LOCK lock,
 			     HEAP_SCANCACHE * scan_cache)
 #else /* !NDEBUG */
 static PAGE_PTR
-heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, VPID * vpid_ptr,
-				   int new_page, LOCK lock,
-				   HEAP_SCANCACHE * scan_cache,
+heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p,
+				   const VPID * vpid_ptr, int new_page,
+				   LOCK lock, HEAP_SCANCACHE * scan_cache,
 				   const char *caller_file,
 				   const int caller_line)
 #endif				/* !NDEBUG */
@@ -7165,10 +6910,10 @@ try_again:
        *       this moment.
        */
 
-      HEAP_TRY_FETCH_FORWARD_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				   forward_addr.pgptr, vpid, &forward_oid,
-				   scan_cache, again_count, again_max,
-				   error_code);
+      error_code =
+	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
+				     &forward_addr.pgptr, &vpid, &forward_oid,
+				     scan_cache, &again_count, again_max);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -7237,21 +6982,23 @@ try_again:
 	   */
 	  if (is_big_length
 	      || spage_is_updatable (thread_p, forward_addr.pgptr,
-				     forward_oid.slotid, recdes->length)
-	      == false)
+				     forward_oid.slotid,
+				     recdes->length) == false)
 	    {
 	      /* Header of heap */
 	      vpid.volid = hfid->vfid.volid;
 	      vpid.pageid = hfid->hpgid;
-	      HEAP_TRY_FETCH_HEADER_WITH_FORWARD_PAGE (thread_p, addr.pgptr,
-						       home_vpid, oid,
-						       hdr_pgptr, vpid,
-						       forward_addr.pgptr,
-						       newhome_vpid,
-						       &forward_oid,
-						       scan_cache,
-						       again_count, again_max,
-						       error_code);
+	      error_code =
+		heap_try_fetch_header_with_forward_page (thread_p,
+							 &addr.pgptr,
+							 &home_vpid, oid,
+							 &hdr_pgptr, &vpid,
+							 &forward_addr.pgptr,
+							 &newhome_vpid,
+							 &forward_oid,
+							 scan_cache,
+							 &again_count,
+							 again_max);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
@@ -7477,10 +7224,10 @@ try_again:
       newhome_vpid.volid = forward_oid.volid;
       newhome_vpid.pageid = forward_oid.pageid;
 
-      HEAP_TRY_FETCH_FORWARD_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				   forward_addr.pgptr, vpid, &forward_oid,
-				   scan_cache, again_count, again_max,
-				   error_code);
+      error_code =
+	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
+				     &forward_addr.pgptr, &vpid, &forward_oid,
+				     scan_cache, &again_count, again_max);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -7517,14 +7264,16 @@ try_again:
 	    is_home_insert = false;
 	    vpid.volid = hfid->vfid.volid;
 	    vpid.pageid = hfid->hpgid;
-	    HEAP_TRY_FETCH_HEADER_WITH_FORWARD_PAGE (thread_p, addr.pgptr,
-						     home_vpid, oid,
-						     hdr_pgptr, vpid,
-						     forward_addr.pgptr,
-						     newhome_vpid,
-						     &forward_oid, scan_cache,
-						     again_count, again_max,
-						     error_code);
+	    error_code =
+	      heap_try_fetch_header_with_forward_page (thread_p, &addr.pgptr,
+						       &home_vpid, oid,
+						       &hdr_pgptr, &vpid,
+						       &forward_addr.pgptr,
+						       &newhome_vpid,
+						       &forward_oid,
+						       scan_cache,
+						       &again_count,
+						       again_max);
 	    if (error_code != NO_ERROR)
 	      {
 		goto error;
@@ -7633,9 +7382,10 @@ try_again:
       vpid.volid = hfid->vfid.volid;
       vpid.pageid = hfid->hpgid;
 
-      HEAP_TRY_FETCH_HEADER_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				  hdr_pgptr, vpid, scan_cache, again_count,
-				  again_max, error_code);
+      error_code =
+	heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid, oid,
+				    &hdr_pgptr, &vpid, scan_cache,
+				    &again_count, again_max);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -7820,9 +7570,10 @@ try_again:
 	    vpid.pageid = hfid->hpgid;
 
 	    assert (hdr_pgptr == NULL);
-	    HEAP_TRY_FETCH_HEADER_PAGE (thread_p, addr.pgptr, home_vpid,
-					oid, hdr_pgptr, vpid, scan_cache,
-					again_count, again_max, error_code);
+	    error_code =
+	      heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
+					  oid, &hdr_pgptr, &vpid, scan_cache,
+					  &again_count, again_max);
 	    if (error_code != NO_ERROR)
 	      {
 		goto error;
@@ -8001,9 +7752,10 @@ try_again:
 	  vpid.volid = hfid->vfid.volid;
 	  vpid.pageid = hfid->hpgid;
 
-	  HEAP_TRY_FETCH_HEADER_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				      hdr_pgptr, vpid, scan_cache,
-				      again_count, again_max, error_code);
+	  error_code =
+	    heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
+					oid, &hdr_pgptr, &vpid, scan_cache,
+					&again_count, again_max);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -8580,10 +8332,10 @@ try_again:
        *       this moment.
        */
 
-      HEAP_TRY_FETCH_FORWARD_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				   forward_addr.pgptr, vpid, &forward_oid,
-				   scan_cache, again_count, again_max,
-				   error_code);
+      error_code =
+	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
+				     &forward_addr.pgptr, &vpid, &forward_oid,
+				     scan_cache, &again_count, again_max);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -8650,10 +8402,10 @@ try_again:
 	      vpid.volid = hfid->vfid.volid;
 	      vpid.pageid = hfid->hpgid;
 
-	      HEAP_TRY_FETCH_HEADER_WITH_FORWARD_PAGE
-		(thread_p, addr.pgptr, home_vpid, oid, hdr_pgptr, vpid,
-		 forward_addr.pgptr, newhome_vpid, &forward_oid,
-		 scan_cache, again_count, again_max, error_code);
+	      error_code = heap_try_fetch_header_with_forward_page
+		(thread_p, &addr.pgptr, &home_vpid, oid, &hdr_pgptr, &vpid,
+		 &forward_addr.pgptr, &newhome_vpid, &forward_oid,
+		 scan_cache, &again_count, again_max);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
@@ -8788,12 +8540,15 @@ try_again:
       if (use_mvcc)
 	{
 	  MVCC_REC_HEADER recdes_header;
+
 	  vpid.volid = forward_oid.volid;
 	  vpid.pageid = forward_oid.pageid;
-	  HEAP_TRY_FETCH_FORWARD_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				       forward_addr.pgptr, vpid, &forward_oid,
-				       scan_cache, again_count, again_max,
-				       error_code);
+
+	  error_code =
+	    heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid,
+					 oid, &forward_addr.pgptr, &vpid,
+					 &forward_oid, scan_cache,
+					 &again_count, again_max);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -8832,9 +8587,10 @@ try_again:
 	  break;
 	}
 
-      HEAP_TRY_FETCH_HEADER_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				  hdr_pgptr, vpid, scan_cache, again_count,
-				  again_max, error_code);
+      error_code =
+	heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid, oid,
+				    &hdr_pgptr, &vpid, scan_cache,
+				    &again_count, again_max);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -8932,9 +8688,11 @@ try_again:
 	      vpid.volid = hfid->vfid.volid;
 	      vpid.pageid = hfid->hpgid;
 
-	      HEAP_TRY_FETCH_HEADER_PAGE (thread_p, addr.pgptr, home_vpid,
-					  oid, hdr_pgptr, vpid, scan_cache,
-					  again_count, again_max, error_code);
+	      error_code =
+		heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
+					    oid, &hdr_pgptr, &vpid,
+					    scan_cache, &again_count,
+					    again_max);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
@@ -24803,8 +24561,10 @@ heap_get_mvcc_data (THREAD_ENTRY * thread_p, const OID * oid,
       break;
 
     case REC_HOME:
-      HEAP_GET_MVCC_RECORD_HEADER (thread_p, page_ptr, oid->slotid,
-				   mvcc_rec_header, mvcc_snapshot, scan_code);
+      scan_code =
+	heap_get_mvcc_record_header (thread_p,
+				     mvcc_rec_header, mvcc_snapshot,
+				     page_ptr, oid->slotid);
       break;
 
     case REC_BIGONE:
@@ -24839,9 +24599,9 @@ heap_get_mvcc_data (THREAD_ENTRY * thread_p, const OID * oid,
 	      return S_ERROR;
 	    }
 
-	  HEAP_OVF_GET_MVCC_RECORD_HEADER (thread_p, mvcc_rec_header,
-					   forward_page_ptr, mvcc_snapshot,
-					   scan_code);
+	  scan_code =
+	    heap_ovf_get_mvcc_record_header (thread_p, mvcc_rec_header,
+					     mvcc_snapshot, forward_page_ptr);
 	}
       else
 	{
@@ -24854,9 +24614,11 @@ heap_get_mvcc_data (THREAD_ENTRY * thread_p, const OID * oid,
 	      return S_ERROR;
 	    }
 
-	  HEAP_GET_MVCC_RECORD_HEADER (thread_p, forward_page_ptr,
-				       forward_oid.slotid, mvcc_rec_header,
-				       mvcc_snapshot, scan_code);
+	  scan_code = heap_get_mvcc_record_header (thread_p,
+						   mvcc_rec_header,
+						   mvcc_snapshot,
+						   forward_page_ptr,
+						   forward_oid.slotid);
 	}
       break;
 
@@ -25068,10 +24830,10 @@ try_again:
 
       newhome_vpid.volid = forward_oid.volid;
       newhome_vpid.pageid = forward_oid.pageid;
-      HEAP_TRY_FETCH_FORWARD_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				   forward_addr.pgptr, vpid, &forward_oid,
-				   scan_cache, again_count, again_max,
-				   error_code);
+      error_code =
+	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
+				     &forward_addr.pgptr, &vpid, &forward_oid,
+				     scan_cache, &again_count, again_max);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -25112,9 +24874,10 @@ try_again:
 	  vpid.volid = hfid->vfid.volid;
 	  vpid.pageid = hfid->hpgid;
 
-	  HEAP_TRY_FETCH_HEADER_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				      hdr_pgptr, vpid, scan_cache,
-				      again_count, again_max, error_code);
+	  error_code =
+	    heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
+					oid, &hdr_pgptr, &vpid, scan_cache,
+					&again_count, again_max);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -25172,10 +24935,10 @@ try_again:
       vpid.volid = forward_oid.volid;
       vpid.pageid = forward_oid.pageid;
 
-      HEAP_TRY_FETCH_FORWARD_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				   forward_addr.pgptr, vpid, &forward_oid,
-				   scan_cache, again_count, again_max,
-				   error_code);
+      error_code =
+	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
+				     &forward_addr.pgptr, &vpid, &forward_oid,
+				     scan_cache, &again_count, again_max);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -25238,9 +25001,10 @@ try_again:
 	  vpid.volid = hfid->vfid.volid;
 	  vpid.pageid = hfid->hpgid;
 
-	  HEAP_TRY_FETCH_HEADER_PAGE (thread_p, addr.pgptr, home_vpid, oid,
-				      hdr_pgptr, vpid, scan_cache,
-				      again_count, again_max, error_code);
+	  error_code =
+	    heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
+					oid, &hdr_pgptr, &vpid, scan_cache,
+					&again_count, again_max);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -26856,16 +26620,21 @@ fetch_row:
 					    (thread_p)) >= X_LOCK);
 	      curr_row_locked = true;
 	    }
-	  HEAP_GET_FROM_PAGE_NO_SNAPSHOT (thread_p, &curr_row_version, recdes,
-					  &mvcc_header, scan_cache, ispeeking,
-					  scan_code);
+	  scan_code = heap_get_from_page_no_snapshot (thread_p, scan_cache,
+						      mvcc_reev_data,
+						      &mvcc_header,
+						      &curr_row_version,
+						      recdes, ispeeking);
 	  if (scan_code != S_SUCCESS)
 	    {
 	      goto end;
 	    }
 
-	  MVCC_REEV_COND_AND_ASSIGNEMENT (mvcc_reev_data, &curr_row_version,
-					  recdes, &mvcc_header, ev_res);
+	  ev_res =
+	    heap_mvcc_reev_cond_and_assignment (thread_p, scan_cache,
+						mvcc_reev_data,
+						&mvcc_header,
+						&curr_row_version, recdes);
 	  switch (ev_res)
 	    {
 	    case V_TRUE:
@@ -28337,13 +28106,16 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
       header_vpid.pageid = hfid->hpgid;
       while (again_count < again_max)
 	{
-	  HEAP_TRY_FETCH_HEADER_WITH_FORWARD_PAGE (thread_p, home_page,
-						   home_vpid, oid,
-						   header_page, header_vpid,
-						   forward_page, forward_vpid,
-						   forward_oid_p, scan_cache,
-						   again_count, again_max,
-						   error_code);
+	  error_code =
+	    heap_try_fetch_header_with_forward_page (thread_p, &home_page,
+						     &home_vpid, oid,
+						     &header_page,
+						     &header_vpid,
+						     &forward_page,
+						     &forward_vpid,
+						     forward_oid_p,
+						     scan_cache, &again_count,
+						     again_max);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -28361,11 +28133,12 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 	    }
 	  while (again_count < again_max)
 	    {
-	      HEAP_TRY_FETCH_FORWARD_PAGE (thread_p, home_page, home_vpid,
-					   oid, forward_page, forward_vpid,
-					   forward_oid_p, scan_cache,
-					   again_count, again_max,
-					   error_code);
+	      error_code =
+		heap_try_fetch_forward_page (thread_p, &home_page, &home_vpid,
+					     oid, &forward_page,
+					     &forward_vpid, forward_oid_p,
+					     scan_cache, &again_count,
+					     again_max);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
@@ -28563,4 +28336,479 @@ heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p,
     }
 
   return false;
+}
+
+/*
+ * heap_mvcc_reev_cond_and_assignment () - 
+ *
+ *   return: DB_LOGICAL
+ *   thread_p(in): thread entry
+ *   scan_cache(in): 
+ *   mvcc_reev_data_p(in/out): 
+ *   mvcc_header_p(in): 
+ *   curr_row_version_oid_p(in): 
+ *   recdes(in): 
+ */
+/* TODO: We need to reevaluate relation between primary key * and foreign key. */
+static DB_LOGICAL
+heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p,
+				    HEAP_SCANCACHE * scan_cache,
+				    MVCC_REEV_DATA * mvcc_reev_data_p,
+				    MVCC_REC_HEADER * mvcc_header_p,
+				    OID * curr_row_version_oid_p,
+				    RECDES * recdes)
+{
+  bool ev_res = V_TRUE;
+
+  if (mvcc_reev_data_p == NULL)
+    {
+      return ev_res;
+    }
+
+  assert (mvcc_header_p != NULL && curr_row_version_oid_p != NULL);
+
+  ev_res = V_TRUE;
+  if (!MVCC_IS_REC_INSERTED_BY_ME (thread_p, mvcc_header_p))
+    {
+      if (mvcc_reev_data_p->primary_key != NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_MVCC_ROW_INVALID_FOR_DELETE, 3,
+		  curr_row_version_oid_p->volid,
+		  curr_row_version_oid_p->pageid,
+		  curr_row_version_oid_p->slotid);
+	  ev_res = V_ERROR;
+	}
+      else
+	{
+	  switch (mvcc_reev_data_p->type)
+	    {
+	    case REEV_DATA_SCAN:
+	      ev_res =
+		mvcc_reevaluate_filters (thread_p,
+					 mvcc_reev_data_p->
+					 select_reev_data,
+					 curr_row_version_oid_p, recdes);
+	      mvcc_reev_data_p->filter_result = ev_res;
+	      break;
+
+	    case REEV_DATA_UPDDEL:
+	      ev_res =
+		heap_mvcc_reev_cond_assigns (thread_p,
+					     &scan_cache->class_oid,
+					     curr_row_version_oid_p,
+					     scan_cache, recdes,
+					     mvcc_reev_data_p->
+					     upddel_reev_data);
+	      mvcc_reev_data_p->filter_result = ev_res;
+	      break;
+
+	    default:
+	      break;
+	    }
+	}
+    }
+  else
+    {
+      mvcc_reev_data_p->filter_result = V_TRUE;
+    }
+
+  return ev_res;
+}
+
+/*
+ * heap_get_from_page_no_snapshot () - 
+ *
+ *   return: SCAN_CODE
+ *   thread_p(in): thread entry
+ *   scan_cache(in): 
+ *   mvcc_reev_data_p(in): 
+ *   mvcc_header_p(in/out):
+ *   curr_row_version_oid_p(in): 
+ *   recdes(in): 
+ *   ispeeking(in): 
+ */
+static SCAN_CODE
+heap_get_from_page_no_snapshot (THREAD_ENTRY * thread_p,
+				HEAP_SCANCACHE * scan_cache,
+				MVCC_REEV_DATA * mvcc_reev_data_p,
+				MVCC_REC_HEADER * mvcc_header_p,
+				OID * curr_row_version_oid_p, RECDES * recdes,
+				int ispeeking)
+{
+  MVCC_SNAPSHOT *saved_snapshot;
+  int saved_cache_last_fix_page;
+  SCAN_CODE scan;
+
+  assert (scan_cache != NULL);
+  assert (scan_cache->pgptr != NULL);
+  assert (curr_row_version_oid_p != NULL);
+  assert (mvcc_header_p != NULL);
+  assert (recdes != NULL);
+
+  saved_snapshot = scan_cache->mvcc_snapshot;
+  scan_cache->mvcc_snapshot = NULL;
+
+  saved_cache_last_fix_page = scan_cache->cache_last_fix_page;
+  scan_cache->cache_last_fix_page = true;
+
+  scan = heap_get (thread_p, curr_row_version_oid_p, recdes,
+		   scan_cache, ispeeking, NULL_CHN);
+
+  if (mvcc_reev_data_p != NULL)
+    {
+      or_mvcc_get_header (recdes, mvcc_header_p);
+    }
+
+  scan_cache->cache_last_fix_page = saved_cache_last_fix_page;
+  scan_cache->mvcc_snapshot = saved_snapshot;
+
+  return scan;
+}
+
+/*
+ * heap_get_mvcc_record_header () - 
+ *
+ *   return: SCAN_CODE
+ *   thread_p(in): thread entry
+ *   mvcc_header_p(in/out):
+ *   mvcc_snapshot_p(in): 
+ *   pgptr(in): 
+ *   slotid(in): 
+ */
+static SCAN_CODE
+heap_get_mvcc_record_header (THREAD_ENTRY * thread_p,
+			     MVCC_REC_HEADER * mvcc_header_p,
+			     MVCC_SNAPSHOT * mvcc_snapshot_p,
+			     PAGE_PTR pgptr, PGSLOTID slotid)
+{
+  RECDES recdes;
+  SCAN_CODE scan;
+
+  assert (pgptr != NULL);
+  assert (mvcc_header_p != NULL);
+
+  scan = spage_get_record_mvcc (pgptr, slotid, &recdes, PEEK);
+  if (scan == S_SUCCESS)
+    {
+      or_mvcc_get_header (&recdes, mvcc_header_p);
+      if (mvcc_snapshot_p != NULL && mvcc_snapshot_p->snapshot_fnc != NULL)
+	{
+	  if (mvcc_snapshot_p->snapshot_fnc (thread_p, mvcc_header_p,
+					     mvcc_snapshot_p) == false)
+	    {
+	      scan = S_SNAPSHOT_NOT_SATISFIED;
+	    }
+	}
+    }
+
+  return scan;
+}
+
+/*
+ * heap_ovf_get_mvcc_record_header () - 
+ *
+ *   return: SCAN_CODE
+ *   thread_p(in): thread entry
+ *   mvcc_header_p(in/out):
+ *   mvcc_snapshot_p(in): 
+ *   ovf_first_page(in): 
+ */
+static SCAN_CODE
+heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p,
+				 MVCC_REC_HEADER * mvcc_header_p,
+				 MVCC_SNAPSHOT * mvcc_snapshot_p,
+				 PAGE_PTR ovf_first_pgptr)
+{
+  RECDES recdes;
+  SCAN_CODE scan;
+
+  assert (mvcc_header_p != NULL);
+  assert (ovf_first_pgptr != NULL);
+
+  recdes.data = overflow_get_first_page_data (ovf_first_pgptr);
+  recdes.length = OR_HEADER_SIZE (recdes.data);
+  or_mvcc_get_header (&recdes, mvcc_header_p);
+
+  scan = S_SUCCESS;
+  if (mvcc_snapshot_p != NULL)
+    {
+      if (mvcc_snapshot_p->snapshot_fnc (thread_p, mvcc_header_p,
+					 mvcc_snapshot_p) != true)
+	{
+	  scan = S_SNAPSHOT_NOT_SATISFIED;
+	}
+    }
+
+  return scan;
+}
+
+/*
+ * heap_try_fetch_header_page () - 
+ *                  try to fetch header page, having home page already fetched
+ *
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   home_pgptr_p(out):
+ *   home_vpid_p(in): 
+ *   oid_p(in): 
+ *   hdr_pgptr_p(out): 
+ *   hdr_vpid_p(in): 
+ *   scan_cache(in): 
+ *   again_count_p(in/out): 
+ *   again_max(in): 
+ */
+/* TODO - fix er_clear */
+STATIC_INLINE int
+heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
+			    const VPID * home_vpid_p, const OID * oid_p,
+			    PAGE_PTR * hdr_pgptr_p, const VPID * hdr_vpid_p,
+			    HEAP_SCANCACHE * scan_cache, int *again_count_p,
+			    int again_max)
+{
+  int error_code = NO_ERROR;
+
+  *hdr_pgptr_p = pgbuf_fix (thread_p, hdr_vpid_p, OLD_PAGE, PGBUF_LATCH_WRITE,
+			    PGBUF_CONDITIONAL_LATCH);
+  if (*hdr_pgptr_p != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
+  *hdr_pgptr_p = heap_scan_pb_lock_and_fetch (thread_p, hdr_vpid_p, OLD_PAGE,
+					      X_LOCK, scan_cache);
+  if (*hdr_pgptr_p == NULL)
+    {
+      error_code = er_errid ();
+      if (error_code == ER_PB_BAD_PAGEID)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HEAP_UNKNOWN_OBJECT, 3, hdr_vpid_p->volid,
+		  hdr_vpid_p->pageid, 0);
+	  error_code = ER_HEAP_UNKNOWN_OBJECT;
+	}
+    }
+  else
+    {
+      *home_pgptr_p = pgbuf_fix (thread_p, home_vpid_p, OLD_PAGE,
+				 PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+      if (*home_pgptr_p == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, *hdr_pgptr_p);
+	  if ((*again_count_p)++ >= again_max)
+	    {
+	      error_code = er_errid ();
+	      if (error_code == ER_PB_BAD_PAGEID)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HEAP_UNKNOWN_OBJECT, 3, oid_p->volid,
+			  oid_p->pageid, oid_p->slotid);
+		  error_code = ER_HEAP_UNKNOWN_OBJECT;
+		}
+	      else if (error_code == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PAGE_LATCH_ABORTED, 2, home_vpid_p->volid,
+			  home_vpid_p->pageid);
+		  error_code = ER_PAGE_LATCH_ABORTED;
+		}
+	    }
+	}
+    }
+
+  return error_code;
+}
+
+/*
+ * heap_try_fetch_forward_page () - 
+ *                  try to fetch forward page, having home page already fetched
+ *
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   home_pgptr_p(out):
+ *   home_vpid_p(in): 
+ *   oid_p(in): 
+ *   fwd_pgptr_p(out): 
+ *   fwd_vpid_p(in): 
+ *   fwd_oid_p(in): 
+ *   scan_cache(in): 
+ *   again_count_p(in/out): 
+ *   again_max(in): 
+ */
+STATIC_INLINE int
+heap_try_fetch_forward_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
+			     const VPID * home_vpid_p, const OID * oid_p,
+			     PAGE_PTR * fwd_pgptr_p, const VPID * fwd_vpid_p,
+			     const OID * fwd_oid_p,
+			     HEAP_SCANCACHE * scan_cache, int *again_count_p,
+			     int again_max)
+{
+  int error_code = NO_ERROR;
+
+  *fwd_pgptr_p = pgbuf_fix (thread_p, fwd_vpid_p, OLD_PAGE,
+			    PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+  if (*fwd_pgptr_p != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
+  *fwd_pgptr_p = heap_scan_pb_lock_and_fetch (thread_p, fwd_vpid_p,
+					      OLD_PAGE, X_LOCK, scan_cache);
+  if (*fwd_pgptr_p == NULL)
+    {
+      error_code = er_errid ();
+      if (error_code == ER_PB_BAD_PAGEID)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HEAP_UNKNOWN_OBJECT, 3, fwd_oid_p->volid,
+		  fwd_oid_p->pageid, fwd_oid_p->slotid);
+	  error_code = ER_HEAP_UNKNOWN_OBJECT;
+	}
+    }
+  else
+    {
+      *home_pgptr_p = pgbuf_fix (thread_p, home_vpid_p, OLD_PAGE,
+				 PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+      if (*home_pgptr_p == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, *fwd_pgptr_p);
+	  if ((*again_count_p)++ >= again_max)
+	    {
+	      error_code = er_errid ();
+	      if (error_code == ER_PB_BAD_PAGEID)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HEAP_UNKNOWN_OBJECT, 3, oid_p->volid,
+			  oid_p->pageid, oid_p->slotid);
+		  error_code = ER_HEAP_UNKNOWN_OBJECT;
+		}
+	      else if (error_code == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PAGE_LATCH_ABORTED, 2, home_vpid_p->volid,
+			  home_vpid_p->pageid);
+		  error_code = ER_PAGE_LATCH_ABORTED;
+		}
+	    }
+	}
+    }
+
+  return error_code;
+}
+
+/*
+ * heap_try_fetch_header_with_forward_page () - 
+ *       try to fetch header and forward page, having home page already fetched
+ *
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   home_pgptr_p(out):
+ *   home_vpid_p(in): 
+ *   oid_p(in): 
+ *   hdr_pgptr_p(out): 
+ *   hdr_vpid_p(in): 
+ *   fwd_pgptr_p(out): 
+ *   fwd_vpid_p(in): 
+ *   fwd_oid_p(in): 
+ *   scan_cache(in): 
+ *   again_count_p(in/out): 
+ *   again_max(in): 
+ */
+STATIC_INLINE int
+heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
+					 PAGE_PTR * home_pgptr_p,
+					 const VPID * home_vpid_p,
+					 const OID * oid_p,
+					 PAGE_PTR * hdr_pgptr_p,
+					 const VPID * hdr_vpid_p,
+					 PAGE_PTR * fwd_pgptr_p,
+					 const VPID * fwd_vpid_p,
+					 const OID * fwd_oid_p,
+					 HEAP_SCANCACHE * scan_cache,
+					 int *again_count_p, int again_max)
+{
+  int error_code = NO_ERROR;
+
+  *hdr_pgptr_p = pgbuf_fix (thread_p, hdr_vpid_p, OLD_PAGE, PGBUF_LATCH_WRITE,
+			    PGBUF_CONDITIONAL_LATCH);
+  if (*hdr_pgptr_p != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
+  pgbuf_unfix_and_init (thread_p, *fwd_pgptr_p);
+  *hdr_pgptr_p =
+    heap_scan_pb_lock_and_fetch (thread_p, hdr_vpid_p, OLD_PAGE, X_LOCK,
+				 scan_cache);
+  if (*hdr_pgptr_p == NULL)
+    {
+      error_code = er_errid ();
+      if (error_code == ER_PB_BAD_PAGEID)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HEAP_UNKNOWN_OBJECT, 3, hdr_vpid_p->volid,
+		  hdr_vpid_p->pageid, 0);
+	  error_code = ER_HEAP_UNKNOWN_OBJECT;
+	}
+    }
+  else
+    {
+      *home_pgptr_p = pgbuf_fix (thread_p, home_vpid_p, OLD_PAGE,
+				 PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+      if (*home_pgptr_p == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, *hdr_pgptr_p);
+	  if ((*again_count_p)++ >= again_max)
+	    {
+	      error_code = er_errid ();
+	      if (error_code == ER_PB_BAD_PAGEID)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HEAP_UNKNOWN_OBJECT, 3, oid_p->volid,
+			  oid_p->pageid, oid_p->slotid);
+		  error_code = ER_HEAP_UNKNOWN_OBJECT;
+		}
+	      else if (error_code == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PAGE_LATCH_ABORTED, 2,
+			  home_vpid_p->volid, home_vpid_p->pageid);
+		  error_code = ER_PAGE_LATCH_ABORTED;
+		}
+	    }
+	}
+      else
+	{
+	  *fwd_pgptr_p = pgbuf_fix (thread_p, fwd_vpid_p, OLD_PAGE,
+				    PGBUF_LATCH_WRITE,
+				    PGBUF_CONDITIONAL_LATCH);
+	  if (*fwd_pgptr_p == NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, *hdr_pgptr_p);
+	      pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
+	      if ((*again_count_p)++ >= again_max)
+		{
+		  error_code = er_errid ();
+		  if (error_code == ER_PB_BAD_PAGEID)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_HEAP_UNKNOWN_OBJECT, 3, fwd_oid_p->volid,
+			      fwd_oid_p->pageid, fwd_oid_p->slotid);
+		      error_code = ER_HEAP_UNKNOWN_OBJECT;
+		    }
+		  else if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_PAGE_LATCH_ABORTED, 2, fwd_vpid_p->volid,
+			      fwd_vpid_p->pageid);
+		    }
+		}
+	    }
+	}
+    }
+
+  return error_code;
 }

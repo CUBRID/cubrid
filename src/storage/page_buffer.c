@@ -559,7 +559,9 @@ static PGBUF_PS_INFO ps_info;
 #define AOUT_HASH_DIVIDE_RATIO 1000
 #define AOUT_HASH_IDX(vpid, list) ((vpid)->pageid % list->num_hashes)
 
-static unsigned int pgbuf_hash_func_mirror (const VPID * vpid);
+static INLINE unsigned int
+pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((always_inline));
+
 static bool pgbuf_is_temporary_volume (VOLID volid);
 static int pgbuf_initialize_bcb_table (void);
 static int pgbuf_initialize_hash_table (void);
@@ -579,7 +581,8 @@ static int pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p,
 				      PGBUF_BCB * bufptr);
 #if !defined(NDEBUG)
 static int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p,
-				     PGBUF_BCB * bufptr, int request_mode,
+				     PGBUF_BCB * bufptr,
+				     int request_mode,
 				     int buf_lock_acquired,
 				     PGBUF_LATCH_CONDITION condition,
 				     const char *caller_file,
@@ -594,7 +597,8 @@ static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 			    const char *caller_file, int caller_line);
 #else /* NDEBUG */
 static int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p,
-				     PGBUF_BCB * bufptr, int request_mode,
+				     PGBUF_BCB * bufptr,
+				     int request_mode,
 				     int buf_lock_acquired,
 				     PGBUF_LATCH_CONDITION condition);
 static int pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p,
@@ -603,8 +607,8 @@ static int pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p,
 static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 			    int request_mode, int request_fcnt);
 #endif /* NDEBUG */
-static PGBUF_BCB *pgbuf_search_hash_chain (PGBUF_BUFFER_HASH * hash_anchor,
-					   const VPID * vpid);
+static PGBUF_BCB *pgbuf_search_hash_chain (PGBUF_BUFFER_HASH *
+					   hash_anchor, const VPID * vpid);
 static int pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor,
 					 PGBUF_BCB * bufptr);
 static int pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr);
@@ -622,8 +626,8 @@ static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p,
 				PGBUF_BCB * bufptr,
 				const char *caller_file, int caller_line);
 static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-			    int synchronous,
-			    const char *caller_file, int caller_line);
+			    int synchronous, const char *caller_file,
+			    int caller_line);
 #else /* NDEBUG */
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p,
 				      const VPID * src_vpid);
@@ -640,9 +644,10 @@ static int pgbuf_get_victim_candidates_from_lru (int check_count,
 						 int victim_count);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p,
 				    const VPID * vpid, int max_count);
-static PGBUF_BCB *pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p,
-						  int max_count);
-static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p,
+static PGBUF_BCB *pgbuf_get_victim_from_ain_list (THREAD_ENTRY *
+						  thread_p, int max_count);
+static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY *
+						  thread_p,
 						  const VPID * vpid,
 						  int max_count);
 static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p,
@@ -686,7 +691,8 @@ static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p,
 					     THREAD_ENTRY * thrd_entry,
 					     const char *caller_file,
 					     int caller_line);
-static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
+static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p,
+			      PGBUF_BCB * bufptr,
 			      THREAD_ENTRY * thrd_entry,
 			      const char *caller_file, int caller_line);
 #else /* NDEBUG */
@@ -694,8 +700,8 @@ static int pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p,
 					     PGBUF_BCB * bufptr,
 					     THREAD_ENTRY * thrd_entry);
-static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-			      THREAD_ENTRY * thrd_entry);
+static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p,
+			      PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
 #endif /* NDEBUG */
 #endif /* SERVER_MODE */
 
@@ -736,15 +742,15 @@ static void pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p,
 static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
 static bool pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p,
-					     PAGE_PTR pgptr, PAGE_TYPE ptype,
-					     bool no_error);
+					     PAGE_PTR pgptr,
+					     PAGE_TYPE ptype, bool no_error);
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
  *   return: hash value
  *   key_vpid(in): VPID to hash
  */
-static unsigned int
+STATIC_INLINE unsigned int
 pgbuf_hash_func_mirror (const VPID * vpid)
 {
 #define VOLID_LSB_BITS 8

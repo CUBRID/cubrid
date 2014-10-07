@@ -1147,7 +1147,7 @@ struct log_header
      0.0,                                        \
      0, 0, 0,                                    \
      /* next_trid */                             \
-     NULL_TRANID,                                \
+     (LOG_SYSTEM_TRANID + 1),                    \
      /* mvcc_id */				 \
      MVCCID_NULL,                                \
      0, 0, 0,					 \

@@ -33,15 +33,26 @@ extern "C"
 {
 #endif
 
-#if defined(AIX)
+#if defined (AIX)
 #include <sys/socket.h>
 #endif
 
-#if !defined(__GNUC__)
+#if !defined (__GNUC__)
 #define __attribute__(X)
 #endif
 
-#if defined(WINDOWS)
+#if defined (__GNUC__)
+#define STATIC_INLINE static inline
+#define INLINE inline
+#elif _MSC_VER >= 1000
+#define STATIC_INLINE __forceinline static
+#define INLINE
+#else
+#define STATIC_INLINE static
+#define INLINE
+#endif
+
+#if defined (WINDOWS)
 #define IMPORT_VAR 	__declspec(dllimport)
 #define EXPORT_VAR 	__declspec(dllexport)
 #else
@@ -49,7 +60,7 @@ extern "C"
 #define EXPORT_VAR
 #endif
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define L_cuserid 9
 #else				/* WINDOWS */
 #ifndef L_cuserid
@@ -79,7 +90,7 @@ extern "C"
 #define ULLONG_MAX	18446744073709551615ULL
 #endif
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #include <fcntl.h>
 #include <direct.h>
 #include <process.h>
@@ -129,7 +140,7 @@ extern "C"
 #define vfprintf        _vfprintf_p
 #define vprintf         _vprintf_p
 #define strtof		strtof_win
-#if defined(_WIN32)
+#if defined (_WIN32)
 #define mktime         mktime_for_win32
 #endif
 #if (_WIN32_WINNT < 0x0600)
@@ -276,7 +287,7 @@ extern "C"
  */
   extern void pc_init (void);
   extern void pc_final (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern int lock_region (int fd, int cmd, long offset, long size);
 #endif
   extern int free_space (const char *, int);
@@ -287,15 +298,15 @@ extern "C"
 */
 #else				/* WINDOWS */
 
-#if !defined(HAVE_CTIME_R)
+#if !defined (HAVE_CTIME_R)
 #  error "HAVE_CTIME_R"
 #endif
 
-#if !defined(HAVE_LOCALTIME_R)
+#if !defined (HAVE_LOCALTIME_R)
 #  error "HAVE_LOCALTIME_R"
 #endif
 
-#if !defined(HAVE_DRAND48_R)
+#if !defined (HAVE_DRAND48_R)
 #  error "HAVE_DRAND48_R"
 #endif
 
@@ -303,7 +314,7 @@ extern "C"
 #endif				/* WINDOWS */
 
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define PATH_SEPARATOR  '\\'
 #else				/* WINDOWS */
 #define PATH_SEPARATOR  '/'
@@ -312,7 +323,7 @@ extern "C"
 
 #define IS_PATH_SEPARATOR(c) ((c) == PATH_SEPARATOR)
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define IS_ABS_PATH(p) IS_PATH_SEPARATOR((p)[0]) \
 	|| (isalpha((p)[0]) && (p)[1] == ':' && IS_PATH_SEPARATOR((p)[2]))
 #else				/* WINDOWS */
@@ -323,7 +334,7 @@ extern "C"
  * Some platforms (e.g., Solaris) evidently don't define _longjmp.  If
  * it's not available, just use regular old longjmp.
  */
-#if defined(SOLARIS) || defined(WINDOWS)
+#if defined (SOLARIS) || defined (WINDOWS)
 #define LONGJMP longjmp
 #define SETJMP setjmp
 #else
@@ -331,34 +342,34 @@ extern "C"
 #define SETJMP _setjmp
 #endif
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define GETHOSTNAME(p, l) css_gethostname(p, l)
 #else				/* ! WINDOWS */
 #define GETHOSTNAME(p, l) gethostname(p, l)
 #endif				/* ! WINDOWS */
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define FINITE(x) _finite(x)
-#elif defined(HPUX)
+#elif defined (HPUX)
 #define FINITE(x) isfinite(x)
 #else				/* ! WINDOWS && ! HPUX */
 #define FINITE(x) finite(x)
 #endif
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define difftime64(time1, time2) _difftime64(time1, time2)
 #else				/* !WINDOWS */
 #define difftime64(time1, time2) difftime(time1, time2)
 #endif				/* !WINDOWS */
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #ifndef wcswcs
 #define wcswcs(ws1, ws2)     wcsstr((ws1), (ws2))
 #endif
 #define wcsspn(ws1, ws2)     ((int) wcsspn((ws1), (ws2)))
 #endif				/* WINDOWS */
 
-#if defined(SOLARIS)
+#if defined (SOLARIS)
 #define wcslen(ws)           wslen((ws))
 #define wcschr(ws, wc)       wschr((ws), (wc))
 #define wcsrchr(ws, wc)      wsrchr((ws), (wc))
@@ -372,43 +383,43 @@ extern "C"
 #define wcsncpy(ws1, ws2, n) wsncpy((ws1), (ws2), (n))
 #endif				/* SOLARIS */
 
-#if !defined(HAVE_STRDUP)
+#if !defined (HAVE_STRDUP)
   extern char *strdup (const char *str);
 #endif				/* HAVE_STRDUP */
 
-#if !defined(HAVE_VASPRINTF)
+#if !defined (HAVE_VASPRINTF)
   extern int vasprintf (char **ptr, const char *format, va_list ap);
 #endif				/* HAVE_VASPRINTF */
-#if !defined(HAVE_ASPRINTF)
+#if !defined (HAVE_ASPRINTF)
   extern int asprintf (char **ptr, const char *format, ...);
 #endif				/* HAVE_ASPRINTF */
-#if defined(HAVE_ERR_H)
+#if defined (HAVE_ERR_H)
 #include <err.h>
 #else
 #define err(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
 #define errx(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
 #endif
   extern int cub_dirname_r (const char *path, char *pathbuf, size_t buflen);
-#if defined(AIX)
+#if defined (AIX)
   double aix_ceil (double x);
 #define ceil(x) aix_ceil(x)
 #endif
 
-#if !defined(HAVE_DIRNAME)
+#if !defined (HAVE_DIRNAME)
   char *dirname (const char *path);
 #endif				/* HAVE_DIRNAME */
   extern int basename_r (const char *path, char *pathbuf, size_t buflen);
-#if !defined(HAVE_BASENAME)
+#if !defined (HAVE_BASENAME)
   extern char *basename (const char *path);
 #endif				/* HAVE_BASENAME */
-#if defined(WINDOWS)
-#if !defined(HAVE_STRSEP)
+#if defined (WINDOWS)
+#if !defined (HAVE_STRSEP)
   extern char *strsep (char **stringp, const char *delim);
 #endif
   extern char *getpass (const char *prompt);
 #endif
 
-#if defined(ENABLE_UNUSED_FUNCTION)
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern int utona (unsigned int u, char *s, size_t n);
   extern int itona (int i, char *s, size_t n);
 #endif
@@ -424,7 +435,7 @@ extern "C"
 #define OFF_T_MAX  LLONG_MAX
 #endif
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define IS_INVALID_SOCKET(socket) ((socket) == INVALID_SOCKET)
   typedef int socklen_t;
 #else
@@ -443,7 +454,7 @@ extern "C"
   extern int os_rename_file (const char *src_path, const char *dest_path);
 
 /* os_send_kill() - send the KILL signal to ourselves */
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define os_send_kill() os_send_signal(SIGABRT)
 #else
 #define os_send_kill() os_send_signal(SIGKILL)
@@ -454,31 +465,31 @@ extern "C"
 							sig_handler);
   extern void os_send_signal (const int sig_no);
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 #define atoll(a)	_atoi64((a))
 #define llabs(a)	_abs64((a))
 #endif
 
-#if defined(AIX) && !defined(NAME_MAX)
+#if defined (AIX) && !defined (NAME_MAX)
 #define NAME_MAX pathconf("/",_PC_NAME_MAX)
 #endif
 
-#if defined(AIX) && !defined(DONT_HOOK_MALLOC)
+#if defined (AIX) && !defined (DONT_HOOK_MALLOC)
   void *aix_malloc (size_t size);
 #define malloc(a) aix_malloc(a)
 #endif
 
-#if defined(AIX) && !defined(SOL_TCP)
+#if defined (AIX) && !defined (SOL_TCP)
 #define SOL_TCP IPPROTO_TCP
 #endif
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
   int setenv (const char *name, const char *value, int overwrite);
   int cub_vsnprintf (char *buffer, size_t count, const char *format,
 		     va_list argptr);
 #endif
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 /* The following structure is used to generate uniformly distributed
  * pseudo-random numbers reentrantly.
  */
@@ -649,7 +660,7 @@ extern "C"
 
 #endif				/* WINDOWS */
 
-#if (defined(WINDOWS) || defined(X86))
+#if (defined (WINDOWS) || defined (X86))
 #define COPYMEM(type,dst,src)   do {		\
   *((type *) (dst)) = *((type *) (src));  	\
 }while(0)
@@ -664,7 +675,7 @@ extern "C"
  *
  * Developers should check HAVE_ATOMIC_BUILTINS before using atomic builtins
  * as follows.
- *  #if defined(HAVE_ATOMIC_BUILTINS)
+ *  #if defined (HAVE_ATOMIC_BUILTINS)
  *   ... write codes with atomic builtins ...
  *  #else
  *   ... leave legacy codes or write codes without atomic builtins ...
@@ -679,7 +690,7 @@ extern "C"
  * While InterlockedXXX functions handles 32bit values, InterlockedXXX64 handles
  * 64bit values. That is why we define two types of macros.
  */
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 
 #define HAVE_ATOMIC_BUILTINS
 
@@ -690,7 +701,7 @@ extern "C"
 #define ATOMIC_INC_32(ptr, amount) \
 	(InterlockedExchangeAdd(ptr, amount) + amount)
 
-#if defined(_WIN64)
+#if defined (_WIN64)
 #define ATOMIC_TAS_64(ptr, new_val) \
 	InterlockedExchange64(ptr, new_val)
 #define ATOMIC_CAS_64(ptr, cmp_val, swap_val) \
@@ -724,7 +735,7 @@ extern "C"
 
 #else				/* WINDOWS */
 
-#if defined(HAVE_GCC_ATOMIC_BUILTINS)
+#if defined (HAVE_GCC_ATOMIC_BUILTINS)
 
 #define HAVE_ATOMIC_BUILTINS
 
@@ -757,7 +768,7 @@ extern "C"
 }
 #endif
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 extern double strtod_win (const char *str, char **end_ptr);
 #define string_to_double(str, end_ptr) strtod_win((str), (end_ptr));
 #else
@@ -791,7 +802,7 @@ extern int str_to_uint64 (UINT64 * ret_p, char **end_p, const char *str_p,
 extern int str_to_double (double *ret_p, char **end_p, const char *str_p);
 extern int str_to_float (float *ret_p, char **end_p, const char *str_p);
 
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 extern float strtof_win (const char *nptr, char **endptr);
 #endif
 
@@ -799,11 +810,11 @@ extern float strtof_win (const char *nptr, char **endptr);
 extern size_t strlcpy (char *, const char *, size_t);
 #endif
 
-#if (defined(WINDOWS) && defined(_WIN32))
+#if (defined (WINDOWS) && defined (_WIN32))
 extern time_t mktime_for_win32 (struct tm *tm);
 #endif
 
-#if (defined(WINDOWS) && !defined(PRId64))
+#if (defined (WINDOWS) && !defined (PRId64))
 #define PRId64 "lld"
 #endif
 

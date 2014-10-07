@@ -223,9 +223,9 @@ struct vacuum_worker
 #define VACUUM_IS_PROCESS_LOG_FOR_VACUUM(thread_p) \
   (thread_p != NULL \
    && ((thread_p->type == TT_VACUUM_WORKER \
-	&& VACUUM_WORKER_STATE_IS_PROCESS_LOG (thread_p) \
+	&& VACUUM_WORKER_STATE_IS_PROCESS_LOG (thread_p)) \
        || (thread_p->type == TT_VACUUM_MASTER \
-	   && vacuum_Master_is_process_log_phase))))
+	   && vacuum_Master_is_process_log_phase)))
 #else /* !SERVER_MODE */
 #define VACUUM_IS_PROCESS_LOG_FOR_VACUUM(thread_p) false
 #endif /* !SERVER_MODE */

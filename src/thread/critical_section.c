@@ -84,7 +84,6 @@ static const char *css_Csect_name[] = {
   "HEAP_CHNGUESS",
   "TRAN_TABLE",
   "CT_OID_TABLE",
-  "SCANID_BITMAP",
   "HA_SERVER_STATE",
   "COMPACTDB_ONE_INSTANCE",
   "ACL",

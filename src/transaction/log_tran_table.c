@@ -1805,9 +1805,13 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (tdes->interrupt == true)
     {
       tdes->interrupt = false;
+#if defined (HAVE_ATOMIC_BUILTINS)
+      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, -1);
+#else
       TR_TABLE_CS_ENTER (thread_p);
       log_Gl.trantable.num_interrupts--;
       TR_TABLE_CS_EXIT (thread_p);
+#endif
     }
   tdes->modified_class_list = NULL;
 
@@ -1976,6 +1980,28 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 int
 logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+#if defined (HAVE_ATOMIC_BUILTINS)
+  int trid, next_trid;
+
+  logtb_clear_tdes (thread_p, tdes);
+
+  do
+    {
+      trid = log_Gl.hdr.next_trid;
+      next_trid = trid + 1;
+      if (next_trid < 0)
+	{
+	  /* an overflow happened. starts with its base */
+	  next_trid = LOG_SYSTEM_TRANID + 1;
+	}
+    }
+  while (!ATOMIC_CAS_32 (&log_Gl.hdr.next_trid, trid, next_trid));
+
+  assert (LOG_SYSTEM_TRANID + 1 <= trid && trid <= INT32_MAX);
+
+  tdes->trid = trid;
+  return trid;
+#else
   TR_TABLE_CS_ENTER (thread_p);
 
   logtb_clear_tdes (thread_p, tdes);
@@ -1992,6 +2018,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   TR_TABLE_CS_EXIT (thread_p);
 
   return tdes->trid;
+#endif
 }
 
 /*
@@ -2998,6 +3025,17 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 	{
 	  if (tdes->interrupt != set)
 	    {
+#if defined (HAVE_ATOMIC_BUILTINS)
+	      tdes->interrupt = set;
+	      if (set == true)
+		{
+		  ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, 1);
+		}
+	      else
+		{
+		  ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, -1);
+		}
+#else
 	      TR_TABLE_CS_ENTER (thread_p);
 
 	      tdes->interrupt = set;
@@ -3011,6 +3049,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 		}
 
 	      TR_TABLE_CS_EXIT (thread_p);
+#endif
 	    }
 
 	  if (set == true)
@@ -3067,8 +3106,13 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     {
       tdes->interrupt = false;
 
+#if !defined (HAVE_ATOMIC_BUILTINS)
       TR_TABLE_CS_ENTER (thread_p);
       log_Gl.trantable.num_interrupts--;
+#else
+      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, -1);
+#endif
+
       if (log_Gl.trantable.num_interrupts > 0)
 	{
 	  *continue_checking = true;
@@ -3077,7 +3121,10 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	{
 	  *continue_checking = false;
 	}
+
+#if !defined (HAVE_ATOMIC_BUILTINS)
       TR_TABLE_CS_EXIT (thread_p);
+#endif
     }
   else if (interrupt == false && tdes->query_timeout > 0)
     {
@@ -3220,11 +3267,7 @@ logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
 	{
 	  if (tdes->suppress_replication != set)
 	    {
-	      TR_TABLE_CS_ENTER (thread_p);
-
 	      tdes->suppress_replication = set;
-
-	      TR_TABLE_CS_EXIT (thread_p);
 	    }
 	  return true;
 	}

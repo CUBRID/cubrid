@@ -62,7 +62,6 @@ enum
 
   CSECT_TRAN_TABLE,		/* Latch for transaction table */
   CSECT_CT_OID_TABLE,
-  CSECT_SCANID_BITMAP,
   CSECT_HA_SERVER_STATE,	/* Latch for HA server mode change */
   CSECT_COMPACTDB_ONE_INSTANCE,	/* Latch for compactdb */
   CSECT_ACL,			/* Latch for accessible IP list table */
