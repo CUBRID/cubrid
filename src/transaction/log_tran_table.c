@@ -1997,7 +1997,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
   while (!ATOMIC_CAS_32 (&log_Gl.hdr.next_trid, trid, next_trid));
 
-  assert (LOG_SYSTEM_TRANID + 1 <= trid && trid <= INT32_MAX);
+  assert (LOG_SYSTEM_TRANID + 1 <= trid && trid <= DB_INT32_MAX);
 
   tdes->trid = trid;
   return trid;
