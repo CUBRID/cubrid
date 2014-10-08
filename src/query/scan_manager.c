@@ -7428,14 +7428,14 @@ scan_finalize (void)
 static int
 reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
-  int i;
+  int i, j;
   KEY_VAL_RANGE temp;
 
-  for (i = 0; 2 * i < key_cnt; i++)
+  for (i = 0, j = key_cnt - 1; i < j; i++, j--)
     {
       temp = key_vals[i];
-      key_vals[i] = key_vals[key_cnt - i - 1];
-      key_vals[key_cnt - i - 1] = temp;
+      key_vals[i] = key_vals[j];
+      key_vals[j] = temp;
     }
 
   return key_cnt;
