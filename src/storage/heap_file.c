@@ -21175,7 +21175,13 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
 
   lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
 
-  next_vpid = vpid;
+  /* skip header page */
+  ret = heap_vpid_next (&hfid, hdr_pgptr, &next_vpid);
+  if (ret != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   while (!VPID_ISNULL (&next_vpid))
     {
       vpid = next_vpid;
@@ -28339,15 +28345,15 @@ heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p,
 }
 
 /*
- * heap_mvcc_reev_cond_and_assignment () - 
+ * heap_mvcc_reev_cond_and_assignment () -
  *
  *   return: DB_LOGICAL
  *   thread_p(in): thread entry
- *   scan_cache(in): 
- *   mvcc_reev_data_p(in/out): 
- *   mvcc_header_p(in): 
- *   curr_row_version_oid_p(in): 
- *   recdes(in): 
+ *   scan_cache(in):
+ *   mvcc_reev_data_p(in/out):
+ *   mvcc_header_p(in):
+ *   curr_row_version_oid_p(in):
+ *   recdes(in):
  */
 /* TODO: We need to reevaluate relation between primary key * and foreign key. */
 static DB_LOGICAL
@@ -28417,16 +28423,16 @@ heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p,
 }
 
 /*
- * heap_get_from_page_no_snapshot () - 
+ * heap_get_from_page_no_snapshot () -
  *
  *   return: SCAN_CODE
  *   thread_p(in): thread entry
- *   scan_cache(in): 
- *   mvcc_reev_data_p(in): 
+ *   scan_cache(in):
+ *   mvcc_reev_data_p(in):
  *   mvcc_header_p(in/out):
- *   curr_row_version_oid_p(in): 
- *   recdes(in): 
- *   ispeeking(in): 
+ *   curr_row_version_oid_p(in):
+ *   recdes(in):
+ *   ispeeking(in):
  */
 static SCAN_CODE
 heap_get_from_page_no_snapshot (THREAD_ENTRY * thread_p,
@@ -28467,14 +28473,14 @@ heap_get_from_page_no_snapshot (THREAD_ENTRY * thread_p,
 }
 
 /*
- * heap_get_mvcc_record_header () - 
+ * heap_get_mvcc_record_header () -
  *
  *   return: SCAN_CODE
  *   thread_p(in): thread entry
  *   mvcc_header_p(in/out):
- *   mvcc_snapshot_p(in): 
- *   pgptr(in): 
- *   slotid(in): 
+ *   mvcc_snapshot_p(in):
+ *   pgptr(in):
+ *   slotid(in):
  */
 static SCAN_CODE
 heap_get_mvcc_record_header (THREAD_ENTRY * thread_p,
@@ -28506,13 +28512,13 @@ heap_get_mvcc_record_header (THREAD_ENTRY * thread_p,
 }
 
 /*
- * heap_ovf_get_mvcc_record_header () - 
+ * heap_ovf_get_mvcc_record_header () -
  *
  *   return: SCAN_CODE
  *   thread_p(in): thread entry
  *   mvcc_header_p(in/out):
- *   mvcc_snapshot_p(in): 
- *   ovf_first_page(in): 
+ *   mvcc_snapshot_p(in):
+ *   ovf_first_page(in):
  */
 static SCAN_CODE
 heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p,
@@ -28544,19 +28550,19 @@ heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p,
 }
 
 /*
- * heap_try_fetch_header_page () - 
+ * heap_try_fetch_header_page () -
  *                  try to fetch header page, having home page already fetched
  *
  *   return: error code
  *   thread_p(in): thread entry
  *   home_pgptr_p(out):
- *   home_vpid_p(in): 
- *   oid_p(in): 
- *   hdr_pgptr_p(out): 
- *   hdr_vpid_p(in): 
- *   scan_cache(in): 
- *   again_count_p(in/out): 
- *   again_max(in): 
+ *   home_vpid_p(in):
+ *   oid_p(in):
+ *   hdr_pgptr_p(out):
+ *   hdr_vpid_p(in):
+ *   scan_cache(in):
+ *   again_count_p(in/out):
+ *   again_max(in):
  */
 /* TODO - fix er_clear */
 STATIC_INLINE int
@@ -28621,20 +28627,20 @@ heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 }
 
 /*
- * heap_try_fetch_forward_page () - 
+ * heap_try_fetch_forward_page () -
  *                  try to fetch forward page, having home page already fetched
  *
  *   return: error code
  *   thread_p(in): thread entry
  *   home_pgptr_p(out):
- *   home_vpid_p(in): 
- *   oid_p(in): 
- *   fwd_pgptr_p(out): 
- *   fwd_vpid_p(in): 
- *   fwd_oid_p(in): 
- *   scan_cache(in): 
- *   again_count_p(in/out): 
- *   again_max(in): 
+ *   home_vpid_p(in):
+ *   oid_p(in):
+ *   fwd_pgptr_p(out):
+ *   fwd_vpid_p(in):
+ *   fwd_oid_p(in):
+ *   scan_cache(in):
+ *   again_count_p(in/out):
+ *   again_max(in):
  */
 STATIC_INLINE int
 heap_try_fetch_forward_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
@@ -28699,22 +28705,22 @@ heap_try_fetch_forward_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 }
 
 /*
- * heap_try_fetch_header_with_forward_page () - 
+ * heap_try_fetch_header_with_forward_page () -
  *       try to fetch header and forward page, having home page already fetched
  *
  *   return: error code
  *   thread_p(in): thread entry
  *   home_pgptr_p(out):
- *   home_vpid_p(in): 
- *   oid_p(in): 
- *   hdr_pgptr_p(out): 
- *   hdr_vpid_p(in): 
- *   fwd_pgptr_p(out): 
- *   fwd_vpid_p(in): 
- *   fwd_oid_p(in): 
- *   scan_cache(in): 
- *   again_count_p(in/out): 
- *   again_max(in): 
+ *   home_vpid_p(in):
+ *   oid_p(in):
+ *   hdr_pgptr_p(out):
+ *   hdr_vpid_p(in):
+ *   fwd_pgptr_p(out):
+ *   fwd_vpid_p(in):
+ *   fwd_oid_p(in):
+ *   scan_cache(in):
+ *   again_count_p(in/out):
+ *   again_max(in):
  */
 STATIC_INLINE int
 heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
