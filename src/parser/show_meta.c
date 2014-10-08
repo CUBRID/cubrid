@@ -166,7 +166,11 @@ metadata_of_active_log_header (void)
     {"Ha_server_state", "varchar(32)"},
     {"Ha_file", "varchar(32)"},
     {"Eof_lsa", "varchar(64)"},
-    {"Smallest_lsa_at_last_checkpoint", "varchar(64)"}
+    {"Smallest_lsa_at_last_checkpoint", "varchar(64)"},
+    {"Next_mvcc_id", "bigint"},
+    {"Mvcc_op_log_lsa", "varchar(32)"},
+    {"Last_block_oldest_mvcc_id", "bigint"},
+    {"Last_block_newest_mvcc_id", "bigint"}
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {

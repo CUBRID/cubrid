@@ -11632,6 +11632,37 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
       goto exit_on_error;
     }
 
+  db_make_bigint (out_values[idx], header->mvcc_next_id);
+  idx++;
+
+  lsa_to_string (buf, sizeof (buf), &header->mvcc_op_log_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  if (header->last_block_oldest_mvccid == MVCCID_NULL)
+    {
+      db_make_null (out_values[idx]);
+    }
+  else
+    {
+      db_make_bigint (out_values[idx], header->last_block_oldest_mvccid);
+    }
+  idx++;
+
+  if (header->last_block_newest_mvccid == MVCCID_NULL)
+    {
+      db_make_null (out_values[idx]);
+    }
+  else
+    {
+      db_make_bigint (out_values[idx], header->last_block_newest_mvccid);
+    }
+  idx++;
+
   assert (idx == out_cnt);
 
   return S_SUCCESS;
