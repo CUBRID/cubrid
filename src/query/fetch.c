@@ -3878,6 +3878,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_SLEEP:
+      /* sleep() is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
+					REGU_VARIABLE_FETCH_ALL_CONST));
       if (db_sleep (arithptr->value, peek_right) != NO_ERROR)
 	{
 	  goto error;
@@ -4143,6 +4147,9 @@ fetch_peek_arith_end:
     case T_RANDOM:
     case T_DRAND:
     case T_DRANDOM:
+      /* sleep() is not constant */
+    case T_SLEEP:
+
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
 					REGU_VARIABLE_FETCH_ALL_CONST));
       assert (REGU_VARIABLE_IS_FLAGED (regu_var,
