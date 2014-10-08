@@ -914,7 +914,8 @@ static int btree_append_overflow_oids_page (THREAD_ENTRY * thread_p,
 					    VPID * first_ovfl_vpid,
 					    MVCC_REC_HEADER *
 					    p_mvcc_rec_header,
-					    bool skip_overflow_undo);
+					    bool skip_overflow_undo,
+					    PAGE_PTR * new_ovfl_page);
 static int btree_insert_oid_overflow_page (THREAD_ENTRY * thread_p,
 					   BTID_INT * btid,
 					   PAGE_PTR ovfl_page, DB_VALUE * key,
@@ -13823,6 +13824,9 @@ exit_on_error:
  *   oid(in): Object identifier to be inserted together with the key
  *   p_mvcc_rec_header(in): MVCC tree info
  *   skip_overflow_undo(in): it true, skip undo logging
+ *   new_ovf_page(out): If not NULL, store page pointer to new overflow page.
+ *			Note that in this case, the overflow page will not
+ *			be unfixed.
  */
 static int
 btree_append_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
@@ -13831,7 +13835,8 @@ btree_append_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				 RECDES * leaf_rec, VPID * near_vpid,
 				 VPID * first_ovfl_vpid,
 				 MVCC_REC_HEADER * p_mvcc_rec_header,
-				 bool skip_overflow_undo)
+				 bool skip_overflow_undo,
+				 PAGE_PTR * new_ovf_page)
 {
 #define BTREE_APPEND_OVF_OIDS_PAGE_REDO_CRUMBS_MAX 3
 #define BTREE_APPEND_OVF_OIDS_PAGE_UNDO_CRUMBS_MAX 1
@@ -13857,6 +13862,11 @@ btree_append_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   assert (mvcc_Enabled == true || !BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
+
+  if (new_ovf_page != NULL)
+    {
+      *new_ovf_page = NULL;
+    }
 
   if (mvcc_Enabled == true)
     {
@@ -14050,14 +14060,24 @@ btree_append_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 end:
 
+  if (ret == NO_ERROR && new_ovf_page != NULL)
+    {
+      /* Output the overflow page. */
+      assert_release (ovfl_page != NULL);
+      *new_ovf_page = ovfl_page;
+    }
+  else
+    {
+      if (ovfl_page != NULL)
+	{
+	  /* Unfix the overflow page. */
+	  pgbuf_unfix_and_init (thread_p, ovfl_page);
+	}
+    }
+
   if (rv_key != NULL)
     {
       db_private_free_and_init (thread_p, rv_key);
-    }
-
-  if (ovfl_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, ovfl_page);
     }
 
 #if !defined (NDEBUG)
@@ -14956,7 +14976,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added_deleted,
 						 &rec, nearp_vpid,
 						 &leafrec_pnt.ovfl,
 						 p_mvcc_rec_header,
-						 swap_last_oid_to_overflow);
+						 swap_last_oid_to_overflow,
+						 NULL);
 
 #if !defined(NDEBUG)
 	  btree_verify_node (thread_p, btid, page_ptr);
@@ -14980,7 +15001,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added_deleted,
 					     &rec, nearp_vpid,
 					     &leafrec_pnt.ovfl,
 					     p_mvcc_ovf_rec_header,
-					     swap_last_oid_to_overflow);
+					     swap_last_oid_to_overflow,
+					     &ovfl_page);
     }
   else
     {
@@ -14988,45 +15010,48 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added_deleted,
 					    key, cls_oid, oid,
 					    p_mvcc_ovf_rec_header,
 					    swap_last_oid_to_overflow);
-      pgbuf_unfix_and_init (thread_p, ovfl_page);
     }
 
-  if (delete_swapped_object)
+  if (ret == NO_ERROR && delete_swapped_object)
     {
       /* Delete was postponed because we had to move the object to an overflow
        * page first. Delete it now.
-       * TODO: This was a quick fix for a serious bug. It can be optimized
-       *       to do the delete at the same time with the relocation.
        */
       RECDES ovfl_copy_rec;
       char ovfl_copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
       int oid_offset;
 
-      ovfl_page = NULL;
+      if (ovfl_page == NULL)
+	{
+	  /* Shouldn't happen. Ovfl_page should be the page where object was
+	   * inserted.
+	   */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error;
+	}
+
+      /* Get overflow page record. */
       ovfl_copy_rec.area_size = DB_PAGESIZE;
       ovfl_copy_rec.data = PTR_ALIGN (ovfl_copy_rec_buf, BTREE_MAX_ALIGN);
-
-      if (VPID_ISNULL (&leafrec_pnt.ovfl))
+      if (spage_get_record (ovfl_page, 1, &ovfl_copy_rec, COPY) != S_SUCCESS)
 	{
-	  /* The overflow page was just created */
-	  (void) btree_leaf_get_vpid_for_overflow_oids (&rec,
-							&leafrec_pnt.ovfl);
+	  /* Shouldn't happen. */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  pgbuf_unfix_and_init (thread_p, ovfl_page);
+	  goto error;
 	}
-      ret =
-	btree_find_overflow_page (thread_p, oid, &leafrec_pnt.ovfl,
-				  &ovfl_page, &ovfl_copy_rec, &oid_offset,
-				  oid_size);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
-
+      /* Find the OID */
+      oid_offset =
+	btree_find_oid_from_ovfl (&ovfl_copy_rec, oid, oid_size, NULL);
       if (oid_offset == NOT_FOUND)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_UNKNOWN_OID,
-		  3, oid->volid, oid->pageid, oid->slotid);
+	  /* Shouldn't happen. */
 	  assert (false);
-	  return ER_BTREE_UNKNOWN_OID;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  pgbuf_unfix_and_init (thread_p, ovfl_page);
+	  goto error;
 	}
 
       /* MVCCID has fixed size, so no need to check space */
@@ -15042,6 +15067,12 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added_deleted,
 				BTREE_OVERFLOW_NODE, key);
 #endif
       return ret;
+    }
+
+  if (ovfl_page != NULL)
+    {
+      /* Unfix ovfl_page. */
+      pgbuf_unfix_and_init (thread_p, ovfl_page);
     }
 
 #if !defined(NDEBUG)
