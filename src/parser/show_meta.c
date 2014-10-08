@@ -225,7 +225,8 @@ metadata_of_slotted_page_header (void)
     {"Contiguous_free_area", "int"},
     {"Free_space_offset", "int"},
     {"Need_update_best_hint", "int"},
-    {"Is_saving", "int"}
+    {"Is_saving", "int"},
+    {"Flags", "int"}
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
