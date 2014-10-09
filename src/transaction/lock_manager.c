@@ -9546,7 +9546,6 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	{
 	  if (res_ptr->waiter == NULL)
 	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
 	      continue;
 	    }
 	  else
