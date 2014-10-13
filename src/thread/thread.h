@@ -265,6 +265,9 @@ struct thread_entry
   int index;			/* thread entry index */
   int type;			/* thread type */
   pthread_t tid;		/* thread id */
+  pthread_t emulate_tid;	/* emulated thread id; applies to non-worker
+				 * threads, when works on behalf of a worker
+				 * thread */
   int client_id;		/* client id whom this thread is responding */
   int tran_index;		/* tran index to which this thread belongs */
   pthread_mutex_t tran_index_lock;

@@ -77,7 +77,7 @@ typedef DB_BIGINT full_date_t;
   ((is_utc) ? (-offset) : (offset))
 #define ABS(i) ((i) >= 0 ? (i) : -(i))
 
-#define TZ_INVALID_VALUE 0xffffffff
+#define TZ_INVALID_OFFSET ((((23 * 60) + 59) * 60) + 59)
 
 static int tz_initialized = 0;
 
@@ -89,6 +89,7 @@ static void tz_get_session_tz_info (TZ_DECODE_INFO * tz_info);
 static int tz_create_tzid_for_utc_datetime (DB_DATETIME * dt,
 					    TZ_DECODE_INFO * tz_info,
 					    TZ_ID * tz_id);
+static const TZ_REGION *tz_get_invalid_tz_region (void);
 static DB_DATE tz_get_current_date (void);
 static int tz_str_timezone_decode (const char *tz_str, const int tz_str_size,
 				   TZ_DECODE_INFO * tz_info,
@@ -743,8 +744,8 @@ tz_get_session_tz_region (TZ_REGION * tz_region)
     }
   else
     {
-      /* TODO : A session could not be found with this thread, use UTC */
-      *tz_region = *tz_get_utc_tz_region ();
+      /* A session could not be found with this thread, use invalid region */
+      *tz_region = *tz_get_invalid_tz_region ();
     }
 #endif
 }
@@ -778,7 +779,7 @@ tz_get_session_tz_info (TZ_DECODE_INFO * tz_info)
   if (er_status != NO_ERROR)
     {
       tz_info->type = TZ_REGION_OFFSET;
-      tz_info->offset = 0;
+      tz_info->offset = TZ_INVALID_OFFSET;
     }
 }
 
@@ -802,6 +803,17 @@ tz_get_utc_tz_region (void)
 {
   static const TZ_REGION utc_region = { 0, {0} };
   return &utc_region;
+}
+
+/*
+ * tz_get_invalid_tz_region() - returns the generic invalid timezone region
+ *
+ */
+static const TZ_REGION *
+tz_get_invalid_tz_region (void)
+{
+  static const TZ_REGION invalid_region = { 0, {TZ_INVALID_OFFSET} };
+  return &invalid_region;
 }
 
 /*
@@ -1711,6 +1723,11 @@ tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc,
   if (tz_info.type == TZ_REGION_OFFSET)
     {
       total_offset = tz_info.offset;
+      if (total_offset == TZ_INVALID_OFFSET)
+	{
+	  err_status = ER_TZ_INTERNAL_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	}
     }
   else
     {
@@ -1843,6 +1860,11 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
       int offset = tz_info->offset;
       int hour, min, sec, n;
       char sign;
+
+      if (tz_info->offset == TZ_INVALID_OFFSET)
+	{
+	  return -1;
+	}
 
       sign = (tz_info->offset < 0) ? '-' : '+';
 
@@ -2768,7 +2790,11 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
     {
       /* keep offset and zone decode info */
       total_offset_sec = tz_info->offset;
-
+      if (total_offset_sec == TZ_INVALID_OFFSET)
+	{
+	  err_status = ER_TZ_INTERNAL_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	}
       goto exit;
     }
 
@@ -3402,6 +3428,13 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr,
       int offset = tz_info.offset;
       int hour, min, sec;
       char sign;
+
+      if (tz_info.offset == TZ_INVALID_OFFSET)
+	{
+	  er_status = ER_TZ_INTERNAL_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+	  return er_status;
+	}
 
       sign = (tz_info.offset < 0) ? '-' : '+';
 
@@ -4242,10 +4275,20 @@ TZ_REGION *
 tz_get_server_tz_region_session (void)
 {
   THREAD_ENTRY *thread_p;
+  THREAD_ENTRY *worker_thread_p;
   TZ_REGION *session_tz_region;
 
   thread_p = thread_get_thread_entry_info ();
   session_tz_region = session_get_session_tz_region (thread_p);
+
+  if (session_tz_region == NULL && thread_p->emulate_tid != ((pthread_t) 0))
+    {
+      worker_thread_p = thread_find_entry_by_tid (thread_p->emulate_tid);
+      if (worker_thread_p != NULL)
+	{
+	  session_tz_region = session_get_session_tz_region (worker_thread_p);
+	}
+    }
 
   return session_tz_region;
 }

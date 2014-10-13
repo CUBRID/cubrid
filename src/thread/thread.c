@@ -620,6 +620,7 @@ thread_initialize_manager (void)
 
   tsd_ptr->index = 0;
   tsd_ptr->tid = pthread_self ();
+  tsd_ptr->emulate_tid = ((pthread_t) 0);
   tsd_ptr->status = TS_RUN;
   tsd_ptr->resume_status = THREAD_RESUME_NONE;
   tsd_ptr->tran_index = 0;	/* system transaction */
@@ -1150,6 +1151,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
   entry_p->index = -1;
   entry_p->tid = ((pthread_t) 0);
+  entry_p->emulate_tid = ((pthread_t) 0);
   entry_p->client_id = -1;
   entry_p->tran_index = -1;
   r = pthread_mutex_init (&entry_p->tran_index_lock, NULL);
@@ -1256,6 +1258,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 
   entry_p->index = -1;
   entry_p->tid = ((pthread_t) 0);
+  entry_p->emulate_tid = ((pthread_t) 0);
   entry_p->client_id = -1;
   entry_p->tran_index = -1;
   entry_p->rid = 0;

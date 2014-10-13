@@ -158,6 +158,34 @@ extern int lock_Comp[13][13];
     } \
   while (0)
 
+#define SET_EMULATE_THREAD_WITH_LOCK_ENTRY(th,lock_entry) \
+  do \
+    { \
+      assert ((th)->emulate_tid == ((pthread_t) 0)); \
+      if ((lock_entry)->thrd_entry != NULL)  \
+	{ \
+	  (th)->emulate_tid = (lock_entry)->thrd_entry->tid; \
+	} \
+      else \
+	{ \
+	  THREAD_ENTRY *locked_thread_entry_p; \
+	  locked_thread_entry_p = thread_find_entry_by_tran_index_except_me \
+				  ((lock_entry)->tran_index); \
+	  if (locked_thread_entry_p != NULL) \
+	    { \
+	      (th)->emulate_tid = locked_thread_entry_p->tid; \
+	    } \
+	} \
+    } \
+   while (0)
+
+#define CLEAR_EMULATE_THREAD(th) \
+  do \
+    { \
+      (th)->emulate_tid = ((pthread_t) 0); \
+    } \
+   while (0)
+
 #endif /* SERVER_MODE */
 
 #define SET_SCANID_BIT(s, i)    (s[i/8] |= (1 << (i%8)))
@@ -750,6 +778,7 @@ lock_uninit_entry (void *entry)
     }
 
   entry_ptr->tran_index = -1;
+  entry_ptr->thrd_entry = NULL;
   history = entry_ptr->history;
   while (history)
     {
@@ -952,6 +981,7 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index,
 				  struct lk_res *res, LOCK lock)
 {
   entry_ptr->tran_index = tran_index;
+  entry_ptr->thrd_entry = NULL;
   entry_ptr->res_head = res;
   entry_ptr->granted_mode = lock;
   entry_ptr->blocked_mode = NULL_LOCK;
@@ -998,6 +1028,7 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index,
 				 struct lk_res *res, LOCK lock)
 {
   entry_ptr->tran_index = tran_index;
+  entry_ptr->thrd_entry = NULL;
   entry_ptr->res_head = res;
   entry_ptr->granted_mode = lock;
   entry_ptr->blocked_mode = NULL_LOCK;
@@ -12938,12 +12969,15 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
       fprintf (log_fp, "%*clock: %s", indent, ' ',
 	       LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
 
+      SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
       lock_event_log_lock_info (thread_p, log_fp, entry);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
       event_log_bind_values (log_fp, tran_index, entry->bind_index_in_tran);
 
       fprintf (log_fp, "\n");
+
+      CLEAR_EMULATE_THREAD (thread_p);
     }
 
   if (entry != NULL)
@@ -12958,6 +12992,8 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
       fprintf (log_fp, "%*clock: %s", indent, ' ',
 	       LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
 
+      SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
+
       lock_event_log_lock_info (thread_p, log_fp, entry);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
@@ -12965,6 +13001,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
 
       fprintf (log_fp, "\n");
     }
+  CLEAR_EMULATE_THREAD (thread_p);
 
   pthread_mutex_unlock (&tran_lock->hold_mutex);
 }
@@ -12986,6 +13023,8 @@ lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp,
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
+  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
+
   fprintf (log_fp, "waiter:\n");
   event_log_print_client_info (entry->tran_index, indent);
 
@@ -12996,6 +13035,9 @@ lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp,
   event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
   event_log_bind_values (log_fp, entry->tran_index,
 			 entry->bind_index_in_tran);
+
+  CLEAR_EMULATE_THREAD (thread_p);
+
   fprintf (log_fp, "\n");
 }
 
@@ -13039,11 +13081,17 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
 
 	  fprintf (log_fp, "%*clock: %s", indent, ' ',
 		   LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+
+	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
+
 	  lock_event_log_lock_info (thread_p, log_fp, entry);
 
 	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
 	  event_log_bind_values (log_fp, entry->tran_index,
 				 entry->bind_index_in_tran);
+
+	  CLEAR_EMULATE_THREAD (thread_p);
+
 	  fprintf (log_fp, "\n");
 	}
     }
@@ -13063,11 +13111,17 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
 
 	  fprintf (log_fp, "%*clock: %s", indent, ' ',
 		   LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+
+	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
+
 	  lock_event_log_lock_info (thread_p, log_fp, entry);
 
 	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
 	  event_log_bind_values (log_fp, entry->tran_index,
 				 entry->bind_index_in_tran);
+
+	  CLEAR_EMULATE_THREAD (thread_p);
+
 	  fprintf (log_fp, "\n");
 	}
     }
