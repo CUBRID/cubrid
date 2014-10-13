@@ -4383,7 +4383,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
     }
 
 #if defined (SA_MODE)
-  (void) vacuum_consume_buffer_log_blocks (thread_p, false);
+  (void) vacuum_consume_buffer_log_blocks (thread_p, true);
 #endif
 
   tdes->num_log_records_written++;
