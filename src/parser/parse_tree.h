@@ -3663,6 +3663,7 @@ struct parser_context
   char *ddl_stmt_for_replication;
 
   COMPILE_CONTEXT context;
+  struct xasl_node *parent_proc_xasl;
 
   bool query_trace;
   int num_plan_trace;

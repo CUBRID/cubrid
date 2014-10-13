@@ -15359,10 +15359,30 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      /* Index found, no fixed is allowed */
 	      fixed_scan_xasl = NULL;
 	    }
+	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
+	    {
+	      /* no fixed scan if it was decided so during compilation */
+	      fixed_scan_flag = NULL;
+	    }
 	  if (xasl->dptr_list != NULL)
 	    {
 	      /* correlated subquery found, no fixed is allowed */
 	      fixed_scan_xasl = NULL;
+	    }
+	  if (xasl->type == BUILDLIST_PROC
+	      && xasl->proc.buildlist.eptr_list != NULL)
+	    {
+	      /* subquery in HAVING clause, can't have fixed scan */
+	      fixed_scan_xasl = NULL;
+	    }
+	  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
+	    {
+	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+		{
+		  /* uncorrelated query that is not pre-executed, but evaluated
+		     in a reguvar; no fixed scan in this case */
+		  fixed_scan_xasl = NULL;
+		}
 	    }
 
 	  /* open all the scans that are involved within the query,

@@ -9804,6 +9804,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu =
 		    pt_make_regu_arith (r1, r2, r3, T_INDEX_CARDINALITY,
 					domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl,
+				     XASL_NO_FIXED_SCAN);
+		    }
+		  else
+		    {
+		      /* should not happen */
+		      assert (false);
+		    }
 		  break;
 
 		case PT_EXEC_STATS:
@@ -16447,7 +16457,7 @@ static XASL_NODE *
 pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		      QO_PLAN * qo_plan)
 {
-  XASL_NODE *xasl;
+  XASL_NODE *xasl, *save_parent_proc_xasl;
   PT_NODE *saved_current_class;
   int groupby_ok = 1;
   AGGREGATE_TYPE *aggregate = NULL, *agg_list = NULL;
@@ -16488,6 +16498,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
     {
       return NULL;
     }
+
+  /* save this XASL node for children to access */
+  save_parent_proc_xasl = parser->parent_proc_xasl;
+  parser->parent_proc_xasl = xasl;
 
   buildlist = &xasl->proc.buildlist;
   xasl->next = NULL;
@@ -17514,9 +17528,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	}
     }
 
+  /* restore old parent xasl */
+  parser->parent_proc_xasl = save_parent_proc_xasl;
+
   return xasl;
 
 exit_on_error:
+
+  /* restore old parent xasl */
+  parser->parent_proc_xasl = save_parent_proc_xasl;
 
   return NULL;
 }
@@ -17532,7 +17552,7 @@ static XASL_NODE *
 pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		       QO_PLAN * qo_plan)
 {
-  XASL_NODE *xasl;
+  XASL_NODE *xasl, *save_parent_proc_xasl;
   BUILDVALUE_PROC_NODE *buildvalue;
   AGGREGATE_TYPE *aggregate;
   PT_NODE *saved_current_class;
@@ -17549,6 +17569,10 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
     {
       return NULL;
     }
+
+  /* save parent xasl */
+  save_parent_proc_xasl = parser->parent_proc_xasl;
+  parser->parent_proc_xasl = xasl;
 
   buildvalue = &xasl->proc.buildvalue;
   xasl->next = NULL;
@@ -17747,9 +17771,15 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	}
     }
 
+  /* restore old parent xasl */
+  parser->parent_proc_xasl = save_parent_proc_xasl;
+
   return xasl;
 
 exit_on_error:
+
+  /* restore old parent xasl */
+  parser->parent_proc_xasl = save_parent_proc_xasl;
 
   return NULL;
 }
