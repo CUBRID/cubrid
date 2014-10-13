@@ -2438,6 +2438,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_CURRENT_VALUE:
+      /* serial.current_value() is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
+					REGU_VARIABLE_FETCH_ALL_CONST));
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
@@ -3768,6 +3772,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_SYS_GUID:
+      /* sys_guid() is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
+					REGU_VARIABLE_FETCH_ALL_CONST));
       if (db_guid (thread_p, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
@@ -3789,9 +3797,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       else
 	{
-	  if (qdata_get_cardinality
-	      (thread_p, peek_left, peek_right, peek_third,
-	       arithptr->value) != NO_ERROR)
+	  if (qdata_get_cardinality (thread_p, peek_left, peek_right,
+				     peek_third, arithptr->value) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -4128,7 +4135,8 @@ fetch_peek_arith_end:
       /* incr/decr is not constant */
     case T_INCR:
     case T_DECR:
-      /* serial.next_value() is not constant */
+      /* serial.current_value(), serial.next_value() is not constant */
+    case T_CURRENT_VALUE:
     case T_NEXT_VALUE:
       /* set pred is not constant */
     case T_CASE:
@@ -4147,6 +4155,8 @@ fetch_peek_arith_end:
     case T_RANDOM:
     case T_DRAND:
     case T_DRANDOM:
+      /* sys_guid() is not constant */
+    case T_SYS_GUID:
       /* sleep() is not constant */
     case T_SLEEP:
 

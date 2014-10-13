@@ -2144,6 +2144,19 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       return pg_cnt;
     }
 
+#if !defined(NDEBUG)
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
+    {
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
+					REGU_VARIABLE_FETCH_NOT_CONST));
+    }
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST))
+    {
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
+					REGU_VARIABLE_FETCH_ALL_CONST));
+    }
+#endif
+
   /* clear run-time setting info */
   REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
   REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);

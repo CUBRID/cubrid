@@ -13083,7 +13083,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
   if (agg_p->accumulator.curr_cnt == 0)
     {
       /* first split the const list and type list:
-       * CUME_DIST and PERCENTAGE_RANK is defined as:
+       * CUME_DIST and PERCENT_RANK is defined as:
        *   CUME_DIST( const_list) WITHIN GROUP (ORDER BY type_list) ...
        *   const list: the hypothetical values for calculation
        *   type list: field name given in the ORDER BY clause;
