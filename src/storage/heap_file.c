@@ -18228,15 +18228,11 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
 				sizeof (FILE_HEAP_DES)) > 0)
 	  && !OID_ISNULL (&hfdes.class_oid))
 	{
-
-	  if (lock_scan (thread_p, &hfdes.class_oid, true,
-			 &class_lock, &scanid_bit) != LK_GRANTED)
-	    {
-	      return DISK_ERROR;
-	    }
-
+	  assert (lock_has_lock_on_object (&hfdes.class_oid,
+					   oid_Root_class_oid,
+					   LOG_FIND_THREAD_TRAN_INDEX
+					   (thread_p), IS_LOCK) == 1);
 	  rv = heap_check_all_pages (thread_p, hfid);
-	  lock_unlock_scan (thread_p, &hfdes.class_oid, scanid_bit, END_SCAN);
 	}
     }
   else
@@ -18257,46 +18253,130 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
 DISK_ISVALID
 heap_check_all_heaps (THREAD_ENTRY * thread_p)
 {
-  int num_files;
+  int error_code;
   HFID hfid;
+  int num_files;
+  int curr_num_files;
   DISK_ISVALID allvalid = DISK_VALID;
   DISK_ISVALID valid = DISK_VALID;
   FILE_TYPE file_type;
+  VPID vpid;
+  VFID *trk_vfid = NULL;
+  FILE_HEAP_DES hfdes;
+  PAGE_PTR trk_fhdr_pgptr = NULL;
+  HEAP_SCANCACHE scan_cache;
+  RECDES peek_recdes;
   int i;
+
+  trk_vfid = file_get_tracker_vfid ();
+
+  /* check file tracker */
+  if (trk_vfid == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  vpid.volid = trk_vfid->volid;
+  vpid.pageid = trk_vfid->fileid;
 
   /* Find number of files */
   num_files = file_get_numfiles (thread_p);
   if (num_files < 0)
     {
-      return DISK_ERROR;
+      goto exit_on_error;
     }
 
   /* Go to each file, check only the heap files */
   for (i = 0; i < num_files && allvalid != DISK_ERROR; i++)
     {
+      /* check # of file, check file type, get file descriptor */
+      trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE,
+				  PGBUF_LATCH_READ,
+				  PGBUF_UNCONDITIONAL_LATCH);
+      if (trk_fhdr_pgptr == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      curr_num_files = file_get_numfiles (thread_p);
+
+      if (curr_num_files <= i)
+	{
+	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+	  break;
+	}
+
       if (file_find_nthfile (thread_p, &hfid.vfid, i) != 1)
 	{
-	  break;
+	  goto exit_on_error;
 	}
 
       file_type = file_get_type (thread_p, &hfid.vfid);
       if (file_type == FILE_UNKNOWN_TYPE)
 	{
-	  return DISK_ERROR;
+	  goto exit_on_error;
 	}
+
       if (file_type != FILE_HEAP && file_type != FILE_HEAP_REUSE_SLOTS)
 	{
+	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
 	  continue;
 	}
+
+      if ((file_get_descriptor (thread_p, &hfid.vfid, &hfdes,
+				sizeof (FILE_HEAP_DES)) <= 0)
+	  || OID_ISNULL (&hfdes.class_oid))
+	{
+	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+	  continue;
+	}
+      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+
+      if (lock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid,
+		       IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  goto exit_on_error;
+	}
+
+      error_code = heap_scancache_quick_start (&scan_cache);
+      if (error_code != NO_ERROR)
+	{
+	  lock_unlock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid,
+			      IS_LOCK, true);
+	  goto exit_on_error;
+	}
+
+      /* Check heap file is really exist. It can be removed */
+      if (heap_get (thread_p, &hfdes.class_oid, &peek_recdes, &scan_cache,
+		    PEEK, NULL_CHN) != S_SUCCESS)
+	{
+	  heap_scancache_end (thread_p, &scan_cache);
+	  lock_unlock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid,
+			      IS_LOCK, true);
+	  continue;
+	}
+      heap_scancache_end (thread_p, &scan_cache);
 
       valid = heap_check_heap_file (thread_p, &hfid);
       if (valid != DISK_VALID)
 	{
 	  allvalid = valid;
 	}
+
+      lock_unlock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid,
+			  IS_LOCK, true);
     }
+  assert (trk_fhdr_pgptr == NULL);
 
   return allvalid;
+
+exit_on_error:
+  if (trk_fhdr_pgptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+    }
+
+  return ((allvalid == DISK_VALID) ? DISK_ERROR : allvalid);
 }
 
 /*

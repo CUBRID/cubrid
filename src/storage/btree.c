@@ -7944,48 +7944,130 @@ DISK_ISVALID
 btree_check_all (THREAD_ENTRY * thread_p)
 {
   int num_files;		/* Number of files in the system */
-  BTID btid;			/* Btree index identifier        */
+  int curr_num_files;
   DISK_ISVALID valid, allvalid;	/* Validation return code        */
   FILE_TYPE file_type;		/* TYpe of file                  */
   int i;			/* Loop counter                  */
+  int error_code;
+  VPID vpid;
+  VFID *trk_vfid;
+  BTID btid;
+  FILE_BTREE_DES btdes;
+  PAGE_PTR trk_fhdr_pgptr = NULL;
+  HEAP_SCANCACHE scan_cache;
+  RECDES peek_recdes;
+
+  trk_vfid = file_get_tracker_vfid ();
+
+  /* check file tracker */
+  if (trk_vfid == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  vpid.volid = trk_vfid->volid;
+  vpid.pageid = trk_vfid->fileid;
 
   /* Find number of files */
   num_files = file_get_numfiles (thread_p);
   if (num_files < 0)
     {
-      return DISK_ERROR;
+      goto exit_on_error;
     }
 
   allvalid = DISK_VALID;
-
   /* Go to each file, check only the btree files */
   for (i = 0; i < num_files && allvalid != DISK_ERROR; i++)
     {
+      /* check # of file, check file type, get file descriptor */
+      trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE,
+				  PGBUF_LATCH_READ,
+				  PGBUF_UNCONDITIONAL_LATCH);
+      if (trk_fhdr_pgptr == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      curr_num_files = file_get_numfiles (thread_p);
+      if (curr_num_files <= i)
+	{
+	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+	  break;
+	}
+
       if (file_find_nthfile (thread_p, &btid.vfid, i) != 1)
 	{
-	  break;
+	  goto exit_on_error;
 	}
 
       file_type = file_get_type (thread_p, &btid.vfid);
       if (file_type == FILE_UNKNOWN_TYPE)
 	{
-	  allvalid = DISK_ERROR;
-	  break;
+	  goto exit_on_error;
 	}
 
       if (file_type != FILE_BTREE)
 	{
+	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
 	  continue;
 	}
 
+      if ((file_get_descriptor (thread_p, &btid.vfid, &btdes,
+				sizeof (FILE_BTREE_DES)) <= 0)
+	  || OID_ISNULL (&btdes.class_oid))
+	{
+	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+	  continue;
+	}
+      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+
+      if (lock_object (thread_p, &btdes.class_oid, oid_Root_class_oid,
+		       IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  goto exit_on_error;
+	}
+
+      error_code = heap_scancache_quick_start (&scan_cache);
+      if (error_code != NO_ERROR)
+	{
+	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid,
+			      IS_LOCK, true);
+	  goto exit_on_error;
+	}
+
+      /* Check heap file is really exist. It can be removed. */
+      if (heap_get (thread_p, &btdes.class_oid, &peek_recdes, &scan_cache,
+		    PEEK, NULL_CHN) != S_SUCCESS)
+	{
+	  heap_scancache_end (thread_p, &scan_cache);
+	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid,
+			      IS_LOCK, true);
+	  continue;
+	}
+      heap_scancache_end (thread_p, &scan_cache);
+
+      /* Check BTree file */
       valid = btree_check_by_btid (thread_p, &btid);
       if (valid != DISK_VALID)
 	{
 	  allvalid = valid;
 	}
+
+      lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid,
+			  IS_LOCK, true);
     }
 
+  assert (trk_fhdr_pgptr == NULL);
+
   return allvalid;
+
+exit_on_error:
+  if (trk_fhdr_pgptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+    }
+
+  return ((allvalid == DISK_VALID) ? DISK_ERROR : allvalid);
 }
 
 /*

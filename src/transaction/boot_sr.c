@@ -4435,9 +4435,12 @@ DISK_ISVALID
 xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid,
 		     BTID * index_btid)
 {
+  int error_code;
   HFID hfid;
   bool repair = check_flag & CHECKDB_REPAIR;
   DISK_ISVALID allvalid, valid;
+  HEAP_SCANCACHE scan_cache;
+  RECDES peek_recdes;
 
   allvalid = DISK_VALID;
 
@@ -4476,15 +4479,42 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid,
   if (index_btid == NULL)
     {
       /* if index name was specified, skip checking heap file */
+      if (lock_object (thread_p, oid, oid_Root_class_oid,
+		       IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  return DISK_ERROR;
+	}
+      error_code = heap_scancache_quick_start (&scan_cache);
+      if (error_code != NO_ERROR)
+	{
+	  lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK,
+			      true);
+	  return DISK_ERROR;
+	}
+      /* Check heap file is really exist. It can be removed. */
+      if (heap_get (thread_p, oid, &peek_recdes, &scan_cache,
+		    PEEK, NULL_CHN) != S_SUCCESS)
+	{
+	  heap_scancache_end (thread_p, &scan_cache);
+	  lock_unlock_object (thread_p, oid, oid_Root_class_oid,
+			      IS_LOCK, true);
+	  return DISK_ERROR;
+	}
+      heap_scancache_end (thread_p, &scan_cache);
+
       valid = heap_check_heap_file (thread_p, &hfid);
       if (valid == DISK_ERROR)
 	{
+	  lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK,
+			      true);
 	  return DISK_ERROR;
 	}
       if (valid != DISK_VALID)
 	{
 	  allvalid = valid;
 	}
+
+      lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);
     }
 
   valid = btree_check_by_class_oid (thread_p, oid, index_btid);
