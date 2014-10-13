@@ -39,6 +39,7 @@
 #include "object_representation_sr.h"
 #include "thread.h"
 #include "system_catalog.h"
+#include "page_buffer.h"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) || \
@@ -276,7 +277,10 @@ extern const OID *heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       const OID * class_oid, const OID * oid,
 			       HEAP_SCANCACHE * scan_cache);
 extern const OID *heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
-				   const OID * ovf_oid);
+				   const OID * ovf_oid, VFID * ovf_vfid_p);
+extern VFID *heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid,
+				 VFID * ovf_vfid, bool create,
+				 PGBUF_LATCH_CONDITION latch_cond);
 extern void heap_flush (THREAD_ENTRY * thread_p, const OID * oid);
 extern int xheap_reclaim_addresses (THREAD_ENTRY * thread_p,
 				    const HFID * hfid);

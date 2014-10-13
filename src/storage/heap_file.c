@@ -565,7 +565,8 @@ static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
 					     const VPID * vpid_ptr,
-					     int new_page, LOCK lock,
+					     PAGE_FETCH_MODE fetch_mode,
+					     LOCK lock,
 					     HEAP_SCANCACHE * scan_cache);
 #else /* !NDEBUG */
 #define heap_scan_pb_lock_and_fetch(...) \
@@ -573,7 +574,8 @@ static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
 
 static PAGE_PTR heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p,
 						   const VPID * vpid_ptr,
-						   int new_page, LOCK lock,
+						   PAGE_FETCH_MODE fetch_mode,
+						   LOCK lock,
 						   HEAP_SCANCACHE *
 						   scan_cache,
 						   const char *caller_file,
@@ -730,8 +732,6 @@ static int heap_mvcc_delete_internal (THREAD_ENTRY * thread_p,
 				      HEAP_SCANCACHE * scan_cache,
 				      MVCCID * mvcc_delid,
 				      OID * next_version);
-static VFID *heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid,
-				 VFID * ovf_vfid, bool create);
 static OID *heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid,
 			     OID * ovf_oid, RECDES * recdes,
 			     MVCC_RELOCATE_DELETE_INFO *
@@ -1487,7 +1487,7 @@ end:
  * heap_scan_pb_lock_and_fetch () -
  *   return:
  *   vpid_ptr(in):
- *   new_page(in):
+ *   fetch_mode(in):
  *   lock(in):
  *   scan_cache(in):
  *
@@ -1498,12 +1498,13 @@ end:
 #if defined (NDEBUG)
 static PAGE_PTR
 heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr,
-			     int new_page, LOCK lock,
+			     PAGE_FETCH_MODE fetch_mode, LOCK lock,
 			     HEAP_SCANCACHE * scan_cache)
 #else /* !NDEBUG */
 static PAGE_PTR
 heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p,
-				   const VPID * vpid_ptr, int new_page,
+				   const VPID * vpid_ptr,
+				   PAGE_FETCH_MODE fetch_mode,
 				   LOCK lock, HEAP_SCANCACHE * scan_cache,
 				   const char *caller_file,
 				   const int caller_line)
@@ -1543,11 +1544,11 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p,
 
 #if defined (NDEBUG)
   pgptr =
-    pgbuf_fix_release (thread_p, vpid_ptr, new_page, page_latch_mode,
+    pgbuf_fix_release (thread_p, vpid_ptr, fetch_mode, page_latch_mode,
 		       PGBUF_UNCONDITIONAL_LATCH);
 #else /* !NDEBUG */
   pgptr =
-    pgbuf_fix_debug (thread_p, vpid_ptr, new_page, page_latch_mode,
+    pgbuf_fix_debug (thread_p, vpid_ptr, fetch_mode, page_latch_mode,
 		     PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
 #endif /* !NDEBUG */
 
@@ -5636,7 +5637,8 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid,
   /*
    * If there is an overflow file for this heap, remove it
    */
-  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false) != NULL)
+  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false,
+			  PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
       (void) file_destroy (thread_p, &vfid);
     }
@@ -5791,7 +5793,8 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid)
   VFID vfid;
   int ret;
 
-  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false) != NULL)
+  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false,
+			  PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
       ret = file_destroy (thread_p, &vfid);
       if (ret != NO_ERROR)
@@ -5835,7 +5838,8 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
       return xheap_destroy (thread_p, hfid);
     }
 
-  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false) != NULL)
+  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false,
+			  PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
       ret = file_mark_as_deleted (thread_p, &vfid);
       if (ret != NO_ERROR)
@@ -6496,7 +6500,7 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 					 scan_cache, true) != NO_ERROR)
 	    {
 	      /* Something went wrong, delete the overflow record */
-	      (void) heap_ovf_delete (thread_p, hfid, &ovf_oid);
+	      (void) heap_ovf_delete (thread_p, hfid, &ovf_oid, NULL);
 	      return NULL;
 	    }
 	}
@@ -6507,7 +6511,7 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 					      recdes->length) != NO_ERROR)
 	    {
 	      /* Something went wrong, delete the overflow record */
-	      (void) heap_ovf_delete (thread_p, hfid, &ovf_oid);
+	      (void) heap_ovf_delete (thread_p, hfid, &ovf_oid, NULL);
 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_OBJ_INSERT_END (class_oid, 1);
@@ -7085,7 +7089,7 @@ try_again:
 		  if (new_forward_recdes.type == REC_BIGONE)
 		    {
 		      (void) heap_ovf_delete (thread_p, hfid,
-					      &new_forward_oid);
+					      &new_forward_oid, NULL);
 		    }
 		  else
 		    {
@@ -7335,7 +7339,8 @@ try_again:
 	      {
 		if (heap_is_big_length (recdes->length))
 		  {
-		    (void) heap_ovf_delete (thread_p, hfid, &new_forward_oid);
+		    (void) heap_ovf_delete (thread_p, hfid, &new_forward_oid,
+					    NULL);
 		  }
 		goto error;
 	      }
@@ -7352,7 +7357,8 @@ try_again:
 					 is_home_insert, true);
 	    if (heap_is_big_length (recdes->length))
 	      {
-		(void) heap_ovf_delete (thread_p, hfid, &new_forward_oid);
+		(void) heap_ovf_delete (thread_p, hfid, &new_forward_oid,
+					NULL);
 	      }
 
 	    goto error;
@@ -7489,7 +7495,7 @@ try_again:
 					  &home_recdes, recdes);
 	    }
 
-	  (void) heap_ovf_delete (thread_p, hfid, &forward_oid);
+	  (void) heap_ovf_delete (thread_p, hfid, &forward_oid, NULL);
 	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 	}
 
@@ -7700,7 +7706,8 @@ try_again:
 	  {
 	    if (is_big_length)
 	      {
-		(void) heap_ovf_delete (thread_p, hfid, &new_forward_oid);
+		(void) heap_ovf_delete (thread_p, hfid, &new_forward_oid,
+					NULL);
 	      }
 
 	    goto error;
@@ -7719,7 +7726,8 @@ try_again:
 
 	    if (is_big_length)
 	      {
-		(void) heap_ovf_delete (thread_p, hfid, &new_forward_oid);
+		(void) heap_ovf_delete (thread_p, hfid, &new_forward_oid,
+					NULL);
 	      }
 	    goto error;
 	  }
@@ -7828,7 +7836,8 @@ try_again:
 	      /* Unable to peek before image for logging purposes */
 	      if (new_forward_recdes.type == REC_BIGONE)
 		{
-		  (void) heap_ovf_delete (thread_p, hfid, &new_forward_oid);
+		  (void) heap_ovf_delete (thread_p, hfid, &new_forward_oid,
+					  NULL);
 		}
 	      else
 		{
@@ -7866,7 +7875,8 @@ try_again:
 #endif
 	      if (new_forward_recdes.type == REC_BIGONE)
 		{
-		  (void) heap_ovf_delete (thread_p, hfid, &new_forward_oid);
+		  (void) heap_ovf_delete (thread_p, hfid, &new_forward_oid,
+					  NULL);
 		}
 	      else
 		{
@@ -8626,7 +8636,7 @@ try_again:
 
       /* Now remove the forward (relocated/forward) object */
 
-      if (heap_ovf_delete (thread_p, hfid, &forward_oid) == NULL)
+      if (heap_ovf_delete (thread_p, hfid, &forward_oid, NULL) == NULL)
 	{
 	  goto error;
 	}
@@ -9206,9 +9216,10 @@ exit_on_error:
  * Note: Find overflow file identifier. If the overflow file does not
  * exist, it may be created depending of the value of argument create.
  */
-static VFID *
+VFID *
 heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid,
-		    VFID * ovf_vfid, bool docreate)
+		    VFID * ovf_vfid, bool docreate,
+		    PGBUF_LATCH_CONDITION latch_cond)
 {
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure    */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data     */
@@ -9224,8 +9235,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid,
   vpid.pageid = hfid->hpgid;
 
   mode = (docreate == true ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ);
-  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode,
-			      PGBUF_UNCONDITIONAL_LATCH);
+  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, latch_cond);
   if (addr_hdr.pgptr == NULL)
     {
       /* something went wrong, return */
@@ -9340,7 +9350,8 @@ heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid,
   VFID ovf_vfid;
   VPID ovf_vpid;		/* Address of overflow insertion */
 
-  if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, true) == NULL
+  if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, true,
+			  PGBUF_UNCONDITIONAL_LATCH) == NULL
       || overflow_insert (thread_p, &ovf_vfid, &ovf_vpid, recdes,
 			  NULL, mvcc_relocate_delete) == NULL)
     {
@@ -9370,7 +9381,8 @@ heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid,
   VFID ovf_vfid;
   VPID ovf_vpid;
 
-  if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, false) == NULL)
+  if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, false,
+			  PGBUF_UNCONDITIONAL_LATCH) == NULL)
     {
       return NULL;
     }
@@ -9393,25 +9405,33 @@ heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid,
  *   return: OID *(ovf_oid on success or NULL on failure)
  *   hfid(in): Object heap file identifier
  *   ovf_oid(in): Overflow address
+ *   ovf_vfid_p(in): Overflow file identifier. If given argument is NULL,
+ *		     it must be obtained from heap file header.
  *
  * Note: Delete the content of a multipage object.
  */
 const OID *
 heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
-		 const OID * ovf_oid)
+		 const OID * ovf_oid, VFID * ovf_vfid_p)
 {
   VFID ovf_vfid;
   VPID ovf_vpid;
 
-  if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, false) == NULL)
+  if (ovf_vfid_p == NULL || VFID_ISNULL (ovf_vfid_p))
     {
-      return NULL;
+      /* Get overflow file VFID from heap file header. */
+      ovf_vfid_p = (ovf_vfid_p != NULL) ? ovf_vfid_p : &ovf_vfid;
+      if (heap_ovf_find_vfid (thread_p, hfid, ovf_vfid_p, false,
+			      PGBUF_UNCONDITIONAL_LATCH) == NULL)
+	{
+	  return NULL;
+	}
     }
 
   ovf_vpid.pageid = ovf_oid->pageid;
   ovf_vpid.volid = ovf_oid->volid;
 
-  if (overflow_delete (thread_p, &ovf_vfid, &ovf_vpid) == NULL)
+  if (overflow_delete (thread_p, ovf_vfid_p, &ovf_vpid) == NULL)
     {
       return NULL;
     }
@@ -27367,7 +27387,7 @@ heap_mvcc_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 		  if (recdes.type == REC_BIGONE)
 		    {
 		      (void) heap_ovf_delete (thread_p, hfid,
-					      &new_forward_oid);
+					      &new_forward_oid, NULL);
 		    }
 		  else
 		    {
@@ -27680,7 +27700,8 @@ heap_mvcc_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 #endif
 	      if (recdes.type == REC_BIGONE)
 		{
-		  (void) heap_ovf_delete (thread_p, hfid, &new_forward_oid);
+		  (void) heap_ovf_delete (thread_p, hfid, &new_forward_oid,
+					  NULL);
 		}
 	      else
 		{
@@ -28277,7 +28298,7 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 	  /* TODO: Why do we do this? */
 	  if (is_new_version_big)
 	    {
-	      (void) heap_ovf_delete (thread_p, hfid, &new_version_oid);
+	      (void) heap_ovf_delete (thread_p, hfid, &new_version_oid, NULL);
 	    }
 	  goto error;
 	}
@@ -28317,7 +28338,8 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
       if (is_new_version_big)
 	{
 	  /* TODO: Is this necessary */
-	  (void) heap_ovf_delete (thread_p, hfid, &new_version_ovfl_oid);
+	  (void) heap_ovf_delete (thread_p, hfid, &new_version_ovfl_oid,
+				  NULL);
 	}
       goto error;
     }

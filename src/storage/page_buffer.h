@@ -34,8 +34,6 @@
 #include "disk_manager.h"
 #include "lock_manager.h"
 
-#define NEW_PAGE		true	/* New page constant for page fetch */
-#define OLD_PAGE		false	/* Old page constant for page fetch */
 #define FREE			true	/* Free page buffer */
 #define DONT_FREE		false	/* Don't free the page buffer */
 
@@ -78,6 +76,27 @@
     (pgptr) = NULL; \
   } while (0)
 
+typedef enum
+{
+  OLD_PAGE = 0,			/* Fetch page that should be allocated and
+				 * already existing either in page buffer or
+				 * on disk. Must pass validation test and must
+				 * be fixed from disk if it doesn't exist in
+				 * buffer.
+				 */
+  NEW_PAGE,			/* Fetch newly allocated page. Must pass
+				 * validation test but it can be created
+				 * directly in buffer without fixing from
+				 * disk.
+				 */
+  OLD_PAGE_IF_EXISTS		/* Fetch existing page only if is valid and
+				 * if it exists in page buffer. Page may be
+				 * deallocated or flushed and invalidated from
+				 * buffer, in which case fixing page is not
+				 * necessary.
+				 */
+} PAGE_FETCH_MODE;
+
 /* public page latch mode */
 typedef enum
 {
@@ -111,7 +130,9 @@ extern int pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 extern int pgbuf_initialize (void);
 extern void pgbuf_finalize (void);
 extern PAGE_PTR pgbuf_fix_with_retry (THREAD_ENTRY * thread_p,
-				      const VPID * vpid, int newpg, int mode,
+				      const VPID * vpid,
+				      PAGE_FETCH_MODE fetch_mode,
+				      PGBUF_LATCH_MODE request_mode,
 				      int retry);
 #if !defined(NDEBUG)
 #define pgbuf_flush(thread_p, pgptr, free_page) \
@@ -120,21 +141,26 @@ extern PAGE_PTR pgbuf_flush_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 				   int free_page,
 				   const char *caller_file, int caller_line);
 
-#define pgbuf_fix(thread_p, vpid, newpg, requestmode, condition) \
-        pgbuf_fix_debug(thread_p, vpid, newpg, requestmode, condition, \
+#define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
+        pgbuf_fix_debug(thread_p, vpid, fetch_mode, requestmode, condition, \
                         __FILE__, __LINE__)
 extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
-				 int newpg, int requestmode,
+				 PAGE_FETCH_MODE fetch_mode,
+				 PGBUF_LATCH_MODE requestmode,
 				 PGBUF_LATCH_CONDITION condition,
 				 const char *caller_file, int caller_line);
 
-#define pgbuf_fix_without_validation(thread_p, vpid, newpg, requestmode, condition) \
-        pgbuf_fix_without_validation_debug(thread_p, vpid, newpg, requestmode, condition, \
-                        __FILE__, __LINE__)
+#define pgbuf_fix_without_validation(thread_p, vpid, fetch_mode, \
+				     requestmode, condition) \
+	pgbuf_fix_without_validation_debug(thread_p, vpid, fetch_mode, \
+					   requestmode, condition, \
+					   __FILE__, __LINE__)
 extern PAGE_PTR pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
 						    const VPID * vpid,
-						    int newpg,
-						    int request_mode,
+						    PAGE_FETCH_MODE
+						    fetch_mode,
+						    PGBUF_LATCH_MODE
+						    request_mode,
 						    PGBUF_LATCH_CONDITION
 						    condition,
 						    const char *caller_file,
@@ -156,18 +182,23 @@ extern int pgbuf_invalidate_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 #else /* NDEBUG */
 extern PAGE_PTR pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			     int free_page);
-#define pgbuf_fix_without_validation(thread_p, vpid, newpg, requestmode, condition) \
-  pgbuf_fix_without_validation_release(thread_p, vpid, newpg, requestmode, condition)
+#define pgbuf_fix_without_validation(thread_p, vpid, fetch_mode, \
+				     requestmode, condition) \
+	pgbuf_fix_without_validation_release(thread_p, vpid, fetch_mode, \
+					     requestmode, condition)
 extern PAGE_PTR pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p,
 						      const VPID * vpid,
-						      int newpg,
-						      int requestmode,
+						      PAGE_FETCH_MODE
+						      fetch_mode,
+						      PGBUF_LATCH_MODE
+						      request_mode,
 						      PGBUF_LATCH_CONDITION
 						      condition);
-#define pgbuf_fix(thread_p, vpid, newpg, requestmode, condition) \
-        pgbuf_fix_release(thread_p, vpid, newpg, requestmode, condition)
+#define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
+        pgbuf_fix_release(thread_p, vpid, fetch_mode, requestmode, condition)
 extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
-				   int newpg, int requestmode,
+				   PAGE_FETCH_MODE fetch_mode,
+				   PGBUF_LATCH_MODE requestmode,
 				   PGBUF_LATCH_CONDITION condition);
 extern void pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
@@ -283,8 +314,9 @@ extern void pgbuf_dump_if_any_fixed (void);
 #endif
 
 extern int pgbuf_fix_when_other_is_fixed (THREAD_ENTRY * thread_p,
-					  VPID * vpid_to_fix, int newpage,
-					  PGBUF_LATCH_MODE mode,
+					  VPID * vpid_to_fix,
+					  PAGE_FETCH_MODE fetch_mode,
+					  PGBUF_LATCH_MODE latch_mode,
 					  PAGE_PTR * page_to_fix,
 					  PAGE_PTR * page_fixed);
 

@@ -145,8 +145,8 @@ static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
 				     LOG_LSA * end_redo_lsa, LOG_LSA * lsa,
 				     bool is_media_crash, time_t * stop_at,
 				     bool * did_incom_recovery);
-static int log_rv_analysis_complte_topope (THREAD_ENTRY * thread_p,
-					   int tran_id, LOG_LSA * log_lsa);
+static int log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p,
+					    int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa,
 					     LOG_LSA * start_lsa,
 					     bool * may_use_checkpoint);
@@ -279,6 +279,12 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 					      vacuum_rv_get_worker_by_trid
 					      (thread_p, tdes->trid),
 					      save_thread_type);
+
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Log undo (%lld, %d), rcvindex=%d for tdes: "
+		     "tdes->trid=%d.",
+		     (long long int) rcv_undo_lsa->pageid,
+		     (int) rcv_undo_lsa->offset, rcvindex, tdes->trid);
     }
   else
     {
@@ -1017,6 +1023,13 @@ log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id,
       return ER_FAILED;
     }
 
+  if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Found undo_redo record. tdes->trid=%d.",
+		     tdes->trid);
+    }
+
   /* New tail and next to undo */
   LSA_COPY (&tdes->tail_lsa, log_lsa);
   LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
@@ -1096,6 +1109,13 @@ log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id,
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			 "log_rv_analysis_postpone");
       return ER_FAILED;
+    }
+
+  if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Found postpone record. tdes->trid=%d.",
+		     tdes->trid);
     }
 
   /* if first postpone, then set address early */
@@ -1217,6 +1237,16 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id,
 
       /* Reset start of postpone transaction */
       LSA_COPY (&tdes->posp_nxlsa, &run_posp->ref_lsa);
+    }
+
+  if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Found postpone record. tdes->trid=%d, "
+		     "tdes->state=%d, ref_lsa=(%lld, %d).",
+		     tdes->trid, tdes->state,
+		     (long long int) run_posp->ref_lsa.pageid,
+		     (int) run_posp->ref_lsa.offset);
     }
 
   return NO_ERROR;
@@ -1649,6 +1679,13 @@ log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p,
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			 "log_rv_analysis_commit_topope_with_postpone");
       return ER_FAILED;
+    }
+
+  if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Found commit_topope_with_postpone. "
+		     "tdes->trid=%d. ", tdes->trid);
     }
 
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
@@ -2167,7 +2204,7 @@ end:
 }
 
 /*
- * log_rv_analysis_complte_topope -
+ * log_rv_analysis_complete_topope -
  *
  * return: error code
  *
@@ -2177,8 +2214,8 @@ end:
  * Note:
  */
 static int
-log_rv_analysis_complte_topope (THREAD_ENTRY * thread_p, int tran_id,
-				LOG_LSA * log_lsa)
+log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p, int tran_id,
+				 LOG_LSA * log_lsa)
 {
   LOG_TDES *tdes;
 
@@ -2190,8 +2227,15 @@ log_rv_analysis_complte_topope (THREAD_ENTRY * thread_p, int tran_id,
   if (tdes == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_complte_topope");
+			 "log_rv_analysis_complete_topope");
       return ER_FAILED;
+    }
+
+  if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Found complete_topope. tdes->trid=%d.",
+		     tdes->trid);
     }
 
   LSA_COPY (&tdes->tail_lsa, log_lsa);
@@ -2935,7 +2979,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 
     case LOG_COMMIT_TOPOPE:
     case LOG_ABORT_TOPOPE:
-      log_rv_analysis_complte_topope (thread_p, tran_id, log_lsa);
+      log_rv_analysis_complete_topope (thread_p, tran_id, log_lsa);
       break;
 
     case LOG_START_CHKPT:
@@ -4803,7 +4847,14 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       VACUUM_CONVERT_THREAD_TO_VACUUM_WORKER (thread_p, worker,
 					      save_thread_type);
       tdes = worker->tdes;
+
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Finish postpone for tdes: "
+		     "tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
+		     tdes->trid, tdes->state, tdes->topops.last);
+
       log_recovery_finish_postpone (thread_p, tdes);
+
       /* Restore thread */
       VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
     }
@@ -5350,6 +5401,18 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    {
 		      /* Update transaction next undo LSA */
 		      LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
+
+		      if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
+			{
+			  vacuum_er_log (VACUUM_ER_LOG_RECOVERY
+					 | VACUUM_ER_LOG_TOPOPS,
+					 "VACUUM: Update undo_nxlsa="
+					 "(%lld, %d) for tdes->trid=%d.",
+					 (long long int)
+					 tdes->undo_nxlsa.pageid,
+					 (int) tdes->undo_nxlsa.offset,
+					 tdes->trid);
+			}
 		    }
 		}
 	    }

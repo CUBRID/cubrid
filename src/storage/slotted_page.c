@@ -5302,14 +5302,28 @@ spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
 }
 
 /*
- * spage_vacuum_slot () - Used by vacuum to mark records as
- *					deleted after they have been
- *					completely removed from indexes.
+ * spage_vacuum_slot () - Vacuum the slot of an invisible object version.
  *
- * return	 : Error code.
- * thread_p (in) : Thread entry.
- * page_p (in)	 : Page pointer.
- * slotid (in)	 : Record slot id.
+ * return	     : Error code.
+ * thread_p (in)     : Thread entry.
+ * page_p (in)	     : Page pointer.
+ * slotid (in)	     : Record slot id.
+ * next_version (in) : Next object version if it was updated.
+ * reusable (in)     : True if slots are reusable, false if they are
+ *		       referable.
+ *
+ * NOTE: Vacuuming the slot can be done in three ways depending on
+ *	 next_version and reusable:
+ *	 1. Reusable = false, next_version is NULL: Replace slot with
+ *	    REC_MARKDELETED (deleted slot, but cannot be reused since there
+ *	    may still be references pointing to this slot).
+ *	 2. Reusable = false, next_version is not NULL: Replace slot with
+ *	    REC_MVCC_NEXT_VERSION since references to this slot have to follow
+ *	    update chain.
+ *	 3. Reusable = true: Slot is always replaced with
+ *	    REC_DELETED_WILL_REUSE. Since there are no references to this
+ *	    slot and this version is invisible, there is no point in keeping
+ *	    links to newer versions.
  */
 int
 spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
@@ -5338,10 +5352,12 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
 		     pgbuf_get_vpid_ptr (page_p)->pageid, slotid);
       return NO_ERROR;
     }
-  if (next_version != NULL && !OID_ISNULL (next_version))
+  if (next_version != NULL && !OID_ISNULL (next_version) && !reusable)
     {
       /* Replace current record with an REC_MVCC_NEXT_VERSION which will
        * point to next_version.
+       * NOTE: Reusable objects don't need to keep next version, since no one
+       *       will ever revisit this slot.
        */
       assert (slot_p->record_type == REC_HOME
 	      || slot_p->record_type == REC_BIGONE

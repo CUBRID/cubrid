@@ -8325,8 +8325,15 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 	{
 	  log_append_redo_data (thread_p, RVFL_LOGICAL_NOOP, &addr, 0, NULL);
 	  /* Even though this is a noop, we have to mark the page dirty
-	     in order to keep the expensive pgbuf_unfix checks from complaining */
-	  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
+	   * in order to keep the expensive pgbuf_unfix checks from
+	   * complaining.
+	   */
+	  /* As of now, if there is no logic flaw and if transaction
+	   * successfully commits, the page should no longer be used (until
+	   * reallocated) and its BCB can be invalidated.
+	   */
+	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+	  pgbuf_invalidate (thread_p, addr.pgptr);
 	  addr.pgptr = NULL;
 	}
       return NO_ERROR;

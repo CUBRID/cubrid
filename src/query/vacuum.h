@@ -52,6 +52,10 @@
 #define VACUUM_ER_LOG_RECOVERY		512	/* Log recovery of vacuum data
 						 * and dropped classes/indexes
 						 */
+#define VACUUM_ER_LOG_TOPOPS		1024	/* Log starting/ending system
+						 * operations and their
+						 * recovery.
+						 */
 
 #define VACUUM_ER_LOG_VERBOSE		0xFFFFFFFF	/* Log all activity
 							 * related to vacuum.
@@ -263,6 +267,14 @@ extern LOG_PAGEID vacuum_data_get_last_log_pageid (THREAD_ENTRY * thread_p);
 
 extern int vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
+extern int vacuum_rv_redo_remove_bigone (THREAD_ENTRY * thread_p,
+					 LOG_RCV * rcv);
+extern int vacuum_rv_undo_remove_bigone (THREAD_ENTRY * thread_p,
+					 LOG_RCV * rcv);
+extern void vacuum_rv_redo_remove_bigone_dump (FILE * fp, int length,
+					       void *data);
+extern void vacuum_rv_undo_remove_bigone_dump (FILE * fp, int length,
+					       void *data);
 extern int vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
 extern int vacuum_rv_redo_remove_data_entries (THREAD_ENTRY * thread_p,

@@ -308,7 +308,7 @@ static int logpb_expand_pool (int num_new_buffers);
 static struct log_buffer *logpb_replace (THREAD_ENTRY * thread_p,
 					 bool * retry);
 static LOG_PAGE *logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
-				 int fetch_mode);
+				 PAGE_FETCH_MODE fetch_mode);
 static bool logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 #if !defined(NDEBUG)
 static bool logpb_is_any_dirty (void);
@@ -1161,7 +1161,8 @@ logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
  *              the same page.
  */
 static LOG_PAGE *
-logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int fetch_mode)
+logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
+		PAGE_FETCH_MODE fetch_mode)
 {
   struct log_buffer *log_bufptr;	/* A log buffer */
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;	/* The corresponding
@@ -2600,7 +2601,7 @@ error:
 LOG_PAGE *
 logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 {
-  int flag = OLD_PAGE;
+  PAGE_FETCH_MODE flag = OLD_PAGE;
   bool need_flush;
 #if defined(SERVER_MODE)
   int rv;

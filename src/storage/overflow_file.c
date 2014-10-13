@@ -829,11 +829,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 	      rest_parts = (OVERFLOW_REST_PART *) addr.pgptr;
 	      next_vpid = rest_parts->next_vpid;
 
-	      if (pgbuf_invalidate (thread_p, addr.pgptr) != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	      addr.pgptr = NULL;
+	      pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
 	      if (file_dealloc_page (thread_p, ovf_vfid, &tmp_vpid) !=
 		  NO_ERROR)
@@ -866,11 +862,8 @@ overflow_delete_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 {
   int ret;
 
-  ret = pgbuf_invalidate (thread_p, pgptr);
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  /* Unfix page. */
+  pgbuf_unfix_and_init (thread_p, pgptr);
 
   ret = file_dealloc_page (thread_p, ovf_vfid, vpid);
   if (ret != NO_ERROR)

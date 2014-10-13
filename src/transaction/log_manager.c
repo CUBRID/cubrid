@@ -4013,6 +4013,16 @@ log_start_system_op (THREAD_ENTRY * thread_p)
       assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p)
 	      || VACUUM_WORKER_STATE_IS_TOPOP (thread_p)
 	      || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+
+      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+		     "VACUUM: Start system operation. Current worker tdes: "
+		     "tdes->trid=%d, tdes->topops.last=%d, "
+		     "tdes->tail_lsa=(%lld, %d). Worker state=%d",
+		     tdes->trid, tdes->topops.last,
+		     (long long int) tdes->tail_lsa.pageid,
+		     (int) tdes->tail_lsa.offset,
+		     VACUUM_GET_WORKER_STATE (thread_p));
+
       /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
       VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_TOPOP);
     }
@@ -4130,6 +4140,21 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	      result = LOG_RESULT_TOPOP_COMMIT;
 	    }
 	}
+
+      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+		     "VACUUM: End system operation. Worker tdes: "
+		     "tdes->trid=%d, tdes->topops.last=%d, "
+		     "crt_topop->last_parent_lsa=(%lld, %d), "
+		     "tdes->tail_lsa=(%lld, %d). Worker state=%d."
+		     "LOG_RESULT_TOPOP=%d",
+		     tdes->trid, tdes->topops.last,
+		     (long long int) tdes->topops.stack[tdes->topops.last].
+		     lastparent_lsa.pageid,
+		     (int) tdes->topops.stack[tdes->topops.last].
+		     lastparent_lsa.offset,
+		     (long long int) tdes->tail_lsa.pageid,
+		     (int) tdes->tail_lsa.offset,
+		     VACUUM_GET_WORKER_STATE (thread_p), result);
     }
   else
     {
@@ -4336,6 +4361,38 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	      VACUUM_SET_WORKER_STATE (thread_p,
 				       VACUUM_WORKER_STATE_RECOVERY);
 	    }
+
+	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+			 "VACUUM: Ended all top operations. Tdes: "
+			 "tdes->trid=%d"
+			 "tdes->head_lsa=(%lld, %d), "
+			 "tdes->tail_lsa=(%lld, %d), "
+			 "tdes->undo_nxlsa=(%lld, %d), "
+			 "tdes->tail_topresult_lsa=(%lld, %d). "
+			 "Worker state=%d.",
+			 tdes->trid, (long long int) tdes->head_lsa.pageid,
+			 (int) tdes->head_lsa.offset,
+			 (long long int) tdes->tail_lsa.pageid,
+			 (int) tdes->tail_lsa.offset,
+			 (long long int) tdes->undo_nxlsa.pageid,
+			 (int) tdes->undo_nxlsa.offset,
+			 (long long int) tdes->tail_topresult_lsa.pageid,
+			 (int) tdes->tail_topresult_lsa.offset,
+			 VACUUM_GET_WORKER_STATE (thread_p));
+
+	  /* Vacuum workers don't have a parent transaction that is committed.
+	   * Different system operations that are not nested shouldn't be
+	   * linked between them. Otherwise, undo recovery, in the attempt to
+	   * find log records to undo will process all system operations
+	   * until the first one.
+	   * Since vacuum workers never rollback, once the last system
+	   * operation is ended, we can reset all modified LSA's. This way,
+	   * different system operations will not be linked between them.
+	   */
+	  LSA_SET_NULL (&tdes->head_lsa);
+	  LSA_SET_NULL (&tdes->tail_lsa);
+	  LSA_SET_NULL (&tdes->undo_nxlsa);
+	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
 	}
     }
 

@@ -1055,19 +1055,20 @@ pgbuf_finalize (void)
  * pgbuf_fix_with_retry () -
  *   return: Pointer to the page or NULL
  *   vpid(in): Complete Page identifier
- *   newpg(in): Is this a newly allocated page ?
- *   lock(in): Lock mode
+ *   fetch_mode(in): Page fetch mode
+ *   request_mode(in): Lock request_mode
  *   retry(in): Retry count
  */
 PAGE_PTR
-pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
-		      int mode, int retry)
+pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid,
+		      PAGE_FETCH_MODE fetch_mode,
+		      PGBUF_LATCH_MODE request_mode, int retry)
 {
   PAGE_PTR pgptr;
   int i = 0;
   bool noretry = false;
 
-  while ((pgptr = pgbuf_fix (thread_p, vpid, newpg, mode,
+  while ((pgptr = pgbuf_fix (thread_p, vpid, fetch_mode, request_mode,
 			     PGBUF_UNCONDITIONAL_LATCH)) == NULL)
     {
       switch (er_errid ())
@@ -1103,15 +1104,17 @@ pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 #if defined(WINDOWS)
 #if !defined(NDEBUG)
 PAGE_PTR
-pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
-		   int request_mode, PGBUF_LATCH_CONDITION condition)
+pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
+		   PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
+		   PGBUF_LATCH_CONDITION condition)
 {
   return NULL;
 }
 #else
 PAGE_PTR
-pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
-		 int request_mode, PGBUF_LATCH_CONDITION condition,
+pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
+		 PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
+		 PGBUF_LATCH_CONDITION condition,
 		 const char *caller_file, int caller_line)
 {
   return NULL;
@@ -1122,8 +1125,9 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 #if !defined(NDEBUG)
 PAGE_PTR
 pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
-				    const VPID * vpid, int newpg,
-				    int request_mode,
+				    const VPID * vpid,
+				    PAGE_FETCH_MODE fetch_mode,
+				    PGBUF_LATCH_MODE request_mode,
 				    PGBUF_LATCH_CONDITION condition,
 				    const char *caller_file, int caller_line)
 {
@@ -1133,8 +1137,9 @@ pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
   old_check_page_validation =
     thread_set_check_page_validation (thread_p, false);
 
-  pgptr = pgbuf_fix_debug (thread_p, vpid, newpg, request_mode, condition,
-			   caller_file, caller_line);
+  pgptr =
+    pgbuf_fix_debug (thread_p, vpid, fetch_mode, request_mode, condition,
+		     caller_file, caller_line);
 
   rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
 
@@ -1143,8 +1148,9 @@ pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
 #else /* NDEBUG */
 PAGE_PTR
 pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p,
-				      const VPID * vpid, int newpg,
-				      int request_mode,
+				      const VPID * vpid,
+				      PAGE_FETCH_MODE fetch_mode,
+				      PGBUF_LATCH_MODE request_mode,
 				      PGBUF_LATCH_CONDITION condition)
 {
   PAGE_PTR pgptr;
@@ -1153,7 +1159,8 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p,
   old_check_page_validation =
     thread_set_check_page_validation (thread_p, false);
 
-  pgptr = pgbuf_fix_release (thread_p, vpid, newpg, request_mode, condition);
+  pgptr =
+    pgbuf_fix_release (thread_p, vpid, fetch_mode, request_mode, condition);
 
   rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
 
@@ -1165,19 +1172,21 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p,
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
  *   vpid(in): Complete Page identifier
- *   newpg(in): Is this a newly allocated page ?
- *   request_mode(in):
- *   condition(in):
+ *   fetch_mode(in): Page fetch mode.
+ *   request_mode(in): Page latch mode.
+ *   condition(in): Page latch condition.
  */
 #if !defined(NDEBUG)
 PAGE_PTR
-pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
-		 int request_mode, PGBUF_LATCH_CONDITION condition,
+pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
+		 PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
+		 PGBUF_LATCH_CONDITION condition,
 		 const char *caller_file, int caller_line)
 #else /* NDEBUG */
 PAGE_PTR
-pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
-		   int request_mode, PGBUF_LATCH_CONDITION condition)
+pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
+		   PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
+		   PGBUF_LATCH_CONDITION condition)
 #endif				/* NDEBUG */
 {
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -1215,8 +1224,10 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 				       PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
-      if (pgbuf_is_valid_page (thread_p, vpid, false,
-			       NULL, NULL) != DISK_VALID)
+      /* Suppress errors if fetch mode is OLD_PAGE_IF_EXISTS. */
+      if (pgbuf_is_valid_page (thread_p, vpid,
+			       fetch_mode == OLD_PAGE_IF_EXISTS, NULL, NULL)
+	  != DISK_VALID)
 	{
 	  return NULL;
 	}
@@ -1276,7 +1287,8 @@ try_again:
       /* The page is not found in the hash chain
        * the caller is holding hash_anchor->hash_mutex
        */
-      if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
+      if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK
+	  || fetch_mode == OLD_PAGE_IF_EXISTS)
 	{
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	  return NULL;
@@ -1312,17 +1324,17 @@ try_again:
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
 #if defined(ENABLE_SYSTEMTAP)
-      if (newpg == NEW_PAGE && pgbuf_hit == false)
+      if (fetch_mode == NEW_PAGE && pgbuf_hit == false)
 	{
 	  pgbuf_hit = true;
 	}
-      if (newpg != NEW_PAGE)
+      if (fetch_mode != NEW_PAGE)
 	{
 	  CUBRID_PGBUF_MISS ();
 	}
 #endif /* ENABLE_SYSTEMTAP */
 
-      if (newpg != NEW_PAGE)
+      if (fetch_mode != NEW_PAGE)
 	{
 	  /* Record number of reads in statistics */
 	  mnt_pb_ioreads (thread_p);
@@ -2952,8 +2964,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 	      vpid = bufptr->vpid;
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 
-	      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
-				 PGBUF_UNCONDITIONAL_LATCH);
+	      pgptr =
+		pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS,
+			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (pgptr == NULL
 		  || pgbuf_flush_with_wal (thread_p, pgptr) == NULL)
 		{
@@ -8801,8 +8814,8 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
  * vpid_to_fix (in)    : VPID of page to be fixed.
- * newpage (in)       : old/new page.
- * mode (in)	       : Latch mode.
+ * fetch_mode (in)     : Fetch page mode.
+ * latch_mode (in)     : Latch mode.
  * page_to_fix (out)   : Page to be fixed.
  * page_fixed (in/out) : Page already fixed. Will be unfixed and set to NULL
  *			 if conditional latch fails. If a NULL argument is
@@ -8813,7 +8826,8 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
  */
 int
 pgbuf_fix_when_other_is_fixed (THREAD_ENTRY * thread_p, VPID * vpid_to_fix,
-			       int newpage, PGBUF_LATCH_MODE mode,
+			       PAGE_FETCH_MODE fetch_mode,
+			       PGBUF_LATCH_MODE latch_mode,
 			       PAGE_PTR * page_to_fix, PAGE_PTR * page_fixed)
 {
   assert ((vpid_to_fix != NULL) && (page_to_fix != NULL)
@@ -8823,14 +8837,14 @@ pgbuf_fix_when_other_is_fixed (THREAD_ENTRY * thread_p, VPID * vpid_to_fix,
     {
       /* Fix page using an unconditional latch directly */
       *page_to_fix =
-	pgbuf_fix (thread_p, vpid_to_fix, newpage, mode,
+	pgbuf_fix (thread_p, vpid_to_fix, fetch_mode, latch_mode,
 		   PGBUF_UNCONDITIONAL_LATCH);
     }
   else
     {
       /* Try conditional latch on page to fix */
       *page_to_fix =
-	pgbuf_fix (thread_p, vpid_to_fix, newpage, mode,
+	pgbuf_fix (thread_p, vpid_to_fix, fetch_mode, latch_mode,
 		   PGBUF_CONDITIONAL_LATCH);
       if (*page_to_fix == NULL)
 	{
@@ -8839,7 +8853,7 @@ pgbuf_fix_when_other_is_fixed (THREAD_ENTRY * thread_p, VPID * vpid_to_fix,
 	   */
 	  pgbuf_unfix_and_init (thread_p, *page_fixed);
 	  *page_to_fix =
-	    pgbuf_fix (thread_p, vpid_to_fix, newpage, mode,
+	    pgbuf_fix (thread_p, vpid_to_fix, fetch_mode, latch_mode,
 		       PGBUF_UNCONDITIONAL_LATCH);
 	}
     }
