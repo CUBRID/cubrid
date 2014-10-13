@@ -424,7 +424,8 @@ lf_initialize_transaction_systems (int max_threads)
 {
   if (tran_systems_initialized)
     {
-      return NO_ERROR;
+      lf_destroy_transaction_systems ();
+      /* reinitialize */
     }
 
   if (lf_tran_system_init (&spage_saving_Ts, max_threads) != NO_ERROR)
