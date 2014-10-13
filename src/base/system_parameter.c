@@ -6555,6 +6555,12 @@ sysprm_make_default_values (const char *data, char *default_val_buf,
 	    snprintf (out_p, remaining_size, "%s=%s",
 		      PRM_NAME_INTL_NUMBER_LANG, lang_get_Lang_name ());
 	}
+      else if (PRM_ID_TIMEZONE == sysprm_get_id (prm))
+	{
+	  n =
+	    snprintf (out_p, remaining_size, "%s=%s",
+		      PRM_NAME_TIMEZONE, tz_get_system_timezone ());
+	}
       else
 	{
 	  n =
