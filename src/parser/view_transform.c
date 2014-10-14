@@ -94,10 +94,12 @@ typedef struct check_pushable_info
   bool check_query;
   bool check_method;
   bool check_xxxnum;
+  bool check_analytic;
+
   bool query_found;
   bool method_found;
-  bool xxxnum_found;		/* rownum, inst_num(), orderby_num(),
-				   groupby_num() */
+  bool xxxnum_found;		/* rownum, inst_num(), orderby_num(), groupby_num() */
+  bool analytic_found;
 } CHECK_PUSHABLE_INFO;
 
 static unsigned int top_cycle = 0;
@@ -1661,12 +1663,18 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query,
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.method_found = cpi.query_found = cpi.xxxnum_found = false;
+  cpi.check_analytic = false;	/* analytic functions are pushable */
+
+  cpi.method_found = false;
+  cpi.query_found = false;
+  cpi.xxxnum_found = false;
+  cpi.analytic_found = false;
 
   parser_walk_tree (parser, query->info.query.q.select.list,
 		    pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
+  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found
+      || cpi.analytic_found)
     {
       /* query not pushable */
       return false;
@@ -1676,12 +1684,18 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query,
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.method_found = cpi.query_found = cpi.xxxnum_found = false;
+  cpi.check_analytic = false;	/* analytic functions are pushable */
+
+  cpi.method_found = false;
+  cpi.query_found = false;
+  cpi.xxxnum_found = false;
+  cpi.analytic_found = false;
 
   parser_walk_tree (parser, query->info.query.q.select.where,
 		    pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
+  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found
+      || cpi.analytic_found)
     {
       /* query not pushable */
       return false;
@@ -3089,13 +3103,21 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      cinfop->xxxnum_found = true;	/* not pushable */
 	    }
 	}
+      else if (tree->info.function.analytic.is_analytic == true)
+	{
+	  if (cinfop->check_analytic)
+	    {
+	      cinfop->analytic_found = true;	/* not pushable */
+	    }
+	}
       break;
 
     default:
       break;
     }				/* switch (tree->node_type) */
 
-  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found)
+  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found
+      || cinfop->analytic_found)
     {
       /* not pushable */
       /* do not need to traverse anymore */
@@ -3133,9 +3155,12 @@ pt_pushable_query_in_pos (PARSER_CONTEXT * parser, PT_NODE * query, int pos)
 	    cinfo.check_query = (i == pos) ? true : false;
 	    cinfo.check_method = (i == pos) ? true : false;
 	    cinfo.check_xxxnum = true;	/* always check */
+	    cinfo.check_analytic = (i == pos) ? true : false;
+
 	    cinfo.query_found = false;
 	    cinfo.method_found = false;
 	    cinfo.xxxnum_found = false;
+	    cinfo.analytic_found = false;
 
 	    switch (list->node_type)
 	      {
@@ -3177,6 +3202,10 @@ pt_pushable_query_in_pos (PARSER_CONTEXT * parser, PT_NODE * query, int pos)
 		  {
 		    cinfo.xxxnum_found = true;	/* not pushable */
 		  }
+		else if (list->info.function.analytic.is_analytic == true)
+		  {
+		    cinfo.analytic_found = true;	/* not pushable */
+		  }
 		else
 		  {		/* do traverse */
 		    parser_walk_leaves (parser, list, pt_check_pushable,
@@ -3194,7 +3223,8 @@ pt_pushable_query_in_pos (PARSER_CONTEXT * parser, PT_NODE * query, int pos)
 	     * orderby_num(), groupby_num(): does not pushable if we
 	     * find these in corresponding item in select_list of query
 	     */
-	    if (cinfo.query_found || cinfo.method_found || cinfo.xxxnum_found)
+	    if (cinfo.query_found || cinfo.method_found || cinfo.xxxnum_found
+		|| cinfo.analytic_found)
 	      {
 		break;		/* not pushable */
 	      }
@@ -3583,7 +3613,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser,
 
   copy_cnt = -1;
 
-  if (PT_IS_SELECT (new_query) &&
+  if (PT_IS_QUERY (new_query) &&
       (pt_has_analytic (parser, new_query)
        || PT_SELECT_INFO_IS_FLAGED (new_query,
 				    PT_SELECT_INFO_COLS_SCHEMA)

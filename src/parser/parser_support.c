@@ -3113,14 +3113,17 @@ bool
 pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   bool has_analytic = false;
+  bool has_analytic_arg1 = false;
+  bool has_analytic_arg2 = false;
 
   if (!node)
     {
       return false;
     }
 
-  if (node->node_type == PT_SELECT)
+  switch (node->node_type)
     {
+    case PT_SELECT:
       if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_HAS_ANALYTIC))
 	{
 	  has_analytic = true;
@@ -3135,12 +3138,26 @@ pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_HAS_ANALYTIC);
 	    }
 	}
-    }
-  else
-    {
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      has_analytic_arg1 = pt_has_analytic (parser,
+					   node->info.query.q.union_.arg1);
+      has_analytic_arg2 = pt_has_analytic (parser,
+					   node->info.query.q.union_.arg2);
+      if (has_analytic_arg1 || has_analytic_arg2)
+	{
+	  has_analytic = true;
+	}
+      break;
+
+    default:
       (void) parser_walk_tree (parser, node,
 			       pt_is_analytic_node, &has_analytic,
 			       pt_is_analytic_node_post, &has_analytic);
+      break;
     }
 
   return has_analytic;
