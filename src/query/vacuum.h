@@ -317,6 +317,8 @@ extern VACUUM_WORKER *vacuum_rv_get_worker_by_trid (THREAD_ENTRY * thread_p,
 extern void vacuum_rv_finish_worker_recovery (THREAD_ENTRY * thread_p,
 					      TRANID trid);
 
+extern bool vacuum_is_page_of_vacuum_data (VPID * vpid);
+
 #if defined (SERVER_MODE)
 extern void vacuum_master_start (void);
 extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);

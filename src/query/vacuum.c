@@ -6683,6 +6683,26 @@ vacuum_compare_dropped_files_version (INT32 version_a, INT32 version_b)
   assert (false);
 }
 
+/*
+ * vacuum_is_page_of_vacuum_data () - Weather or not a page is vacuum data.
+ *
+ * return    : true - Yes, false - No
+ * vpid (in) :
+ */
+bool
+vacuum_is_page_of_vacuum_data (VPID * vpid)
+{
+  int diff;
+
+  if (vacuum_Data_vpid.volid != vpid->volid)
+    {
+      return false;
+    }
+
+  diff = vpid->pageid - vacuum_Data_vpid.pageid;
+  return 0 <= diff && diff < vacuum_Data_npages;
+}
+
 #if !defined (NDEBUG)
 /*
  * vacuum_verify_vacuum_data_debug () - Debugging function that can detect

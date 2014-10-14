@@ -5471,6 +5471,17 @@ spage_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
   ctx->vpid.volid = db_get_int (arg_val0);
   ctx->vpid.pageid = db_get_int (arg_val1);
 
+  /* Skip vacuum data file area, because these pages is not have header
+   * of FILEIO_PAGE_RESERVED, will raise assertion fail in pgbuf_fix() function.
+   */
+  if (vacuum_is_page_of_vacuum_data (&ctx->vpid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_NOT_SPAGE, 2,
+	      ctx->vpid.pageid, ctx->vpid.volid);
+      error = ER_DIAG_NOT_SPAGE;
+      goto exit_on_error;
+    }
+
   if (pgbuf_is_valid_page (thread_p, &ctx->vpid, true, NULL, NULL) !=
       DISK_VALID)
     {
@@ -5643,6 +5654,17 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type,
 
   ctx->vpid.volid = db_get_int (arg_val0);
   ctx->vpid.pageid = db_get_int (arg_val1);
+
+  /* Skip vacuum data file area, because these pages is not have header
+   * of FILEIO_PAGE_RESERVED, will raise assertion fail in pgbuf_fix() function.
+   */
+  if (vacuum_is_page_of_vacuum_data (&ctx->vpid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_NOT_SPAGE, 2,
+	      ctx->vpid.pageid, ctx->vpid.volid);
+      error = ER_DIAG_NOT_SPAGE;
+      goto exit_on_error;
+    }
 
   if (pgbuf_is_valid_page (thread_p, &ctx->vpid, true, NULL, NULL) !=
       DISK_VALID)
