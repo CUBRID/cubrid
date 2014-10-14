@@ -591,6 +591,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_SERVER_TIMEZONE "server_timezone"
 #define PRM_NAME_TZ_LEAP_SECOND_SUPPORT "tz_leap_second_support"
 
+#define PRM_NAME_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION "optimizer_enable_aggregate_optimization"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1960,6 +1962,10 @@ static unsigned int prm_server_timezone_flag = 0;
 bool prm_tz_leap_second_support_default = false;
 bool PRM_TZ_LEAP_SECOND_SUPPORT = false;
 static unsigned int prm_leap_second_support_flag = 0;
+
+bool PRM_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION = true;
+static bool prm_optimizer_enable_aggregate_optimization_default = true;
+static unsigned int prm_optimizer_enable_aggregate_optimization_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4711,6 +4717,16 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_leap_second_support_flag,
    (void *) &prm_tz_leap_second_support_default,
    (void *) &PRM_TZ_LEAP_SECOND_SUPPORT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION,
+   (PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_optimizer_enable_aggregate_optimization_flag,
+   (void *) &prm_optimizer_enable_aggregate_optimization_default,
+   (void *) &PRM_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

@@ -8805,6 +8805,12 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	    }
 
+	  if (prm_get_bool_value
+	      (PRM_ID_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION) == false)
+	    {
+	      is_scan_needed = true;
+	    }
+
 	  if (!is_scan_needed)
 	    {
 	      return S_SUCCESS;
@@ -29370,6 +29376,7 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p,
 					    &root_btid, &helpers[i]);
       if (error != NO_ERROR)
 	{
+	  agg_ptr->flag_agg_optimize = false;
 	  *is_scan_needed = true;
 	  goto cleanup;
 	}
