@@ -1162,7 +1162,14 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 
   if (dummy_set_tbl)
     {
-      spec->next = new_spec;
+      /* We attach the new_spec to the end of the from list. */
+      new_spec->next = NULL;
+      for (tmp = spec; tmp->next != NULL; tmp = tmp->next)
+	{
+	  /*No body. */
+	}
+
+      tmp->next = new_spec;
       new_spec = spec;
     }
   else
