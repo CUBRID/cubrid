@@ -5793,6 +5793,9 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid)
   VFID vfid;
   int ret;
 
+  vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
+			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
+
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false,
 			  PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
@@ -5802,9 +5805,6 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  return ret;
 	}
     }
-
-  vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
-			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
   ret = file_destroy (thread_p, &hfid->vfid);
   if (ret != NO_ERROR)
@@ -5838,6 +5838,9 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
       return xheap_destroy (thread_p, hfid);
     }
 
+  vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
+			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
+
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false,
 			  PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
@@ -5847,9 +5850,6 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  return ret;
 	}
     }
-
-  vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
-			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
   ret = file_mark_as_deleted (thread_p, &hfid->vfid);
   if (ret != NO_ERROR)

@@ -1242,6 +1242,29 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VPID page_vpid,
 			pgbuf_fix (thread_p, &page_vpid, OLD_PAGE,
 				   PGBUF_LATCH_WRITE,
 				   PGBUF_UNCONDITIONAL_LATCH);
+		      /* Update page header */
+		      page_header_p = (SPAGE_HEADER *) page;
+
+		      /* Check record was not vacuumed while page was
+		       * unfixed.
+		       */
+		      slot_p = spage_get_slot (page, slotid);
+		      if (slot_p->record_type != REC_BIGONE)
+			{
+			  /* Slot must be already vacuumed. */
+			  assert ((slot_p->record_type == REC_MARKDELETED)
+				  || (slot_p->record_type
+				      == REC_DELETED_WILL_REUSE)
+				  || (slot_p->record_type
+				      == REC_MVCC_NEXT_VERSION));
+			  vacuum_er_log (VACUUM_ER_LOG_WARNING
+					 | VACUUM_ER_LOG_HEAP,
+					 "VACUUM: Object (%d, %d, %d) was "
+					 "vacuumed someone else.",
+					 page_vpid.volid, page_vpid.pageid,
+					 slotid);
+			  break;
+			}
 		    }
 		}
 	      /* Start vacuuming. Everything is done under a system
