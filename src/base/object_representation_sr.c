@@ -4004,7 +4004,7 @@ static const char *
 or_get_attr_string (RECDES * record, int attr_id, int attr_index)
 {
   char *diskatt, *attr = NULL;
-  int offset, offset_pre = -1;
+  int offset, offset_next;
 
   assert (attr_index < ORC_ATT_LAST_INDEX);
 
@@ -4017,12 +4017,15 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
        */
       unsigned char len;
       offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
-      if (attr_index > 0)
-	{
-	  offset_pre = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index - 1);
-	}
-
       attr = diskatt + offset;
+
+      /*
+       * Get boundary of the attribute, that is, the offset of next attribute.
+       * Regardless the next attribute exists or not,
+       * the "offset_next" is always retrievable.
+       * There is a last offset to denote the end of object. See attribute_to_disk.
+       */
+      offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
 
       /*
        * kludge kludge kludge
@@ -4032,7 +4035,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
        */
 
       len = *((unsigned char *) attr);
-      if (len == 0 || offset == offset_pre)
+      if (len == 0 || offset == offset_next)
 	{
 	  attr = NULL;
 	}
