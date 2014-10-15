@@ -1318,8 +1318,7 @@ process_class (int cl_no)
 
   /* Flush all the instances */
 
-  if (locator_flush_all_instances (class_, DONT_DECACHE, LC_STOP_ON_ERROR) !=
-      NO_ERROR)
+  if (locator_flush_all_instances (class_, DONT_DECACHE) != NO_ERROR)
     {
       if (total_objects == total_approximate_class_objects)
 	{

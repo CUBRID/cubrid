@@ -739,7 +739,6 @@ reset_template (OBJ_TEMPLATE * template_ptr)
   template_ptr->force_flush = 0;
   template_ptr->force_check_not_null = 0;
   template_ptr->function_key_modified = 0;
-  template_ptr->bulk_flush = 0;
   template_ptr->is_autoincrement_set = 0;
 }
 
@@ -894,7 +893,6 @@ make_template (MOP object, MOP classobj)
       template_ptr->fkeys_were_modified = 0;
       template_ptr->force_check_not_null = 0;
       template_ptr->force_flush = 0;
-      template_ptr->bulk_flush = 0;
       template_ptr->is_autoincrement_set = 0;
       template_ptr->pruning_type = DB_NOT_PARTITIONED_CLASS;
       /*
@@ -2768,11 +2766,9 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
    */
   if (error == NO_ERROR)
     {
-      if (template_ptr->bulk_flush == 0
-	  && ((check_uniques && template_ptr->uniques_were_modified)
-	      || template_ptr->fkeys_were_modified
-	      || template_ptr->function_key_modified
-	      || template_ptr->force_flush))
+      if ((check_uniques && template_ptr->uniques_were_modified)
+	  || template_ptr->fkeys_were_modified
+	  || template_ptr->function_key_modified || template_ptr->force_flush)
 	{
 	  if ((locator_flush_class (OBT_BASE_CLASSOBJ (template_ptr))
 	       != NO_ERROR)
@@ -2878,6 +2874,7 @@ obt_reset_force_flush (OBJ_TEMPLATE * template_ptr)
   template_ptr->force_flush = 0;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obt_set_bulk_flush - set bulk_flush flag of the template
  *
@@ -2892,7 +2889,6 @@ obt_set_bulk_flush (OBJ_TEMPLATE * template_ptr)
   template_ptr->bulk_flush = 1;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obt_retain_after_finish
  *    return: none

@@ -7510,6 +7510,55 @@ exit_on_end:
   return valid;
 }
 
+int
+btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
+{
+  OR_CLASSREP *cls_repr;
+  OR_INDEX *curr_idx;
+  int cache_idx = -1;
+  int i;
+  int error = NO_ERROR;
+
+  assert (pkey_btid != NULL);
+
+  BTID_SET_NULL (pkey_btid);
+
+  cls_repr =
+    heap_classrepr_get (thread_p, cls_oid, NULL, NULL_REPRID, &cache_idx);
+  if (cls_repr == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  for (i = 0, curr_idx = cls_repr->indexes; i < cls_repr->n_indexes;
+       i++, curr_idx++)
+    {
+      if (curr_idx == NULL)
+	{
+	  error = ER_UNEXPECTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  break;
+	}
+
+      if (curr_idx->type == BTREE_PRIMARY_KEY)
+	{
+	  BTID_COPY (pkey_btid, &curr_idx->btid);
+	  break;
+	}
+    }
+
+  if (cls_repr != NULL)
+    {
+      heap_classrepr_free (cls_repr, &cache_idx);
+    }
+
+  return error;
+}
+
 /*
  * btree_check_by_class_oid () -
  *   cls_oid(in):

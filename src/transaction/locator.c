@@ -484,6 +484,66 @@ locator_allocate_copy_area_by_length (int min_length)
   return copyarea;
 }
 
+LC_COPYAREA *
+locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area,
+					int new_length)
+{
+  LC_COPYAREA_MANYOBJS *old_mobjs, *new_mobjs;
+  LC_COPYAREA_ONEOBJ *old_obj, *new_obj;
+  LC_COPYAREA *new_area = NULL;
+  int i, offset = -1;
+  int old_content_length = 0;
+  char *ptr;
+
+  if (old_area == NULL)
+    {
+      return NULL;
+    }
+
+  old_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (old_area);
+
+  if (new_length < old_area->length)
+    {
+      return NULL;
+    }
+
+  new_area = locator_allocate_copy_area_by_length (new_length);
+  if (new_area == NULL)
+    {
+      return NULL;
+    }
+
+  new_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (new_area);
+  new_mobjs->num_objs = old_mobjs->num_objs;
+  new_mobjs->start_multi_update = old_mobjs->start_multi_update;
+  new_mobjs->end_multi_update = old_mobjs->end_multi_update;
+
+  for (i = 0; i < old_mobjs->num_objs; i++)
+    {
+      old_obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (old_mobjs, i);
+      new_obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (new_mobjs, i);
+
+      LC_COPY_ONEOBJ (new_obj, old_obj);
+
+      if (old_obj->offset > offset)
+	{
+	  old_content_length = old_obj->length;
+	  offset = old_obj->offset;
+	}
+    }
+
+  if (offset != -1)
+    {
+      old_content_length += offset;
+    }
+
+  memcpy (new_area->mem, old_area->mem, old_content_length);
+
+  locator_free_copy_area (old_area);
+
+  return new_area;
+}
+
 /*
  * locator_free_copy_area: Free a copy area
  *
@@ -561,7 +621,6 @@ locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea,
       ptr = or_pack_oid (ptr, &obj->updated_oid);
       ptr = or_pack_int (ptr, obj->length);
       ptr = or_pack_int (ptr, obj->offset);
-      ptr = or_pack_int (ptr, obj->error_code);
     }
   return ptr;
 }
@@ -602,7 +661,6 @@ locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea,
       desc = or_unpack_oid (desc, &obj->updated_oid);
       desc = or_unpack_int (desc, &obj->length);
       desc = or_unpack_int (desc, &obj->offset);
-      desc = or_unpack_int (desc, &obj->error_code);
     }
   return desc;
 }

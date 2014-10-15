@@ -190,11 +190,13 @@ int ws_Error_ignore_count = 0;
 
 static WS_FLUSH_ERR *ws_Error_link = NULL;
 
+static WS_REPL_LIST ws_Repl_objs;
+
 static MOP ws_make_mop (OID * oid);
 static void ws_free_mop (MOP op);
 static void emergency_remove_dirty (MOP op);
 static int ws_map_dirty_internal (MAPFUNC function, void *args,
-				  bool classes_only, bool reverse_dirty_link);
+				  bool classes_only);
 static int add_class_object (MOP class_mop, MOP obj);
 static void remove_class_object (MOP class_mop, MOP obj);
 static int mark_instance_deleted (MOP op, void *args);
@@ -1720,8 +1722,6 @@ ws_cull_mops (void)
   DB_OBJLIST *m;
   unsigned int slot, count;
 
-  ws_clear_all_errors_of_error_link ();
-
   for (m = ws_Resident_classes; m != NULL; m = m->next)
     {
       prev = NULL;
@@ -1885,8 +1885,7 @@ ws_cull_mops (void)
 void
 ws_intern_instances (MOP class_mop)
 {
-  if (locator_flush_all_instances (class_mop, DECACHE, LC_STOP_ON_ERROR) !=
-      NO_ERROR)
+  if (locator_flush_all_instances (class_mop, DECACHE) != NO_ERROR)
     {
       return;
     }
@@ -2106,7 +2105,6 @@ ws_clean (MOP op)
  *    function(in): function to apply to the dirty list elements
  *    args(in): arguments to pass to map function
  *    classes_only(in): flag indicating map over class objects only
- *    reverse_dirty_link(in): flag indicating to reverse dirty link
  *
  * Note:
  *    As a side effect, non-dirty objects that are still in the dirty list
@@ -2118,14 +2116,12 @@ ws_clean (MOP op)
  *    loop will terminate and this will be returned from the function.
  */
 static int
-ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only,
-		       bool reverse_dirty_link)
+ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only)
 {
   MOP op, op2, next, prev, class_mop;
   DB_OBJLIST *m;
   int status = WS_MAP_CONTINUE;
   int collected_num_dirty_mop = 0;
-  int num_ws_continue_on_error = 0;
 
   /* traverse the resident classes to get to their dirty lists */
   for (m = ws_Resident_classes;
@@ -2153,16 +2149,6 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only,
 	    {
 	      break;
 	    }
-	  else if (status == WS_MAP_CONTINUE_ON_ERROR)
-	    {
-	      num_ws_continue_on_error++;
-	      status = WS_MAP_CONTINUE;
-	    }
-	}
-
-      if (class_mop->dirty_link != Null_object && reverse_dirty_link)
-	{
-	  ws_reverse_dirty_link (class_mop);
 	}
 
       /* skip over all non-dirty objects at the start of each dirty list */
@@ -2212,11 +2198,6 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only,
 	    {
 	      break;
 	    }
-	  else if (status == WS_MAP_CONTINUE_ON_ERROR)
-	    {
-	      num_ws_continue_on_error++;
-	      status = WS_MAP_CONTINUE;
-	    }
 
 	  next = op->dirty_link;
 
@@ -2252,14 +2233,7 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only,
 
   if (status != WS_MAP_FAIL)
     {
-      if (num_ws_continue_on_error > 0)
-	{
-	  status = WS_MAP_CONTINUE_ON_ERROR;
-	}
-      else
-	{
-	  status = WS_MAP_SUCCESS;
-	}
+      status = WS_MAP_SUCCESS;
 
       if (!classes_only && ws_Num_dirty_mop != collected_num_dirty_mop)
 	{
@@ -2275,12 +2249,11 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only,
  *    return: map status code
  *    function(in): map function
  *    args(in): map function argument
- *    reverse_dirty_link(in): flag indicating to reverse dirty link
  */
 int
-ws_map_dirty (MAPFUNC function, void *args, bool reverse_dirty_link)
+ws_map_dirty (MAPFUNC function, void *args)
 {
-  return (ws_map_dirty_internal (function, args, false, reverse_dirty_link));
+  return (ws_map_dirty_internal (function, args, false));
 }
 
 /*
@@ -2290,7 +2263,7 @@ ws_map_dirty (MAPFUNC function, void *args, bool reverse_dirty_link)
 void
 ws_filter_dirty (void)
 {
-  ws_map_dirty_internal (NULL, NULL, false, false);
+  ws_map_dirty_internal (NULL, NULL, false);
 }
 
 /*
@@ -2442,15 +2415,13 @@ ws_set_class (MOP inst, MOP class_mop)
  *    class_op(in/out): class of a mop to iterate over
  *    function(in): map function
  *    args(in): map function argument
- *    reverse_dirty_link(in): flag indicating to reverse dirty link
  *
  * Note:
  * The mapping (calling the map function) will continue as long as the
  * map function returns WS_MAP_CONTINUE
  */
 int
-ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args,
-		    bool reverse_dirty_link)
+ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args)
 {
   MOP op, op2, next, prev;
   DB_OBJLIST *l;
@@ -2468,22 +2439,10 @@ ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args,
 	    {
 	      status = (*function) (l->op, args);
 	    }
-
-	  if (status == WS_MAP_CONTINUE_ON_ERROR)
-	    {
-	      num_ws_continue_on_error++;
-	      status = WS_MAP_CONTINUE;
-	    }
 	}
     }
   else if (class_op->class_mop == sm_Root_class_mop)
     {				/* normal class */
-
-      if (class_op->dirty_link != Null_object && reverse_dirty_link)
-	{
-	  ws_reverse_dirty_link (class_op);
-	}
-
       /* skip over all non-dirty objects at the start of dirty list */
       for (op = class_op->dirty_link, next = Null_object;
 	   op != Null_object && op->dirty == 0; op = next)
@@ -2510,11 +2469,6 @@ ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args,
 	  if (status == WS_MAP_FAIL)
 	    {
 	      break;
-	    }
-	  else if (status == WS_MAP_CONTINUE_ON_ERROR)
-	    {
-	      num_ws_continue_on_error++;
-	      status = WS_MAP_CONTINUE;
 	    }
 
 	  next = op->dirty_link;
@@ -2552,14 +2506,7 @@ ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args,
 
   if (status != WS_MAP_FAIL)
     {
-      if (num_ws_continue_on_error > 0)
-	{
-	  status = WS_MAP_CONTINUE_ON_ERROR;
-	}
-      else
-	{
-	  status = WS_MAP_SUCCESS;
-	}
+      status = WS_MAP_SUCCESS;
     }
 
   return (status);
@@ -2582,7 +2529,6 @@ ws_map_class (MOP class_op, MAPFUNC function, void *args)
   MOP op = NULL, save_class_link = NULL;
   DB_OBJLIST *l = NULL;
   int status = WS_MAP_CONTINUE;
-  int num_ws_continue_on_error = 0;
 
   if (class_op == sm_Root_class_mop)
     {
@@ -2592,14 +2538,8 @@ ws_map_class (MOP class_op, MAPFUNC function, void *args)
 	{
 	  /* should we be ignoring deleted class MOPs ? */
 	  status = (*function) (l->op, args);
-	  if (status == WS_MAP_CONTINUE_ON_ERROR)
-	    {
-	      num_ws_continue_on_error++;
-	      status = WS_MAP_CONTINUE;
-	    }
 	}
     }
-
   else if (class_op->class_mop == sm_Root_class_mop)
     {
       /* normal class */
@@ -2615,11 +2555,6 @@ ws_map_class (MOP class_op, MAPFUNC function, void *args)
 	       * loaded ? what if it is deleted ?
 	       */
 	      status = (*function) (op, args);
-	      if (status == WS_MAP_CONTINUE_ON_ERROR)
-		{
-		  num_ws_continue_on_error++;
-		  status = WS_MAP_CONTINUE;
-		}
 	    }
 	}
     }
@@ -2627,14 +2562,7 @@ ws_map_class (MOP class_op, MAPFUNC function, void *args)
 
   if (status != WS_MAP_FAIL)
     {
-      if (num_ws_continue_on_error > 0)
-	{
-	  status = WS_MAP_CONTINUE_ON_ERROR;
-	}
-      else
-	{
-	  status = WS_MAP_SUCCESS;
-	}
+      status = WS_MAP_SUCCESS;
     }
 
   return (status);
@@ -3755,14 +3683,7 @@ ws_map (MAPFUNC function, void *args)
     }
   if (status != WS_MAP_FAIL)
     {
-      if (num_ws_continue_on_error > 0)
-	{
-	  status = WS_MAP_CONTINUE_ON_ERROR;
-	}
-      else
-	{
-	  status = WS_MAP_SUCCESS;
-	}
+      status = WS_MAP_SUCCESS;
     }
 
   return (status);
@@ -5733,52 +5654,15 @@ ws_set_ignore_error_list_for_mflush (int error_count, int *error_list)
 }
 
 /*
- * ws_reverse_dirty_link() -
- *    return: void
- *    class_mop(in):
- */
-void
-ws_reverse_dirty_link (MOP class_mop)
-{
-  MOP op, nop, pop = Null_object;
-
-  if (class_mop == sm_Root_class_mop)
-    {
-      return;
-    }
-
-  for (op = class_mop->dirty_link; op != Null_object && op != NULL; op = nop)
-    {
-      nop = op->dirty_link;
-
-      if (op == class_mop->dirty_link)
-	{
-	  op->dirty_link = Null_object;
-	}
-      else
-	{
-	  assert (pop != Null_object);
-	  op->dirty_link = pop;
-
-	  if (nop == Null_object)
-	    {
-	      class_mop->dirty_link = op;
-	    }
-	}
-      pop = op;
-    }
-  return;
-}
-
-/*
  * ws_set_error_into_error_link() -
  *    return: void
  *    mop(in):
  */
 void
-ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj)
+ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr)
 {
   WS_FLUSH_ERR *flush_err;
+  char *ptr;
 
   flush_err = (WS_FLUSH_ERR *) malloc (sizeof (WS_FLUSH_ERR));
   if (flush_err == NULL)
@@ -5789,8 +5673,12 @@ ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj)
     }
 
   flush_err->class_oid = obj->class_oid;
-  flush_err->oid = obj->oid;
-  flush_err->error_code = obj->error_code;
+  flush_err->operation = obj->operation;
+
+  ptr = content_ptr;
+  ptr = or_unpack_mem_value (ptr, &flush_err->pkey_value);
+  ptr = or_unpack_int (ptr, &flush_err->error_code);
+  ptr = or_unpack_string_alloc (ptr, &flush_err->error_msg);
 
   flush_err->error_link = ws_Error_link;
   ws_Error_link = flush_err;
@@ -6006,7 +5894,7 @@ ws_clear_all_errors_of_error_link (void)
   for (flush_err = ws_Error_link; flush_err; flush_err = next)
     {
       next = flush_err->error_link;
-      free_and_init (flush_err);
+      ws_free_flush_error (flush_err);
     }
   ws_Error_link = NULL;
 
@@ -6020,6 +5908,12 @@ ws_clear_all_errors_of_error_link (void)
 void
 ws_free_flush_error (WS_FLUSH_ERR * flush_err)
 {
+  assert (flush_err != NULL);
+
+  if (flush_err->error_msg != NULL)
+    {
+      free_and_init (flush_err->error_msg);
+    }
   free_and_init (flush_err);
 
   return;
@@ -6181,4 +6075,149 @@ ws_clean_label_value_list (MOP mop)
     }
 
   mop->label_value_list = NULL;
+}
+
+/*
+ * ws_init_repl_objs() -
+ *    free_func (in): function for freeing data in recdes
+ *    return: void
+ */
+void
+ws_init_repl_objs (WS_FREE_RECDES_FUNC free_func)
+{
+  ws_Repl_objs.head = NULL;
+  ws_Repl_objs.tail = NULL;
+  ws_Repl_objs.num_items = 0;
+  ws_Repl_objs.free_recdes_func = free_func;
+}
+
+/*
+ * ws_get_repl_obj_from_list() -
+ *    return: repl object
+ */
+WS_REPL_OBJ *
+ws_get_repl_obj_from_list (void)
+{
+  WS_REPL_OBJ *repl_obj;
+
+  repl_obj = ws_Repl_objs.head;
+  if (repl_obj != NULL)
+    {
+      ws_Repl_objs.head = repl_obj->next;
+      if (ws_Repl_objs.head == NULL)
+	{
+	  ws_Repl_objs.tail = NULL;
+	}
+
+      ws_Repl_objs.num_items--;
+    }
+
+  assert (ws_Repl_objs.num_items >= 0);
+
+  return repl_obj;
+}
+
+/*
+ * ws_free_repl_obj() -
+ *    return:
+ */
+void
+ws_free_repl_obj (WS_REPL_OBJ * obj)
+{
+  db_value_free (obj->pkey_value);
+
+  if (obj->recdes.data != NULL)
+    {
+      assert (ws_Repl_objs.free_recdes_func != NULL);
+      ws_Repl_objs.free_recdes_func (&obj->recdes);
+    }
+
+  free_and_init (obj);
+
+  return;
+}
+
+/*
+ * ws_clear_all_repl_objs() -
+ *    return:
+ */
+void
+ws_clear_all_repl_objs (void)
+{
+  WS_REPL_OBJ *obj, *next_obj;
+
+  obj = ws_Repl_objs.head;
+  while (obj != NULL)
+    {
+      next_obj = obj->next;
+      ws_free_repl_obj (obj);
+
+      obj = next_obj;
+    }
+
+  ws_Repl_objs.head = NULL;
+  ws_Repl_objs.tail = NULL;
+  ws_Repl_objs.num_items = 0;
+
+  return;
+}
+
+/*
+ * ws_add_to_repl_obj_list() - create a repl object and add it
+ *  class_oid(in):
+ *  key(in):
+ *  recdes(in):
+ *  operation(in):
+ *  has_index(in):
+ *
+ *    return:
+ */
+int
+ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key, RECDES * recdes,
+			 int operation, bool has_index)
+{
+  WS_REPL_OBJ *repl_obj = NULL;
+
+  repl_obj = (WS_REPL_OBJ *) malloc (sizeof (WS_REPL_OBJ));
+  if (repl_obj == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (WS_REPL_OBJ));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  assert (class_oid != NULL && OID_ISNULL (class_oid) == false);
+  assert (key != NULL && DB_IS_NULL (key) == false);
+
+  COPY_OID (&repl_obj->class_oid, class_oid);
+  repl_obj->pkey_value = db_value_copy (key);
+
+  if (recdes != NULL)
+    {
+      repl_obj->recdes = *recdes;
+    }
+  else
+    {
+      assert (operation == LC_FLUSH_DELETE);
+      repl_obj->recdes.data = NULL;
+      repl_obj->recdes.area_size = repl_obj->recdes.length = 0;
+    }
+
+  repl_obj->has_index = has_index;
+  repl_obj->operation = operation;
+  repl_obj->next = NULL;
+
+  if (ws_Repl_objs.tail == NULL)
+    {
+      ws_Repl_objs.head = repl_obj;
+      ws_Repl_objs.tail = repl_obj;
+    }
+  else
+    {
+      ws_Repl_objs.tail->next = repl_obj;
+      ws_Repl_objs.tail = repl_obj;
+    }
+  ws_Repl_objs.num_items++;
+
+  return NO_ERROR;
 }

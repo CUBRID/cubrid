@@ -3642,6 +3642,184 @@ net_client_request_2recv_copyarea (int request, char *argbuf,
 }
 
 /*
+ * net_client_request_3_data_recv_copyarea -
+ *
+ * return:
+ *
+ *   request(in):
+ *   argbuf(in):
+ *   argsize(in):
+ *   databuf1(in):
+ *   datasize1(in):
+ *   databuf2(in):
+ *   datasize2(in):
+ *   replybuf(in):
+ *   replysize(in):
+ *   recvbuffer(in):
+ *   recvbuffer_size(in):
+ *   reply_copy_area(out): copy area sent by server
+ *
+ * Note:
+ */
+int
+net_client_request_3_data_recv_copyarea (int request, char *argbuf,
+					 int argsize, char *databuf1,
+					 int datasize1, char *databuf2,
+					 int datasize2, char *replybuf,
+					 int replysize,
+					 LC_COPYAREA ** reply_copy_area)
+{
+  unsigned int rid;
+  int size;
+  int p_size, error;
+  char *reply = NULL;
+  int content_size;
+  char *content_ptr = NULL;
+  int num_objs;
+  char *packed_desc = NULL;
+  int packed_desc_size;
+  //test code
+  int success;
+
+  error = 0;
+  if (net_Server_name[0] == '\0')
+    {
+      /* need to have a more appropriate "unexpected disconnect" message */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
+      error = -1;
+      return error;
+    }
+#if defined(HISTO)
+  if (net_Histo_setup)
+    {
+      net_histo_add_entry (request, argsize + datasize);
+    }
+#endif /* HISTO */
+
+  rid = css_send_req_to_server_2_data (net_Server_host,
+				       request, argbuf, argsize,
+				       databuf1, datasize1,
+				       databuf2, datasize2, replybuf,
+				       replysize);
+  if (rid == 0)
+    {
+      return set_server_error (css_Errno);
+    }
+
+  error = css_receive_data_from_server (rid, &reply, &size);
+  if (error != NO_ERROR || reply == NULL)
+    {
+      COMPARE_AND_FREE_BUFFER (replybuf, reply);
+      return set_server_error (error);
+    }
+  else
+    {
+      error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
+    }
+
+  replybuf = or_unpack_int (replybuf, &num_objs);
+  replybuf = or_unpack_int (replybuf, &packed_desc_size);
+  replybuf = or_unpack_int (replybuf, &content_size);
+  replybuf = or_unpack_int (replybuf, &success);
+
+  *reply_copy_area = NULL;
+  if (packed_desc_size != 0 || content_size != 0)
+    {
+      if (error == NO_ERROR)
+	{
+	  *reply_copy_area = locator_recv_allocate_copyarea (num_objs,
+							     &packed_desc,
+							     packed_desc_size,
+							     &content_ptr,
+							     content_size);
+	  if (*reply_copy_area != NULL)
+	    {
+	      if (packed_desc != NULL && packed_desc_size > 0)
+		{
+		  css_queue_receive_data_buffer (rid, packed_desc,
+						 packed_desc_size);
+		  error = css_receive_data_from_server (rid, &reply, &size);
+		  if (error != NO_ERROR)
+		    {
+		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
+		      free_and_init (packed_desc);
+		      return set_server_error (error);
+		    }
+		  else
+		    {
+		      locator_unpack_copy_area_descriptor (num_objs,
+							   *reply_copy_area,
+							   packed_desc);
+		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
+		      free_and_init (packed_desc);
+		    }
+		}
+
+	      if (content_size > 0)
+		{
+		  css_queue_receive_data_buffer (rid, content_ptr,
+						 content_size);
+		  error = css_receive_data_from_server (rid, &reply, &size);
+		  COMPARE_AND_FREE_BUFFER (content_ptr, reply);
+		  if (error != NO_ERROR)
+		    {
+		      if (packed_desc != NULL)
+			{
+			  free_and_init (packed_desc);
+			}
+		      return set_server_error (error);
+		    }
+		}
+	    }
+	  else
+	    {
+	      int num_packets = 0;
+
+	      if (packed_desc_size > 0)
+		{
+		  num_packets++;
+		}
+	      if (content_size > 0)
+		{
+		  num_packets++;
+		}
+	      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rid,
+						       num_packets);
+	    }
+
+	  if (packed_desc != NULL)
+	    {
+	      free_and_init (packed_desc);
+	    }
+	}
+      else
+	{
+	  int num_packets = 0;
+
+	  if (packed_desc_size > 0)
+	    {
+	      num_packets++;
+	    }
+	  if (content_size > 0)
+	    {
+	      num_packets++;
+	    }
+	  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rid, num_packets);
+
+	}
+    }
+
+#if defined(HISTO)
+  if (net_Histo_setup)
+    {
+      net_histo_request_finished (request, replysize + recvbuffer_size +
+				  content_size + packed_desc_size);
+    }
+#endif /* HISTO */
+  return (error);
+}
+
+/*
  * net_client_recv_copyarea -
  *
  * return:

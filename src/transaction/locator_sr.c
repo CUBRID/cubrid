@@ -208,6 +208,20 @@ static bool locator_notify_decache (const OID * class_oid, const OID * oid,
 				    void *notify_area);
 static int locator_guess_sub_classes (THREAD_ENTRY * thread_p,
 				      LC_LOCKHINT ** lockhint_subclasses);
+static int locator_repl_prepare_force (THREAD_ENTRY * thread_p,
+				       LC_COPYAREA_ONEOBJ * obj,
+				       RECDES * old_recdes, RECDES * recdes,
+				       DB_VALUE * key_value,
+				       HEAP_SCANCACHE * force_scancache);
+static int locator_repl_get_key_value (DB_VALUE * key_value,
+				       LC_COPYAREA * force_area,
+				       LC_COPYAREA_ONEOBJ * obj);
+static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area,
+						RECDES * recdes,
+						LC_COPYAREA_ONEOBJ * obj,
+						DB_VALUE * key_value,
+						int err_code,
+						const char *err_msg);
 static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 OID * class_oid, OID * oid, RECDES * recdes,
 				 int has_index, int op_type,
@@ -2159,7 +2173,6 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
 	}
       assign->mobjs->num_objs++;
 
-      assign->obj->error_code = NO_ERROR;
       COPY_OID (&assign->obj->class_oid, class_oid);
       COPY_OID (&assign->obj->oid, oid);
       COPY_OID (&assign->obj->updated_oid, updated_oid);
@@ -2220,7 +2233,6 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
 
 	  /* Indicate to the caller that the object does not exist any
 	   * longer */
-	  assign->obj->error_code = NO_ERROR;
 	  COPY_OID (&assign->obj->class_oid, class_oid);
 	  COPY_OID (&assign->obj->oid, oid);
 	  assign->obj->flag = 0;
@@ -2240,7 +2252,6 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
       assign->mobjs->num_objs++;
 
       /* Indicate to the caller that the object does not exist any longer */
-      assign->obj->error_code = NO_ERROR;
       COPY_OID (&assign->obj->class_oid, class_oid);
       COPY_OID (&assign->obj->oid, oid);
       assign->obj->flag = 0;
@@ -2851,7 +2862,6 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
 	  OID_SET_NULL (&obj->updated_oid);
-	  obj->error_code = NO_ERROR;
 	  obj->flag = 0;
 	  obj->hfid = NULL_HFID;
 	  obj->length = recdes.length;
@@ -6999,6 +7009,442 @@ error:
 }
 
 /*
+ * locator_repl_add_error_to_copyarea () - place error info into copy area that
+ *                                         will be sent to client
+ *
+ * return:
+ *
+ *   copy_area(out): copy area where error info will be placed
+ *   recdes(in): struct that describes copy_area
+ *   obj(in): object that describes the operation which caused an error
+ *   key_value(in): primary key value
+ *   err_code(in):
+ *   err_msg(in):
+ */
+static void
+locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes,
+				    LC_COPYAREA_ONEOBJ * obj,
+				    DB_VALUE * key_value, int err_code,
+				    const char *err_msg)
+{
+  LC_COPYAREA *new_copy_area = NULL;
+  LC_COPYAREA_MANYOBJS *reply_mobjs = NULL;
+  LC_COPYAREA_ONEOBJ *reply_obj = NULL;
+  char *ptr;
+  int packed_length = 0, round_length;
+  int prev_offset, prev_length;
+
+  reply_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (*copy_area);
+
+  reply_obj =
+    LC_FIND_ONEOBJ_PTR_IN_COPYAREA (reply_mobjs, reply_mobjs->num_objs);
+
+  packed_length += OR_VALUE_ALIGNED_SIZE (key_value);
+  packed_length += OR_INT_SIZE;
+  packed_length += or_packed_string_length (err_msg, NULL);
+
+  if (packed_length > recdes->area_size)
+    {
+      prev_offset = CAST_BUFLEN (recdes->data - (*copy_area)->mem);
+      prev_length = (*copy_area)->length;
+
+      new_copy_area =
+	locator_reallocate_copy_area_by_length (*copy_area,
+						(*copy_area)->length +
+						DB_PAGESIZE);
+      if (new_copy_area == NULL)
+	{
+	  /* failed to reallocate copy area. skip the current error */
+	  return;
+	}
+      else
+	{
+	  recdes->data = new_copy_area->mem + prev_offset;
+	  recdes->area_size +=
+	    CAST_BUFLEN (new_copy_area->length - prev_length);
+	  *copy_area = new_copy_area;
+	}
+    }
+
+  ptr = recdes->data;
+  ptr = or_pack_mem_value (ptr, key_value);
+  ptr = or_pack_int (ptr, err_code);
+  ptr = or_pack_string (ptr, err_msg);
+
+  reply_obj->length = CAST_BUFLEN (ptr - recdes->data);
+  reply_obj->offset = CAST_BUFLEN (recdes->data - (*copy_area)->mem);
+  COPY_OID (&reply_obj->class_oid, &obj->class_oid);
+  reply_obj->operation = obj->operation;
+
+  reply_mobjs->num_objs++;
+
+  recdes->length = reply_obj->length;
+  round_length = DB_ALIGN (recdes->length, MAX_ALIGNMENT);
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (recdes->data + recdes->length, 0,
+	  MIN (round_length - recdes->length,
+	       recdes->area_size - recdes->length));
+#endif
+  recdes->data += round_length;
+  recdes->area_size -= round_length + sizeof (*reply_obj);
+
+  return;
+}
+
+/*
+ * locator_repl_prepare_force () - prepare required info for each operation
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   thread_p(in):
+ *   obj(in): object that describes the current operation
+ *   old_recdes(out): original record needed for update operation
+ *   recdes(in/out): record to be applied
+ *   key_value(in): primary key value
+ *   force_scancache(in):
+ */
+static int
+locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj,
+			    RECDES * old_recdes, RECDES * recdes,
+			    DB_VALUE * key_value,
+			    HEAP_SCANCACHE * force_scancache)
+{
+  int error_code = NO_ERROR;
+  int last_repr_id = -1;
+  int old_chn = -1;
+  BTID btid;
+  SCAN_CODE scan;
+  SCAN_OPERATION_TYPE scan_op_type;
+  char *ptr;
+
+  if (obj->operation == LC_FLUSH_DELETE)
+    {
+      scan_op_type = S_DELETE;
+    }
+  else if (LC_IS_FLUSH_UPDATE (obj->operation) == true)
+    {
+      scan_op_type = S_UPDATE;
+    }
+
+  if (obj->operation != LC_FLUSH_DELETE)
+    {
+      last_repr_id = heap_get_class_repr_id (thread_p, &obj->class_oid);
+      if (last_repr_id == 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1,
+		  last_repr_id);
+	  return ER_CT_INVALID_REPRID;
+	}
+
+      error_code = or_replace_rep_id (recdes, last_repr_id);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  if (LC_IS_FLUSH_INSERT (obj->operation) == false)
+    {
+      error_code = btree_get_pkey_btid (thread_p, &obj->class_oid, &btid);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      if (xbtree_find_unique
+	  (thread_p, &btid, scan_op_type, key_value, &obj->class_oid,
+	   &obj->oid, true) != BTREE_KEY_FOUND)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND,
+		  0);
+	  return ER_OBJ_OBJECT_NOT_FOUND;
+	}
+    }
+
+
+  if (LC_IS_FLUSH_UPDATE (obj->operation) == true)
+    {
+      assert (OID_ISNULL (&obj->oid) != true);
+
+      scan =
+	heap_get (thread_p, &obj->oid, old_recdes, force_scancache, PEEK,
+		  NULL_CHN);
+
+      if (scan != S_SUCCESS)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error_code = er_errid ();
+	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "locator_repl_prepare_force : "
+			    "unknown oid ( %d|%d|%d )\n", obj->oid.pageid,
+			    obj->oid.slotid, obj->oid.volid);
+	    }
+
+	  return error_code;
+	}
+
+      old_chn = or_chn (old_recdes);
+
+      error_code = or_replace_chn (recdes, old_chn + 1);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * locator_repl_get_key_value () - read pkey value from copy_area
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   key_value(out): primary key value
+ *   force_area(in):
+ *   obj(in): object that describes memory location of key_value
+ *
+ * Note: This function applies all the desired operations on each of
+ *              object placed in the force_area.
+ */
+static int
+locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area,
+			    LC_COPYAREA_ONEOBJ * obj)
+{
+  char *ptr, *start_ptr;
+
+  start_ptr = ptr = force_area->mem + obj->offset;
+  ptr = or_unpack_mem_value (ptr, key_value);
+
+  return (int) (ptr - start_ptr);
+}
+
+/*
+ * xlocator_force () - Updates objects sent by log applier
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   force_area(in): Copy area where objects are placed
+ *
+ * Note: This function applies all the desired operations on each of
+ *              object placed in the force_area.
+ */
+int
+xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
+		     LC_COPYAREA ** reply_area)
+{
+  LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
+  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area        */
+  RECDES recdes;		/* Record descriptor for object      */
+  RECDES old_recdes;
+  RECDES reply_recdes;		/* Describe copy area for reply */
+  int i;
+  HEAP_SCANCACHE *force_scancache = NULL;
+  HEAP_SCANCACHE scan_cache;
+  int force_count;
+  LOG_LSA lsa, oneobj_lsa;
+  int error_code = NO_ERROR;
+  int pruning_type = 0;
+  int num_continue_on_error = 0;
+  DB_VALUE key_value;
+  int packed_key_value_len;
+  HFID prev_hfid;
+  int has_index;
+
+  /* need to start a topop to ensure the atomic operation. */
+  error_code = xtran_server_start_topop (thread_p, &lsa);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (force_area);
+
+  obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
+  obj = LC_PRIOR_ONEOBJ_PTR_IN_COPYAREA (obj);
+
+  HFID_SET_NULL (&prev_hfid);
+  db_value_put_null (&key_value);
+
+  LC_RECDES_IN_COPYAREA (*reply_area, &reply_recdes);
+
+  for (i = 0; i < mobjs->num_objs; i++)
+    {
+      obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
+
+      packed_key_value_len =
+	locator_repl_get_key_value (&key_value, force_area, obj);
+
+      LC_REPL_RECDES_FOR_ONEOBJ (force_area, obj, packed_key_value_len,
+				 &recdes);
+
+      error_code = heap_get_hfid_from_class_oid (thread_p, &obj->class_oid,
+						 &obj->hfid);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      if (HFID_EQ (&prev_hfid, &obj->hfid) != true && force_scancache != NULL)
+	{
+	  locator_end_force_scan_cache (thread_p, force_scancache);
+	  force_scancache = NULL;
+	}
+
+      if (force_scancache == NULL)
+	{
+	  /* Initialize a modify scancache */
+	  error_code = locator_start_force_scan_cache (thread_p, &scan_cache,
+						       &obj->hfid,
+						       &obj->class_oid,
+						       SINGLE_ROW_UPDATE);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  force_scancache = &scan_cache;
+	  HFID_COPY (&prev_hfid, &obj->hfid);
+	}
+
+      error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      error_code =
+	locator_repl_prepare_force (thread_p, obj, &old_recdes, &recdes,
+				    &key_value, force_scancache);
+      if (error_code == NO_ERROR)
+	{
+	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
+
+	  switch (obj->operation)
+	    {
+	    case LC_FLUSH_INSERT:
+	    case LC_FLUSH_INSERT_PRUNE:
+	    case LC_FLUSH_INSERT_PRUNE_VERIFY:
+	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
+	      error_code =
+		locator_insert_force (thread_p, &obj->hfid, &obj->class_oid,
+				      &obj->oid, &recdes, has_index,
+				      SINGLE_ROW_INSERT, force_scancache,
+				      &force_count, pruning_type, NULL, NULL);
+
+	      if (error_code == NO_ERROR)
+		{
+		  /* monitor */
+		  mnt_qm_inserts (thread_p);
+		}
+	      break;
+
+	    case LC_FLUSH_UPDATE:
+	    case LC_FLUSH_UPDATE_PRUNE:
+	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
+	      error_code =
+		locator_update_force (thread_p, &obj->hfid, &obj->class_oid,
+				      &obj->oid, NULL, NULL, false, NULL,
+				      &recdes, has_index, NULL, 0,
+				      SINGLE_ROW_UPDATE, force_scancache,
+				      &force_count, false,
+				      REPL_INFO_TYPE_STMT_NORMAL,
+				      pruning_type, NULL, NULL, false);
+
+	      if (error_code == NO_ERROR)
+		{
+		  /* monitor */
+		  mnt_qm_updates (thread_p);
+		}
+	      break;
+
+	    case LC_FLUSH_DELETE:
+	      error_code =
+		locator_delete_force (thread_p, &obj->hfid, &obj->oid, NULL,
+				      false, has_index,
+				      SINGLE_ROW_DELETE, force_scancache,
+				      &force_count, NULL);
+
+	      if (error_code == NO_ERROR)
+		{
+		  /* monitor */
+		  mnt_qm_deletes (thread_p);
+		}
+	      break;
+
+	    default:
+	      /*
+	       * Problems forcing the object. Don't known what flush/force operation
+	       * to execute on the object... This is a system error...
+	       * Maybe, the transaction should be aborted by the caller...Quit..
+	       */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LC_BADFORCE_OPERATION, 4, obj->operation,
+		      obj->oid.volid, obj->oid.pageid, obj->oid.slotid);
+	      error_code = ER_LC_BADFORCE_OPERATION;
+	      break;
+	    }			/* end-switch */
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj,
+					      &key_value, er_errid (),
+					      er_msg ());
+
+	  error_code = NO_ERROR;
+	  num_continue_on_error++;
+
+	  (void) xtran_server_end_topop (thread_p,
+					 LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
+	}
+      else
+	{
+	  (void) xtran_server_end_topop (thread_p,
+					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
+					 &oneobj_lsa);
+	}
+      pr_clear_value (&key_value);
+    }
+
+done:
+  if (force_scancache != NULL)
+    {
+      locator_end_force_scan_cache (thread_p, force_scancache);
+    }
+
+  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
+				 &lsa);
+
+  if (num_continue_on_error > 0)
+    {
+      return ER_LC_PARTIALLY_FAILED_TO_FLUSH;
+    }
+
+  return error_code;
+
+exit_on_error:
+  if (DB_IS_NULL (&key_value) == false)
+    {
+      pr_clear_value (&key_value);
+    }
+
+  if (force_scancache != NULL)
+    {
+      locator_end_force_scan_cache (thread_p, force_scancache);
+    }
+
+  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+
+  assert_release (error_code == ER_FAILED || error_code == er_errid ());
+  return error_code;
+}
+
+/*
  * xlocator_force () - Updates objects placed on page
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -7010,8 +7456,7 @@ error:
  */
 int
 xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
-		int num_ignore_error, int *ignore_error_list,
-		int continue_on_error)
+		int num_ignore_error, int *ignore_error_list)
 {
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area        */
@@ -7023,7 +7468,6 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
   LOG_LSA lsa, oneobj_lsa;
   int error_code = NO_ERROR;
   int pruning_type = 0;
-  int num_continue_on_error = 0;
   int has_index;
 
   /* need to start a topop to ensure the atomic operation. */
@@ -7073,8 +7517,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	  force_scancache = &scan_cache;
 	}
 
-      if (continue_on_error == LC_CONTINUE_ON_ERROR
-	  || LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
+      if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
 	{
 	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
 	  if (error_code != NO_ERROR)
@@ -7155,37 +7598,13 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	  break;
 	}			/* end-switch */
 
-      if (error_code != NO_ERROR)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  obj->error_code = er_errid ();
-
-	  if (obj->error_code == NO_ERROR)
-	    {
-	      obj->error_code = error_code;
-	    }
-	}
-      else
-	{
-	  obj->error_code = NO_ERROR;
-	}
-
-      if (continue_on_error == LC_CONTINUE_ON_ERROR
-	  || LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
+      if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
 	{
 	  bool need_to_abort_oneobj = false;
 
 	  if (error_code != NO_ERROR)
 	    {
-	      if (continue_on_error == LC_CONTINUE_ON_ERROR)
-		{
-		  error_code = NO_ERROR;
-		  num_continue_on_error++;
-
-		  OID_SET_NULL (&obj->oid);
-		  need_to_abort_oneobj = true;
-		}
-	      else if (LOG_CHECK_LOG_APPLIER (thread_p))
+	      if (LOG_CHECK_LOG_APPLIER (thread_p))
 		{
 		  need_to_abort_oneobj = true;
 		}
@@ -7237,13 +7656,6 @@ done:
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
 				 &lsa);
 
-  assert (continue_on_error == LC_CONTINUE_ON_ERROR
-	  || num_continue_on_error == 0);
-  if (num_continue_on_error > 0)
-    {
-      return ER_LC_PARTIALLY_FAILED_TO_FLUSH;
-    }
-
   return error_code;
 
 error:
@@ -7259,177 +7671,6 @@ error:
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
   assert_release (error_code == ER_FAILED || error_code == er_errid ());
-  return error_code;
-}
-
-int
-xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
-			    OID * class_oid, DB_VALUE * key_value,
-			    LC_COPYAREA_OPERATION operation,
-			    bool has_index, RECDES * recdes)
-{
-  int error_code = NO_ERROR;
-
-  LOG_LSA lsa;
-  OID unique_oid;
-  HFID hfid;
-  HEAP_SCANCACHE *force_scancache = NULL;
-  HEAP_SCANCACHE scan_cache;
-  RECDES old_recdes;
-  SCAN_CODE scan;
-  int pruning_type = 0;
-  int force_count;
-  int last_repr_id = -1;
-  int old_chn = -1;
-  int local_has_index;
-
-  memset (&old_recdes, 0, sizeof (RECDES));
-
-  /* need to start a topop to ensure the atomic operation. */
-  error_code = xtran_server_start_topop (thread_p, &lsa);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (xbtree_find_unique (thread_p, btid, S_UPDATE, key_value, class_oid,
-			  &unique_oid, true) != BTREE_KEY_FOUND)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
-      error_code = ER_OBJ_OBJECT_NOT_FOUND;
-      goto error;
-    }
-
-  error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
-  if (last_repr_id == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1,
-	      last_repr_id);
-      error_code = ER_CT_INVALID_REPRID;
-      goto error;
-    }
-
-  error_code = locator_start_force_scan_cache (thread_p, &scan_cache,
-					       &hfid, class_oid,
-					       SINGLE_ROW_UPDATE);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  force_scancache = &scan_cache;
-
-  pruning_type = locator_area_op_to_pruning_type (operation);
-
-  if (mvcc_Enabled)
-    {
-
-      recdes->data = NULL;
-      /* TO DO - handle reevaluation */
-
-      scan =
-	heap_mvcc_get_version_for_delete (thread_p, &unique_oid,
-					  class_oid, &old_recdes,
-					  &scan_cache, false, NULL);
-      if (scan != S_SUCCESS)
-	{
-	  error_code = er_errid ();
-	  error_code = (error_code == NO_ERROR ? ER_FAILED : error_code);
-	  goto error;
-	}
-
-    }
-  else
-    {
-      scan =
-	heap_get (thread_p, &unique_oid, &old_recdes, force_scancache, PEEK,
-		  NULL_CHN);
-      if (scan != S_SUCCESS)
-	{
-	  error_code = er_errid ();
-	  assert (error_code != NO_ERROR);
-	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "xlocator_force_repl_update : "
-			    "unknown oid ( %d|%d|%d )\n", unique_oid.pageid,
-			    unique_oid.slotid, unique_oid.volid);
-	    }
-	  if (error_code == NO_ERROR)
-	    {
-	      error_code = ER_FAILED;
-	    }
-	  goto error;
-	}
-    }
-
-  error_code = or_set_rep_id (recdes, last_repr_id);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  old_chn = or_chn (&old_recdes);
-  error_code = or_set_chn (recdes, old_chn + 1);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  /* TODO: MVCC updates generate new version at a different OID. Temporarily
-   *       given as NULL argument, investigate if should be handled
-   *       differently.
-   */
-  local_has_index = LC_FLAG_HAS_UNIQUE_INDEX;
-  if (has_index)
-    {
-      local_has_index |= LC_FLAG_HAS_INDEX;
-    }
-
-  error_code = locator_update_force (thread_p, &hfid, class_oid,
-				     &unique_oid, NULL, NULL, false,
-				     &old_recdes, recdes, local_has_index,
-				     NULL, 0, SINGLE_ROW_UPDATE,
-				     force_scancache, &force_count, false,
-				     REPL_INFO_TYPE_STMT_NORMAL, pruning_type,
-				     NULL, NULL, false);
-  if (error_code == NO_ERROR)
-    {
-      /* monitor */
-      mnt_qm_updates (thread_p);
-    }
-  else
-    {
-      goto error;
-    }
-
-  if (force_scancache != NULL)
-    {
-      locator_end_force_scan_cache (thread_p, force_scancache);
-    }
-
-  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
-
-  return error_code;
-
-error:
-
-  /* The reevaluation at update phase of update is currently disabled */
-  assert (error_code != ER_MVCC_NOT_SATISFIED_REEVALUATION);
-
-  if (force_scancache != NULL)
-    {
-      locator_end_force_scan_cache (thread_p, force_scancache);
-    }
-
-  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
-
   return error_code;
 }
 
@@ -9688,7 +9929,6 @@ locator_notify_decache (const OID * class_oid, const OID * oid,
   notify->mobjs->num_objs++;
   COPY_OID (&((*notify->obj)->class_oid), class_oid);
   COPY_OID (&((*notify->obj)->oid), oid);
-  (*notify->obj)->error_code = NO_ERROR;
   (*notify->obj)->flag = 0;
   (*notify->obj)->hfid = NULL_HFID;
   (*notify->obj)->length = -1;
@@ -12533,7 +12773,7 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
 	  goto free_and_return;
 	}
 
-      or_set_rep_id (recdes, last_repr_id);
+      or_replace_rep_id (recdes, last_repr_id);
     }
 
   if (idx_info.num_btids <= 0)
@@ -12782,7 +13022,6 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
 	  OID_SET_NULL (&obj->updated_oid);
-	  obj->error_code = NO_ERROR;
 	  obj->flag = 0;
 	  obj->hfid = NULL_HFID;
 	  obj->length = recdes.length;

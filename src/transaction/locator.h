@@ -33,7 +33,7 @@
 #include "object_representation.h"
 #include "thread.h"
 
-#define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 5 + \
+#define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \
                                     OR_OID_SIZE * 3)
 
@@ -65,6 +65,14 @@
       }	\
   } while (0)
 
+#define LC_REPL_RECDES_FOR_ONEOBJ(copy_area_ptr, oneobj_ptr, key_length, recdes_ptr)    \
+  do {                                                                                  \
+      (recdes_ptr)->data = (char *)((copy_area_ptr)->mem                                \
+                                    + (oneobj_ptr)->offset + (key_length));             \
+      (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length             \
+                                    - (key_length);                                     \
+  } while (0)
+
 #define LC_RECDES_IN_COPYAREA(copy_area_ptr, recdes_ptr) \
   do { \
     (recdes_ptr)->data = (copy_area_ptr)->mem; \
@@ -86,6 +94,17 @@
   (OR_INT_SIZE * 4 + \
    LC_LOCKHINT_CLASS_PACKED_SIZE * lockhint->max_classes)
 
+#define LC_COPY_ONEOBJ(new_obj, old_obj)                            \
+  do {                                                              \
+      (new_obj)->operation = (old_obj)->operation;                  \
+      (new_obj)->flag = (old_obj)->flag;                            \
+      HFID_COPY(&((new_obj)->hfid), &((old_obj)->hfid));            \
+      COPY_OID(&((new_obj)->class_oid), &((old_obj)->class_oid));   \
+      COPY_OID(&((new_obj)->oid), &((old_obj)->oid));               \
+      (new_obj)->length = (old_obj)->length;                        \
+      (new_obj)->offset = (old_obj)->offset;                        \
+  } while(0)
+
 typedef enum
 {
   LC_FETCH,
@@ -98,8 +117,7 @@ typedef enum
   LC_FLUSH_UPDATE,
   LC_FLUSH_UPDATE_PRUNE,
   LC_FLUSH_UPDATE_PRUNE_VERIFY,
-  LC_FETCH_VERIFY_CHN,
-  LC_FETCH_NO_OP
+  LC_FETCH_VERIFY_CHN
 } LC_COPYAREA_OPERATION;
 
 #define LC_IS_FLUSH_INSERT(operation) \
@@ -170,7 +188,6 @@ struct lc_copyarea_oneobj
   int offset;			/* location in the copy area where the
 				 * content of the object is stored
 				 */
-  int error_code;
 };
 
 typedef struct lc_copyarea_manyobjs LC_COPYAREA_MANYOBJS;
@@ -372,16 +389,13 @@ struct lc_oidset
   bool is_list;
 };
 
-typedef enum
-{
-  LC_STOP_ON_ERROR,
-  LC_CONTINUE_ON_ERROR		/* Until now, it is only for log_applier */
-} LC_ON_ERROR;
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern LC_COPYAREA *locator_allocate_copyarea (DKNPAGES npages);
 #endif
 extern LC_COPYAREA *locator_allocate_copy_area_by_length (int length);
+extern LC_COPYAREA *locator_reallocate_copy_area_by_length (LC_COPYAREA *
+							    old_area,
+							    int new_length);
 
 extern void locator_free_copy_area (LC_COPYAREA * copyarea);
 extern char *locator_pack_copy_area_descriptor (int num_objs,

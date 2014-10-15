@@ -82,10 +82,11 @@ extern int locator_does_exist (OID * oidp, int chn, LOCK lock,
 			       LC_COPYAREA ** fetch_copyarea);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
 extern int locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
-			  int *ignore_error_list, int continue_on_error);
+			  int *ignore_error_list);
+extern int locator_repl_force (LC_COPYAREA * copy_area,
+			       LC_COPYAREA ** reply_copy_area);
 extern int locator_force_repl_update (BTID * btid, OID * class_oid,
-				      DB_VALUE * key_value,
-				      bool has_index,
+				      DB_VALUE * key_value, bool has_index,
 				      int operation, RECDES * recdes);
 extern int locator_fetch_lockset (LC_LOCKSET * lockset,
 				  LC_COPYAREA ** fetch_copyarea);
@@ -495,6 +496,16 @@ extern int net_client_recv_copyarea (int request, char *replybuf,
 				     int replysize, char *recvbuffer,
 				     int recvbuffer_size,
 				     LC_COPYAREA ** reply_copy_area, int eid);
+extern int net_client_request_3_data_recv_copyarea (int request, char *argbuf,
+						    int argsize,
+						    char *databuf1,
+						    int datasize1,
+						    char *databuf2,
+						    int datasize2,
+						    char *replybuf,
+						    int replysize,
+						    LC_COPYAREA **
+						    reply_copy_area);
 extern int net_client_request_3recv_copyarea (int request, char *argbuf,
 					      int argsize, char *replybuf,
 					      int replysize, char *databuf,

@@ -178,12 +178,6 @@ typedef struct obj_template
    */
   unsigned function_key_modified:1;
 
-
-  /* 
-   * Set if we want to flush bulk objects
-   */
-  unsigned bulk_flush:1;
-
   /*
    * Set if at least one autoincrement column has been populated
    */

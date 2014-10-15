@@ -1494,7 +1494,9 @@
 
 #define ER_SM_INVALID_UNIQUE_IDX_PARTITION	    -1169
 
-#define ER_LAST_ERROR                               -1170
+#define ER_LC_FAILED_TO_FLUSH_REPL_ITEMS            -1170
+
+#define ER_LAST_ERROR                               -1171
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -2597,11 +2599,11 @@ enum tz_region_type
 typedef struct tz_region TZ_REGION;
 struct tz_region
 {
-  TZ_REGION_TYPE type;          /* 0 : offset ; 1 : zone */
+  TZ_REGION_TYPE type;		/* 0 : offset ; 1 : zone */
   union
   {
-    int offset;                 /* in seconds */
-    unsigned int zone_id;       /* geographical zone id */
+    int offset;			/* in seconds */
+    unsigned int zone_id;	/* geographical zone id */
   };
 };
 

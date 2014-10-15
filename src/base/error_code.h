@@ -1494,8 +1494,9 @@
 
 #define ER_SM_INVALID_UNIQUE_IDX_PARTITION	    -1169
 
-#define ER_LAST_ERROR                               -1170
+#define ER_LC_FAILED_TO_FLUSH_REPL_ITEMS            -1170
 
+#define ER_LAST_ERROR                               -1171
 /*
  * CAUTION!
  *

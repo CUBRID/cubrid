@@ -2924,7 +2924,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* since we are going to suppress writing replication logs,
 	   * we need to flush all dirty objects to server not to lose them.
 	   */
-	  error = locator_all_flush (LC_STOP_ON_ERROR);
+	  error = locator_all_flush ();
 	  if (error != NO_ERROR)
 	    {
 	      /* restore execution flag */
@@ -3178,7 +3178,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   */
 	  if (error == NO_ERROR)
 	    {
-	      error = locator_all_flush (LC_STOP_ON_ERROR);
+	      error = locator_all_flush ();
 	    }
 
 	  suppress_repl_error = db_set_suppress_repl_on_transaction (false);
@@ -3348,7 +3348,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* since we are going to suppress writing replication logs,
        * we need to flush all dirty objects to server not to lose them
        */
-      err = locator_all_flush (LC_STOP_ON_ERROR);
+      err = locator_all_flush ();
       if (err != NO_ERROR)
 	{
 	  /* restore execution flag */
@@ -3565,7 +3565,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * redundant data replication logs for DDLs */
       if (err == NO_ERROR)
 	{
-	  err = locator_all_flush (LC_STOP_ON_ERROR);
+	  err = locator_all_flush ();
 	}
 
       suppress_repl_error = db_set_suppress_repl_on_transaction (false);
@@ -5728,7 +5728,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
 	{
 	  error =
 	    locator_flush_all_instances (flat->info.name.db_object,
-					 DONT_DECACHE, LC_STOP_ON_ERROR);
+					 DONT_DECACHE);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -6217,7 +6217,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
        * Since the class that this trigger belongs to might also be a
        * temporary object, we actually have to flush the whole workspace
        */
-      error = locator_all_flush (LC_STOP_ON_ERROR);
+      error = locator_all_flush ();
     }
 
   return error;

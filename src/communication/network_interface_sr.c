@@ -863,6 +863,145 @@ slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * slocator_repl_force - process log applier's request to replicate data
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+		     int reqlen)
+{
+  int size;
+  int success;
+  LC_COPYAREA *copy_area = NULL, *reply_copy_area = NULL;
+  char *ptr;
+  int csserror;
+  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int content_size;
+  char *content_ptr = NULL, *new_content_ptr = NULL;
+  char *reply_content_ptr = NULL;
+  int num_objs;
+  char *packed_desc = NULL;
+  int packed_desc_size;
+  LC_COPYAREA_MANYOBJS *mobjs, *reply_mobjs;
+  int i;
+
+  ptr = or_unpack_int (request, &num_objs);
+  ptr = or_unpack_int (ptr, &packed_desc_size);
+  ptr = or_unpack_int (ptr, &content_size);
+
+  csserror = 0;
+
+  copy_area = locator_recv_allocate_copyarea (num_objs, &content_ptr,
+					      content_size);
+  if (copy_area)
+    {
+      if (num_objs > 0)
+	{
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+						   &packed_desc, &size);
+	}
+
+      if (csserror)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_NET_SERVER_DATA_RECEIVE, 0);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  goto end;
+	}
+      else
+	{
+	  locator_unpack_copy_area_descriptor (num_objs, copy_area,
+					       packed_desc);
+	  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
+
+	  if (content_size > 0)
+	    {
+	      csserror = css_receive_data_from_client (thread_p->conn_entry,
+						       rid, &new_content_ptr,
+						       &size);
+
+	      if (new_content_ptr != NULL)
+		{
+		  memcpy (content_ptr, new_content_ptr, size);
+		  free_and_init (new_content_ptr);
+		}
+
+	      if (csserror)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_NET_SERVER_DATA_RECEIVE, 0);
+		  css_send_abort_to_client (thread_p->conn_entry, rid);
+		  goto end;
+		}
+
+	      /* make copy_area (estimated size) to report errors */
+	      reply_copy_area =
+		locator_recv_allocate_copyarea (num_objs,
+						&reply_content_ptr,
+						content_size +
+						OR_INT_SIZE * num_objs);
+	      reply_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (reply_copy_area);
+	      reply_mobjs->num_objs = 0;
+	    }
+
+	  success =
+	    xlocator_repl_force (thread_p, copy_area, &reply_copy_area);
+
+	  /*
+	   * Send the descriptor and content to handle errors
+	   */
+
+	  num_objs =
+	    locator_send_copy_area (reply_copy_area, &reply_content_ptr,
+				    &content_size, &packed_desc,
+				    &packed_desc_size);
+
+	  ptr = or_pack_int (reply, num_objs);
+	  ptr = or_pack_int (ptr, packed_desc_size);
+	  ptr = or_pack_int (ptr, content_size);
+	  ptr = or_pack_int (ptr, success);
+
+	  if (success != NO_ERROR
+	      && success != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	    {
+	      return_error_to_client (thread_p, rid);
+	    }
+
+	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid,
+					       reply,
+					       OR_ALIGNED_BUF_SIZE (a_reply),
+					       packed_desc, packed_desc_size,
+					       reply_content_ptr,
+					       content_size);
+	}
+    }
+
+end:
+  if (packed_desc)
+    {
+      free_and_init (packed_desc);
+    }
+  if (copy_area != NULL)
+    {
+      locator_free_copy_area (copy_area);
+    }
+  if (reply_copy_area != NULL)
+    {
+      locator_free_copy_area (reply_copy_area);
+    }
+
+  return;
+}
+
+/*
  * slocator_force -
  *
  * return:
@@ -894,7 +1033,6 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   LC_COPYAREA_MANYOBJS *mobjs;
   int i, num_ignore_error_list;
   int ignore_error_list[-ER_LAST_ERROR];
-  int continue_on_error;
 
   ptr = or_unpack_int (request, &num_objs);
   ptr = or_unpack_int (ptr, &start_multi_update);
@@ -907,7 +1045,6 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     {
       ptr = or_unpack_int (ptr, &ignore_error_list[i]);
     }
-  ptr = or_unpack_int (ptr, &continue_on_error);
 
   csserror = 0;
 
@@ -958,8 +1095,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	    }
 
 	  success = xlocator_force (thread_p, copy_area,
-				    num_ignore_error_list, ignore_error_list,
-				    continue_on_error);
+				    num_ignore_error_list, ignore_error_list);
 
 	  /*
 	   * Send the descriptor part since some information about the objects
@@ -1006,6 +1142,8 @@ void
 slocator_force_repl_update (THREAD_ENTRY * thread_p,
 			    unsigned int rid, char *request, int reqlen)
 {
+  assert (false);
+#if defined(ENABLE_UNUSED_FUNCTION)
   int error_code = NO_ERROR;
   DB_VALUE key_value;
   char *ptr = NULL;
@@ -1046,6 +1184,7 @@ slocator_force_repl_update (THREAD_ENTRY * thread_p,
     }
 
   pr_clear_value (&key_value);
+#endif
 }
 
 /*

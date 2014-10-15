@@ -436,6 +436,68 @@ or_set_rep_id (RECDES * record, int repid)
 }
 
 /*
+ * or_replace_rep_id () - replace representation id for record
+ * return : error code or NO_ERROR
+ * record (in/out): record
+ * repid (in)	  : new representation
+ *
+ * NOTE: This function is similar to or_set_rep_id but it determines
+ * the type of record based on MVCC flag and sets rep_id accordingly.
+ */
+int
+or_replace_rep_id (RECDES * record, int repid)
+{
+  OR_BUF orep, *buf;
+  unsigned int new_bits = 0;
+  int offset_size = 0;
+  char mvcc_flag;
+  bool is_bound_bit = false;
+
+  OR_BUF_INIT (orep, record->data, record->area_size);
+  buf = &orep;
+
+  mvcc_flag = or_mvcc_get_flag (record);
+  if (mvcc_flag == 0)
+    {
+      /* non-MVCC record */
+      /* read REPR_ID flags */
+      if (OR_GET_BOUND_BIT_FLAG (record->data))
+	{
+	  is_bound_bit = true;
+	}
+      offset_size = OR_GET_OFFSET_SIZE (record->data);
+
+      /* construct new REPR_ID element */
+      new_bits = repid;
+      if (is_bound_bit)
+	{
+	  new_bits |= OR_BOUND_BIT_FLAG;
+	}
+      OR_SET_VAR_OFFSET_SIZE (new_bits, offset_size);
+      buf->ptr = buf->buffer + OR_REP_OFFSET;
+    }
+  else
+    {
+      /* MVCC record */
+      new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
+
+      /* Remove old repid */
+      new_bits &= ~OR_MVCC_REPID_MASK;
+
+      /* Add new repid */
+      new_bits |= (repid & OR_MVCC_REPID_MASK);
+
+      /* Set buffer pointer to the right position */
+      buf->ptr = buf->buffer + OR_REP_OFFSET;
+    }
+
+  /* write new REPR_ID to the record */
+  or_put_int (buf, new_bits);
+
+  return NO_ERROR;
+}
+
+/*
  * or_chn - extracts cache coherency number from the disk representation of an
  * object
  *    return: cache coherency number (chn), or NULL_CHN for error
@@ -527,6 +589,59 @@ or_mvcc_chn (OR_BUF * buf, int mvcc_flags, int *error)
       *error = NO_ERROR;
       return chn;
     }
+}
+
+/*
+ * or_replace_chn () -replace chn
+ *
+ * return	   : error
+ * record(in/out)  : record
+ * chn(int): chn
+ *
+ *   NOTE: This function is similar to or_set_chn but
+ *   it determines the type of record based on flag in record
+ *   not system parameter.
+ */
+int
+or_replace_chn (RECDES * record, int chn)
+{
+  OR_BUF orep, *buf;
+  int offset;
+  int error;
+  char mvcc_flag;
+
+  OR_BUF_INIT (orep, record->data, record->area_size);
+  buf = &orep;
+
+  mvcc_flag = or_mvcc_get_flag (record);
+  if (mvcc_flag == 0)
+    {
+      /* non-MVCC record */
+      offset = OR_NON_MVCC_CHN_OFFSET;
+    }
+  else
+    {
+      /* MVCC record */
+      if (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+	{
+	  /* delid is active, cannot replace chn */
+	  return ER_FAILED;
+	}
+
+      offset = OR_GET_MVCC_CHN_OFFSET (mvcc_flag);
+      assert (offset > 0);
+    }
+
+  buf->ptr = buf->buffer + offset;
+
+  error = or_put_int (buf, chn);
+
+  if (error == NO_ERROR && (mvcc_flag & OR_MVCC_FLAG_VALID_LONG_CHN))
+    {
+      error = or_put_int (buf, 0);
+    }
+
+  return error;
 }
 
 /*

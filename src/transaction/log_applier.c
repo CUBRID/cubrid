@@ -63,6 +63,7 @@
 
 #define LA_DEFAULT_CACHE_BUFFER_SIZE            100
 #define LA_MAX_REPL_ITEM_WITHOUT_RELEASE_PB     50
+#define LA_MAX_UNFLUSHED_REPL_ITEMS             200
 #define LA_DEFAULT_LOG_PAGE_SIZE                4096
 #define LA_GET_PAGE_RETRY_COUNT                 10
 #define LA_REPL_LIST_COUNT                      50
@@ -132,6 +133,26 @@
    sleep_time_val.tv_usec = (usec); \
    select (0, 0, 0, 0, &sleep_time_val); \
  } while(0)
+
+/* move the data inside the record (identical to HEAP_MOVE_INSIDE_RECORD) */
+#define LA_MOVE_INSIDE_RECORD(rec, dest_offset, src_offset) \
+  do \
+    { \
+      assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED) == true \
+              && (rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
+      assert (((rec)->length - (src_offset)) >= 0); \
+      assert (((rec)->area_size <= 0) || ((rec)->area_size >= (rec)->length)); \
+      assert (((rec)->area_size <= 0) \
+              || (((rec)->length + ((dest_offset) - (src_offset))) \
+                  <= (rec)->area_size)); \
+      if ((dest_offset) != (src_offset)) \
+        { \
+          memmove ((rec)->data + (dest_offset), (rec)->data + (src_offset), \
+                   (rec)->length - (src_offset)); \
+          (rec)->length = (rec)->length + ((dest_offset) - (src_offset)); \
+        } \
+    } \
+  while (0)
 
 typedef struct la_cache_buffer LA_CACHE_BUFFER;
 struct la_cache_buffer
@@ -291,7 +312,7 @@ struct la_info
   int status;
   bool is_apply_info_updated;	/* whether catalog is partially updated or not */
 
-  int num_unflushed_insert;
+  int num_unflushed;
 
   /* file lock */
   int log_path_lockf_vdes;
@@ -323,6 +344,16 @@ struct la_ovf_page_list
   LA_OVF_PAGE_LIST *next;	/* next page */
 };
 
+typedef struct la_log_data_buffer LA_LOG_DATA_BUFFER;
+struct la_log_data_buffer
+{
+  bool is_initialized;
+  int num_log_data;
+  int next_idx;
+  int max_log_data_len;		/* max length for each record */
+  char *area;
+  char *log_data[LA_MAX_UNFLUSHED_REPL_ITEMS];
+};
 
 typedef struct la_ha_apply_info LA_HA_APPLY_INFO;
 struct la_ha_apply_info
@@ -377,13 +408,14 @@ LA_INFO la_Info;
 /* Global variable for LP */
 LP_INFO lp_Info;
 
+LA_LOG_DATA_BUFFER la_log_data_buffer;
+
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 static char la_peer_host[MAXHOSTNAMELEN + 1];
 
 static bool la_enable_sql_logging = false;
-static bool la_use_server_side_update_repl = true;
 
 static void la_shutdown_by_signal (void);
 static void la_init_ha_apply_info (LA_HA_APPLY_INFO * ha_apply_info);
@@ -428,6 +460,7 @@ static bool la_ignore_on_error (int errid);
 static bool la_retry_on_error (int errid);
 static int la_help_sprint_object (MOP mop, char *buffer, int max_length);
 
+static int la_init_log_data_buffer (int page_size);
 static LA_CACHE_PB *la_init_cache_pb (void);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt,
 				     int slb_size);
@@ -468,6 +501,7 @@ static int la_set_commit_log (int tranid, int rectype, LOG_LSA * lsa,
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 			   int bound_bit_flag, DB_OTMPL * def,
 			   DB_VALUE * key, int offset_size);
+static void la_make_room_for_mvcc_insid (RECDES * recdes);
 static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
 			   DB_VALUE * key, unsigned int rcvindex);
 static char *la_get_zipped_data (char *undo_data, int undo_length,
@@ -482,8 +516,7 @@ static int la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa,
 			    unsigned int *rcvindex, void **logs,
 			    char **rec_type, char **data, int *d_length);
 static int la_get_overflow_recdes (LOG_RECORD_HEADER * lrec, void *logs,
-				   char **area, int *length,
-				   unsigned int rcvindex);
+				   RECDES * recdes, unsigned int rcvindex);
 static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 				   LOG_PAGE * pgptr, void **logs,
 				   char **rec_type, char **data,
@@ -491,16 +524,12 @@ static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec,
 				     LOG_PAGE * pgptr,
 				     unsigned int match_rcvindex, void **logs,
-				     char **rec_type, char **data,
-				     int *d_length);
+				     char **rec_type, RECDES * recdes);
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes,
-			  unsigned int *rcvindex, char *log_data,
-			  char *rec_type, bool * ovfyn);
+			  unsigned int *rcvindex, char *rec_type);
 
-static int la_flush_unflushed_insert (MOP class_mop);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
-static int la_apply_update_log_server_side (LA_ITEM * item);
 static int la_apply_insert_log (LA_ITEM * item);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql,
@@ -521,8 +550,7 @@ static int la_check_mem_size (void);
 static int la_check_time_commit (struct timeval *time,
 				 unsigned int threshold);
 
-static void la_init (const char *log_path, const int max_mem_size,
-		     BOOT_CLIENT_TYPE type);
+static void la_init (const char *log_path, const int max_mem_size);
 
 static int la_check_duplicated (const char *logpath, const char *dbname,
 				int *lockf_vdes, int *last_deleted_arv_num);
@@ -530,7 +558,7 @@ static int la_lock_dbname (int *lockf_vdes, char *db_name, char *log_path);
 static int la_unlock_dbname (int *lockf_vdes, char *db_name,
 			     bool clear_owner);
 
-static void la_shutdown (BOOT_CLIENT_TYPE type);
+static void la_shutdown (void);
 
 static int la_remove_archive_logs (const char *db_name,
 				   int last_deleted_arv_num, int nxarv_num,
@@ -548,7 +576,7 @@ static int la_find_last_deleted_arv_num (void);
 static bool la_restart_on_bulk_flush_error (int errid);
 static char *la_get_hostname_from_log_path (char *log_path);
 
-static void la_delay_replica (time_t eot_time);
+static int la_delay_replica (time_t eot_time);
 
 static float la_get_avg (int *array, int size);
 static void la_get_adaptive_time_commit_interval (int *time_commit_interval,
@@ -568,6 +596,8 @@ static int lp_prefetch_update_or_delete (LA_ITEM * item);
 static int lp_prefetch_insert (LA_ITEM * item);
 static int lp_get_ha_applied_info (bool is_first);
 static void *lp_calc_applier_speed_thread_f (void *arg);
+
+static int la_flush_repl_items (bool immediate);
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
  *                                it does the shutdown process.
@@ -2421,6 +2451,137 @@ end:
   return (p - buffer);
 }
 
+static void
+la_free_log_data_buffer (void)
+{
+  if (la_log_data_buffer.area != NULL)
+    {
+      free_and_init (la_log_data_buffer.area);
+    }
+  la_log_data_buffer.is_initialized = false;
+  la_log_data_buffer.next_idx = 0;
+  la_log_data_buffer.max_log_data_len = 0;
+
+  return;
+}
+
+static void
+la_free_recdes_data (RECDES * recdes)
+{
+  if (recdes == NULL)
+    {
+      return;
+    }
+
+  if (recdes->area_size > la_log_data_buffer.max_log_data_len)
+    {
+      free_and_init (recdes->data);
+    }
+
+  recdes->data = NULL;
+  recdes->area_size = 0;
+  recdes->length = 0;
+
+  return;
+}
+
+static void
+la_alloc_recdes_data_from_buffer (RECDES * recdes)
+{
+  assert (recdes != NULL);
+
+  recdes->data = la_log_data_buffer.log_data[la_log_data_buffer.next_idx++];
+  recdes->length = 0;
+  recdes->area_size = la_log_data_buffer.max_log_data_len;
+  recdes->type = REC_UNKNOWN;
+
+  la_log_data_buffer.next_idx %= la_log_data_buffer.num_log_data;
+
+  return;
+}
+
+static int
+la_realloc_recdes_data (RECDES * recdes, int size)
+{
+  assert (recdes != NULL);
+
+  if (recdes->data != NULL)
+    {
+      la_free_recdes_data (recdes);
+    }
+
+  if (size <= la_log_data_buffer.max_log_data_len)
+    {
+      la_alloc_recdes_data_from_buffer (recdes);
+      return NO_ERROR;
+    }
+
+  recdes->data = (char *) malloc (size);
+  if (recdes->data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  recdes->length = 0;
+  recdes->area_size = size;
+
+  return NO_ERROR;
+}
+
+
+/*
+ * la_init_log_data_buffer() - initialize log data buffer pool
+ *   return:
+ *
+ * Note:
+ */
+static int
+la_init_log_data_buffer (int page_size)
+{
+  int i;
+  char *p;
+  int num_log_data = 0;
+
+  assert (page_size >= IO_MIN_PAGE_SIZE && page_size <= IO_MAX_PAGE_SIZE);
+
+  if (la_log_data_buffer.is_initialized == false)
+    {
+      if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+	{
+	  num_log_data = LA_MAX_UNFLUSHED_REPL_ITEMS;
+	}
+      else
+	{
+	  num_log_data = 1;
+	}
+
+      la_log_data_buffer.area = (char *) malloc (page_size * num_log_data);
+      if (la_log_data_buffer.area == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, page_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      p = la_log_data_buffer.area;
+      for (i = 0; i < num_log_data; i++)
+	{
+	  la_log_data_buffer.log_data[i] = p;
+	  p += page_size;
+	}
+
+      la_log_data_buffer.max_log_data_len = page_size;
+      la_log_data_buffer.num_log_data = num_log_data;
+      la_log_data_buffer.is_initialized = true;
+    }
+
+  la_log_data_buffer.next_idx = 0;
+
+  return NO_ERROR;
+}
+
 /*
  * la_init_cache_pb() - initialize the cache page buffer area
  *   return: the allocated pointer to a cache page buffer
@@ -2638,21 +2799,14 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
   return error;
 }
 
-
 static bool
 la_apply_pre (void)
 {
   LSA_COPY (&la_Info.final_lsa, &la_Info.committed_lsa);
 
-  if (la_Info.log_data == NULL)
+  if (la_init_log_data_buffer (la_Info.act_log.db_iopagesize) != NO_ERROR)
     {
-      la_Info.log_data = (char *) malloc (la_Info.act_log.db_iopagesize);
-      if (la_Info.log_data == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
-	  return false;
-	}
+      return false;
     }
 
   if (la_Info.rec_type == NULL)
@@ -3684,6 +3838,37 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 }
 
 /*
+ * la_make_room_for_mvcc_insid() - preserve space for mvcc insert id
+ *                      see heap_mvcc_log_insert
+ *   return:
+ *
+ */
+static void
+la_make_room_for_mvcc_insid (RECDES * recdes)
+{
+  int repid_and_flag_bits = 0;
+  char mvcc_flag;
+
+  assert (recdes->type != REC_BIGONE);
+
+  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (recdes->data);
+  mvcc_flag =
+    (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
+	    OR_MVCC_FLAG_MASK);
+
+  assert (mvcc_flag != 0 &&
+	  !(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID
+			 | OR_MVCC_FLAG_VALID_LONG_CHN
+			 | OR_MVCC_FLAG_VALID_NEXT_VERSION)));
+
+  assert (recdes->area_size >= recdes->length + OR_MVCCID_SIZE);
+
+  LA_MOVE_INSIDE_RECORD (recdes, OR_INT_SIZE + OR_MVCCID_SIZE, OR_INT_SIZE);
+
+  return;
+}
+
+/*
  * la_disk_to_obj() - same function with tf_disk_to_obj, but always use
  *                      the current representation.
  *   return: NO_ERROR or error code
@@ -4285,7 +4470,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
  */
 static int
 la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs,
-			char **area, int *length, unsigned int rcvindex)
+			RECDES * recdes, unsigned int rcvindex)
 {
   LOG_LSA current_lsa;
   LOG_PAGE *current_log_page;
@@ -4302,6 +4487,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs,
   int area_len;
   int area_offset;
   int error = NO_ERROR;
+  int length;
 
   LSA_COPY (&current_lsa, &log_record->prev_tranlsa);
   prev_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
@@ -4364,7 +4550,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs,
 		  ovf_list_head = ovf_list_data;
 		}
 
-	      *length += ovf_list_data->length;
+	      length += ovf_list_data->length;
 	    }
 	  else
 	    {
@@ -4379,8 +4565,11 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs,
       LSA_COPY (&current_lsa, &current_log_record->prev_tranlsa);
     }
 
-  *area = malloc (*length);
-  if (*area == NULL)
+  assert (recdes != NULL);
+  la_free_recdes_data (recdes);
+
+  error = la_realloc_recdes_data (recdes, length);
+  if (error != NO_ERROR)
     {
       /* malloc failed: clear linked-list */
       while (ovf_list_head)
@@ -4390,9 +4579,8 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs,
 	  free_and_init (ovf_list_data->data);
 	  free_and_init (ovf_list_data);
 	}
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      *length);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+
+      return error;
     }
 
   /* make record description */
@@ -4412,13 +4600,15 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs,
 	  area_offset = offsetof (LA_OVF_REST_PARTS, data);
 	}
       area_len = ovf_list_data->length - area_offset;
-      memcpy (*area + copyed_len, ovf_list_data->data + area_offset,
+      memcpy (recdes->data + copyed_len, ovf_list_data->data + area_offset,
 	      area_len);
       copyed_len += area_len;
 
       free_and_init (ovf_list_data->data);
       free_and_init (ovf_list_data);
     }
+
+  recdes->length = length;
 
   return error;
 }
@@ -4578,7 +4768,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 
 			  *data =
 			    la_get_zipped_data (undo_data, undo_length,
-						is_diff, is_undo_zip, 0,
+						is_diff, is_undo_zip, false,
 						rec_type, data, &length);
 			  if (*data == NULL)
 			    {
@@ -4621,7 +4811,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 static int
 la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
 			  unsigned int match_rcvindex, void **logs,
-			  char **rec_type, char **data, int *d_length)
+			  char **rec_type, RECDES * recdes)
 {
   LOG_RECORD_HEADER *tmp_lrec;
   unsigned int rcvindex;
@@ -4645,7 +4835,7 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
 	  error =
 	    la_get_log_data (tmp_lrec, &lsa, pg,
 			     RVHF_INSERT, &rcvindex, logs,
-			     rec_type, data, d_length);
+			     rec_type, &recdes->data, &recdes->length);
 	}
       la_release_page_buffer (lsa.pageid);
     }
@@ -4675,27 +4865,23 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
  */
 static int
 la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
-	       RECDES * recdes, unsigned int *rcvindex,
-	       char *log_data, char *rec_type, bool * ovfyn)
+	       RECDES * recdes, unsigned int *rcvindex, char *rec_type)
 {
   LOG_RECORD_HEADER *lrec;
   LOG_PAGE *pg;
   int length;
   int error = NO_ERROR;
-  char *area = NULL;
   void *logs = NULL;
 
   pg = pgptr;
   lrec = LOG_GET_LOG_RECORD_HEADER (pg, lsa);
 
   error = la_get_log_data (lrec, lsa, pg, 0, rcvindex,
-			   &logs, &rec_type, &log_data, &length);
+			   &logs, &rec_type, &recdes->data, &recdes->length);
 
   if (error == NO_ERROR && logs != NULL)
     {
       recdes->type = *(INT16 *) (rec_type);
-      recdes->data = log_data;
-      recdes->area_size = recdes->length = length;
     }
   else
     {
@@ -4713,74 +4899,42 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
     }
 
   /* Now.. we have to process overflow pages */
-  length = 0;
   if (*rcvindex == RVOVF_CHANGE_LINK)
     {
       /* if overflow page update */
-      error = la_get_overflow_recdes (lrec, logs, &area, &length,
-				      RVOVF_PAGE_UPDATE);
+      error = la_get_overflow_recdes (lrec, logs, recdes, RVOVF_PAGE_UPDATE);
       recdes->type = REC_BIGONE;
     }
   else if (recdes->type == REC_BIGONE)
     {
       /* if overflow page insert */
-      error = la_get_overflow_recdes (lrec, logs, &area, &length,
+      error = la_get_overflow_recdes (lrec, logs, recdes,
 				      RVOVF_NEWPAGE_INSERT);
     }
   else if (*rcvindex == RVHF_INSERT && recdes->type == REC_ASSIGN_ADDRESS)
     {
       error = la_get_next_update_log (lrec,
 				      pg, &logs, &rec_type,
-				      &log_data, &length);
+				      &recdes->data, &recdes->length);
       if (error == NO_ERROR)
 	{
 	  recdes->type = *(INT16 *) (rec_type);
 	  if (recdes->type == REC_BIGONE)
 	    {
-	      error = la_get_overflow_recdes (lrec, logs, &area, &length,
+	      error = la_get_overflow_recdes (lrec, logs, recdes,
 					      RVOVF_NEWPAGE_INSERT);
 	    }
-	  else
-	    {
-	      recdes->data = log_data;
-	      recdes->area_size = recdes->length = length;
-	      return error;
-	    }
-	}
-      else
-	{
-	  return error;
 	}
     }
   else if (*rcvindex == RVHF_UPDATE && recdes->type == REC_RELOCATION)
     {
       error = la_get_relocation_recdes (lrec, pg, 0,
-					&logs, &rec_type, &log_data, &length);
+					&logs, &rec_type, recdes);
       if (error == NO_ERROR)
 	{
 	  recdes->type = *(INT16 *) (rec_type);
-	  recdes->data = log_data;
-	  recdes->area_size = recdes->length = length;
 	}
-      return error;
     }
-  else
-    {
-      return error;
-    }
-
-  if (error != NO_ERROR)
-    {
-      if (area != NULL)
-	{
-	  free_and_init (area);
-	}
-      return error;
-    }
-
-  recdes->data = (char *) (area);
-  recdes->area_size = recdes->length = length;
-  *ovfyn = true;
 
   return error;
 }
@@ -4809,100 +4963,118 @@ la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
   return state;
 }
 
+/*
+ * la_flush_repl_items() - flush stored repl items to server
+ *   return: NO_ERROR or error code
+ *   immediate(in): whether to immediately flush or not
+ *
+ * Note:
+ */
 static int
-la_flush_unflushed_insert (MOP class_mop)
+la_flush_repl_items (bool immediate)
 {
   int error = NO_ERROR;
+  int la_err_code, server_err_code;
   WS_FLUSH_ERR *flush_err;
-  MOP mop;
-  const char *class_name;
-  char primary_key[256];
-  int length;
-  char buf[256];
+  MOP class_mop = NULL;
+  const char *class_name = "UNKNOWN CLASS";
+  const char *server_err_msg = "UNKOWN";
+  char pkey_str[256];
+  char buf[LINE_MAX];
 
-  if (la_Info.num_unflushed_insert > 0)
+  if (la_Info.num_unflushed == 0)
     {
-      if (class_mop)
-	{
-	  error =
-	    locator_flush_all_instances (class_mop, DONT_DECACHE,
-					 LC_CONTINUE_ON_ERROR);
-	}
-      else
-	{
-	  error = locator_all_flush (LC_CONTINUE_ON_ERROR);
-	}
+      return NO_ERROR;
+    }
 
+  if (la_Info.num_unflushed >= LA_MAX_UNFLUSHED_REPL_ITEMS
+      || immediate == true)
+    {
+      error = locator_repl_flush_all ();
       if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 	{
-	  while (1)
+	  while (true)
 	    {
-	      class_name = NULL;
-
 	      flush_err = ws_get_error_from_error_link ();
 	      if (flush_err == NULL)
 		{
 		  break;
 		}
 
-	      error = flush_err->error_code;
-
-	      if (class_mop == NULL)
+	      class_mop = ws_mop (&flush_err->class_oid, sm_Root_class_mop);
+	      if (class_mop != NULL && class_mop->object != NULL)
 		{
-		  class_mop =
-		    ws_mop (&flush_err->class_oid, sm_Root_class_mop);
-		}
-	      mop = ws_mop (&flush_err->oid, class_mop);
-
-	      ws_free_flush_error (flush_err);
-
-	      if (mop == NULL)
-		{
-		  break;
+		  class_name = ((SM_CLASS *) class_mop->object)->header.name;
 		}
 
-	      if (mop->class_mop && mop->class_mop->object)
+	      if (flush_err->error_msg != NULL)
 		{
-		  class_name =
-		    ((SM_CLASS *) mop->class_mop->object)->header.name;
+		  server_err_msg = flush_err->error_msg;
 		}
 
-	      if (class_name)
+	      help_sprint_value (&flush_err->pkey_value, pkey_str,
+				 sizeof (pkey_str) - 1);
+
+	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
 		{
-		  length =
-		    la_help_sprint_object (mop, primary_key,
-					   sizeof (primary_key));
-		  if (length > 0)
+		  la_err_code = ER_HA_LA_FAILED_TO_APPLY_INSERT;
+		  if (la_Info.insert_counter > 0)
 		    {
-		      er_stack_push ();
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_HA_LA_FAILED_TO_APPLY_INSERT, 3, class_name,
-			      primary_key, error);
-		      er_stack_pop ();
+		      la_Info.insert_counter--;
 		    }
 		}
+	      else if (LC_IS_FLUSH_UPDATE (flush_err->operation) == true)
+		{
+		  la_err_code = ER_HA_LA_FAILED_TO_APPLY_UPDATE;
+		  if (la_Info.update_counter > 0)
+		    {
+		      la_Info.update_counter--;
+		    }
+		}
+	      else if (flush_err->operation == LC_FLUSH_DELETE)
+		{
+		  la_err_code = ER_HA_LA_FAILED_TO_APPLY_DELETE;
+		  if (la_Info.delete_counter > 0)
+		    {
+		      la_Info.delete_counter--;
+		    }
+		}
+	      else
+		{
+		  assert (false);
+		}
 
-	      ws_decache (mop);
+	      er_stack_push ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      la_err_code, 4, class_name,
+		      pkey_str, flush_err->error_code, server_err_msg);
+	      er_stack_pop ();
 
 	      la_Info.fail_counter++;
 
-	      if (la_restart_on_bulk_flush_error (error))
+	      if (la_restart_on_bulk_flush_error (flush_err->error_code) ==
+		  true)
 		{
 		  snprintf (buf, sizeof (buf),
-			    "applylogdb will reconnect to server due to a failure "
-			    "in flushing changes (error:%d)", error);
+			    "applylogdb will reconnect to server "
+			    "due to a failure in flushing changes. "
+			    "class: %s, key: %s, server error: %d, %s",
+			    class_name, pkey_str, flush_err->error_code,
+			    server_err_msg);
 		  er_stack_push ();
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_HA_GENERIC_ERROR, 1, buf);
 		  er_stack_pop ();
 
 		  error = ER_LC_PARTIALLY_FAILED_TO_FLUSH;
-		  la_applier_need_shutdown = true;
 
+		  ws_free_flush_error (flush_err);
 		  ws_clear_all_errors_of_error_link ();
 
 		  return error;
 		}
+
+	      ws_free_flush_error (flush_err);
 	    }
 
 	  ws_clear_all_errors_of_error_link ();
@@ -4912,14 +5084,22 @@ la_flush_unflushed_insert (MOP class_mop)
 	{
 	  la_Info.fail_counter++;
 	  ws_clear_all_errors_of_error_link ();
+
+	  er_stack_push ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LC_FAILED_TO_FLUSH_REPL_ITEMS, 1, error);
+	  er_stack_pop ();
+
 	  return error;
 	}
 
-      la_Info.num_unflushed_insert = 0;
+      la_Info.num_unflushed = 0;
+      ws_clear_all_repl_objs ();
     }
 
   return error;
 }
+
 
 /*
  * la_apply_delete_log() - apply the delete log to the target slave
@@ -4937,7 +5117,7 @@ la_apply_delete_log (LA_ITEM * item)
   char buf[256];
   char sql_log_err[LINE_MAX];
 
-  error = la_flush_unflushed_insert (NULL);
+  error = la_flush_repl_items (false);
   if (error != NO_ERROR)
     {
       return error;
@@ -4972,10 +5152,12 @@ la_apply_delete_log (LA_ITEM * item)
 	    }
 	}
 
-      error = obj_repl_delete_object_by_pkey (class_obj, &item->key);
+      error =
+	obj_repl_add_object (class_obj, &item->key, item->item_type, NULL);
       if (error == NO_ERROR)
 	{
 	  la_Info.delete_counter++;
+	  la_Info.num_unflushed++;
 	}
     }
 
@@ -4989,8 +5171,8 @@ la_apply_delete_log (LA_ITEM * item)
 #endif
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HA_LA_FAILED_TO_APPLY_DELETE, 3, item->class_name, buf,
-	      error);
+	      ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, buf,
+	      error, "UNKOWN");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5000,7 +5182,7 @@ la_apply_delete_log (LA_ITEM * item)
 }
 
 /*
- * la_apply_update_log() - apply the update log to the target slave
+ * la_apply_update_log() - apply the update log to the target slave using server side update
  *   return: NO_ERROR or error code
  *   item : replication item
  *
@@ -5009,258 +5191,28 @@ la_apply_delete_log (LA_ITEM * item)
  *      . get the target log page
  *      . get the record description
  *      . fetch the class info
- *      . fetch the target object by pk
- *      . create an existing object template
- *      . transform record description to object, and edit the target object
- *        column by columd.
- *      . finalize the editing of object template - dbt_finish
+ *      . create a replication object to be flushed and add it to a link
  */
 static int
 la_apply_update_log (LA_ITEM * item)
 {
   int error = NO_ERROR, au_save;
-  DB_OBJECT *class_obj;
-  DB_OBJECT *object = NULL;
-  DB_OBJECT *new_object = NULL;
-  MOBJ mclass;
-  LOG_PAGE *pgptr;
   unsigned int rcvindex;
-  RECDES recdes;
-  DB_OTMPL *inst_tp = NULL;
-  bool ovfyn = false;
-  LOG_PAGEID old_pageid = -1;
-  char buf[256];
-  char sql_log_err[LINE_MAX];
-
-  /* get the target log page */
-  old_pageid = item->target_lsa.pageid;
-  pgptr = la_get_page (old_pageid);
-  if (pgptr == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
-			 la_Info.log_data, la_Info.rec_type, &ovfyn);
-  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
-    {
-      la_release_page_buffer (old_pageid);
-      return ER_NET_CANT_CONNECT_SERVER;
-    }
-  if (error != NO_ERROR)
-    {
-      la_release_page_buffer (old_pageid);
-      return error;
-    }
-
-  if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
-    {
-      er_log_debug (ARG_FILE_LINE, "apply_update : rectype.type = %d\n",
-		    recdes.type);
-      la_release_page_buffer (old_pageid);
-      return error;
-    }
-  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK
-      && rcvindex != RVHF_MVCC_INSERT)
-    {
-      er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n",
-		    rcvindex);
-      la_release_page_buffer (old_pageid);
-      return error;
-    }
-
-  error = la_flush_unflushed_insert (NULL);
-  if (error != NO_ERROR)
-    {
-      la_release_page_buffer (old_pageid);
-      return error;
-    }
-
-  /* Now, make the MOBJ from the record description */
-  class_obj = db_find_class (item->class_name);
-  if (class_obj == NULL)
-    {
-      goto error_rtn;
-    }
-
-  /* check existence */
-  object = obj_repl_find_object_by_pkey (class_obj, &item->key,
-					 AU_FETCH_UPDATE);
-  if (object == NULL)
-    {
-      help_sprint_value (&item->key, buf, 255);
-      er_log_debug (ARG_FILE_LINE,
-		    "apply_update : cannot find class %s key %s\n",
-		    item->class_name, buf);
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto error_rtn;
-    }
-
-  /* get class info */
-  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-  if (mclass == NULL)
-    {
-      goto error_rtn;
-    }
-
-  /* start replication */
-  /* NOTE: if the master insert a row, and update it within a transaction,
-   *       the replication record points the RVHF_UPDATE record
-   */
-  AU_SAVE_AND_DISABLE (au_save);
-
-  inst_tp = dbt_edit_object (object);
-  if (inst_tp == NULL)
-    {
-      AU_RESTORE (au_save);
-
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto error_rtn;
-    }
-
-  /* make object using the record rescription */
-  error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key, rcvindex);
-  if (error != NO_ERROR)
-    {
-      AU_RESTORE (au_save);
-      goto error_rtn;
-    }
-
-  /* write sql log */
-  if (la_enable_sql_logging)
-    {
-      if (sl_write_update_sql (inst_tp, &item->key) != NO_ERROR)
-	{
-	  help_sprint_value (&item->key, buf, 255);
-	  snprintf (sql_log_err, sizeof (sql_log_err),
-		    "failed to write SQL log. class: %s, key: %s",
-		    item->class_name, buf);
-
-	  er_stack_push ();
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
-		  1, sql_log_err);
-	  er_stack_pop ();
-	}
-    }
-
-  /* update object */
-  new_object = dbt_finish_object_and_decache_when_failure (inst_tp);
-  if (new_object == NULL)
-    {
-      AU_RESTORE (au_save);
-      goto error_rtn;
-    }
-
-  la_Info.update_counter++;
-
-  AU_RESTORE (au_save);
-
-  if (ovfyn)
-    {
-      free_and_init (recdes.data);
-    }
-
-  assert (new_object == object);
-
-  /* This prevents from dangling references to serial objects
-   * during replication.
-   * The typical scenario is to update serials, cull mops which clears
-   * the mop up, and then truncate the table which leads updating
-   * the serial mop to reset its values.
-   */
-  ws_release_user_instance (new_object);
-  object = new_object = NULL;
-
-  la_release_page_buffer (old_pageid);
-
-  return error;
-
-  /* error */
-error_rtn:
-
-  if (error == NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-    }
-
-  help_sprint_value (&item->key, buf, 255);
-#if defined (LA_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"apply_update : error %d %s\n\tclass %s key %s\n",
-		error, er_msg (), item->class_name, buf);
-#endif
-  er_stack_push ();
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	  ER_HA_LA_FAILED_TO_APPLY_UPDATE, 3, item->class_name, buf, error);
-  er_stack_pop ();
-
-  la_Info.fail_counter++;
-
-  if (ovfyn)
-    {
-      free_and_init (recdes.data);
-    }
-
-  assert (new_object == NULL || new_object == object);
-  if (object)
-    {
-      /* This prevents from dangling references to serial objects
-       * during replication.
-       * The typical scenario is to update serials, cull mops which clears
-       * the mop up, and then truncate the table which leads updating
-       * the serial mop to reset its values.
-       */
-      ws_release_user_instance (object);
-      ws_decache (object);
-      object = new_object = NULL;
-    }
-
-  if (inst_tp)
-    {
-      dbt_abort_object (inst_tp);
-    }
-
-  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
-    {
-      error = ER_NET_CANT_CONNECT_SERVER;
-    }
-
-  la_release_page_buffer (old_pageid);
-  return error;
-}
-
-/*
- * la_apply_update_log_server_side() - apply the update log to the target slave using server side update
- *   return: NO_ERROR or error code
- *   item : replication item
- *
- * Note:
- *      Apply the update log to the target slave.
- *      . get the target log page
- *      . get the record description
- *      . fetch the class info
- *      . request server side update
- */
-static int
-la_apply_update_log_server_side (LA_ITEM * item)
-{
-  int error = NO_ERROR, au_save;
-  unsigned int rcvindex;
-  bool ovfyn = false;
   RECDES recdes;
   LOG_PAGE *pgptr = NULL;
-  LOG_PAGEID old_pageid = -1;
+  LOG_PAGEID old_pageid = NULL_PAGEID;
   DB_OBJECT *class_obj;
   MOBJ mclass;
   DB_OTMPL *inst_tp = NULL;
   char buf[255];
   char sql_log_err[LINE_MAX];
 
+  error = la_flush_repl_items (false);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   /* get the target log page */
   old_pageid = item->target_lsa.pageid;
   pgptr = la_get_page (old_pageid);
@@ -5270,40 +5222,38 @@ la_apply_update_log_server_side (LA_ITEM * item)
       return er_errid ();
     }
 
+  la_alloc_recdes_data_from_buffer (&recdes);
+
   /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
-			 la_Info.log_data, la_Info.rec_type, &ovfyn);
-  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
-    {
-      la_release_page_buffer (old_pageid);
-      return ER_NET_CANT_CONNECT_SERVER;
-    }
+  error =
+    la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
+		   la_Info.rec_type);
   if (error != NO_ERROR)
     {
-      la_release_page_buffer (old_pageid);
-      return error;
+      goto end;
     }
 
   if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rectype.type = %d\n",
 		    recdes.type);
-      la_release_page_buffer (old_pageid);
-      return error;
+      error = ER_FAILED;
+
+      goto end;
     }
-  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK)
+  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK
+      && rcvindex != RVHF_MVCC_INSERT)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n",
 		    rcvindex);
-      la_release_page_buffer (old_pageid);
-      return error;
+      error = ER_FAILED;
+
+      goto end;
     }
 
-  error = la_flush_unflushed_insert (NULL);
-  if (error != NO_ERROR)
+  if (rcvindex == RVHF_MVCC_INSERT && recdes.type != REC_BIGONE)
     {
-      la_release_page_buffer (old_pageid);
-      return error;
+      la_make_room_for_mvcc_insid (&recdes);
     }
 
   class_obj = db_find_class (item->class_name);
@@ -5318,7 +5268,8 @@ la_apply_update_log_server_side (LA_ITEM * item)
       goto end;
     }
 
-  error = obj_repl_update_object (class_obj, &item->key, &recdes);
+  error =
+    obj_repl_add_object (class_obj, &item->key, item->item_type, &recdes);
 
   /*
    * regardless of the success or failure of obj_repl_update_object,
@@ -5395,8 +5346,8 @@ end:
 #endif
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HA_LA_FAILED_TO_APPLY_UPDATE, 3, item->class_name, buf,
-	      error);
+	      ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, buf,
+	      error, "UNKNOWN");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5405,15 +5356,13 @@ end:
 	{
 	  error = ER_NET_CANT_CONNECT_SERVER;
 	}
+
+      la_free_recdes_data (&recdes);
     }
   else
     {
       la_Info.update_counter++;
-    }
-
-  if (ovfyn)
-    {
-      free_and_init (recdes.data);
+      la_Info.num_unflushed++;
     }
 
   if (inst_tp)
@@ -5441,28 +5390,26 @@ end:
  *      . get the target log page
  *      . get the record description
  *      . fetch the class info
- *      . create a new obect template
- *      . transform record description to object, and edit the target object
- *        column by columd.
- *      . finalize the editing of object template - dbt_finish
+ *      . create a replication object to be flushed and add it to a link
  */
 static int
 la_apply_insert_log (LA_ITEM * item)
 {
   int error = NO_ERROR, au_save;
   DB_OBJECT *class_obj;
-  DB_OBJECT *new_object = NULL;
   MOBJ mclass;
   LOG_PAGE *pgptr;
   unsigned int rcvindex;
   RECDES recdes;
   DB_OTMPL *inst_tp = NULL;
-  bool ovfyn = false;
-  LOG_PAGEID old_pageid = -1;
-  char buf[256];
-  static char last_inserted_class_name[DB_MAX_IDENTIFIER_LENGTH] = { 0, };
-  DB_OBJECT *last_inserted_class_obj;
-  char sql_log_err[LINE_MAX];
+  LOG_PAGEID old_pageid = NULL_PAGEID;
+  char buf[255];
+
+  error = la_flush_repl_items (false);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   /* get the target log page */
   old_pageid = item->target_lsa.pageid;
@@ -5473,92 +5420,97 @@ la_apply_insert_log (LA_ITEM * item)
       return er_errid ();
     }
 
+  la_alloc_recdes_data_from_buffer (&recdes);
+
   /* retrieve the target record description */
   error = la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
-			 la_Info.log_data, la_Info.rec_type, &ovfyn);
-  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
-    {
-      return ER_NET_CANT_CONNECT_SERVER;
-    }
+			 la_Info.rec_type);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
     {
       er_log_debug (ARG_FILE_LINE, "apply_insert : rectype.type = %d\n",
 		    recdes.type);
-      la_release_page_buffer (old_pageid);
-      return error;
+      error = ER_FAILED;
+
+      goto end;
     }
+
   if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT)
     {
       er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n",
 		    rcvindex);
-      la_release_page_buffer (old_pageid);
-      return error;
+      error = ER_FAILED;
+
+      goto end;
     }
 
-  if (strcmp (last_inserted_class_name, item->class_name) != 0)
+  if (rcvindex == RVHF_MVCC_INSERT && recdes.type != REC_BIGONE)
     {
-      if (last_inserted_class_name[0] != '\0')
-	{
-	  last_inserted_class_obj = db_find_class (last_inserted_class_name);
-	  error = la_flush_unflushed_insert (last_inserted_class_obj);
-	  if (error != NO_ERROR)
-	    {
-	      la_release_page_buffer (old_pageid);
-	      return error;
-	    }
-	}
-
-      strncpy (last_inserted_class_name, item->class_name,
-	       sizeof (last_inserted_class_name) - 1);
+      la_make_room_for_mvcc_insid (&recdes);
     }
 
-  /* Now, make the MOBJ from the record description */
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
-      goto error_rtn;
-    }
-
-  /* get class info */
-  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-  if (mclass == NULL)
-    {
-      goto error_rtn;
-    }
-
-  /* start replication */
-  /* NOTE: if the master insert a row, and update it within a transaction,
-   *       the replication record points the RVHF_UPDATE record
-   */
-  AU_SAVE_AND_DISABLE (au_save);
-
-  inst_tp = dbt_create_object_internal (class_obj);
-  if (inst_tp == NULL)
-    {
-      AU_RESTORE (au_save);
-
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
-      goto error_rtn;
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+      goto end;
     }
 
-  /* make object using the record description */
-  error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key, rcvindex);
-  if (error != NO_ERROR)
-    {
-      AU_RESTORE (au_save);
-      goto error_rtn;
-    }
+  error =
+    obj_repl_add_object (class_obj, &item->key, item->item_type, &recdes);
 
-  /* write sql log */
-  if (la_enable_sql_logging)
+  if (la_enable_sql_logging == true)
     {
-      if (sl_write_insert_sql (inst_tp, &item->key) != NO_ERROR)
+      bool sql_logging_failed = false;
+      int rc;
+      char sql_log_err[LINE_MAX];
+
+      er_stack_push ();
+
+      do
+	{
+	  AU_SAVE_AND_DISABLE (au_save);
+
+	  inst_tp = dbt_create_object_internal (class_obj);
+	  if (inst_tp == NULL)
+	    {
+	      sql_logging_failed = true;
+	      AU_RESTORE (au_save);
+	      break;
+	    }
+
+	  /* make object using the record description */
+	  rc =
+	    la_disk_to_obj (mclass, &recdes, inst_tp, &item->key, rcvindex);
+	  if (rc != NO_ERROR)
+	    {
+	      sql_logging_failed = true;
+	      AU_RESTORE (au_save);
+	      break;
+	    }
+
+	  if (sl_write_insert_sql (inst_tp, &item->key) != NO_ERROR)
+	    {
+	      sql_logging_failed = true;
+	      AU_RESTORE (au_save);
+	      break;
+	    }
+
+	  AU_RESTORE (au_save);
+	}
+      while (0);
+      er_stack_pop ();
+
+      if (sql_logging_failed == true)
 	{
 	  help_sprint_value (&item->key, buf, 255);
 	  snprintf (sql_log_err, sizeof (sql_log_err),
@@ -5572,90 +5524,48 @@ la_apply_insert_log (LA_ITEM * item)
 	}
     }
 
-  /* update object */
-  obt_set_bulk_flush (inst_tp);
-  new_object = dbt_finish_object_and_decache_when_failure (inst_tp);
-  if (new_object == NULL)
+end:
+  if (error != NO_ERROR)
     {
-      AU_RESTORE (au_save);
-      goto error_rtn;
-    }
-  la_Info.num_unflushed_insert++;
-  la_Info.insert_counter++;
-
-  AU_RESTORE (au_save);
-
-  if (ovfyn)
-    {
-      free_and_init (recdes.data);
-    }
-
-  /* This prevents from dangling references to serial objects
-   * during replication.
-   * The typical scenario is to update serials, cull mops which clears
-   * the mop up, and then truncate the table which leads updating
-   * the serial mop to reset its values.
-   */
-  if (new_object)
-    {
-      ws_release_user_instance (new_object);
-    }
-  new_object = NULL;
-
-  la_release_page_buffer (old_pageid);
-  return error;
-
-  /* error */
-error_rtn:
-
-  if (error == NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-    }
-
-  help_sprint_value (&item->key, buf, 255);
+      help_sprint_value (&item->key, buf, 255);
 #if defined (LA_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"apply_insert : error %d %s\n\tclass %s key %s\n",
-		error, er_msg (), item->class_name, buf);
+      er_log_debug (ARG_FILE_LINE,
+		    "apply_insert : error %d %s\n\tclass %s key %s\n",
+		    error, er_msg (), item->class_name, buf);
 #endif
-  er_stack_push ();
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	  ER_HA_LA_FAILED_TO_APPLY_INSERT, 3, item->class_name, buf, error);
-  er_stack_pop ();
+      er_stack_push ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, buf,
+	      error, "UNKNOWN");
+      er_stack_pop ();
 
-  la_Info.fail_counter++;
+      la_Info.fail_counter++;
 
-  if (ovfyn)
-    {
-      free_and_init (recdes.data);
+      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	{
+	  error = ER_NET_CANT_CONNECT_SERVER;
+	}
+
+      la_free_recdes_data (&recdes);
     }
-
-  if (new_object)
+  else
     {
-      /* This prevents from dangling references to serial objects
-       * during replication.
-       * The typical scenario is to update serials, cull mops which clears
-       * the mop up, and then truncate the table which leads updating
-       * the serial mop to reset its values.
-       */
-      ws_release_user_instance (new_object);
-      ws_decache (new_object);
-      new_object = NULL;
+      la_Info.insert_counter++;
+      la_Info.num_unflushed++;
     }
 
   if (inst_tp)
     {
+      if (inst_tp->object)
+	{
+	  ws_release_user_instance (inst_tp->object);
+	  ws_decache (inst_tp->object);
+	}
       dbt_abort_object (inst_tp);
     }
 
-  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
-    {
-      error = ER_NET_CANT_CONNECT_SERVER;
-    }
-
   la_release_page_buffer (old_pageid);
+
   return error;
 }
 
@@ -5760,7 +5670,7 @@ la_apply_schema_log (LA_ITEM * item)
   char buf[256];
   char sql_log_err[LINE_MAX];
 
-  error = la_flush_unflushed_insert (NULL);
+  error = la_flush_repl_items (true);
   if (error != NO_ERROR)
     {
       return error;
@@ -6027,21 +5937,6 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 
       if (LSA_GT (&item->lsa, &la_Info.last_committed_rep_lsa))
 	{
-	  if ((total_repl_items % LA_MAX_REPL_ITEMS) == 0)
-	    {
-	      error = la_log_commit (true);
-	      if (error != NO_ERROR)
-		{
-		  goto end;
-		}
-
-	      error = la_check_mem_size ();
-	      if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
-		{
-		  goto end;
-		}
-	    }
-
 	  if (item->log_type == LOG_REPLICATION_DATA)
 	    {
 	      switch (item->item_type)
@@ -6049,14 +5944,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 		case RVREPL_DATA_UPDATE_START:
 		case RVREPL_DATA_UPDATE_END:
 		case RVREPL_DATA_UPDATE:
-		  if (la_use_server_side_update_repl)
-		    {
-		      error = la_apply_update_log_server_side (item);
-		    }
-		  else
-		    {
-		      error = la_apply_update_log (item);
-		    }
+		  error = la_apply_update_log (item);
 		  break;
 
 		case RVREPL_DATA_INSERT:
@@ -6096,9 +5984,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 	    }
 	  else
 	    {
-	      /* reconnect to server due to error in flushing unflushed insert */
-	      if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-		  && la_applier_need_shutdown == true)
+	      /* reconnect to server due to error while flushing repl items  */
+	      if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 		{
 		  goto end;
 		}
@@ -6515,7 +6402,11 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	  /* in case of delayed/time-bound replication */
 	  if (eot_time != 0)
 	    {
-	      la_delay_replica (eot_time);
+	      error = la_delay_replica (eot_time);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
 	    }
 
 	  /* make db_ha_apply_info.status busy */
@@ -6540,7 +6431,6 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_NET_SERVER_COMM_ERROR, 1,
 			      "cannot connect with server");
-		      la_applier_need_shutdown = true;
 		      return error;
 		    }
 		}
@@ -6549,8 +6439,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 		  la_applier_need_shutdown = true;
 		  return error;
 		}
-	      else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-		       && la_applier_need_shutdown == true)
+	      else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 		{
 		  return error;
 		}
@@ -6639,7 +6528,6 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	    {
 	      return error;
 	    }
-	  (void) la_log_commit (true);
 	}
       break;
 
@@ -6891,7 +6779,7 @@ la_log_commit (bool update_commit_time)
       la_Info.log_commit_time = time (0);
     }
 
-  error = la_flush_unflushed_insert (NULL);
+  error = la_flush_repl_items (true);
   if (error != NO_ERROR)
     {
       return error;
@@ -7252,18 +7140,9 @@ la_unlock_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
 }
 
 static void
-la_init (const char *log_path, const int max_mem_size, BOOT_CLIENT_TYPE type)
+la_init (const char *log_path, const int max_mem_size)
 {
   static unsigned long start_vsize = 0;
-
-  if (type == BOOT_CLIENT_LOG_APPLIER)
-    {
-      er_log_debug (ARG_FILE_LINE, "log applier will be initialized...");
-    }
-  else
-    {
-      er_log_debug (ARG_FILE_LINE, "log prefetcher will be initialized...");
-    }
 
   memset (&la_Info, 0, sizeof (la_Info));
 
@@ -7287,7 +7166,6 @@ la_init (const char *log_path, const int max_mem_size, BOOT_CLIENT_TYPE type)
 
   la_Info.last_deleted_archive_num = -1;
   la_Info.is_role_changed = false;
-  la_Info.num_unflushed_insert = 0;
   la_Info.is_apply_info_updated = false;
 
   la_Info.max_mem_size = max_mem_size;
@@ -7303,22 +7181,21 @@ la_init (const char *log_path, const int max_mem_size, BOOT_CLIENT_TYPE type)
 
   la_Info.db_lockf_vdes = NULL_VOLDES;
 
+  la_Info.num_unflushed = 0;
+  la_log_data_buffer.is_initialized = false;
+
+  if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+    {
+      ws_init_repl_objs (la_free_recdes_data);
+    }
+
   return;
 }
 
 static void
-la_shutdown (BOOT_CLIENT_TYPE type)
+la_shutdown (void)
 {
   int i;
-
-  if (type == BOOT_CLIENT_LOG_APPLIER)
-    {
-      er_log_debug (ARG_FILE_LINE, "log applier will be shutting down...");
-    }
-  else
-    {
-      er_log_debug (ARG_FILE_LINE, "log prefetcher will be shutting down...");
-    }
 
   /* clean up */
   if (la_Info.arv_log.log_vdes != NULL_VOLDES)
@@ -7414,6 +7291,20 @@ la_shutdown (BOOT_CLIENT_TYPE type)
     {
       free_and_init (la_Info.act_log.hdr_page);
     }
+
+  if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+    {
+      ws_clear_all_repl_objs ();
+    }
+
+  if (la_log_data_buffer.is_initialized == true)
+    {
+      la_free_log_data_buffer ();
+    }
+
+  la_Info.num_unflushed = 0;
+
+  return;
 }
 
 /*
@@ -7525,7 +7416,7 @@ la_log_page_check (const char *database_name, const char *log_path,
     }
 
   /* init la_Info */
-  la_init (log_path, 0, BOOT_CLIENT_LOG_APPLIER);
+  la_init (log_path, 0);
 
   if (check_applied_info)
     {
@@ -7844,7 +7735,7 @@ lp_prefetch_log_file (const char *database_name, const char *log_path)
   while (!la_applier_need_shutdown);
 
 end:
-  la_shutdown (BOOT_CLIENT_LOG_PREFETCHER);
+  la_shutdown ();
 
 #if !defined(WINDOWS)
   if (hb_Proc_shutdown == true)
@@ -7868,7 +7759,7 @@ end:
 static void
 lp_init (const char *log_path)
 {
-  la_init (log_path, 0, BOOT_CLIENT_LOG_PREFETCHER);
+  la_init (log_path, 0);
 
   LSA_SET_NULL (&lp_Info.final_lsa);
   LSA_SET_NULL (&lp_Info.la_sync_lsa);
@@ -8435,7 +8326,6 @@ lp_prefetch_insert (LA_ITEM * item)
 {
   int error = NO_ERROR;
   unsigned int rcvindex;
-  bool ovfyn = false;
   RECDES recdes;
   LOG_PAGE *pgptr = NULL;
   LOG_PAGEID old_pageid = -1;
@@ -8451,28 +8341,32 @@ lp_prefetch_insert (LA_ITEM * item)
       return er_errid ();
     }
 
+  la_alloc_recdes_data_from_buffer (&recdes);
+
   /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
-			 la_Info.log_data, la_Info.rec_type, &ovfyn);
+  error =
+    la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
+		   la_Info.rec_type);
   if (error != NO_ERROR)
     {
-      la_release_page_buffer (old_pageid);
-      return error;
+      goto end;
     }
 
   if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
     {
       er_log_debug (ARG_FILE_LINE, "prefetch_insert : rectype.type = %d\n",
 		    recdes.type);
-      la_release_page_buffer (old_pageid);
-      return error;
+      error = ER_FAILED;
+
+      goto end;
     }
   if (rcvindex != RVHF_INSERT && rcvindex != RVOVF_CHANGE_LINK)
     {
       er_log_debug (ARG_FILE_LINE, "prefetch_insert : rcvindex = %d\n",
 		    rcvindex);
-      la_release_page_buffer (old_pageid);
-      return error;
+      error = ER_FAILED;
+
+      goto end;
     }
 
   class_obj = db_find_class (item->class_name);
@@ -8480,12 +8374,18 @@ lp_prefetch_insert (LA_ITEM * item)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
-      return error;
+
+      goto end;
     }
 
   class_oid = ws_oid (class_obj);
 
   error = locator_prefetch_repl_insert (class_oid, &recdes);
+
+end:
+  la_release_page_buffer (old_pageid);
+  la_free_recdes_data (&recdes);
+
   return error;
 }
 
@@ -8871,7 +8771,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
     }
 
   /* init la_Info */
-  la_init (log_path, max_mem_size, BOOT_CLIENT_LOG_APPLIER);
+  la_init (log_path, max_mem_size);
 
   if (prm_get_bool_value (PRM_ID_HA_SQL_LOGGING))
     {
@@ -8887,9 +8787,6 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  la_enable_sql_logging = true;
 	}
     }
-
-  la_use_server_side_update_repl =
-    prm_get_bool_value (PRM_ID_HA_REPL_ENABLE_SERVER_SIDE_UPDATE);
 
   error = la_check_duplicated (la_Info.log_path, la_slave_db_name,
 			       &la_Info.log_path_lockf_vdes,
@@ -9099,17 +8996,11 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
 		  error = la_log_commit (false);
 		  if (error == ER_NET_CANT_CONNECT_SERVER
-		      || error == ER_OBJ_NO_CONNECT)
+		      || error == ER_OBJ_NO_CONNECT
+		      || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 		    {
-		      er_log_debug (ARG_FILE_LINE,
-				    "we lost connection with DB server.");
-		      la_applier_need_shutdown = true;
-		      break;
-		    }
-		  else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-			   && la_applier_need_shutdown == true)
-		    {
-		      break;
+		      la_shutdown ();
+		      return error;
 		    }
 		}
 
@@ -9323,7 +9214,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
 		  error = ER_LOG_PAGE_CORRUPTED;
-		  la_shutdown (BOOT_CLIENT_LOG_APPLIER);
+		  la_shutdown ();
 		  return error;
 		}
 
@@ -9344,18 +9235,17 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  if (error == ER_NET_CANT_CONNECT_SERVER
 		      || error == ER_OBJ_NO_CONNECT)
 		    {
-		      la_shutdown (BOOT_CLIENT_LOG_APPLIER);
+		      la_shutdown ();
 		      return ER_NET_CANT_CONNECT_SERVER;
 		    }
 		  else if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
 		    {
-		      la_shutdown (BOOT_CLIENT_LOG_APPLIER);
-		      return error;
+		      la_applier_need_shutdown = true;
+		      break;
 		    }
-		  else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-			   && la_applier_need_shutdown == true)
+		  else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 		    {
-		      la_shutdown (BOOT_CLIENT_LOG_APPLIER);
+		      la_shutdown ();
 		      return error;
 		    }
 
@@ -9385,7 +9275,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
 		  error = ER_LOG_PAGE_CORRUPTED;
-		  la_shutdown (BOOT_CLIENT_LOG_APPLIER);
+		  la_shutdown ();
 		  return error;
 		}
 
@@ -9402,18 +9292,13 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  if (error != NO_ERROR)
 	    {
 	      /* check connection error */
-	      if (error == ER_NET_CANT_CONNECT_SERVER ||
-		  error == ER_OBJ_NO_CONNECT)
+	      if (error == ER_NET_CANT_CONNECT_SERVER
+		  || error == ER_OBJ_NO_CONNECT
+		  || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 		{
-		  er_log_debug (ARG_FILE_LINE,
-				"we have lost connection with DB server.");
-		  la_applier_need_shutdown = true;
-		  break;
-		}
-	      else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-		       && la_applier_need_shutdown == true)
-		{
-		  break;
+		  la_shutdown ();
+		  return error;
+
 		}
 	    }
 
@@ -9426,7 +9311,14 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
 	  /* check and change state */
 	  error = la_change_state ();
-	  if (error != NO_ERROR)
+	  if (error == ER_NET_CANT_CONNECT_SERVER
+	      || error == ER_OBJ_NO_CONNECT
+	      || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	    {
+	      la_shutdown ();
+	      return error;
+	    }
+	  else if (error != NO_ERROR)
 	    {
 	      la_applier_need_shutdown = true;
 	      break;
@@ -9460,7 +9352,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
     }
   while (la_applier_need_shutdown == false);
 
-  la_shutdown (BOOT_CLIENT_LOG_APPLIER);
+  la_shutdown ();
 
 #if !defined(WINDOWS)
   if (hb_Proc_shutdown == true)
@@ -9484,9 +9376,10 @@ la_apply_log_file (const char *database_name, const char *log_path,
 /*
  * la_delay_replica () -
  */
-static void
+static int
 la_delay_replica (time_t eot_time)
 {
+  int error = NO_ERROR;
   static int ha_mode = -1;
   static int replica_delay = -1;
   static time_t replica_time_bound = -1;
@@ -9522,7 +9415,11 @@ la_delay_replica (time_t eot_time)
 
 	  if (eot_time >= replica_time_bound)
 	    {
-	      la_log_commit (true);
+	      error = la_log_commit (true);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
 
 	      snprintf (buffer, sizeof (buffer),
 			"applylogdb paused since it reached "
@@ -9545,4 +9442,6 @@ la_delay_replica (time_t eot_time)
 	    }
 	}
     }
+
+  return NO_ERROR;
 }

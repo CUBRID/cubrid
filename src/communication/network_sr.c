@@ -955,6 +955,12 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_INVALIDATE_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_invalidate_mvcc_snapshot;
   req_p->name = "NET_SERVER_INVALIDATE_MVCC_SNAPSHOT";
+
+  req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO
+			     | IN_TRANSACTION);
+  req_p->processing_function = slocator_repl_force;
+  req_p->name = "NET_SERVER_LC_REPL_FORCE";
 }
 
 #if defined(CUBRID_DEBUG)

@@ -69,8 +69,32 @@ struct ws_flush_err
 {
   struct ws_flush_err *error_link;
   OID class_oid;
-  OID oid;
+  int operation;
   int error_code;
+  char *error_msg;
+  DB_VALUE pkey_value;
+};
+
+typedef void (*WS_FREE_RECDES_FUNC) (RECDES * recdes);
+
+typedef struct ws_repl_obj WS_REPL_OBJ;
+struct ws_repl_obj
+{
+  struct ws_repl_obj *next;
+  OID class_oid;
+  DB_VALUE *pkey_value;
+  bool has_index;
+  int operation;
+  RECDES recdes;
+};
+
+typedef struct ws_repl_list WS_REPL_LIST;
+struct ws_repl_list
+{
+  WS_REPL_OBJ *head;
+  WS_REPL_OBJ *tail;
+  int num_items;
+  WS_FREE_RECDES_FUNC free_recdes_func;
 };
 
 typedef struct ws_value_list WS_VALUE_LIST;
@@ -460,8 +484,7 @@ enum ws_map_status_
   WS_MAP_CONTINUE = 0,
   WS_MAP_FAIL = 1,
   WS_MAP_STOP = 2,
-  WS_MAP_SUCCESS = 3,
-  WS_MAP_CONTINUE_ON_ERROR = 4
+  WS_MAP_SUCCESS = 3
 };
 
 /*
@@ -554,11 +577,9 @@ extern int ws_is_dirty (MOP mop);
 extern int ws_is_deleted (MOP mop);
 extern void ws_set_deleted (MOP mop);
 extern void ws_clean (MOP op);
-extern int ws_map_dirty (MAPFUNC function, void *args,
-			 bool reverse_dirty_link);
+extern int ws_map_dirty (MAPFUNC function, void *args);
 extern void ws_filter_dirty (void);
-extern int ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args,
-			       bool reverse_dirty_link);
+extern int ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args);
 
 /* Resident instance list maintenance */
 extern void ws_set_class (MOP inst, MOP class_mop);
@@ -758,9 +779,17 @@ extern bool ws_need_flush (void);
 extern int ws_set_ignore_error_list_for_mflush (int error_count,
 						int *error_list);
 
-extern void ws_reverse_dirty_link (MOP class_mop);
+extern int ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key,
+				    RECDES * recdes, int operation,
+				    bool has_index);
+extern void ws_init_repl_objs (WS_FREE_RECDES_FUNC free_func);
+extern void ws_clear_all_repl_objs (void);
+extern void ws_free_repl_obj (WS_REPL_OBJ * obj);
+extern WS_REPL_OBJ *ws_get_repl_obj_from_list (void);
 
-extern void ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj);
+extern void ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj,
+					  char *content_ptr);
+
 extern WS_FLUSH_ERR *ws_get_error_from_error_link (void);
 extern void ws_clear_all_errors_of_error_link (void);
 extern void ws_free_flush_error (WS_FLUSH_ERR * flush_err);

@@ -4526,7 +4526,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE,
-   (PRM_FOR_HA | PRM_HIDDEN),
+   (PRM_FOR_HA | PRM_HIDDEN | PRM_DEPRECATED),
    PRM_BOOLEAN,
    (void *) &prm_ha_repl_enable_server_side_update_flag,
    (void *) &prm_ha_repl_enable_server_side_update_default,
@@ -9015,7 +9015,6 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_log_archives_prm;
   SYSPRM_PARAM *force_remove_log_archives_prm;
   SYSPRM_PARAM *call_stack_dump_activation_prm;
-  SYSPRM_PARAM *ha_repl_enable_server_side_update_prm;
   SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
 
   char newval[LINE_MAX];
@@ -9054,8 +9053,6 @@ prm_tune_parameters (void)
   max_log_archives_prm = prm_find (PRM_NAME_LOG_MAX_ARCHIVES, NULL);
   force_remove_log_archives_prm =
     prm_find (PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES, NULL);
-  ha_repl_enable_server_side_update_prm =
-    prm_find (PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE, NULL);
   ha_prefetchlogdb_enable_prm =
     prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
 
@@ -9216,7 +9213,6 @@ prm_tune_parameters (void)
 	  prm_set (force_remove_log_archives_prm, "yes", false);
 	}
 
-      prm_set (ha_repl_enable_server_side_update_prm, "no", false);
       prm_set (ha_prefetchlogdb_enable_prm, "no", false);
     }
   else
@@ -9290,7 +9286,6 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *shutdown_wait_time_in_secs_prm;
   SYSPRM_PARAM *ha_copy_log_timeout_prm;
   SYSPRM_PARAM *ha_check_disk_failure_interval_prm;
-  SYSPRM_PARAM *ha_repl_enable_server_side_update_prm;
   SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
 
   char newval[LINE_MAX];
@@ -9311,8 +9306,6 @@ prm_tune_parameters (void)
   ha_copy_log_timeout_prm = prm_find (PRM_NAME_HA_COPY_LOG_TIMEOUT, NULL);
   ha_check_disk_failure_interval_prm =
     prm_find (PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS, NULL);
-  ha_repl_enable_server_side_update_prm =
-    prm_find (PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE, NULL);
   ha_prefetchlogdb_enable_prm =
     prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
 
@@ -9359,7 +9352,6 @@ prm_tune_parameters (void)
 	}
 
       /* disable them temporarily */
-      prm_set (ha_repl_enable_server_side_update_prm, "no", false);
       prm_set (ha_prefetchlogdb_enable_prm, "no", false);
     }
 

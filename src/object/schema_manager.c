@@ -3334,7 +3334,7 @@ sm_force_write_all_classes (void)
 
       /* insert all class objects into the catalog classes */
       if (locator_flush_all_instances
-	  (sm_Root_class_mop, DONT_DECACHE, LC_STOP_ON_ERROR) != NO_ERROR)
+	  (sm_Root_class_mop, DONT_DECACHE) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -3350,7 +3350,7 @@ sm_force_write_all_classes (void)
        * so some class objects were inserted with no hierarchy values.
        */
       if (locator_flush_all_instances
-	  (sm_Root_class_mop, DONT_DECACHE, LC_STOP_ON_ERROR) != NO_ERROR)
+	  (sm_Root_class_mop, DONT_DECACHE) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -3928,8 +3928,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
     {
 
       /* make sure the workspace is flushed before calculating stats */
-      if (locator_flush_all_instances
-	  (classop, DONT_DECACHE, LC_STOP_ON_ERROR) != NO_ERROR)
+      if (locator_flush_all_instances (classop, DONT_DECACHE) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -3986,7 +3985,7 @@ sm_update_all_statistics (bool with_fullscan)
   SM_CLASS *class_;
 
   /* make sure the workspace is flushed before calculating stats */
-  if (locator_all_flush (LC_STOP_ON_ERROR) != NO_ERROR)
+  if (locator_all_flush () != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -5978,8 +5977,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 		    {
 		      /* if system class, flush all dirty class */
 		      if (locator_flush_all_instances (sm_Root_class_mop,
-						       DONT_DECACHE,
-						       LC_STOP_ON_ERROR) !=
+						       DONT_DECACHE) !=
 			  NO_ERROR)
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -5988,8 +5986,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			}
 		    }
 
-		  if (locator_flush_all_instances
-		      (obj, decache, LC_STOP_ON_ERROR) != NO_ERROR)
+		  if (locator_flush_all_instances (obj, decache) != NO_ERROR)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
@@ -6033,9 +6030,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 		    {
 		    case SM_CLASS_CT:
 		      if (locator_flush_all_instances (object_class_mop,
-						       decache,
-						       LC_STOP_ON_ERROR) !=
-			  NO_ERROR)
+						       decache) != NO_ERROR)
 			{
 			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
@@ -6083,8 +6078,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			    {
 			    case SM_CLASS_CT:
 			      if (locator_flush_all_instances
-				  (object_class_mop, decache,
-				   LC_STOP_ON_ERROR) != NO_ERROR)
+				  (object_class_mop, decache) != NO_ERROR)
 				{
 				  assert (er_errid () != NO_ERROR);
 				  error = er_errid ();
@@ -12217,8 +12211,7 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 	  switch (class_->class_type)
 	    {
 	    case SM_CLASS_CT:
-	      if (locator_flush_all_instances
-		  (classop, DECACHE, LC_STOP_ON_ERROR) != NO_ERROR)
+	      if (locator_flush_all_instances (classop, DECACHE) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return (er_errid ());
@@ -13546,8 +13539,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   switch (class_->class_type)
     {
     case SM_CLASS_CT:
-      if (locator_flush_all_instances (op, DECACHE, LC_STOP_ON_ERROR) !=
-	  NO_ERROR)
+      if (locator_flush_all_instances (op, DECACHE) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -14015,8 +14007,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
    */
 
   if (locator_flush_class (classop) != NO_ERROR
-      || locator_flush_all_instances (classop, DECACHE,
-				      LC_STOP_ON_ERROR) != NO_ERROR)
+      || locator_flush_all_instances (classop, DECACHE) != NO_ERROR)
     {
       goto general_error;
     }
@@ -16488,9 +16479,7 @@ sm_adjust_partitions_parent (MOP class_mop, bool flush)
 	}
 
       /* flush all instances of _db_partition */
-      error_code =
-	locator_flush_all_instances (db_part_cat, DONT_DECACHE,
-				     LC_STOP_ON_ERROR);
+      error_code = locator_flush_all_instances (db_part_cat, DONT_DECACHE);
       if (error_code != NO_ERROR)
 	{
 	  goto error;

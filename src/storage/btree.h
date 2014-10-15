@@ -409,6 +409,8 @@ extern DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p,
 				      const char *btname);
 extern DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p,
 					 BTID * btid);
+extern int btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid,
+				BTID * pkey_btid);
 extern DISK_ISVALID btree_check_by_class_oid (THREAD_ENTRY * thread_p,
 					      OID * cls_oid, BTID * idx_btid);
 extern DISK_ISVALID btree_check_all (THREAD_ENTRY * thread_p);
