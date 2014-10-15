@@ -1729,8 +1729,6 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   /* Vacuum slots */
   for (i = 0; i < n_slots; i++)
     {
-      /* REC_BIGONE type records should not be handled here! */
-      assert (spage_get_record_type (rcv->pgptr, slotids[i]) != REC_BIGONE);
       if (slotids[i] < 0)
 	{
 	  /* Record was removed completely */
