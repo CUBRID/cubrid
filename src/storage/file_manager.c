@@ -12992,12 +12992,12 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
 	}
     }
 
+  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+
   if (ret == NO_ERROR)
     {
       ret = file_compress (thread_p, file_Tracker->vfid, false);
     }
-
-  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
 
   return ret;
 }
