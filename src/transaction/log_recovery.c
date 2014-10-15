@@ -6482,11 +6482,6 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 
       if (nxtop_count > 0)
 	{
-	  /* This is not possible (top op cannot be nested),
-	   * because log_is_in_crash_recovery.
-	   */
-	  assert (0);
-
 	  nxtop_count--;
 	  nxtop_range = &(nxtop_stack[nxtop_count]);
 
