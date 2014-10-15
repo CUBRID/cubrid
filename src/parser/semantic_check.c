@@ -8893,6 +8893,19 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return;
 	}
     }
+  else
+    {
+      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME
+	  && er_severity () == ER_WARNING_SEVERITY)
+	{
+	  /* Because the class is still inexistent, normally, here we will have to
+	   * encounter some errors/warnings like ER_LC_UNKNOWN_CLASSNAME which is
+	   * unuseful for current context indeed and may disturb other subsequent
+	   * routines. Thus, we can/should clear the errors safely.
+	   */
+	  er_clear ();
+	}
+    }
 
   pt_check_user_exists (parser, name);
 

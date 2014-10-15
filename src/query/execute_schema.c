@@ -4575,7 +4575,7 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
     }
   else
     {
-      SM_CLASS * superclass = NULL;
+      SM_CLASS *superclass = NULL;
       MOP superclass_op;
 
       newclass = sm_find_class (cata_obj);
@@ -4604,8 +4604,8 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
 	{
 	  goto fail_return;
 	}
-      if (au_fetch_class (superclass_op, &superclass, AU_FETCH_READ, AU_SELECT)
-	  != NO_ERROR)
+      if (au_fetch_class
+	  (superclass_op, &superclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 	{
 	  goto fail_return;
 	}
@@ -9357,6 +9357,18 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       error = er_errid ();
       goto error_exit;
     }
+
+  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME
+      && er_severity () == ER_WARNING_SEVERITY)
+    {
+      /* Because the class is still inexistent, normally, here we will have to
+       * encounter some errors/warnings like ER_LC_UNKNOWN_CLASSNAME which is
+       * unuseful for current context indeed and may disturb other subsequent
+       * routines. Thus, we can/should clear the errors safely.
+       */
+      er_clear ();
+    }
+
   do_abort_class_on_error = false;
   ctemplate = NULL;
 
