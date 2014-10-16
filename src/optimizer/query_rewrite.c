@@ -6931,6 +6931,7 @@ qo_can_generate_single_table_connect_by (PARSER_CONTEXT * parser,
   int level = 0;
   PT_NODE *name = NULL;
   PT_NODE *spec = NULL;
+  PT_NODE *select = NULL;
   DB_OBJECT *mobj = NULL;
   SM_CLASS *class_ = NULL;
 
@@ -6943,6 +6944,18 @@ qo_can_generate_single_table_connect_by (PARSER_CONTEXT * parser,
     {
       /* joins */
       return false;
+    }
+
+  select = node->info.query.q.select.list;
+
+  while (select != NULL)
+    {
+      if (select->node_type == PT_METHOD_CALL)
+	{
+	  /* method call can be rewritten as subquery later. */
+	  return false;
+	}
+      select = select->next;
     }
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
