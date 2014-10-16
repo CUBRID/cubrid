@@ -14915,7 +14915,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   ACCESS_SPEC_TYPE *specp;
   XASL_SCAN_FNC_PTR func_vector = (XASL_SCAN_FNC_PTR) NULL;
   int multi_upddel = false;
-  int fixed_scan_flag;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
   XASL_NODE *fixed_scan_xasl = NULL;
@@ -15368,7 +15367,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
 	    {
 	      /* no fixed scan if it was decided so during compilation */
-	      fixed_scan_flag = NULL;
+	      fixed_scan_xasl = NULL;
 	    }
 	  if (xasl->dptr_list != NULL)
 	    {
@@ -15396,9 +15395,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	   */
 	  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
 	    {
-	      /* Check if fixed scan is allowed in this XASL node */
-	      fixed_scan_flag = (xptr == fixed_scan_xasl);
-
 	      /* consider all the access specification nodes */
 	      spec_ptr[0] = xptr->spec_list;
 	      spec_ptr[1] = xptr->merge_spec;
@@ -15407,7 +15403,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  for (specp = spec_ptr[spec_level]; specp;
 		       specp = specp->next)
 		    {
-		      specp->fixed_scan = fixed_scan_flag;
+		      specp->fixed_scan = (xptr == fixed_scan_xasl);
 
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL)
