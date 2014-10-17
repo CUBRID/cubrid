@@ -2261,7 +2261,9 @@ bool
 lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 {
   int entry_index;
-  INT32 produce_cursor;
+  INT64 produce_cursor;
+
+  assert (data != NULL);
 
   /* Loop until a free entry for produce is found or queue is full. */
   /* Since this may be done under concurrency with no locks, a produce cursor
@@ -2282,7 +2284,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       /* Get current produce_cursor */
       produce_cursor = queue->produce_cursor;
       /* Compute entry's index in circular queue */
-      entry_index = produce_cursor % queue->capacity;
+      entry_index = (int) produce_cursor % queue->capacity;
 
       if (ATOMIC_CAS_32 (&queue->entry_state[entry_index], READY_FOR_PRODUCE,
 			 RESERVED_FOR_PRODUCE))
@@ -2300,7 +2302,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	   * avoid being spin-locked on same cursor value. The increment will
 	   * fail if the cursor was already incremented.
 	   */
-	  (void) ATOMIC_CAS_32 (&queue->produce_cursor, produce_cursor,
+	  (void) ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor,
 				produce_cursor + 1);
 	}
       else if (queue->entry_state[entry_index] == RESERVED_FOR_CONSUME)
@@ -2331,7 +2333,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
    * allocating entry and before increment, it may have been already
    * incremented.
    */
-  ATOMIC_CAS_32 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
+  ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
   queue->entry_state[entry_index] = READY_FOR_CONSUME;
 
   /* Successfully produced a new entry */
@@ -2349,7 +2351,7 @@ bool
 lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 {
   int entry_index;
-  INT32 consume_cursor;
+  INT64 consume_cursor;
 
   /* Loop until an entry can be consumed or until queue is empty */
   /* Since there may be more than one consumer and no locks is used, a consume
@@ -2371,7 +2373,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       consume_cursor = queue->consume_cursor;
 
       /* Compute entry's index in circular queue */
-      entry_index = consume_cursor % queue->capacity;
+      entry_index = (int) consume_cursor % queue->capacity;
 
       /* Try to set entry state from READY_FOR_CONSUME to
        * RESERVED_FOR_CONSUME.
@@ -2391,7 +2393,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	   * avoid being spin-locked on same cursor value. The increment will
 	   * fail if the cursor was already incremented.
 	   */
-	  ATOMIC_CAS_32 (&queue->consume_cursor, consume_cursor,
+	  ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor,
 			 consume_cursor + 1);
 	}
       else if (queue->entry_state[entry_index] == RESERVED_FOR_PRODUCE)
@@ -2409,21 +2411,86 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 
   /* Successfully reserved entry to consume */
 
-  /* Consume the data found in entry */
-  memcpy (data, queue->data + (entry_index * queue->data_size),
-	  queue->data_size);
+  /* Consume the data found in entry. If data argument is NULL, just remove
+   * the entry.
+   */
+  if (data != NULL)
+    {
+      memcpy (data, queue->data + (entry_index * queue->data_size),
+	      queue->data_size);
+    }
 
   /* Try to increment consume cursor. If this thread was preempted after
    * reserving the entry and before incrementing the cursor, another consumer
    * may have already incremented it.
    */
-  ATOMIC_CAS_32 (&queue->consume_cursor, consume_cursor, consume_cursor + 1);
+  ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor, consume_cursor + 1);
 
   /* Change state to READY_TO_PRODUCE */
   /* Nobody can race us on changing this value, so CAS is not necessary */
   assert (queue->entry_state[entry_index] == RESERVED_FOR_CONSUME);
   queue->entry_state[entry_index] = READY_FOR_PRODUCE;
 
+  return true;
+}
+
+/*
+ * lf_circular_queue_async_peek () - Peek function that return pointer to
+ *				     data found at current_consume cursor.
+ *				     Returns NULL if queue is empty.
+ *
+ * return     : NULL or pointer to data at consume cursor.
+ * queue (in) : Lock-free circular queue.
+ *
+ * NOTE: This function cannot work if there is concurrent access on queue.
+ */
+void *
+lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue)
+{
+  if (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (queue))
+    {
+      return NULL;
+    }
+  /* Return pointer to first entry in queue. */
+  return (queue->data +
+	  queue->data_size * (queue->consume_cursor % queue->capacity));
+}
+
+/*
+ * lf_circular_queue_async_push_ahead () - Function that pushes data before
+ *					   consume_cursor. consume_cursor is
+ *					   also updated.
+ *
+ * return     : True if data was successfully pushed, false otherwise.
+ * queue (in) : Lock-free circular queue.
+ * data (in)  : Pushed data.
+ *
+ * NOTE: This function cannot work if there is concurrent access on queue.
+ */
+bool
+lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue,
+				    void *data)
+{
+  int index;
+  assert (data != NULL);
+  if (LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (queue))
+    {
+      /* Cannot push data */
+      return false;
+    }
+  /* Push data before consume_cursor and decrement cursor. */
+  if (queue->consume_cursor == 0)
+    {
+      /* Increase cursors with one generation to avoid negative values. It is
+       * safe to do it, since this is asynchronous access.
+       */
+      queue->consume_cursor += queue->capacity;
+      queue->produce_cursor += queue->capacity;
+    }
+  index = (int) (--queue->consume_cursor % queue->capacity);
+  memcpy (queue->data + index * queue->data_size, data, queue->data_size);
+  /* Set pushed data READY_FOR_CONSUME. */
+  queue->entry_state[index] = READY_FOR_CONSUME;
   return true;
 }
 

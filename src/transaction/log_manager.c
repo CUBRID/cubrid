@@ -1472,9 +1472,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   log_Gl.mvcc_table.highest_completed_mvccid = log_Gl.hdr.mvcc_next_id;
   MVCCID_BACKWARD (log_Gl.mvcc_table.highest_completed_mvccid);
 
-  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
-  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
-  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
   /*
    * Was the database system shut down or was it involved in a crash ?
    */

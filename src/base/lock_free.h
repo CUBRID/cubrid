@@ -368,9 +368,13 @@ struct lock_free_circular_queue
   char *data;
   INT32 *entry_state;
   int data_size;
-  INT32 consume_cursor;
-  INT32 produce_cursor;
-  INT32 capacity;
+  /* Use INT64 for cursors domain to make sure domain is never consumed.
+   * Otherwise it will break the LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY and
+   * LOCK_FREE_CIRCULAR_QUEUE_IS_FULL checks.
+   */
+  INT64 consume_cursor;
+  INT64 produce_cursor;
+  INT64 capacity;
 };
 
 /* Macro's to inspect queue status and size. Note that their results is not
@@ -400,6 +404,9 @@ extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue,
 				       void *data);
 extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue,
 				       void *data);
+extern void *lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE *
+						queue, void *data);
 extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (INT32 capacity,
 							   int data_size);
 extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);

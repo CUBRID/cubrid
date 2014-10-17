@@ -1479,7 +1479,8 @@ enum log_repl_flush
    || (rcvindex) == RVVAC_LOG_BLOCK_SAVE)
 
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
-  ((rcvindex) == RVVAC_LOG_BLOCK_APPEND \
+  (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || \
+    (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
    && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
 
 typedef struct log_repl LOG_REPL_RECORD;

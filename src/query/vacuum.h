@@ -260,10 +260,10 @@ extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p,
 					   LOG_LSA * start_lsa,
 					   MVCCID oldest_mvccid,
 					   MVCCID newest_mvccid);
-extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p,
-					     bool ignore_duplicates);
+extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID vacuum_data_get_first_log_pageid (THREAD_ENTRY * thread_p);
-extern LOG_PAGEID vacuum_data_get_last_log_pageid (THREAD_ENTRY * thread_p);
+extern VACUUM_LOG_BLOCKID vacuum_data_get_last_blockid (THREAD_ENTRY *
+							thread_p);
 
 extern int vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
@@ -285,6 +285,15 @@ extern int vacuum_rv_redo_update_block_data (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
 extern int vacuum_rv_redo_save_blocks (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
+
+extern int vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
+				     bool is_chkpt_block_incomplete,
+				     VACUUM_LOG_BLOCKID chkpt_blockid,
+				     const LOG_LSA * chkpt_lsa,
+				     LOG_LSA * chkpt_block_first_lsa,
+				     LOG_LSA * chkpt_block_start_lsa,
+				     MVCCID chkpt_block_oldest_mvccid,
+				     MVCCID chkpt_block_newest_mvccid);
 
 extern void vacuum_set_vacuum_data_lsa (THREAD_ENTRY * thread_p,
 					LOG_LSA * vacuum_data_lsa,

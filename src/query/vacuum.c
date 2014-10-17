@@ -474,7 +474,8 @@ static int vacuum_process_log_record (THREAD_ENTRY * thread_p,
 				      char **undo_data_ptr,
 				      int *undo_data_size,
 				      struct log_vacuum_info *vacuum_info,
-				      bool * is_file_dropped);
+				      bool * is_file_dropped,
+				      bool stop_after_vacuum_info);
 static void vacuum_get_mvcc_delete_undo_vpid (THREAD_ENTRY * thread_p,
 					      struct log_data *log_datap,
 					      char *undo_data, VPID * vpid);
@@ -519,9 +520,10 @@ static int vacuum_compare_vpids (const void *a, const void *b);
 static int vacuum_add_page_to_buffer (VACUUM_WORKER * worker, int *n_pages,
 				      VPID vpid, bool * found);
 
-static void vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p,
-					  bool ignore_duplicates);
+static void vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p);
 static int vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p);
+static void vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY *
+							    thread_p);
 
 #if defined (SERVER_MODE)
 static int vacuum_assign_worker (THREAD_ENTRY * thread_p);
@@ -2259,7 +2261,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   vacuum_data_remove_finished_entries (thread_p);
 
   /* Append newly logged blocks at the end of the vacuum data table */
-  (void) vacuum_consume_buffer_log_blocks (thread_p, false);
+  (void) vacuum_consume_buffer_log_blocks (thread_p);
 
   /* Search for blocks ready to be vacuumed */
   for (i = 0;
@@ -2432,7 +2434,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data)
 	vacuum_process_log_record (thread_p, worker, &log_lsa, log_page_p,
 				   &log_record_data, &mvccid, &undo_data,
 				   &undo_data_size, &log_vacuum,
-				   &is_file_dropped);
+				   &is_file_dropped, false);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -3047,6 +3049,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p,
  * undo_data_size (out)		  : Undo data size.
  * is_file_dropped (out)	  : True if the file corresponding to log
  *				    entry was dropped.
+ * stop_after_vacuum_info (in)	  : True if only vacuum info must be obtained
+ *				    from log record.
  */
 static int
 vacuum_process_log_record (THREAD_ENTRY * thread_p,
@@ -3057,7 +3061,8 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
 			   MVCCID * mvccid,
 			   char **undo_data_ptr, int *undo_data_size,
 			   struct log_vacuum_info *vacuum_info,
-			   bool * is_file_dropped)
+			   bool * is_file_dropped,
+			   bool stop_after_vacuum_info)
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;
@@ -3071,10 +3076,16 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
   assert (log_lsa_p != NULL && log_page_p != NULL);
   assert (log_record_data != NULL);
   assert (mvccid != NULL);
-  assert (is_file_dropped != NULL);
+  assert (stop_after_vacuum_info || is_file_dropped != NULL);
+  assert (stop_after_vacuum_info || worker != NULL);
+  assert (stop_after_vacuum_info || undo_data_ptr != NULL);
+  assert (stop_after_vacuum_info || undo_data_size != NULL);
 
-  *undo_data_ptr = NULL;
-  *undo_data_size = 0;
+  if (!stop_after_vacuum_info)
+    {
+      *undo_data_ptr = NULL;
+      *undo_data_size = 0;
+    }
 
   LSA_SET_NULL (&vacuum_info->prev_mvcc_op_log_lsa);
   VFID_SET_NULL (&vacuum_info->vfid);
@@ -3141,6 +3152,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
+    }
+
+  if (stop_after_vacuum_info)
+    {
+      /* Vacuum info was already obtained. */
+      return NO_ERROR;
     }
 
   if (!VFID_ISNULL (&vacuum_info->vfid))
@@ -3545,7 +3562,7 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
     }
 
   /* Make sure that vacuum data is up to date before flushing it */
-  if (vacuum_consume_buffer_log_blocks (thread_p, false) != NO_ERROR)
+  if (vacuum_consume_buffer_log_blocks (thread_p) != NO_ERROR)
     {
       if (!is_vacuum_data_locked)
 	{
@@ -4120,16 +4137,9 @@ end:
  *	 manager, information on new blocks is appended into a lock-free
  *	 buffer. This information can be later obtained and appended to
  *	 vacuum data.
- *	 The function can be used under two circumstances:
- *	 1. During the auto-vacuum process, when expected blocks are in
- *	    ascending order.
- *	 2. During recovery after crash, when the lost buffer is rebuild.
- *	    Some blocks may already exist in the recovered vacuum data.
- *	    Duplicates are simply ignored.
  */
 int
-vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p,
-				  bool ignore_duplicates)
+vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 {
   int save_n_entries;
   VACUUM_DATA_ENTRY *entry = NULL;
@@ -4179,22 +4189,10 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p,
 
 	  if (VACUUM_DATA_ENTRY_BLOCKID (entry) <= vacuum_Data->last_blockid)
 	    {
-	      if (ignore_duplicates)
-		{
-		  /* Ignore duplicates */
-		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-				 "VACUUM: Recovery consume found a duplicate,"
-				 " skip consume.");
-		  continue;
-		}
-	      else
-		{
-		  /* Duplicates are not expected, something is wrong */
-		  assert (false);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-			  0);
-		  return ER_FAILED;
-		}
+	      /* Duplicates are not expected, something is wrong */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return ER_FAILED;
 	    }
 
 	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
@@ -4246,12 +4244,221 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p,
       /* Blocks are saved in chunks and the buffer may not be consumed
        * entirely in one iteration. Loop until the entire buffer is consumed.
        */
-      vacuum_log_blocks_to_recover (thread_p, ignore_duplicates);
+      vacuum_log_blocks_to_recover (thread_p);
     }
 
   VACUUM_VERIFY_VACUUM_DATA ();
 
   return NO_ERROR;
+}
+
+/*
+ * vacuum_rv_discard_recovered_blocks_from_buffer () - Called during recovery
+ *						       to discard blocks
+ *						       already recovered by
+ *						       vacuum data from the
+ *						       buffer.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ *
+ * NOTE: This is a recovery function.
+ */
+static void
+vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY * thread_p)
+{
+  VACUUM_DATA_ENTRY *entry = NULL;
+
+  assert (!LOG_ISRESTARTED ());
+
+  /* Discard all blocks before vacuum_Data->last_blockid. */
+  while (!LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer))
+    {
+      entry =
+	(VACUUM_DATA_ENTRY *)
+	lf_circular_queue_async_peek (vacuum_Block_data_buffer);
+      assert (entry != NULL);
+      if (entry->blockid > vacuum_Data->last_blockid)
+	{
+	  /* Stop discarding blocks. */
+	  break;
+	}
+      /* Remove from buffer. */
+      (void) lf_circular_queue_consume (vacuum_Block_data_buffer, NULL);
+    }
+}
+
+/*
+ * vacuum_rv_recover_buffer () - Recover block buffer to vacuum data.
+ *				 Checkpoint block may require additional log
+ *				 processing if it was not already recovered.
+ *
+ * return			  : Error code.
+ * thread_p (in)		  : Thread entry.
+ * is_chkpt_block_incomplete (in) : True if checkpoint block may be
+ *				    incompletely recovered.
+ * chkpt_blockid (in)		  : Checkpoint blockid.
+ * chkpt_lsa (in)		  : Checkpoint lsa.
+ * chkpt_block_first_lsa (in)	  : First recovered log record of checkpoint
+ *				    block.
+ * chkpt_block_start_lsa (in)	  : Start LSA of partially recovered
+ *				    checkpoint block.
+ * chkpt_block_oldest_mvccid (in) : Oldest MVCCID of partially recovered
+ *				    checkpoint block.
+ * chkpt_block_newest_mvccid (in) : Newest MVCCID of partially recovered
+ *				    checkpoint block.
+ */
+int
+vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
+			  bool is_chkpt_block_incomplete,
+			  VACUUM_LOG_BLOCKID chkpt_blockid,
+			  const LOG_LSA * chkpt_lsa,
+			  LOG_LSA * chkpt_block_first_lsa,
+			  LOG_LSA * chkpt_block_start_lsa,
+			  MVCCID chkpt_block_oldest_mvccid,
+			  MVCCID chkpt_block_newest_mvccid)
+{
+  int error_code = NO_ERROR;
+  char log_page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_LSA log_lsa;
+  LOG_RECORD_HEADER *log_rec_header = NULL;
+  LOG_PAGE *log_page_p = NULL;
+  LOG_PAGEID stop_at_pageid;
+  VACUUM_DATA_ENTRY chkpt_entry;
+  struct log_data dummy_log_data;
+  struct log_vacuum_info vacuum_info;
+  MVCCID mvccid;
+
+  assert (chkpt_lsa != NULL);
+  assert (chkpt_block_first_lsa != NULL);
+  assert (chkpt_block_start_lsa != NULL);
+  assert (!LOG_ISRESTARTED ());
+
+  /* Initialize log_page_p. */
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, MAX_ALIGNMENT);
+  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+  log_page_p->hdr.offset = NULL_OFFSET;
+
+  if (!is_chkpt_block_incomplete
+      || chkpt_blockid <= vacuum_Data->last_blockid)
+    {
+      /* Checkpoint_block was completely recovered. Just consume remaining 
+       * entries in buffer.
+       */
+      return vacuum_consume_buffer_log_blocks (thread_p);
+    }
+
+  /* Checkpoint block is not completely recovered. */
+  chkpt_entry.blockid = chkpt_blockid;
+  /* Set stop condition for block recovery. */
+  stop_at_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (chkpt_blockid);
+
+  if (LSA_ISNULL (chkpt_block_first_lsa))
+    {
+      /* No MVCC operations was found in checkpoint block after checkpoint
+       * LSA. Try to find one before checkpoint LSA.
+       */
+      LSA_SET_NULL (&chkpt_entry.start_lsa);
+      chkpt_entry.oldest_mvccid = MVCCID_NULL;
+      chkpt_entry.newest_mvccid = MVCCID_NULL;
+
+      /* Search checkpoint block for MVCC undo or undoredo log records. Stop
+       * when found one.
+       */
+      LSA_COPY (&log_lsa, chkpt_lsa);
+      while (log_lsa.pageid >= stop_at_pageid)
+	{
+	  if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
+	    {
+	      /* Get log page. */
+	      if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p)
+		  == NULL)
+		{
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				     "vacuum_rv_recover_buffer");
+		  return ER_FAILED;
+		}
+	    }
+	  log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
+	  if (log_rec_header->type == LOG_MVCC_UNDO_DATA
+	      || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
+	      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+	    {
+	      LSA_COPY (chkpt_block_first_lsa, &log_lsa);
+	      LSA_COPY (&chkpt_entry.start_lsa, &log_lsa);
+	      break;
+	    }
+	  LSA_COPY (&log_lsa, &log_rec_header->back_lsa);
+	}
+      if (LSA_ISNULL (chkpt_block_first_lsa))
+	{
+	  /* Nothing to recover from checkpoint block. No MVCC op log records
+	   * have been found.
+	   */
+	  return NO_ERROR;
+	}
+    }
+  else
+    {
+      /* Start processing log from chkpt_block_first_lsa. Initialize the
+       * block data with already recovered data.
+       */
+      assert (!LSA_ISNULL (chkpt_block_start_lsa));
+      assert (MVCCID_IS_VALID (chkpt_block_oldest_mvccid));
+      assert (MVCCID_IS_VALID (chkpt_block_newest_mvccid));
+
+      LSA_COPY (&chkpt_entry.start_lsa, chkpt_block_start_lsa);
+      chkpt_entry.oldest_mvccid = chkpt_block_oldest_mvccid;
+      chkpt_entry.newest_mvccid = chkpt_block_newest_mvccid;
+    }
+
+  /* We have at least one MVCC op log record. Check all remaining block
+   * records and update block data.
+   */
+  LSA_COPY (&log_lsa, chkpt_block_first_lsa);
+  while (log_lsa.pageid >= stop_at_pageid)
+    {
+      if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
+	{
+	  if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p) == NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				 "vacuum_rv_recover_buffer");
+	      return ER_FAILED;
+	    }
+	}
+      error_code =
+	vacuum_process_log_record (thread_p, NULL, &log_lsa, log_page_p,
+				   &dummy_log_data, &mvccid, NULL, NULL,
+				   &vacuum_info, NULL, true);
+      if (chkpt_entry.oldest_mvccid == MVCCID_NULL
+	  || mvcc_id_precedes (mvccid, chkpt_entry.oldest_mvccid))
+	{
+	  chkpt_entry.oldest_mvccid = mvccid;
+	}
+      if (chkpt_entry.newest_mvccid == MVCCID_NULL
+	  || mvcc_id_precedes (chkpt_entry.newest_mvccid, mvccid))
+	{
+	  chkpt_entry.newest_mvccid = mvccid;
+	}
+      LSA_COPY (&log_lsa, &vacuum_info.prev_mvcc_op_log_lsa);
+    }
+  /* Add recovered data in buffer before current entries (to keep entries
+   * ordered by blockid).
+   */
+  if (!lf_circular_queue_async_push_ahead (vacuum_Block_data_buffer,
+					   &chkpt_entry))
+    {
+      /* Full buffer */
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA
+		     | VACUUM_ER_LOG_RECOVERY,
+		     "VACUUM ERROR: Couldn't produce checkpoint block. "
+		     "Block buffer is full.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "vacuum_rv_recover_buffer");
+      return ER_FAILED;
+    }
+  return vacuum_consume_buffer_log_blocks (thread_p);
 }
 
 /*
@@ -4261,10 +4468,9 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p,
  *
  * return		 : Void.
  * thread_p (in)	 : Thread entry.
- * ignore_duplicate (in) : Ignore duplicates (possible during recovery).
  */
 static void
-vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p, bool ignore_duplicate)
+vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p)
 {
 #define VACUUM_LOG_BLOCKS_TO_RECOVER_REDO_CRUMBS_MAX 2
 
@@ -4288,20 +4494,11 @@ vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p, bool ignore_duplicate)
 	}
       if (recover_blocks[n_blocks].blockid <= vacuum_Data->last_blockid)
 	{
-	  /* Duplicate */
-	  if (ignore_duplicate)
-	    {
-	      /* Skip it */
-	      continue;
-	    }
-	  else
-	    {
-	      /* Duplicates are not expected */
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
-			     "VACUUM ERROR: Duplicate block ID.");
-	      assert_release (false);
-	      return;
-	    }
+	  /* Duplicates are not expected */
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
+			 "VACUUM ERROR: Duplicate block ID.");
+	  assert_release (false);
+	  return;
 	}
 
       /* Update last_blockid since we still need it to skip duplicate objects
@@ -4398,6 +4595,8 @@ vacuum_rv_redo_save_blocks (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   /* Get last entry blockid and save to vacuum_Data->last_blockid. */
   entry = (VACUUM_DATA_ENTRY *) (rcv->data + offset);
   vacuum_Data->last_blockid = VACUUM_DATA_ENTRY_BLOCKID (entry);
+  /* Discard recovered blocks from buffer. */
+  vacuum_rv_discard_recovered_blocks_from_buffer (thread_p);
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
@@ -4726,9 +4925,7 @@ vacuum_data_get_first_log_pageid (THREAD_ENTRY * thread_p)
 }
 
 /*
- * vacuum_data_get_last_log_pageid () - Get the last pageid in the last block
- *					found in vacuum data. Used for
- *					recovery.
+ * vacuum_data_get_last_blockid () - Get the last block ID from vacuum data.
  *
  * return	 : The page identifier for the last log page which is has
  *		   the statistics stored in vacuum data.
@@ -4736,18 +4933,18 @@ vacuum_data_get_first_log_pageid (THREAD_ENTRY * thread_p)
  *
  * NOTE: Used for recovery (to know where to start the vacuum data recovery).
  */
-LOG_PAGEID
-vacuum_data_get_last_log_pageid (THREAD_ENTRY * thread_p)
+VACUUM_LOG_BLOCKID
+vacuum_data_get_last_blockid (THREAD_ENTRY * thread_p)
 {
   /* Return last pageid from last block in vacuum data table */
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
-      return NULL_PAGEID;
+      return VACUUM_NULL_LOG_BLOCKID;
     }
 
   assert (vacuum_Data != NULL);
 
-  return VACUUM_LAST_LOG_PAGEID_IN_BLOCK (vacuum_Data->last_blockid);
+  return vacuum_Data->last_blockid;
 }
 
 /*
@@ -4982,6 +5179,8 @@ vacuum_rv_redo_append_block_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vacuum_Data->last_blockid =
     VACUUM_DATA_ENTRY_BLOCKID (VACUUM_DATA_GET_ENTRY
 			       (vacuum_Data->n_table_entries - 1));
+  /* Discard blocks already recovered from blocks buffer. */
+  vacuum_rv_discard_recovered_blocks_from_buffer (thread_p);
 
   if (data_offset < rcv->length)
     {
