@@ -4532,7 +4532,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	  assert_release (p->pos_descr.pos_no >= 0);
 	  assert_release (p->pos_descr.dom != NULL);
 #if 0
-          /* Temporarily disable assert until we fix the regression cases. */
+	  /* Temporarily disable assert until we fix the regression cases. */
 	  assert_release (p->pos_descr.dom->type->id != DB_TYPE_VARIABLE);
 #endif
 
@@ -4753,6 +4753,8 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
       qfile_close_scan (thread_p, &t_scan_id);
       qfile_clear_sort_info (&info);
 #endif /* not SortCache */
+      qfile_close_list (thread_p, list_id_p);
+      qfile_destroy_list (thread_p, list_id_p);
       qfile_close_and_free_list_file (thread_p, srlist_id);
       return NULL;
     }
