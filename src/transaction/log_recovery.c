@@ -4540,7 +4540,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	      tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
-	      if (tran_index != NULL_TRAN_INDEX)
+	      if (tran_index != NULL_TRAN_INDEX
+		  && tran_index != LOG_SYSTEM_TRAN_INDEX)
 		{
 #if !defined (NDEBUG)
 		  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
