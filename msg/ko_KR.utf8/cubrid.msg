@@ -1236,7 +1236,8 @@ $ LOADDB
 1167 Comment string cannot have more than 1024 bytes.
 1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
 1169 Partition key attributes must be present in the index key.
-1170 마지막 에러
+1170 Failed to flush replication items (error code : %1$d).
+1171 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

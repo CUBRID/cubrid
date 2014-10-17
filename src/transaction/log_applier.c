@@ -3904,70 +3904,45 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
       /* offset size */
       offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
 
-      if (rcvindex == RVHF_MVCC_INSERT && record->type != REC_BIGONE)
+      /* in case of MVCC, repid_bits contains MVCC flags */
+      repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
+
+      mvcc_flags =
+	(char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+      if (mvcc_flags == 0)
 	{
-	  /*
-	   * MVCC insert redo log only contains repid_flags and chn.
-	   * Do not skip other MVCC header info even though the flags
-	   * says that they exist. (see heap_mvcc_log_insert())
-	   */
-
-	  /* in case of MVCC, repid_bits contains MVCC flags */
-	  repid_bits = or_get_int (buf, &rc);
-
+	  /* non mvcc header */
 	  /* skip chn */
 	  (void) or_advance (buf, OR_INT_SIZE);
-
-	  mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
-			       OR_MVCC_FLAG_MASK);
-	  assert (!(mvcc_flags & (OR_MVCC_FLAG_VALID_DELID
-				  | OR_MVCC_FLAG_VALID_LONG_CHN
-				  | OR_MVCC_FLAG_VALID_NEXT_VERSION)));
-	  assert (mvcc_flags & OR_MVCC_FLAG_VALID_INSID);
 	}
       else
 	{
-	  /* in case of MVCC, repid_bits contains MVCC flags */
-	  repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
-
-	  mvcc_flags =
-	    (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
-		    OR_MVCC_FLAG_MASK);
-	  if (mvcc_flags == 0)
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	    {
-	      /* non mvcc header */
-	      /* skip chn */
-	      (void) or_advance (buf, OR_INT_SIZE);
+	      /* skip insert id */
+	      (void) or_advance (buf, OR_MVCCID_SIZE);
+	    }
+
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+	    {
+	      /* skip delete id */
+	      (void) or_advance (buf, OR_MVCCID_SIZE);
 	    }
 	  else
 	    {
-	      if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
+	      /* skip chn */
+	      (void) or_advance (buf, OR_INT_SIZE);
+	      if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
 		{
-		  /* skip insert id */
-		  (void) or_advance (buf, OR_MVCCID_SIZE);
-		}
-
-	      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-		{
-		  /* skip delete id */
-		  (void) or_advance (buf, OR_MVCCID_SIZE);
-		}
-	      else
-		{
-		  /* skip chn */
+		  /* skip 4 bytes - fixed MVCC header size */
 		  (void) or_advance (buf, OR_INT_SIZE);
-		  if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
-		    {
-		      /* skip 4 bytes - fixed MVCC header size */
-		      (void) or_advance (buf, OR_INT_SIZE);
-		    }
 		}
+	    }
 
-	      if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
-		{
-		  /* skip next version */
-		  (void) or_advance (buf, OR_OID_SIZE);
-		}
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+	    {
+	      /* skip next version */
+	      (void) or_advance (buf, OR_OID_SIZE);
 	    }
 	}
 
@@ -4936,6 +4911,11 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
 	}
     }
 
+  if (*rcvindex == RVHF_MVCC_INSERT && recdes->type != REC_BIGONE)
+    {
+      la_make_room_for_mvcc_insid (recdes);
+    }
+
   return error;
 }
 
@@ -5251,11 +5231,6 @@ la_apply_update_log (LA_ITEM * item)
       goto end;
     }
 
-  if (rcvindex == RVHF_MVCC_INSERT && recdes.type != REC_BIGONE)
-    {
-      la_make_room_for_mvcc_insid (&recdes);
-    }
-
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
@@ -5448,11 +5423,6 @@ la_apply_insert_log (LA_ITEM * item)
       goto end;
     }
 
-  if (rcvindex == RVHF_MVCC_INSERT && recdes.type != REC_BIGONE)
-    {
-      la_make_room_for_mvcc_insid (&recdes);
-    }
-
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
@@ -5478,6 +5448,13 @@ la_apply_insert_log (LA_ITEM * item)
 
       do
 	{
+	  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+	  if (mclass == NULL)
+	    {
+	      sql_logging_failed = true;
+	      break;
+	    }
+
 	  AU_SAVE_AND_DISABLE (au_save);
 
 	  inst_tp = dbt_create_object_internal (class_obj);
