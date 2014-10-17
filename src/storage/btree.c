@@ -12218,6 +12218,8 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
 start_point:
 
+  next_page_flag = false;
+
   if (search_without_locking == false)
     {
       curr_key_lock_commit_duration = false;
@@ -12830,6 +12832,7 @@ start_point:
 		    }
 
 		  OID_SET_NULL (&N_oid);
+		  next_page_flag = false;
 		  goto curr_key_locking;
 		}
 	    }
@@ -12930,6 +12933,7 @@ start_point:
 		{
 		  pgbuf_unfix_and_init (thread_p, N);
 		}
+	      next_page_flag = false;
 	      goto curr_key_locking;
 	    }
 	}
@@ -13030,7 +13034,6 @@ start_point:
       if (!btree_leaf_lsa_eq (thread_p, &saved_plsa, temp_lsa))
 	{
 	  pgbuf_unfix_and_init (thread_p, P);
-	  next_page_flag = false;
 	  goto start_point;
 	}
 
@@ -13053,7 +13056,6 @@ start_point:
 	    {
 	      pgbuf_unfix_and_init (thread_p, P);
 	      pgbuf_unfix_and_init (thread_p, N);
-	      next_page_flag = false;
 	      goto start_point;
 	    }
 
@@ -13073,6 +13075,8 @@ start_point:
     }
 
 curr_key_locking:
+  assert (next_page_flag == false && N == NULL);
+
   if (!curr_key_lock_commit_duration || tran_isolation == TRAN_SERIALIZABLE)
     {
       assert (p_slot_id > 0);
@@ -13235,6 +13239,8 @@ curr_key_locking:
     }
 
 curr_key_lock_consistency:
+  assert (next_page_flag == false && N == NULL);
+
   if (curr_key_lock_commit_duration == true && delete_first_key_oid)
     {
       assert (search_without_locking == false);
@@ -18609,6 +18615,9 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
 start_point:
+
+  next_page_flag = false;
+
   if (next_lock_flag == true || curr_lock_flag == true
       || retry_btree_no_space > 0)
     {
@@ -19078,6 +19087,7 @@ start_point:
 	  /* no need to lock next key during this call */
 	  next_key_granted_mode = NULL_LOCK;
 	  OID_SET_NULL (&N_oid);
+	  next_page_flag = false;
 	  goto curr_key_locking;
 	}
 
@@ -19183,6 +19193,7 @@ start_point:
 		  pgbuf_unfix_and_init (thread_p, N);
 		}
 
+	      next_page_flag = false;
 	      goto curr_key_locking;
 	    }
 	}
@@ -19284,7 +19295,6 @@ start_point:
       if (!btree_leaf_lsa_eq (thread_p, &saved_plsa, temp_lsa))
 	{
 	  pgbuf_unfix_and_init (thread_p, P);
-	  next_page_flag = false;
 
 	  assert (next_lock_flag == true || curr_lock_flag == true);
 	  goto start_point;
@@ -19309,7 +19319,6 @@ start_point:
 	    {
 	      pgbuf_unfix_and_init (thread_p, P);
 	      pgbuf_unfix_and_init (thread_p, N);
-	      next_page_flag = false;
 
 	      assert (next_lock_flag == true || curr_lock_flag == true);
 	      goto start_point;
@@ -19333,6 +19342,7 @@ start_point:
     }
 
 curr_key_locking:
+  assert (next_page_flag == false && N == NULL);
   assert (!mvcc_Enabled || BTREE_IS_UNIQUE (btid_int.unique_pk));
 
   if (mvcc_Enabled)
@@ -23710,6 +23720,8 @@ start_point:
   tmp_bts.C_page = bts->C_page;
   tmp_bts.slot_id = bts->slot_id;
 
+  next_page_flag = false;
+
   ret_val =
     btree_find_next_index_record_holding_current (thread_p, &tmp_bts,
 						  &peek_rec);
@@ -23918,7 +23930,6 @@ start_point:
       if (!btree_leaf_lsa_eq (thread_p, &saved_nlsa, temp_lsa))
 	{
 	  pgbuf_unfix_and_init (thread_p, next_page);
-	  next_page_flag = false;
 	  goto start_point;
 	}
 
