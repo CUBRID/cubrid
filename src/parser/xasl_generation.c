@@ -27118,7 +27118,8 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser,
 SORT_NULLS
 pt_to_null_ordering (PT_NODE * sort_spec)
 {
-  assert_release (sort_spec != NULL && sort_spec->node_type == PT_SORT_SPEC);
+  assert_release (sort_spec != NULL);
+  assert_release (sort_spec->node_type == PT_SORT_SPEC);
 
   switch (sort_spec->info.sort_spec.nulls_first_or_last)
     {

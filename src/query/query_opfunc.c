@@ -9605,6 +9605,9 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p,
 {
   FUNCTION_TYPE *funcp;
 
+  /* should sync with fetch_peek_dbval ()
+   */
+
   funcp = function_p->value.funcp;
   /* clear any value from a previous iteration */
   pr_clear_value (funcp->value);
@@ -11166,7 +11169,7 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p,
  *   num_regu		: number of regu vars actually found in list
  */
 
-static int
+int
 qdata_regu_list_to_regu_array (FUNCTION_TYPE * function_p,
 			       const int array_size,
 			       REGU_VARIABLE * regu_array[], int *num_regu)
@@ -11286,6 +11289,9 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
   DB_TYPE index_type;
   DB_BIGINT idx = 0;
   DB_VALUE *operand_value = NULL;
+
+  /* should sync with fetch_peek_dbval ()
+   */
 
   assert (function_p);
   assert (function_p->value);
@@ -12479,7 +12485,8 @@ qdata_tuple_to_values_array (THREAD_ENTRY * thread_p,
   DB_VALUE *vals;
   int error = NO_ERROR, i;
 
-  assert_release (tuple != NULL && values != NULL);
+  assert_release (tuple != NULL);
+  assert_release (values != NULL);
 
   vals = db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
   if (vals == NULL)

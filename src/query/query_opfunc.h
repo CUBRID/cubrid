@@ -322,7 +322,10 @@ extern int qdata_divmod_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
 
 extern int qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 			   TP_DOMAIN * domain_p);
-
+extern int qdata_regu_list_to_regu_array (FUNCTION_TYPE * function_p,
+					  const int array_size,
+					  REGU_VARIABLE * regu_array[],
+					  int *num_regu);
 extern int qdata_get_cardinality (THREAD_ENTRY * thread_p,
 				  DB_VALUE * db_class_name,
 				  DB_VALUE * db_index_name,

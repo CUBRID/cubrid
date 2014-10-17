@@ -605,10 +605,12 @@ showstmt_get_metadata (SHOWSTMT_TYPE show_type)
 {
   const SHOWSTMT_METADATA *show_meta = NULL;
 
-  assert_release (SHOWSTMT_START < show_type && show_type < SHOWSTMT_END);
+  assert_release (SHOWSTMT_START < show_type);
+  assert_release (show_type < SHOWSTMT_END);
 
   show_meta = show_Metas[show_type];
-  assert_release (show_meta != NULL && show_meta->show_type == show_type);
+  assert_release (show_meta != NULL);
+  assert_release (show_meta->show_type == show_type);
   return show_meta;
 }
 

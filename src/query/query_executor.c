@@ -30139,7 +30139,8 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred,
   int cmp;
   DB_VALUE left_bound, right_bound;
 
-  assert_release (pred != NULL && ubound != NULL);
+  assert_release (pred != NULL);
+  assert_release (ubound != NULL);
 
   DB_MAKE_NULL (ubound);
   DB_MAKE_NULL (&left_bound);

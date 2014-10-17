@@ -4214,6 +4214,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
   int error = NO_ERROR;
   REGU_VALUE_LIST *reguval_list = NULL;
   DB_TYPE head_type, cur_type;
+  FUNCTION_TYPE *funcp = NULL;
 
   switch (regu_var->type)
     {
@@ -4312,13 +4313,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       *peek_dbval = (DB_VALUE *) vd->dbval_ptr + regu_var->value.val_pos;
       break;
 
-    case TYPE_CONSTANT:	/* fetch constant value */
-#if 1				/* TODO */
+    case TYPE_CONSTANT:	/* fetch constant-column value */
       /* is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
 					REGU_VARIABLE_FETCH_ALL_CONST));
-#endif
+
       /* execute linked query */
       EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
       if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
@@ -4329,9 +4329,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case TYPE_ORDERBY_NUM:
-      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
+      /* is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
-					REGU_VARIABLE_FETCH_NOT_CONST));
+					REGU_VARIABLE_FETCH_ALL_CONST));
       *peek_dbval = regu_var->value.dbvalptr;
       break;
 
@@ -4343,12 +4344,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case TYPE_REGUVAL_LIST:
-#if 1				/* TODO */
       /* is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
 					REGU_VARIABLE_FETCH_ALL_CONST));
-#endif
       reguval_list = regu_var->value.reguval_list;
       assert (reguval_list != NULL);
       assert (reguval_list->current_value != NULL);
@@ -4388,18 +4387,224 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case TYPE_FUNC:		/* fetch function value */
-#if 1				/* TODO */
-      /* is not constant */
-      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
+	{
+	  funcp = regu_var->value.funcp;
+	  assert (funcp != NULL);
+
+	  *peek_dbval = funcp->value;
+
+	  return NO_ERROR;
+	}
+
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
 					REGU_VARIABLE_FETCH_ALL_CONST));
-#endif
+
       error = qdata_evaluate_function (thread_p, regu_var, vd, obj_oid, tpl);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
-      *peek_dbval = regu_var->value.funcp->value;
+
+      funcp = regu_var->value.funcp;
+      assert (funcp != NULL);
+
+      *peek_dbval = funcp->value;
+
+      /* check for the first time */
+      if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
+	  && !REGU_VARIABLE_IS_FLAGED (regu_var,
+				       REGU_VARIABLE_FETCH_NOT_CONST))
+	{
+	  int not_const = 0;
+
+	  switch (funcp->ftype)
+	    {
+	    case F_INSERT_SUBSTRING:
+	      /* should sync with qdata_insert_substring_function ()
+	       */
+	      {
+		REGU_VARIABLE *regu_array[NUM_F_INSERT_SUBSTRING_ARGS];
+		int i;
+		int num_regu = 0;
+
+		/* initialize the argument array */
+		for (i = 0; i < NUM_F_INSERT_SUBSTRING_ARGS; i++)
+		  {
+		    regu_array[i] = NULL;
+		  }
+
+		error = qdata_regu_list_to_regu_array (funcp,
+						       NUM_F_INSERT_SUBSTRING_ARGS,
+						       regu_array, &num_regu);
+		if (num_regu != NUM_F_INSERT_SUBSTRING_ARGS)
+		  {
+		    assert (false);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_QPROC_GENERIC_FUNCTION_FAILURE, 0);
+		    goto exit_on_error;
+		  }
+		if (error != NO_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
+
+		for (i = 0; i < NUM_F_INSERT_SUBSTRING_ARGS; i++)
+		  {
+		    if (!REGU_VARIABLE_IS_FLAGED (regu_array[i],
+						  REGU_VARIABLE_FETCH_ALL_CONST))
+		      {
+			not_const++;
+			break;	/* exit for-loop */
+		      }
+		  }		/* for (i = 0; ...) */
+	      }
+	      break;
+
+	    case F_ELT:
+	      /* should sync with qdata_elt ()
+	       */
+	      {
+		REGU_VARIABLE_LIST operand;
+		DB_VALUE *index = NULL;
+		DB_TYPE index_type;
+		DB_BIGINT idx = 0;
+		bool is_null_elt = false;
+
+		assert (funcp->operand != NULL);
+		if (!REGU_VARIABLE_IS_FLAGED (&funcp->operand->value,
+					      REGU_VARIABLE_FETCH_ALL_CONST))
+		  {
+		    not_const++;
+		  }
+		else
+		  {
+		    error =
+		      fetch_peek_dbval (thread_p, &funcp->operand->value, vd,
+					NULL, obj_oid, tpl, &index);
+		    if (error != NO_ERROR)
+		      {
+			goto exit_on_error;
+		      }
+
+		    index_type = DB_VALUE_DOMAIN_TYPE (index);
+
+		    switch (index_type)
+		      {
+		      case DB_TYPE_SMALLINT:
+			idx = DB_GET_SMALLINT (index);
+			break;
+		      case DB_TYPE_INTEGER:
+			idx = DB_GET_INTEGER (index);
+			break;
+		      case DB_TYPE_BIGINT:
+			idx = DB_GET_BIGINT (index);
+			break;
+		      case DB_TYPE_NULL:
+			is_null_elt = true;
+			break;
+		      default:
+			assert (false);	/* is impossible */
+			error = ER_QPROC_INVALID_DATATYPE;
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+			goto exit_on_error;
+		      }
+
+		    if (!is_null_elt)
+		      {
+			if (idx <= 0)
+			  {
+			    /* index is 0 or is negative */
+			    is_null_elt = true;
+			  }
+			else
+			  {
+			    idx--;
+			    operand = funcp->operand->next;
+
+			    while (idx > 0 && operand != NULL)
+			      {
+				operand = operand->next;
+				idx--;
+			      }
+
+			    if (operand == NULL)
+			      {
+				/* index greater than number of arguments */
+				is_null_elt = true;
+			      }
+			    else
+			      {
+				assert (operand != NULL);
+				if (!REGU_VARIABLE_IS_FLAGED
+				    (&(operand->value),
+				     REGU_VARIABLE_FETCH_ALL_CONST))
+				  {
+				    not_const++;
+				  }
+			      }	/* operand != NULL */
+			  }
+		      }		/* if (!is_null_elt) */
+		  }		/* else */
+
+#if !defined(NDEBUG)
+		if (is_null_elt)
+		  {
+		    assert (not_const == 0);
+		  }
+#endif
+	      }
+	      break;
+
+	    default:
+	      not_const++;	/* is not constant */
+	      break;
+	    }
+
+	  if (not_const == 0)
+	    {
+	      REGU_VARIABLE_SET_FLAG (regu_var,
+				      REGU_VARIABLE_FETCH_ALL_CONST);
+	      assert (!REGU_VARIABLE_IS_FLAGED
+		      (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
+	    }
+	  else
+	    {
+	      REGU_VARIABLE_SET_FLAG (regu_var,
+				      REGU_VARIABLE_FETCH_NOT_CONST);
+	      assert (!REGU_VARIABLE_IS_FLAGED
+		      (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+	    }
+	}
+
+#if !defined(NDEBUG)
+      switch (funcp->ftype)
+	{
+	case F_SET:
+	case F_MULTISET:
+	case F_SEQUENCE:
+	case F_VID:
+	case F_TABLE_SET:
+	case F_TABLE_MULTISET:
+	case F_TABLE_SEQUENCE:
+	case F_GENERIC:
+	case F_CLASS_OF:
+	  /* is not constant */
+	  assert (!REGU_VARIABLE_IS_FLAGED (regu_var,
+					    REGU_VARIABLE_FETCH_ALL_CONST));
+	  assert (REGU_VARIABLE_IS_FLAGED (regu_var,
+					   REGU_VARIABLE_FETCH_NOT_CONST));
+	  break;
+
+	case F_INSERT_SUBSTRING:
+	case F_ELT:
+	  break;
+
+	default:
+	  assert (false);	/* is impossible */
+	  break;
+	}
+#endif
       break;
 
     default:
