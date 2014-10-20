@@ -2789,6 +2789,13 @@ vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info)
   if (worker_info->tdes != NULL)
     {
       logtb_clear_tdes (thread_p, worker_info->tdes);
+      if (worker_info->tdes->topops.max != 0)
+	{
+	  free_and_init (worker_info->tdes->topops.stack);
+	  worker_info->tdes->topops.max = 0;
+	  worker_info->tdes->topops.last = -1;
+	}
+
       free_and_init (worker_info->tdes);
     }
 }
