@@ -24113,6 +24113,10 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid,
   /* Get key */
   db_value_clear (key_info[BTREE_KEY_INFO_KEY]);
   db_value_clone (&bts->cur_key, key_info[BTREE_KEY_INFO_KEY]);
+  if (bts->clear_cur_key)
+    {
+      btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
+    }
 
   /* Get overflow key and overflow oids */
   db_value_clear (key_info[BTREE_KEY_INFO_OVERFLOW_KEY]);
