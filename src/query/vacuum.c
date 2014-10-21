@@ -188,6 +188,11 @@ pthread_mutex_t vacuum_Data_mutex;
  */
 bool vacuum_Master_is_process_log_phase = false;
 
+/* Oldest MVCCID considered active by a running transaction.
+ * Considered as threshold by vacuum workers.
+ */
+MVCCID vacuum_Global_oldest_active_mvccid;
+
 /* Size of vacuum data header (all data that precedes log block data table) */
 #define VACUUM_DATA_HEADER_SIZE \
   ((int) offsetof (VACUUM_DATA, vacuum_data_table))
@@ -496,8 +501,6 @@ static void vacuum_log_append_block_data (THREAD_ENTRY * thread_p,
 					  int n_new_entries,
 					  LOG_LSA * first_blocks_to_recover,
 					  int n_first_blocks_to_recover);
-static void vacuum_log_update_block_data (THREAD_ENTRY * thread_p,
-					  VACUUM_DATA_ENTRY * block_datad);
 
 static int vacuum_compare_dropped_files (const void *a, const void *b);
 static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid,
@@ -2230,12 +2233,14 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   int i;
   VACUUM_DATA_ENTRY *entry = NULL;
   VACUUM_LOG_BLOCKID blockid;
-  MVCCID global_oldest_mvccid;
 #if defined (SERVER_MODE)
   int n_wakeup_workers;
   int n_available_workers;
   int n_jobs;
 #endif
+
+  vacuum_Global_oldest_active_mvccid =
+    logtb_get_lowest_active_mvccid (thread_p);
 
   if (vacuum_Data == NULL
       || (vacuum_Data->n_table_entries <= 0
@@ -2252,8 +2257,6 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
       return;
     }
 
-  global_oldest_mvccid = logtb_get_lowest_active_mvccid (thread_p);
-
   /* Lock vacuum data */
   VACUUM_LOCK_DATA ();
 
@@ -2263,13 +2266,17 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   /* Append newly logged blocks at the end of the vacuum data table */
   (void) vacuum_consume_buffer_log_blocks (thread_p);
 
+  /* Update oldest MVCCID */
+  vacuum_update_oldest_mvccid (thread_p);
+
   /* Search for blocks ready to be vacuumed */
   for (i = 0;
        i < vacuum_Data->n_table_entries
        && !LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (vacuum_Job_queue); i++)
     {
       entry = VACUUM_DATA_GET_ENTRY (i);
-      if (!VACUUM_LOG_BLOCK_CAN_VACUUM (entry, global_oldest_mvccid))
+      if (!VACUUM_LOG_BLOCK_CAN_VACUUM (entry,
+					vacuum_Global_oldest_active_mvccid))
 	{
 	  /* This block cannot be vacuumed */
 	  continue;
@@ -2299,7 +2306,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   /* Wakeup threads to start working on current threads. Try not to wake up
    * more workers than necessary.
    */
-  n_jobs = LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Job_queue);
+  n_jobs = (int) LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Job_queue);
   n_available_workers =
     prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT)
     - vacuum_Running_workers_count;
@@ -2343,7 +2350,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data)
   BTID sys_btid;
   DB_VALUE key_value;
   OID class_oid, oid;
-  MVCCID threshold_mvccid = logtb_get_lowest_active_mvccid (thread_p);
+  MVCCID threshold_mvccid = vacuum_Global_oldest_active_mvccid;
   int unique;
   int n_pages = 0;
   MVCC_BTREE_OP_ARGUMENTS mvcc_args;
@@ -3927,9 +3934,6 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
  * thread_p (in)	  : Thread entry.
  * n_removed_entries (in) : Number of entries to be removed.
  * removed_entries (in)	  : Indexes of entries to be removed.
- *
- * NOTE: Another task besides removing entries from vacuum data is to update
- *	 the oldest vacuum data MVCCID.
  */
 static void
 vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
@@ -3940,7 +3944,6 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
   int mem_size = 0, temp_buffer_mem_size = sizeof (temp_buffer);
   int i, table_index, j;
   int start_index = 0, n_successive = 1;
-  bool update_oldest_mvccid = (vacuum_Data->oldest_mvccid == MVCCID_NULL);
 
   if (n_removed_entries == 0)
     {
@@ -3965,13 +3968,6 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
 
       /* Get entry at table_index */
       entry = VACUUM_DATA_GET_ENTRY (table_index);
-
-      /* If entry oldest MVCCID is equal to vacuum data oldest MVCCID, this
-       * may need to be updated.
-       */
-      update_oldest_mvccid = (update_oldest_mvccid
-			      || (vacuum_Data->oldest_mvccid ==
-				  VACUUM_DATA_ENTRY_OLDEST_MVCCID (entry)));
 
       if (i < n_removed_entries - 1
 	  && table_index == removed_entries[i + 1] + 1)
@@ -4011,7 +4007,8 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
 	}
 
       /* Compute the size of memory data being moved */
-      mem_size = (vacuum_Data->n_table_entries - (start_index + n_successive))
+      mem_size =
+	(vacuum_Data->n_table_entries - (start_index + n_successive))
 	* sizeof (VACUUM_DATA_ENTRY);
 
       assert (mem_size >= 0);
@@ -4049,11 +4046,6 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
 		 (long long int) vacuum_Data->crt_lsa.pageid,
 		 (int) vacuum_Data->crt_lsa.offset,
 		 vacuum_Data->n_table_entries);
-
-  if (update_oldest_mvccid)
-    {
-      vacuum_update_oldest_mvccid (thread_p);
-    }
 
   VACUUM_VERIFY_VACUUM_DATA ();
 }
@@ -4228,12 +4220,6 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
       if (save_n_entries < vacuum_Data->n_table_entries)
 	{
-	  if (save_n_entries == 0)
-	    {
-	      /* Update oldest vacuum data MVCCID */
-	      vacuum_update_oldest_mvccid (thread_p);
-	    }
-
 	  /* New blocks have been appended and must be logged */
 	  vacuum_log_append_block_data (thread_p,
 					VACUUM_DATA_GET_ENTRY
@@ -4291,14 +4277,25 @@ vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY * thread_p)
 	  break;
 	}
       /* Remove from buffer. */
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
+		     "VACUUM: Discard recovered block from buffer - "
+		     "blockid = %lld, start_lsa = (%lld, %d), "
+		     "oldest_mvccid = %lld, newest_mvccid = %lld.",
+		     entry->blockid, (long long int) entry->start_lsa.pageid,
+		     (int) entry->start_lsa.offset, entry->oldest_mvccid,
+		     entry->newest_mvccid);
       (void) lf_circular_queue_consume (vacuum_Block_data_buffer, NULL);
     }
 }
 
 /*
- * vacuum_rv_recover_buffer () - Recover block buffer to vacuum data.
- *				 Checkpoint block may require additional log
- *				 processing if it was not already recovered.
+ * vacuum_rv_finish_vacuum_data_recovery () - 1. Recover block buffer to
+ *						 vacuum data. Checkpoint block
+ *						 may require additional log
+ *						 processing if it was not
+ *						 already recovered.
+ *					      2. Update vacuum data oldest
+ *						 MVCCID.
  *
  * return			  : Error code.
  * thread_p (in)		  : Thread entry.
@@ -4316,14 +4313,14 @@ vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY * thread_p)
  *				    checkpoint block.
  */
 int
-vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
-			  bool is_chkpt_block_incomplete,
-			  VACUUM_LOG_BLOCKID chkpt_blockid,
-			  const LOG_LSA * chkpt_lsa,
-			  LOG_LSA * chkpt_block_first_lsa,
-			  LOG_LSA * chkpt_block_start_lsa,
-			  MVCCID chkpt_block_oldest_mvccid,
-			  MVCCID chkpt_block_newest_mvccid)
+vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
+				       bool is_chkpt_block_incomplete,
+				       VACUUM_LOG_BLOCKID chkpt_blockid,
+				       const LOG_LSA * chkpt_lsa,
+				       LOG_LSA * chkpt_block_first_lsa,
+				       LOG_LSA * chkpt_block_start_lsa,
+				       MVCCID chkpt_block_oldest_mvccid,
+				       MVCCID chkpt_block_newest_mvccid)
 {
   int error_code = NO_ERROR;
   char log_page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -4341,6 +4338,10 @@ vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
   assert (chkpt_block_start_lsa != NULL);
   assert (!LOG_ISRESTARTED ());
 
+  /* Get vacuum_Global_oldest_active_mvccid. */
+  vacuum_Global_oldest_active_mvccid =
+    logtb_get_lowest_active_mvccid (thread_p);
+
   /* Initialize log_page_p. */
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, MAX_ALIGNMENT);
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
@@ -4352,7 +4353,17 @@ vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
       /* Checkpoint_block was completely recovered. Just consume remaining 
        * entries in buffer.
        */
-      return vacuum_consume_buffer_log_blocks (thread_p);
+      error_code = vacuum_consume_buffer_log_blocks (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "vacuum_rv_finish_vacuum_data_recovery");
+	  return error_code;
+	}
+
+      /* Finished vacuum data recover. Update oldest MVCCID. */
+      vacuum_update_oldest_mvccid (thread_p);
+      return NO_ERROR;
     }
 
   /* Checkpoint block is not completely recovered. */
@@ -4382,7 +4393,7 @@ vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
 		  == NULL)
 		{
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				     "vacuum_rv_recover_buffer");
+				     "vacuum_rv_finish_vacuum_data_recovery");
 		  return ER_FAILED;
 		}
 	    }
@@ -4430,7 +4441,7 @@ vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
 	  if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "vacuum_rv_recover_buffer");
+				 "vacuum_rv_finish_vacuum_data_recovery");
 	      return ER_FAILED;
 	    }
 	}
@@ -4462,10 +4473,22 @@ vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
 		     "VACUUM ERROR: Couldn't produce checkpoint block. "
 		     "Block buffer is full.");
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "vacuum_rv_recover_buffer");
+			 "vacuum_rv_finish_vacuum_data_recovery");
       return ER_FAILED;
     }
-  return vacuum_consume_buffer_log_blocks (thread_p);
+
+  /* Add all blocks to vacuum data. */
+  error_code = vacuum_consume_buffer_log_blocks (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "vacuum_rv_finish_vacuum_data_recovery");
+      return error_code;
+    }
+
+  /* Finished vacuum data recover. Update oldest MVCCID. */
+  vacuum_update_oldest_mvccid (thread_p);
+  return NO_ERROR;
 }
 
 /*
@@ -5281,53 +5304,6 @@ vacuum_rv_redo_append_block_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * vacuum_log_update_block_data () - Log update vacuum data for a block.
- *
- * return	   : 
- * thread_p (in)   :
- * data (in) :
- * blockid (in)	   :
- */
-static void
-vacuum_log_update_block_data (THREAD_ENTRY * thread_p,
-			      VACUUM_DATA_ENTRY * block_data)
-{
-#define MAX_LOG_UPDATE_BLOCK_DATA_CRUMBS 1
-
-  VFID null_vfid;
-  LOG_DATA_ADDR addr;
-  LOG_CRUMB redo_crumbs[MAX_LOG_UPDATE_BLOCK_DATA_CRUMBS];
-  int n_redo_crumbs = 0;
-
-#if !defined (NDEBUG)
-  LOG_LSA prev_lsa;
-
-  LSA_COPY (&prev_lsa, &vacuum_Data->crt_lsa);
-#endif
-
-  /* Initialize addr */
-  addr.pgptr = NULL;
-  addr.offset = 0;
-  VFID_SET_NULL (&null_vfid);
-  addr.vfid = &null_vfid;
-
-  /* Add block data to crumbs */
-  redo_crumbs[n_redo_crumbs].data = &block_data;
-  redo_crumbs[n_redo_crumbs].length = sizeof (*block_data);
-  n_redo_crumbs++;
-
-  /* Add block blockid to crumbs */
-
-  /* Safety check */
-  assert (n_redo_crumbs <= MAX_LOG_UPDATE_BLOCK_DATA_CRUMBS);
-
-  log_append_redo_crumbs (thread_p, RVVAC_LOG_BLOCK_MODIFY, &addr,
-			  n_redo_crumbs, redo_crumbs);
-
-  assert (LSA_LT (&prev_lsa, &vacuum_Data->crt_lsa));
-}
-
-/*
  * vacuum_rv_redo_update_block_data () - Redo updating data for one block in
  *					 in vacuum data.
  *
@@ -5372,7 +5348,14 @@ vacuum_rv_redo_update_block_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 /*
  * vacuum_update_oldest_mvccid () - Obtains the oldest mvccid from all blocks
- *				    found in vacuum data.
+ *				    found in vacuum data. Since there may
+ *				    have been transactions blocked for a long
+ *				    time, we need to also check
+ *				    vacuum_Global_oldest_active_mvccid and
+ *				    log_Gl.hdr.last_block_oldest_mvccid.
+ *				    This should be called after
+ *				    removing vacuumed blocks and after
+ *				    consuming all block buffered blocks.
  *
  * return	 : Void.
  * thread_p (in) : Update oldest MVCCID.
@@ -5381,18 +5364,34 @@ static void
 vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
 {
   int i;
-  MVCCID oldest_mvccid = MVCCID_NULL;
-
-  if (vacuum_Data->n_table_entries == 0)
-    {
-      return;
-    }
+  MVCCID oldest_mvccid;
+  MVCCID log_header_oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "VACUUM: Try to update oldest_mvccid.");
 
-  oldest_mvccid = VACUUM_DATA_ENTRY_OLDEST_MVCCID (VACUUM_DATA_GET_ENTRY (0));
-  for (i = 1; i < vacuum_Data->n_table_entries; i++)
+  /* Initialize oldest MVCCID as minimum between
+   * vacuum_Global_oldest_active_mvccid and oldest MVCCID in the block being
+   * logged but not produced yet. This is a defensive way of handling an old
+   * generated MVCCID that has been blocked before doing any actual changes.
+   * This MVCCID may be missing from several blocks (depending on how long the
+   * transaction is blocked). When these blocks are vacuumed, the oldest
+   * existing MVCCID in vacuum data may be bigger than the MVCCID of this
+   * transaction. Oldest MVCCID should always be smaller or equal to any
+   * unvacuumed MVCCID's!
+   */
+  if (mvcc_id_precedes (vacuum_Global_oldest_active_mvccid,
+			log_header_oldest_mvccid))
+    {
+      oldest_mvccid = vacuum_Global_oldest_active_mvccid;
+    }
+  else
+    {
+      oldest_mvccid = log_header_oldest_mvccid;
+    }
+
+  /* Now compare with entries in vacuum data. */
+  for (i = 0; i < vacuum_Data->n_table_entries; i++)
     {
       if (mvcc_id_precedes (VACUUM_DATA_ENTRY_OLDEST_MVCCID
 			    (VACUUM_DATA_GET_ENTRY (i)), oldest_mvccid))
@@ -5411,8 +5410,16 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
 		     "VACUUM: Update oldest mvccid from %lld to %lld.",
 		     vacuum_Data->oldest_mvccid, oldest_mvccid);
 
+      /* If oldest MVCCID is changed, it should always become greater, not
+       * smaller.
+       */
+      assert (mvcc_id_precedes (vacuum_Data->oldest_mvccid, oldest_mvccid));
+
       vacuum_Data->oldest_mvccid = oldest_mvccid;
       vacuum_cleanup_dropped_files (thread_p);
+
+      /* Verify that vacuum data is still consistent. */
+      VACUUM_VERIFY_VACUUM_DATA ();
     }
   else
     {
@@ -6941,7 +6948,7 @@ static void
 vacuum_verify_vacuum_data_debug (void)
 {
   int i;
-  VACUUM_DATA_ENTRY *entry;
+  VACUUM_DATA_ENTRY *entry = NULL;
   VACUUM_LOG_BLOCKID blockid;
 
   for (i = 0; i < vacuum_Data->n_table_entries; i++)

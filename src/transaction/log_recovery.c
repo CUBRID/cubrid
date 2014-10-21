@@ -3651,7 +3651,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
    * requires at least one MVCC op log record discovered.
    * If no MVCC op log records are found after checkpoint_lsa, it must be
    * searched among log records before checkpoint_lsa.
-   * See log_recovery_vacuum_data_buffer and vacuum_rv_recover_buffer.
+   * See log_recovery_vacuum_data_buffer and
+   * vacuum_rv_finish_vacuum_data_recovery.
    */
   /* Initialize recovery of vacuum data buffer. */
   /* Initialize recover_after_blockid as current last blockid in vacuum data.
@@ -3832,6 +3833,24 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	      assert (!LOG_IS_VACUUM_DATA_RECOVERY (undoredo->data.rcvindex));
 
+	      if (is_mvcc_op)
+		{
+		  /* Recover vacuum data */
+		  log_recovery_vacuum_data_buffer (thread_p, &rcv_lsa,
+						   mvccid,
+						   recover_after_blockid,
+						   chkpt_blockid,
+						   &last_mvcc_op_lsa,
+						   &last_block_oldest_mvccid,
+						   &last_block_newest_mvccid,
+						   &is_chkpt_block_incomplete,
+						   &is_chkpt_block,
+						   &chkpt_block_first_lsa,
+						   &chkpt_block_start_lsa,
+						   &chkpt_block_oldest_mvccid,
+						   &chkpt_block_newest_mvccid);
+		}
+
 	      /* Do we need to redo anything ? */
 
 	      /*
@@ -3989,24 +4008,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (rcv.pgptr != NULL)
 		{
 		  pgbuf_unfix (thread_p, rcv.pgptr);
-		}
-
-	      if (is_mvcc_op)
-		{
-		  /* Recover vacuum data */
-		  log_recovery_vacuum_data_buffer (thread_p, &rcv_lsa,
-						   mvccid,
-						   recover_after_blockid,
-						   chkpt_blockid,
-						   &last_mvcc_op_lsa,
-						   &last_block_oldest_mvccid,
-						   &last_block_newest_mvccid,
-						   &is_chkpt_block_incomplete,
-						   &is_chkpt_block,
-						   &chkpt_block_first_lsa,
-						   &chkpt_block_start_lsa,
-						   &chkpt_block_oldest_mvccid,
-						   &chkpt_block_newest_mvccid);
 		}
 	      break;
 
@@ -4794,11 +4795,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   MVCCID_BACKWARD (log_Gl.mvcc_table.highest_completed_mvccid);
 
   /* Add to vacuum data recovered block buffer. */
-  vacuum_rv_recover_buffer (thread_p, is_chkpt_block_incomplete,
-			    chkpt_blockid, start_redolsa,
-			    &chkpt_block_first_lsa, &chkpt_block_start_lsa,
-			    chkpt_block_oldest_mvccid,
-			    chkpt_block_newest_mvccid);
+  vacuum_rv_finish_vacuum_data_recovery (thread_p, is_chkpt_block_incomplete,
+					 chkpt_blockid, start_redolsa,
+					 &chkpt_block_first_lsa,
+					 &chkpt_block_start_lsa,
+					 chkpt_block_oldest_mvccid,
+					 chkpt_block_newest_mvccid);
   if (!LSA_ISNULL (&last_mvcc_op_lsa))
     {
       /* Update log_Gl.hdr log block information. */

@@ -286,14 +286,20 @@ extern int vacuum_rv_redo_update_block_data (THREAD_ENTRY * thread_p,
 extern int vacuum_rv_redo_save_blocks (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
 
-extern int vacuum_rv_recover_buffer (THREAD_ENTRY * thread_p,
-				     bool is_chkpt_block_incomplete,
-				     VACUUM_LOG_BLOCKID chkpt_blockid,
-				     const LOG_LSA * chkpt_lsa,
-				     LOG_LSA * chkpt_block_first_lsa,
-				     LOG_LSA * chkpt_block_start_lsa,
-				     MVCCID chkpt_block_oldest_mvccid,
-				     MVCCID chkpt_block_newest_mvccid);
+extern int vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
+						  bool
+						  is_chkpt_block_incomplete,
+						  VACUUM_LOG_BLOCKID
+						  chkpt_blockid,
+						  const LOG_LSA * chkpt_lsa,
+						  LOG_LSA *
+						  chkpt_block_first_lsa,
+						  LOG_LSA *
+						  chkpt_block_start_lsa,
+						  MVCCID
+						  chkpt_block_oldest_mvccid,
+						  MVCCID
+						  chkpt_block_newest_mvccid);
 
 extern void vacuum_set_vacuum_data_lsa (THREAD_ENTRY * thread_p,
 					LOG_LSA * vacuum_data_lsa,
