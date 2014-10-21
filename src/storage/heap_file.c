@@ -23392,7 +23392,7 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
        * Always COPY REC_NEWHOME.
        */
       assert (scan_cache != NULL || recdes->data != NULL);
-      if (scan_cache != NULL && recdes->data == NULL)
+      if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL))
 	{
 	  /* It is guaranteed that scan_cache is not NULL. */
 	  if (scan_cache->area == NULL)
