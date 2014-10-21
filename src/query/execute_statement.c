@@ -11423,7 +11423,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Even if unique indexes are defined on the class,
      the operation could be performed on server.
    */
-  if (!trigger_involved)
+  if (!trigger_involved && !do_Trigger_involved)
     {
       statement->info.insert.server_allowed = SERVER_INSERT_IS_ALLOWED;
     }
