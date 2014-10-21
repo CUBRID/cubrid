@@ -9153,8 +9153,6 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
   PT_NODE *value, *from_item, *showstmt_info;
   PT_NODE *order_by_item;
   int i;
-  DB_VALUE oid_val;
-  MOP classop;
 
   /* get show column info */
   meta = showstmt_get_metadata (type);
@@ -9201,19 +9199,6 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
 	{
 	  goto error;
 	}
-    }
-
-  if (type == SHOWSTMT_ACCESS_STATUS)
-    {
-      classop = sm_find_class ("db_user");
-      if (classop == NULL)
-	{
-	  goto error;
-	}
-
-      db_make_oid (&oid_val, &classop->oid_info.oid);
-      showstmt_info->info.showstmt.show_args =
-	pt_dbval_to_value (parser, &oid_val);
     }
 
   /* add to FROM an empty entity, the entity will be populated later */

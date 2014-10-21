@@ -39,6 +39,7 @@
 #include "schema_manager.h"
 #include "dbtype.h"
 #include "error_code.h"
+#include "db.h"
 
 enum
 {
@@ -889,11 +890,38 @@ showstmt_metadata_final (void)
 static PT_NODE *
 pt_check_access_status (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  DB_VALUE oid_val;
+  MOP classop;
+  PT_NODE *entity = NULL;
+  PT_NODE *derived_table = NULL;
+  PT_NODE *arg = NULL;
+
   if (!au_is_dba_group_member (Au_user))
     {
       PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR,
 		  -(ER_AU_DBA_ONLY), "show access status");
+      return node;
     }
+
+  entity = node->info.query.q.select.from;
+  assert (entity != NULL);
+
+  derived_table = entity->info.spec.derived_table;
+  assert (derived_table != NULL);
+
+  classop = sm_find_class ("db_user");
+  if (classop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      PT_ERRORc (parser, node, er_msg ());
+      return node;
+    }
+
+  db_make_oid (&oid_val, &classop->oid_info.oid);
+  arg = pt_dbval_to_value (parser, &oid_val);
+
+  derived_table->info.showstmt.show_args =
+    parser_append_node (arg, derived_table->info.showstmt.show_args);
 
   return node;
 }
