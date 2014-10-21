@@ -23375,7 +23375,7 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 	      != REC_NEWHOME)
 	    {
 	      /* Record must have been vacuumed. */
-	      pgbuf_unfix_and_init (thread_p, *pgptr);
+	      pgbuf_unfix_and_init (thread_p, forward_page);
 	      return S_SNAPSHOT_NOT_SATISFIED;
 	    }
 	}
