@@ -22051,7 +22051,7 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p,
 					   &(fi_preds[i].unpack_info)))
 	    {
 	      error_status = ER_FAILED;
-	      return ER_FAILED;
+	      goto error;
 	    }
 
 	  size = idx->n_atts * sizeof (ATTR_ID);
