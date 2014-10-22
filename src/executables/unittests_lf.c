@@ -825,7 +825,7 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads)
 
   /* uninit */
   lf_freelist_destroy (&freelist);
-  lf_tran_system_destroy (&ts, &xentry_desc);
+  lf_tran_system_destroy (&ts);
 
   return success ();
 
@@ -979,7 +979,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
   /* uninit */
   lf_hash_destroy (&hash);
   lf_freelist_destroy (&freelist);
-  lf_tran_system_destroy (&ts, &xentry_desc);
+  lf_tran_system_destroy (&ts);
 
   return success ();
 #undef HASH_SIZE
@@ -1079,7 +1079,7 @@ test_hash_iterator ()
   lf_tran_return_entry (te);
   lf_hash_destroy (&hash);
   lf_freelist_destroy (&freelist);
-  lf_tran_system_destroy (&ts, &xentry_desc);
+  lf_tran_system_destroy (&ts);
   return success ();
 #undef HASH_SIZE
 #undef HASH_POPULATION

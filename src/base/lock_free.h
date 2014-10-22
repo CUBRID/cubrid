@@ -164,19 +164,22 @@ struct lf_tran_system
 
   /* current used count */
   int used_entry_count;
+
+  /* entry descriptor */
+  LF_ENTRY_DESCRIPTOR *entry_desc;
 };
 
 #define LF_TRAN_SYSTEM_INITIALIZER \
-  { NULL, NULL, 0, 0, 0, 100, 0 }
+  { NULL, NULL, 0, 0, 0, 100, 0, NULL }
 
 #define LF_TRAN_CLEANUP_NECESSARY(e) ((e)->tran_system->min_active_transaction_id > (e)->last_cleanup_id)
 
 extern int lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads);
-extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys,
-				    LF_ENTRY_DESCRIPTOR * edesc);
+extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys);
 
 extern LF_TRAN_ENTRY *lf_tran_request_entry (LF_TRAN_SYSTEM * sys);
 extern int lf_tran_return_entry (LF_TRAN_ENTRY * entry);
+extern void lf_tran_destroy_entry (LF_TRAN_ENTRY * entry);
 extern int lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
 
 extern int lf_tran_start (LF_TRAN_ENTRY * entry, bool incr);

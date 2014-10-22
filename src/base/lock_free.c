@@ -174,23 +174,17 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
  * retired entries.
  */
 void
-lf_tran_system_destroy (LF_TRAN_SYSTEM * sys, LF_ENTRY_DESCRIPTOR * edesc)
+lf_tran_system_destroy (LF_TRAN_SYSTEM * sys)
 {
   int i;
 
   assert (sys != NULL);
 
-  if (edesc != NULL)
+  if (sys->entry_desc != NULL)
     {
       for (i = 0; i < sys->entry_count; i++)
 	{
-	  void *curr = sys->entries[i].retired_list, *next = NULL;
-	  while (curr != NULL)
-	    {
-	      next = (void *) OF_GET_PTR_DEREF (curr, edesc->of_local_next);
-	      edesc->f_free (curr);
-	      curr = next;
-	    }
+	  lf_tran_destroy_entry (&sys->entries[i]);
 	}
     }
   sys->entry_count = 0;
@@ -325,6 +319,39 @@ lf_tran_return_entry (LF_TRAN_ENTRY * entry)
 
   /* all ok */
   return NO_ERROR;
+}
+
+/*
+ * lf_tran_destroy_entry () - destroy a tran entry
+ **  return : NULL 
+ *   entry(in): tran entry
+ */
+
+void
+lf_tran_destroy_entry (LF_TRAN_ENTRY * entry)
+{
+  LF_ENTRY_DESCRIPTOR *edesc = NULL;
+
+  assert (entry != NULL);
+  assert (entry->tran_system != NULL);
+
+  edesc = entry->tran_system->entry_desc;
+  if (edesc != NULL)
+    {
+      void *curr = entry->retired_list, *next = NULL;
+      while (curr != NULL)
+	{
+	  next = (void *) OF_GET_PTR_DEREF (curr, edesc->of_local_next);
+	  if (edesc->f_uninit != NULL)
+	    {
+	      edesc->f_uninit (curr);
+	    }
+	  edesc->f_free (curr);
+	  curr = next;
+	}
+
+      entry->retired_list = NULL;
+    }
 }
 
 /*
@@ -469,12 +496,12 @@ lf_initialize_transaction_systems (int max_threads)
 void
 lf_destroy_transaction_systems (void)
 {
-  lf_tran_system_destroy (&spage_saving_Ts, NULL);
-  lf_tran_system_destroy (&obj_lock_res_Ts, NULL);
-  lf_tran_system_destroy (&obj_lock_ent_Ts, NULL);
-  lf_tran_system_destroy (&catalog_Ts, NULL);
-  lf_tran_system_destroy (&sessions_Ts, NULL);
-  lf_tran_system_destroy (&free_sort_list_Ts, NULL);
+  lf_tran_system_destroy (&spage_saving_Ts);
+  lf_tran_system_destroy (&obj_lock_res_Ts);
+  lf_tran_system_destroy (&obj_lock_ent_Ts);
+  lf_tran_system_destroy (&catalog_Ts);
+  lf_tran_system_destroy (&sessions_Ts);
+  lf_tran_system_destroy (&free_sort_list_Ts);
 
   tran_systems_initialized = false;
 }
@@ -635,6 +662,8 @@ lf_freelist_init (LF_FREELIST * freelist,
   freelist->block_size = block_size;
   freelist->entry_desc = edesc;
   freelist->tran_system = tran_system;
+
+  tran_system->entry_desc = edesc;
 
   for (i = 0; i < initial_blocks; i++)
     {
@@ -872,10 +901,17 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 
 	  if (*del_id < min_tran_id)
 	    {
-	      /* found firs reusable entry - since list is ordered by descending
+	      /* found first reusable entry - since list is ordered by descending
 	         transaction id, entries that follow are also reusable */
 	      aval_first = list;
 	      aval_last = list;
+
+	      /* uninit the reusable entry */
+	      if (edesc->f_uninit != NULL)
+		{
+		  edesc->f_uninit (list);
+		}
+
 	      transported_count = 1;
 	    }
 	  else
@@ -888,6 +924,13 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	{
 	  /* continue until we get to tail */
 	  aval_last = list;
+
+	  /* uninit the reusable entry */
+	  if (edesc->f_uninit != NULL)
+	    {
+	      edesc->f_uninit (list);
+	    }
+
 	  transported_count++;
 	}
     }

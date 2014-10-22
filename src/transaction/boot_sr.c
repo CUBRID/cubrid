@@ -164,6 +164,8 @@ LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
 };
 
 extern void boot_client_all_finalize (bool is_er_final);
+
+static void boot_decoy_entries_finalize (void);
 #endif /* SA_MODE */
 
 
@@ -3973,6 +3975,9 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
 	  boot_server_all_finalize (thread_p, is_er_final);
 	  er_stack_pop ();
 	}
+#if defined(SA_MODE)
+      boot_decoy_entries_finalize ();
+#endif
     }
   return true;
 }
@@ -6665,6 +6670,34 @@ boot_volume_info_log_path (char *log_path)
 
   return NULL;
 }
+
+#if defined(SA_MODE)
+/*
+ * boot_decoy_entries_finalize () - free memory of the decoy entries in SA_MODE
+ *
+ * return : nothing
+ */
+static void
+boot_decoy_entries_finalize (void)
+{
+  LF_TRAN_ENTRY *t_entry;
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_SPAGE_SAVING);
+  lf_tran_destroy_entry (t_entry);
+
+  /* To free the tran entry of THREAD_TS_OBJ_LOCK_RES and 
+   * THREAD_TS_OBJ_LOCK_ENT are not needed */
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_SESSIONS);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_FREE_SORT_LIST);
+  lf_tran_destroy_entry (t_entry);
+}
+#endif
 
 /*
  * xboot_compact_db () - compact the database
