@@ -826,6 +826,9 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p,
 
       if (dbval_p != NULL)
 	{
+	  /* this may be shared with another reguvariable that was already evaluated */
+	  pr_clear_value (dbval_p);
+
 	  if (db_value_domain_init (dbval_p, DB_VALUE_DOMAIN_TYPE (dbval_p),
 				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE)
 	      != NO_ERROR)
