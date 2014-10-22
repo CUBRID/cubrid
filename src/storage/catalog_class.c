@@ -308,10 +308,11 @@ static int
 catcls_free_entry (const void *key, void *data, void *args)
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  CATCLS_ENTRY *entry_p;
 
   assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
 
-  CATCLS_ENTRY *entry_p = (CATCLS_ENTRY *) data;
+  entry_p = (CATCLS_ENTRY *) data;
   entry_p->next = catcls_Free_entry_list;
   catcls_Free_entry_list = entry_p;
 
