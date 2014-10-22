@@ -393,7 +393,9 @@ catcls_find_oid (THREAD_ENTRY * thread_p, OID * class_oid_p)
 {
   CATCLS_ENTRY *entry_p;
 
+#if defined (SERVER_MODE)
   assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 2);
+#endif
 
   if (catcls_Class_oid_to_oid_hash_table)
     {
