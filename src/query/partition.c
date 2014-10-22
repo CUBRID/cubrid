@@ -127,6 +127,7 @@ static PARTITION_CACHE_ENTRY
 static PRUNING_OP partition_rel_op_to_pruning_op (REL_OP op);
 static int partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
 					       OR_PARTITION * master);
+static void partition_free_partition_predicate (PRUNING_CONTEXT * pinfo);
 static void partition_set_specified_partition (PRUNING_CONTEXT * pinfo,
 					       const OID * partition_oid);
 static int partition_get_position_in_key (PRUNING_CONTEXT * pinfo,
@@ -2493,6 +2494,8 @@ reload_from_cache:
 	  pinfo->partitions = NULL;
 	  pinfo->count = 0;
 
+	  partition_free_partition_predicate (pinfo);
+
 	  goto reload_from_cache;
 	}
     }
@@ -2554,12 +2557,7 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
       pinfo->partition_pred = NULL;
     }
 
-  if (pinfo->fp_cache_context != NULL)
-    {
-      stx_free_additional_buff (pinfo->thread_p, pinfo->fp_cache_context);
-      stx_free_xasl_unpack_info (pinfo->fp_cache_context);
-      db_private_free_and_init (pinfo->thread_p, pinfo->fp_cache_context);
-    }
+  partition_free_partition_predicate (pinfo);
 
   if (pinfo->is_attr_info_inited)
     {
@@ -2629,6 +2627,18 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
 
   return error;
 }
+
+static void
+partition_free_partition_predicate (PRUNING_CONTEXT * pinfo)
+{
+  if (pinfo->fp_cache_context != NULL)
+    {
+      stx_free_additional_buff (pinfo->thread_p, pinfo->fp_cache_context);
+      stx_free_xasl_unpack_info (pinfo->fp_cache_context);
+      db_private_free_and_init (pinfo->thread_p, pinfo->fp_cache_context);
+    }
+}
+
 
 /*
  * partition_set_specified_partition () - find OR_PARTITION object for
