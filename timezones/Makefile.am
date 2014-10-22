@@ -24,4 +24,3 @@ EXTRA_DIST = make_tz_Win32.bat make_tz_x64.bat tzlib_win_x64 tzlib_win_Win32
 SUBDIRS = tzdata tzlib
 
 dist_bin_SCRIPTS = make_tz.sh
-dist_timezones_DATA = $(top_srcdir)/src/base/tz_list.h

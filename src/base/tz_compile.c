@@ -31,6 +31,8 @@
 #include "chartype.h"
 #include "error_manager.h"
 
+#include "memory_alloc.h"
+
 #include "tz_compile.h"
 #include "tz_support.h"
 #include "xml_parser.h"
@@ -45,10 +47,8 @@
 #define TZ_RULE_TYPE_MAX_SIZE		  4
 
 #if defined(_WIN32) || defined(WINDOWS) || defined(WIN64)
-#define PATH_PARTIAL_TZ_LIST	    "timezones\\tz_list.h"
 #define PATH_PARTIAL_TIMEZONES_FILE "timezones\\tzlib\\timezones.c"
 #else
-#define PATH_PARTIAL_TZ_LIST	    "timezones/tz_list.h"
 #define PATH_PARTIAL_TIMEZONES_FILE "timezones/tzlib/timezones.c"
 #endif
 
@@ -194,7 +194,7 @@ struct tz_raw_context
 /*
  * TZ_RAW_DATA is a structure for holding the information read from the files
  * found in IANA's timezone database. After fully loading and interpreting the
- * data, time zone informatio will be processed, optimized and moved to a new
+ * data, time zone information will be processed, optimized and moved to a new
  * structure (TZ_DATA) to be used at runtime. (incl. TZ shared library)
  */
 typedef struct tz_raw_data TZ_RAW_DATA;
@@ -211,6 +211,14 @@ struct tz_raw_data
   int leap_sec_count;
   TZ_LEAP_SEC *leap_sec;
   TZ_RAW_CONTEXT context;
+};
+
+typedef struct offset_rule_interval OFFSET_RULE_INTERVAL;
+struct offset_rule_interval
+{
+  int originial_offset_rule_start;
+  int len;
+  int final_offset_rule_start;
 };
 
 #define TZ_CAL_ABBREV_SIZE 4
@@ -316,6 +324,23 @@ extern const TZ_COUNTRY tz_countries[];
 #define TZC_LOG_ERROR_2ARG(context, err_code, s1, s2) \
   tzc_log_error ((context), (err_code), (s1), (s2))
 
+#define DUPLICATE_STR(a, b) \
+  do { \
+    (a) = strdup((b)); \
+    if((a) == NULL) { \
+    err_status = ER_OUT_OF_VIRTUAL_MEMORY; \
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0); \
+    goto exit; \
+  } \
+} while (0)
+
+#define INIT_COUNTRY(dst, src) \
+  do { \
+    strcpy ((dst)->code, (src)->code); \
+    strcpy ((dst)->full_name, (src)->full_name); \
+  } while (0)
+
+
 static int tzc_check_new_package_validity (const char *input_folder);
 static int tzc_load_countries (TZ_RAW_DATA * tzd_raw,
 			       const char *input_folder);
@@ -345,7 +370,8 @@ static int tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text);
 static int tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str);
 static bool tzc_is_valid_date (const int day, const int month,
 			       const int year_start, const int year_end);
-static int tzc_get_ds_ruleset_by_name (const TZ_DATA * tzd,
+static int tzc_get_ds_ruleset_by_name (const TZ_DS_RULESET * ds_rulesets,
+				       int ds_ruleset_count,
 				       const char *ruleset);
 
 static void tzc_free_raw_data (TZ_RAW_DATA * tzd_raw);
@@ -382,7 +408,6 @@ static int comp_func_zone_info (const void *arg1, const void *arg2);
 
 static void print_seconds_as_time_hms_var (int seconds);
 
-static int tzc_export_timezone_list (const TZ_DATA * tzd);
 static int tzc_export_timezone_C_file (const TZ_DATA * tzd);
 
 static int tzc_load_raw_data (TZ_RAW_DATA * tzd_raw,
@@ -391,7 +416,7 @@ static int tzc_import_old_data (TZ_RAW_DATA * tzd_raw,
 				const TZ_GEN_TYPE mode);
 static int tzc_del_unused_raw_data (TZ_RAW_DATA * tzd_raw);
 static int tzc_index_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode);
-static void tzc_free_tz_data (TZ_DATA * tzd);
+static void tzc_free_tz_data (TZ_DATA * tzd, bool full);
 
 static void tzc_build_filepath (char *path, size_t size,
 				const char *dir, const char *filename);
@@ -407,6 +432,27 @@ static void tzc_log_error (const TZ_RAW_CONTEXT * context, const int code,
 			   const char *msg1, const char *msg2);
 
 static void tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd);
+
+static int tzc_find_timezone_names (const TZ_DATA * tzd,
+				    const char *timezone_name);
+static int tzc_find_country_names (const TZ_COUNTRY * countries,
+				   const int country_count,
+				   const char *country_name);
+static bool comp_ds_rules (const TZ_DS_RULE * rule1,
+			   const TZ_DS_RULE * rule2);
+static bool comp_offset_rules (const TZ_OFFSET_RULE * rule1,
+			       const TZ_OFFSET_RULE * rule2);
+static int copy_offset_rule (TZ_OFFSET_RULE * dst, const TZ_DATA * tzd,
+			     const int index);
+static int init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd,
+			    const int index, const int start);
+static int copy_ds_rule (TZ_DS_RULE * dst, const TZ_DATA * tzd,
+			 const int index);
+static int tz_data_partial_clone (char **timezone_names,
+				  TZ_TIMEZONE * timezones, TZ_NAME * names,
+				  const TZ_DATA * tzd);
+static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
+static int tzc_extend (TZ_DATA * tzd);
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
@@ -611,11 +657,12 @@ timezone_compile_data (const char *input_folder,
     }
 #endif
 
-  if (tz_gen_type != TZ_GEN_TYPE_UPDATE)
+  if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
     {
-      err_status = tzc_export_timezone_list (&tzd);
+      err_status = tzc_extend (&tzd);
       if (err_status != NO_ERROR)
 	{
+	  /* failed to load file */
 	  goto exit;
 	}
     }
@@ -630,7 +677,7 @@ timezone_compile_data (const char *input_folder,
 
 exit:
   tzc_free_raw_data (&tzd_raw);
-  tzc_free_tz_data (&tzd);
+  tzc_free_tz_data (&tzd, true);
 
   return err_status;
 }
@@ -641,7 +688,7 @@ exit:
  * tzd(in/out): timezone data to free
  */
 static void
-tzc_free_tz_data (TZ_DATA * tzd)
+tzc_free_tz_data (TZ_DATA * tzd, bool full)
 {
   int i;
 
@@ -717,12 +764,19 @@ tzc_free_tz_data (TZ_DATA * tzd)
 	}
       free (tzd->ds_rules);
     }
-#if defined(WINDOWS)
-  if (tzd->windows_iana_map != NULL)
+  if (full == true)
     {
-      free (tzd->windows_iana_map);
-    }
+      if (tzd->ds_leap_sec != NULL)
+	{
+	  free (tzd->ds_leap_sec);
+	}
+#if defined(WINDOWS)
+      if (tzd->windows_iana_map != NULL)
+	{
+	  free (tzd->windows_iana_map);
+	}
 #endif
+    }
 
   memset (&tzd, 0, sizeof (tzd));
 }
@@ -915,21 +969,14 @@ tzc_index_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
 {
   int err_status = NO_ERROR;
 
-  if (mode == TZ_GEN_TYPE_UPDATE || mode == TZ_GEN_TYPE_EXTEND)
+  if (mode == TZ_GEN_TYPE_NEW || mode == TZ_GEN_TYPE_EXTEND)
     {
-      printf ("NOT IMPLEMENTED!");
-      assert (false);
-
-      err_status = tzc_index_raw_data_w_static (tzd_raw, mode);
-      if (err_status != NO_ERROR)
-	{
-	  goto exit;
-	}
+      tzc_index_raw_data (tzd_raw);
     }
   else
     {
-      assert (mode == TZ_GEN_TYPE_NEW);
-      tzc_index_raw_data (tzd_raw);
+      printf ("NOT IMPLEMENTED!");
+      assert (false);
     }
 
   err_status = tzc_index_raw_subdata (tzd_raw, mode);
@@ -1475,6 +1522,9 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 			  filepath, "read");
       goto exit;
     }
+
+  tzd_raw->leap_sec_count = 0;
+  tzd_raw->leap_sec = NULL;
 
   LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
 
@@ -2355,11 +2405,11 @@ tzc_free_raw_data (TZ_RAW_DATA * tzd_raw)
     }
   if (tzd_raw->countries != NULL)
     {
-      free (tzd_raw->countries);
+      free_and_init (tzd_raw->countries);
     }
   if (tzd_raw->links != NULL)
     {
-      free (tzd_raw->links);
+      free_and_init (tzd_raw->links);
     }
   if (tzd_raw->ds_rulesets != NULL)
     {
@@ -2367,9 +2417,9 @@ tzc_free_raw_data (TZ_RAW_DATA * tzd_raw)
 
       for (i = 0; i < tzd_raw->ruleset_count; i++)
 	{
-	  free (tzd_raw->ds_rulesets[i].rules);
+	  free_and_init (tzd_raw->ds_rulesets[i].rules);
 	}
-      free (tzd_raw->ds_rulesets);
+      free_and_init (tzd_raw->ds_rulesets);
     }
   if (tzd_raw->zones != NULL)
     {
@@ -2379,19 +2429,23 @@ tzc_free_raw_data (TZ_RAW_DATA * tzd_raw)
 	{
 	  zone = &(tzd_raw->zones[i]);
 
-	  free (zone->offset_rules);
+	  free_and_init (zone->offset_rules);
 
 	  for (j = 0; j < zone->alias_count; j++)
 	    {
 	      if (zone->aliases[j] != NULL)
 		{
-		  free (zone->aliases[j]);
+		  free_and_init (zone->aliases[j]);
 		}
 	    }
-	  free (zone->aliases);
+	  free_and_init (zone->aliases);
 	}
 
-      free (tzd_raw->zones);
+      free_and_init (tzd_raw->zones);
+    }
+  if (tzd_raw->leap_sec != NULL)
+    {
+      free_and_init (tzd_raw->leap_sec);
     }
 }
 
@@ -2783,13 +2837,7 @@ tzc_index_raw_subdata (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
 	}
     }
 
-  if (mode == TZ_GEN_TYPE_EXTEND)
-    {
-      /* TODO: if a zone is renamed, create/update an alias for it, to
-       * keep the old name found in the predefined TIMEZONE array */
-      assert (false);
-    }
-  else if (mode == TZ_GEN_TYPE_UPDATE)
+  if (mode == TZ_GEN_TYPE_UPDATE)
     {
       /* TODO: if a zone is renamed, create/update an alias for it, to
        * keep the old name found in the predefined TIMEZONE array */
@@ -2797,7 +2845,7 @@ tzc_index_raw_subdata (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
     }
   else
     {
-      assert (mode == TZ_GEN_TYPE_NEW);
+      assert (mode == TZ_GEN_TYPE_NEW || mode == TZ_GEN_TYPE_EXTEND);
       /* do nothing */
     }
 
@@ -3118,7 +3166,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	      if (save_format != NULL)
 		{
 		  offrule->save_format = strdup (save_format);
-		  if (offrule->std_format == NULL)
+		  if (offrule->save_format == NULL)
 		    {
 		      char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
@@ -3150,7 +3198,9 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 	  /* seek ds ruleset metadata using string identifier raw-offrule->rules */
 	  offrule->ds_ruleset =
-	    tzc_get_ds_ruleset_by_name (tzd, raw_offrule->ds_ruleset_name);
+	    tzc_get_ds_ruleset_by_name (tzd->ds_rulesets,
+					tzd->ds_ruleset_count,
+					raw_offrule->ds_ruleset_name);
 	  if (offrule->ds_ruleset == -1)
 	    {
 	      const char *dummy = NULL;
@@ -4165,66 +4215,6 @@ print_seconds_as_time_hms_var (int seconds)
 }
 
 /*
- * tzc_export_timezone_list - exports the list of timezones and their IDs
- *			into a C source file (timezone_list.c) into the
- *			folder $CUBRID/timezone/
- * Returns: 0 (NO_ERROR) if success, error code otherwise
- * tzd(in): timezone data from where to read timezone names and aliases
- */
-static int
-tzc_export_timezone_list (const TZ_DATA * tzd)
-{
-  int i, err_status = NO_ERROR;
-  char tz_list_filepath[PATH_MAX] = { 0 };
-  char tz_cub_path[PATH_MAX] = { 0 };
-  FILE *fp;
-
-  envvar_cubrid_dir (tz_cub_path, PATH_MAX);
-  tzc_build_filepath (tz_list_filepath, sizeof (tz_list_filepath),
-		      tz_cub_path, PATH_PARTIAL_TZ_LIST);
-
-  fp = fopen_ex (tz_list_filepath, "wt");
-  if (fp == NULL)
-    {
-      err_status = TZC_ERR_FILE_NOT_ACCESSIBLE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE,
-			  tz_list_filepath, "write");
-      goto exit;
-    }
-
-  fprintf (fp, "#include \"timezone_lib_common.h\"\n");
-
-  fprintf (fp, "/* WARNING: Generated data! Do not edit! */\n");
-
-  fprintf (fp, "const static char *tz_timezone_names[] = {\n");
-  for (i = 0; i < tzd->timezone_count; i++)
-    {
-      fprintf (fp, "\t\"%s\"%s\n", tzd->timezone_names[i],
-	       (i == tzd->timezone_count - 1 ? "" : ","));
-    }
-  fprintf (fp, "};\n\n");
-
-  /* countries */
-  fprintf (fp, "const static TZ_COUNTRY tz_countries[] = {\n");
-  for (i = 0; i < tzd->country_count; i++)
-    {
-      fprintf (fp, "\t{\"%s\", \"%s\"}%s\n", tzd->countries[i].code,
-	       tzd->countries[i].full_name,
-	       (i == tzd->country_count - 1) ? "" : ",");
-    }
-
-  fprintf (fp, "};\n\n");
-
-exit:
-  if (fp)
-    {
-      fclose (fp);
-    }
-
-  return err_status;
-}
-
-/*
  * tzc_export_timezone_C_file () - saves all timezone data into a C source
  *			      file to be later compiled into a shared library
  * Returns: always NO_ERROR
@@ -4259,6 +4249,30 @@ tzc_export_timezone_C_file (const TZ_DATA * tzd)
   fprintf (fp, "#include <stddef.h>\n");
 #endif
   fprintf (fp, "#include \"timezone_lib_common.h\"\n\n");
+
+  /* countries */
+  fprintf (fp, "%s const int tz_country_count = %d;\n", SHLIB_EXPORT_PREFIX,
+	   tzd->country_count);
+  fprintf (fp, "%s const TZ_COUNTRY tz_countries[] = {\n",
+	   SHLIB_EXPORT_PREFIX);
+  for (i = 0; i < tzd->country_count; i++)
+    {
+      fprintf (fp, "\t{\"%s\", \"%s\"}%s\n",
+	       tzd->countries[i].code,
+	       tzd->countries[i].full_name,
+	       (i == tzd->country_count - 1) ? "" : ",");
+    }
+  fprintf (fp, "};\n\n");
+
+  /* timezone names */
+  fprintf (fp, "%s const char *tz_timezone_names[] = {\n",
+	   SHLIB_EXPORT_PREFIX);
+  for (i = 0; i < tzd->timezone_count; i++)
+    {
+      fprintf (fp, "\t\"%s\"%s\n", tzd->timezone_names[i],
+	       (i == tzd->timezone_count - 1 ? "" : ","));
+    }
+  fprintf (fp, "};\n\n");
 
   /* timezones */
   fprintf (fp, "%s const int timezone_count = %d;\n", SHLIB_EXPORT_PREFIX,
@@ -4425,19 +4439,20 @@ exit:
  * ruleset(in): ruleset name to search for
  */
 static int
-tzc_get_ds_ruleset_by_name (const TZ_DATA * tzd, const char *ruleset)
+tzc_get_ds_ruleset_by_name (const TZ_DS_RULESET * ds_rulesets,
+			    int ds_ruleset_count, const char *ruleset)
 {
   int ruleset_id = -1;
   int index_bot, index_top;
   int cmp_res;
 
   index_bot = 0;
-  index_top = tzd->ds_ruleset_count - 1;
+  index_top = ds_ruleset_count - 1;
 
   while (index_bot <= index_top)
     {
       ruleset_id = (index_bot + index_top) / 2;
-      cmp_res = strcmp (ruleset, tzd->ds_rulesets[ruleset_id].ruleset_name);
+      cmp_res = strcmp (ruleset, ds_rulesets[ruleset_id].ruleset_name);
       if (cmp_res == 0)
 	{
 	  return ruleset_id;
@@ -5243,3 +5258,1120 @@ exit:
   return err_status;
 }
 #endif
+
+/*
+ * tzc_find_timezone_names() - returns 1 if the timezone name was found
+ *			       or 0 otherwise
+ * Returns: 1 if the timezone name was found or 0 otherwise
+ * tzd(in): time zone data where to search
+ * timezone_name(in): timezone name to search for
+ */
+static int
+tzc_find_timezone_names (const TZ_DATA * tzd, const char *timezone_name)
+{
+  int index_bot, index_top;
+  int cmp_res;
+
+  index_bot = 0;
+  index_top = tzd->name_count - 1;
+
+  while (index_bot <= index_top)
+    {
+      int mid = index_bot + (index_top - index_bot) / 2;
+      cmp_res = strcmp (timezone_name, tzd->names[mid].name);
+      if (cmp_res == 0)
+	{
+	  return tzd->names[mid].zone_id;
+	}
+      else if (cmp_res < 0)
+	{
+	  index_top = mid - 1;
+	}
+      else
+	{
+	  index_bot = mid + 1;
+	}
+    }
+
+  return -1;
+}
+
+/*
+ * tzc_find_country_names() - returns 1 if the country name was found
+ *			      or 0 otherwise
+ * Returns: 1 if the country name was found or 0 otherwise
+ * countries(in): vector of countries where to search
+ * country_count(in): number of elements of countries vector
+ * country_name (in) : name of the country to search for
+ */
+static int
+tzc_find_country_names (const TZ_COUNTRY * countries, const int country_count,
+			const char *country_name)
+{
+  int index_bot, index_top;
+  int cmp_res;
+
+  index_bot = 0;
+  index_top = country_count - 1;
+
+  while (index_bot <= index_top)
+    {
+      int mid = index_bot + (index_top - index_bot) / 2;
+
+      cmp_res = strcmp (country_name, countries[mid].full_name);
+      if (cmp_res == 0)
+	{
+	  return mid;
+	}
+      else if (cmp_res < 0)
+	{
+	  index_top = mid - 1;
+	}
+      else
+	{
+	  index_bot = mid + 1;
+	}
+    }
+
+  return -1;
+}
+
+/*
+ * comp_ds_rules() - equality function for two daylight saving rules
+ *
+ * Returns: true if the rules are identical or false otherwise 
+ * rule1(in): first daylight saving rule
+ * rule2(in): second daylight saving rule
+ */
+static bool
+comp_ds_rules (const TZ_DS_RULE * rule1, const TZ_DS_RULE * rule2)
+{
+  if (rule1->at_time != rule2->at_time
+      || rule1->change_on.day_of_month != rule2->change_on.day_of_month
+      || rule1->change_on.day_of_week != rule2->change_on.day_of_week
+      || rule1->change_on.type != rule2->change_on.type
+      || rule1->from_year != rule2->from_year
+      || rule1->to_year != rule2->to_year
+      || rule1->in_month != rule2->in_month
+      || rule1->save_time != rule2->save_time)
+    {
+      return false;
+    }
+  return true;
+}
+
+/*
+ * comp_offset_rules() - equality function for two offset rules
+ *
+ * Returns: true if the rules are identical or false otherwise 
+ * rule1(in): first offset rule
+ * rule2(in): second offset rule
+ */
+static bool
+comp_offset_rules (const TZ_OFFSET_RULE * rule1, const TZ_OFFSET_RULE * rule2)
+{
+  if (rule1->gmt_off != rule2->gmt_off
+      || rule1->until_sec != rule2->until_sec
+      || rule1->until_min != rule2->until_min
+      || rule1->until_hour != rule2->until_hour
+      || rule1->until_day != rule2->until_day
+      || rule1->until_mon != rule2->until_mon
+      || rule1->until_year != rule2->until_year)
+    {
+      return false;
+    }
+  return true;
+}
+
+/*
+ * copy_offset_rule() - copies in dst the offset rule in tzd at position index
+ *                      in the offset rule array
+ *
+ * Returns: error or no error
+ * dst(in/out): destination offset rule
+ * tzd(in): timezone data
+ * index(in): index of the source offset rule in tzd
+ */
+static int
+copy_offset_rule (TZ_OFFSET_RULE * dst, const TZ_DATA * tzd, const int index)
+{
+  int err_status = NO_ERROR;
+
+  *dst = tzd->offset_rules[index];
+  if (tzd->offset_rules[index].std_format != NULL)
+    {
+      DUPLICATE_STR (dst->std_format, tzd->offset_rules[index].std_format);
+    }
+  else
+    {
+      dst->std_format = NULL;
+    }
+
+  if (tzd->offset_rules[index].save_format != NULL)
+    {
+      DUPLICATE_STR (dst->save_format, tzd->offset_rules[index].save_format);
+    }
+  else
+    {
+      dst->save_format = NULL;
+    }
+
+  if (tzd->offset_rules[index].var_format != NULL)
+    {
+      DUPLICATE_STR (dst->var_format, tzd->offset_rules[index].var_format);
+    }
+  else
+    {
+      dst->var_format = NULL;
+    }
+
+exit:
+  return err_status;
+}
+
+/*
+ * init_ds_ruleset() - initializes the members of dst_ruleset
+ *                     
+ * Returns: error or no error
+ * dst_ruleset(in/out): destination ds ruleset
+ * tzd(in): timezone data
+ * index(in): index of the ds ruleset in the tzd ds_ruleset array
+ * start(in): start of the ds ruleset
+ */
+static int
+init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd,
+		 const int index, const int start)
+{
+  int err_status = NO_ERROR;
+
+  dst_ruleset->count = tzd->ds_rulesets[index].count;
+  DUPLICATE_STR (dst_ruleset->ruleset_name,
+		 tzd->ds_rulesets[index].ruleset_name);
+  dst_ruleset->index_start = start;
+
+exit:
+  return err_status;
+}
+
+/*
+ * copy_ds_rule() - copies in dst the daylight saving rule in tzd at 
+ *		    position index in the daylight saving rule array
+ *
+ * Returns: error or no error
+ * dst(in/out): destination daylight saving rule
+ * tzd(in): timezone data
+ * index(in): index of the source daylight saving rule in tzd
+ */
+static int
+copy_ds_rule (TZ_DS_RULE * dst, const TZ_DATA * tzd, const int index)
+{
+  int err_status = NO_ERROR;
+
+  *dst = tzd->ds_rules[index];
+  if (tzd->ds_rules[index].letter_abbrev != NULL)
+    {
+      DUPLICATE_STR (dst->letter_abbrev, tzd->ds_rules[index].letter_abbrev);
+    }
+  else
+    {
+      dst->letter_abbrev = NULL;
+    }
+
+exit:
+  return err_status;
+}
+
+/*
+ * tz_data_partial_clone() - copies timezone data from tzd into
+ *                           the three data structures
+ *		    
+ * Returns: error or no error
+ * timezone_names(in/out): timezone names without aliases
+ * timezones(in/out): timezones
+ * names(in/out): timezone names including aliases
+ * tzd(in): timezone data
+ */
+static int
+tz_data_partial_clone (char **timezone_names, TZ_TIMEZONE * timezones,
+		       TZ_NAME * names, const TZ_DATA * tzd)
+{
+  int i, err_status = NO_ERROR;
+
+  for (i = 0; i < tzd->timezone_count; i++)
+    {
+      DUPLICATE_STR (timezone_names[i], tzd->timezone_names[i]);
+    }
+
+  memcpy (timezones, tzd->timezones,
+	  tzd->timezone_count * sizeof (TZ_TIMEZONE));
+
+  memcpy (names, tzd->names, tzd->name_count * sizeof (TZ_NAME));
+  for (i = 0; i < tzd->name_count; i++)
+    {
+      DUPLICATE_STR (names[i].name, tzd->names[i].name);
+    }
+
+exit:
+  return err_status;
+}
+
+/*
+ * init_tz_name() - copies the members of src into dst
+ *                     
+ * Returns: error or no error
+ * dst(in/out): destination tz_name
+ * src(in): source tz_name
+ */
+static int
+init_tz_name (TZ_NAME * dst, TZ_NAME * src)
+{
+  int err_status = NO_ERROR;
+
+  dst->is_alias = src->is_alias;
+  DUPLICATE_STR (dst->name, src->name);
+  dst->zone_id = src->zone_id;
+
+exit:
+  return err_status;
+}
+
+/*
+ * tzc_extend() - Does a merge between the new timezone data and
+ *                the old timezone data in order to maintain backward
+ *                compatibility with the timezone data present in the 
+ *                database. If the data could not be made backward
+ *                compatible a message is printed
+ *
+ * Returns: error or no error
+ * tzd (in/out): new timezone library data that needs to be merged with
+ *               the old timezone library data
+ */
+static int
+tzc_extend (TZ_DATA * tzd)
+{
+  int err_status = NO_ERROR;
+  TZ_DATA old_tzd;
+  TZ_TIMEZONE *all_timezones = NULL, *timezones;
+  TZ_NAME *names, *all_names = NULL;
+  int i, j, k, l;
+  int all_timezones_count = 0;
+  int all_timezones_and_aliases_count = 0;
+  char **all_timezone_names = NULL;
+  int start_timezones, start_names, start;
+  int gmt_off_rule_start, prev_gmt_off_rule_start;
+  char *timezone_name;
+  int zone_id;
+  TZ_OFFSET_RULE *all_offset_rules = NULL;
+  int all_offset_rule_count = 0;
+  int start_gmt_old, start_gmt_new;
+  int all_ds_ruleset_count = 0;
+  int ruleset_id;
+  char *mark_ruleset = NULL;
+  TZ_DS_RULESET *all_ds_rulesets = NULL;
+  int prev_start_ds_rule = 0, start_ds_rule = 0;
+  TZ_DS_RULE *all_ds_rules = NULL;
+  int all_ds_rule_count = 0;
+  int comp_res;
+  TZ_DATA *tzd_or_old_tzd = NULL;
+  const char *ruleset_name;
+  bool is_compat = true;
+  int start_ds_ruleset_old, start_ds_ruleset_new;
+  const TZ_DS_RULE *old_ds_rule = NULL;
+  const TZ_DS_RULE *new_ds_rule = NULL;
+  int all_country_count = 0;
+  TZ_COUNTRY *all_countries = NULL;
+  char *country_name = NULL;
+  int country_id;
+  int temp_zone_id;
+  bool found_duplicate = false;
+  OFFSET_RULE_INTERVAL *old_tzd_offset_rule_map = NULL;
+  OFFSET_RULE_INTERVAL *tzd_offset_rule_map = NULL;
+  int old_tzd_map_count = 0, tzd_map_count = 0;
+  int find_idx = -1;
+  int cnt;
+  char lib_short_file[PATH_MAX] = { 0 };
+  char timezone_library_path[PATH_MAX] = { 0 };
+
+  /* First load the data structures from the old library and
+   * after that do the update */
+
+  snprintf (lib_short_file, sizeof (lib_short_file) - 1,
+	    "libcubrid_timezones.%s", SHLIB_FILE_EXT);
+  envvar_libdir_file (timezone_library_path, PATH_MAX, lib_short_file);
+
+  err_status = tz_load_with_library_path (&old_tzd, timezone_library_path);
+  if (err_status != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  names = tzd->names;
+  for (i = 0; i < tzd->name_count; i++)
+    {
+      if (tzc_find_timezone_names (&old_tzd, names[i].name) == -1)
+	{
+	  if (names[i].is_alias == 0)
+	    {
+	      all_timezones_count++;
+	    }
+	  all_timezones_and_aliases_count++;
+	}
+    }
+  all_timezones_count += old_tzd.timezone_count;
+  all_timezones_and_aliases_count += old_tzd.name_count;
+
+  /* Count the number of new added countries */
+  for (i = 0; i < tzd->country_count; i++)
+    {
+      int country_id =
+	tzc_find_country_names (old_tzd.countries, old_tzd.country_count,
+				tzd->countries[i].full_name);
+
+      if (country_id == -1)
+	{
+	  all_country_count++;
+	}
+    }
+  all_country_count += old_tzd.country_count;
+
+  all_countries =
+    (TZ_COUNTRY *) calloc (all_country_count, sizeof (TZ_COUNTRY));
+  if (all_countries == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  all_timezone_names =
+    (char **) calloc (all_timezones_count, sizeof (char *));
+  if (all_timezone_names == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  all_timezones =
+    (TZ_TIMEZONE *) calloc (all_timezones_count, sizeof (TZ_TIMEZONE));
+  if (all_timezones == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  all_names =
+    (TZ_NAME *) calloc (all_timezones_and_aliases_count, sizeof (TZ_NAME));
+  if (all_names == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  old_tzd_offset_rule_map = (OFFSET_RULE_INTERVAL *)
+    calloc (old_tzd.timezone_count, sizeof (OFFSET_RULE_INTERVAL));
+
+  if (old_tzd_offset_rule_map == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  tzd_offset_rule_map = (OFFSET_RULE_INTERVAL *)
+    calloc (tzd->timezone_count, sizeof (OFFSET_RULE_INTERVAL));
+
+  if (tzd_offset_rule_map == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  mark_ruleset = (char *) calloc (old_tzd.ds_ruleset_count, sizeof (char));
+
+  if (mark_ruleset == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  err_status = tz_data_partial_clone (all_timezone_names, all_timezones,
+				      all_names, &old_tzd);
+  if (err_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* Add the new countries */
+  i = 0, j = 0, k = 0;
+  while (i < old_tzd.country_count && j < tzd->country_count)
+    {
+      comp_res =
+	strcmp (old_tzd.countries[i].full_name, tzd->countries[j].full_name);
+
+      if (comp_res == 0)
+	{
+	  INIT_COUNTRY (&all_countries[k], &tzd->countries[j]);
+	  i++;
+	  j++;
+	}
+      else if (comp_res < 0)
+	{
+	  INIT_COUNTRY (&all_countries[k], &old_tzd.countries[i]);
+	  i++;
+	}
+      else
+	{
+	  INIT_COUNTRY (&all_countries[k], &tzd->countries[j]);
+	  j++;
+	}
+      k++;
+    }
+
+  while (i < old_tzd.country_count)
+    {
+      INIT_COUNTRY (&all_countries[k], &old_tzd.countries[i]);
+      i++;
+      k++;
+    }
+
+  while (j < tzd->country_count)
+    {
+      INIT_COUNTRY (&all_countries[k], &tzd->countries[j]);
+      j++;
+      k++;
+    }
+
+  assert (k == all_country_count);
+
+  /* Add the new timezones */
+  timezones = tzd->timezones;
+  start_timezones = old_tzd.timezone_count;
+  start_names = old_tzd.name_count;
+
+  for (i = 0; i < tzd->name_count; i++)
+    {
+      zone_id = tzc_find_timezone_names (&old_tzd, names[i].name);
+      if (zone_id == -1)
+	{
+	  err_status = init_tz_name (&all_names[start_names], &names[i]);
+	  if (err_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  if (names[i].is_alias == 0)
+	    {
+	      DUPLICATE_STR (all_timezone_names[start_timezones],
+			     names[i].name);
+	      all_timezones[start_timezones] = timezones[names[i].zone_id];
+	      all_timezones[start_timezones].zone_id = start_timezones;
+	      all_names[start_names].zone_id = start_timezones;
+	      start_timezones++;
+	    }
+	  start_names++;
+	}
+    }
+
+  /* Now fix the zone ids for the alias timezones */
+  for (i = old_tzd.name_count; i < all_timezones_and_aliases_count; i++)
+    {
+      if (all_names[i].is_alias == 1)
+	{
+	  timezone_name = tzd->timezone_names[all_names[i].zone_id];
+	  zone_id = tzc_find_timezone_names (&old_tzd, timezone_name);
+
+	  if (zone_id != -1)
+	    {
+	      all_names[i].zone_id = zone_id;
+	    }
+	  /* We have an alias pointing to a new timezone */
+	  else
+	    {
+	      for (j = old_tzd.timezone_count; j < all_timezones_count; j++)
+		{
+		  if (strcmp (timezone_name, all_timezone_names[j]) == 0)
+		    {
+		      all_names[i].zone_id = j;
+		      break;
+		    }
+		}
+	    }
+	}
+    }
+
+  for (i = 0; i < all_timezones_count; i++)
+    {
+      found_duplicate = false;
+      zone_id = tzc_find_timezone_names (tzd, all_timezone_names[i]);
+
+      if (zone_id == -1)
+	{
+	  /* Go back and search for duplicate intervals in the
+	   * old timezone library */
+	  for (j = i - 1; j >= 0; j--)
+	    {
+	      temp_zone_id =
+		tzc_find_timezone_names (tzd, all_timezone_names[j]);
+	      if (temp_zone_id == -1
+		  && all_timezones[i].gmt_off_rule_start
+		  == all_timezones[j].gmt_off_rule_start
+		  && all_timezones[i].gmt_off_rule_count
+		  == all_timezones[j].gmt_off_rule_count)
+		{
+		  found_duplicate = true;
+		  break;
+		}
+	    }
+	  if (found_duplicate == true)
+	    {
+	      continue;
+	    }
+	  all_offset_rule_count += all_timezones[i].gmt_off_rule_count;
+	}
+      else
+	{
+	  /* Go back and search for duplicate intervals in the
+	   * tzd timezone library */
+	  for (j = i - 1; j >= 0; j--)
+	    {
+	      temp_zone_id =
+		tzc_find_timezone_names (tzd, all_timezone_names[j]);
+
+	      if (temp_zone_id != -1
+		  && timezones[zone_id].gmt_off_rule_start
+		  == timezones[temp_zone_id].gmt_off_rule_start
+		  && timezones[zone_id].gmt_off_rule_count
+		  == timezones[temp_zone_id].gmt_off_rule_count)
+		{
+		  found_duplicate = true;
+		  break;
+		}
+	    }
+	  if (found_duplicate == true)
+	    {
+	      continue;
+	    }
+
+	  all_offset_rule_count += timezones[zone_id].gmt_off_rule_count;
+	}
+    }
+
+  all_offset_rules =
+    (TZ_OFFSET_RULE *) calloc (all_offset_rule_count,
+			       sizeof (TZ_OFFSET_RULE));
+  if (all_offset_rules == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  gmt_off_rule_start = 0;
+
+  /* Add the new offset rules, fix the old ones and do a check for
+   * backward compatibility */
+
+  /* Use the old_tzd_offset_rule_map and the tzd_offset_rule_map arrays to 
+   * filter out duplicate offset rule intervals. 
+   * For each timezone we check if its offset rule interval was
+   * previously found. If it was, we use the mapped start of the interval
+   * in the new timezone library. If not, we map the old start of the interval
+   * to the new one in the new timezone library. */
+
+  for (i = 0; i < all_timezones_count; i++)
+    {
+      prev_gmt_off_rule_start = gmt_off_rule_start;
+      all_timezones[i].gmt_off_rule_start = gmt_off_rule_start;
+      find_idx = -1;
+      country_name = NULL;
+      zone_id = tzc_find_timezone_names (tzd, all_timezone_names[i]);
+
+      if (zone_id == -1)
+	{
+	  if (old_tzd.timezones[i].country_id != -1)
+	    {
+	      country_name =
+		old_tzd.countries[old_tzd.timezones[i].country_id].full_name;
+	    }
+	  start = old_tzd.timezones[i].gmt_off_rule_start;
+	  cnt = old_tzd.timezones[i].gmt_off_rule_count;
+
+	  for (j = 0; j < old_tzd_map_count; j++)
+	    {
+	      if (old_tzd_offset_rule_map[j].originial_offset_rule_start ==
+		  start && old_tzd_offset_rule_map[j].len == cnt)
+		{
+		  find_idx = j;
+		  break;
+		}
+	    }
+
+	  if (find_idx == -1)
+	    {
+	      old_tzd_offset_rule_map[old_tzd_map_count].
+		originial_offset_rule_start = start;
+	      old_tzd_offset_rule_map[old_tzd_map_count].len = cnt;
+	      old_tzd_offset_rule_map[old_tzd_map_count++].
+		final_offset_rule_start = gmt_off_rule_start;
+	      gmt_off_rule_start += cnt;
+	    }
+	  else
+	    {
+	      all_timezones[i].gmt_off_rule_start =
+		old_tzd_offset_rule_map[find_idx].final_offset_rule_start;
+	    }
+	}
+      else
+	{
+	  if (tzd->timezones[zone_id].country_id != -1)
+	    {
+	      country_name =
+		tzd->countries[tzd->timezones[zone_id].country_id].full_name;
+	    }
+	  all_timezones[i].gmt_off_rule_count =
+	    timezones[zone_id].gmt_off_rule_count;
+	  start = timezones[zone_id].gmt_off_rule_start;
+	  cnt = timezones[zone_id].gmt_off_rule_count;
+
+	  for (j = 0; j < tzd_map_count; j++)
+	    {
+	      if (tzd_offset_rule_map[j].originial_offset_rule_start == start
+		  && tzd_offset_rule_map[j].len == cnt)
+		{
+		  find_idx = j;
+		  break;
+		}
+	    }
+
+	  if (find_idx == -1)
+	    {
+	      tzd_offset_rule_map[tzd_map_count].originial_offset_rule_start =
+		start;
+	      tzd_offset_rule_map[tzd_map_count].len = cnt;
+	      tzd_offset_rule_map[tzd_map_count++].final_offset_rule_start =
+		gmt_off_rule_start;
+	      gmt_off_rule_start += cnt;
+	    }
+	  else
+	    {
+	      all_timezones[i].gmt_off_rule_start =
+		tzd_offset_rule_map[find_idx].final_offset_rule_start;
+	    }
+
+	  if (i < old_tzd.timezone_count)
+	    {
+	      if (old_tzd.timezones[i].gmt_off_rule_count
+		  != timezones[zone_id].gmt_off_rule_count)
+		{
+		  is_compat = false;
+		}
+	      else
+		{
+		  start_gmt_old = old_tzd.timezones[i].gmt_off_rule_start;
+		  start_gmt_new = tzd->timezones[zone_id].gmt_off_rule_start;
+		  for (j = start_gmt_old;
+		       j <
+		       start_gmt_old +
+		       old_tzd.timezones[i].gmt_off_rule_count; j++)
+		    {
+		      int tzd_offset_rule_index = start_gmt_new + j
+			- start_gmt_old;
+
+		      if (old_tzd.offset_rules[j].ds_type !=
+			  tzd->offset_rules[tzd_offset_rule_index].ds_type)
+			{
+			  is_compat = false;
+			  break;
+			}
+
+		      if (old_tzd.offset_rules[j].ds_type != DS_TYPE_FIXED)
+			{
+			  if (strcmp
+			      (old_tzd.
+			       ds_rulesets[old_tzd.offset_rules[j].
+					   ds_ruleset].ruleset_name,
+			       tzd->ds_rulesets[tzd->
+						offset_rules
+						[tzd_offset_rule_index].
+						ds_ruleset].ruleset_name) !=
+			      0)
+			    {
+			      is_compat = false;
+			      break;
+			    }
+			}
+
+		      if (comp_offset_rules
+			  (&old_tzd.offset_rules[j],
+			   &tzd->offset_rules[tzd_offset_rule_index]) ==
+			  false)
+			{
+			  is_compat = false;
+			  break;
+			}
+		    }
+		}
+	    }
+	}
+
+      /* Fix the country ids in the new timezone vector */
+      if (country_name != NULL)
+	{
+	  country_id =
+	    tzc_find_country_names (all_countries, all_country_count,
+				    country_name);
+	}
+      else
+	{
+	  country_id = -1;
+	}
+      all_timezones[i].country_id = country_id;
+
+      if (find_idx == -1)
+	{
+	  for (j = prev_gmt_off_rule_start; j < gmt_off_rule_start; j++)
+	    {
+	      int offset_rule_index = start + j - prev_gmt_off_rule_start;
+	      if (zone_id == -1)
+		{
+		  err_status =
+		    copy_offset_rule (&all_offset_rules[j], &old_tzd,
+				      offset_rule_index);
+
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+
+		  if (old_tzd.offset_rules[offset_rule_index].ds_type
+		      != DS_TYPE_FIXED)
+		    {
+		      mark_ruleset[old_tzd.offset_rules[offset_rule_index].
+				   ds_ruleset] = 1;
+		    }
+		}
+	      else
+		{
+		  err_status = copy_offset_rule (&all_offset_rules[j], tzd,
+						 offset_rule_index);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		}
+	    }
+	}
+    }
+
+  for (i = 0; i < old_tzd.ds_ruleset_count; i++)
+    {
+      ruleset_id = tzc_get_ds_ruleset_by_name (tzd->ds_rulesets,
+					       tzd->ds_ruleset_count,
+					       old_tzd.ds_rulesets[i].
+					       ruleset_name);
+      if (ruleset_id == -1 && mark_ruleset[i] == 1)
+	{
+	  all_ds_ruleset_count++;
+	  all_ds_rule_count += old_tzd.ds_rulesets[i].count;
+	}
+    }
+  all_ds_ruleset_count += tzd->ds_ruleset_count;
+  all_ds_rule_count += tzd->ds_rule_count;
+
+  all_ds_rulesets =
+    (TZ_DS_RULESET *) calloc (all_ds_ruleset_count, sizeof (TZ_DS_RULESET));
+  if (all_ds_rulesets == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  all_ds_rules =
+    (TZ_DS_RULE *) calloc (all_ds_rule_count, sizeof (TZ_DS_RULE));
+  if (all_ds_rules == NULL)
+    {
+      err_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      goto exit;
+    }
+
+  /* Do a merge between old timezone library ds_rulesets and
+   * current timezone library */
+
+  i = 0, j = 0, k = 0;
+  while (i < old_tzd.ds_ruleset_count && j < tzd->ds_ruleset_count)
+    {
+      prev_start_ds_rule = start_ds_rule;
+      tzd_or_old_tzd = NULL;
+      comp_res =
+	strcmp (old_tzd.ds_rulesets[i].ruleset_name,
+		tzd->ds_rulesets[j].ruleset_name);
+      if (comp_res == 0)
+	{
+	  start_ds_rule += tzd->ds_rulesets[j].count;
+	  err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j,
+					prev_start_ds_rule);
+	  if (err_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  tzd_or_old_tzd = tzd;
+	  start = tzd->ds_rulesets[j].index_start;
+	  if (old_tzd.ds_rulesets[i].count != tzd->ds_rulesets[j].count)
+	    {
+	      is_compat = false;
+	    }
+	  i++;
+	  j++;
+	}
+      else if (comp_res < 0)
+	{
+	  if (mark_ruleset[i] == 1)
+	    {
+	      start_ds_rule += old_tzd.ds_rulesets[i].count;
+	      err_status = init_ds_ruleset (&all_ds_rulesets[k], &old_tzd, i,
+					    prev_start_ds_rule);
+	      if (err_status != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      tzd_or_old_tzd = &old_tzd;
+	      start = old_tzd.ds_rulesets[i].index_start;
+	    }
+	  i++;
+	}
+      /* This is a new ruleset, we will set its index start later */
+      else
+	{
+	  err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j,
+					-tzd->ds_rulesets[j].index_start);
+	  if (err_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  j++;
+	}
+      if (comp_res >= 0 || (comp_res < 0 && mark_ruleset[i - 1] == 1))
+	{
+	  k++;
+	}
+
+      /* Now copy the daylight saving rules also and do backward 
+       * compatibility checking */
+      if (tzd_or_old_tzd != NULL)
+	{
+	  if (comp_res == 0
+	      && old_tzd.ds_rulesets[i - 1].count ==
+	      tzd->ds_rulesets[j - 1].count)
+	    {
+	      start_ds_ruleset_old = old_tzd.ds_rulesets[i - 1].index_start;
+	      start_ds_ruleset_new = tzd->ds_rulesets[j - 1].index_start;
+	    }
+	  for (l = prev_start_ds_rule; l < start_ds_rule; l++)
+	    {
+	      err_status = copy_ds_rule (&all_ds_rules[l], tzd_or_old_tzd,
+					 start + l - prev_start_ds_rule);
+	      if (err_status != NO_ERROR)
+		{
+		  goto exit;
+		}
+
+	      /* Do backward compatibility checking */
+	      if (comp_res == 0
+		  && old_tzd.ds_rulesets[i - 1].count ==
+		  tzd->ds_rulesets[j - 1].count)
+		{
+		  old_ds_rule =
+		    &old_tzd.ds_rules[start_ds_ruleset_old + l -
+				      prev_start_ds_rule];
+		  new_ds_rule =
+		    &tzd->ds_rules[start_ds_ruleset_new + l -
+				   prev_start_ds_rule];
+		  if (comp_ds_rules (old_ds_rule, new_ds_rule) == false)
+		    {
+		      is_compat = false;
+		    }
+		}
+	    }
+	}
+    }
+
+  /* Now copy the remaining rules */
+  while (i < old_tzd.ds_ruleset_count)
+    {
+      prev_start_ds_rule = start_ds_rule;
+
+      if (mark_ruleset[i] == 1)
+	{
+	  start_ds_rule += old_tzd.ds_rulesets[i].count;
+	  err_status = init_ds_ruleset (&all_ds_rulesets[k], &old_tzd, i,
+					prev_start_ds_rule);
+	  if (err_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  start = old_tzd.ds_rulesets[i].index_start;
+	  k++;
+	}
+
+      for (l = prev_start_ds_rule; l < start_ds_rule; l++)
+	{
+	  err_status = copy_ds_rule (&all_ds_rules[l], &old_tzd,
+				     start + l - prev_start_ds_rule);
+	  if (err_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+      i++;
+    }
+
+  while (j < tzd->ds_ruleset_count)
+    {
+      err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j,
+				    -tzd->ds_rulesets[j].index_start);
+      if (err_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+      j++;
+      k++;
+    }
+
+  /* Now copy the new daylight saving rules that were added
+   * in the current timezone library */
+  assert (k == all_ds_ruleset_count);
+  for (i = 0; i < all_ds_ruleset_count; i++)
+    {
+      if (all_ds_rulesets[i].index_start < 0)
+	{
+	  prev_start_ds_rule = start_ds_rule;
+	  start = -all_ds_rulesets[i].index_start;
+	  all_ds_rulesets[i].index_start = prev_start_ds_rule;
+	  start_ds_rule += all_ds_rulesets[i].count;
+
+	  /* Now copy the new daylight saving rules to the end */
+	  for (j = prev_start_ds_rule; j < start_ds_rule; j++)
+	    {
+	      err_status = copy_ds_rule (&all_ds_rules[j], tzd,
+					 start + j - prev_start_ds_rule);
+	      if (err_status != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+	}
+    }
+
+  /* Now we need to fix the ds_ruleset index in the offset rules */
+  for (i = 0; i < all_timezones_count; i++)
+    {
+      zone_id = tzc_find_timezone_names (tzd, all_timezone_names[i]);
+
+      if (zone_id == -1)
+	{
+	  start = old_tzd.timezones[i].gmt_off_rule_start;
+	}
+      else
+	{
+	  start = timezones[zone_id].gmt_off_rule_start;
+	}
+
+      for (j = all_timezones[i].gmt_off_rule_start;
+	   j <
+	   all_timezones[i].gmt_off_rule_start +
+	   all_timezones[i].gmt_off_rule_count; j++)
+	{
+	  int offset_rule_index = start + j
+	    - all_timezones[i].gmt_off_rule_start;
+	  if (zone_id == -1)
+	    {
+	      int old_tzd_ds_ruleset = old_tzd.
+		offset_rules[offset_rule_index].ds_ruleset;
+
+	      if (old_tzd.offset_rules[offset_rule_index].ds_type
+		  != DS_TYPE_FIXED)
+		{
+		  ruleset_name =
+		    old_tzd.ds_rulesets[old_tzd_ds_ruleset].ruleset_name;
+		}
+	      else
+		{
+		  ruleset_name = NULL;
+		}
+	    }
+	  else
+	    {
+	      int tzd_ds_ruleset = tzd->
+		offset_rules[offset_rule_index].ds_ruleset;
+
+	      if (tzd->offset_rules[offset_rule_index].ds_type !=
+		  DS_TYPE_FIXED)
+		{
+		  ruleset_name =
+		    tzd->ds_rulesets[tzd_ds_ruleset].ruleset_name;
+		}
+	      else
+		{
+		  ruleset_name = NULL;
+		}
+	    }
+	  if (ruleset_name != NULL)
+	    {
+	      ruleset_id = tzc_get_ds_ruleset_by_name (all_ds_rulesets,
+						       all_ds_ruleset_count,
+						       ruleset_name);
+	      all_offset_rules[j].ds_ruleset = ruleset_id;
+	    }
+	}
+    }
+
+  qsort (all_names, all_timezones_and_aliases_count,
+	 sizeof (TZ_NAME), comp_func_tz_names);
+
+exit:
+  /* Free all data structures except for the windows zone map data structure 
+   * and the leap seconds array */
+
+  tzc_free_tz_data (tzd, false);
+  if (mark_ruleset != NULL)
+    {
+      free_and_init (mark_ruleset);
+    }
+  if (old_tzd_offset_rule_map != NULL)
+    {
+      free_and_init (old_tzd_offset_rule_map);
+    }
+  if (tzd_offset_rule_map != NULL)
+    {
+      free_and_init (tzd_offset_rule_map);
+    }
+
+  /* Now use the new data structures */
+  tzd->countries = all_countries;
+  tzd->country_count = all_country_count;
+  tzd->timezone_names = all_timezone_names;
+  tzd->timezones = all_timezones;
+  tzd->timezone_count = all_timezones_count;
+  tzd->names = all_names;
+  tzd->name_count = all_timezones_and_aliases_count;
+  tzd->offset_rules = all_offset_rules;
+  tzd->offset_rule_count = all_offset_rule_count;
+  tzd->ds_rulesets = all_ds_rulesets;
+  tzd->ds_ruleset_count = all_ds_ruleset_count;
+  tzd->ds_rules = all_ds_rules;
+  tzd->ds_rule_count = all_ds_rule_count;
+
+  if (err_status == NO_ERROR && is_compat == false)
+    {
+      printf ("Could not make all the data backward compatible!\n");
+    }
+
+  return err_status;
+}

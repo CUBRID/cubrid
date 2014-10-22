@@ -37,7 +37,6 @@
 #include <unistd.h>
 #endif
 
-#include "tz_list.h"
 #include "tz_support.h"
 #include "system_parameter.h"
 #include "memory_alloc.h"
@@ -264,14 +263,13 @@ tz_load_data_from_lib (TZ_DATA * tzd, void *lib_handle)
   assert (lib_handle != NULL);
   assert (tzd != NULL);
 
-  /* use countries and timezone names exported into timezone_list.c */
-  tzd->countries = (TZ_COUNTRY *) tz_countries;
-  tzd->country_count = DIM (tz_countries);
-  tzd->timezone_names = (char **) tz_timezone_names;
+  /* load data from the shared library */
+  TZLIB_GET_VAL (tzd->country_count, "tz_country_count", int, lib_handle);
+  TZLIB_GET_ADDR (tzd->countries, "tz_countries", TZ_COUNTRY *, lib_handle);
 
-  /* load all other data from the shared library */
   TZLIB_GET_VAL (tzd->timezone_count, "timezone_count", int, lib_handle);
-
+  TZLIB_GET_ADDR (tzd->timezone_names, "tz_timezone_names", char **,
+		  lib_handle);
   TZLIB_GET_ADDR (tzd->timezones, "timezones", TZ_TIMEZONE *, lib_handle);
 
   TZLIB_GET_VAL (tzd->offset_rule_count, "offset_rule_count", int,
@@ -4519,3 +4517,37 @@ exit_on_error:
   return error;
 }
 #endif
+
+/*
+ * tz_load_with_library_path() - opens the timezone library and loads the data into the tzd
+ *			         parameter using the given library path
+ * tzd(in/out) : timezone data
+ * timezone_library_path(in) : path to timezone library
+ * Returns: 0 (NO_ERROR) if success, -1 otherwise
+ */
+int
+tz_load_with_library_path (TZ_DATA * tzd, const char *timezone_library_path)
+{
+  int err_status = NO_ERROR;
+  void *tz_lib_handle = NULL;
+
+  err_status = tz_load_library (timezone_library_path, &tz_lib_handle, false);
+  if (err_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  err_status = tz_load_data_from_lib (tzd, tz_lib_handle);
+  if (err_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  if (err_status != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR,
+	      1, timezone_library_path);
+    }
+  return err_status;
+}

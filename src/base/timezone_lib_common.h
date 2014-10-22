@@ -74,11 +74,11 @@ typedef enum
  *		      - use the existing TZ/ID arrays to identify which 
  *		      timezones need to be updated;
  *		      - no new time zones are added;
- * TZ_GEN_TYPE_EXTEND - this flag is intended to be used by CUBRID developers
- *		      - add new timezones (use the TZ/ID arrays generated in a
- *		      previous CUBRID release and generate incrementing IDs
- *		      for any new timezones found in IANA's updated TZ DB
- *		      - generate updated TZ/ID arrays
+ * TZ_GEN_TYPE_EXTEND - this flag is used when generating a new timezone library
+ *		        using the old library and the new timezone data
+ *		      
+ *		      
+ *		      
  */
 typedef enum
 {
@@ -113,7 +113,8 @@ typedef struct tz_offset_rule TZ_OFFSET_RULE;
 struct tz_offset_rule
 {
   int gmt_off;			/* time offset from UTC, in seconds */
-  int ds_ruleset;
+  int ds_ruleset;		/* it is either an index in DS ruleset or
+				 * a fixed amount of daylight saving (in seconds) */
   unsigned short until_year;
   unsigned char until_mon;	/* 0 - 11 */
   unsigned char until_day;	/* 0 - 30 */

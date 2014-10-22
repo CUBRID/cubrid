@@ -276,6 +276,10 @@ extern "C"
 					   DB_VALUE ** arg_values,
 					   int arg_cnt, void **ptr);
 #endif
+
+  extern int tz_load_with_library_path (TZ_DATA * tzd,
+					const char *timezone_library_path);
+
 #ifdef __cplusplus
 }
 #endif

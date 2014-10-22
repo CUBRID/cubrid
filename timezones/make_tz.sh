@@ -112,13 +112,14 @@ echo ""
 
 echo "Generating timezone C file in mode $TZ_GEN_MODE"
 
-PS=$(cubrid gen_tz -g $GEN_TZ_MODE 2>&1)
+PS=$(cubrid gen_tz -g $TZ_GEN_MODE 2>&1)
 if ! [ "$?" -eq 0 ] ; then
 	echo $PS
-	echo "Error: Command cubrid gen_tz -g $GEN_TZ_MODE failed!"
+	echo "Error: Command cubrid gen_tz -g $TZ_GEN_MODE failed!"
 	exit 1
 fi
 
+echo $PS | grep -o 'Could not make all the data backward compatible!'
 
 current_dir=$CD
 cd $CUBRID/timezones/tzlib
