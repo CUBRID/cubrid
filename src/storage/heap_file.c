@@ -5220,8 +5220,9 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
        */
 
       vpid.volid = hfid->vfid.volid;
-      if (file_reuse_deleted (thread_p, &hfid->vfid, file_type,
-			      &hfdes) != NULL
+      if (file_type != FILE_HEAP_REUSE_SLOTS
+	  && file_reuse_deleted (thread_p, &hfid->vfid, file_type,
+				 &hfdes) != NULL
 	  && file_find_nthpages (thread_p, &hfid->vfid, &vpid, 0, 1) == 1)
 	{
 	  hfid->hpgid = vpid.pageid;

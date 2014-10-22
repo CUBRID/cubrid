@@ -278,9 +278,40 @@ static VFID file_Tracker_vfid = { NULL_FILEID, NULL_VOLID };
 
 static FILE_TRACKER_CACHE file_Tracker_cache = {
   NULL,
-  {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-  {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-   NULL, NULL, NULL},
+  {-1,				/* FILE_TRACKER */
+   -1,				/* FILE_HEAP */
+   -1,				/* FILE_MULTIPAGE_OBJECT_HEAP */
+   -1,				/* FILE_BTREE */
+   -1,				/* FILE_BTREE_OVERFLOW_KEY */
+   -1,				/* FILE_EXTENDIBLE_HASH */
+   -1,				/* FILE_EXTENDIBLE_HASH_DIRECTORY */
+   -1,				/* FILE_LONGDATA */
+   -1,				/* FILE_CATALOG */
+   -1,				/* FILE_DROPPED_FILES */
+   -1,				/* FILE_VACUUM_DATA */
+   -1,				/* FILE_QUERY_AREA */
+   -1,				/* FILE_TMP */
+   -1,				/* FILE_TMP_TMP */
+   -1,				/* FILE_EITHER_TMP */
+   -1,				/* FILE_UNKNOWN_TYPE */
+   0 /* FILE_HEAP_REUSE_SLOTS - do not mark, just destroy */ },
+  {NULL,			/* FILE_TRACKER */
+   NULL,			/* FILE_HEAP */
+   NULL,			/* FILE_MULTIPAGE_OBJECT_HEAP */
+   NULL,			/* FILE_BTREE */
+   NULL,			/* FILE_BTREE_OVERFLOW_KEY */
+   NULL,			/* FILE_EXTENDIBLE_HASH */
+   NULL,			/* FILE_EXTENDIBLE_HASH_DIRECTORY */
+   NULL,			/* FILE_LONGDATA */
+   NULL,			/* FILE_CATALOG */
+   NULL,			/* FILE_DROPPED_FILES */
+   NULL,			/* FILE_VACUUM_DATA */
+   NULL,			/* FILE_QUERY_AREA */
+   NULL,			/* FILE_TMP */
+   NULL,			/* FILE_TMP_TMP */
+   NULL,			/* FILE_EITHER_TMP */
+   NULL,			/* FILE_UNKNOWN_TYPE */
+   NULL /* FILE_HEAP_REUSE_SLOTS - do not mark, just destroy */ },
   {NULL, NULL, NULL}
 };
 
@@ -12658,6 +12689,7 @@ file_mark_deleted_file_list_add (VFID * vfid, const FILE_TYPE file_type)
 {
   FILE_MARK_DEL_LIST *node;
 
+  assert (file_type != FILE_HEAP_REUSE_SLOTS);
   assert (file_Tracker->hint_num_mark_deleted[file_type] >= 0);
 
   node = (FILE_MARK_DEL_LIST *) malloc (sizeof (FILE_MARK_DEL_LIST));
@@ -12686,6 +12718,8 @@ static int
 file_mark_deleted_file_list_remove (VFID * vfid, const FILE_TYPE file_type)
 {
   FILE_MARK_DEL_LIST *node;
+
+  assert (file_type != FILE_HEAP_REUSE_SLOTS);
 
   if (file_Tracker->mrk_del_list[file_type] == NULL)
     {
@@ -12733,6 +12767,7 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid,
   };
   VPID tmp_vpid;
 
+  assert (file_type != FILE_HEAP_REUSE_SLOTS);
   assert (file_type <= FILE_LAST);
 
   /*
@@ -12755,6 +12790,8 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid,
 
   if (file_Tracker->hint_num_mark_deleted[file_type] == -1)
     {
+      assert_release (file_type != FILE_HEAP_REUSE_SLOTS);
+
       /*
        * We need to lock the tracker header page in exclusive mode to scan for
        * a mark deleted file in a consistent way. For example, we do not want
@@ -13399,9 +13436,10 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   rv = pthread_mutex_lock (&file_Num_mark_deleted_hint_lock);
   if (file_Tracker->hint_num_mark_deleted[fhdr->type] != -1
-      && isdeleted == true
-      && (fhdr->type == FILE_HEAP || fhdr->type == FILE_HEAP_REUSE_SLOTS))
+      && isdeleted == true && fhdr->type == FILE_HEAP)
     {
+      assert (fhdr->type != FILE_HEAP_REUSE_SLOTS);
+
       ret = file_mark_deleted_file_list_add (&fhdr->vfid, fhdr->type);
       if (ret != NO_ERROR)
 	{
