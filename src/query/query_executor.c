@@ -12041,6 +12041,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
   OID unique_oid;
   int local_op_type = SINGLE_ROW_UPDATE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
+  int ispeeking;
 
   OID_SET_NULL (&unique_oid);
 
@@ -12063,8 +12064,12 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
     }
 
   /* get attribute values */
-  scan_code = heap_get (thread_p, &unique_oid, &rec_descriptor,
-			local_scan_cache, PEEK, NULL_CHN);
+  ispeeking =
+    (local_scan_cache != NULL
+     && local_scan_cache->cache_last_fix_page) ? PEEK : COPY;
+  scan_code =
+    heap_get (thread_p, &unique_oid, &rec_descriptor, local_scan_cache,
+	      ispeeking, NULL_CHN);
   if (scan_code != S_SUCCESS)
     {
       goto exit_on_error;
@@ -12084,8 +12089,9 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
 	SINGLE_ROW_UPDATE;
     }
 
-  error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor,
-				       NULL, odku->attr_info);
+  error =
+    heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor,
+				 local_scan_cache, odku->attr_info);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
