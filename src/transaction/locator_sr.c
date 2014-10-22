@@ -100,7 +100,7 @@ extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p,
 					  const char *name, RECDES * record,
 					  OID * class_oid_p,
 					  bool force_in_place);
-extern int catcls_remove_entry (OID * class_oid);
+extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
 
 typedef struct locator_tmp_classname_action LOCATOR_TMP_CLASSNAME_ACTION;
 struct locator_tmp_classname_action
@@ -1441,8 +1441,10 @@ locator_drop_class_name_entry (const void *name, void *ent, void *rm)
   LOCATOR_TMP_CLASSNAME_ACTION *old_action;
   char *classname;
   OID class_oid;
+  THREAD_ENTRY *thread_p;
 
   drop = (LOCATOR_TMP_DESIRED_CLASSNAME_ENTRIES *) rm;
+  thread_p = thread_get_thread_entry_info ();
 
   COPY_OID (&class_oid, &entry->current.oid);
 
@@ -1463,7 +1465,7 @@ locator_drop_class_name_entry (const void *name, void *ent, void *rm)
 	  log_decrease_num_transient_classnames (entry->tran_index);
 	  (void) mht_rem (locator_Mht_classnames, name, NULL, NULL);
 
-	  (void) catcls_remove_entry (&class_oid);
+	  (void) catcls_remove_entry (thread_p, &class_oid);
 
 	  free_and_init (ent);
 	  free_and_init (classname);
@@ -1484,7 +1486,7 @@ locator_drop_class_name_entry (const void *name, void *ent, void *rm)
 		  log_decrease_num_transient_classnames (entry->tran_index);
 		  (void) mht_rem (locator_Mht_classnames, name, NULL, NULL);
 
-		  (void) catcls_remove_entry (&class_oid);
+		  (void) catcls_remove_entry (thread_p, &class_oid);
 
 		  free_and_init (ent);
 		  free_and_init (classname);
@@ -1514,8 +1516,10 @@ locator_force_drop_class_name_entry (const void *name, void *ent, void *rm)
   LOCATOR_TMP_CLASSNAME_ACTION *old_action;
   char *classname;
   OID class_oid;
+  THREAD_ENTRY *thread_p;
 
   drop = (LOCATOR_TMP_DESIRED_CLASSNAME_ENTRIES *) rm;
+  thread_p = thread_get_thread_entry_info ();
 
   COPY_OID (&class_oid, &entry->current.oid);
 
@@ -1529,7 +1533,7 @@ locator_force_drop_class_name_entry (const void *name, void *ent, void *rm)
     }
   (void) mht_rem (locator_Mht_classnames, name, NULL, NULL);
 
-  (void) catcls_remove_entry (&class_oid);
+  (void) catcls_remove_entry (thread_p, &class_oid);
 
   free_and_init (ent);
   free_and_init (classname);

@@ -142,7 +142,8 @@ AUTO_ADDVOL_JOB boot_Auto_addvol_job = BOOT_AUTO_ADDVOL_JOB_INITIALIZER;
 
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-extern int catcls_finalize_class_oid_to_oid_hash_table ();
+extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY *
+							thread_p);
 extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
 					   int *charset_id_p, char *lang_buf,
 					   const int lang_buf_size);
@@ -4741,7 +4742,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
   disk_goodvol_decache (thread_p);
   boot_server_status (BOOT_SERVER_DOWN);
 
-  catcls_finalize_class_oid_to_oid_hash_table ();
+  catcls_finalize_class_oid_to_oid_hash_table (thread_p);
   serial_finalize_cache_pool ();
   partition_cache_finalize (thread_p);
 #if defined(SERVER_MODE)

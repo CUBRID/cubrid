@@ -126,8 +126,9 @@ extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p,
 					  const char *name, RECDES * record,
 					  OID * class_oid_p,
 					  bool force_in_place);
-extern int catcls_finalize_class_oid_to_oid_hash_table (void);
-extern int catcls_remove_entry (OID * class_oid);
+extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY *
+							thread_p);
+extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
 					   int *charset_id_p, char *lang_buf,
 					   const int lang_buf_size);
@@ -138,7 +139,9 @@ extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
 						  time_t * log_record_time);
 extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
-static int catcls_initialize_class_oid_to_oid_hash_table (int num_entry);
+static int catcls_initialize_class_oid_to_oid_hash_table (THREAD_ENTRY *
+							  thread_p,
+							  int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p,
 					   OR_BUF * buf_p,
 					   OR_VALUE * value_p);
@@ -233,8 +236,10 @@ static int catcls_mvcc_update_instance (THREAD_ENTRY * thread_p,
 					OID * root_oid_p, OID * class_oid_p,
 					HFID * hfid_p,
 					HEAP_SCANCACHE * scan_p);
-static OID *catcls_find_oid (OID * class_oid);
-static int catcls_put_entry (CATCLS_ENTRY * entry);
+static CATCLS_ENTRY *catcls_allocate_entry (THREAD_ENTRY * thread_p);
+static int catcls_free_entry (const void *key, void *data, void *args);
+static OID *catcls_find_oid (THREAD_ENTRY * thread_p, OID * class_oid);
+static int catcls_put_entry (THREAD_ENTRY * thread_p, CATCLS_ENTRY * entry);
 static char *catcls_unpack_allocator (int size);
 static OR_VALUE *catcls_allocate_or_value (int size);
 static void catcls_free_sub_value (OR_VALUE * values, int count);
@@ -263,12 +268,15 @@ static int catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
 /*
  * catcls_allocate_entry () -
  *   return:
- *   void(in):
+ *   thread_p(in):
  */
 static CATCLS_ENTRY *
-catcls_allocate_entry (void)
+catcls_allocate_entry (THREAD_ENTRY * thread_p)
 {
   CATCLS_ENTRY *entry_p;
+
+  assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
+
   if (catcls_Free_entry_list != NULL)
     {
       entry_p = catcls_Free_entry_list;
@@ -299,6 +307,10 @@ catcls_allocate_entry (void)
 static int
 catcls_free_entry (const void *key, void *data, void *args)
 {
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
+
   CATCLS_ENTRY *entry_p = (CATCLS_ENTRY *) data;
   entry_p->next = catcls_Free_entry_list;
   catcls_Free_entry_list = entry_p;
@@ -309,18 +321,28 @@ catcls_free_entry (const void *key, void *data, void *args)
 /*
  * catcls_initialize_class_oid_to_oid_hash_table () -
  *   return:
+ *   thread_p(in):
  *   num_entry(in):
  */
 static int
-catcls_initialize_class_oid_to_oid_hash_table (int num_entry)
+catcls_initialize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p,
+					       int num_entry)
 {
+  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   catcls_Class_oid_to_oid_hash_table =
     mht_create ("Class OID to OID", num_entry, oid_hash, oid_compare_equals);
 
   if (catcls_Class_oid_to_oid_hash_table == NULL)
     {
+      csect_exit (thread_p, CSECT_CT_OID_TABLE);
       return ER_FAILED;
     }
+
+  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
   return NO_ERROR;
 }
@@ -328,12 +350,17 @@ catcls_initialize_class_oid_to_oid_hash_table (int num_entry)
 /*
  * catcls_finalize_class_oid_to_oid_hash_table () -
  *   return:
- *   void(in):
+ *   thread_p(in):
  */
 int
-catcls_finalize_class_oid_to_oid_hash_table (void)
+catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p)
 {
   CATCLS_ENTRY *entry_p, *next_p;
+
+  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   if (catcls_Class_oid_to_oid_hash_table)
     {
@@ -347,20 +374,25 @@ catcls_finalize_class_oid_to_oid_hash_table (void)
       free_and_init (entry_p);
     }
   catcls_Free_entry_list = NULL;
-
   catcls_Class_oid_to_oid_hash_table = NULL;
+
+  csect_exit (thread_p, CSECT_CT_OID_TABLE);
+
   return NO_ERROR;
 }
 
 /*
  * catcls_find_oid () -
  *   return:
+ *   thread_p(in):
  *   class_oid(in):
  */
 static OID *
-catcls_find_oid (OID * class_oid_p)
+catcls_find_oid (THREAD_ENTRY * thread_p, OID * class_oid_p)
 {
   CATCLS_ENTRY *entry_p;
+
+  assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 2);
 
   if (catcls_Class_oid_to_oid_hash_table)
     {
@@ -383,11 +415,14 @@ catcls_find_oid (OID * class_oid_p)
 /*
  * catcls_put_entry () -
  *   return:
+ *   thread_p(in):
  *   entry(in):
  */
 static int
-catcls_put_entry (CATCLS_ENTRY * entry_p)
+catcls_put_entry (THREAD_ENTRY * thread_p, CATCLS_ENTRY * entry_p)
 {
+  assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
+
   if (catcls_Class_oid_to_oid_hash_table)
     {
       if (mht_put
@@ -404,11 +439,14 @@ catcls_put_entry (CATCLS_ENTRY * entry_p)
 /*
  * catcls_remove_entry () -
  *   return:
+ *   thread_p(in):
  *   class_oid(in):
  */
 int
-catcls_remove_entry (OID * class_oid_p)
+catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid_p)
 {
+  assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
+
   if (catcls_Class_oid_to_oid_hash_table)
     {
       mht_rem (catcls_Class_oid_to_oid_hash_table, class_oid_p,
@@ -749,7 +787,7 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  oid_p = catcls_find_oid (class_oid_p);
+  oid_p = catcls_find_oid (thread_p, class_oid_p);
 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
@@ -770,16 +808,21 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p,
 	  return er_errid ();
 	}
 
-      if (!OID_ISNULL (oid_p) && (entry_p = catcls_allocate_entry ()) != NULL)
+      if (!OID_ISNULL (oid_p))
 	{
-	  COPY_OID (&entry_p->class_oid, class_oid_p);
-	  COPY_OID (&entry_p->oid, oid_p);
 	  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) !=
 	      NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
-	  catcls_put_entry (entry_p);
+
+	  if ((entry_p = catcls_allocate_entry (thread_p)) != NULL)
+	    {
+	      COPY_OID (&entry_p->class_oid, class_oid_p);
+	      COPY_OID (&entry_p->oid, oid_p);
+	      catcls_put_entry (thread_p, entry_p);
+	    }
+
 	  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 	}
     }
@@ -4436,7 +4479,7 @@ catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
       goto error;
     }
 
-  if (catcls_remove_entry (class_oid_p) != NO_ERROR)
+  if (catcls_remove_entry (thread_p, class_oid_p) != NO_ERROR)
     {
       csect_exit (thread_p, CSECT_CT_OID_TABLE);
       goto error;
@@ -4655,7 +4698,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
 	  goto error;
 	}
 
-      if (catcls_remove_entry (class_oid_p) != NO_ERROR)
+      if (catcls_remove_entry (thread_p, class_oid_p) != NO_ERROR)
 	{
 	  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 	  goto error;
@@ -4776,7 +4819,8 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
-  if (catcls_initialize_class_oid_to_oid_hash_table (CATCLS_OID_TABLE_SIZE) !=
+  if (catcls_initialize_class_oid_to_oid_hash_table (thread_p,
+						     CATCLS_OID_TABLE_SIZE) !=
       NO_ERROR)
     {
       return ER_FAILED;
