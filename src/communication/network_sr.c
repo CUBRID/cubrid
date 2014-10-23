@@ -1404,18 +1404,19 @@ net_server_start (const char *server_name)
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
   mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
-  if (thread_initialize_manager () != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
-      status = -1;
-      goto end;
-    }
   if (csect_initialize () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize critical section\n");
       status = -1;
       goto end;
     }
+  if (thread_initialize_manager () != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
+      status = -1;
+      goto end;
+    }
+
   if (er_init_internal (NULL, ER_NEVER_EXIT, true) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
@@ -1478,8 +1479,8 @@ net_server_start (const char *server_name)
       status = 2;
     }
 
-  csect_finalize ();
   thread_final_manager ();
+  csect_finalize ();
 
 end:
 #if defined(WINDOWS)
