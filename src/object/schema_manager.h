@@ -294,7 +294,7 @@ extern int sm_drop_trigger (DB_OBJECT * classop,
 			    int class_attribute, DB_OBJECT * trigger);
 
 /* Optimized trigger checker for the object manager */
-extern int sm_active_triggers (SM_CLASS * class_,
+extern int sm_active_triggers (MOP class_mop, SM_CLASS * class_,
 			       DB_TRIGGER_EVENT event_type);
 
 
@@ -350,12 +350,14 @@ extern void sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info);
 
 extern int sm_is_global_only_constraint (MOP classmop,
 					 SM_CLASS_CONSTRAINT * constraint,
-					 int * is_global,
+					 int *is_global,
 					 SM_TEMPLATE * template_);
 
 extern int sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name,
 				      char *new_name);
 
 extern int sm_adjust_partitions_parent (MOP class_mop, bool flush);
+extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop,
+					  bool * found);
 
 #endif /* _SCHEMA_MANAGER_H_ */

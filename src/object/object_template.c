@@ -2443,7 +2443,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
    * figure out what kind of triggers to fire here, only do this
    * if the class indicates that there are active triggers
    */
-  trigstate = sm_active_triggers (class_, TR_EVENT_ALL);
+  trigstate = sm_active_triggers (OBT_BASE_CLASSOBJ (template_ptr),
+				  class_, TR_EVENT_ALL);
   if (trigstate < 0)
     {
       assert (er_errid () != NO_ERROR);
@@ -2468,7 +2469,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   temp = NULL;
   if (event != TR_EVENT_NULL)
     {
-      if (tr_prepare_class (&trstate, class_->triggers, event))
+      if (tr_prepare_class (&trstate, class_->triggers,
+			    OBT_BASE_CLASSOBJ (template_ptr), event))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -2482,7 +2484,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		{
 		  continue;
 		}
-	      if (tr_prepare_class (&trstate, a->att->triggers, event))
+	      if (tr_prepare_class (&trstate, a->att->triggers,
+				    OBT_BASE_CLASSOBJ (template_ptr), event))
 		{
 		  tr_abort (trstate);
 

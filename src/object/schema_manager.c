@@ -4171,11 +4171,13 @@ sm_update_trigger_cache (DB_OBJECT * classop,
  * sm_active_triggers() - Quick check to see if the class has active triggers.
  *    Returns <0 if errors were encountered.
  *   return: non-zero if the class has active triggers
+ *   class_mop(in): class mop
  *   class(in/out): class structure
  *   event_type(in) : event type of trigger to check.
  */
 int
-sm_active_triggers (SM_CLASS * class_, DB_TRIGGER_EVENT event_type)
+sm_active_triggers (MOP class_mop, SM_CLASS * class_,
+		    DB_TRIGGER_EVENT event_type)
 {
   SM_ATTRIBUTE *att;
   int status;
@@ -4196,7 +4198,7 @@ sm_active_triggers (SM_CLASS * class_, DB_TRIGGER_EVENT event_type)
 
   class_->has_active_triggers = 0;
 
-  status = tr_active_schema_cache (class_->triggers, event_type,
+  status = tr_active_schema_cache (class_mop, class_->triggers, event_type,
 				   &has_event_type_triggers);
   if (status < 0)
     {
@@ -4211,7 +4213,7 @@ sm_active_triggers (SM_CLASS * class_, DB_TRIGGER_EVENT event_type)
   for (att = class_->ordered_attributes;
        att != NULL && !has_event_type_triggers; att = att->order_link)
     {
-      status = tr_active_schema_cache (att->triggers, event_type,
+      status = tr_active_schema_cache (class_mop, att->triggers, event_type,
 				       &has_event_type_triggers);
       if (status < 0)
 	{
@@ -4228,8 +4230,9 @@ sm_active_triggers (SM_CLASS * class_, DB_TRIGGER_EVENT event_type)
       for (att = class_->class_attributes; att != NULL;
 	   att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  status = tr_active_schema_cache (att->triggers, event_type,
-					   &has_event_type_triggers);
+	  status =
+	    tr_active_schema_cache (class_mop, att->triggers, event_type,
+				    &has_event_type_triggers);
 	  if (status < 0)
 	    {
 	      return status;
@@ -4278,7 +4281,7 @@ sm_class_has_triggers (DB_OBJECT * classop, int *status_ptr,
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
   if (error == NO_ERROR)
     {
-      status = sm_active_triggers (class_, event_type);
+      status = sm_active_triggers (classop, class_, event_type);
       if (status < 0)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -16508,6 +16511,58 @@ error:
     }
 
   return error_code;
+}
+
+/*
+ * sm_find_class_in_hierarchy() - find class in hierarchy
+ *
+ *   return: error code
+ *   hierarchy(in): the hierarchy
+ *   classop(in): class to find into hierarchy
+ *   found(out): true if founded, false otherwise
+ */
+int
+sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop, bool * found)
+{
+  SM_CLASS *class_ = NULL;
+  DB_OBJLIST *subclass = NULL;
+  int error;
+
+  assert (found != NULL && hierarchy != NULL && class_mop != NULL);
+
+  *found = false;
+
+  error =
+    au_fetch_class_by_classmop (hierarchy, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (subclass = class_->users; subclass != NULL; subclass = subclass->next)
+    {
+      if (ws_mop_compare (subclass->op, class_mop) == 0)
+	{
+	  *found = true;
+	  return NO_ERROR;
+	}
+    }
+
+  for (subclass = class_->users; subclass != NULL; subclass = subclass->next)
+    {
+      error = sm_find_subclass_in_hierarchy (subclass->op, class_mop, found);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (*found == true)
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*

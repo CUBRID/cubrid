@@ -300,7 +300,8 @@ extern int tr_prepare_statement (TR_STATE ** state_p,
 extern int tr_prepare (TR_STATE ** state_p, TR_TRIGLIST * triggers);
 #endif
 extern int tr_prepare_class (TR_STATE ** state_p,
-			     TR_SCHEMA_CACHE * cache, DB_TRIGGER_EVENT event);
+			     TR_SCHEMA_CACHE * cache, MOP class_Mop,
+			     DB_TRIGGER_EVENT event);
 
 extern int tr_before_object (TR_STATE * state, DB_OBJECT * current,
 			     DB_OBJECT * temp);
@@ -369,9 +370,10 @@ extern void tr_free_schema_cache (TR_SCHEMA_CACHE * cache);
 extern void tr_gc_schema_cache (TR_SCHEMA_CACHE * cache,
 				void (*gcmarker) (MOP));
 extern int tr_get_cache_objects (TR_SCHEMA_CACHE * cache, DB_OBJLIST ** list);
-extern int tr_validate_schema_cache (TR_SCHEMA_CACHE * cache);
+extern int tr_validate_schema_cache (TR_SCHEMA_CACHE * cache, MOP class_mop);
 
-extern int tr_active_schema_cache (TR_SCHEMA_CACHE * cache,
+extern int tr_active_schema_cache (MOP class_mop,
+				   TR_SCHEMA_CACHE * cache,
 				   DB_TRIGGER_EVENT event_type,
 				   bool * has_event_type_triggers);
 extern int tr_delete_schema_cache (TR_SCHEMA_CACHE * cache,

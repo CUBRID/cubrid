@@ -1725,7 +1725,7 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
   /* should be using something other than pr_write_mop here ! */
   for (l = list; l != NULL; l = l->next)
     {
-      pr_write_mop (buf, l->op);
+      pr_write_mop (buf, ws_mvcc_latest_version (l->op));
     }
 
   return NO_ERROR;

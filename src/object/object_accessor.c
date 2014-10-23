@@ -773,6 +773,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
   int save, trigstate;
   OBJ_TEMPLATE *temp;
   MOBJ obj, ref_obj;
+  MOP class_mop = NULL;
 
   DB_MAKE_NULL (&base_value);
 
@@ -785,7 +786,20 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
       /* Check for the presence of triggers or unique constraints, use
        * templates in those cases.
        */
-      trigstate = sm_active_triggers (class_, TR_EVENT_ALL);
+
+      if (class_->triggers != NULL)
+	{
+	  if (locator_is_class (op, 1))
+	    {
+	      class_mop = op;
+	    }
+	  else
+	    {
+	      class_mop = ws_class_mop (op);
+	    }
+	}
+
+      trigstate = sm_active_triggers (class_mop, class_, TR_EVENT_ALL);
       if (trigstate < 0)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -2203,7 +2217,8 @@ obj_delete (MOP op)
   if (base_class != NULL)
     {
       error =
-	tr_prepare_class (&trstate, base_class->triggers, TR_EVENT_DELETE);
+	tr_prepare_class (&trstate, base_class->triggers, base_op,
+			  TR_EVENT_DELETE);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -2235,7 +2250,8 @@ obj_delete (MOP op)
     }
   else
     {
-      error = tr_prepare_class (&trstate, class_->triggers, TR_EVENT_DELETE);
+      error = tr_prepare_class (&trstate, class_->triggers, ws_class_mop (op),
+				TR_EVENT_DELETE);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;

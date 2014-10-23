@@ -88,6 +88,7 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
 /*
  * Function Group:
  * Do create/alter/drop serial statement
@@ -6311,6 +6312,10 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *trigger_owner_name = NULL, *trigger_comment;
   DB_VALUE returnval, trigger_name_val, user_val;
   bool has_trigger_comment = false;
+  TR_TRIGGER *trigger;
+  MOP mop1, mop2;
+  int count;
+  bool has_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -6363,13 +6368,26 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* make sure we have ALTER authorization on all the triggers
          before proceeding */
+      count = 0;
       for (t = triggers; t != NULL && error == NO_ERROR; t = t->next)
 	{
 	  error = tr_check_authorization (t->op, true);
+	  count++;
 	}
 
       if (error == NO_ERROR)
 	{
+	  if (count > 0)
+	    {
+	      /* need atomic operation */
+	      error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_TRIGGER);
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	      has_savepoint = true;
+	    }
+
 	  for (t = triggers; t != NULL && error == NO_ERROR; t = t->next)
 	    {
 	      if (status != TR_STATUS_INVALID)
@@ -6409,10 +6427,46 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  error = tr_set_comment (t->op, trigger_comment, false);
 		}
+
+	      mop1 = ws_mvcc_latest_version (t->op);
+	      error = locator_flush_instance (t->op);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+
+	      mop2 = ws_mvcc_latest_version (t->op);
+	      if (ws_mop_compare (mop1, mop2) != 0)
+		{
+		  trigger = tr_map_trigger (t->op, false);
+		  if (trigger == NULL)
+		    {
+		      continue;
+		    }
+
+		  /* update the class hierarchy with new (latest)
+		   * db_trigger instance mop. Otherwise, the class record
+		   * refer the old version of db_trigger instance. The old
+		   * version may be removed by VACUUM <=> remove class trigger.
+		   */
+		  error = sm_touch_class (trigger->class_mop);
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
+		}
 	    }
 	}
     }
 
+  if (has_savepoint && error != NO_ERROR
+      && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint
+	(UNIQUE_SAVEPOINT_ALTER_TRIGGER);
+    }
+
+cleanup:
   if (triggers != NULL)
     {
       ml_ext_free (triggers);

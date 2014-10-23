@@ -2608,6 +2608,7 @@ tr_get_cache_objects (TR_SCHEMA_CACHE * cache, DB_OBJLIST ** list)
  *                              "look inside" a class cache structure.
  *    return: error
  *    cache(in): class cache attached to schema
+ *    class_mop(in): class mop
  *
  * Note:
  *    This must be called by anyone that is about to "look inside"
@@ -2616,11 +2617,13 @@ tr_get_cache_objects (TR_SCHEMA_CACHE * cache, DB_OBJLIST ** list)
  *    proper list.
  */
 int
-tr_validate_schema_cache (TR_SCHEMA_CACHE * cache)
+tr_validate_schema_cache (TR_SCHEMA_CACHE * cache, MOP class_mop)
 {
   int error = NO_ERROR;
-  DB_OBJLIST *object_list, *prev, *next;
+  DB_OBJLIST *object_list, *prev, *next, *u = NULL;
   TR_TRIGGER *trigger;
+  SM_CLASS *class_ = NULL;
+  bool mop_found;
 
   if (cache != NULL)
     {
@@ -2635,6 +2638,39 @@ tr_validate_schema_cache (TR_SCHEMA_CACHE * cache)
 	      /* check for deleted objects that need to be quietly removed */
 	      if (trigger != NULL && trigger->event < cache->array_length)
 		{
+		  if (class_mop != NULL
+		      && ws_mop_compare (class_mop, trigger->class_mop) != 0)
+		    {
+		      if (sm_find_subclass_in_hierarchy (trigger->class_mop,
+							 class_mop,
+							 &mop_found)
+			  != NO_ERROR)
+			{
+			  return error;
+			}
+
+		      if (mop_found == false)
+			{
+			  /*
+			   * got a bogus trigger object in the cache,
+			   * remove it
+			   */
+
+			  if (prev == NULL)
+			    {
+			      cache->objects = next;
+			    }
+			  else
+			    {
+			      prev->next = next;
+			    }
+			  object_list->next = NULL;
+			  ml_free (object_list);
+			  continue;
+			}
+		    }
+
+
 		  if (insert_trigger_list
 		      (&(cache->triggers[trigger->event]), trigger))
 		    {
@@ -2752,6 +2788,7 @@ reorder_schema_caches (TR_TRIGGER * trigger)
  * tr_active_schema_cache() - This is used to determine if a cache contains
  *                            active event_type triggers.
  *    return: 0 = none, >0 = active, <0 = error
+ *    class_mop(in): class mop
  *    cache(in): schema cache to examine
  *    event_type(in) : event type.
  *
@@ -2764,7 +2801,8 @@ reorder_schema_caches (TR_TRIGGER * trigger)
  *
  */
 int
-tr_active_schema_cache (TR_SCHEMA_CACHE * cache, DB_TRIGGER_EVENT event_type,
+tr_active_schema_cache (MOP class_mop, TR_SCHEMA_CACHE * cache,
+			DB_TRIGGER_EVENT event_type,
 			bool * has_event_type_triggers)
 {
   TR_TRIGLIST *t;
@@ -2774,7 +2812,7 @@ tr_active_schema_cache (TR_SCHEMA_CACHE * cache, DB_TRIGGER_EVENT event_type,
   active = 0;
   if (cache != NULL)
     {
-      if (tr_validate_schema_cache (cache))
+      if (tr_validate_schema_cache (cache, class_mop))
 	{
 	  return -1;
 	}
@@ -2919,7 +2957,8 @@ tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
       didwork = 0;
 
       /* need better error handling here */
-      if ((error = tr_validate_schema_cache (cache)) != NO_ERROR)
+      if ((error =
+	   tr_validate_schema_cache (cache, class_object)) != NO_ERROR)
 	{
 	  break;
 	}
@@ -3524,7 +3563,7 @@ get_schema_trigger_objects (DB_OBJECT * class_mop,
 
   if (cache != NULL)
     {
-      if (tr_validate_schema_cache (cache))
+      if (tr_validate_schema_cache (cache, class_mop))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -4099,6 +4138,7 @@ error:
 	  (void) trigger_table_drop (trigger->name);
 	}
       remove_trigger_list (&tr_Uncommitted_triggers, trigger);
+      tr_drop_deferred_activities (trigger->object, NULL);
       free_trigger (trigger);
     }
 
@@ -5297,7 +5337,7 @@ tr_prepare_statement (TR_STATE ** state_p,
 
   if (cache != NULL)
     {
-      if (tr_validate_schema_cache (cache))
+      if (tr_validate_schema_cache (cache, class_mop))
 	{
 	  goto error_return;
 	}
@@ -5319,7 +5359,7 @@ tr_prepare_statement (TR_STATE ** state_p,
 	{
 	  if (cache != NULL)
 	    {
-	      if (tr_validate_schema_cache (cache))
+	      if (tr_validate_schema_cache (cache, class_mop))
 		goto error_return;
 	      else
 		{
@@ -5439,12 +5479,13 @@ tr_prepare (TR_STATE ** state_p, TR_TRIGLIST * triggers)
  *    return: error code
  *    state_p(in/out): trigger state pointer
  *    cache(in): class trigger cache
+ *    class_mop(in): class mop
  *    event(in): event being raised
  *
  */
 int
 tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache,
-		  DB_TRIGGER_EVENT event)
+		  MOP class_mop, DB_TRIGGER_EVENT event)
 {
   int error = NO_ERROR;
   TR_STATE *state;
@@ -5469,7 +5510,7 @@ tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache,
    */
   AU_DISABLE (save);
 
-  if (tr_validate_schema_cache (cache) != NO_ERROR)
+  if (tr_validate_schema_cache (cache, class_mop) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -7089,6 +7130,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name,
   char *newname, *oldname;
   char *tr_name = NULL;
   int save;
+  MOP mop1, mop2;
 
   /* Do we need to disable authorizationjust for check_authorization ? */
   AU_DISABLE (save);
@@ -7133,6 +7175,29 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name,
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
+		}
+	      else
+		{
+		  mop1 = ws_mvcc_latest_version (trigger_object);
+		  error = locator_flush_instance (trigger_object);
+		  if (error == NO_ERROR)
+		    {
+		      mop2 = ws_mvcc_latest_version (trigger_object);
+		      if (ws_mop_compare (mop1, mop2) != 0)
+			{
+			  /* update the class hierarchy with new (latest)
+			   * db_trigger instance mop. Otherwise, the class record
+			   * refer the old version of db_trigger instance.
+			   * The old version may be removed by VACUUM <=> remove
+			   * class trigger.
+			   */
+			  error = sm_touch_class (trigger->class_mop);
+			}
+		    }
+		}
+
+	      if (error != NO_ERROR)
+		{
 		  /*
 		   * hmm, couldn't set the new name, put the old one back,
 		   * we might need to abort the transaction here ?

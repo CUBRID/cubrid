@@ -213,7 +213,8 @@ static void obj_print_describe_trigger_list (PARSER_CONTEXT * parser,
 					     STRLIST ** strings);
 static const char **obj_print_describe_class_triggers (PARSER_CONTEXT *
 						       parser,
-						       SM_CLASS * class_p);
+						       SM_CLASS * class_p,
+						       MOP class_mop);
 static CLASS_HELP *obj_print_make_class_help (void);
 static TRIGGER_HELP *obj_print_make_trigger_help (void);
 static OBJ_HELP *obj_print_make_obj_help (void);
@@ -1544,7 +1545,7 @@ obj_print_describe_trigger_list (PARSER_CONTEXT * parser,
 
 static const char **
 obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
-				   SM_CLASS * class_p)
+				   SM_CLASS * class_p, MOP class_mop)
 {
   SM_ATTRIBUTE *attribute_p;
   STRLIST *strings;
@@ -1555,7 +1556,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
   strings = NULL;
 
   cache = class_p->triggers;
-  if (cache != NULL && !tr_validate_schema_cache (cache))
+  if (cache != NULL && !tr_validate_schema_cache (cache, class_mop))
     {
       for (i = 0; i < cache->array_length; i++)
 	{
@@ -1568,7 +1569,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
        attribute_p = attribute_p->order_link)
     {
       cache = attribute_p->triggers;
-      if (cache != NULL && !tr_validate_schema_cache (cache))
+      if (cache != NULL && !tr_validate_schema_cache (cache, class_mop))
 	{
 	  for (i = 0; i < cache->array_length; i++)
 	    {
@@ -1582,7 +1583,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
        attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
     {
       cache = attribute_p->triggers;
-      if (cache != NULL && !tr_validate_schema_cache (cache))
+      if (cache != NULL && !tr_validate_schema_cache (cache, class_mop))
 	{
 	  for (i = 0; i < cache->array_length; i++)
 	    {
@@ -2209,7 +2210,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
       /* these are a bit more complicated */
       info->triggers =
-	(char **) obj_print_describe_class_triggers (parser, class_);
+	(char **) obj_print_describe_class_triggers (parser, class_, op);
 
       /*
        *  Process multi-column class constraints (Unique and Indexes).
