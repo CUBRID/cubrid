@@ -941,8 +941,8 @@ struct log_tdes
   int fl_mark_repl_recidx;	/* index of flush marked
 				   replication record at first
 				 */
-  LOG_LSA repl_insert_lsa;	/* insert target lsa */
-  LOG_LSA repl_update_lsa;	/* update target lsa */
+  LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
+  LOG_LSA repl_update_lsa;	/* in-place update target lsa */
   void *first_save_entry;	/* first save entry for the transaction */
 
   int num_new_files;		/* # of new files created */

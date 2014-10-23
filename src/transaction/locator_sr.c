@@ -8971,6 +8971,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 #if defined(ENABLE_SYSTEMTAP)
   char *classname = NULL;
 #endif /* ENABLE_SYSTEMTAP */
+  LOG_TDES *tdes;
+  LOG_LSA preserved_repl_lsa;
+  int tran_index;
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
@@ -8981,6 +8984,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
       use_mvcc = true;
       mvccid = logtb_get_current_mvccid (thread_p);
     }
+
+  LSA_SET_NULL (&preserved_repl_lsa);
 
   DB_MAKE_NULL (&new_dbvalue);
   DB_MAKE_NULL (&old_dbvalue);
@@ -9402,6 +9407,21 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	      && index->type == BTREE_PRIMARY_KEY && index->fk && found_btid)
 	    {
 	      assert (do_insert_only == false && do_delete_only == false);
+
+	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	      tdes = LOG_FIND_TDES (tran_index);
+
+	      if (pk_btid_index == i)
+		{
+		  /*
+		   * save lsa before it is overwritten by FK action. No need
+		   * to consider in-place update (repl_update_lsa) since it updates
+		   * index first and then updates heap
+		   */
+		  LSA_COPY (&preserved_repl_lsa, &tdes->repl_insert_lsa);
+		  LSA_SET_NULL (&tdes->repl_insert_lsa);
+		}
+
 	      error_code = locator_check_primary_key_update (thread_p,
 							     index, old_key);
 	      if (error_code != NO_ERROR)
@@ -9409,6 +9429,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		  goto error;
 		}
 
+	      if (pk_btid_index == i)
+		{
+		  /* restore repl_insert_lsa */
+		  assert (LSA_ISNULL (&tdes->repl_insert_lsa));
+		  LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_lsa);
+		}
 	    }
 
 #if 0
