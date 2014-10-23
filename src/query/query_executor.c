@@ -10759,9 +10759,28 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
 	      if ((unique_stat->num_nulls +
 		   unique_stat->num_keys) != unique_stat->num_oids)
 		{
+		  char *index_name = NULL;
+		  error =
+		    heap_get_indexinfo_of_btid (thread_p,
+						&scan_cache->scan_cache.
+						class_oid, &unique_stat->btid,
+						NULL, NULL, NULL, NULL,
+						&index_name, NULL);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+
 		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
-						    &pcontext->root_oid,
-						    &unique_stat->btid, NULL);
+						    &scan_cache->scan_cache.
+						    class_oid,
+						    &unique_stat->btid,
+						    index_name);
+
+		  if (index_name)
+		    {
+		      free_and_init (index_name);
+		    }
 		  return ER_FAILED;
 		}
 
