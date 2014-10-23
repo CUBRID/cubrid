@@ -1278,6 +1278,10 @@ typedef struct _ha_config
 #define CSQL_WRITE_ON_STANDBY_L                 "write-on-standby"
 #define CSQL_NO_TRIGGER_ACTION_S                12016
 #define CSQL_NO_TRIGGER_ACTION_L                "no-trigger-action"
+#define CSQL_PLAIN_OUTPUT_S                     't'
+#define CSQL_PLAIN_OUTPUT_L                     "plain-output"
+#define CSQL_SKIP_COL_NAMES_S                   'N'
+#define CSQL_SKIP_COL_NAMES_L                   "skip-column-names"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

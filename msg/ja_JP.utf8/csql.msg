@@ -40,6 +40,8 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQLコマンド\n\
   -l, --line-output            一つのラインでバリューを表示\n\
   -r, --read-only              リードオンリーモード\n\
+  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
+  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           ストリングタイプの格コラムが表示される長さを制限する。\n\
       --no-auto-commit         自動コミットしない\n\
       --no-pager               ページ単位で表示しない\n\

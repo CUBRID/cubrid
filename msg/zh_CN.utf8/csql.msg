@@ -40,6 +40,8 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQL命令\n\
   -l, --line-output            每个值都用单独的行表示\n\
   -r, --read-only              只读模式\n\
+  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
+  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           用这个宽度显示每个字符串类型的列\n\
       --no-auto-commit         禁用自动提交执行模式\n\
       --no-pager               不要将查询结果分页\n\

@@ -40,6 +40,8 @@ geçerli ayarlar:\n\
   -c, --command=ARG            CSQL-komutları\n\
   -l, --line-output            bir çizgi üzerinde her değeri görüntüle\n\
   -r, --read-only              sadece-oku modu\n\
+  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
+  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           bu genişlikte bir dizin tipi olan her sütunu görüntüler\n\
       --no-auto-commit         Otomatik tamamlama modu yürütme devre dışı\n\
       --no-pager               pager kullanmayın\n\

@@ -263,6 +263,8 @@ typedef struct
   bool sysadm;
   bool write_on_standby;
   bool trigger_action_flag;
+  bool plain_output;
+  bool skip_column_names;
   int string_width;
 #if defined(CSQL_NO_LONGGING)
   bool no_logging;
@@ -343,7 +345,11 @@ extern void csql_help_trigger (const char *class_name);
 extern void csql_help_info (const char *command, int aucommit_flag);
 extern void csql_killtran (const char *argument);
 
-extern char *csql_db_value_as_string (DB_VALUE * value, int *length);
+extern char *csql_db_value_as_string (DB_VALUE * value,
+				      int *length, bool plain_string);
+
+extern char *csql_string_to_plain_string (const char *string_value,
+					  int length, int *result_length);
 
 extern int csql_set_column_width_info (const char *column_name,
 				       int column_width);

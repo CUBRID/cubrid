@@ -146,6 +146,8 @@ main (int argc, char *argv[])
     {CSQL_WRITE_ON_STANDBY_L, 0, 0, CSQL_WRITE_ON_STANDBY_S},
     {CSQL_STRING_WIDTH_L, 1, 0, CSQL_STRING_WIDTH_S},
     {CSQL_NO_TRIGGER_ACTION_L, 0, 0, CSQL_NO_TRIGGER_ACTION_S},
+    {CSQL_PLAIN_OUTPUT_L, 0, 0, CSQL_PLAIN_OUTPUT_S},
+    {CSQL_SKIP_COL_NAMES_L, 0, 0, CSQL_SKIP_COL_NAMES_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -274,6 +276,14 @@ main (int argc, char *argv[])
 	  csql_arg.trigger_action_flag = false;
 	  break;
 
+	case CSQL_PLAIN_OUTPUT_S:
+	  csql_arg.plain_output = true;
+	  break;
+
+	case CSQL_SKIP_COL_NAMES_S:
+	  csql_arg.skip_column_names = true;
+	  break;
+
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME,
 			      PRODUCT_STRING);
@@ -297,6 +307,13 @@ main (int argc, char *argv[])
     {
       utility_csql_print (MSGCAT_UTIL_GENERIC_MISS_DBNAME);
       goto print_usage;
+    }
+
+  if ((csql_arg.command == NULL && csql_arg.in_file_name == NULL)
+      || csql_arg.line_output == true)
+    {
+      csql_arg.skip_column_names = false;
+      csql_arg.plain_output = false;
     }
 
   if (csql_arg.sysadm

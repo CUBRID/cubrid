@@ -287,14 +287,16 @@ static char *bigint_to_string (DB_BIGINT int_value, int field_width,
 			       bool commas, char conversion);
 static char *object_to_string (DB_OBJECT * object, int format);
 static char *numeric_to_string (DB_VALUE * value, bool commas);
-static char *bit_to_string (DB_VALUE * value, char string_delimiter);
+static char *bit_to_string (DB_VALUE * value, char string_delimiter,
+			    bool plain_string);
 static char *set_to_string (DB_VALUE * value, char begin_notation,
-			    char end_notation, int max_entries);
+			    char end_notation, int max_entries,
+			    bool plain_string);
 static char *duplicate_string (const char *string);
 static char *string_to_string (const char *string_value,
-			       char string_delimiter,
-			       char string_introducer, int length,
-			       int *result_length);
+			       char string_delimiter, char string_introducer,
+			       int length, int *result_length,
+			       bool plain_string);
 static int get_object_print_format (void);
 
 /*
@@ -991,7 +993,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
  *   value(in): bit value to convert
  */
 static char *
-bit_to_string (DB_VALUE * value, char string_delimiter)
+bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
 {
   char *temp_string;
   char *return_string;
@@ -1017,7 +1019,8 @@ bit_to_string (DB_VALUE * value, char string_delimiter)
     }
 
   return_string = string_to_string (temp_string, string_delimiter,
-				    'X', strlen (temp_string), NULL);
+				    'X', strlen (temp_string), NULL,
+				    plain_string);
   free_and_init (temp_string);
 
   return (return_string);
@@ -1030,10 +1033,11 @@ bit_to_string (DB_VALUE * value, char string_delimiter)
  *   begin_notation(in): character to use to denote begin of set
  *   end_notation(in): character to use to denote end of set
  *   max_entries(in): maximum number of entries to convert. -1 for all
+ *   plain_string(in): refine string for plain output
  */
 static char *
 set_to_string (DB_VALUE * value, char begin_notation, char end_notation,
-	       int max_entries)
+	       int max_entries, bool plain_string)
 {
   int cardinality, total_string_length, i;
   char **string_array;
@@ -1098,7 +1102,8 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation,
 	{
 	  goto finalize;
 	}
-      string_array[i] = csql_db_value_as_string (&element, NULL);
+      string_array[i] =
+	csql_db_value_as_string (&element, NULL, plain_string);
       db_value_clear (&element);
       if (string_array[i] == NULL)
 	{
@@ -1180,23 +1185,123 @@ duplicate_string (const char *string)
 }
 
 /*
+ * csql_string_to_plain_string() - Refine the string and return it
+ *   return: refined plain string
+ *   string_value(in): source string to duplicate
+ *   length(in): length of the source string
+ *   result_length(out): : length of output string
+ *
+ *   note: replace newline and tab with escaped string
+ */
+char *
+csql_string_to_plain_string (const char *string_value, int length,
+			     int *result_length)
+{
+  char *return_string;
+  char *ptr;
+  char *con_buf_ptr = NULL;
+  int con_buf_size = 0;
+  int num_found = 0;
+  int i;
+
+  if (string_value == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = string_value;
+  while (*ptr != '\0')
+    {
+      if (*ptr == '\t' || *ptr == '\n' || *ptr == '\\')
+	{
+	  num_found++;
+	}
+      ptr++;
+    }
+
+  if (num_found == 0)
+    {
+      if (result_length != NULL)
+	{
+	  *result_length = length;
+	}
+      return duplicate_string (string_value);
+    }
+
+  return_string = (char *) malloc (length + num_found + 1);
+  if (return_string == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = return_string;
+  for (i = 0; i < length; i++)
+    {
+      if (string_value[i] == '\t')
+	{
+	  ptr += sprintf (ptr, "\\t");
+	}
+      else if (string_value[i] == '\n')
+	{
+	  ptr += sprintf (ptr, "\\n");
+	}
+      else if (string_value[i] == '\\')
+	{
+	  ptr += sprintf (ptr, "\\\\");
+	}
+      else
+	{
+	  *(ptr++) = string_value[i];
+	}
+    }
+  *ptr = '\0';
+
+  if (csql_text_utf8_to_console != NULL &&
+      (*csql_text_utf8_to_console) (return_string, strlen (return_string),
+				    &con_buf_ptr, &con_buf_size) == NO_ERROR)
+    {
+      if (con_buf_ptr != NULL)
+	{
+	  free (return_string);
+	  return_string = con_buf_ptr;
+	  ptr = con_buf_ptr + con_buf_size;
+	}
+    }
+
+  if (result_length)
+    {
+      *result_length = CAST_STRLEN (ptr - return_string);
+    }
+
+  return return_string;
+}
+
+/*
  * string_to_string() - Copy the string and return it
  *   return: formatted string
  *   string_value(in): source string to duplicate
  *   string_delimiter(in): delimiter to surround string with (0 if none)
  *   string_introducer(in): introducer for the string (0 if none)
  *   length(in): length of the source string
- *   result_length(ou): : length of output string
+ *   result_length(out): : length of output string
+ *   plain_string(in): refine string for plain output
  */
 static char *
 string_to_string (const char *string_value,
 		  char string_delimiter,
-		  char string_introducer, int length, int *result_length)
+		  char string_introducer, int length,
+		  int *result_length, bool plain_string)
 {
   char *return_string;
   char *ptr;
   char *con_buf_ptr = NULL;
   int con_buf_size = 0;
+
+  if (plain_string == true)
+    {
+      return csql_string_to_plain_string (string_value, length,
+					  result_length);
+    }
 
   if (string_delimiter == '\0')
     {
@@ -1248,9 +1353,10 @@ string_to_string (const char *string_value,
  *   return: formatted string
  *   value(in): value to convert
  *   length(out): length of output string
+ *   plain_output(in): refine string for plain output
  */
 char *
-csql_db_value_as_string (DB_VALUE * value, int *length)
+csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 {
   char *result = NULL;
   int len = 0;
@@ -1374,7 +1480,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 
 	result = string_to_string (str,
 				   default_string_profile.string_delimiter,
-				   '\0', bytes_size, &len);
+				   '\0', bytes_size, &len, plain_string);
+
 	if (decomposed != NULL)
 	  {
 	    free_and_init (decomposed);
@@ -1421,7 +1528,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 
 	result = string_to_string (str,
 				   default_string_profile.string_delimiter,
-				   'N', bytes_size, &len);
+				   'N', bytes_size, &len, plain_string);
 
 	if (decomposed != NULL)
 	  {
@@ -1431,7 +1538,9 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
-      result = bit_to_string (value, default_string_profile.string_delimiter);
+      result =
+	bit_to_string (value, default_string_profile.string_delimiter,
+		       plain_string);
       if (result)
 	{
 	  len = strlen (result);
@@ -1466,7 +1575,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
     case DB_TYPE_SEQUENCE:
       result = set_to_string (value, default_set_profile.begin_notation,
 			      default_set_profile.end_notation,
-			      default_set_profile.max_entries);
+			      default_set_profile.max_entries, plain_string);
       if (result)
 	{
 	  len = strlen (result);
@@ -1726,7 +1835,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 
 	result = string_to_string (str,
 				   default_string_profile.string_delimiter,
-				   '\0', bytes_size, &len);
+				   '\0', bytes_size, &len, plain_string);
 	if (decomposed != NULL)
 	  {
 	    free_and_init (decomposed);

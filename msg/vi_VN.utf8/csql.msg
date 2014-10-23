@@ -40,6 +40,8 @@ valid options:\n\
   -c, --command=ARG            CSQL-commands\n\
   -l, --line-output            display each value in a line\n\
   -r, --read-only              read-only mode\n\
+  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
+  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         disable auto commit mode execution\n\
       --no-pager               do not use pager\n\

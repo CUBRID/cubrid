@@ -40,6 +40,8 @@ optiuni valide:\n\
   -c, --command=ARG            comenzi CSQL\n\
   -l, --line-output            afişarea fiecărei valori pe o singură linie\n\
   -r, --read-only              mod read-only\n\
+  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
+  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           lăţimea de afişare a fiecărei coloane de tip string\n\
       --no-auto-commit         dezactivarea modului de execuţie auto-commit\n\
       --no-pager               dezactivarea paginatorilor\n\

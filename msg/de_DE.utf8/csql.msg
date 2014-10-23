@@ -40,6 +40,8 @@ gültigen Optionen:\n\
   -c, --command=ARG            CSQL-Befehle\n\
   -l, --line-output            jeden Wert in einer Zeile anzeigen\n\
   -r, --read-only              Nur-Lese-Modus\n\
+  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
+  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           jede Spalte der Art String in dieser Breite anzeigen\n\
       --no-auto-commit         Auto-Commit-Modus deaktivieren\n\
       --no-pager               Pager nicht verwenden\n\

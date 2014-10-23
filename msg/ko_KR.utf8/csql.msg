@@ -40,6 +40,8 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQL 명령어들\n\
   -l, --line-output            한 라인 내에 값 표시\n\
   -r, --read-only              읽기 전용 모드\n\
+  -t, --plain-output           스크립트 사용에 용이한 포맷으로 결과 값 출력 (-c와 -i 옵션 사용 시 적용)\n\
+  -N, --skip-column-names      결과 값 컬럼 이름 숨김 (-c와 -i 옵션 사용 시 적용)\n\
       --string-width           각 문자열 컬럼 값을 출력할 길이\n\
       --no-auto-commit         자동 커밋 안 함\n\
       --no-pager               페이지 단위로 표시 안 함\n\

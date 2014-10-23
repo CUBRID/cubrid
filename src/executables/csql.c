@@ -2122,7 +2122,12 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 		       LINE_BUFFER_SIZE - 1);
 	    }
 	}
-      fprintf (csql_Output_fp, "%s\n", stmt_msg);
+
+      if (csql_arg->plain_output == false)
+	{
+	  fprintf (csql_Output_fp, "%s\n", stmt_msg);
+	}
+
       db_drop_statement (session, stmt_id);
     }
 

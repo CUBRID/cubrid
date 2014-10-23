@@ -156,7 +156,8 @@ static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type,
 				    const char *default_string);
 static void display_empty_result (int stmt_type, int line_no);
 static char **get_current_result (int **len,
-				  const CUR_RESULT_INFO * result_info);
+				  const CUR_RESULT_INFO * result_info,
+				  bool plain_output);
 static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 				    const CUR_RESULT_INFO * result_info);
 static char *uncontrol_strdup (const char *from);
@@ -202,7 +203,10 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
   if (result == NULL
       || (err = db_query_first_tuple (result)) == DB_CURSOR_END)
     {
-      display_empty_result (stmt_type, line_no);
+      if (csql_arg->plain_output == false)
+	{
+	  display_empty_result (stmt_type, line_no);
+	}
       return;
     }
 
@@ -497,12 +501,14 @@ display_empty_result (int stmt_type, int line_no)
  *   return: pointer newly allocated value array. On error, NULL.
  *   lengths(out): lengths of returned values
  *   result_info(in): pointer to current query result info structure
+ *   plain_output(in): refine string for plain output
  *
  * Note:
  *   Caller should be responsible for free the return array and its elements.
  */
 static char **
-get_current_result (int **lengths, const CUR_RESULT_INFO * result_info)
+get_current_result (int **lengths, const CUR_RESULT_INFO * result_info,
+		    bool plain_output)
 {
   int i;
   char **val = NULL;		/* temporary array for values */
@@ -642,7 +648,8 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info)
 	    {
 	      char *temp;
 
-	      temp = csql_db_value_as_string (&db_value, &len[i]);
+	      temp =
+		csql_db_value_as_string (&db_value, &len[i], plain_output);
 	      if (temp == NULL)
 		{
 		  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -733,6 +740,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
   int num_attrs = result_info->num_attrs;
   int *attr_lengths = result_info->attr_lengths;
   char **attr_names = result_info->attr_names;
+  char *refined_attr_name = NULL;
   char *value = NULL;
   int max_attr_name_length = result_info->max_attr_name_length;
   int column_width;
@@ -758,12 +766,15 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
       csql_pipe_save = os_set_signal_handler (SIGPIPE, &csql_pipe_handler);
 #endif /* !WINDOWS */
 
-      csql_fputs ("\n=== ", pf);
-      snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
-		csql_get_message (CSQL_RESULT_STMT_TITLE_FORMAT),
-		csql_cmd_string (stmt_type, "UNKNOWN"), line_no);
-      csql_fputs (csql_Scratch_text, pf);
-      csql_fputs (" ===\n\n", pf);
+      if (csql_arg->plain_output == false)
+	{
+	  csql_fputs ("\n=== ", pf);
+	  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
+		    csql_get_message (CSQL_RESULT_STMT_TITLE_FORMAT),
+		    csql_cmd_string (stmt_type, "UNKNOWN"), line_no);
+	  csql_fputs (csql_Scratch_text, pf);
+	  csql_fputs (" ===\n\n", pf);
+	}
 
       if (db_query_first_tuple (result) < 0)
 	{
@@ -772,7 +783,39 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	  goto done;
 	}
 
-      if (!csql_arg->line_output)
+      if (csql_arg->skip_column_names == true
+	  || csql_arg->line_output == true)
+	{
+	  ;
+	}
+      else if (csql_arg->plain_output == true)
+	{
+	  for (i = 0; i < num_attrs; i++)
+	    {
+	      refined_attr_name =
+		csql_string_to_plain_string (attr_names[i],
+					     strlen (attr_names[i]), NULL);
+	      if (refined_attr_name != NULL)
+		{
+		  fprintf (pf, "%s", refined_attr_name);
+		  free_and_init (refined_attr_name);
+		}
+	      else
+		{
+		  fprintf (pf, "UNKNOWN");
+		}
+
+	      if (i == num_attrs - 1)
+		{
+		  fprintf (pf, "\n");
+		}
+	      else
+		{
+		  fprintf (pf, "\t");
+		}
+	    }
+	}
+      else
 	{
 	  for (n = i = 0; i < num_attrs; i++)
 	    {
@@ -805,7 +848,8 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	      free_and_init (len);
 	    }
 
-	  val = get_current_result (&len, result_info);
+	  val =
+	    get_current_result (&len, result_info, csql_arg->plain_output);
 	  if (val == NULL)
 	    {
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -813,7 +857,26 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	      goto done;
 	    }
 
-	  if (!csql_arg->line_output)
+	  if (csql_arg->line_output == true)
+	    {
+	      fprintf (pf, "<%05d>", object_no);
+	      for (i = 0; i < num_attrs; i++)
+		{
+		  fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
+		  fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length),
+			   attr_names[i], val[i]);
+		}
+	      /* fflush(pf); */
+	    }
+	  else if (csql_arg->plain_output == true)
+	    {
+	      for (i = 0; i < num_attrs - 1; i++)
+		{
+		  fprintf (pf, "%s\t", val[i]);
+		}
+	      fprintf (pf, "%s\n", val[i]);
+	    }
+	  else
 	    {
 	      int padding_size;
 
@@ -862,17 +925,6 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 		    }
 		}
 	      putc ('\n', pf);
-	      /* fflush(pf); */
-	    }
-	  else
-	    {
-	      fprintf (pf, "<%05d>", object_no);
-	      for (i = 0; i < num_attrs; i++)
-		{
-		  fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
-		  fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length),
-			   attr_names[i], val[i]);
-		}
 	      /* fflush(pf); */
 	    }
 
