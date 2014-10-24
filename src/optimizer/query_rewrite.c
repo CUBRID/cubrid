@@ -7345,13 +7345,16 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       /* in HAVING clause with GROUP BY,
        * move non-aggregate terms to WHERE clause
        */
-      if (node->node_type == PT_SELECT
-	  && node->info.query.q.select.group_by && *havingp)
+      if (PT_IS_SELECT (node) && node->info.query.q.select.group_by
+	  && *havingp)
 	{
 	  PT_NODE *prev, *cnf, *next;
+	  PT_NON_GROUPBY_COL_INFO col_info;
 	  PT_AGG_FIND_INFO info;
 	  int has_pseudocolumn;
 	  bool can_move;
+
+	  col_info.groupby = node->info.query.q.select.group_by;
 
 	  prev = NULL;		/* init */
 	  for (cnf = *havingp; cnf; cnf = next)
@@ -7359,22 +7362,33 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      next = cnf->next;	/* save and cut-off link */
 	      cnf->next = NULL;
 
-	      /* init agg info */
-	      info.stop_on_subquery = false;
-	      info.out_of_context_count = 0;
-	      info.base_count = 0;
-	      info.select_stack = pt_pointer_stack_push (parser, NULL, node);
-
-	      /* search for aggregate of this select */
+	      col_info.has_non_groupby_col = false;	/* on the supposition */
 	      (void) parser_walk_tree (parser, cnf,
-				       pt_find_aggregate_functions_pre, &info,
-				       pt_find_aggregate_functions_post,
-				       &info);
-	      can_move = (info.base_count == 0);
+				       pt_has_non_groupby_column_node,
+				       &col_info, NULL, NULL);
+	      can_move = (col_info.has_non_groupby_col == false);
 
-	      /* cleanup */
-	      info.select_stack =
-		pt_pointer_stack_pop (parser, info.select_stack, NULL);
+	      if (can_move)
+		{
+		  /* init agg info */
+		  info.stop_on_subquery = false;
+		  info.out_of_context_count = 0;
+		  info.base_count = 0;
+		  info.select_stack =
+		    pt_pointer_stack_push (parser, NULL, node);
+
+		  /* search for aggregate of this select */
+		  (void) parser_walk_tree (parser, cnf,
+					   pt_find_aggregate_functions_pre,
+					   &info,
+					   pt_find_aggregate_functions_post,
+					   &info);
+		  can_move = (info.base_count == 0);
+
+		  /* cleanup */
+		  info.select_stack =
+		    pt_pointer_stack_pop (parser, info.select_stack, NULL);
+		}
 
 	      /* Note: Do not move the cnf node if it contains a pseudo-column!
 	       */
@@ -7411,11 +7425,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		  *wherep = parser_append_node (*wherep, cnf);
 		}
 	      else
-		{		/* do noting and go ahead */
+		{		/* do nothing and go ahead */
 		  cnf->next = next;	/* restore link */
-
-		  /* save previous */
-		  prev = cnf;
+		  prev = cnf;	/* save previous */
 		}
 	    }
 	}

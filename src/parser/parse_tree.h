@@ -1688,6 +1688,7 @@ typedef struct pt_agg_rewrite_info PT_AGG_REWRITE_INFO;
 typedef struct pt_agg_find_info PT_AGG_FIND_INFO;
 typedef struct pt_agg_name_info PT_AGG_NAME_INFO;
 typedef struct pt_filter_index_info PT_FILTER_INDEX_INFO;
+typedef struct pt_non_groupby_col_info PT_NON_GROUPBY_COL_INFO;
 
 typedef struct pt_host_vars PT_HOST_VARS;
 typedef struct cursor_id PT_CURSOR_ID;
@@ -3471,6 +3472,12 @@ struct pt_filter_index_info
   bool is_valid_expr;		/* true, if invalid filter index expression */
   bool has_not;			/* true, when not operator is found in
 				   filter index expression */
+};
+
+struct pt_non_groupby_col_info
+{
+  PT_NODE *groupby;
+  bool has_non_groupby_col;
 };
 
 /*

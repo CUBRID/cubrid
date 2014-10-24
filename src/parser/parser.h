@@ -952,6 +952,10 @@ extern "C"
 						      PT_NODE * statement);
   extern int pt_prepare_count_optim_classes (PARSER_CONTEXT * parser,
 					     PT_NODE * stmt);
+
+  extern PT_NODE *pt_has_non_groupby_column_node (PARSER_CONTEXT * parser,
+						  PT_NODE * node, void *arg,
+						  int *continue_walk);
 #ifdef __cplusplus
 }
 #endif

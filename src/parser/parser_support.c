@@ -12778,3 +12778,63 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
 
   return select;
 }
+
+/*
+ * pt_has_non_groupby_column_node () - Use parser_walk_tree to check having 
+ *                                     clause.
+ * return	      : node.
+ * parser (in)	      : parser context.
+ * node (in)	      : name node in having clause.
+ * arg (in)	      : pt_non_groupby_col_info
+ * continue_walk (in) : continue walk.
+ *
+ * NOTE: Make sure to set has_non_groupby_col to false before calling 
+ *       parser_walk_tree. 
+ */
+PT_NODE *
+pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node,
+				void *arg, int *continue_walk)
+{
+  PT_NON_GROUPBY_COL_INFO *info = NULL;
+  PT_NODE *groupby_p = NULL;
+
+  if (arg == NULL)
+    {
+      assert (false);
+      return node;
+    }
+
+  info = (PT_NON_GROUPBY_COL_INFO *) arg;
+  groupby_p = info->groupby;
+
+  if (node == NULL || groupby_p == NULL)
+    {
+      assert (false);
+      return node;
+    }
+
+  if (!PT_IS_NAME_NODE (node))
+    {
+      return node;
+    }
+
+  for (; groupby_p; groupby_p = groupby_p->next)
+    {
+      if (!(PT_IS_SORT_SPEC_NODE (groupby_p)
+	    && PT_IS_NAME_NODE (groupby_p->info.sort_spec.expr)))
+	{
+	  continue;
+	}
+
+      if (pt_name_equal (parser, groupby_p->info.sort_spec.expr, node))
+	{
+	  return node;
+	}
+    }
+
+  /* the name node is not associated with groupby columns. */
+  info->has_non_groupby_col = true;
+  *continue_walk = PT_STOP_WALK;
+
+  return node;
+}
