@@ -2548,15 +2548,6 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
   pinfo->selected_partition = NULL;
   pinfo->count = 0;
 
-  if (pinfo->partition_pred != NULL
-      && pinfo->partition_pred->func_regu != NULL)
-    {
-      (void) qexec_clear_partition_expression (pinfo->thread_p,
-					       pinfo->
-					       partition_pred->func_regu);
-      pinfo->partition_pred = NULL;
-    }
-
   partition_free_partition_predicate (pinfo);
 
   if (pinfo->is_attr_info_inited)
@@ -2628,9 +2619,23 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
   return error;
 }
 
+/*
+ * partition_free_partition_predicate () - free partition predicate
+ * return :
+ * pinfo (in)	: pruning context
+ */
 static void
 partition_free_partition_predicate (PRUNING_CONTEXT * pinfo)
 {
+  if (pinfo->partition_pred != NULL
+      && pinfo->partition_pred->func_regu != NULL)
+    {
+      (void) qexec_clear_partition_expression (pinfo->thread_p,
+					       pinfo->
+					       partition_pred->func_regu);
+      pinfo->partition_pred = NULL;
+    }
+
   if (pinfo->fp_cache_context != NULL)
     {
       stx_free_additional_buff (pinfo->thread_p, pinfo->fp_cache_context);
@@ -2638,7 +2643,6 @@ partition_free_partition_predicate (PRUNING_CONTEXT * pinfo)
       db_private_free_and_init (pinfo->thread_p, pinfo->fp_cache_context);
     }
 }
-
 
 /*
  * partition_set_specified_partition () - find OR_PARTITION object for
