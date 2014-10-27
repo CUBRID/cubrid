@@ -28986,6 +28986,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   MVCC_REC_HEADER mvcc_header, *p_mvcc_header = NULL;
   int which_action = BTREE_CONTINUE;
   BTREE_RANGE_SEARCH_HELPER btrs_helper;
+  bool btrs_helper_inited = false;
   int readonly_purpose = false;
   int rec_cp_oid_cnt = 0, oids_count;
   bool skip_curr_key_remainig_oids = false;
@@ -29166,6 +29167,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   btree_range_search_init_helper (thread_p, &btrs_helper, bts,
 				  index_scan_id_p, oids_size, oids_ptr,
 				  ils_prefix_len);
+  btrs_helper_inited = true;
 
 search_again:
 
@@ -29758,7 +29760,11 @@ error:
 
 end_of_scan:
 
-  btree_clear_key_value (&btrs_helper.clear_prev_key, &btrs_helper.prev_key);
+  if (btrs_helper_inited)
+    {
+      btree_clear_key_value (&btrs_helper.clear_prev_key,
+			     &btrs_helper.prev_key);
+    }
 
   if (!bts->restart_scan)
     {

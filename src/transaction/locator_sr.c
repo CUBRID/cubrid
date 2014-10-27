@@ -1863,7 +1863,7 @@ DISK_ISVALID
 locator_check_class_names (THREAD_ENTRY * thread_p)
 {
   DISK_ISVALID isvalid;
-  RECDES peek;			/* Record descriptor for peeking object */
+  RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
   HFID *root_hfid;
   OID class_oid;
   char *class_name = NULL;
@@ -11395,7 +11395,7 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
 DISK_ISVALID
 locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 {
-  RECDES peek;			/* Record descriptor for peeking object */
+  RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
   HFID *root_hfid;
   HFID hfid;
   OID oid;

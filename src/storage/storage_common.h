@@ -282,6 +282,8 @@ struct lorecdes
   char *data;			/* Pointer to the beginning of the area */
 };
 
+#define RECDES_INITIALIZER { 0, -1, REC_UNKNOWN, NULL }
+
 #define HFID_SET_NULL(hfid) \
   do { \
     (hfid)->vfid.fileid = NULL_FILEID; \
