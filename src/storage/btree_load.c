@@ -1658,10 +1658,15 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  goto exit_on_error;
 	}
 
-      btree_read_record (thread_p, load_args->btid, load_args->leaf.pgptr,
-			 &temp_recdes, &first_key, &leaf_pnt, BTREE_LEAF_NODE,
-			 &clear_first_key, &first_key_offset, PEEK_KEY_VALUE,
-			 NULL);
+      ret = btree_read_record (thread_p, load_args->btid,
+			       load_args->leaf.pgptr, &temp_recdes,
+			       &first_key, &leaf_pnt, BTREE_LEAF_NODE,
+			       &clear_first_key, &first_key_offset,
+			       PEEK_KEY_VALUE, NULL);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
 
       if (pr_is_prefix_key_type (TP_DOMAIN_TYPE (load_args->btid->key_type)))
 	{
@@ -1731,10 +1736,15 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	      goto exit_on_error;
 	    }
 
-	  btree_read_record (thread_p, load_args->btid, load_args->leaf.pgptr,
-			     &temp_recdes, &last_key, &leaf_pnt,
-			     BTREE_LEAF_NODE, &clear_last_key,
-			     &last_key_offset, PEEK_KEY_VALUE, NULL);
+	  ret = btree_read_record (thread_p, load_args->btid,
+				   load_args->leaf.pgptr, &temp_recdes,
+				   &last_key, &leaf_pnt, BTREE_LEAF_NODE,
+				   &clear_last_key, &last_key_offset,
+				   PEEK_KEY_VALUE, NULL);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	}
       else
 	{
@@ -1850,10 +1860,14 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	      goto exit_on_error;
 	    }
 
-	  btree_read_record (thread_p, load_args->btid, cur_nleafpgptr,
-			     &temp_recdes, &first_key, &nleaf_pnt,
-			     BTREE_NON_LEAF_NODE, &clear_first_key,
-			     &first_key_offset, PEEK_KEY_VALUE, NULL);
+	  ret = btree_read_record (thread_p, load_args->btid, cur_nleafpgptr,
+				   &temp_recdes, &first_key, &nleaf_pnt,
+				   BTREE_NON_LEAF_NODE, &clear_first_key,
+				   &first_key_offset, PEEK_KEY_VALUE, NULL);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 
 	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (max_key_len);
 
@@ -3276,8 +3290,8 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
     {
       (void) partition_init_pruning_context (&pcontext);
       clear_pcontext = true;
-      ret = partition_load_pruning_context(thread_p, pk_cls_oid,
-					   DB_PARTITIONED_CLASS, &pcontext);
+      ret = partition_load_pruning_context (thread_p, pk_cls_oid,
+					    DB_PARTITIONED_CLASS, &pcontext);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -3297,8 +3311,8 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 	    }
 	}
       if (xbtree_find_unique (thread_p, &local_btid, S_SELECT, keyval,
-			     &part_oid, &unique_oid,
-			     true) != BTREE_KEY_FOUND)
+			      &part_oid, &unique_oid,
+			      true) != BTREE_KEY_FOUND)
 	{
 	  char *val_print = NULL;
 

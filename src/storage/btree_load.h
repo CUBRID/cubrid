@@ -267,11 +267,11 @@ extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       OID * class_oid, OID * oid,
 			       MVCC_REC_HEADER * p_mvcc_rec_header,
 			       RECDES * rec);
-extern void btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			       PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
-			       void *rec_header, int node_type,
-			       bool * clear_key, int *offset, int copy,
-			       BTREE_SCAN * bts);
+extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
+			      PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
+			      void *rec_header, int node_type,
+			      bool * clear_key, int *offset, int copy,
+			      BTREE_SCAN * bts);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
 extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 					 BTREE_ROOT_HEADER * root_header,
