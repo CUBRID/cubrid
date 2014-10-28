@@ -12279,9 +12279,6 @@ xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p,
        */
       lockhint->num_classes_processed = 0;
 
-      /* get the snapshot before acquiring locks */
-      (void) logtb_get_mvcc_snapshot (thread_p);
-
       /* Obtain the locks */
       if (lock_classes_lock_hint (thread_p, lockhint) != LK_GRANTED)
 	{
