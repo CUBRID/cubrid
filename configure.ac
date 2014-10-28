@@ -378,6 +378,15 @@ AS_IF([test "$enable_profile" = "yes"],
 	[CFLAGS="$CFLAGS -g -pg"
 	CXXFLAGS="$CXXFLAGS -g -pg"])
 
+AC_ARG_ENABLE([duma],
+	[AS_HELP_STRING([--enable-duma],
+		[use Detect Unintended Memory Access library @<:@default=no@:>@])],
+	[enable_duma=$enableval],
+	[enable_duma=no])
+AS_IF([test "$enable_duma" = "yes"],
+	[AC_CHECK_LIB([duma], [main], [], AC_MSG_ERROR(duma library was not found. check or install duma))
+	SYS_LIBS="$SYS_LIBS -lduma"])
+
 AC_MSG_CHECKING([whether build cci library only])
 AC_ARG_WITH(cci-only,
 	AS_HELP_STRING([--with-cci-only],
