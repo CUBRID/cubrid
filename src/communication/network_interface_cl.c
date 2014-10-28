@@ -7735,7 +7735,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
  * return:
  *
  */
-static void
+void
 db_set_execution_plan (char *plan, int length)
 {
   int null_padded_length = 0;

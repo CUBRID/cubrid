@@ -754,7 +754,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 			      (srv_handle->use_query_cache ==
 			       true) ? " (QC)" : "", eid_string);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-	  if (plan != NULL)
+	  if (plan != NULL && plan[0] != '\0')
 	    {
 	      cas_slow_log_write (NULL, 0, false, "slow query plan\n%s",
 				  plan);
@@ -773,9 +773,12 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
     }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  if (plan != NULL)
+  if (plan != NULL && plan[0] != '\0')
     {
       cas_log_write (0, true, "slow query plan\n%s", plan);
+
+      /* reset global plan buffer */
+      db_set_execution_plan (NULL, 0);
     }
 #endif
 
@@ -1856,10 +1859,13 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	  plan = db_get_execution_plan ();
 
-	  if (plan != NULL)
+	  if (plan != NULL && plan[0] != '\0')
 	    {
 	      cas_slow_log_write (NULL, 0, false, "slow query plan\n%s",
 				  plan);
+
+	      /* reset global plan buffer */
+	      db_set_execution_plan (NULL, 0);
 	    }
 #endif
 	  cas_slow_log_end ();
