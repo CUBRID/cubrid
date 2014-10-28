@@ -7738,6 +7738,8 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
 static void
 db_set_execution_plan (char *plan, int length)
 {
+  int null_padded_length = 0;
+
   if (plan == NULL)
     {
       if (db_Execution_plan != NULL)
@@ -7747,19 +7749,21 @@ db_set_execution_plan (char *plan, int length)
       return;
     }
 
+  null_padded_length = length + 1;
+
   if (db_Execution_plan == NULL)
     {
       db_Execution_plan_length = PLAN_BUF_INITIAL_LENGTH;
-      while (db_Execution_plan_length < length)
+      while (db_Execution_plan_length < null_padded_length)
 	{
 	  db_Execution_plan_length *= 2;
 	}
       db_Execution_plan =
 	(char *) malloc (db_Execution_plan_length * sizeof (char));
     }
-  else if (db_Execution_plan_length < length)
+  else if (db_Execution_plan_length < null_padded_length)
     {
-      while (db_Execution_plan_length < length)
+      while (db_Execution_plan_length < null_padded_length)
 	{
 	  db_Execution_plan_length *= 2;
 	}
@@ -7778,8 +7782,8 @@ db_set_execution_plan (char *plan, int length)
       return;
     }
 
-  strncpy (db_Execution_plan, plan, db_Execution_plan_length);
-  db_Execution_plan[db_Execution_plan_length - 1] = 0;
+  strncpy (db_Execution_plan, plan, length);
+  db_Execution_plan[length] = '\0';
 }
 
 /*
