@@ -264,7 +264,9 @@ static void catcls_apply_resolutions (OR_VALUE * value_p,
 				      OR_VALUE * resolution_p);
 static int catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
 					 bool * need_mvcc_update);
-
+static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p,
+				     OID * entry_class_oid,
+				     OID * entry_new_oid);
 /*
  * catcls_allocate_entry () -
  *   return:
@@ -454,6 +456,40 @@ catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid_p)
     {
       mht_rem (catcls_Class_oid_to_oid_hash_table, class_oid_p,
 	       catcls_free_entry, NULL);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * catcls_replace_entry_oid () - replace entry OID
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   entry_class_oid(in): entry class OID
+ *   entry_new_oid(in): entry new OID
+ */
+int
+catcls_replace_entry_oid (THREAD_ENTRY * thread_p, OID * entry_class_oid,
+			  OID * entry_new_oid)
+{
+  CATCLS_ENTRY *entry_p;
+
+  assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
+
+  if (catcls_Class_oid_to_oid_hash_table)
+    {
+      entry_p =
+	(CATCLS_ENTRY *) mht_get (catcls_Class_oid_to_oid_hash_table,
+				  (void *) entry_class_oid);
+      if (entry_p != NULL)
+	{
+	  COPY_OID (&entry_p->oid, entry_new_oid);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  return ER_FAILED;
+	}
     }
 
   return NO_ERROR;
@@ -4648,6 +4684,23 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
 #endif /* SERVER_MODE */
     }
 
+  if (need_mvcc_update)
+    {
+      /* remove old OID version from class oid to oid hash */
+      if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (catcls_remove_entry (thread_p, class_oid_p) != NO_ERROR)
+	{
+	  csect_exit (thread_p, CSECT_CT_OID_TABLE);
+	  goto error;
+	}
+
+      csect_exit (thread_p, CSECT_CT_OID_TABLE);
+    }
+
   value_p = catcls_get_or_value_from_class_record (thread_p, record_p);
   if (value_p == NULL)
     {
@@ -4701,20 +4754,22 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
 	{
 	  goto error;
 	}
-    }
 
-  if (need_mvcc_update == true)
-    {
-      /* since new OID version will be created, remove the old version */
+      /* replace old oid version with new version in class oid to oid hash */
       if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      if (catcls_remove_entry (thread_p, class_oid_p) != NO_ERROR)
+      if (catcls_replace_entry_oid (thread_p, class_oid_p,
+				    &new_oid) != NO_ERROR)
 	{
-	  csect_exit (thread_p, CSECT_CT_OID_TABLE);
-	  goto error;
+	  /* something goes wrong - remove the entry */
+	  if (catcls_remove_entry (thread_p, class_oid_p) != NO_ERROR)
+	    {
+	      csect_exit (thread_p, CSECT_CT_OID_TABLE);
+	      goto error;
+	    }
 	}
 
       csect_exit (thread_p, CSECT_CT_OID_TABLE);
