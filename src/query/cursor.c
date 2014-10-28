@@ -1337,6 +1337,8 @@ cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p,
       return false;
     }
 
+  cursor_id_p->query_id = list_id_p->query_id;
+
   if (cursor_id_p->list_id.type_list.type_cnt)
     {
       cursor_id_p->buffer_area = (char *) malloc (CURSOR_BUFFER_AREA_SIZE);
@@ -1505,6 +1507,7 @@ cursor_close (CURSOR_ID * cursor_id_p)
   cursor_id_p->current_tuple_length = -1;
   cursor_id_p->oid_col_no = NULL;
   cursor_id_p->oid_col_no_cnt = 0;
+  cursor_id_p->query_id = NULL_QUERY_ID;
   cursor_initialize_current_tuple_value_position (cursor_id_p);
 }
 
