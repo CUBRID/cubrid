@@ -2426,6 +2426,12 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
   THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
 #endif /* SERVER_MODE */
 
+  if (er_hasalready_initiated == false)
+    {
+      /* do not print debug info */
+      return;
+    }
+
 #if defined (SERVER_MODE)
   assert (th_entry != NULL);
   er_Msg = th_entry->er_Msg;

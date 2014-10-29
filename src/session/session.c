@@ -285,7 +285,7 @@ session_state_uninit (void *st)
     {
       return NO_ERROR;
     }
-
+  er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->key.id);
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -321,6 +321,9 @@ session_state_uninit (void *st)
       sysprm_free_session_parameters (&session->session_parameters);
     }
 
+  er_log_debug (ARG_FILE_LINE,
+		"session_free_session closed %d queries for %d\n", cnt,
+		session->key.id);
 
   pr_clear_value (&session->cur_insert_id);
   pr_clear_value (&session->last_insert_id);
