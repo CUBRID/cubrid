@@ -237,9 +237,11 @@ static int catcls_mvcc_update_instance (THREAD_ENTRY * thread_p,
 					HFID * hfid_p,
 					HEAP_SCANCACHE * scan_p);
 static CATCLS_ENTRY *catcls_allocate_entry (THREAD_ENTRY * thread_p);
-static int catcls_free_entry (const void *key, void *data, void *args);
+static int catcls_free_entry_kv (const void *key, void *data, void *args);
+static int catcls_free_entry (CATCLS_ENTRY * entry_p);
 static OID *catcls_find_oid (THREAD_ENTRY * thread_p, OID * class_oid);
-static int catcls_put_entry (THREAD_ENTRY * thread_p, CATCLS_ENTRY * entry);
+static int catcls_put_entry (THREAD_ENTRY * thread_p, CATCLS_ENTRY * entry,
+			     bool * already_exists);
 static char *catcls_unpack_allocator (int size);
 static OR_VALUE *catcls_allocate_or_value (int size);
 static void catcls_free_sub_value (OR_VALUE * values, int count);
@@ -300,21 +302,31 @@ catcls_allocate_entry (THREAD_ENTRY * thread_p)
 }
 
 /*
- * catcls_free_entry () -
+ * catcls_free_entry_kv () - A callback function to free memory
+ *                           allocated for a catcls entry.
  *   return:
  *   key(in):
  *   data(in):
  *   args(in):
  */
 static int
-catcls_free_entry (const void *key, void *data, void *args)
+catcls_free_entry_kv (const void *key, void *data, void *args)
+{
+  return catcls_free_entry ((CATCLS_ENTRY *) data);
+}
+
+/*
+ * catcls_free_entry () - free memory allocated for a catcls entry.
+ *   return:
+ *   entry_p(in)
+ */
+static int
+catcls_free_entry (CATCLS_ENTRY * entry_p)
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  CATCLS_ENTRY *entry_p;
 
   assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
 
-  entry_p = (CATCLS_ENTRY *) data;
   entry_p->next = catcls_Free_entry_list;
   catcls_Free_entry_list = entry_p;
 
@@ -367,7 +379,8 @@ catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p)
 
   if (catcls_Class_oid_to_oid_hash_table)
     {
-      mht_map (catcls_Class_oid_to_oid_hash_table, catcls_free_entry, NULL);
+      mht_map (catcls_Class_oid_to_oid_hash_table, catcls_free_entry_kv,
+	       NULL);
       mht_destroy (catcls_Class_oid_to_oid_hash_table);
     }
 
@@ -422,19 +435,37 @@ catcls_find_oid (THREAD_ENTRY * thread_p, OID * class_oid_p)
  *   return:
  *   thread_p(in):
  *   entry(in):
+ *   already_exists(out):
  */
 static int
-catcls_put_entry (THREAD_ENTRY * thread_p, CATCLS_ENTRY * entry_p)
+catcls_put_entry (THREAD_ENTRY * thread_p, CATCLS_ENTRY * entry_p,
+		  bool * already_exists)
 {
+  const CATCLS_ENTRY *val_p = NULL;
+  *already_exists = true;
+
   assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
 
   if (catcls_Class_oid_to_oid_hash_table)
     {
-      if (mht_put
-	  (catcls_Class_oid_to_oid_hash_table, &entry_p->class_oid,
-	   entry_p) == NULL)
+      val_p =
+	(const CATCLS_ENTRY *)
+	mht_put_if_not_exists (catcls_Class_oid_to_oid_hash_table,
+			       &entry_p->class_oid, entry_p);
+      if (val_p == NULL)
 	{
 	  return ER_FAILED;
+	}
+
+      if ((void *) val_p != (void *) entry_p)
+	{
+	  assert (OID_EQ (&val_p->class_oid, &entry_p->class_oid));
+	  assert (OID_EQ (&val_p->oid, &entry_p->oid));
+	  *already_exists = true;
+	}
+      else
+	{
+	  *already_exists = false;
 	}
     }
 
@@ -455,7 +486,7 @@ catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid_p)
   if (catcls_Class_oid_to_oid_hash_table)
     {
       mht_rem (catcls_Class_oid_to_oid_hash_table, class_oid_p,
-	       catcls_free_entry, NULL);
+	       catcls_free_entry_kv, NULL);
     }
 
   return NO_ERROR;
@@ -812,6 +843,7 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p,
   OID oid_buf;
   OID *class_oid_p, *oid_p;
   CATCLS_ENTRY *entry_p;
+  bool already_exists;
 
   if (DB_IS_NULL (oid_val_p))
     {
@@ -859,7 +891,12 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p,
 	    {
 	      COPY_OID (&entry_p->class_oid, class_oid_p);
 	      COPY_OID (&entry_p->oid, oid_p);
-	      catcls_put_entry (thread_p, entry_p);
+	      catcls_put_entry (thread_p, entry_p, &already_exists);
+	      /* if it already exists, just free current entry_p */
+	      if (already_exists)
+		{
+		  catcls_free_entry (entry_p);
+		}
 	    }
 
 	  csect_exit (thread_p, CSECT_CT_OID_TABLE);
