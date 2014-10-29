@@ -141,7 +141,7 @@ static int log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
 						     LOG_LSA * check_point);
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
 				     LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				     LOG_LSA * end_redo_lsa, LOG_LSA * lsa,
+				     LOG_LSA * prev_lsa,
 				     bool is_media_crash, time_t * stop_at,
 				     bool * did_incom_recovery);
 static int log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p,
@@ -181,9 +181,9 @@ static int log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa);
 static void
 log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 			int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			LOG_LSA * check_point, LOG_LSA * lsa,
+			LOG_LSA * check_point, LOG_LSA * prev_lsa,
 			LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa,
-			LOG_LSA * end_redo_lsa, bool is_media_crash,
+			bool is_media_crash,
 			time_t * stop_at, bool * did_incom_recovery,
 			bool * may_use_checkpoint,
 			bool * may_need_synch_checkpoint_2pc);
@@ -2138,7 +2138,7 @@ log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
 static int
 log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
 			  LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			  LOG_LSA * end_redo_lsa, LOG_LSA * lsa,
+			  LOG_LSA * prev_lsa,
 			  bool is_media_crash, time_t * stop_at,
 			  bool * did_incom_recovery)
 {
@@ -2146,6 +2146,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
   int tran_index;
   time_t last_at_time;
   char time_val[CTIME_MAX];
+  LOG_LSA record_header_lsa;
 
   /*
    * The transaction has been fully completed. therefore, it was not
@@ -2158,6 +2159,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
       goto end;
     }
 
+  LSA_COPY (&record_header_lsa, log_lsa);
 
   /*
    * Need to read the donetime record to find out if we need to stop
@@ -2171,7 +2173,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
   donetime = (struct log_donetime *) ((char *) log_page_p->area
 				      + log_lsa->offset);
   last_at_time = (time_t) donetime->at_time;
-  if (stop_at != NULL && *stop_at != (time_t) - 1
+  if (stop_at != NULL && *stop_at != (time_t) (-1)
       && difftime (*stop_at, last_at_time) < 0)
     {
 #if !defined(NDEBUG)
@@ -2185,10 +2187,11 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
 				   MSGCAT_SET_LOG,
 				   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
-		   end_redo_lsa->pageid, end_redo_lsa->offset, time_val);
+		   record_header_lsa.pageid, record_header_lsa.offset,
+		   time_val);
 	  fprintf (stdout,
-		   msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
+				   MSGCAT_LOG_STARTS));
 	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
@@ -2198,9 +2201,8 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;
-      log_recovery_resetlog (thread_p, lsa, false, end_redo_lsa);
+      log_recovery_resetlog (thread_p, &record_header_lsa, false, prev_lsa);
       *did_incom_recovery = true;
-      LSA_SET_NULL (lsa);
 
       return NO_ERROR;
     }
@@ -2878,11 +2880,10 @@ log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa)
 static void
 log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 			int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			LOG_LSA * checkpoint_lsa, LOG_LSA * lsa,
+			LOG_LSA * checkpoint_lsa, LOG_LSA * prev_lsa,
 			LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa,
-			LOG_LSA * end_redo_lsa, bool is_media_crash,
-			time_t * stop_at, bool * did_incom_recovery,
-			bool * may_use_checkpoint,
+			bool is_media_crash, time_t * stop_at,
+			bool * did_incom_recovery, bool * may_use_checkpoint,
 			bool * may_need_synch_checkpoint_2pc)
 {
   switch (log_type)
@@ -2989,7 +2990,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
     case LOG_COMMIT:
     case LOG_ABORT:
       (void) log_rv_analysis_complete (thread_p, tran_id, log_lsa, log_page_p,
-				       end_redo_lsa, lsa, is_media_crash,
+				       prev_lsa, is_media_crash,
 				       stop_at, did_incom_recovery);
       break;
 
@@ -3068,11 +3069,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 #endif /* CUBRID_DEBUG */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED,
 	      1, log_lsa->pageid);
-
-      if (LSA_EQ (lsa, log_lsa))
-	{
-	  lsa->pageid = NULL_PAGEID;
-	}
       break;
     }
 }
@@ -3113,7 +3109,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA
 				 * is located
 				 */
-  LOG_LSA log_lsa;
+  LOG_LSA log_lsa, prev_lsa;
   LOG_RECTYPE log_rtype;	/* Log record type            */
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record      */
   struct log_chkpt *tmp_chkpt;	/* Temp Checkpoint log record */
@@ -3146,6 +3142,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 
   LSA_COPY (start_redo_lsa, &lsa);
   LSA_COPY (end_redo_lsa, &lsa);
+  LSA_COPY (&prev_lsa, &lsa);
   *did_incom_recovery = false;
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
@@ -3346,11 +3343,24 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	    }
 
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa,
-				  log_page_p, &checkpoint_lsa, &lsa,
-				  start_lsa, start_redo_lsa, end_redo_lsa,
+				  log_page_p, &checkpoint_lsa, &prev_lsa,
+				  start_lsa, start_redo_lsa,
 				  is_media_crash, stop_at, did_incom_recovery,
 				  &may_use_checkpoint,
 				  &may_need_synch_checkpoint_2pc);
+	  if (*did_incom_recovery == true)
+	    {
+	      LSA_SET_NULL (&lsa);
+	      break;
+	    }
+	  if (LSA_EQ (end_redo_lsa, &lsa))
+	    {
+	      assert_release (!LSA_EQ (end_redo_lsa, &lsa));
+	      LSA_SET_NULL (&lsa);
+	      break;
+	    }
+
+	  LSA_COPY (&prev_lsa, end_redo_lsa);
 
 	  /*
 	   * We can fix the lsa.pageid in the case of log_records without forward
