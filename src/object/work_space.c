@@ -312,6 +312,9 @@ ws_make_mop (OID * oid)
     }
   else
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (DB_OBJECT));
+
       /* couldnt' allocate a MOP, mgc should have set an error by now */
       ws_abort_transaction ();
     }
