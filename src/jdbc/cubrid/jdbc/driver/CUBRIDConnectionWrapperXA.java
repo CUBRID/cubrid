@@ -132,8 +132,10 @@ public class CUBRIDConnectionWrapperXA extends CUBRIDConnection {
 
 		auto_commit = false;
 		xa_started = true;
-		if (u != null)
+		if (u != null) {
 			u_con = u;
+			u_con.setCUBRIDConnection(this);
+		}
 	}
 
 	void xa_end(UConnection u) {
