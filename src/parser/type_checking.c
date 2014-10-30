@@ -12762,6 +12762,16 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       break;
 
+    case PT_FUNCTION_HOLDER:
+      if (node->info.function.function_type == F_ELT
+          || node->info.function.function_type == F_INSERT_SUBSTRING)
+        {
+          assert (dt == NULL);
+          dt = pt_make_prim_data_type (parser, node->type_enum);
+          dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+        }
+      break;
+
     case PT_SUBDATE:
     case PT_ADDDATE:
     case PT_DATE_SUB:
