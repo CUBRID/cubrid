@@ -746,6 +746,10 @@ public class UConnection {
 	synchronized public int getIsolationLevel() {
 		errorHandler = new UError(this);
 
+		if (lastIsolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION) {
+			return lastIsolationLevel;
+		}
+
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
@@ -762,7 +766,8 @@ public class UConnection {
 			UInputBuffer inBuffer;
 			inBuffer = send_recv_msg();
 
-			return inBuffer.readInt();
+			lastIsolationLevel = inBuffer.readInt();
+			return lastIsolationLevel;
 		} catch (UJciException e) {
 			logException(e);
 			e.toUError(errorHandler);
@@ -1143,6 +1148,10 @@ public class UConnection {
 	synchronized public void setIsolationLevel(int level) {
 		errorHandler = new UError(this);
 
+		if (lastIsolationLevel == level) {
+			return;
+		}
+
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
@@ -1176,6 +1185,10 @@ public class UConnection {
 
 	synchronized public void setLockTimeout(int timeout) {
 		errorHandler = new UError(this);
+
+		if (lastLockTimeout == timeout) {
+			return;
+		}
 
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);

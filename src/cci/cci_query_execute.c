@@ -1169,64 +1169,56 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
       return CCI_ER_NO_ERROR;
     }
 
-  if (param_name == CCI_PARAM_AUTO_COMMIT)
+  net_buf_init (&net_buf);
+
+  net_buf_cp_str (&net_buf, &func_code, 1);
+
+  ADD_ARG_INT (&net_buf, param_name);
+
+  if (net_buf.err_code < 0)
     {
-      val = con_handle->autocommit_mode;
-      memcpy (ret_val, (char *) &val, sizeof (int));
-    }
-  else
-    {
-      net_buf_init (&net_buf);
-
-      net_buf_cp_str (&net_buf, &func_code, 1);
-
-      ADD_ARG_INT (&net_buf, param_name);
-
-      if (net_buf.err_code < 0)
-	{
-	  err_code = net_buf.err_code;
-	  net_buf_clear (&net_buf);
-	  return err_code;
-	}
-
-      err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+      err_code = net_buf.err_code;
       net_buf_clear (&net_buf);
-      if (err_code < 0)
+      return err_code;
+    }
+
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+  net_buf_clear (&net_buf);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
+
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
+  result_msg_size -= NET_SIZE_INT;
+
+  if (err_code >= 0)
+    {
+      if (result_msg_size < NET_SIZE_INT)
 	{
-	  return err_code;
+	  err_code = CCI_ER_COMMUNICATION;
 	}
-
-      err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
-			       err_buf);
-      result_msg_size -= NET_SIZE_INT;
-
-      if (err_code >= 0)
+      else
 	{
-	  if (result_msg_size < NET_SIZE_INT)
+	  NET_STR_TO_INT (val, result_msg + NET_SIZE_INT);
+	  if (param_name == CCI_PARAM_LOCK_TIMEOUT)
 	    {
-	      err_code = CCI_ER_COMMUNICATION;
-	    }
-	  else
-	    {
-	      NET_STR_TO_INT (val, result_msg + NET_SIZE_INT);
-	      if (param_name == CCI_PARAM_LOCK_TIMEOUT)
+	      broker_ver = hm_get_broker_version (con_handle);
+	      if (!hm_broker_understand_the_protocol
+		  (broker_ver, PROTOCOL_V2))
 		{
-		  broker_ver = hm_get_broker_version (con_handle);
-		  if (!hm_broker_understand_the_protocol
-		      (broker_ver, PROTOCOL_V2))
+		  if (val > 0)
 		    {
-		      if (val > 0)
-			{
-			  val = val * 1000;	/* second --> millisecond */
-			}
+		      val = val * 1000;	/* second --> millisecond */
 		    }
 		}
-	      memcpy (ret_val, (char *) &val, sizeof (int));
 	    }
+	  memcpy (ret_val, (char *) &val, sizeof (int));
 	}
-
-      FREE_MEM (result_msg);
     }
+
+  FREE_MEM (result_msg);
 
   return err_code;
 }

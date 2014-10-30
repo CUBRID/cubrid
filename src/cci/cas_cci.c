@@ -1852,6 +1852,26 @@ cci_get_db_parameter (int mapped_conn_id, T_CCI_DB_PARAM param_name,
       goto ret;
     }
 
+  if (param_name == CCI_PARAM_ISOLATION_LEVEL &&
+      con_handle->isolation_level != TRAN_UNKNOWN_ISOLATION)
+    {
+      memcpy (value, &con_handle->isolation_level, sizeof (int));
+      goto ret;
+    }
+
+  if (param_name == CCI_PARAM_LOCK_TIMEOUT &&
+      con_handle->lock_timeout != CCI_LOCK_TIMEOUT_DEFAULT)
+    {
+      memcpy (value, &con_handle->lock_timeout, sizeof (int));
+      goto ret;
+    }
+
+  if (param_name == CCI_PARAM_AUTO_COMMIT)
+    {
+      memcpy (value, &con_handle->autocommit_mode, sizeof (int));
+      goto ret;
+    }
+
   error = qe_get_db_parameter (con_handle, param_name, value,
 			       &(con_handle->err_buf));
   while (IS_OUT_TRAN (con_handle)
@@ -2050,6 +2070,18 @@ cci_set_db_parameter (int mapped_conn_id, T_CCI_DB_PARAM param_name,
   if (param_name < CCI_PARAM_FIRST || param_name > CCI_PARAM_LAST)
     {
       error = CCI_ER_PARAM_NAME;
+      goto ret;
+    }
+
+  if (param_name == CCI_PARAM_ISOLATION_LEVEL &&
+      con_handle->isolation_level == *((int *) value))
+    {
+      goto ret;
+    }
+
+  if (param_name == CCI_PARAM_LOCK_TIMEOUT &&
+      con_handle->lock_timeout == *((int *) value))
+    {
       goto ret;
     }
 
