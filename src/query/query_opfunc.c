@@ -8280,13 +8280,6 @@ qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p,
     {
       return error;
     }
-  if (!BTID_IS_NULL (&agg_p->btid))
-    {
-      /* If this is a global index, there's no need to go into the hierarchy,
-       * the result is already correctly computed
-       */
-      return NO_ERROR;
-    }
 
   DB_MAKE_NULL (&result);
   error = pr_clone_value (agg_p->accumulator.value, &result);
