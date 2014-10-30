@@ -7916,7 +7916,11 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 						&replydata_plan,
 						&replydata_size_plan);
 
-  db_set_execution_plan (replydata_plan, replydata_size_plan);
+  if (replydata_plan != NULL)
+    {
+      db_set_execution_plan (replydata_plan, replydata_size_plan);
+      free_and_init (replydata_plan);
+    }
 
   if (senddata)
     {
