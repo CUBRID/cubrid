@@ -5827,3 +5827,11 @@ thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
 
   thread_p->xasl_recursion_depth = 0;
 }
+
+#if defined(SERVER_MODE)
+int
+thread_first_vacuum_worker_thread_index (void)
+{
+  return thread_First_vacuum_worker_thread_index;
+}
+#endif

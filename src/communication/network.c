@@ -45,6 +45,7 @@ char *
 net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
 {
   char *ptr;
+  int i;
 
   ptr = buf;
   OR_PUT_INT64 (ptr, &(stats->file_num_creates));
@@ -73,6 +74,10 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->pb_num_replacements));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->log_num_fetches));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->log_num_fetch_ioreads));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->log_num_ioreads));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->log_num_iowrites));
@@ -86,6 +91,8 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_PUT_INT64 (ptr, &(stats->log_num_end_checkpoints));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->log_num_wals));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->log_num_replacements));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->lk_num_acquired_on_pages));
   ptr += OR_INT64_SIZE;
@@ -212,8 +219,33 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_PUT_INT64 (ptr, &(stats->pc_num_class_oid_hash_entries));
   ptr += OR_INT64_SIZE;
 
+  OR_PUT_INT64 (ptr, &(stats->vac_num_vacuumed_log_pages));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->vac_num_to_vacuum_log_pages));
+  ptr += OR_INT64_SIZE;
+
   OR_PUT_INT64 (ptr, &(stats->pb_hit_ratio));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->log_hit_ratio));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->vacuum_data_hit_ratio));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_vacuum_efficiency));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_vacuum_fetch_ratio));
+  ptr += OR_INT64_SIZE;
+
+  for (i = 0; i < PERF_PAGE_FIX_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->pbx_fix_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_UNFIX_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->pbx_unfix_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
 
   return (ptr);
 }
@@ -232,6 +264,7 @@ char *
 net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
 {
   char *ptr;
+  int i;
 
   ptr = buf;
   OR_GET_INT64 (ptr, &(stats->file_num_creates));
@@ -260,6 +293,10 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->pb_num_replacements));
   ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->log_num_fetches));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->log_num_fetch_ioreads));
+  ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->log_num_ioreads));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->log_num_iowrites));
@@ -273,6 +310,8 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->log_num_end_checkpoints));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->log_num_wals));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->log_num_replacements));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->lk_num_acquired_on_pages));
   ptr += OR_INT64_SIZE;
@@ -399,8 +438,33 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->pc_num_class_oid_hash_entries));
   ptr += OR_INT64_SIZE;
 
+  OR_GET_INT64 (ptr, &(stats->vac_num_vacuumed_log_pages));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->vac_num_to_vacuum_log_pages));
+  ptr += OR_INT64_SIZE;
+
   OR_GET_INT64 (ptr, &(stats->pb_hit_ratio));
   ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->log_hit_ratio));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->vacuum_data_hit_ratio));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_vacuum_efficiency));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_vacuum_fetch_ratio));
+  ptr += OR_INT64_SIZE;
+
+  for (i = 0; i < PERF_PAGE_FIX_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->pbx_fix_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_UNFIX_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->pbx_unfix_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
 
   return (ptr);
 }

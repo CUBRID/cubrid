@@ -1076,6 +1076,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 		      logpb_flush_all_append_pages (thread_p);
 
 		      rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+		      mnt_log_replacements (thread_p);
 		      *retry = true;
 		      return NULL;
 		    }
@@ -1233,6 +1234,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	    {
 	      goto error;
 	    }
+	  mnt_log_fetch_ioreads (thread_p);
 	}
 
       /* Recall the page in the buffer pool, and hash the identifier */
@@ -1251,6 +1253,8 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
     }
 
   csect_exit (thread_p, CSECT_LOG_PB);
+
+  mnt_log_fetches (thread_p);
 
   assert (log_bufptr != NULL);
 
@@ -2179,7 +2183,9 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   if (log_bufptr == NULL)
     {
       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, log_pgptr);
+      mnt_log_fetch_ioreads (thread_p);
     }
+  mnt_log_fetches (thread_p);
 
   if (!VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
     {

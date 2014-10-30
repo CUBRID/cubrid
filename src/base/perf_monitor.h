@@ -30,6 +30,7 @@
 #include <stdio.h>
 
 #include "memory_alloc.h"
+#include "storage_common.h"
 
 #if defined (SERVER_MODE)
 #include "dbtype.h"
@@ -49,6 +50,34 @@
 #define MAX_SERVER_THREAD_COUNT         500
 #define MAX_SERVER_NAMELENGTH           256
 #define SH_MODE 0644
+
+/* define as OLD_PAGE_IF_EXISTS + 1 ; cannot include page_buffer.h here */
+#define STAT_PAGE_MODE_MAX 3
+
+/* PAGE_TYPE x PERF_MODULE_TYPE x PAGE_FETCH_MODE */
+#define PERF_PAGE_FIX_COUNTERS \
+  ((PAGE_LAST + 1) * (PERF_MODULE_CNT) * (STAT_PAGE_MODE_MAX))
+
+/* PAGE_TYPE x PERF_MODULE_TYPE x DIRTY_OR_CLEAN */
+#define PERF_PAGE_UNFIX_COUNTERS \
+  ((PAGE_LAST + 1) * (PERF_MODULE_CNT) * 2)
+
+
+#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_mode) \
+  ((((module) * (PAGE_LAST + 1) + (page_type)) * (STAT_PAGE_MODE_MAX)) + (page_mode))
+
+#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,is_dirty) \
+  ((((module) * (PAGE_LAST + 1) + (page_type)) * (2)) + (is_dirty))
+
+
+typedef enum
+{
+  PERF_MODULE_SYSTEM = 0,
+  PERF_MODULE_USER,
+  PERF_MODULE_VACUUM,
+
+  PERF_MODULE_CNT
+} PERF_MODULE_TYPE;
 
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config
@@ -162,6 +191,8 @@ struct mnt_server_exec_stats
   UINT64 pb_num_replacements;
 
   /* Execution statistics for the log manager */
+  UINT64 log_num_fetches;
+  UINT64 log_num_fetch_ioreads;
   UINT64 log_num_ioreads;
   UINT64 log_num_iowrites;
   UINT64 log_num_appendrecs;
@@ -169,6 +200,7 @@ struct mnt_server_exec_stats
   UINT64 log_num_start_checkpoints;
   UINT64 log_num_end_checkpoints;
   UINT64 log_num_wals;
+  UINT64 log_num_replacements;
 
   /* Execution statistics for the lock manager */
   UINT64 lk_num_acquired_on_pages;
@@ -254,21 +286,64 @@ struct mnt_server_exec_stats
   UINT64 pc_num_xasl_id_hash_entries;
   UINT64 pc_num_class_oid_hash_entries;
 
-  /* Other statistics */
-  UINT64 pb_hit_ratio;
+  UINT64 vac_num_vacuumed_log_pages;
+  UINT64 vac_num_to_vacuum_log_pages;
+
+  /* Other statistics (change MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) */
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
+  UINT64 pb_hit_ratio;
+  /* ((log_num_fetches - log_num_fetch_ioreads) x 100 / log_num_fetches) x 100 */
+  UINT64 log_hit_ratio;
+  /* ((fetches of vacuum - fetches of vacuum not found in PB) x 100 /
+   * fetches of vacuum) x 100 */
+  UINT64 vacuum_data_hit_ratio;
+  /* (100 x Number of unfix with of dirty pages of vacuum / total num of unfix of
+   * vacuum) x 100 */
+  UINT64 pb_vacuum_efficiency;
+  /* (100 x Number of unfix from vacuum / total num of unfix) x 100 */
+  UINT64 pb_vacuum_fetch_ratio;
+
+  /* array counters : do not include in MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS */
+  /* change MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS and MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS */
+  UINT64 pbx_fix_counters[PERF_PAGE_FIX_COUNTERS];
+  UINT64 pbx_unfix_counters[PERF_PAGE_UNFIX_COUNTERS];
 
   /* This must be kept as last member. Otherwise the
    * MNT_SERVER_EXEC_STATS_SIZEOF macro must be modified */
   bool enable_local_stat;	/* used for local stats */
 };
 
-/* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 81
+/* number of field of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 90
+/* number of array stats of MNT_SERVER_EXEC_STATS structure */
+#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 2
+/* number of computed stats of MNT_SERVER_EXEC_STATS structure */
+#define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 5
+
+#define MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
+  MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
+
+#define MNT_SERVER_EXEC_STATS_COUNT \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS \
+   + MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS)
+
+#define MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS \
+(PERF_PAGE_FIX_COUNTERS + PERF_PAGE_UNFIX_COUNTERS)
+
+#define MNT_SIZE_OF_SERVER_EXEC_STATS \
+  (MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
+   + MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS)
 
 /* The exact size of mnt_server_exec_stats structure */
 #define MNT_SERVER_EXEC_STATS_SIZEOF \
   (offsetof (MNT_SERVER_EXEC_STATS, enable_local_stat) + sizeof (bool))
+
+#define MNT_SERVER_PBX_FIX_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 0)
+#define MNT_SERVER_PBX_UNFIX_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 1)
+
+
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
@@ -479,6 +554,10 @@ extern int mnt_Num_tran_exec_stats;
 /*
  * Statistics at log level
  */
+#define mnt_log_fetches(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_fetches(thread_p)
+#define mnt_log_fetch_ioreads(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_fetch_ioreads(thread_p)
 #define mnt_log_ioreads(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_ioreads(thread_p)
 #define mnt_log_iowrites(thread_p, num_log_pages) \
@@ -493,6 +572,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_end_checkpoints(thread_p)
 #define mnt_log_wals(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_wals(thread_p)
+#define mnt_log_replacements(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_replacements(thread_p)
 
 /*
  * Statistics at lock level
@@ -634,10 +715,20 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_pc_class_oid_hash_entries(thread_p, num_entries) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_class_oid_hash_entries(thread_p, num_entries)
 
-
 /* Execution statistics for the heap manager */
 #define mnt_heap_stats_sync_bestspace(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_stats_sync_bestspace(thread_p)
+
+#define mnt_vac_log_vacuumed_pages(thread_p, num_entries) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_log_vacuumed_pages(thread_p, num_entries)
+
+#define mnt_vac_log_to_vacuum_pages(thread_p, num_entries) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_log_to_vacuum_pages(thread_p, num_entries)
+
+#define mnt_pbx_fix(thread_p,page_type,page_mode) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix(thread_p, page_type, page_mode)
+#define mnt_pbx_unfix(thread_p,page_type,dirty) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_unfix(thread_p, page_type, dirty)
 
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
@@ -660,6 +751,8 @@ extern void mnt_x_pb_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_iowrites (THREAD_ENTRY * thread_p, int num_pages);
 extern void mnt_x_pb_victims (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_replacements (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_fetches (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_fetch_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_iowrites (THREAD_ENTRY * thread_p, int num_log_pages);
 extern void mnt_x_log_appendrecs (THREAD_ENTRY * thread_p);
@@ -667,6 +760,7 @@ extern void mnt_x_log_archives (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_start_checkpoints (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_end_checkpoints (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_wals (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_replacements (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p);
@@ -745,6 +839,17 @@ extern void mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p,
 
 extern void mnt_x_heap_stats_sync_bestspace (THREAD_ENTRY * thread_p);
 
+extern void mnt_x_vac_log_vacuumed_pages (THREAD_ENTRY * thread_p,
+					  unsigned int num_entries);
+extern void mnt_x_vac_log_to_vacuum_pages (THREAD_ENTRY * thread_p,
+					   unsigned int num_entries);
+
+extern void mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type,
+			   int page_mode);
+extern void mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type,
+			     int dirty);
+
+
 #else /* SERVER_MODE || SA_MODE */
 
 #define mnt_file_creates(thread_p)
@@ -762,6 +867,8 @@ extern void mnt_x_heap_stats_sync_bestspace (THREAD_ENTRY * thread_p);
 #define mnt_pb_victims(thread_p)
 #define mnt_pb_replacements(thread_p)
 
+#define mnt_log_fetches(thread_p)
+#define mnt_log_fetch_ioreads(thread_p)
 #define mnt_log_ioreads(thread_p)
 #define mnt_log_iowrites(thread_p, num_log_pages)
 #define mnt_log_appendrecs(thread_p)
@@ -769,6 +876,7 @@ extern void mnt_x_heap_stats_sync_bestspace (THREAD_ENTRY * thread_p);
 #define mnt_log_start_checkpoints(thread_p)
 #define mnt_log_end_checkpoints(thread_p)
 #define mnt_log_wals(thread_p)
+#define mnt_log_replacements(thread_p)
 
 #define mnt_lk_acquired_on_pages(thread_p)
 #define mnt_lk_acquired_on_objects(thread_p)
@@ -834,6 +942,12 @@ extern void mnt_x_heap_stats_sync_bestspace (THREAD_ENTRY * thread_p);
 #define mnt_pc_class_oid_hash_entries(thread_p, num_entries)
 
 #define mnt_heap_stats_sync_bestspace(thread_p)
+
+#define mnt_vac_log_vacuumed_pages(thread_p, num_entries)
+#define mnt_vac_log_to_vacuum_pages(thread_p, num_entries)
+
+#define mnt_pbx_fix(thread_p,page_type,page_mode)
+#define mnt_pbx_unfix(thread_p,page_type,dirty)
 
 
 #endif /* CS_MODE */

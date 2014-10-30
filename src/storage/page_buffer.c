@@ -203,6 +203,8 @@ static int rv;
 
 #if defined(PAGE_STATISTICS)
 #define PGBUF_LATCH_MODE_COUNT  (PGBUF_LATCH_VICTIM_INVALID-PGBUF_NO_LATCH+1)
+#define PGBUF_MAX_FIXED_SOURCES 5000
+#define PGBUF_MAX_FIXED_SOURCE_LEN 64
 #endif /* PAGE_STATISTICS */
 
 /* BCB zone */
@@ -531,12 +533,28 @@ struct pgbuf_vol_stat
   PGBUF_PAGE_STAT *page_stat;
 };
 
+#if !defined(NDEBUG)
+typedef struct pgbuf_fixed_source PGBUF_FIXED_SOURCE;
+struct pgbuf_fixed_source
+{
+  UINT64 count;
+  char name[PGBUF_MAX_FIXED_SOURCE_LEN];
+};
+#endif /* NDEBUG */
+
 typedef struct pgbuf_ps_info PGBUF_PS_INFO;
 struct pgbuf_ps_info
 {
   int nvols;
   int ps_init_called;
   PGBUF_VOL_STAT *vol_stat;
+
+#if !defined(NDEBUG)
+  pthread_mutex_t page_fixed_sources_mutex;
+  MHT_TABLE *ht_page_fixed_sources;
+  PGBUF_FIXED_SOURCE fixed_source[PGBUF_MAX_FIXED_SOURCES];
+  int fixed_source_used;
+#endif				/* NDEBUG */
 };
 #endif /* PAGE_STATISTICS */
 
@@ -725,6 +743,19 @@ static int pgbuf_is_consistent (const PGBUF_BCB * bufptr,
 static int pgbuf_initialize_statistics (void);
 static int pgbuf_finalize_statistics (void);
 static void pgbuf_dump_statistics (FILE * ps_log);
+#if !defined(NDEBUG)
+static unsigned int pgbuf_hash_fixed_source (const void *key_source,
+					     unsigned int htsize);
+static int pgbuf_compare_fixed_source (const void *key_source1,
+				       const void *key_source2);
+static int pgbuf_compare_fixed_source_for_sort (const void *fix_source1,
+						const void *fix_source2);
+static void pgbuf_add_fixed_source_stat (THREAD_ENTRY * thread_p,
+					 const char *caller_file,
+					 const int caller_line,
+					 PAGE_FETCH_MODE page_mode,
+					 PAGE_PTR pgptr);
+#endif /* NDEBUG */
 #endif /* PAGE_STATISTICS */
 
 #if !defined(NDEBUG)
@@ -1204,6 +1235,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
   QUERY_ID query_id = -1;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
+  PAGE_FETCH_MODE page_found = OLD_PAGE_IF_EXISTS;
+  FILEIO_PAGE *io_pgptr;
 
   /* paramter validation */
   if (request_mode != PGBUF_LATCH_READ && request_mode != PGBUF_LATCH_WRITE)
@@ -1284,6 +1317,8 @@ try_again:
 
   if (bufptr == NULL)
     {
+      page_found = OLD_PAGE;
+
       /* The page is not found in the hash chain
        * the caller is holding hash_anchor->hash_mutex
        */
@@ -1539,6 +1574,19 @@ try_again:
 
   /* Record number of fetches in statistics */
   mnt_pb_fetches (thread_p);
+  if (fetch_mode == NEW_PAGE)
+    {
+      page_found = NEW_PAGE;
+    }
+  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
+  mnt_pbx_fix (thread_p, io_pgptr->prv.ptype, page_found);
+
+#if defined(PAGE_STATISTICS)
+#if !defined(NDEBUG)
+  pgbuf_add_fixed_source_stat (thread_p, caller_file, caller_line,
+			       page_found, pgptr);
+#endif /* NDEBUG */
+#endif /* PAGE_STATISTICS */
 
   return pgptr;
 }
@@ -1565,6 +1613,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  FILEIO_PAGE *io_pgptr;
 
 #if defined(CUBRID_DEBUG)
   LOG_LSA restart_lsa;
@@ -1642,6 +1691,9 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #endif /* CUBRID_DEBUG */
 
   holder_status = pgbuf_unlatch_thrd_holder (thread_p, bufptr);
+
+  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
+  mnt_pbx_unfix (thread_p, io_pgptr->prv.ptype, bufptr->dirty);
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
@@ -2775,6 +2827,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 	      continue;
 	    }
+
+	  mnt_pb_replacements (thread_p);
 
 	  error = pgbuf_flush_page_with_wal (thread_p, bufptr);
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
@@ -8516,7 +8570,24 @@ pgbuf_initialize_statistics (void)
       pgbuf_finalize_statistics ();
     }
 
-  ps_info.nvols = xboot_find_number_permanent_volumes ();
+#if !defined(NDEBUG)
+  {
+    int i;
+    pthread_mutex_init (&ps_info.page_fixed_sources_mutex, NULL);
+    ps_info.ht_page_fixed_sources =
+      mht_create ("PGBUF_FIXED_SOURCES", PGBUF_MAX_FIXED_SOURCES,
+		  pgbuf_hash_fixed_source, pgbuf_compare_fixed_source);
+    ps_info.fixed_source_used = 0;
+
+    for (i = 0; i < PGBUF_MAX_FIXED_SOURCES; i++)
+      {
+	ps_info.fixed_source[i].count = 0;
+	ps_info.fixed_source[i].name[0] = '\0';
+      }
+  }
+#endif /* NDEBUG */
+
+  ps_info.nvols = xboot_find_number_permanent_volumes (NULL);
   fprintf (stderr, "o ps_info.nvols = %d\n", ps_info.nvols);
   if (ps_info.nvols == 0)
     {
@@ -8534,7 +8605,7 @@ pgbuf_initialize_statistics (void)
     {
       vs = &ps_info.vol_stat[volid];
       vs->volid = volid;
-      vs->npages = xdisk_get_total_numpages (volid);
+      vs->npages = xdisk_get_total_numpages (NULL, volid);
       fprintf (stderr, "volid(%d) : npages(%d)\n", vs->volid, vs->npages);
 
       vs->page_stat =
@@ -8554,6 +8625,7 @@ pgbuf_initialize_statistics (void)
     }
 
   ps_info.ps_init_called = 1;
+
   return 0;
 }
 
@@ -8565,10 +8637,45 @@ static int
 pgbuf_finalize_statistics (void)
 {
   int volid = -1, pageid = -1;
-  PGBUF_PAGE_STAT *ps;
   PGBUF_VOL_STAT *vs;
   FILE *ps_log;
   char ps_log_filename[128];
+
+#if !defined(NDEBUG)
+  {
+    int i;
+    UINT64 sum_sources = 0;
+
+    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Worker threads:%d\n\n",
+		   thread_num_worker_threads ());
+
+    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Transactions:%d\n\n",
+		   log_Gl.trantable.num_total_indices);
+
+    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Fix source found:%d\n\n",
+		   ps_info.fixed_source_used);
+
+    qsort (ps_info.fixed_source, ps_info.fixed_source_used,
+	   sizeof (ps_info.fixed_source[0]),
+	   pgbuf_compare_fixed_source_for_sort);
+    for (i = 0; i < PGBUF_MAX_FIXED_SOURCES; i++)
+      {
+	if (i < ps_info.fixed_source_used)
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: %s, %d",
+			   ps_info.fixed_source[i].name,
+			   ps_info.fixed_source[i].count);
+	    sum_sources += ps_info.fixed_source[i].count;
+	  }
+      }
+    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Total from sources:%d\n\n",
+		   sum_sources);
+
+    mht_destroy (ps_info.ht_page_fixed_sources);
+    ps_info.ht_page_fixed_sources = NULL;
+    pthread_mutex_destroy (&ps_info.page_fixed_sources_mutex);
+  }
+#endif /* NDEBUG */
 
   fprintf (stderr, "o Finalize page statistics structure\n");
 
@@ -8616,6 +8723,7 @@ pgbuf_finalize_statistics (void)
     }
 
   ps_info.nvols = 0;
+
   ps_info.ps_init_called = 0;
 
   return 0;
@@ -8653,6 +8761,140 @@ pgbuf_dump_statistics (FILE * ps_log)
 	}
     }
 }
+
+#if !defined(NDEBUG)
+/*
+ * pgbuf_hash_fixed_source () - 
+ */
+static unsigned int
+pgbuf_hash_fixed_source (const void *key_source, unsigned int htsize)
+{
+  const char *source;
+  unsigned int sum = 0;
+
+  source = (const char *) key_source;
+
+  while (*source != '\0')
+    {
+      sum = (sum << 5) - sum + (unsigned int) *source;
+      source++;
+    }
+
+  sum = (sum % htsize);
+  return sum;
+}
+
+/*
+ * pgbuf_compare_fixed_source () -
+ */
+static int
+pgbuf_compare_fixed_source (const void *key_source1, const void *key_source2)
+{
+  const char *source1 = (const char *) key_source1;
+  const char *source2 = (const char *) key_source2;
+
+  return (strcmp (source1, source2) == 0) ? 1 : 0;
+}
+
+/*
+ * pgbuf_compare_fixed_source_for_sort () -
+ */
+static int
+pgbuf_compare_fixed_source_for_sort (const void *fix_source1,
+				     const void *fix_source2)
+{
+  return (int) (((PGBUF_FIXED_SOURCE *) fix_source2)->count -
+		((PGBUF_FIXED_SOURCE *) fix_source1)->count);
+}
+
+/*
+ * pgbuf_add_fixed_source_stat () -
+ */
+static void
+pgbuf_add_fixed_source_stat (THREAD_ENTRY * thread_p, const char *caller_file,
+			     const int caller_line, PAGE_FETCH_MODE page_mode,
+			     PAGE_PTR pgptr)
+{
+  char buf[PGBUF_MAX_FIXED_SOURCE_LEN];
+  const char *p;
+  int thread_index;
+  int tran_index;
+  static bool max_capacity_err = false;
+  UINT64 *count_fixed_source;
+
+#if !defined (SERVER_MODE)
+  thread_index = 0;
+  tran_index = 0;
+#else
+  if (thread_p == NULL)
+    {
+      thread_index = 0;
+      tran_index = 0;
+    }
+  else
+    {
+      thread_index = thread_p->index;
+      tran_index = thread_p->tran_index;
+    }
+#endif
+
+  p = (char *) caller_file + strlen (caller_file);
+  while (p)
+    {
+      if (p == caller_file)
+	{
+	  break;
+	}
+
+      if (*p == '/' || *p == '\\')
+	{
+	  p++;
+	  break;
+	}
+
+      p--;
+    }
+
+  snprintf (buf, sizeof (buf) - 1, "%s:%d:%d:%d", p, caller_line, tran_index,
+	    page_mode);
+
+  pthread_mutex_lock (&ps_info.page_fixed_sources_mutex);
+  count_fixed_source = mht_get (ps_info.ht_page_fixed_sources, buf);
+  if (count_fixed_source != NULL)
+    {
+      *count_fixed_source += 1;
+    }
+  else
+    {
+      if (ps_info.fixed_source_used < PGBUF_MAX_FIXED_SOURCES)
+	{
+	  char *new_key;
+	  count_fixed_source =
+	    &(ps_info.fixed_source[ps_info.fixed_source_used].count);
+	  *count_fixed_source = 1;
+
+	  new_key = ps_info.fixed_source[ps_info.fixed_source_used].name;
+	  strcpy (new_key, buf);
+	  if (mht_put (ps_info.ht_page_fixed_sources, new_key,
+		       count_fixed_source) != NULL)
+	    {
+	      ps_info.fixed_source_used += 1;
+	    }
+	}
+      else
+	{
+	  if (max_capacity_err == false)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "PBFIX:Too many page fix sources :%d",
+			     ps_info.fixed_source_used);
+	    }
+	  max_capacity_err = true;
+	}
+    }
+  pthread_mutex_unlock (&ps_info.page_fixed_sources_mutex);
+}
+#endif /* NDEBUG */
 #endif /* PAGE_STATISTICS */
 
 #if !defined(NDEBUG)

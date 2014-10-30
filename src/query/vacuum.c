@@ -32,6 +32,7 @@
 #include "log_compress.h"
 #include "overflow_file.h"
 #include "lock_free.h"
+#include "perf_monitor.h"
 #include "dbtype.h"
 
 /* The maximum number of slots in a page if all of them are empty.
@@ -2191,7 +2192,11 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
       vacuum_er_log (VACUUM_ER_LOG_ERROR,
 		     "VACUUM_ERROR: Cannot produce new log block data! "
 		     "The buffer is already full.");
+      assert (false);
+      return;
     }
+
+  mnt_vac_log_to_vacuum_pages (thread_p, vacuum_Data->log_block_npages);
 }
 
 #if defined (SERVER_MODE)
@@ -2624,6 +2629,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data)
 	  assert (false);
 	}
     }
+
+  mnt_vac_log_vacuumed_pages (thread_p, vacuum_Data->log_block_npages);
 
   vacuum_complete = true;
 

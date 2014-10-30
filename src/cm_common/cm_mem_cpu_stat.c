@@ -1119,6 +1119,9 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_data_page_victims", offsetof (T_CM_DB_EXEC_STAT, pb_num_victims)},
   {"Num_data_page_iowrites_for_replacement",
    offsetof (T_CM_DB_EXEC_STAT, pb_num_replacements)},
+  {"Num_log_page_fetches", offsetof (T_CM_DB_EXEC_STAT, log_num_fetches)},
+  {"Num_log_page_fetch_ioreads",
+   offsetof (T_CM_DB_EXEC_STAT, log_num_fetch_ioreads)},
   {"Num_log_page_ioreads", offsetof (T_CM_DB_EXEC_STAT, log_num_ioreads)},
   {"Num_log_page_iowrites", offsetof (T_CM_DB_EXEC_STAT, log_num_iowrites)},
   {"Num_log_append_records",
@@ -1129,6 +1132,8 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_log_end_checkpoints",
    offsetof (T_CM_DB_EXEC_STAT, log_num_end_checkpoints)},
   {"Num_log_wals", offsetof (T_CM_DB_EXEC_STAT, log_num_wals)},
+  {"Num_log_page_iowrites_for_replacement",
+   offsetof (T_CM_DB_EXEC_STAT, log_num_replacements)},
   {"Num_page_locks_acquired",
    offsetof (T_CM_DB_EXEC_STAT, lk_num_acquired_on_pages)},
   {"Num_object_locks_acquired",
@@ -1211,7 +1216,18 @@ static STATDUMP_PROP statdump_offset[] = {
    offsetof (T_CM_DB_EXEC_STAT, pc_num_xasl_id_hash_entries)},
   {"Num_plan_cache_class_oid_hash_entries",
    offsetof (T_CM_DB_EXEC_STAT, pc_num_class_oid_hash_entries)},
-  {"Data_page_buffer_hit_ratio", offsetof (T_CM_DB_EXEC_STAT, pb_hit_ratio)}
+  {"Num_vacuum_log_pages_vaccumed",
+   offsetof (T_CM_DB_EXEC_STAT, vac_num_vacuumed_log_pages)},
+  {"Num_vacuum_log_pages_to_vacuum",
+   offsetof (T_CM_DB_EXEC_STAT, vac_num_to_vacuum_log_pages)},
+  {"Data_page_buffer_hit_ratio", offsetof (T_CM_DB_EXEC_STAT, pb_hit_ratio)},
+  {"Log_page_buffer_hit_ratio", offsetof (T_CM_DB_EXEC_STAT, log_hit_ratio)},
+  {"Vacuum_data_page_buffer_hit_ratio",
+   offsetof (T_CM_DB_EXEC_STAT, vacuum_data_hit_ratio)},
+  {"Vacuum_page_efficiency_ratio",
+   offsetof (T_CM_DB_EXEC_STAT, pb_vacuum_efficiency)},
+  {"Vacuum_page_fetch_ratio",
+   offsetof (T_CM_DB_EXEC_STAT, pb_vacuum_fetch_ratio)}
 };
 
 static unsigned int *

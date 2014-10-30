@@ -274,6 +274,8 @@ extern "C"
     unsigned int pb_num_replacements;
 
     /* Execution statistics for the log manager */
+    unsigned int log_num_fetches;
+    unsigned int log_num_fetch_ioreads;
     unsigned int log_num_ioreads;
     unsigned int log_num_iowrites;
     unsigned int log_num_appendrecs;
@@ -281,6 +283,7 @@ extern "C"
     unsigned int log_num_start_checkpoints;
     unsigned int log_num_end_checkpoints;
     unsigned int log_num_wals;
+    unsigned int log_num_replacements;
 
     /* Execution statistics for the lock manager */
     unsigned int lk_num_acquired_on_pages;
@@ -365,11 +368,21 @@ extern "C"
     unsigned int pc_num_query_string_hash_entries;
     unsigned int pc_num_xasl_id_hash_entries;
     unsigned int pc_num_class_oid_hash_entries;
+    unsigned int vac_num_vacuumed_log_pages;
+    unsigned int vac_num_to_vacuum_log_pages;
 
     /* Other statistics */
     unsigned int pb_hit_ratio;
     /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
 
+    unsigned int log_hit_ratio;
+    /* ((log_num_fetches - log_num_fetch_ioreads) x 100 / log_num_fetches) x 100 */
+
+    unsigned int vacuum_data_hit_ratio;
+
+    unsigned int pb_vacuum_efficiency;
+
+    unsigned int pb_vacuum_fetch_ratio;
   } T_CM_DB_EXEC_STAT;
 
   int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,

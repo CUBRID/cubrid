@@ -536,6 +536,8 @@ extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 extern void *thread_worker (void *);
 #endif /* !WINDOWS */
 
+extern int thread_first_vacuum_worker_thread_index (void);
+
 #endif /* SERVER_MODE */
 
 #endif /* _THREAD_H_ */
