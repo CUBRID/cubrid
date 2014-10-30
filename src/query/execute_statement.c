@@ -11617,40 +11617,31 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
 	  val = tmpl->assignments[(*attr)->order]->variable;
 	}
 
-      if ((*attr)->domain->is_parameterized && val != NULL)
+      attr_dom = tp_domain_copy ((*attr)->domain, false);
+      if (attr_dom == NULL)
 	{
-	  attr_dom = tp_domain_new (TP_DOMAIN_TYPE ((*attr)->domain));
-	  if (attr_dom == NULL)
-	    {
-	      error = ER_FAILED;
-	      goto error_return;
-	    }
-	  attr_dom = tp_domain_resolve_value (val, attr_dom);
-	  if (attr_dom == NULL)
-	    {
-	      error = ER_FAILED;
-	      goto error_return;
-	    }
-	}
-      else
-	{
-	  attr_dom = tp_domain_copy ((*attr)->domain, false);
-	  if (attr_dom == NULL)
-	    {
-	      error = ER_FAILED;
-	      goto error_return;
-	    }
+	  error = ER_FAILED;
+	  goto error_return;
 	}
 
-      if (val != NULL)
+      if (val != NULL && !DB_IS_NULL (val))
 	{
-	  if (attr_dom->type->index_lengthval == NULL)
+#if !defined (NDEBUG)
+	  {
+	    TP_DOMAIN *d;
+
+	    d = tp_domain_resolve_value (val, NULL);
+	    assert (tp_domain_match (attr_dom, d, TP_EXACT_MATCH));
+	  }
+#endif /* NDEBUG */
+
+	  if (attr_dom->type->index_lengthval != NULL)
 	    {
-	      buf_size += attr_dom->type->disksize;
+	      buf_size += (*(attr_dom->type->index_lengthval)) (val);
 	    }
 	  else
 	    {
-	      buf_size += (*(attr_dom->type->index_lengthval)) (val);
+	      buf_size += attr_dom->type->disksize;
 	    }
 	}
 
@@ -11690,23 +11681,21 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
-      if (tmpl->assignments[(*attr)->order] == NULL
-	  || tmpl->assignments[(*attr)->order]->variable == NULL)
+      val = NULL;
+      if (tmpl->assignments[(*attr)->order] != NULL)
 	{
-	  continue;
+	  val = tmpl->assignments[(*attr)->order]->variable;
 	}
-
       dom = (*attr)->domain;
-      val = tmpl->assignments[(*attr)->order]->variable;
 
-      if (DB_IS_NULL (val))
-	{
-	  OR_CLEAR_BOUND_BIT (bound_bits, i);
-	}
-      else
+      if (val != NULL && !DB_IS_NULL (val))
 	{
 	  (*((dom->type)->index_writeval)) (&buf, val);
 	  OR_ENABLE_BOUND_BIT (bound_bits, i);
+	}
+      else
+	{
+	  OR_CLEAR_BOUND_BIT (bound_bits, i);
 	}
     }
 

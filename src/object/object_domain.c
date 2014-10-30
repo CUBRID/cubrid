@@ -1166,6 +1166,14 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj,
 	  assert ((new_->setdomain
 		   && new_->precision == tp_domain_size (new_->setdomain))
 		  || (new_->setdomain == NULL && new_->precision == 0));
+
+	  {
+	    TP_DOMAIN *d;
+	    for (d = new_->setdomain; d != NULL; d = d->next)
+	      {
+	        assert (d->is_cached == 0);
+	      }
+	  }
 	}
 #endif /* NDEBUG */
 
