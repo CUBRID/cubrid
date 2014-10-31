@@ -3554,6 +3554,8 @@ mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int dirty)
   counter = (mnt_Server_table.global_stats->pbx_unfix_counters
 	     + PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, dirty));
 
+  assert (page_type != PAGE_UNKNOWN);
+
 #if defined (HAVE_ATOMIC_BUILTINS) \
     && (defined (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402))
   /* The former versions of 32-bit version GCC are unable to generate

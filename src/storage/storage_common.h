@@ -182,7 +182,8 @@ typedef enum
   PAGE_CATALOG,			/* catalog page                         */
   PAGE_BTREE,			/* b+tree index page (with ovf_OIDs)    */
   PAGE_LOG,			/* NONE - log page (unused)             */
-  PAGE_LAST = PAGE_LOG
+  PAGE_DROPPED_FILES,		/* Dropped files page.                  */
+  PAGE_LAST = PAGE_DROPPED_FILES
 } PAGE_TYPE;
 
 #define ISCAN_OID_BUFFER_SIZE \

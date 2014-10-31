@@ -3791,6 +3791,9 @@ vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p,
   VPID_SET_NULL (&dropped_files_page->next_page);
   dropped_files_page->n_dropped_files = 0;
 
+  pgbuf_set_page_ptype (thread_p, (PAGE_PTR) dropped_files_page,
+			PAGE_DROPPED_FILES);
+
   /* Set dirty page and free */
   vacuum_set_dirty_dropped_entries_page (thread_p, dropped_files_page, FREE);
 
@@ -5902,6 +5905,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 			     addr.offset, addr.pgptr, rcv->length, rcv->data,
 			     tdes);
     }
+  pgbuf_set_page_ptype (thread_p, (PAGE_PTR) new_page, PAGE_DROPPED_FILES);
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
 		 "VACUUM: thread(%d): added new dropped "
@@ -6012,6 +6016,7 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* Initialize new page */
       VPID_SET_NULL (&page->next_page);
       page->n_dropped_files = 0;
+      pgbuf_set_page_ptype (thread_p, (PAGE_PTR) page, PAGE_DROPPED_FILES);
     }
 
   if (replace)
