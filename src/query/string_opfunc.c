@@ -29248,7 +29248,7 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str,
 {
   int error_status = NO_ERROR;
   DB_TYPE str_type;
-  char res[MAX_LEN_OFFSET];
+  char *res;
 
   /*
    *  Assert that DB_VALUE structures have been allocated.
@@ -29266,7 +29266,7 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str,
     {
       DB_MAKE_NULL (result_str);
     }
-  else if (!QSTR_IS_ANY_CHAR (str_type))
+  else if (!QSTR_IS_CHAR (str_type))
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -29283,16 +29283,26 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str,
 	  len = strlen (DB_PULL_STRING (src_str));
 	}
 
+      res = (char *) db_private_alloc (NULL, MAX_LEN_OFFSET);
+      if (res == NULL)
+	{
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  return error_status;
+	}
+
       error_status = tz_get_timezone_offset (DB_PULL_STRING (src_str),
 					     len, res, datetime);
       if (error_status == NO_ERROR)
 	{
-	  if (QSTR_IS_CHAR (str_type))
-	    {
-	      DB_MAKE_VARCHAR (result_str, TP_FLOATING_PRECISION_VALUE,
-			       res, strlen (res),
-			       LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	    }
+	  DB_MAKE_VARCHAR (result_str, TP_FLOATING_PRECISION_VALUE,
+			   res, strlen (res),
+			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  result_str->need_clear = true;
+	}
+      else
+	{
+	  db_private_free (NULL, res);
 	}
     }
 

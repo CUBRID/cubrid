@@ -123,7 +123,7 @@ static int tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt,
 					    src_zone_info_out,
 					    TZ_DECODE_INFO *
 					    dest_zone_info_out);
-static int tz_print_tz_offset (char *result, int tz_offset);
+static void tz_print_tz_offset (char *result, int tz_offset);
 static int starts_with (const char *prefix, const char *str);
 static int tz_get_zone_id_by_name (const char *name, const int name_size);
 static void
@@ -855,7 +855,7 @@ tz_get_current_date (void)
  * result (out) : output timezone offset
  */
 
-static int
+static void
 tz_print_tz_offset (char *result, int tz_offset)
 {
   const int sign_hour_minutes = 6;
@@ -889,8 +889,6 @@ tz_print_tz_offset (char *result, int tz_offset)
 		off_hour, off_min, off_sec);
     }
   (result)[out_len] = '\0';
-
-  return NO_ERROR;
 }
 
 /*
@@ -942,7 +940,7 @@ tz_get_timezone_offset (const char *tz_str, int tz_size,
 	  return ER_TZ_INVALID_TIMEZONE;
 	}
 
-      error = tz_print_tz_offset (result, seconds);
+      tz_print_tz_offset (result, seconds);
     }
   /* Handle the main case when the timezone
    * is a name
@@ -997,7 +995,7 @@ tz_get_timezone_offset (const char *tz_str, int tz_size,
 	(int) (dest_datetime.date - utc_datetime->date) * 3600 * 24 +
 	(int) (dest_datetime.time - utc_datetime->time) / 1000;
 
-      error = tz_print_tz_offset (result, tdif);
+      tz_print_tz_offset (result, tdif);
     }
 
   return error;
