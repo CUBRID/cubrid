@@ -3524,10 +3524,19 @@ mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_mode)
 
   module = perf_get_module_type (thread_p);
 
-  counter = mnt_Server_table.global_stats->pbx_fix_counters
-    + PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode);
+  counter = (mnt_Server_table.global_stats->pbx_fix_counters
+	     + PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode));
 
-  ATOMIC_INC (*counter, 1);
+#if defined (HAVE_ATOMIC_BUILTINS) \
+    && (defined (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402))
+  /* The former versions of 32-bit version GCC are unable to generate
+   * optimized code for 64-bit atomic increment operations.
+   * Refer https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185 for more info.
+   */
+  ATOMIC_INC_64 (counter, 1);
+#else
+  *counter += 1;
+#endif
 }
 
 /*
@@ -3542,12 +3551,19 @@ mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int dirty)
 
   module = perf_get_module_type (thread_p);
 
-  counter = mnt_Server_table.global_stats->pbx_unfix_counters
-    + PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, dirty);
+  counter = (mnt_Server_table.global_stats->pbx_unfix_counters
+	     + PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, dirty));
 
-  assert (page_type != PAGE_UNKNOWN);
-
-  ATOMIC_INC (*counter, 1);
+#if defined (HAVE_ATOMIC_BUILTINS) \
+    && (defined (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402))
+  /* The former versions of 32-bit version GCC are unable to generate
+   * optimized code for 64-bit atomic increment operations.
+   * Refer https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185 for more info.
+   */
+  ATOMIC_INC_64 (counter, 1);
+#else
+  *counter += 1;
+#endif
 }
 
 #endif /* SERVER_MODE || SA_MODE */
@@ -3973,6 +3989,11 @@ perf_get_module_type (THREAD_ENTRY * thread_p)
   int first_vacuum_worker_idx;
 
 #if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
   thread_index = thread_p->index;
   first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
 #else
@@ -4098,7 +4119,7 @@ perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
 				  perf_stat_module_name (module),
 				  perf_stat_page_type_name (page_type),
 				  perf_stat_page_mode_name (page_mode),
-				  *counter);
+				  (long long unsigned int) *counter);
 		  *remaining_size -= ret;
 		  if (*remaining_size <= 0)
 		    {
@@ -4112,7 +4133,8 @@ perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
 		  fprintf (stream, "%-6s,%-14s,%-18s = %10llu\n",
 			   perf_stat_module_name (module),
 			   perf_stat_page_type_name (page_type),
-			   perf_stat_page_mode_name (page_mode), *counter);
+			   perf_stat_page_mode_name (page_mode),
+			   (long long unsigned int) *counter);
 		}
 	    }
 	}
@@ -4155,7 +4177,8 @@ perf_stat_dump_unfix_page_array_stat (const UINT64 * stats_ptr,
 				  "%-6s,%-14s,%-9s = %10llu\n",
 				  perf_stat_module_name (module),
 				  perf_stat_page_type_name (page_type),
-				  is_dirty ? "DIRTY" : "NON_DIRTY", *counter);
+				  is_dirty ? "DIRTY" : "NON_DIRTY",
+				  (long long unsigned int) *counter);
 		  *remaining_size -= ret;
 		  if (*remaining_size <= 0)
 		    {
@@ -4169,7 +4192,8 @@ perf_stat_dump_unfix_page_array_stat (const UINT64 * stats_ptr,
 		  fprintf (stream, "%-6s,%-14s,%-9s = %10llu\n",
 			   perf_stat_module_name (module),
 			   perf_stat_page_type_name (page_type),
-			   is_dirty ? "DIRTY" : "NON_DIRTY", *counter);
+			   is_dirty ? "DIRTY" : "NON_DIRTY",
+			   (long long unsigned int) *counter);
 		}
 	    }
 	}
