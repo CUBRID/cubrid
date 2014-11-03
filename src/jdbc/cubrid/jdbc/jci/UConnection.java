@@ -1148,7 +1148,8 @@ public class UConnection {
 	synchronized public void setIsolationLevel(int level) {
 		errorHandler = new UError(this);
 
-		if (lastIsolationLevel == level) {
+		if (lastIsolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION &&
+		 	lastIsolationLevel == level) {
 			return;
 		}
 
@@ -1186,7 +1187,8 @@ public class UConnection {
 	synchronized public void setLockTimeout(int timeout) {
 		errorHandler = new UError(this);
 
-		if (lastLockTimeout == timeout) {
+		if (lastLockTimeout != LOCK_TIMEOUT_NOT_USED && 
+			lastLockTimeout == timeout) {
 			return;
 		}
 

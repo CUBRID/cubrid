@@ -2074,12 +2074,14 @@ cci_set_db_parameter (int mapped_conn_id, T_CCI_DB_PARAM param_name,
     }
 
   if (param_name == CCI_PARAM_ISOLATION_LEVEL &&
+      con_handle->isolation_level != TRAN_UNKNOWN_ISOLATION &&
       con_handle->isolation_level == *((int *) value))
     {
       goto ret;
     }
 
   if (param_name == CCI_PARAM_LOCK_TIMEOUT &&
+      con_handle->lock_timeout != CCI_LOCK_TIMEOUT_DEFAULT &&
       con_handle->lock_timeout == *((int *) value))
     {
       goto ret;
