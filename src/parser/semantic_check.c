@@ -6731,6 +6731,10 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   DB_VALUE_PLIST *min_list, *max_list;
   DB_VALUE_PLIST *p, *next;
   PT_NODE *column_dt = NULL;
+  PARSER_CONTEXT *tmp_parser = NULL;
+  PT_NODE **statements = NULL;
+  DB_VALUE pexpr;
+  const char *expr_sql = NULL;
 
   assert (parser != NULL);
 
@@ -6746,6 +6750,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   DB_MAKE_NULL (&minele);
   DB_MAKE_NULL (&maxele);
   DB_MAKE_NULL (&null_val);
+  DB_MAKE_NULL (&pexpr);
 
   class_name = (char *) stmt->info.alter.entity_name->info.name.original;
   cmd = stmt->info.alter.code;
@@ -6846,6 +6851,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   DB_MAKE_NULL (&ptype);
   DB_MAKE_NULL (&pattr);
   DB_MAKE_NULL (&attname);
+  DB_MAKE_NULL (&pexpr);
   if (db_get (smclass->partition_of, PARTITION_ATT_PTYPE, &ptype))
     {
       PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
@@ -6855,39 +6861,73 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
   if (DB_GET_INT (&ptype) != PT_PARTITION_HASH)
     {
-      /* get partition attribute type */
-      if (db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr)
+      tmp_parser = parser_create_parser ();
+      if (tmp_parser == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+
+	  goto check_end;
+	}
+
+      /* get partition expr */
+      if (db_get (smclass->partition_of, PARTITION_ATT_PEXPR, &pexpr)
 	  != NO_ERROR)
 	{
 	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
-	  goto check_end;	/* get partition type */
-	}
-      if (set_get_element (DB_GET_SEQ (&pattr), 0, &attname) != NO_ERROR)
-	{
-	  PT_ERROR (parser, stmt, er_msg ());
 	  goto check_end;
 	}
-      if (DB_IS_NULL (&attname) || DB_GET_STRING (&attname) == NULL)
+
+      expr_sql = DB_GET_STRING (&pexpr);
+
+      /* compile the select statement and get the correct data_type */
+      statements = parser_parse_string (tmp_parser, expr_sql);
+      if (statements == NULL)
 	{
-	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
-	  goto check_end;	/* get partition type */
-	}
-      keyattr = classobj_find_attribute (smclass, DB_GET_STRING (&attname),
-					 0);
-      if (keyattr == NULL)
-	{
-	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
-	  goto check_end;	/* get partition type */
+	  if (er_errid () == NO_ERROR)
+	    {
+	      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
+	    }
+
+	  goto check_end;
 	}
 
-      column_dt = pt_domain_to_data_type (parser, keyattr->domain);
-      pr_clear_value (&pattr);
-      pr_clear_value (&attname);
-      DB_MAKE_NULL (&pattr);
-      DB_MAKE_NULL (&attname);
+      statements[0] = pt_compile (tmp_parser, statements[0]);
+      if (statements[0] == NULL)
+	{
+	  if (er_errid () == NO_ERROR)
+	    {
+	      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
+	    }
+
+	  goto check_end;
+	}
+
+      assert (statements[0]->node_type == PT_SELECT
+	      && statements[0]->info.query.q.select.list != NULL);
+      if (statements[0]->info.query.q.select.list->data_type != NULL)
+	{
+	  column_dt = parser_copy_tree (parser,
+					statements[0]->info.query.q.select.
+					list->data_type);
+	}
+      else
+	{
+	  column_dt = pt_domain_to_data_type (parser,
+					      tp_domain_resolve_default
+					      (pt_type_enum_to_db
+					       (statements[0]->info.query.q.
+						select.list->type_enum)));
+	}
+
+
+      pr_clear_value (&pexpr);
+      DB_MAKE_NULL (&pexpr);
+
+      parser_free_parser (tmp_parser);
+      tmp_parser = NULL;
     }
 
   chkflag = 0;
@@ -7464,6 +7504,12 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     }
 
 check_end:
+  if (tmp_parser != NULL)
+    {
+      parser_free_parser (tmp_parser);
+      tmp_parser = NULL;
+    }
+
   if (column_dt != NULL)
     {
       parser_free_tree (parser, column_dt);
@@ -7473,6 +7519,8 @@ check_end:
   pr_clear_value (&ptype);
   pr_clear_value (&pname);
   pr_clear_value (&attname);
+  pr_clear_value (&pexpr);
+
   if (maxval)
     {
       pr_free_ext_value (maxval);
