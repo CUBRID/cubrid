@@ -848,6 +848,11 @@ css_master_thread (void)
 	  css_Pipe_to_master = INVALID_SOCKET;
 	}
 
+      /* clear the pollfd each time before poll */
+      nfds = 0;
+      po[0].fd = -1;
+      po[0].events = 0;
+
       if (!IS_INVALID_SOCKET (css_Pipe_to_master))
 	{
 	  po[0].fd = css_Pipe_to_master;
