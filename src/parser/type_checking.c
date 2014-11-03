@@ -9726,7 +9726,11 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  node->info.expr.arg1 = NULL;
 	  parser_free_node (parser, node);
-	  return arg1;
+
+	  node = parser_copy_tree_list (parser, arg1);
+	  parser_free_node (parser, arg1);
+
+	  return node;
 	}
       else if (PT_IS_NUMERIC_TYPE (arg1_type))
 	{
@@ -12764,12 +12768,12 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 
     case PT_FUNCTION_HOLDER:
       if (node->info.function.function_type == F_ELT
-          || node->info.function.function_type == F_INSERT_SUBSTRING)
-        {
-          assert (dt == NULL);
-          dt = pt_make_prim_data_type (parser, node->type_enum);
-          dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-        }
+	  || node->info.function.function_type == F_INSERT_SUBSTRING)
+	{
+	  assert (dt == NULL);
+	  dt = pt_make_prim_data_type (parser, node->type_enum);
+	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	}
       break;
 
     case PT_SUBDATE:
