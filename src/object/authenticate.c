@@ -2612,9 +2612,10 @@ au_set_user_comment (MOP user, const char *comment)
 {
   int error = NO_ERROR;
   DB_VALUE value;
-  int len = 0;
+  int len = 0, save;
 
-  if (Au_user != user && !au_is_dba_group_member (Au_user))
+  AU_SAVE_AND_DISABLE (save);
+  if (!ws_is_same_object (Au_user, user) && !au_is_dba_group_member (Au_user))
     {
       error = ER_AU_UPDATE_FAILURE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -2642,6 +2643,7 @@ au_set_user_comment (MOP user, const char *comment)
 	  error = obj_set (user, "comment", &value);
 	}
     }
+  AU_RESTORE (save);
 
   return error;
 }

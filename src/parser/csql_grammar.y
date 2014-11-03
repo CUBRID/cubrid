@@ -9485,6 +9485,7 @@ attr_constraint_def
 				  }
 				else 
 				  {
+				    constraint->info.index.comment = $4;
 				    if (constraint->info.index.index_name == NULL)
 				      {
 					constraint->info.index.index_name = name;
