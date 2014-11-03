@@ -1954,7 +1954,7 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
   else
     {
       err_status =
-	tz_str_to_seconds (gmt_off, &(temp_rule->gmt_off), &str_dummy);
+	tz_str_to_seconds (gmt_off, &(temp_rule->gmt_off), &str_dummy, false);
       if (err_status != NO_ERROR)
 	{
 	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_TIME,
@@ -2210,7 +2210,8 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
     {
       val_read = 0;
     }
-  else if (tz_str_to_seconds (col_at, &val_read, &str_cursor) != NO_ERROR)
+  else if (tz_str_to_seconds (col_at, &val_read, &str_cursor, false) !=
+	   NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
       TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE,
@@ -2241,7 +2242,8 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
 	}
       val_read *= 60;
     }
-  else if (tz_str_to_seconds (col_save, &val_read, &str_cursor) != NO_ERROR)
+  else if (tz_str_to_seconds (col_save, &val_read, &str_cursor, false)
+	   != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
       TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE,
@@ -3213,7 +3215,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 		}
 	      else if (tz_str_to_seconds (raw_offrule->ds_ruleset_name,
 					  &(offrule->ds_ruleset),
-					  &dummy) != NO_ERROR)
+					  &dummy, false) != NO_ERROR)
 		{
 		  err_status = TZC_ERR_INVALID_TIME;
 		  goto exit;

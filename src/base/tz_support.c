@@ -77,6 +77,8 @@ typedef DB_BIGINT full_date_t;
 #define ABS(i) ((i) >= 0 ? (i) : -(i))
 
 #define TZ_INVALID_OFFSET ((((23 * 60) + 59) * 60) + 59)
+#define TZ_MIN_OFFSET -12 * 3600
+#define TZ_MAX_OFFSET 14 * 3600
 
 static int tz_initialized = 0;
 
@@ -921,7 +923,7 @@ tz_get_timezone_offset (const char *tz_str, int tz_size,
     {
       int seconds = 0;
       const char *zone_end;
-      if (tz_str_to_seconds (p, &seconds, &zone_end) != NO_ERROR)
+      if (tz_str_to_seconds (p, &seconds, &zone_end, true) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE,
 		  0);
@@ -1179,8 +1181,8 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size,
 
   if (*zone_str == '+' || *zone_str == '-')
     {
-      if (tz_str_to_seconds (zone_str, &(tz_info->offset), &zone_str_end)
-	  != NO_ERROR)
+      if (tz_str_to_seconds
+	  (zone_str, &(tz_info->offset), &zone_str_end, true) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE,
 		  0);
@@ -1302,7 +1304,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size,
 
   if (*zone_str == '+' || *zone_str == '-')
     {
-      if (tz_str_to_seconds (zone_str, &reg_offset, &zone_str_end)
+      if (tz_str_to_seconds (zone_str, &reg_offset, &zone_str_end, true)
 	  != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE,
@@ -1836,7 +1838,7 @@ tz_timeltz_to_local (const DB_TIME * time_ltz, DB_TIME * time_local)
  * tz_str_size(in): size of buffer
  *
  */
-int
+static int
 tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
 		     const int tz_str_size)
 {
@@ -1857,16 +1859,15 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
       int hour, min, sec, n;
       char sign;
 
-      if (tz_info->offset == TZ_INVALID_OFFSET)
+      if (offset == TZ_INVALID_OFFSET)
 	{
 	  return -1;
 	}
 
-      sign = (tz_info->offset < 0) ? '-' : '+';
+      sign = (offset < 0) ? '-' : '+';
+      assert (offset >= TZ_MIN_OFFSET && offset <= TZ_MAX_OFFSET);
 
       offset = (offset < 0) ? (-offset) : offset;
-      assert (offset < 3600 * 24);
-
       db_time_decode ((DB_TIME *) & offset, &hour, &min, &sec);
 
       if (sec > 0)
@@ -2503,13 +2504,16 @@ tz_str_read_time (const char *str, bool need_minutes, bool allow_sec60,
 /*
  * tz_str_to_seconds() - parses a string representing a signed time offset
  *
- * Returns: error code
+ * Returns: ER_FAILED (message error is not set) or NO_ERROR
  * str(in): string to parse
  * seconds(out): the signed number of seconds that the string represents
  * str_next(out): pointer to the first char after the parsed time
+ * is_offset(in): true if str is a timezone offset, false if it is
+ *                an absolute value
  */
 int
-tz_str_to_seconds (const char *str, int *seconds, const char **str_next)
+tz_str_to_seconds (const char *str, int *seconds, const char **str_next,
+		   const bool is_offset)
 {
   int err_status = NO_ERROR;
   int pos = -1;
@@ -2538,6 +2542,19 @@ tz_str_to_seconds (const char *str, int *seconds, const char **str_next)
   if (err_status != NO_ERROR)
     {
       return err_status;
+    }
+  if (is_offset == true)
+    {
+      if (is_negative == true
+	  && -(hour * 3600 + min * 60 + sec) < TZ_MIN_OFFSET)
+	{
+	  return ER_FAILED;
+	}
+      if (is_negative == false
+	  && (hour * 3600 + min * 60 + sec) > TZ_MAX_OFFSET)
+	{
+	  return ER_FAILED;
+	}
     }
 
   result = sec + min * 60 + hour * 3600;
@@ -3434,14 +3451,14 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr,
 
       sign = (tz_info.offset < 0) ? '-' : '+';
 
-      offset = (offset < 0) ? (-offset) : offset;
-      if (offset >= 24 * 3600)
+      if (offset < TZ_MIN_OFFSET || offset > TZ_MAX_OFFSET)
 	{
 	  er_status = ER_DATE_CONVERSION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
 	  return er_status;
 	}
 
+      offset = (offset < 0) ? (-offset) : offset;
       db_time_decode ((DB_TIME *) & offset, &hour, &min, &sec);
 
       *tzh = hour;
@@ -3586,8 +3603,9 @@ tz_create_datetimetz_from_offset (const DB_DATETIME * dt, const int tzh,
   tz_info.type = TZ_REGION_OFFSET;
   tz_info.offset = tzh * 3600 + tzm * 60;
 
-  if (tz_info.offset >= 24 * 3600 || -tz_info.offset >= 24 * 3600)
+  if (tz_info.offset < TZ_MIN_OFFSET || tz_info.offset > TZ_MAX_OFFSET)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       err_status = ER_DATE_CONVERSION;
       return err_status;
     }
@@ -3627,8 +3645,9 @@ tz_create_timetz_from_offset (const DB_TIME * time, const int tzh,
   tz_info.type = TZ_REGION_OFFSET;
   tz_info.offset = tzh * 3600 + tzm * 60;
 
-  if (tz_info.offset >= 24 * 3600 || -tz_info.offset >= 24 * 3600)
+  if (tz_info.offset < TZ_MIN_OFFSET || tz_info.offset > TZ_MAX_OFFSET)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       err_status = ER_DATE_CONVERSION;
       return err_status;
     }
@@ -3677,8 +3696,9 @@ tz_create_timestamptz_from_offset (const DB_DATE * date,
   tz_info.type = TZ_REGION_OFFSET;
   tz_info.offset = tzh * 3600 + tzm * 60;
 
-  if (tz_info.offset >= 24 * 3600 || -tz_info.offset >= 24 * 3600)
+  if (tz_info.offset < TZ_MIN_OFFSET || tz_info.offset > TZ_MAX_OFFSET)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       err_status = ER_DATE_CONVERSION;
       return err_status;
     }

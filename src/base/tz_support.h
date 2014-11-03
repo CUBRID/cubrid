@@ -163,7 +163,7 @@ extern "C"
 			       bool allow_sec60, int *hour, int *min,
 			       int *sec, const char **str_next);
   extern int tz_str_to_seconds (const char *str, int *sec,
-				const char **str_next);
+				const char **str_next, const bool is_offset);
   extern int tz_get_ds_change_julian_date (const TZ_DS_RULE * ds_rule,
 					   const int year,
 					   int *ds_rule_julian_date);
