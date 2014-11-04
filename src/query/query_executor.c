@@ -11610,7 +11610,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
       BTID_COPY (&btid, &index->btid);
       key_dbvalue = heap_attrvalue_get_key (thread_p, i, index_attr_info,
 					    &new_recdes, &btid, &dbvalue,
-					    aligned_buf, NULL);
+					    aligned_buf, NULL, NULL);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -11894,7 +11894,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 
       key_dbvalue = heap_attrvalue_get_key (thread_p, i, index_attr_info,
 					    &recdes, &btid, &dbvalue,
-					    aligned_buf, NULL);
+					    aligned_buf, NULL, NULL);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;

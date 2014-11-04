@@ -829,7 +829,9 @@ static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes,
 					 DB_MIDXKEY * midxkey,
 					 OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo,
-					 DB_VALUE * func_res);
+					 DB_VALUE * func_res,
+					 TP_DOMAIN * func_domain,
+					 TP_DOMAIN ** key_domain);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p,
 					      RECDES * recdes,
 					      DB_MIDXKEY * midxkey,
@@ -847,7 +849,8 @@ static int heap_eval_function_index (THREAD_ENTRY * thread_p,
 				     HEAP_CACHE_ATTRINFO * attr_info,
 				     RECDES * recdes, int btid_index,
 				     DB_VALUE * result,
-				     FUNC_PRED_UNPACK_INFO * func_pred);
+				     FUNC_PRED_UNPACK_INFO * func_pred,
+				     TP_DOMAIN ** fi_domain);
 
 static DISK_ISVALID heap_check_all_pages_by_heapchain (THREAD_ENTRY *
 						       thread_p, HFID * hfid,
@@ -16749,14 +16752,17 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid,
  * heap_midxkey_key_get () -
  *   return:
  *   recdes(in):
- *   midxkey(in):
+ *   midxkey(in/out):
  *   index(in):
  *   attrinfo(in):
+ *   func_domain(in):
+ *   key_domain(out):
  */
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
 		      OR_INDEX * index, HEAP_CACHE_ATTRINFO * attrinfo,
-		      DB_VALUE * func_res)
+		      DB_VALUE * func_res, TP_DOMAIN * func_domain,
+		      TP_DOMAIN ** key_domain)
 {
   char *nullmap_ptr;
   OR_ATTRIBUTE **atts;
@@ -16764,6 +16770,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
   DB_VALUE value;
   OR_BUF buf;
   int error = NO_ERROR;
+  TP_DOMAIN *set_domain = NULL;
+  TP_DOMAIN *next_domain = NULL;
 
   num_atts = index->n_atts;
   atts = index->atts;
@@ -16782,14 +16790,39 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
     {
       if (index->func_index_info && (i == index->func_index_info->col_id))
 	{
+	  assert (func_domain != NULL);
+
 	  if (!db_value_is_null (func_res))
 	    {
-	      TP_DOMAIN *domain =
-		tp_domain_resolve_default (func_res->domain.general_info.
-					   type);
-	      (*(domain->type->index_writeval)) (&buf, func_res);
+	      (*(func_domain->type->index_writeval)) (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
+
+	  if (key_domain != NULL)
+	    {
+	      if (k == 0)
+		{
+		  assert (set_domain == NULL);
+		  set_domain = tp_domain_copy (func_domain, 0);
+		  if (set_domain == NULL)
+		    {
+		      assert (false);
+		      goto error;
+		    }
+		  next_domain = set_domain;
+		}
+	      else
+		{
+		  next_domain->next = tp_domain_copy (func_domain, 0);
+		  if (next_domain->next == NULL)
+		    {
+		      assert (false);
+		      goto error;
+		    }
+		  next_domain = next_domain->next;
+		}
+	    }
+
 	  k++;
 	}
       if (k == num_atts)
@@ -16802,6 +16835,31 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
 	  (*(atts[i]->domain->type->index_writeval)) (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
+
+      if (key_domain != NULL)
+	{
+	  if (k == 0)
+	    {
+	      assert (set_domain == NULL);
+	      set_domain = tp_domain_copy (atts[i]->domain, 0);
+	      if (set_domain == NULL)
+		{
+		  assert (false);
+		  goto error;
+		}
+	      next_domain = set_domain;
+	    }
+	  else
+	    {
+	      next_domain->next = tp_domain_copy (atts[i]->domain, 0);
+	      if (next_domain->next == NULL)
+		{
+		  assert (false);
+		  goto error;
+		}
+	      next_domain = next_domain->next;
+	    }
+	}
       k++;
     }
 
@@ -16809,7 +16867,38 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
   midxkey->ncolumns = num_atts;
   midxkey->domain = NULL;
 
+  if (key_domain != NULL)
+    {
+      *key_domain = tp_domain_construct (DB_TYPE_MIDXKEY, (DB_OBJECT *) 0,
+					 num_atts, 0, set_domain);
+
+      if (*key_domain)
+	{
+	  *key_domain = tp_domain_cache (*key_domain);
+	}
+      else
+	{
+	  assert (false);
+	  goto error;
+	}
+    }
+
   return midxkey;
+
+error:
+
+  if (set_domain)
+    {
+      TP_DOMAIN *td, *next;
+
+      for (td = set_domain, next = NULL; td != NULL; td = next)
+	{
+	  next = td->next;
+	  tp_domain_free (td);
+	}
+    }
+
+  return NULL;
 }
 
 /*
@@ -16949,7 +17038,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
       fi_col_id = func_index_info->col_id;
       if (heap_eval_function_index (thread_p, func_index_info, n_atts,
 				    att_ids, attr_info, recdes, -1, db_valuep,
-				    NULL) != NO_ERROR)
+				    NULL, NULL) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -17050,6 +17139,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
  *                 It is ignored for single-column B-trees.
  *   buf(in):
  *   func_preds(in): cached function index expressions
+ *   key_domain(out): domain of key
  *
  * Note: Return a B-tree key for the specified B-tree ID.
  *
@@ -17068,12 +17158,14 @@ DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 			HEAP_CACHE_ATTRINFO * idx_attrinfo, RECDES * recdes,
 			BTID * btid, DB_VALUE * db_value, char *buf,
-			FUNC_PRED_UNPACK_INFO * func_indx_pred)
+			FUNC_PRED_UNPACK_INFO * func_indx_pred,
+			TP_DOMAIN ** key_domain)
 {
   OR_INDEX *index;
   int n_atts, reprid;
   DB_VALUE *ret_val = NULL;
   DB_VALUE *fi_res = NULL;
+  TP_DOMAIN *fi_domain = NULL;
 
   assert (DB_IS_NULL (db_value));
 
@@ -17115,7 +17207,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
     {
       if (heap_eval_function_index (thread_p, NULL, -1, NULL, idx_attrinfo,
 				    recdes, btid_index, db_value,
-				    func_indx_pred) != NO_ERROR)
+				    func_indx_pred, &fi_domain) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -17156,7 +17248,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 	}
 
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo,
-				fi_res) == NULL)
+				fi_res, fi_domain, key_domain) == NULL)
 	{
 	  return NULL;
 	}
@@ -17179,10 +17271,17 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
        *  Return a pointer to the attributes DB_VALUE.
        */
 
+      PR_TYPE *pr_type = NULL;
+
       /* Find the matching attribute identified by the attribute ID */
       if (fi_res)
 	{
 	  ret_val = fi_res;
+	  if (key_domain != NULL)
+	    {
+	      assert (fi_domain != NULL);
+	      *key_domain = tp_domain_cache (fi_domain);
+	    }
 	  return ret_val;
 	}
       ret_val = heap_attrinfo_access (index->atts[0]->id, idx_attrinfo);
@@ -17195,6 +17294,61 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 	      pr_clone_value (ret_val, db_value);
 	      db_string_truncate (db_value, index->attrs_prefix_length[0]);
 	      ret_val = db_value;
+	    }
+	}
+
+      if (key_domain != NULL)
+	{
+	  if (index->attrs_prefix_length != NULL
+	      && index->attrs_prefix_length[0] != -1)
+	    {
+	      TP_DOMAIN *attr_dom;
+	      TP_DOMAIN *prefix_dom;
+	      DB_TYPE attr_type;
+
+	      attr_type = TP_DOMAIN_TYPE (index->atts[0]->domain);
+
+	      assert (QSTR_IS_ANY_CHAR_OR_BIT (attr_type));
+
+	      attr_dom = index->atts[0]->domain;
+
+	      prefix_dom =
+		tp_domain_find_charbit (attr_type,
+					TP_DOMAIN_CODESET (attr_dom),
+					TP_DOMAIN_COLLATION (attr_dom),
+					TP_DOMAIN_COLLATION_FLAG (attr_dom),
+					attr_dom->precision,
+					attr_dom->is_desc);
+
+	      if (prefix_dom == NULL)
+		{
+		  prefix_dom =
+		    tp_domain_construct (attr_type, NULL,
+					 index->attrs_prefix_length[0], 0,
+					 NULL);
+		  if (prefix_dom != NULL)
+		    {
+		      prefix_dom->codeset = TP_DOMAIN_CODESET (attr_dom);
+		      prefix_dom->collation_id =
+			TP_DOMAIN_COLLATION (attr_dom);
+		      prefix_dom->collation_flag =
+			TP_DOMAIN_COLLATION_FLAG (attr_dom);
+		      prefix_dom->is_desc = attr_dom->is_desc;
+		    }
+		}
+
+	      if (prefix_dom == NULL)
+		{
+		  return NULL;
+		}
+	      else
+		{
+		  *key_domain = tp_domain_cache (prefix_dom);
+		}
+	    }
+	  else
+	    {
+	      *key_domain = tp_domain_cache (index->atts[0]->domain);
 	    }
 	}
     }
@@ -21840,6 +21994,7 @@ exit:
  *    btid_index(in): id of the function index used
  *    func_pred_cache(in): cached function index expressions
  *    result(out): result of the function expression
+ *    fi_domain(out): domain of function index (from regu_var)
  *    return: error code
  */
 static int
@@ -21848,7 +22003,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
 			  int n_atts, int *att_ids,
 			  HEAP_CACHE_ATTRINFO * attr_info,
 			  RECDES * recdes, int btid_index, DB_VALUE * result,
-			  FUNC_PRED_UNPACK_INFO * func_pred_cache)
+			  FUNC_PRED_UNPACK_INFO * func_pred_cache,
+			  TP_DOMAIN ** fi_domain)
 {
   int error = NO_ERROR;
   OR_INDEX *index = NULL;
@@ -21943,6 +22099,11 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
   if (error == NO_ERROR)
     {
       pr_clone_value (res, result);
+    }
+
+  if (fi_domain != NULL)
+    {
+      *fi_domain = tp_domain_cache (func_pred->func_regu->domain);
     }
 
 end:

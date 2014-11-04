@@ -367,7 +367,8 @@ typedef enum tp_match
        ((key2_type) == DB_TYPE_NCHAR || (key2_type) == DB_TYPE_VARNCHAR)) || \
       (((key1_type) == DB_TYPE_BIT || (key1_type) == DB_TYPE_VARBIT) && \
        ((key2_type) == DB_TYPE_BIT || (key2_type) == DB_TYPE_VARBIT)) || \
-      ((key1_type) == DB_TYPE_OID || (key1_type) == DB_TYPE_OBJECT))
+      (((key1_type) == DB_TYPE_OID || (key1_type) == DB_TYPE_OBJECT) && \
+       ((key2_type) == DB_TYPE_OID || (key2_type) == DB_TYPE_OBJECT)))
 
 #define TP_DOMAIN_TYPE(dom) \
    ((dom) ? (dom)->type->id : DB_TYPE_NULL)

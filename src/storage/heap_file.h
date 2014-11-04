@@ -484,7 +484,8 @@ extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p,
 					 RECDES * recdes, BTID * btid,
 					 DB_VALUE * db_value, char *buf,
 					 FUNC_PRED_UNPACK_INFO *
-					 func_indx_preds);
+					 func_indx_preds,
+					 TP_DOMAIN ** key_domain);
 
 extern BTID *heap_indexinfo_get_btid (int btid_index,
 				      HEAP_CACHE_ATTRINFO * attrinfo);
