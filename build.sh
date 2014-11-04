@@ -936,7 +936,11 @@ function build_package ()
       ;;
       owfs)
 	package_basename="$product_name-owfs-$build_number-$build_target"
-	package_name="$package_basename.tar.gz"
+	if [ ! "$build_mode" = "release" ]; then
+	  package_name="$package_basename-$build_mode.tar.gz"
+	else
+	  package_name="$package_basename.tar.gz"
+	fi
 	owfs_build_dir="$build_dir/$package_basename"
 	owfs_install_dir="$owfs_build_dir/$package_basename"
 	if [ -d "$owfs_build_dir" ]; then
