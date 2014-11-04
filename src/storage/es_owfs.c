@@ -295,7 +295,7 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
   /*
    * open new fs
    */
-  fsh = es_new_fsh (es_base_mds_ip, es_base_svc_code);
+  fsh = es_new_fsh (mds_ip, svc_code);
   if (fsh == NULL)
     {
       pthread_mutex_unlock (&es_lock);
