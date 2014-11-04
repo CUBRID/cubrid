@@ -17777,13 +17777,22 @@ qexec_remove_my_tran_id_in_filter_pred_xasl_entry (THREAD_ENTRY * thread_p,
   if (ent->num_fixed_tran <= 0)
     {
       assert_release (0);
-      ent->num_fixed_tran = 0;
       ent->tran_fix_count_array[tran_index] = 0;
+      ent->num_fixed_tran = 0;
 
-      return NO_ERROR;
+      return ER_FAILED;
     }
 
   ent->tran_fix_count_array[tran_index]--;
+
+  /* assertion */
+  if (ent->tran_fix_count_array[tran_index] < 0)
+    {
+      assert_release (ent->tran_fix_count_array[tran_index] >= 0);
+      ent->tran_fix_count_array[tran_index] = 0;
+
+      return ER_FAILED;
+    }
 
   if (unfix_all && ent->tran_fix_count_array[tran_index] > 0)
     {
@@ -17794,13 +17803,6 @@ qexec_remove_my_tran_id_in_filter_pred_xasl_entry (THREAD_ENTRY * thread_p,
   if (ent->tran_fix_count_array[tran_index] == 0)
     {
       ent->num_fixed_tran--;
-    }
-
-  /* assertion */
-  if (ent->tran_fix_count_array[tran_index] < 0)
-    {
-      assert_release (ent->tran_fix_count_array[tran_index] >= 0);
-      ent->tran_fix_count_array[tran_index] = 0;
     }
 #endif /* SERVER_MODE */
 
@@ -17832,6 +17834,8 @@ qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p,
   if (ent->num_fixed_tran <= 0)
     {
       assert_release (0);
+      ent->tran_fix_count_array[tran_index] = 0;
+
 #if defined (HAVE_ATOMIC_BUILTINS)
       ATOMIC_TAS_32 (&ent->num_fixed_tran, 0);
 #else
@@ -17839,12 +17843,20 @@ qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p,
       ent->num_fixed_tran = 0;
       pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex);
 #endif
-      ent->tran_fix_count_array[tran_index] = 0;
 
-      return NO_ERROR;
+      return ER_FAILED;
     }
 
   ent->tran_fix_count_array[tran_index]--;
+
+  /* assertion */
+  if (ent->tran_fix_count_array[tran_index] < 0)
+    {
+      assert_release (ent->tran_fix_count_array[tran_index] >= 0);
+      ent->tran_fix_count_array[tran_index] = 0;
+
+      return ER_FAILED;
+    }
 
   if (unfix_all && ent->tran_fix_count_array[tran_index] > 0)
     {
@@ -17872,14 +17884,6 @@ qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p,
       pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex);
 #endif
     }
-
-  /* assertion */
-  if (ent->tran_fix_count_array[tran_index] < 0)
-    {
-      assert_release (ent->tran_fix_count_array[tran_index] >= 0);
-      ent->tran_fix_count_array[tran_index] = 0;
-    }
-
 #endif /* SERVER_MODE */
 
   return NO_ERROR;
