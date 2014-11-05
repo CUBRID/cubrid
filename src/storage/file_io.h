@@ -466,6 +466,14 @@ extern char *fileio_get_volume_label (VOLID volid, bool is_peek);
 extern char *fileio_get_volume_label_by_fd (int vol_fd, bool is_peek);
 extern VOLID fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p,
 					       const char *vlabel);
+extern bool fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid);
+extern VOLID fileio_find_next_perm_volume (THREAD_ENTRY * thread_p,
+					   VOLID volid);
+extern VOLID fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p,
+					       VOLID volid);
+extern VOLID fileio_find_previous_temp_volume (THREAD_ENTRY * thread_p,
+					       VOLID volid);
+
 extern int fileio_get_volume_descriptor (VOLID volid);
 extern bool fileio_map_mounted (THREAD_ENTRY * thread_p,
 				bool (*fun) (THREAD_ENTRY * thread_p,

@@ -6246,9 +6246,9 @@ logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      next_volid++;
+      next_volid = fileio_find_next_perm_volume (thread_p, next_volid);
     }
-  while (next_vol_fullname[0] != '\0');
+  while (next_volid != NULL_VOLID);
 
   return error_code;
 
@@ -6368,7 +6368,7 @@ logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
 
       if ((volid + 1) != NULL_VOLID
-	  && (volid + 1) != (VOLID) read_int_volid && num_vols != 0)
+	  && (volid + 1) > (VOLID) read_int_volid && num_vols != 0)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_UNSORTED_VOLINFO,
 		  4, volinfo_fullname, num_vols, read_int_volid,
@@ -8380,7 +8380,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   size_t length_all_tops = 0;
   int i, j;
   const char *catmsg;
-  int num_perm_vols;
   VOLID volid;
 #if defined(SERVER_MODE)
   int rv;
@@ -8786,12 +8785,14 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * Record the checkpoint address on every volume header
    */
 
-  num_perm_vols = xboot_find_number_permanent_volumes (thread_p);
-
-  for (volid = LOG_DBFIRST_VOLID; volid < num_perm_vols; volid++)
+  volid = LOG_DBFIRST_VOLID;
+  do
     {
       (void) disk_set_checkpoint (thread_p, volid, &chkpt_lsa);
+
+      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
+  while (volid != NULL_VOLID);
 
   /*
    * Get the critical section again, so we can check if any archive can be
@@ -9606,14 +9607,9 @@ loop:
     }
 
   /* Backup every volume */
-  for (volid = LOG_DBVOLINFO_VOLID; volid < num_perm_vols; volid++)
+  volid = LOG_DBVOLINFO_VOLID;
+  do
     {
-
-      if (volid == NULL_VOLID)
-	{
-	  continue;
-	}
-
       switch (volid)
 	{
 	case LOG_DBVOLINFO_VOLID:
@@ -9625,6 +9621,7 @@ loop:
 	  /*
 	   * These information volumes are backed-up at the very end.
 	   */
+	  volid++;
 	  continue;
 	case LOG_DBLOG_ACTIVE_VOLID:
 	  /*
@@ -9632,6 +9629,7 @@ loop:
 	   * have been backed up (in order to insure we get all of the
 	   * log records needed to restore consistency).
 	   */
+	  volid = LOG_DBFIRST_VOLID;
 	  continue;
 	default:
 	  from_vlabel = fileio_get_volume_label (volid, PEEK);
@@ -9647,6 +9645,7 @@ loop:
 	    {
 	      goto error;
 	    }
+	  volid = fileio_find_next_perm_volume (thread_p, volid);
 	}
       else
 	{
@@ -9657,10 +9656,12 @@ loop:
 	    {
 	      goto error;
 	    }
+	  volid++;
 	}
       /* in case an error occurs, we must destroy our partial backup */
       bkup_in_progress = true;
     }
+  while (volid != NULL_VOLID);
 
 #if defined(SERVER_MODE)
   /*
@@ -11129,7 +11130,8 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       goto error;
     }
 
-  for (volid = LOG_DBFIRST_VOLID; volid < num_perm_vols; volid++)
+  volid = LOG_DBFIRST_VOLID;
+  do
     {
       error_code =
 	logpb_next_where_path (to_db_fullname, toext_path, ext_name, ext_path,
@@ -11155,7 +11157,9 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
+  while (volid != NULL_VOLID);
 
   /*
    * We need to change the name of the volumes in our internal tables.
@@ -11364,7 +11368,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 				 */
   const char *ext_name;
   char *ext_path;
-  VOLID volid;
+  VOLID volid, prev_volid;
   FILE *fromfile_paths_fp = NULL;	/* Pointer to open file for
 					 * location of rename files
 					 */
@@ -11423,7 +11427,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	  goto error;
 	}
 
-      for (volid = LOG_DBFIRST_VOLID; volid < num_perm_vols; volid++)
+      do
 	{
 	  error_code = logpb_next_where_path (to_db_fullname, toext_path,
 					      ext_name, ext_path,
@@ -11449,7 +11453,10 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	      error_code = ER_TM_CROSS_DEVICE_LINK;
 	      goto error;
 	    }
+
+	  volid = fileio_find_next_perm_volume (thread_p, volid);
 	}
+      while (volid != NULL_VOLID);
     }
 
   if (log_Gl.archive.vdes != NULL_VOLDES)
@@ -11651,7 +11658,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       goto error;
     }
 
-  for (volid = LOG_DBFIRST_VOLID; volid < num_perm_vols; volid++)
+  volid = LOG_DBFIRST_VOLID;
+  do
     {
       /* Change the name of the volume */
       error_code =
@@ -11683,7 +11691,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 
       if (volid != LOG_DBFIRST_VOLID)
 	{
-	  error_code = disk_set_link (thread_p, volid - 1, to_volname, false,
+	  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
+	  error_code = disk_set_link (thread_p, prev_volid, to_volname, false,
 				      DISK_FLUSH);
 	  if (error_code != NO_ERROR)
 	    {
@@ -11736,7 +11745,9 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
+  while (volid != NULL_VOLID);
 
   if (fromfile_paths_fp != NULL)
     {
@@ -11974,7 +11985,8 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       /*
        * DESTROY DATA VOLUMES
        */
-      for (volid = LOG_DBFIRST_VOLID; volid < num_perm_vols; volid++)
+      volid = LOG_DBFIRST_VOLID;
+      do
 	{
 	  vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
 	  if (vlabel != NULL)
@@ -11985,7 +11997,10 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	      fileio_unformat (thread_p, vlabel);
 	      free (vlabel);
 	    }
+
+	  volid = fileio_find_next_perm_volume (thread_p, volid);
 	}
+      while (volid != NULL_VOLID);
     }
 
   /* Destroy the database volume information */

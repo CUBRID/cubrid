@@ -137,7 +137,9 @@ extern int db_add_volume (const char *ext_path,
 			  const int ext_npages,
 			  const DB_VOLPURPOSE ext_purpose);
 extern int db_add_volume_ex (DBDEF_VOL_EXT_INFO * ext_info);
+extern int db_del_volume_ex (VOLID volid, bool clear_cached);
 extern int db_num_volumes (void);
+extern int db_last_volume (void);
 extern void db_print_stats (void);
 
 extern void db_preload_classes (const char *name1, ...);

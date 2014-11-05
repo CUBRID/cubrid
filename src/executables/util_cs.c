@@ -62,6 +62,14 @@
 #define PASSBUF_SIZE 12
 #define SPACEDB_NUM_VOL_PURPOSE 5
 #define MAX_KILLTRAN_INDEX_LIST_NUM  64
+#define MAX_DELVOL_ID_LIST_NUM       64
+
+#define VOL_PURPOSE_STRING(VOL_PURPOSE)		\
+	    ((VOL_PURPOSE == DISK_PERMVOL_DATA_PURPOSE) ? "DATA"	\
+	    : (VOL_PURPOSE == DISK_PERMVOL_INDEX_PURPOSE) ? "INDEX"	\
+	    : (VOL_PURPOSE == DISK_PERMVOL_GENERIC_PURPOSE) ? "GENERIC"	\
+	    : (VOL_PURPOSE == DISK_TEMPVOL_TEMP_PURPOSE) ? "TEMP TEMP" \
+	    : "TEMP")
 
 typedef enum
 {
@@ -524,6 +532,204 @@ error_exit:
 }
 
 /*
+ * delvoldb() - delvoldb main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+delvoldb (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  const char *vol_ids;
+  const char *database_name;
+  const char *dba_password;
+  bool clear_cached_files = false;
+
+  bool start_transaction = false;
+  int i, volid, res;
+  int volid_list[MAX_DELVOL_ID_LIST_NUM];
+  int num_volid;
+  char *end;
+
+  bool ask_verify = true;
+  char reply;
+
+  DB_VOLPURPOSE vol_purpose;
+  VOL_SPACE_INFO space_info;
+  char vol_label[PATH_MAX];
+
+  char num_total_str[64], num_free_str[64];
+
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_delvol_usage;
+    }
+
+  vol_ids = utility_get_option_string_value (arg_map, DELVOL_VOLUME_ID_S, 0);
+  if (vol_ids == NULL)
+    {
+      goto print_delvol_usage;
+    }
+
+  clear_cached_files =
+    utility_get_option_bool_value (arg_map, DELVOL_CLEAR_CACHE_S);
+
+  if (utility_get_option_bool_value (arg_map, DELVOL_FORCE_S))
+    {
+      ask_verify = false;
+    }
+
+  dba_password =
+    utility_get_option_string_value (arg_map, DELVOL_DBA_PASSWORD_S, 0);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", dba_password) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  start_transaction = true;
+
+  num_volid = 0;
+  while (*vol_ids != '\0' && end != NULL)
+    {
+      res = str_to_int32 (&i, &end, vol_ids, 10);
+      if (res < 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_DELVOLDB,
+						 DELVOL_MSG_INVALID_VOLUME_ID),
+				 vol_ids);
+	  goto error_exit;
+	}
+      vol_ids = end + 1;
+
+      if (i <= 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_DELVOLDB,
+						 DELVOLDB_MSG_CANNOT_REMOVE_FIRST_VOL),
+				 i);
+	  goto error_exit;
+	}
+      if (disk_is_volume_exist (i) == false)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_DELVOLDB,
+						 DELVOLDB_MSG_CANNOT_FIND_VOL),
+				 i);
+	  goto error_exit;
+	}
+
+      volid_list[num_volid] = i;
+
+      num_volid++;
+      if (num_volid > MAX_DELVOL_ID_LIST_NUM)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_DELVOLDB,
+						 DELVOLDB_MSG_TOO_MANY_VOLID),
+				 MAX_DELVOL_ID_LIST_NUM);
+	  goto error_exit;
+	}
+    }
+
+  if (ask_verify)
+    {
+      fprintf (stdout,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB,
+			       DELVOLDB_MSG_READY_TO_DEL));
+      fprintf (stdout,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB,
+			       SPACEDB_OUTPUT_TITLE_SIZE));
+
+      for (i = 0; i < num_volid; i++)
+	{
+	  volid = volid_list[i];
+	  if (disk_get_purpose_and_space_info (volid, &vol_purpose,
+					       &space_info) == NULL_VOLID)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit;
+	    }
+
+	  db_vol_label (volid, vol_label);
+	  assert (vol_label);	/* we confirmed volid is valid */
+
+	  spacedb_get_size_str (num_total_str,
+				(UINT64) space_info.total_pages,
+				SPACEDB_SIZE_UNIT_HUMAN_READABLE);
+	  spacedb_get_size_str (num_free_str, (UINT64) space_info.free_pages,
+				SPACEDB_SIZE_UNIT_HUMAN_READABLE);
+
+	  fprintf (stdout,
+		   msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_SPACEDB,
+				   SPACEDB_OUTPUT_FORMAT),
+		   volid, VOL_PURPOSE_STRING (vol_purpose),
+		   num_total_str, num_free_str, vol_label);
+	}
+      fprintf (stdout,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB,
+			       DELVOLDB_MSG_VERIFY));
+      fflush (stdout);
+
+      reply = getc (stdin);
+      if (reply != 'Y' && reply != 'y')
+	{
+	  db_abort_transaction ();
+	  db_shutdown ();
+
+	  return EXIT_SUCCESS;
+	}
+    }
+
+  for (i = 0; i < num_volid; i++)
+    {
+      volid = volid_list[i];
+      res = db_del_volume_ex ((VOLID) volid, clear_cached_files);
+      if (res != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  if (res != ER_NOT_A_EMPTY_VOLUME)
+	    {
+	      db_shutdown ();
+	      goto error_exit;
+	    }
+	}
+    }
+
+  db_commit_transaction ();
+
+  db_shutdown ();
+
+  return EXIT_SUCCESS;
+
+print_delvol_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_DELVOLDB,
+				   DELVOLDB_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+error_exit:
+  if (start_transaction)
+    {
+      db_abort_transaction ();
+      db_shutdown ();
+    }
+
+  return EXIT_FAILURE;
+}
+
+
+/*
  * util_get_class_oids_and_index_btid() -
  *   return: OID array/NULL
  *   index_name(in)
@@ -908,13 +1114,6 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-#define VOL_PURPOSE_STRING(VOL_PURPOSE)		\
-	    ((VOL_PURPOSE == DISK_PERMVOL_DATA_PURPOSE) ? "DATA"	\
-	    : (VOL_PURPOSE == DISK_PERMVOL_INDEX_PURPOSE) ? "INDEX"	\
-	    : (VOL_PURPOSE == DISK_PERMVOL_GENERIC_PURPOSE) ? "GENERIC"	\
-	    : (VOL_PURPOSE == DISK_TEMPVOL_TEMP_PURPOSE) ? "TEMP TEMP" \
-	    : "TEMP")
-
 
 /*
  * spacedb() - spacedb main routine
@@ -945,7 +1144,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   bool summarize, purpose;
   FILE *outfp = NULL;
-  int nvols;
+  int nvols, last_perm;
   VOLID temp_volid;
   char num_total_str[64], num_free_str[64], num_used_str[64];
   char num_data_used_str[64];
@@ -1043,8 +1242,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  nvols = db_num_volumes ();
-
   db_ntotal_pages = db_nfree_pages = 0;
   db_ndata_pages = db_nindex_pages = db_ntemp_pages = 0;
 
@@ -1116,8 +1313,16 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 				  MSGCAT_UTIL_SET_SPACEDB,
 				  size_title_format));
 
-  for (i = 0; i < nvols; i++)
+  nvols = 0;
+  last_perm = db_last_volume ();
+  for (i = 0; i <= last_perm; i++)
     {
+      if (disk_is_volume_exist (i) == false)
+	{
+	  continue;
+	}
+      nvols++;
+
       if (disk_get_purpose_and_space_info (i, &vol_purpose,
 					   &space_info) != NULL_VOLID)
 	{
@@ -1233,10 +1438,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  /* Find info on temp volumes */
-  nvols = boot_find_number_temp_volumes ();
-  temp_volid = boot_find_last_temp ();
-
   if (!summarize)
     {
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -1251,9 +1452,23 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       db_ndata_pages = db_nindex_pages = db_ntemp_pages = 0;
     }
 
-  for (i = 0; i < nvols; i++)
+  /* Find info on temp volumes */
+  temp_volid = boot_find_last_temp ();
+  if (temp_volid == NULL_VOLID)
     {
-      if (disk_get_purpose_and_space_info ((temp_volid + i), &vol_purpose,
+      temp_volid = VOLID_MAX;
+    }
+
+  nvols = 0;
+  for (i = temp_volid; i < VOLID_MAX; i++)
+    {
+      if (disk_is_volume_exist (i) == false)
+	{
+	  continue;
+	}
+      nvols++;
+
+      if (disk_get_purpose_and_space_info (i, &vol_purpose,
 					   &space_info) != NULL_VOLID)
 	{
 	  assert (space_info.used_data_npages == 0
@@ -1281,7 +1496,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	      db_ntotal_pages += space_info.total_pages;
 	      db_nfree_pages += space_info.free_pages;
 
-	      if (db_vol_label ((temp_volid + i), vol_label) == NULL)
+	      if (db_vol_label (i, vol_label) == NULL)
 		{
 		  strcpy (vol_label, " ");
 		}
@@ -1308,7 +1523,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 						  MSGCAT_UTIL_SET_SPACEDB,
 						  output_format),
-			   (temp_volid + i),
+			   i,
 			   VOL_PURPOSE_STRING (DISK_TEMPVOL_TEMP_PURPOSE),
 			   num_total_str, num_free_str, num_data_used_str,
 			   num_index_used_str, num_temp_used_str, vol_label);
@@ -1318,7 +1533,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 						  MSGCAT_UTIL_SET_SPACEDB,
 						  output_format),
-			   (temp_volid + i),
+			   i,
 			   VOL_PURPOSE_STRING (DISK_TEMPVOL_TEMP_PURPOSE),
 			   num_total_str, num_free_str, vol_label);
 		}

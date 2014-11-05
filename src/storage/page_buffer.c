@@ -546,6 +546,7 @@ typedef struct pgbuf_ps_info PGBUF_PS_INFO;
 struct pgbuf_ps_info
 {
   int nvols;
+  int last_perm_vol;
   int ps_init_called;
   PGBUF_VOL_STAT *vol_stat;
 
@@ -741,6 +742,7 @@ static int pgbuf_is_consistent (const PGBUF_BCB * bufptr,
 
 #if defined(PAGE_STATISTICS)
 static int pgbuf_initialize_statistics (void);
+static void pgbuf_initialize_vol_stat (PGBUF_VOL_STAT * vs);
 static int pgbuf_finalize_statistics (void);
 static void pgbuf_dump_statistics (FILE * ps_log);
 #if !defined(NDEBUG)
@@ -8552,6 +8554,19 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 
 #if defined(PAGE_STATISTICS)
 /*
+ * pgbuf_initialize_vol_stat () -
+ *   return: void
+ *   vs(in): 
+ */
+static void
+pgbuf_initialize_vol_stat (PGBUF_VOL_STAT * vs)
+{
+  vs->volid = NULL_VOLID;
+  vs->npages = 0;
+  vs->page_stat = NULL;
+}
+
+/*
  * pgbuf_initialize_statistics () -
  *   return:
  *   void(in):
@@ -8559,6 +8574,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 static int
 pgbuf_initialize_statistics (void)
 {
+  int i;
   int volid = -1, pageid = -1;
   PGBUF_PAGE_STAT *ps;
   PGBUF_VOL_STAT *vs;
@@ -8594,14 +8610,23 @@ pgbuf_initialize_statistics (void)
       return 0;
     }
 
+  ps_info.last_perm_vol = xboot_find_last_permanent ();
+
   ps_info.vol_stat =
-    (PGBUF_VOL_STAT *) malloc (sizeof (PGBUF_VOL_STAT) * ps_info.nvols);
+    (PGBUF_VOL_STAT *) malloc (sizeof (PGBUF_VOL_STAT) *
+			       (ps_info.last_perm_vol + 1));
   if (ps_info.vol_stat == NULL)
     {
       return -1;
     }
 
-  for (volid = LOG_DBFIRST_VOLID; volid < ps_info.nvols; volid++)
+  for (volid = LOG_DBFIRST_VOLID; volid <= ps_info.last_perm_vol; volid++)
+    {
+      pgbuf_initialize_vol_stat (&ps_info.vol_stat[volid]);
+    }
+
+  volid = LOG_DBFIRST_VOLID;
+  do
     {
       vs = &ps_info.vol_stat[volid];
       vs->volid = volid;
@@ -8622,7 +8647,10 @@ pgbuf_initialize_statistics (void)
 	  ps->volid = volid;
 	  ps->pageid = pageid;
 	}
+
+      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
+  while (volid != NULL_VOLID);
 
   ps_info.ps_init_called = 1;
 
@@ -8689,11 +8717,14 @@ pgbuf_finalize_statistics (void)
       fwrite (ps_info.vol_stat, sizeof (PGBUF_VOL_STAT), ps_info.nvols,
 	      ps_log);
 
-      for (volid = LOG_DBFIRST_VOLID; volid < ps_info.nvols; volid++)
+      for (volid = LOG_DBFIRST_VOLID; volid <= ps_info.last_perm_vol; volid++)
 	{
 	  vs = &ps_info.vol_stat[volid];
-	  fwrite (vs->page_stat, sizeof (PGBUF_PAGE_STAT), vs->npages,
-		  ps_log);
+	  if (vs->volid != NULL_VOLID)
+	    {
+	      fwrite (vs->page_stat, sizeof (PGBUF_PAGE_STAT), vs->npages,
+		      ps_log);
+	    }
 	}
 
       fclose (ps_log);
@@ -8708,7 +8739,7 @@ pgbuf_finalize_statistics (void)
       return 0;
     }
 
-  for (volid = LOG_DBFIRST_VOLID; volid < ps_info.nvols; volid++)
+  for (volid = LOG_DBFIRST_VOLID; volid <= ps_info.last_perm_vol; volid++)
     {
       vs = &ps_info.vol_stat[volid];
       if (vs->page_stat)
@@ -8723,7 +8754,7 @@ pgbuf_finalize_statistics (void)
     }
 
   ps_info.nvols = 0;
-
+  ps_info.last_perm_vol = NULL_VOLID;
   ps_info.ps_init_called = 0;
 
   return 0;
@@ -8747,9 +8778,13 @@ pgbuf_dump_statistics (FILE * ps_log)
   fwrite (&ps_info, sizeof (ps_info), 1, ps_log);
   fwrite (ps_info.vol_stat, sizeof (PGBUF_VOL_STAT), ps_info.nvols, ps_log);
 
-  for (volid = LOG_DBFIRST_VOLID; volid < ps_info.nvols; volid++)
+  for (volid = LOG_DBFIRST_VOLID; volid <= ps_info.last_perm_vol; volid++)
     {
       vs = &ps_info.vol_stat[volid];
+      if (vs->volid == NULL_VOLID)
+	{
+	  continue;
+	}
       fwrite (vs->page_stat, sizeof (PGBUF_PAGE_STAT), vs->npages, ps_log);
 
       for (pageid = 0; pageid < vs->npages; pageid++)

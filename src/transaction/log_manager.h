@@ -235,7 +235,7 @@ extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 extern void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		 LOG_LSA * start_posplsa, LOG_RECTYPE posp_type);
-extern void log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
+extern void log_recreate (THREAD_ENTRY * thread_p,
 			  const char *db_fullname, const char *logpath,
 			  const char *prefix_logname, DKNPAGES log_npages,
 			  FILE * outfp);

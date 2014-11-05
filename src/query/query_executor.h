@@ -1289,6 +1289,9 @@ extern int qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p,
 extern int qexec_remove_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 						const XASL_ID * xasl_id);
 extern int qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p);
+extern int qexec_remove_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p,
+						  VOLID volid,
+						  bool not_reuse_file);
 extern int qexec_remove_all_filter_pred_cache_ent_by_xasl (THREAD_ENTRY *
 							   thread_p);
 extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p,

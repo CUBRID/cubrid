@@ -116,6 +116,16 @@ static ARG_MAP_TABLE ua_Addvol_map[] = {
   {0, 0}
 };
 
+static ARG_MAP_TABLE ua_Delvol_map[] = {
+  {"-i", "--" DELVOL_VOLUME_ID_L},
+  {"-f", "--" DELVOL_FORCE_L},
+  {"-c", "--" DELVOL_CLEAR_CACHE_L},
+  {"-p", "--" DELVOL_DBA_PASSWORD_L},
+  {"-sa", "--" DELVOL_SA_MODE_L},
+  {"-cs", "--" DELVOL_CS_MODE_L},
+  {0, 0}
+};
+
 static ARG_MAP_TABLE ua_Space_map[] = {
   {"-o", "--" SPACE_OUTPUT_FILE_L},
   {"-sa", "--" SPACE_SA_MODE_L},
@@ -266,6 +276,7 @@ UTIL_MAP_TABLE ua_Util_table[] = {
   {"backupdb", UTIL_OPTION_BACKUPDB, ua_Backup_map},
   {"restoredb", UTIL_OPTION_RESTOREDB, ua_Restore_map},
   {"addvoldb", UTIL_OPTION_ADDVOLDB, ua_Addvol_map},
+  {"delvoldb", UTIL_OPTION_DELVOLDB, ua_Delvol_map},
   {"spacedb", UTIL_OPTION_SPACEDB, ua_Space_map},
   {"lockdb", UTIL_OPTION_LOCKDB, ua_Lock_map},
   {"optimizedb", UTIL_OPTION_OPTIMIZEDB, ua_Optimize_map},

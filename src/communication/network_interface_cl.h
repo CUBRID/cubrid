@@ -152,6 +152,7 @@ disk_get_purpose_and_space_info (VOLID volid,
 				 DISK_VOLPURPOSE * vol_purpose,
 				 VOL_SPACE_INFO * space_info);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
+extern bool disk_is_volume_exist (VOLID volid);
 extern LOG_COPY *log_client_get_first_postpone (LOG_LSA * next_lsa);
 extern LOG_COPY *log_client_get_next_postpone (LOG_LSA * next_lsa);
 extern LOG_COPY *log_client_get_first_undo (LOG_LSA * next_lsa);
@@ -230,10 +231,12 @@ extern int boot_backup (const char *backup_path,
 			FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
 			int sleep_msecs);
 extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
+extern int boot_del_volume_extension (VOLID volid, bool clear_cached);
 extern int boot_check_db_consistency (int check_flag, OID * oids,
 				      int num_oids, BTID * idx_btid);
 extern int boot_find_number_permanent_volumes (void);
 extern int boot_find_number_temp_volumes (void);
+extern VOLID boot_find_last_permanent (void);
 extern int boot_find_last_temp (void);
 extern int boot_delete (const char *db_name, bool force_delete);
 extern int boot_restart_from_backup (int print_restart, const char *db_name,

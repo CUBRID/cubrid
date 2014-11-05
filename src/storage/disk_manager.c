@@ -164,6 +164,7 @@ struct disk_volfreepgs
 {
   INT16 volid;			/* Volume identifier */
   int hint_freepages;		/* Hint of free pages on volume */
+  bool disable_new_files;	/* Disable creating new files */
 };
 
 typedef struct disk_cache_volinfo DISK_CACHE_VOLINFO;
@@ -228,6 +229,8 @@ static bool disk_bit_is_cleared (unsigned char *c, unsigned int n);
 
 static bool disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p,
 					       INT16 volid, void *ignore);
+static int disk_cache_set_disable_new_files (THREAD_ENTRY * thread_p,
+					     VOLID volid, bool disable);
 static int disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
 				      DISK_VOLPURPOSE vol_purpose,
 				      INT32 num_pages, bool do_update_total,
@@ -320,6 +323,9 @@ static void disk_verify_volume_header (THREAD_ENTRY * thread_p,
 				       PAGE_PTR pgptr);
 static bool disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid,
 				     void *arg);
+static int disk_find_cache_index_of_purpose (DISK_VOLPURPOSE vol_purpose,
+					     int *start, int *end);
+
 
 static char *
 disk_vhdr_get_vol_fullname (const DISK_VAR_HEADER * vhdr)
@@ -478,8 +484,7 @@ disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid,
   void *ptr;
   DISK_VOLPURPOSE vol_purpose;
   VOL_SPACE_INFO space_info;
-  INT16 vol_index;
-  int i;
+  int i, vol_index;
 
   if ((disk_Cache->nvols + 1) > disk_Cache->max_nvols)
     {
@@ -499,41 +504,9 @@ disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid,
   if (xdisk_get_purpose_and_space_info (thread_p, volid,
 					&vol_purpose, &space_info) == volid)
     {
-      switch (vol_purpose)
+      if (disk_find_cache_index_of_purpose (vol_purpose, NULL, &vol_index) !=
+	  NO_ERROR)
 	{
-	case DISK_PERMVOL_DATA_PURPOSE:
-	  vol_index = disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols;
-	  break;
-
-	case DISK_PERMVOL_INDEX_PURPOSE:
-	  vol_index =
-	    (disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols +
-	     disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols);
-	  break;
-
-	case DISK_PERMVOL_GENERIC_PURPOSE:
-	  vol_index = (disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols +
-		       disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols +
-		       disk_Cache->
-		       purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols);
-	  break;
-
-	case DISK_PERMVOL_TEMP_PURPOSE:
-	  vol_index = (disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols +
-		       disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols +
-		       disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].
-		       nvols +
-		       disk_Cache->purpose[DISK_PERMVOL_TEMP_PURPOSE].nvols);
-	  break;
-
-	case DISK_TEMPVOL_TEMP_PURPOSE:
-	  vol_index = disk_Cache->nvols;
-	  break;
-
-	case DISK_UNKNOWN_PURPOSE:
-	case DISK_EITHER_TEMP_PURPOSE:
-	default:
-	  /* We do not cache this kind of volume */
 	  return true;
 	}
 
@@ -550,6 +523,7 @@ disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid,
 
       disk_Cache->vols[vol_index].volid = volid;
       disk_Cache->vols[vol_index].hint_freepages = space_info.free_pages;
+      disk_Cache->vols[vol_index].disable_new_files = false;
 
       disk_Cache->nvols++;
       disk_Cache->purpose[vol_purpose].nvols++;
@@ -718,6 +692,72 @@ disk_cache_set_auto_extend_volid (THREAD_ENTRY * thread_p, VOLID volid)
   return NO_ERROR;
 }
 
+/*
+ * disk_cache_disable_new_files () -
+ *   reuturn: NO_ERROR
+ *   volid(in):
+ */
+int
+disk_cache_disable_new_files (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  return disk_cache_set_disable_new_files (thread_p, volid, true);
+}
+
+/*
+ * disk_cache_enable_new_files () -
+ *   reuturn: NO_ERROR
+ *   volid(in):
+ */
+int
+disk_cache_enable_new_files (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  return disk_cache_set_disable_new_files (thread_p, volid, false);
+}
+
+/*
+ * disk_cache_set_disable_new_files () -
+ *   return: NO_ERROR
+ */
+static int
+disk_cache_set_disable_new_files (THREAD_ENTRY * thread_p, VOLID volid,
+				  bool disable)
+{
+  DISK_VOLPURPOSE vol_purpose;
+  VOL_SPACE_INFO space_info;
+  int i, start_at, end_at;
+
+  if (csect_enter (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) !=
+      NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (xdisk_get_purpose_and_space_info (thread_p, volid,
+					&vol_purpose, &space_info) == volid)
+    {
+      if (disk_find_cache_index_of_purpose (vol_purpose, &start_at, &end_at)
+	  != NO_ERROR)
+	{
+	  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
+	  return NO_ERROR;
+	}
+
+      for (i = start_at; i < end_at; i++)
+	{
+	  if (disk_Cache->vols[i].volid == volid)
+	    {
+	      disk_Cache->vols[i].disable_new_files = disable;
+	      break;
+	    }
+	}
+    }
+
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
+
+  return NO_ERROR;
+}
+
+
 /* TODO: STL::vector for disk_Cache->purpose */
 /* TODO: STL::list for disk_Cache->vols */
 /*
@@ -777,40 +817,9 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
       return ER_FAILED;
     }
 
-  switch (vol_purpose)
+  if (disk_find_cache_index_of_purpose (vol_purpose, &start_at, &end_at) !=
+      NO_ERROR)
     {
-    case DISK_PERMVOL_DATA_PURPOSE:
-      start_at = 0;
-      end_at = start_at + disk_Cache->purpose[vol_purpose].nvols;
-      break;
-
-    case DISK_PERMVOL_INDEX_PURPOSE:
-      start_at = disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols;
-      end_at = start_at + disk_Cache->purpose[vol_purpose].nvols;
-      break;
-
-    case DISK_PERMVOL_GENERIC_PURPOSE:
-      start_at = (disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols +
-		  disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols);
-      end_at = start_at + disk_Cache->purpose[vol_purpose].nvols;
-      break;
-
-    case DISK_PERMVOL_TEMP_PURPOSE:
-      start_at = (disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols +
-		  disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols +
-		  disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols);
-      end_at = start_at + disk_Cache->purpose[vol_purpose].nvols;
-      break;
-
-    case DISK_TEMPVOL_TEMP_PURPOSE:
-      start_at = (disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols +
-		  disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols +
-		  disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols +
-		  disk_Cache->purpose[DISK_PERMVOL_TEMP_PURPOSE].nvols);
-      end_at = start_at + disk_Cache->purpose[vol_purpose].nvols;
-      break;
-
-    default:
       csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
       return ER_FAILED;
     }
@@ -988,6 +997,15 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 
   for (i = start_at; i < num_vols + start_at; i++)
     {
+      if (disk_Cache->vols[i].disable_new_files == true)
+	{
+	  /* 
+	   * This volume can not create new files. 
+	   * so this volume is not desirable volume.
+	   */
+	  continue;
+	}
+
       if (disk_Cache->vols[i].hint_freepages >= exp_numpages
 	  && disk_Cache->vols[i].hint_freepages > *best_numpages
 	  && undesirable_volid != disk_Cache->vols[i].volid)
@@ -1119,6 +1137,41 @@ disk_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
     }
 
   return volid;
+}
+
+/*
+ * disk_del_volume_extenstion: 
+ *    return: NO_ERROR
+ *
+ *  volid(in):
+ */
+int
+disk_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  PAGE_PTR vhdr_pgptr = NULL;
+  LOG_DATA_ADDR addr;
+  VPID vpid;
+
+  vpid.volid = LOG_DBFIRST_VOLID;
+  vpid.pageid = DISK_VOLHEADER_PAGE;
+
+  vhdr_pgptr = pgbuf_fix_with_retry (thread_p, &vpid, OLD_PAGE,
+				     PGBUF_LATCH_WRITE, 10);
+
+  if (vhdr_pgptr == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  addr.pgptr = vhdr_pgptr;
+  addr.vfid = NULL;
+  addr.offset = 0;
+
+  log_append_postpone (thread_p, RVBO_DELVOL, &addr, sizeof (volid), &volid);
+
+  pgbuf_unfix_and_init (thread_p, vhdr_pgptr);
+
+  return NO_ERROR;
 }
 
 /*
@@ -1344,7 +1397,7 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
       break;
 
     case DISK_TEMPVOL_TEMP_PURPOSE:
-      if (hint_volid >= disk_Cache->nvols
+      if (fileio_is_temp_volume (thread_p, hint_volid)
 	  && disk_get_hint_contiguous_free_numpages (thread_p, hint_volid,
 						     exp_numpages,
 						     &best_numpages) == true)
@@ -1385,7 +1438,7 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
       /* Fall throu DISK_PERMVOL_TEMP_PURPOSE case */
 
     case DISK_PERMVOL_TEMP_PURPOSE:
-      if (hint_volid >= disk_Cache->nvols
+      if (fileio_is_temp_volume (thread_p, hint_volid)
 	  && disk_get_hint_contiguous_free_numpages (thread_p, hint_volid,
 						     exp_numpages,
 						     &best_numpages) == true)
@@ -1426,7 +1479,7 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
       break;
 
     case DISK_EITHER_TEMP_PURPOSE:
-      if (hint_volid >= disk_Cache->nvols
+      if (fileio_is_temp_volume (thread_p, hint_volid)
 	  && disk_get_hint_contiguous_free_numpages (thread_p, hint_volid,
 						     exp_numpages,
 						     &best_numpages) == true)
@@ -1594,6 +1647,44 @@ disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
   csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
   return *nvols;
+}
+
+/*
+ * disk_find_cache_index_of_purpose () - Find the index range of the given purpose
+ *   return: NO_ERROR or ER_FAILED
+ *   vol_purpose(in):
+ *   start(out): first index of the given purpose volume 
+ *   end(out): first index of the next purpose volume
+ */
+static int
+disk_find_cache_index_of_purpose (DISK_VOLPURPOSE vol_purpose, int *start,
+				  int *end)
+{
+  int start_at = 0;
+  int end_at = 0;
+  DISK_VOLPURPOSE purpose;
+
+  if (vol_purpose == DISK_UNKNOWN_PURPOSE
+      || vol_purpose == DISK_EITHER_TEMP_PURPOSE)
+    {
+      return ER_FAILED;
+    }
+
+  for (purpose = DISK_PERMVOL_DATA_PURPOSE; purpose < vol_purpose; purpose++)
+    {
+      start_at += disk_Cache->purpose[purpose].nvols;
+    }
+  end_at = start_at + disk_Cache->purpose[vol_purpose].nvols;
+
+  if (start)
+    {
+      *start = start_at;
+    }
+  if (end)
+    {
+      *end = end_at;
+    }
+  return NO_ERROR;
 }
 
 /* TODO: STL::vector for disk_Cache->purpose */
@@ -1911,6 +2002,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   int kbytes_to_be_written_per_sec = ext_info->max_writesize_in_sec;
   DISK_VOLPURPOSE vol_purpose = ext_info->purpose;
   INT32 extend_npages = ext_info->extend_npages;
+  INT16 prev_volid;
 
   if (vol_purpose != DISK_PERMVOL_GENERIC_PURPOSE)
     {
@@ -2145,6 +2237,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   /* Now initialize the sector and page allocator tables and link the volume
      to previous allocated volume */
 
+  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
   if (disk_map_init (thread_p, volid, vhdr->sect_alloctb_page1,
 		     vhdr->sect_alloctb_page1 + vhdr->sect_alloctb_npages - 1,
 		     vhdr->total_sects - vhdr->free_sects,
@@ -2153,7 +2246,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 			vhdr->page_alloctb_page1 + vhdr->page_alloctb_npages -
 			1, vhdr->sys_lastpage + 1, vol_purpose) != NO_ERROR
       || (vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE && volid > 0
-	  && disk_set_link (thread_p, volid - 1, vol_fullname, true,
+	  && disk_set_link (thread_p, prev_volid, vol_fullname, true,
 			    DISK_FLUSH) != NO_ERROR))
     {
       /* Problems setting the map allocation tables, release the header page,
@@ -3513,6 +3606,23 @@ xdisk_get_free_numpages (THREAD_ENTRY * thread_p, INT16 volid)
 				    &space_info);
 
   return space_info.free_pages;
+}
+
+/*
+ * xdisk_is_volume_exist () - 
+ *   return: 
+ *   volid(in): volume identifier
+ */
+bool
+xdisk_is_volume_exist (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  DISK_CHECK_VOL_INFO vol_info;
+
+  vol_info.volid = volid;
+  vol_info.exists = false;
+  (void) fileio_map_mounted (thread_p, disk_check_volume_exist, &vol_info);
+
+  return vol_info.exists;
 }
 
 /*
@@ -5793,7 +5903,6 @@ disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type,
 			       void **ptr)
 {
   int error = NO_ERROR;
-  DISK_CHECK_VOL_INFO vol_info;
   DISK_VOL_HEADER_CONTEXT *ctx = NULL;
 
   ctx = db_private_alloc (thread_p, sizeof (DISK_VOL_HEADER_CONTEXT));
@@ -5818,11 +5927,8 @@ disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type,
       goto exit_on_error;
     }
 
-  vol_info.volid = (INT16) ctx->volume_id;
-  vol_info.exists = false;
   /* check volume id exist or not */
-  (void) fileio_map_mounted (thread_p, disk_check_volume_exist, &vol_info);
-  if (!vol_info.exists)
+  if (xdisk_is_volume_exist (thread_p, (INT16) ctx->volume_id) == false)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_VOLID_NOT_EXIST, 1,
 	      ctx->volume_id);
@@ -6653,10 +6759,10 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
    *       The number is passed to volume header recovery so update
    *       it to avoid header corruption.
    */
-  if (mtb->num == 0)	      /* <---- */
-    {			      /* <---- */
-      return NO_ERROR;	      /* <---- */
-    }			      /* <---- */
+  if (mtb->num == 0)		/* <---- */
+    {				/* <---- */
+      return NO_ERROR;		/* <---- */
+    }				/* <---- */
 
   assert (mtb->num > 0);
 
@@ -6784,12 +6890,12 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
    * The fix for this issue is high priority after merging MVCC into trunk and
    * requires two changes:
    * 1. Mark root page header that the file is being dropped and prevent any
-   *	further merges.
+   *    further merges.
    * 2. Deallocate file pages in the b-tree normal traverse order (to be
-   *	blocked on merges that started before deleting file).
+   *    blocked on merges that started before deleting file).
    */
-  int bitmap_num =				    /* <----- */
-    ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num;  /* <----- */
+  int bitmap_num =		/* <----- */
+    ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num;	/* <----- */
   int vhdr_num = 0;
 
   assert (rcv->pgptr != NULL);
@@ -6830,8 +6936,8 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   disk_rv_alloctable_vhdr_only (thread_p, &vhdr_rcv, DISK_ALLOCTABLE_CLEAR);
 
   /* TODO: Remove this code when double deallocations issue is fixed. */
-  vhdr_num =					    /* <----- */
-    ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num;  /* <----- */
+  vhdr_num =			/* <----- */
+    ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num;	/* <----- */
 
   if (ref_lsa != NULL)
     {
@@ -6843,7 +6949,7 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
       page_addr.pgptr = rcv->pgptr;
 
       /* TODO: Remove this code when double deallocations issue is fixed. */
-      ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num = bitmap_num; /* <--- */
+      ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num = bitmap_num;	/* <--- */
 
       log_append_run_postpone (thread_p,
 			       RVDK_IDDEALLOC_BITMAP_ONLY,
@@ -6854,7 +6960,7 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
       vhdr_addr.pgptr = vhdr_rcv.pgptr;
 
       /* TODO: Remove this code when double deallocations issue is fixed. */
-      ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num = vhdr_num; /* <--- */
+      ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num = vhdr_num;	/* <--- */
 
       log_append_run_postpone (thread_p,
 			       RVDK_IDDEALLOC_VHDR_ONLY,
@@ -7175,16 +7281,15 @@ disk_get_first_total_free_numpages (THREAD_ENTRY * thread_p,
 				    INT32 * ntotal_pages, INT32 * nfree_pages)
 {
   INT16 volid;
-  int nperm_vols;
   DISK_VAR_HEADER *vhdr;
   PAGE_PTR hdr_pgptr = NULL;
   VPID vpid;
 
   *ntotal_pages = 0;
   *nfree_pages = 0;
-  nperm_vols = xboot_find_number_permanent_volumes (thread_p);
 
-  for (volid = LOG_DBFIRST_VOLID; volid < nperm_vols; volid++)
+  volid = LOG_DBFIRST_VOLID;
+  do
     {
       vpid.volid = volid;
       vpid.pageid = DISK_VOLHEADER_PAGE;
@@ -7215,7 +7320,10 @@ disk_get_first_total_free_numpages (THREAD_ENTRY * thread_p,
       (void) disk_verify_volume_header (thread_p, hdr_pgptr);
 
       pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+
+      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
+  while (volid != NULL_VOLID);
 
   return -1;
 }
@@ -7275,6 +7383,50 @@ disk_set_alloctables (DISK_VOLPURPOSE vol_purpose,
   *sys_lastpage = *page_alloctb_page1 + *page_alloctb_npages - 1;
 
   return ret;
+}
+
+/*
+ * disk_is_empty_volume () - check whether the volume is empty
+ *   return: true if the volume is empty or false
+ *   volid(in):
+ */
+bool
+disk_is_empty_volume (THREAD_ENTRY * thread_p, INT16 volid)
+{
+  DISK_VAR_HEADER *vhdr;
+  VPID vpid;
+  PAGE_PTR vhdr_pgptr = NULL;
+  bool is_empty_volume, not_allocated;
+
+  vpid.volid = volid;
+  vpid.pageid = DISK_VOLHEADER_PAGE;
+
+  vhdr_pgptr =
+    pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+	       PGBUF_UNCONDITIONAL_LATCH);
+  if (vhdr_pgptr == NULL)
+    {
+      return false;
+    }
+  vhdr = (DISK_VAR_HEADER *) vhdr_pgptr;
+
+  is_empty_volume =
+    (vhdr->total_pages == (vhdr->free_pages + vhdr->sys_lastpage + 1));
+
+  not_allocated = (vhdr->total_sects <= vhdr->free_sects +
+		   CEIL_PTVDIV ((vhdr->sys_lastpage + 1),
+				DISK_SECTOR_NPAGES));
+  if (is_empty_volume && not_allocated)
+    {
+      assert (vhdr->used_data_npages == 0);
+      assert (vhdr->used_index_npages == 0);
+
+      pgbuf_unfix (thread_p, vhdr_pgptr);
+      return true;
+    }
+
+  pgbuf_unfix (thread_p, vhdr_pgptr);
+  return false;
 }
 
 /*

@@ -11012,7 +11012,6 @@ error:
  *
  * return: nothing
  *
- *   num_perm_vols(in):
  *   db_fullname(in): Full name of the database
  *   logpath(in): Directory where the log volumes reside
  *   prefix_logname(in): Name of the log volumes. It is usually set the same as
@@ -11049,7 +11048,7 @@ error:
  *              run when there are multiusers in the system.
  */
 void
-log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
+log_recreate (THREAD_ENTRY * thread_p,
 	      const char *db_fullname, const char *logpath,
 	      const char *prefix_logname, DKNPAGES log_npages, FILE * out_fp)
 {
@@ -11075,7 +11074,8 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 
   LSA_SET_INIT_NONTEMP (&init_nontemp_lsa);
 
-  for (volid = LOG_DBFIRST_VOLID; volid < num_perm_vols; volid++)
+  volid = LOG_DBFIRST_VOLID;
+  do
     {
       char vol_fullname[PATH_MAX];
 
@@ -11139,7 +11139,10 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	  fprintf (out_fp, "%s... done\n", vol_fullname);
 	  fflush (out_fp);
 	}
+
+      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
+  while (volid != NULL_VOLID);
 
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p, false);

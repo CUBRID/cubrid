@@ -141,6 +141,11 @@ net_server_init (void)
   req_p->processing_function = sboot_add_volume_extension;
   req_p->name = "NET_SERVER_BO_ADD_VOLEXT";
 
+  req_p = &net_Requests[NET_SERVER_BO_DEL_VOLEXT];
+  req_p->action_attribute = (CHECK_AUTHORIZATION);
+  req_p->processing_function = sboot_del_volume_extension;
+  req_p->name = "NET_SERVER_BO_DEL_VOLEXT";
+
   req_p = &net_Requests[NET_SERVER_BO_CHECK_DBCONSISTENCY];
   req_p->action_attribute = (CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_check_db_consistency;
@@ -153,6 +158,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_BO_FIND_NTEMP_VOLS];
   req_p->processing_function = sboot_find_number_temp_volumes;
   req_p->name = "NET_SERVER_BO_FIND_NTEMP_VOLS";
+
+  req_p = &net_Requests[NET_SERVER_BO_FIND_LAST_PERM];
+  req_p->processing_function = sboot_find_last_permanent;
+  req_p->name = "NET_SERVER_BO_FIND_LAST_PERM";
 
   req_p = &net_Requests[NET_SERVER_BO_FIND_LAST_TEMP];
   req_p->processing_function = sboot_find_last_temp;
@@ -624,6 +633,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_DISK_VLABEL];
   req_p->processing_function = sdk_vlabel;
   req_p->name = "NET_SERVER_DISK_VLABEL";
+
+  req_p = &net_Requests[NET_SERVER_DISK_IS_EXIST];
+  req_p->processing_function = sdisk_is_volume_exist;
+  req_p->name = "NET_SERVER_DISK_IS_EXIST";
 
   /* statistics */
   req_p = &net_Requests[NET_SERVER_QST_GET_STATISTICS];

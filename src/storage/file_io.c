@@ -469,17 +469,32 @@ static FILEIO_VOLUME_INFO *fileio_traverse_permanent_volume (THREAD_ENTRY *
 							     VOLINFO_APPLY_FN
 							     apply_function,
 							     APPLY_ARG * arg);
+static FILEIO_VOLUME_INFO
+  * fileio_reverse_traverse_permanent_volume (THREAD_ENTRY * thread_p,
+					      VOLINFO_APPLY_FN apply_function,
+					      APPLY_ARG * arg);
 static FILEIO_VOLUME_INFO *fileio_traverse_temporary_volume (THREAD_ENTRY *
 							     thread_p,
 							     VOLINFO_APPLY_FN
 							     apply_function,
 							     APPLY_ARG * arg);
+static FILEIO_VOLUME_INFO
+  * fileio_reverse_traverse_temporary_volume (THREAD_ENTRY * thread_p,
+					      VOLINFO_APPLY_FN apply_function,
+					      APPLY_ARG * arg);
+
 static bool fileio_dismount_volume (THREAD_ENTRY * thread_p,
 				    FILEIO_VOLUME_INFO * vol_info_p,
 				    APPLY_ARG * ignore_arg);
 static bool fileio_is_volume_descriptor_equal (THREAD_ENTRY * thread_p,
 					       FILEIO_VOLUME_INFO *
 					       vol_info_p, APPLY_ARG * arg);
+static bool fileio_is_volume_id_gt (THREAD_ENTRY * thread_p,
+				    FILEIO_VOLUME_INFO * vol_info_p,
+				    APPLY_ARG * arg);
+static bool fileio_is_volume_id_lt (THREAD_ENTRY * thread_p,
+				    FILEIO_VOLUME_INFO * vol_info_p,
+				    APPLY_ARG * arg);
 static FILEIO_SYSTEM_VOLUME_INFO *fileio_find_system_volume (THREAD_ENTRY *
 							     thread_p,
 							     SYS_VOLINFO_APPLY_FN
@@ -3383,6 +3398,35 @@ fileio_traverse_permanent_volume (THREAD_ENTRY * thread_p,
 }
 
 static FILEIO_VOLUME_INFO *
+fileio_reverse_traverse_permanent_volume (THREAD_ENTRY * thread_p,
+					  VOLINFO_APPLY_FN apply_function,
+					  APPLY_ARG * arg)
+{
+  int i, j, max_j;
+  FILEIO_VOLUME_HEADER *header_p;
+  FILEIO_VOLUME_INFO *vol_info_p;
+
+  header_p = &fileio_Vol_info_header;
+
+  for (i = (header_p->next_perm_volid - 1) / FILEIO_VOLINFO_INCREMENT; i >= 0;
+       i--)
+    {
+      max_j = fileio_max_permanent_volumes (i, header_p->next_perm_volid);
+
+      for (j = max_j; j >= 0; j--)
+	{
+	  vol_info_p = &header_p->volinfo[i][j];
+	  if ((*apply_function) (thread_p, vol_info_p, arg) == true)
+	    {
+	      return vol_info_p;
+	    }
+	}
+    }
+
+  return NULL;
+}
+
+static FILEIO_VOLUME_INFO *
 fileio_traverse_temporary_volume (THREAD_ENTRY * thread_p,
 				  VOLINFO_APPLY_FN apply_function,
 				  APPLY_ARG * arg)
@@ -3403,6 +3447,39 @@ fileio_traverse_temporary_volume (THREAD_ENTRY * thread_p,
 					    header_p->num_volinfo_array);
 
       for (j = FILEIO_VOLINFO_INCREMENT - 1; j >= min_j; j--)
+	{
+	  vol_info_p = &header_p->volinfo[i][j];
+	  if ((*apply_function) (thread_p, vol_info_p, arg) == true)
+	    {
+	      return vol_info_p;
+	    }
+	}
+    }
+
+  return NULL;
+}
+
+static FILEIO_VOLUME_INFO *
+fileio_reverse_traverse_temporary_volume (THREAD_ENTRY * thread_p,
+					  VOLINFO_APPLY_FN apply_function,
+					  APPLY_ARG * arg)
+{
+  int i, j, min_j, num_temp_vols;
+  FILEIO_VOLUME_HEADER *header_p;
+  FILEIO_VOLUME_INFO *vol_info_p;
+
+  header_p = &fileio_Vol_info_header;
+  num_temp_vols = (LOG_MAX_DBVOLID) - header_p->next_temp_volid;
+
+  for (i = (header_p->num_volinfo_array
+	    - ((num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) /
+	       FILEIO_VOLINFO_INCREMENT)); i < header_p->num_volinfo_array;
+       i++)
+    {
+      min_j = fileio_min_temporary_volumes (i, num_temp_vols,
+					    header_p->num_volinfo_array);
+
+      for (j = min_j; j < FILEIO_VOLINFO_INCREMENT; j++)
 	{
 	  vol_info_p = &header_p->volinfo[i][j];
 	  if ((*apply_function) (thread_p, vol_info_p, arg) == true)
@@ -3606,7 +3683,44 @@ fileio_is_volume_descriptor_equal (THREAD_ENTRY * thread_p,
 				   FILEIO_VOLUME_INFO * vol_info_p,
 				   APPLY_ARG * arg)
 {
+  if (vol_info_p->vdes == NULL_VOLDES)
+    {
+      return false;
+    }
   return (vol_info_p->vdes == arg->vdes);
+}
+
+static bool
+fileio_is_volume_id_equal (THREAD_ENTRY * thread_p,
+			   FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg)
+{
+  if (vol_info_p->volid == NULL_VOLID)
+    {
+      return false;
+    }
+  return (vol_info_p->volid == arg->vol_id);
+}
+
+static bool
+fileio_is_volume_id_gt (THREAD_ENTRY * thread_p,
+			FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg)
+{
+  if (vol_info_p->volid == NULL_VOLID)
+    {
+      return false;
+    }
+  return (vol_info_p->volid > arg->vol_id);
+}
+
+static bool
+fileio_is_volume_id_lt (THREAD_ENTRY * thread_p,
+			FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg)
+{
+  if (vol_info_p->volid == NULL_VOLID)
+    {
+      return false;
+    }
+  return (vol_info_p->volid < arg->vol_id);
 }
 
 static FILEIO_SYSTEM_VOLUME_INFO *
@@ -6070,7 +6184,7 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
 {
   FILEIO_SYSTEM_VOLUME_INFO *sys_vol_info_p, *prev_sys_vol_info_p;
   FILEIO_VOLUME_INFO *vol_info_p;
-  int vol_id;
+  int vol_id, prev_vol;
   int rv;
   APPLY_ARG arg = { 0 };
 
@@ -6143,6 +6257,16 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
   if (vol_info_p)
     {
       vol_id = vol_info_p->volid;
+
+      /* update next_perm_volid, if needed */
+      rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
+      if (fileio_Vol_info_header.next_perm_volid == vol_id + 1)
+	{
+	  fileio_Vol_info_header.next_perm_volid =
+	    fileio_find_previous_perm_volume (thread_p, vol_id) + 1;
+	}
+      pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
+
       vol_info_p->volid = NULL_VOLID;
       vol_info_p->vdes = NULL_VOLDES;
       vol_info_p->lockf_type = FILEIO_NOT_LOCKF;
@@ -6150,15 +6274,6 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
 #if defined(SERVER_MODE) && defined(WINDOWS)
       pthread_mutex_destroy (&vol_info_p->vol_mutex);
 #endif /* WINDOWS */
-
-      /* update next_perm_volid, if needed */
-      rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
-      if (fileio_Vol_info_header.next_perm_volid == vol_id + 1)
-	{
-	  fileio_Vol_info_header.next_perm_volid = vol_id;
-	}
-
-      pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
       return;
     }
 
@@ -6170,6 +6285,19 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
   if (vol_info_p)
     {
       vol_id = vol_info_p->volid;
+
+      /* update next_temp_volid, if needed */
+      rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
+      if (fileio_Vol_info_header.next_temp_volid == vol_id - 1)
+	{
+	  prev_vol = fileio_find_previous_temp_volume (thread_p, vol_id);
+	  /* if prev_vol is NULL_VOLID, this volume is last volume */
+	  fileio_Vol_info_header.next_temp_volid =
+	    (prev_vol != NULL_VOLID) ? (prev_vol - 1) : (LOG_MAX_DBVOLID);
+	}
+
+      pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
+
       vol_info_p->volid = NULL_VOLID;
       vol_info_p->vdes = NULL_VOLDES;
       vol_info_p->lockf_type = FILEIO_NOT_LOCKF;
@@ -6177,15 +6305,6 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
 #if defined(SERVER_MODE) && defined(WINDOWS)
       pthread_mutex_destroy (&vol_info_p->vol_mutex);
 #endif /* WINDOWS */
-
-      /* update next_perm_volid, if needed */
-      rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
-      if (fileio_Vol_info_header.next_perm_volid == vol_id - 1)
-	{
-	  fileio_Vol_info_header.next_perm_volid = vol_id;
-	}
-
-      pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
       return;
     }
 }
@@ -6391,6 +6510,109 @@ fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p,
     }
 
   return vol_id;
+}
+
+bool
+fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  FILEIO_VOLUME_INFO *vol_info_p;
+  APPLY_ARG arg = { 0 };
+
+  if (volid == NULL_VOLID)
+    {
+      return false;
+    }
+  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);	/* use this function after mount */
+
+  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
+
+  arg.vol_id = volid;
+  vol_info_p =
+    fileio_traverse_temporary_volume (thread_p, fileio_is_volume_id_equal,
+				      &arg);
+  if (vol_info_p)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+VOLID
+fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  FILEIO_VOLUME_INFO *vol_info_p;
+  APPLY_ARG arg = { 0 };
+
+  if (volid == NULL_VOLID)
+    {
+      return NULL_VOLID;
+    }
+  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);	/* use this function after mount */
+
+  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
+
+  arg.vol_id = volid;
+  vol_info_p =
+    fileio_traverse_permanent_volume (thread_p, fileio_is_volume_id_gt, &arg);
+  if (vol_info_p)
+    {
+      return vol_info_p->volid;
+    }
+
+  return NULL_VOLID;
+}
+
+VOLID
+fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  FILEIO_VOLUME_INFO *vol_info_p;
+  APPLY_ARG arg = { 0 };
+
+  if (volid == NULL_VOLID)
+    {
+      return NULL_VOLID;
+    }
+  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);	/* use this function after mount */
+
+  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
+
+  arg.vol_id = volid;
+  vol_info_p =
+    fileio_reverse_traverse_permanent_volume (thread_p,
+					      fileio_is_volume_id_lt, &arg);
+  if (vol_info_p)
+    {
+      return vol_info_p->volid;
+    }
+
+  return NULL_VOLID;
+}
+
+VOLID
+fileio_find_previous_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  FILEIO_VOLUME_INFO *vol_info_p;
+  APPLY_ARG arg = { 0 };
+
+  if (volid == NULL_VOLID)
+    {
+      return NULL_VOLID;
+    }
+  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);	/* use this function after mount */
+
+  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
+
+  arg.vol_id = volid;
+  vol_info_p =
+    fileio_reverse_traverse_temporary_volume (thread_p,
+					      fileio_is_volume_id_gt, &arg);
+  if (vol_info_p)
+    {
+      return vol_info_p->volid;
+    }
+
+  return NULL_VOLID;
 }
 
 /*
@@ -10880,7 +11102,8 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 	  VOLID prev_volid;
 	  int prev_vdes;
 
-	  prev_volid = volid - 1;	/* previous vol */
+	  /* previous vol */
+	  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
 	  prev_vdes =
 	    fileio_mount (thread_p, NULL, prev_vol_label_p, prev_volid, false,
 			  false);

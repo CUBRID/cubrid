@@ -366,10 +366,11 @@ static VFID *file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid,
 			   INT32 exp_numpages, FILE_TYPE * file_type,
 			   const void *file_des, VPID * first_prealloc_vpid,
 			   INT32 prealloc_npages);
-static int file_calculate_offset (INT16 start_offset, int size,
-				  int nelements, INT16 * address_offset,
-				  VPID * address_vpid, VPID * ftb_vpids,
-				  int num_ftb_pages,
+static int file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
+			  bool pb_invalid_temp_called);
+static int file_calculate_offset (INT16 start_offset, int size, int nelements,
+				  INT16 * address_offset, VPID * address_vpid,
+				  VPID * ftb_vpids, int num_ftb_pages,
 				  int *current_ftb_page_index);
 
 static int file_descriptor_insert (THREAD_ENTRY * thread_p,
@@ -617,16 +618,14 @@ static void file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				  const VFID * vfid);
 static DISK_ISVALID file_make_idsmap_image (THREAD_ENTRY * thread_p,
 					    const VFID * vfid,
-					    char **vol_ids_map,
-					    int nperm_vols);
+					    char **vol_ids_map, int last_vol);
 static DISK_ISVALID set_bitmap (char *vol_ids_map, INT32 pageid);
 static DISK_ISVALID file_verify_idsmap_image (THREAD_ENTRY * thread_p,
 					      INT16 volid, char *vol_ids_map);
 static DISK_PAGE_TYPE file_get_disk_page_type (FILE_TYPE ftype);
 static DISK_ISVALID
 file_construct_space_info (THREAD_ENTRY * thread_p,
-			   VOL_SPACE_INFO * space_info,
-			   const VFID * vfid, int nperm_vols);
+			   VOL_SPACE_INFO * space_info, const VFID * vfid);
 
 
 /* check not use */
@@ -2896,6 +2895,52 @@ file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid,
 }
 
 /*
+ * file_destroy_cached_tmp () - Drop cached temp files in temporary temp file
+ *   return: NO_ERROR
+ *   volid(in):
+ */
+int
+file_destroy_cached_tmp (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  FILE_TEMPFILE_CACHE_ENTRY *p;
+  int idx, prev;
+
+  if (csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  idx = file_Tempfile_cache.first_idx;
+  prev = -1;
+  while (idx != -1)
+    {
+      p = &file_Tempfile_cache.entry[idx];
+      if (p->vfid.volid == volid)
+	{
+	  if (prev == -1)
+	    {
+	      file_Tempfile_cache.first_idx = p->next_entry;
+	    }
+	  else
+	    {
+	      file_Tempfile_cache.entry[prev].next_entry = p->next_entry;
+	    }
+
+	  p->next_entry = file_Tempfile_cache.free_idx;
+	  file_Tempfile_cache.free_idx = p->idx;
+
+	  (void) file_destroy_without_reuse (thread_p, &p->vfid);
+	}
+      prev = idx;
+      idx = p->next_entry;
+    }
+
+  csect_exit (thread_p, CSECT_TEMPFILE_CACHE);
+
+  return NO_ERROR;
+}
+
+/*
  * file_create_queryarea () - Create a new unstructured query area file
  *   return: vfid or NULL in case of error
  *   vfid(out): complete file identifier (i.e., volume_id + file_id)
@@ -3504,7 +3549,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   VPID allocset_vpid;		/* Page-volume identifier of allocation set */
   VPID nxftb_vpid;		/* Page-volume identifier of file tables
 				   pages. Part of allocation sets. */
-  VPID curftb_vpid;
   FILE_HEADER *fhdr;
   FILE_ALLOCSET *allocset;	/* The first allocation set */
   PAGE_PTR fhdr_pgptr = NULL;
@@ -3515,18 +3559,12 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   INT32 *outptr;		/* Out of bound pointer. */
   INT16 allocset_offset;
   LOG_DATA_ADDR addr;
-  INT16 batch_volid;		/* The volume identifier in the batch of
-				   contiguous ids */
+
   INT32 batch_firstid;		/* First sectid in batch */
   INT32 batch_ndealloc;		/* # of sectors to deallocate in the batch */
   FILE_TYPE file_type;
-  bool old_val;
   bool pb_invalid_temp_called = false;
-  bool out_of_range = false;
   bool rv;
-  int cached_volid_bound = -1;
-  int ret = NO_ERROR;
-  DISK_PAGE_TYPE page_type;
 
   addr.vfid = vfid;
 
@@ -3709,20 +3747,65 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 	      pgbuf_unfix_and_init (thread_p, allocset_pgptr);
 	    }
 	}
-      pb_invalid_temp_called = true;
-      if (!out_of_range)
-	{
-	  if ((file_type == FILE_TMP_TMP || file_type == FILE_QUERY_AREA)
-	      && file_tmpfile_cache_put (thread_p, vfid, file_type))
-	    {
-	      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
 
-	      return NO_ERROR;
-	    }
+      assert (file_type == FILE_TMP_TMP || file_type == FILE_QUERY_AREA);
+
+      pb_invalid_temp_called = true;
+      if (file_tmpfile_cache_put (thread_p, vfid, file_type))
+	{
+	  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
+	  return NO_ERROR;
 	}
     }
 
   pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
+
+  return file_xdestroy (thread_p, vfid, pb_invalid_temp_called);
+}
+
+
+/*
+ * file_destroy_without_reuse () - Destroy a file not regarding reuse file
+ *   return:
+ *   vfid(in): Complete file identifier
+ *
+ * Note: The pages and sectors assigned to the given file are deallocated and
+ *       the file is removed.
+ */
+int
+file_destroy_without_reuse (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  return file_xdestroy (thread_p, vfid, false);
+}
+
+
+static int
+file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
+	       bool pb_invalid_temp_called)
+{
+  VPID allocset_vpid;		/* Page-volume identifier of allocation set */
+  VPID nxftb_vpid;		/* Page-volume identifier of file tables
+				   pages. Part of allocation sets. */
+  VPID curftb_vpid;
+  FILE_HEADER *fhdr;
+  FILE_ALLOCSET *allocset;	/* The first allocation set */
+  PAGE_PTR fhdr_pgptr = NULL;
+  PAGE_PTR allocset_pgptr = NULL;
+  PAGE_PTR pgptr = NULL;
+  INT32 *aid_ptr;		/* Pointer to portion of table of page or
+				   sector allocation table */
+  INT32 *outptr;		/* Out of bound pointer. */
+  INT16 allocset_offset;
+  LOG_DATA_ADDR addr;
+  INT16 batch_volid;		/* The volume identifier in the batch of
+				   contiguous ids */
+  INT32 batch_firstid;		/* First sectid in batch */
+  INT32 batch_ndealloc;		/* # of sectors to deallocate in the batch */
+  FILE_TYPE file_type;
+  bool old_val;
+  int ret = NO_ERROR;
+  int rv;
+  DISK_PAGE_TYPE page_type;
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -11917,7 +12000,7 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
   int num_files, num_found;
   VPID set_vpids[FILE_SET_NUMVPIDS], vpid;
   VFID vfid;
-  int i, j, nperm_vols;
+  int i, j, last_perm_vol;
   char **vol_ids_map = NULL;
 
   if (file_Tracker->vfid == NULL)
@@ -11925,24 +12008,28 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
       return DISK_ERROR;
     }
 
-  nperm_vols = xboot_find_number_permanent_volumes (thread_p);
-
-  if (nperm_vols <= 0)
+  last_perm_vol = xboot_find_last_permanent (thread_p);
+  if (last_perm_vol < 0)
     {
       return DISK_ERROR;
     }
 
-  vol_ids_map = (char **) calloc (nperm_vols, sizeof (char *));
+  vol_ids_map = (char **) calloc (last_perm_vol + 1, sizeof (char *));
 
   if (vol_ids_map == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (char *) * nperm_vols);
+	      1, sizeof (char *) * (last_perm_vol + 1));
       return DISK_ERROR;
+    }
+  for (i = 0; i <= last_perm_vol; i++)
+    {
+      vol_ids_map[i] = NULL;
     }
 
   /* phase 1. allocate disk-allocset page memory */
-  for (i = 0; i < nperm_vols; i++)
+  i = 0;
+  do
     {
       vpid.volid = i + LOG_DBFIRST_VOLID;
       vpid.pageid = DISK_VOLHEADER_PAGE;
@@ -11986,7 +12073,10 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
 	}
 
       pgbuf_unfix_and_init (thread_p, vhdr_pgptr);
+
+      i = fileio_find_next_perm_volume (thread_p, i);
     }
+  while (i != NULL_VOLID);
 
   /* phase 2. construct disk bitmap image with file tracker */
   num_files = file_get_numpages (thread_p, file_Tracker->vfid);
@@ -12009,7 +12099,8 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
 	  vfid.fileid = set_vpids[j].pageid;
 
 	  valid =
-	    file_make_idsmap_image (thread_p, &vfid, vol_ids_map, nperm_vols);
+	    file_make_idsmap_image (thread_p, &vfid, vol_ids_map,
+				    last_perm_vol);
 
 	  if (valid != DISK_VALID)
 	    {
@@ -12035,7 +12126,7 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
     }
 
   /* phase 3. cross check idsmap images with disk bitmap */
-  for (i = 0; i < nperm_vols && allvalid != DISK_ERROR; i++)
+  for (i = 0; i <= last_perm_vol && allvalid != DISK_ERROR; i++)
     {
       if (vol_ids_map[i] != NULL)
 	{
@@ -12052,7 +12143,7 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
 end:
   if (vol_ids_map)
     {
-      for (i = 0; i < nperm_vols; i++)
+      for (i = 0; i <= last_perm_vol; i++)
 	{
 	  if (vol_ids_map[i])
 	    {
@@ -12075,7 +12166,8 @@ end:
  */
 static DISK_ISVALID
 file_make_idsmap_image (THREAD_ENTRY * thread_p,
-			const VFID * vfid, char **vol_ids_map, int nperm_vols)
+			const VFID * vfid, char **vol_ids_map,
+			int last_perm_vol)
 {
   DISK_ISVALID valid = DISK_VALID;
 #if defined (SA_MODE)
@@ -12122,13 +12214,13 @@ file_make_idsmap_image (THREAD_ENTRY * thread_p,
 
   /* 1. set file table pages to vol_ids_map */
   /* file header page */
-  if (vfid->volid < nperm_vols)
+  if (vfid->volid <= last_perm_vol)
     {
       set_bitmap (vol_ids_map[vfid->volid], set_vpids[0].pageid);
     }
   else
     {
-      assert_release (vfid->volid < nperm_vols);
+      assert_release (vfid->volid <= last_perm_vol);
     }
 
   if (file_ftabvpid_next (fhdr, fhdr_pgptr, &next_ftable_vpid) != NO_ERROR)
@@ -12143,14 +12235,14 @@ file_make_idsmap_image (THREAD_ENTRY * thread_p,
   /* next pages */
   while (!VPID_ISNULL (&next_ftable_vpid))
     {
-      if (next_ftable_vpid.volid < nperm_vols)
+      if (next_ftable_vpid.volid <= last_perm_vol)
 	{
 	  set_bitmap (vol_ids_map[next_ftable_vpid.volid],
 		      next_ftable_vpid.pageid);
 	}
       else
 	{
-	  assert_release (next_ftable_vpid.volid < nperm_vols);
+	  assert_release (next_ftable_vpid.volid <= last_perm_vol);
 	}
 
       pgptr =
@@ -12194,14 +12286,14 @@ file_make_idsmap_image (THREAD_ENTRY * thread_p,
 
       for (j = 0; j < num_found; j++)
 	{
-	  if (set_vpids[j].volid < nperm_vols)
+	  if (set_vpids[j].volid <= last_perm_vol)
 	    {
 	      set_bitmap (vol_ids_map[set_vpids[j].volid],
 			  set_vpids[j].pageid);
 	    }
 	  else
 	    {
-	      assert_release (set_vpids[j].volid < nperm_vols);
+	      assert_release (set_vpids[j].volid <= last_perm_vol);
 	    }
 	}
     }
@@ -13252,7 +13344,7 @@ file_rv_undo_create_tmp (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       (void) file_new_declare_as_old (thread_p, vfid);
 
-      if (vfid->volid > xboot_find_number_permanent_volumes (thread_p))
+      if (vfid->volid > xboot_find_last_permanent (thread_p))
 	{
 	  /*
 	   * File in a temporary volume.
@@ -14626,7 +14718,7 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
   int num_files, num_found;
   VPID set_vpids[FILE_SET_NUMVPIDS], vpid;
   VFID vfid;
-  int i, j, nperm_vols;
+  int i, j, last_perm_vol;
   VOL_SPACE_INFO *space_info = NULL;
 
   if (file_Tracker->vfid == NULL)
@@ -14634,18 +14726,18 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
       return DISK_ERROR;
     }
 
-  nperm_vols = xboot_find_number_permanent_volumes (thread_p);
-  if (nperm_vols <= 0)
+  last_perm_vol = xboot_find_last_permanent (thread_p);
+  if (last_perm_vol <= 0)
     {
       return DISK_ERROR;
     }
 
-  space_info = (VOL_SPACE_INFO *) calloc (nperm_vols,
+  space_info = (VOL_SPACE_INFO *) calloc (last_perm_vol + 1,
 					  sizeof (VOL_SPACE_INFO));
   if (space_info == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (VOL_SPACE_INFO) * nperm_vols);
+	      1, sizeof (VOL_SPACE_INFO) * (last_perm_vol + 1));
       return DISK_ERROR;
     }
 
@@ -14668,8 +14760,7 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
 	  vfid.volid = set_vpids[j].volid;
 	  vfid.fileid = set_vpids[j].pageid;
 
-	  valid = file_construct_space_info (thread_p, space_info,
-					     &vfid, nperm_vols);
+	  valid = file_construct_space_info (thread_p, space_info, &vfid);
 	  if (valid != DISK_VALID)
 	    {
 	      allvalid = valid;
@@ -14684,7 +14775,8 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
       allvalid = DISK_ERROR;
     }
 
-  for (i = 0; i < nperm_vols; i++)
+  i = 0;
+  do
     {
       vpid.volid = i + LOG_DBFIRST_VOLID;
       vpid.pageid = DISK_VOLHEADER_PAGE;
@@ -14766,7 +14858,10 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
 	}
 
       pgbuf_set_dirty (thread_p, vhdr_pgptr, FREE);
+
+      i = fileio_find_next_perm_volume (thread_p, i);
     }
+  while (i != NULL_VOLID);
 
 end:
   if (space_info)
@@ -14785,12 +14880,10 @@ end:
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
  *   space_info(out):
  *   vfid(in):
- *   nperm_vols(in):
  */
 static DISK_ISVALID
 file_construct_space_info (THREAD_ENTRY * thread_p,
-			   VOL_SPACE_INFO * space_info,
-			   const VFID * vfid, int nperm_vols)
+			   VOL_SPACE_INFO * space_info, const VFID * vfid)
 {
 #if defined (SA_MODE)
   DISK_ISVALID valid = DISK_VALID;

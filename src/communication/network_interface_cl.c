@@ -2192,6 +2192,59 @@ disk_get_fullname (VOLID volid, char *vol_fullname)
 }
 
 /*
+ * disk_is_volume_exist -
+ *
+ * return:
+ *
+ *   volid(in):
+ *   vol_fullname(in):
+ *
+ * NOTE:
+ */
+bool
+disk_is_volume_exist (VOLID volid)
+{
+  bool exist = false;
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  int int_exist = 0;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_pack_int (request, (int) volid);
+
+  req_error = net_client_request (NET_SERVER_DISK_IS_EXIST,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_int (reply, &int_exist);
+    }
+
+  if (int_exist)
+    {
+      exist = true;
+    }
+#else /* CS_MODE */
+
+  ENTER_SERVER ();
+
+  exist = xdisk_is_volume_exist (NULL, volid);
+
+  EXIT_SERVER ();
+
+#endif /* !CS_MODE */
+  return exist;
+}
+
+/*
  * log_client_get_first_postpone -
  *
  * return:
@@ -4539,6 +4592,66 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
 }
 
 /*
+ * boot_del_volume_extension -
+ *
+ * return:
+ *
+ *   volid(in):
+ *   clear_cached(in): clear cached files in the temporary temp volume
+ *
+ * NOTE:
+ */
+int
+boot_del_volume_extension (VOLID volid, bool clear_cached)
+{
+  int success = ER_FAILED;
+#if defined(CS_MODE)
+  int request_size;
+  char *request, *ptr;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = OR_INT_SIZE + OR_INT_SIZE;
+
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = or_pack_int (request, (int) volid);
+      ptr = or_pack_int (ptr, (int) clear_cached);
+      req_error = net_client_request (NET_SERVER_BO_DEL_VOLEXT,
+				      request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				      NULL, 0);
+      if (!req_error)
+	{
+	  or_unpack_int (reply, &success);
+	}
+      free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      request_size);
+    }
+
+  return success;
+#else /* CS_MODE */
+
+  ENTER_SERVER ();
+
+  success = xboot_del_volume_extension (NULL, volid, clear_cached);
+
+  EXIT_SERVER ();
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+
+/*
  * boot_check_db_consistency -
  *
  * return:
@@ -4690,6 +4803,47 @@ boot_find_number_temp_volumes (void)
   EXIT_SERVER ();
 
   return nvols;
+#endif /* !CS_MODE */
+}
+
+/*
+ * boot_find_last_permanant -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+VOLID
+boot_find_last_permanent (void)
+{
+  VOLID volid = NULL_VOLID;
+#if defined(CS_MODE)
+  int int_volid;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request (NET_SERVER_BO_FIND_LAST_PERM,
+				  NULL, 0, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &int_volid);
+      volid = (VOLID) int_volid;
+    }
+
+  return volid;
+#else /* CS_MODE */
+  ENTER_SERVER ();
+
+  volid = xboot_find_last_permanent (NULL);
+
+  EXIT_SERVER ();
+
+  return volid;
 #endif /* !CS_MODE */
 }
 

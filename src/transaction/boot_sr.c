@@ -203,11 +203,12 @@ static int boot_get_db_parm (THREAD_ENTRY * thread_p,
 			     const BOOT_DB_PARM * dbparm, OID * dbparm_oid);
 static VOLID boot_add_volume (THREAD_ENTRY * thread_p,
 			      DBDEF_VOL_EXT_INFO * ext_info);
-static int boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid);
+static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid);
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 				     const char *ignore_vlabel,
 				     void *ignore_arg);
+static int boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid);
 static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
 					     const char
@@ -413,6 +414,27 @@ xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p)
   csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return nvols;
+}
+
+/*
+ * xboot_find_last_permanent () - find the volid of last permanent volume
+ * 
+ * return : volid of last permanent volume
+ */
+VOLID
+xboot_find_last_permanent (THREAD_ENTRY * thread_p)
+{
+  VOLID volid;
+
+  if (csect_enter_as_reader (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) !=
+      NO_ERROR)
+    {
+      return NULL_VOLID;
+    }
+  volid = boot_Db_parm->last_volid;
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+
+  return volid;
 }
 
 /*
@@ -703,7 +725,7 @@ error:
 }
 
 /*
- * boot_remove_volume () - remove a volume from the database
+ * boot_remove_temp_volume () - remove a volume from the database
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
@@ -718,7 +740,7 @@ error:
  *       (LOG_DBFIRST_VOLID).
  */
 static int
-boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
+boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
 {
   RECDES recdes;		/* Record descriptor which describe the
 				 * volume.
@@ -878,6 +900,51 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p,
   temp_ext_info.extend_npages = temp_ext_info.max_npages;
 
   return boot_xadd_volume_extension (thread_p, &temp_ext_info);
+}
+
+/*
+ * xboot_del_volume_extension () - delete a volume extension of the database
+ *
+ * return : NO_ERROR if all OK, ER_ status otherwise
+ *
+ */
+int
+xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
+			    bool clear_cached)
+{
+  if (xdisk_is_volume_exist (thread_p, volid) == false)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_BO_UNKNOWN_VOLUME, 1, volid);
+      return ER_BO_UNKNOWN_VOLUME;
+    }
+
+  (void) disk_cache_disable_new_files (thread_p, volid);
+
+  if (clear_cached
+      && xdisk_get_purpose (thread_p, volid) == DISK_TEMPVOL_TEMP_PURPOSE)
+    {
+      /* we don't recover cleared cached files even though transaction fail */
+
+      /* 
+       * if some transactions are using the xasl, we don't remove xasl cache
+       * and the volume will not be removed from database.
+       */
+      (void) qexec_remove_xasl_cache_ent_by_volume (thread_p, volid, true);
+
+      (void) file_destroy_cached_tmp (thread_p, volid);
+    }
+
+  if (disk_is_empty_volume (thread_p, volid) == false)
+    {
+      (void) disk_cache_enable_new_files (thread_p, volid);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_A_EMPTY_VOLUME,
+	      1, volid);
+      return ER_NOT_A_EMPTY_VOLUME;
+    }
+
+  return disk_del_volume_extension (thread_p, volid);
 }
 
 /*
@@ -1122,7 +1189,6 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p,
 
   return volid;
 }
-
 
 /*
  * boot_add_auto_volume_extension () - add an automatic volume extension to the database
@@ -1803,7 +1869,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p)
     }
 
   boot_find_rest_temp_volumes (thread_p, NULL_VOLID, boot_xremove_temp_volume,
-			       NULL, true, false);
+			       NULL, true, true);
 
   if (boot_Db_parm->temp_nvols != 0
       || boot_Db_parm->temp_last_volid != NULL_VOLID)
@@ -1833,6 +1899,97 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * boot_xremove_prem_volume () - remove the permanent volume from the database
+ *
+ * return :NO_ERROR if all OK, ER_ status otherwise
+ */
+static int
+boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  int error = NO_ERROR;
+  int vol_fd;
+  bool ignore_old;
+  char *vlabel;
+  RECDES recdes;
+  VOLID prev_volid = NULL_VOLID;
+  char next_vol_fullname[PATH_MAX];
+
+  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
+  if (vlabel == NULL)
+    {
+      csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+      return ER_FAILED;
+    }
+
+  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
+  /* previous volid shouldn't be NULL_VOLID because we can't remove first volume */
+  assert (prev_volid != NULL_VOLID);
+
+  boot_Db_parm->nvols--;
+  if (boot_Db_parm->last_volid == volid)
+    {
+      boot_Db_parm->last_volid = prev_volid;
+    }
+
+  recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
+  recdes.data = (char *) boot_Db_parm;
+
+  if (heap_update (thread_p, &boot_Db_parm->hfid,
+		   &boot_Db_parm->rootclass_oid, boot_Db_parm_oid, &recdes,
+		   NULL, &ignore_old, NULL, HEAP_UPDATE_IN_PLACE) == NULL)
+    {
+      boot_Db_parm->nvols++;
+      if (boot_Db_parm->last_volid == prev_volid)
+	{
+	  boot_Db_parm->last_volid = volid;
+	}
+      error = er_errid ();
+      goto end;
+    }
+  heap_flush (thread_p, boot_Db_parm_oid);
+
+  vol_fd = fileio_get_volume_descriptor (boot_Db_parm->hfid.vfid.volid);
+  (void) fileio_synchronize (thread_p, vol_fd, vlabel);
+
+  if (disk_get_link (thread_p, volid, next_vol_fullname) == NULL)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  error = disk_unformat (thread_p, vlabel);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = disk_set_link (thread_p, prev_volid, next_vol_fullname, false,
+			 DISK_FLUSH);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
+  (void) disk_goodvol_refresh (thread_p, boot_Db_parm->nvols);
+
+  /* recreate volume info file for removed volume */
+  (void) logpb_recreate_volume_info (thread_p);
+
+end:
+  free_and_init (vlabel);
+
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+
+  return error;
+}
+
+/*
  * boot_xremove_temp_volume () - remove a temporary volume from the database
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
@@ -1847,7 +2004,7 @@ static int
 boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 			  const char *ignore_vlabel, void *ignore_arg)
 {
-  return boot_remove_volume (thread_p, volid);
+  return boot_remove_temp_volume (thread_p, volid);
 }
 
 /*
@@ -2071,16 +2228,7 @@ boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args,
       return error_code;
     }
 
-  if (r_args != NULL)
-    {
-      check = true;
-    }
-  else
-    {
-      check = false;
-    }
-
-  boot_find_rest_temp_volumes (thread_p, volid, fun, args, false, check);
+  boot_find_rest_temp_volumes (thread_p, volid, fun, args, false, true);
 
   return error_code;
 }
@@ -2149,9 +2297,10 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
 	    {
 	      return ER_FAILED;
 	    }
-	  next_volid++;
+
+	  next_volid = fileio_find_next_perm_volume (thread_p, next_volid);
 	}
-      while (next_vol_fullname[0] != '\0');
+      while (next_volid != NULL_VOLID);
 
       if (use_volinfo == true)
 	{
@@ -2168,7 +2317,7 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
        * valid one
        */
       if (volid != NULL_VOLID && volid >= LOG_DBFIRST_VOLID
-	  && volid <= (num_vols + LOG_DBFIRST_VOLID))
+	  && volid <= boot_Db_parm->last_volid)
 	{
 	  num_vols++;
 	}
@@ -2376,9 +2525,10 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
 	{
 	  return ER_GENERIC_ERROR;
 	}
-      next_volid++;
+
+      next_volid = fileio_find_next_perm_volume (thread_p, next_volid);
     }
-  while (next_vol_fullname[0] != '\0');
+  while (next_volid != NULL_VOLID);
 
   if (num_vols != boot_Db_parm->nvols)
     {
@@ -4577,26 +4727,29 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag,
 {
   DISK_ISVALID isvalid = DISK_VALID;
   VOLID volid;
-  int nperm_vols, i;
+  int i;
   bool repair = check_flag & CHECKDB_REPAIR;
   int error_code = NO_ERROR;
 
   error_code = boot_check_permanent_volumes (thread_p);
-  nperm_vols = xboot_find_number_permanent_volumes (thread_p);
 
   if (index_btid != NULL && BTID_IS_NULL (index_btid))
     {
       index_btid = NULL;
     }
 
-  for (volid = 0; volid < nperm_vols && isvalid != DISK_ERROR; volid++)
+  volid = LOG_DBFIRST_VOLID;
+  do
     {
       isvalid = disk_check (thread_p, volid, repair);
       if (isvalid != DISK_VALID)
 	{
 	  error_code = ER_FAILED;
 	}
+
+      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
+  while (isvalid != DISK_ERROR && volid != NULL_VOLID);
 
   if (num_oids > 0)
     {
@@ -6477,7 +6630,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
 	    }
 	}
 
-      log_recreate (thread_p, boot_Db_parm->nvols, boot_Db_full_name,
+      log_recreate (thread_p, boot_Db_full_name,
 		    log_path, log_prefix, log_npages, out_fp);
     }
   else
@@ -6779,4 +6932,72 @@ boot_set_skip_check_ct_classes (bool val)
   bool old_val = skip_to_check_ct_classes_for_rebuild;
   skip_to_check_ct_classes_for_rebuild = val;
   return old_val;
+}
+
+/*
+ * boot_rv_del_volume_extension () - Redo update of removal volume
+ *
+ *   return: NO_ERROR if all OK, ER_ status otherwise
+ *   rcv(in): Recovery structure
+ */
+int
+boot_rv_del_volume_extension (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  int error = ER_FAILED;
+  DB_VOLPURPOSE purpose;
+  VOLID volid;
+
+  volid = *((VOLID *) rcv->data);
+  if (xdisk_is_volume_exist (thread_p, volid) == false)
+    {
+      /* 
+       * Maybe the volume was removed by other transaction.
+       * just return and continue left.
+       */
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+      return NO_ERROR;
+    }
+
+  purpose = xdisk_get_purpose (thread_p, volid);
+  if (purpose == DISK_UNKNOWN_PURPOSE)
+    {
+      assert (false);		/* should check volume's purpose before append log */
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_BO_UNKNOWN_VOLUME, 1, volid);
+      return ER_BO_UNKNOWN_VOLUME;
+    }
+
+  if (purpose == DISK_TEMPVOL_TEMP_PURPOSE
+      || purpose == DISK_EITHER_TEMP_PURPOSE)
+    {
+      error = boot_xremove_temp_volume (thread_p, volid, NULL, NULL);
+    }
+  else
+    {
+      error = boot_xremove_perm_volume (thread_p, volid);
+    }
+
+  if (error != NO_ERROR)
+    {
+      /* we didn't unformat, so we recover the status to enable creating new files */
+      (void) disk_cache_enable_new_files (thread_p, volid);
+    }
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  return error;
+}
+
+/*
+ * boot_rv_dump_del_volume () - Dump removal volume information
+ *   return: voild
+ *   length_ignore(in): Length of Recovery Data
+ *   data(in): The data being logged
+ */
+void
+boot_rv_dump_del_volume (FILE * fp, int length_ignore, void *data)
+{
+  fprintf (fp, "Remove volume: Volid = %d\n", *((int *) data));
 }

@@ -241,6 +241,7 @@ extern VFID *file_create_tmp (THREAD_ENTRY * thread_p, VFID * vfid,
 extern VFID *file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid,
 				       INT32 exp_numpages,
 				       const void *file_des);
+extern int file_destroy_cached_tmp (THREAD_ENTRY * thread_p, VOLID volid);
 extern VFID *file_create_queryarea (THREAD_ENTRY * thread_p, VFID * vfid,
 				    INT32 exp_numpages, const void *file_des);
 extern int file_create_hint_numpages (THREAD_ENTRY * thread_p,
@@ -249,6 +250,8 @@ extern int file_create_hint_numpages (THREAD_ENTRY * thread_p,
 extern int file_preserve_temporary (THREAD_ENTRY * thread_p,
 				    const VFID * vfid);
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_destroy_without_reuse (THREAD_ENTRY * thread_p,
+				       const VFID * vfid);
 extern int file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern bool file_does_marked_as_deleted (THREAD_ENTRY * thread_p,
 					 const VFID * vfid);

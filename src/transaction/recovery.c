@@ -39,6 +39,7 @@
 #include "large_object_directory.h"
 #include "large_object.h"
 #include "overflow_file.h"
+#include "boot_sr.h"
 
 /*
  *
@@ -902,7 +903,14 @@ struct rvfun RV_fun[] = {
    "RVES_NOTIFY_VACUUM",
    es_rv_nop,
    es_rv_nop,
-   NULL, NULL}
+   NULL, NULL},
+
+  {RVBO_DELVOL,
+   "RVBO_DELVOL",
+   NULL,
+   boot_rv_del_volume_extension,
+   NULL,
+   boot_rv_dump_del_volume}
 };
 
 /*

@@ -107,6 +107,7 @@ extern VOLID boot_add_auto_volume_extension (THREAD_ENTRY * thread_p,
 extern VOLID boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES npages);
 extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);
 extern int boot_add_temp_volume_and_file (VFID * vfid, DKNPAGES npages);
+
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 				const char *db_name, bool from_backup,
 				bool check_db_coll, BO_RESTART_ARG * r_args);
@@ -151,5 +152,9 @@ extern int boot_compact_start (THREAD_ENTRY * thread_p);
 extern int boot_compact_stop (THREAD_ENTRY * thread_p);
 extern bool boot_can_compact (THREAD_ENTRY * thread_p);
 extern bool boot_set_skip_check_ct_classes (bool val);
+extern int boot_rv_del_volume_extension (THREAD_ENTRY * thread_p,
+					 LOG_RCV * rcv);
+extern void boot_rv_dump_del_volume (FILE * fp, int length_ignore,
+				     void *data);
 
 #endif /* _BOOT_SR_H_ */

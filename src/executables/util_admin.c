@@ -222,6 +222,27 @@ static GETOPT_LONG ua_Addvol_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Delvol_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {DELVOL_VOLUME_ID_S, {ARG_STRING}, {0}},
+  {DELVOL_CLEAR_CACHE_S, {ARG_BOOLEAN}, {0}},
+  {DELVOL_FORCE_S, {ARG_BOOLEAN}, {0}},
+  {DELVOL_DBA_PASSWORD_S, {ARG_STRING}, {0}},
+  {DELVOL_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {DELVOL_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Delvol_Option[] = {
+  {DELVOL_VOLUME_ID_L, 1, 0, DELVOL_VOLUME_ID_S},
+  {DELVOL_CLEAR_CACHE_L, 0, 0, DELVOL_CLEAR_CACHE_S},
+  {DELVOL_FORCE_L, 0, 0, DELVOL_FORCE_S},
+  {DELVOL_DBA_PASSWORD_L, 1, 0, DELVOL_DBA_PASSWORD_S},
+  {DELVOL_SA_MODE_L, 0, 0, DELVOL_SA_MODE_S},
+  {DELVOL_CS_MODE_L, 0, 0, DELVOL_CS_MODE_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_ARG_MAP ua_Space_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {SPACE_OUTPUT_FILE_S, {ARG_STRING}, {0}},
@@ -796,6 +817,8 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_Restore_Option, ua_Restore_Option_Map},
   {ADDVOLDB, SA_CS, 2, UTIL_OPTION_ADDVOLDB, "addvoldb",
    ua_Addvol_Option, ua_Addvol_Option_Map},
+  {DELVOLDB, SA_CS, 2, UTIL_OPTION_DELVOLDB, "delvoldb",
+   ua_Delvol_Option, ua_Delvol_Option_Map},
   {SPACEDB, SA_CS, 1, UTIL_OPTION_SPACEDB, "spacedb",
    ua_Space_Option, ua_Space_Option_Map},
   {LOCKDB, CS_ONLY, 1, UTIL_OPTION_LOCKDB, "lockdb",

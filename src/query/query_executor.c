@@ -195,6 +195,22 @@ enum groupby_dimension_flag
   GROUPBY_DIM_FLAG_SET = 8
 };
 
+typedef enum delete_xasl_cache_flag DELETE_XASL_CACHE_FLAG;
+enum delete_xasl_cache_flag
+{
+  DELETE_XASL_CACHE_NONE = 0,
+  DELETE_XASL_CACHE_FORCE = 1,
+  DELETE_XASL_CACHE_NOT_REUSE = 2
+};
+
+typedef enum remove_xasl_cache_args REMOVE_XASL_CACHE_ARGS;
+enum remove_xasl_cache_args
+{
+  REMOVE_XASL_CACHE_ARG_NOT_REUSE = 0,
+  REMOVE_XASL_CACHE_ARG_VOLID = 1,
+  REMOVE_XASL_CACHE_ARG_LAST = REMOVE_XASL_CACHE_ARG_VOLID
+};
+
 typedef struct groupby_dimension GROUPBY_DIMENSION;
 struct groupby_dimension
 {
@@ -1083,6 +1099,8 @@ static int qexec_select_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data,
 					void *args);
 static int qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data,
 					void *args);
+static int qexec_delete_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p,
+						  void *data, void *args);
 static int qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
 					       void *data, void *args);
 static REGU_VARIABLE *replace_null_arith (REGU_VARIABLE * regu_var,
@@ -18215,10 +18233,16 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
 {
   XASL_CACHE_ENTRY *ent;
   void *last;
+  int args = 0;
 
   if (xasl_ent_cache.max_entries <= 0)
     {
       return NO_ERROR;
+    }
+
+  if (force_remove)
+    {
+      args = DELETE_XASL_CACHE_FORCE;
     }
 
   if (csect_enter (thread_p, CSECT_QPROC_XASL_CACHE, INF_WAIT) != NO_ERROR)
@@ -18240,8 +18264,7 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
 	  /* remove my transaction id from the entry and do compaction */
 	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
 
-	  if (qexec_delete_xasl_cache_ent (thread_p, ent, &force_remove) ==
-	      NO_ERROR)
+	  if (qexec_delete_xasl_cache_ent (thread_p, ent, &args) == NO_ERROR)
 	    {
 	      last = NULL;	/* for mht_get2() */
 	    }
@@ -18344,11 +18367,21 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
   int rc;
   const OID *o;
   int i;
-  int force_delete = 0;
+  int int_args;
+  bool force_delete = false;
+  bool do_not_reuse = false;
 
   if (args)
     {
-      force_delete = *((int *) args);
+      int_args = *((int *) args);
+      if (int_args & DELETE_XASL_CACHE_FORCE)
+	{
+	  force_delete = true;
+	}
+      if (int_args & DELETE_XASL_CACHE_NOT_REUSE)
+	{
+	  do_not_reuse = true;
+	}
     }
 
   if (!ent)
@@ -18411,7 +18444,17 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 				     mht_count (xasl_ent_cache.oid_ht));
 
       /* destroy the temp file of XASL_ID */
-      if (file_destroy (thread_p, &(ent->xasl_id.temp_vfid)) != NO_ERROR)
+      rc = NO_ERROR;
+      if (do_not_reuse)
+	{
+	  rc =
+	    file_destroy_without_reuse (thread_p, &(ent->xasl_id.temp_vfid));
+	}
+      else
+	{
+	  rc = file_destroy (thread_p, &(ent->xasl_id.temp_vfid));
+	}
+      if (rc != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"qexec_delete_xasl_cache_ent: fl_destroy failed for vfid { %d %d }\n",
@@ -18462,6 +18505,48 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 	}
     }
 #endif
+
+  return rc;
+}
+
+/*
+ * qexec_delete_xasl_cache_ent_by_volume () - Delete a XASL cache entry related with the volume
+ *                               Can be used by mht_map_no_key() function
+ *   return:
+ *   data(in)   :
+ *   args(in)   :
+ */
+static int
+qexec_delete_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p, void *data,
+				       void *args)
+{
+  XASL_CACHE_ENTRY *ent = (XASL_CACHE_ENTRY *) data;
+  int rc = NO_ERROR;
+  int arg = 0;
+  int do_not_reuse = 0;
+  VOLID volid;
+
+  if (!ent)
+    {
+      return ER_FAILED;
+    }
+
+  if (args)
+    {
+      do_not_reuse = (VOLID) ((int *) args)[REMOVE_XASL_CACHE_ARG_NOT_REUSE];
+      if (do_not_reuse)
+	{
+	  arg = DELETE_XASL_CACHE_NOT_REUSE;
+	}
+
+      volid = (VOLID) ((int *) args)[REMOVE_XASL_CACHE_ARG_VOLID];
+    }
+
+  if (ent->xasl_id.first_vpid.volid == volid
+      || ent->xasl_id.temp_vfid.volid == volid)
+    {
+      rc = qexec_delete_xasl_cache_ent (thread_p, data, &arg);
+    }
 
   return rc;
 }
@@ -18718,6 +18803,55 @@ qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p)
 
   if (mht_map_no_key (thread_p, xasl_ent_cache.qstr_ht,
 		      qexec_delete_xasl_cache_ent, NULL) != NO_ERROR)
+    {
+      rc = ER_FAILED;
+    }
+
+#if defined (SERVER_MODE)
+  if (xasl_ent_cache.mark_deleted_list)
+    {
+      (void) qexec_remove_mark_deleted_xasl_entries (thread_p,
+						     xasl_ent_cache.num);
+    }
+#endif
+
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
+
+  return rc;
+}
+
+/*
+ * qexec_remove_xasl_cache_ent_by_volume () - Remove all XASL cache entries related with the volid
+ *   return: NO_ERROR, or ER_code
+ */
+int
+qexec_remove_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p,
+				       VOLID volid, bool do_not_reuse)
+{
+  int rc;
+  int args[REMOVE_XASL_CACHE_ARG_LAST] = { 0, };
+
+  if (xasl_ent_cache.max_entries <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  args[REMOVE_XASL_CACHE_ARG_VOLID] = (int) volid;
+  if (do_not_reuse)
+    {
+      args[REMOVE_XASL_CACHE_ARG_NOT_REUSE] = 1;
+    }
+
+  rc = NO_ERROR;		/* init */
+
+  if (csect_enter (thread_p, CSECT_QPROC_XASL_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (mht_map_no_key (thread_p, xasl_ent_cache.qstr_ht,
+		      qexec_delete_xasl_cache_ent_by_volume,
+		      args) != NO_ERROR)
     {
       rc = ER_FAILED;
     }

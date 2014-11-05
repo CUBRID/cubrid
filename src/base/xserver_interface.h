@@ -79,8 +79,11 @@ extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,
 				       int num_oids, BTID * index_btid);
 extern VOLID xboot_add_volume_extension (THREAD_ENTRY * thread_p,
 					 DBDEF_VOL_EXT_INFO * ext_info);
+extern int xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
+				       bool clear_cached);
 extern int xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p);
 extern int xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p);
+extern VOLID xboot_find_last_permanent (THREAD_ENTRY * thread_p);
 extern VOLID xboot_find_last_temp (THREAD_ENTRY * thread_p);
 
 extern LC_FIND_CLASSNAME xlocator_reserve_class_names (THREAD_ENTRY *
@@ -333,6 +336,8 @@ extern DKNPAGES xdisk_get_total_numpages (THREAD_ENTRY * thread_p,
 					  VOLID volid);
 extern DKNPAGES xdisk_get_free_numpages (THREAD_ENTRY * thread_p,
 					 VOLID volid);
+extern bool xdisk_is_volume_exist (THREAD_ENTRY * thread_p, VOLID volid);
+
 extern char *xdisk_get_remarks (THREAD_ENTRY * thread_p, VOLID volid);
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid,
 				 char *vol_fullname);

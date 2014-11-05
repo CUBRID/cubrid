@@ -4060,6 +4060,49 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * sboot_del_volume_extension -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sboot_del_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
+			    char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int tmp;
+  int success;
+  VOLID volid;
+  bool clear_cached = false;
+
+  ptr = or_unpack_int (request, &tmp);
+  volid = (VOLID) tmp;
+  ptr = or_unpack_int (ptr, &tmp);
+  if (tmp)
+    {
+      clear_cached = true;
+    }
+
+  success = xboot_del_volume_extension (thread_p, volid, clear_cached);
+  if (success != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_int (reply, success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+
+/*
  * sboot_check_db_consistency -
  *
  * return:
@@ -4175,6 +4218,32 @@ sboot_find_number_temp_volumes (THREAD_ENTRY * thread_p, unsigned int rid,
   nvols = xboot_find_number_temp_volumes (thread_p);
 
   (void) or_pack_int (reply, nvols);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sboot_find_last_permanent -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sboot_find_last_permanent (THREAD_ENTRY * thread_p, unsigned int rid,
+			   char *request, int reqlen)
+{
+  VOLID volid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  volid = xboot_find_last_permanent (thread_p);
+
+  (void) or_pack_int (reply, (int) volid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -5696,6 +5765,40 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     {
       db_private_free_and_init (thread_p, area);
     }
+}
+
+/*
+ * sdisk_is_volume_exist -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid,
+		       char *request, int reqlen)
+{
+  VOLID volid;
+  int int_volid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int area_length;
+  int exist = 0;
+
+  (void) or_unpack_int (request, &int_volid);
+  volid = (VOLID) int_volid;
+  if (xdisk_is_volume_exist (thread_p, volid))
+    {
+      exist = 1;
+    }
+
+  (void) or_pack_int (reply, exist);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*

@@ -190,6 +190,7 @@ extern VOLID disk_add_auto_volume_extension (THREAD_ENTRY * thread_p,
 					     DKNPAGES min_npages,
 					     DISK_SETPAGE_TYPE setpage_type,
 					     DISK_VOLPURPOSE vol_purpose);
+extern int disk_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid);
 extern VOLID disk_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
 				INT16 undesirable_volid, INT32 exp_numpages,
 				DISK_SETPAGE_TYPE setpage_type,
@@ -207,6 +208,9 @@ extern int disk_expand_perm (THREAD_ENTRY * thread_p, INT16 volid,
 extern VOLID disk_cache_get_auto_extend_volid (THREAD_ENTRY * thread_p);
 extern int disk_cache_set_auto_extend_volid (THREAD_ENTRY * thread_p,
 					     VOLID volid);
+extern int disk_cache_disable_new_files (THREAD_ENTRY * thread_p,
+					 VOLID volid);
+extern int disk_cache_enable_new_files (THREAD_ENTRY * thread_p, VOLID volid);
 extern int disk_reinit_all_tmp (THREAD_ENTRY * thread_p);
 
 extern INT32 disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
@@ -289,6 +293,7 @@ extern SCAN_CODE disk_volume_header_next_scan (THREAD_ENTRY * thread_p,
 					       int cursor,
 					       DB_VALUE ** out_values,
 					       int out_cnt, void *ctx);
+extern bool disk_is_empty_volume (THREAD_ENTRY * thread_p, INT16 volid);
 
 extern int disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv);

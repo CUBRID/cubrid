@@ -1237,7 +1237,8 @@ $ LOADDB
 1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
 1169 Partition key attributes must be present in the index key.
 1170 Failed to flush replication items (error code : %1$d).
-1171 Last Error
+1171 The volume %1$d is not empty, so it cannot be removed.
+1172 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

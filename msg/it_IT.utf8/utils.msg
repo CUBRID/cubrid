@@ -71,6 +71,7 @@ $       50      prefetchlogdb
 $       51      gen_tz
 $       52      dump_tz
 $       53      restoreslave
+$       54      delvoldb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lunghezza non valida o un carattere '%1$c' non valido nel nome del database '%2$s'\n
@@ -157,6 +158,7 @@ Utilità amministrazione disponibili:\n\
     copydb\n\
     createdb\n\
     deletedb\n\
+    delvoldb\n\
     diagdb\n\
     installdb\n\
     tranlist\n\
@@ -1156,4 +1158,22 @@ valid options:\n\
   -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
   -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+
+$set 54 MSGCAT_UTIL_SET_DELVOLDB
+21 Ready to remove the following volumes:\n\n
+22 Do you wish to proceed ? (Y/N)
+31 Cannot remove system volume or the first volume (Volid : %1$d).\n
+32 Cannot find the volume (Volid : %1$d).\n
+33 There are too many Volids (Max Volids : %1$d).\n
+34 Invalid Volid(%1$s).\n
+60 \
+delvoldb: Remove a empty volume-file of the database.\n\
+usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+\n\
+valid options:\n\
+  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
+  -f, --force                      remove the volume without a prompt for verification\n\
+  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
+  -S, --SA-mode                    stand-alone mode execution\n\
+  -C, --CS-mode                    client-server mode execution\n
 

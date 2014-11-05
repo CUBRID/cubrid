@@ -1496,7 +1496,9 @@
 
 #define ER_LC_FAILED_TO_FLUSH_REPL_ITEMS            -1170
 
-#define ER_LAST_ERROR                               -1171
+#define ER_NOT_A_EMPTY_VOLUME                       -1171
+
+#define ER_LAST_ERROR                               -1172
 /*
  * CAUTION!
  *

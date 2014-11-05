@@ -209,6 +209,9 @@ extern void sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void sboot_add_volume_extension (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
+extern void sboot_del_volume_extension (THREAD_ENTRY * thread_p,
+					unsigned int rid, char *request,
+					int reqlen);
 extern void sboot_check_db_consistency (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
@@ -218,6 +221,9 @@ extern void sboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p,
 extern void sboot_find_number_temp_volumes (THREAD_ENTRY * thread_p,
 					    unsigned int rid, char *request,
 					    int reqlen);
+extern void sboot_find_last_permanent (THREAD_ENTRY * thread_p,
+				       unsigned int rid, char *request,
+				       int reqlen);
 extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -245,9 +251,8 @@ extern void slargeobjmgr_compress (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen);
 extern void slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid,
 				 char *request, int reqlen);
-extern void sqst_update_statistics (THREAD_ENTRY * thread_p,
-				    unsigned int rid, char *request,
-				    int reqlen);
+extern void sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
+				    char *request, int reqlen);
 extern void sqst_update_all_statistics (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
@@ -287,6 +292,8 @@ extern void sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p,
 					      int reqlen);
 extern void sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen);
+extern void sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid,
+				   char *request, int reqlen);
 extern void sqfile_get_list_file_page (THREAD_ENTRY * thread_p,
 				       unsigned int rid, char *request,
 				       int reqlen);
