@@ -11971,7 +11971,6 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   assert (key != NULL);
   assert (oid != NULL);
   assert (unique != NULL);
-  assert (file_is_new_file (thread_p, &btid->vfid) == FILE_OLD_FILE);
 
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
@@ -18327,7 +18326,6 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   MVCC_REC_HEADER mvcc_local_rec_header;
 
   assert (key != NULL);
-  assert (file_is_new_file (thread_p, &btid->vfid) == FILE_OLD_FILE);
 
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
@@ -29011,8 +29009,6 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
       return -1;
     }
 #endif
-
-  assert (file_is_new_file (thread_p, &btid->vfid) == FILE_OLD_FILE);
 
   if (mvcc_Enabled)
     {
