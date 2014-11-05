@@ -170,6 +170,7 @@ static PARSER_VARCHAR *obj_print_identifier (PARSER_CONTEXT * parser,
 static char *obj_print_describe_attribute (MOP class_p,
 					   PARSER_CONTEXT * parser,
 					   SM_ATTRIBUTE * attribute_p,
+					   bool is_inherited,
 					   OBJ_PRINT_TYPE prt_type,
 					   bool force_print_collation);
 static char *obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
@@ -610,6 +611,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *  class_p(in) : class being examined
  *  parser(in) :
  *  attribute_p(in) : attribute of the class
+ *  is_inherited(in) : is the attribute inherited 
  *  prt_type(in): the print type: csql schema or show create table
  *  obj_print_describe_attribute(in):
  *
@@ -618,6 +620,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 static char *
 obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 			      SM_ATTRIBUTE * attribute_p,
+			      bool is_inherited,
 			      OBJ_PRINT_TYPE prt_type,
 			      bool force_print_collation)
 {
@@ -666,24 +669,27 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " AUTO_INCREMENT ");
 
-	  assert (attribute_p->auto_increment != NULL);
+	  assert (is_inherited || attribute_p->auto_increment != NULL);
+
 	  if (prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
 	    {
 	      DB_VALUE min_val, inc_val;
 	      char buf[DB_MAX_NUMERIC_PRECISION * 2 + 4];
 	      int offset;
 
+	      assert (attribute_p->auto_increment != NULL);
+
 	      DB_MAKE_NULL (&min_val);
 	      DB_MAKE_NULL (&inc_val);
-	      if (db_get (attribute_p->auto_increment, "min_val", &min_val) !=
-		  NO_ERROR)
+
+	      if (db_get (attribute_p->auto_increment, "min_val",
+			  &min_val) != NO_ERROR)
 		{
 		  return NULL;
 		}
 
-	      if (db_get
-		  (attribute_p->auto_increment, "increment_val",
-		   &inc_val) != NO_ERROR)
+	      if (db_get (attribute_p->auto_increment, "increment_val",
+			  &inc_val) != NO_ERROR)
 		{
 		  pr_clear_value (&min_val);
 		  return NULL;
@@ -1962,6 +1968,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		    {
 		      description =
 			obj_print_describe_attribute (op, parser, a,
+						      (a->class_mop != op),
 						      prt_type,
 						      force_print_att_coll);
 		      if (description == NULL)
@@ -2014,6 +2021,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		    {
 		      description =
 			obj_print_describe_attribute (op, parser, a,
+						      (a->class_mop != op),
 						      prt_type,
 						      force_print_att_coll);
 		      if (description == NULL)
