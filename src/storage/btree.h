@@ -123,6 +123,7 @@ struct btid_int
   int copy_buf_len;		/* index key copy_buf length info;
 				 * derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
+  int new_file;			/* if it is new index */
   OID topclass_oid;		/* class oid for which index is created */
 };
 
