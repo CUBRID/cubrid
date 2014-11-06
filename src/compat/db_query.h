@@ -247,4 +247,9 @@ extern int db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void db_final_client_query_result (void);
 #endif
+
+extern void db_set_execution_plan (char *plan, int length);
+extern char *db_get_execution_plan (void);
+extern void db_free_execution_plan (void);
+
 #endif /* _DB_QUERY_H_ */

@@ -55,7 +55,6 @@
 #endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
-#include "network_interface_cl.h"
 #include "connection_support.h"
 #include "trigger_manager.h"
 #if !defined(CS_MODE)

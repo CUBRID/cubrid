@@ -65,9 +65,6 @@ struct trans_info
   ONE_TRAN_INFO tran[1];	/* really [num_trans] */
 };
 
-extern void db_set_execution_plan (char *plan, int length);
-extern char *db_get_execution_plan (void);
-extern void db_free_execution_plan (void);
 extern int locator_fetch (OID * oidp, int chn, LOCK lock,
 			  LC_FETCH_TYPE fetch_type, OID * class_oid,
 			  int class_chn, int prefetch,

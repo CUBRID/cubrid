@@ -51,6 +51,8 @@
                         (t) != T_OBJFETCH && \
                         (t) != T_GET)
 
+#define PLAN_BUF_INITIAL_LENGTH (1024)
+
 /* A resource mechanism used to effectively handle memory allocation for the
    query result structures. */
 struct alloc_resource
@@ -78,6 +80,9 @@ static const int QP_QRES_LIST_INIT_CNT = 10;
 			       /* query result list initial cnt */
 static const float QP_QRES_LIST_INC_RATE = 1.25f;
 			   /* query result list increment ratio */
+
+static char *db_Execution_plan = NULL;
+static int db_Execution_plan_length = -1;
 
 static DB_QUERY_RESULT *allocate_query_result (void);
 static void free_query_result (DB_QUERY_RESULT * q_res);
@@ -3858,4 +3863,96 @@ db_query_plan_dump_file (char *filename)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * db_set_execution_plan
+ *   plan(in):
+ *   length(in):
+ *
+ * return:
+ *
+ */
+void
+db_set_execution_plan (char *plan, int length)
+{
+  int null_padded_length = 0;
+
+  if (plan == NULL)
+    {
+      if (db_Execution_plan != NULL)
+	{
+	  db_Execution_plan[0] = '\0';
+	}
+      return;
+    }
+
+  null_padded_length = length + 1;
+
+  if (db_Execution_plan == NULL)
+    {
+      db_Execution_plan_length = PLAN_BUF_INITIAL_LENGTH;
+      while (db_Execution_plan_length < null_padded_length)
+	{
+	  db_Execution_plan_length *= 2;
+	}
+      db_Execution_plan =
+	(char *) malloc (db_Execution_plan_length * sizeof (char));
+    }
+  else if (db_Execution_plan_length < null_padded_length)
+    {
+      while (db_Execution_plan_length < null_padded_length)
+	{
+	  db_Execution_plan_length *= 2;
+	}
+
+      free (db_Execution_plan);
+
+      db_Execution_plan =
+	(char *) malloc (db_Execution_plan_length * sizeof (char));
+    }
+
+  if (db_Execution_plan == NULL)
+    {
+      db_Execution_plan_length = -1;
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, db_Execution_plan_length);
+      return;
+    }
+
+  strncpy (db_Execution_plan, plan, length);
+  db_Execution_plan[length] = '\0';
+}
+
+/*
+ * db_get_execution_plan
+ *
+ * return:
+ *
+ */
+char *
+db_get_execution_plan (void)
+{
+  if (db_Execution_plan == NULL)
+    {
+      return NULL;
+    }
+
+  return db_Execution_plan;
+}
+
+/*
+ * db_free_execution_plan :
+ *
+ * return:
+ *
+ */
+void
+db_free_execution_plan (void)
+{
+  if (db_Execution_plan != NULL)
+    {
+      free_and_init (db_Execution_plan);
+      db_Execution_plan_length = -1;
+    }
 }
