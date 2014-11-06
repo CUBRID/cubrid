@@ -6175,12 +6175,6 @@ ldr_init_loader (LDR_CONTEXT * context)
   ldr_act = ldr_act_attr;
 
   /*
-   * Don't gc if we have to grow the mop blocks; just grow them without
-   * thinking.
-   */
-  ws_gc_disable ();
-
-  /*
    * Optimization to avoid calling db_value_domain_init all of the time
    * during loading; we can simply copy these templates much more cheaply.
    */

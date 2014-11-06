@@ -2464,7 +2464,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_GC_ENABLE,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_DEPRECATED),
    PRM_BOOLEAN,
    (void *) &prm_gc_enable_flag,
    (void *) &prm_gc_enable_default,

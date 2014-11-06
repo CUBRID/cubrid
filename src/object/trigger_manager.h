@@ -367,8 +367,6 @@ extern int tr_merge_schema_cache (TR_SCHEMA_CACHE * destination,
 extern int tr_empty_schema_cache (TR_SCHEMA_CACHE * cache);
 extern void tr_free_schema_cache (TR_SCHEMA_CACHE * cache);
 
-extern void tr_gc_schema_cache (TR_SCHEMA_CACHE * cache,
-				void (*gcmarker) (MOP));
 extern int tr_get_cache_objects (TR_SCHEMA_CACHE * cache, DB_OBJLIST ** list);
 extern int tr_validate_schema_cache (TR_SCHEMA_CACHE * cache, MOP class_mop);
 

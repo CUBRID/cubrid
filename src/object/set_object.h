@@ -138,9 +138,6 @@ struct setobj
   /* external reference list */
   DB_COLLECTION *references;
 
-  /* to prevent objects in disconnected sets from being gc'd */
-  struct db_object *gc_kludge;
-
   /* clear if we can't guarentee sort order, always on for sequences */
   unsigned sorted:1;
 
@@ -285,8 +282,6 @@ extern int set_iterator_finished (SET_ITERATOR * it);
 
 #if !defined(SERVER_MODE)
 extern int setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset);
-extern void setobj_gc (SETOBJ * set, void (*gcmarker) (MOP));
-extern void set_gc (SETREF * ref, void (*gcmarker) (MOP));
 #endif /* SERVER_MODE */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -332,7 +327,6 @@ extern void setobj_put_domain (COL * set, TP_DOMAIN * domain);
 extern int setobj_put_value (COL * col, int index, DB_VALUE * value);
 extern DB_COLLECTION *setobj_get_reference (COL * set);
 extern int setobj_release (COL * set);
-extern void setobj_assigned (COL * col);
 extern int setobj_build_domain_from_col (COL * col, TP_DOMAIN ** set_domain);
 
 #endif /* _SET_OBJECT_H_ */

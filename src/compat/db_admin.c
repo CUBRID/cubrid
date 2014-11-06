@@ -1179,10 +1179,6 @@ db_abort_transaction (void)
   /*CHECK_MODIFICATION_ERROR (); */
 
   error = tran_abort ();
-  if (error == NO_ERROR)
-    {
-      ws_gc ();
-    }
 
   return (error);
 }
@@ -1266,11 +1262,6 @@ db_abort_to_savepoint_internal (const char *savepoint_name)
     }
 
   error = tran_abort_upto_user_savepoint (savepoint_name);
-
-  if (error == NO_ERROR)
-    {
-      ws_gc ();
-    }
 
   return (error);
 }

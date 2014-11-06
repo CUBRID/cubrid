@@ -608,37 +608,6 @@ vid_allflush (void)
   return return_code;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * vid_gc_vmop() - Do GC on the VID portion of a vmop.
- *    return: none
- *    mop(in): marked that has been marked as referenced
- *    gcmarker(in): function to call to mark other mops
- */
-void
-vid_gc_vmop (MOP mop, void (*gcmarker) (MOP))
-{
-  VID_INFO *mop_vid_info;
-
-  if (!mop->is_vid)
-    {
-      return;
-    }
-
-  mop_vid_info = mop->oid_info.vid_info;
-
-  if (mop_vid_info)
-    {
-      pr_gc_value (&mop_vid_info->keys, gcmarker);
-    }
-
-  if (mop->object)
-    {
-      sm_gc_object (mop, gcmarker);
-    }
-}				/* vid_gc_vmop */
-#endif
-
 /*
  * vid_add_virtual_instance() - INSERT A VIRTUAL OBJECT VIRTUAL INSTANCE
  *

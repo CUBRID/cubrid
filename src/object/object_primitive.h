@@ -362,15 +362,6 @@ extern void pr_free_string (char *str);
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
 extern char *pr_valstring (DB_VALUE *);
 
-/* Garbage collection support */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void pr_gc_set (SETOBJ * set, void (*gcmarker) (MOP));
-extern void pr_gc_setref (SETREF * set, void (*gcmarker) (MOP));
-extern void pr_gc_value (DB_VALUE * value, void (*gcmarker) (MOP));
-extern void pr_gc_type (PR_TYPE * type, char *mem, void (*gcmarker) (MOP));
-#endif
-
 /* area init */
 extern void pr_area_init (void);
 

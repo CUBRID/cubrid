@@ -7763,7 +7763,6 @@ mr_setmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	      error = setobj_release (*mem);
 	    }
 	  *mem = set;
-	  setobj_assigned (set);
 	}
     }
   else
@@ -8100,7 +8099,6 @@ mr_data_readmem_set (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 	  if (set != NULL)
 	    {
 	      *mem = set;
-	      setobj_assigned (set);
 	    }
 	  else
 	    {
@@ -10777,80 +10775,6 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
     }
   (*(type->data_writeval)) (buf, value);
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * GARBAGE COLLECTION SUPPORT
- */
-#if !defined (SERVER_MODE)
-
-void
-pr_gc_set (SETOBJ * set, void (*gcmarker) (MOP))
-{
-  setobj_gc (set, gcmarker);
-}
-
-void
-pr_gc_setref (SETREF * set, void (*gcmarker) (MOP))
-{
-  set_gc (set, gcmarker);
-}
-
-/*
- * pr_gc_value - Perform gc marking on the contents of a value.
- *    return: none
- *    value(in): value to check
- *    gcmarker(in): marker function
- * Note:
- *    This could be broken down into type specific handlers in the
- *    PR_TYPE structure but there are only two.
- */
-void
-pr_gc_value (DB_VALUE * value, void (*gcmarker) (MOP))
-{
-  if (value != NULL)
-    {
-      if (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_OBJECT)
-	{
-	  (*gcmarker) (DB_GET_OBJECT (value));
-	}
-      else if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (value)))
-	{
-	  pr_gc_setref (db_get_set (value), gcmarker);
-	}
-    }
-}
-
-
-/*
- * pr_gc_type - Perform gc marking on an attribute value.
- *    return: none
- *    type(in): type descriptor
- *    mem(in): pointer to attribute memory
- *    gcmarker(in): marker function
- * Note:
- *    Similar to pr_gc_value except we have to handle the
- *    special case MOID.  Could be broken out into the primitive type
- *    handlers structures.
- */
-void
-pr_gc_type (PR_TYPE * type, char *mem, void (*gcmarker) (MOP))
-{
-  WS_MEMOID *moid;
-
-  if (pr_is_set_type (type->id))
-    {
-      pr_gc_set (*((SETOBJ **) mem), gcmarker);
-    }
-  else if (type == tp_Type_object)
-    {
-      moid = (WS_MEMOID *) mem;
-      if (moid->pointer != NULL)
-	(*gcmarker) (moid->pointer);
-    }
-}
-#endif /* !SERVER_MODE */
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * MISCELLANEOUS TYPE-RELATED HELPER FUNCTIONS

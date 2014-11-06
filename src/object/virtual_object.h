@@ -61,7 +61,6 @@ extern bool vid_is_base_instance (MOP mop);
 extern MOP vid_base_instance (MOP mop);
 extern bool vid_att_in_obj_id (SM_ATTRIBUTE * attribute_p);
 #if defined(ENABLE_UNUSED_FUNCTION)
-extern void vid_gc_vmop (MOP mop, void (*gcmarker) (MOP));
 extern int vid_set_att_obj_id (const char *class_name,
 			       SM_ATTRIBUTE * attribute_p, int id_no);
 extern int vid_record_update (MOP mop, SM_CLASS * class_p,

@@ -110,9 +110,6 @@ typedef struct loader_state
   int value_count;
   int maxval;
   DB_VALUE *values;
-#if 0
-  DB_GC_CALLBACK_TICKET ticket;
-#endif
 
   /* temporary state during set population */
   DB_SET *set;
@@ -1515,19 +1512,6 @@ realloc_values (void)
       vals = malloc (sizeof (DB_VALUE) * newmax);
       if (vals == NULL)
 	return 0;
-
-#if 0
-      if (Loader.ticket)
-	{
-	  (void) mgc_unregister_callback (Loader.ticket, true);
-	  Loader.ticket = 0;
-	}
-      (void) mgc_register_callback (DB_GC_PHASE_MARK,
-				    db_gc_scan_region,
-				    (void *) vals,
-				    (sizeof (DB_VALUE) * newmax),
-				    &Loader.ticket, true);
-#endif
 
       for (i = 0; i < Loader.value_count; i++)
 	vals[i] = Loader.values[i];

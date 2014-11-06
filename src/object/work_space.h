@@ -296,19 +296,11 @@ typedef int (*MAPFUNC) (MOP mop, void *args);
 typedef struct ws_statistics WS_STATISTICS;
 struct ws_statistics
 {
-
-  int gcs;			/* number of garbage collections */
-
   int mops_allocated;		/* total number of mops allocated */
   int mops_freed;		/* total reclaimed mops */
-  int mops_last_gc;		/* number of mops freed during last gc */
 
   int refmops_allocated;
   int refmops_freed;
-  int refmops_last_gc;
-
-  int bytes_last_gc;
-  int bytes_total_gc;
 
   int dirty_list_emergencies;
   int corruptions;
@@ -324,7 +316,6 @@ struct ws_statistics
 
   int temp_mops_allocated;
   int temp_mops_freed;
-
 };
 
 
@@ -514,7 +505,6 @@ struct ws_mop_table_entry
 extern WS_MOP_TABLE_ENTRY *ws_Mop_table;
 extern unsigned int ws_Mop_table_size;
 extern MOP ws_Reference_mops;
-extern MOP ws_Set_mops;
 extern DB_OBJLIST *ws_Resident_classes;
 extern MOP ws_Commit_mops;
 extern WS_STATISTICS ws_Stats;
@@ -557,19 +547,10 @@ extern void ws_set_reference_mop_owner (MOP refmop, MOP owner, int attid);
 
 /* Set mops */
 extern MOP ws_make_set_mop (void *setptr);
-extern void ws_free_set_mop (MOP op);
 
 /* Temp MOPs */
 extern MOP ws_make_temp_mop (void);
 extern void ws_free_temp_mop (MOP op);
-
-/* garbage collection support */
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void ws_gc_mop (MOP mop, void (*gcmarker) (MOP));
-#endif
-extern void ws_gc (void);
-extern void ws_gc_enable (void);
-extern void ws_gc_disable (void);
 
 /* Dirty list maintenance */
 extern void ws_dirty (MOP op);

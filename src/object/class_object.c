@@ -8406,12 +8406,7 @@ classobj_make_desclist (MOP classobj, SM_CLASS * class_,
 {
   SM_DESCRIPTOR_LIST *dl;
 
-  /* These are released to the application so they should
-     serve as GC roots so use malloc. Since classes aren't
-     currently GC'd this isn't really necessary. */
-
   dl = (SM_DESCRIPTOR_LIST *) malloc (sizeof (SM_DESCRIPTOR_LIST));
-
   if (dl == NULL)
     {
       return NULL;
@@ -8494,12 +8489,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
   SM_DESCRIPTOR *desc;
   SM_VALIDATION *valid;
 
-  /* These are released to the application so they should
-     serve as GC roots so use malloc. Since classes aren't
-     currently GC'd this isn't really necessary. */
-
   desc = (SM_DESCRIPTOR *) malloc (sizeof (SM_DESCRIPTOR));
-
   if (desc == NULL)
     {
       return NULL;

@@ -1379,9 +1379,6 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
   int rc = NO_ERROR;
   int offset_size;
 
-  /* garbage collection not allowed while we do this */
-  ws_gc_disable ();
-
   buf = &orep;
   or_init (buf, record->data, record->length);
   buf->error_abort = 1;
@@ -1475,9 +1472,6 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 	}
       break;
     }
-
-  /* restore gc */
-  ws_gc_enable ();
 
   buf->error_abort = 0;
   return (obj);
@@ -4447,9 +4441,6 @@ tf_disk_to_class (OID * oid, RECDES * record)
 
   assert (oid != NULL && !OID_ISNULL (oid));
 
-  /* garbage collection not allowed while we do this */
-  ws_gc_disable ();
-
   /* should we assume this ? */
   if (!tf_Metaclass_class.n_variable)
     {
@@ -4502,8 +4493,6 @@ tf_disk_to_class (OID * oid, RECDES * record)
       break;
     }
 
-  /* restore gc */
-  ws_gc_enable ();
   sm_bump_global_schema_version ();
 
   buf->error_abort = 0;

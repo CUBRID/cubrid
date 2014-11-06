@@ -822,7 +822,6 @@ col_new (long size, int settype)
       /* maintain original structure members */
       col->domain = NULL;
       col->references = NULL;
-      col->gc_kludge = NULL;
 
       /* newer structure members */
       col->coltype = (DB_TYPE) settype;
@@ -846,22 +845,6 @@ col_new (long size, int settype)
 	  return NULL;
 	}
       col->size = 0;
-
-#if !defined(SERVER_MODE)
-      if (!db_on_server)
-	{
-	  if (ws_Mop_table != NULL)
-	    {
-	      /* we have a workspace, add a GC root MOP */
-	      col->gc_kludge = ws_make_set_mop (col);
-	      if (col->gc_kludge == NULL)
-		{
-		  setobj_free (col);
-		  col = NULL;
-		}
-	    }
-	}
-#endif
 
       /* initialize the domain with one of the built in domain structures */
       if (col)
@@ -2461,33 +2444,6 @@ set_change_owner (DB_COLLECTION * ref, MOP owner, int attid,
 #endif
   return (new_);
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-#if !defined(SERVER_MODE)
-/* GARBAGE COLLECTION SUPPORT */
-
-/*
- * set_gc() -
- *      return: none
- *  ref(in) :
- *  gcmarker(in) :
- *
- */
-
-void
-set_gc (SETREF * ref, void (*gcmarker) (MOP))
-{
-  if (ref != NULL)
-    {
-      setobj_gc (ref->set, gcmarker);
-
-      /* Would normally mark the owner here, but since we have to do it in
-       * pr_gc_set to handle the unattached set MOPs, let it be done there.
-       */
-    }
-}
-#endif /* SERVER_MODE */
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* SET REFERENCE SHELLS */
 /* These are shell functions that resolve a set reference through a
@@ -4550,12 +4506,6 @@ setobj_free (COL * col)
       while (r != start);
     }
 
-#if !defined(SERVER_MODE)
-  if (col->gc_kludge != NULL)
-    {
-      ws_free_set_mop (col->gc_kludge);
-    }
-#endif
   area_free (Set_Obj_Area, col);
 }
 
@@ -6548,103 +6498,10 @@ setobj_release (COL * set)
   else
     {
       error = set_disconnect (set->references);	/* disconnect references */
-
-      /* make a new gc mop handle so the set serves as a root,
-         note that this CANNOT be done in set_disconnect because that function
-         is called after the set pointer has been changed in instance memory.
-         That would leave a small window where the set would be disconnected
-         from the object but without a gc handle.  setobj_release will be
-         called by mr_setmem_set immediately prior to changing the pointer
-         in instance memory */
-
-      set->gc_kludge = NULL;
-#if !defined(SERVER_MODE)
-      if (db_on_server)
-	{
-	  return error;
-	}
-
-      if (ws_Mop_table != NULL)
-	{
-	  /* we have a workspace, add a GC root MOP */
-	  set->gc_kludge = ws_make_set_mop (set);
-	}
-
-      if (set->gc_kludge == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-#endif
     }
 
   return (error);
 }
-
-/*
- * setobj_assigned() -
- *      return: none
- *  col(in) : collection object
- *
- * Note :
- *    This is called immediately after a set pointer has been assigned
- *    to instance memory.
- *    This removes the gc kludge MOP if one exists.
- *    This must be done AFTER the pointer has been changed or else there
- *    will be a small window when the set has no gc handle and has yet to
- *    be assigned into instance memory.
- */
-
-void
-setobj_assigned (COL * col)
-{
-#if !defined(SERVER_MODE)
-  if (col->gc_kludge != NULL)
-    {
-      ws_free_set_mop (col->gc_kludge);
-      col->gc_kludge = NULL;
-    }
-#endif
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-#if !defined(SERVER_MODE)
-/* GARBAGE COLLECTION SUPPORT */
-
-/*
- * setobj_gc()
- *      return: none
- *  set(in) : set to sweep over
- *  gcmarker(in) : marker function
- *
- */
-
-void
-setobj_gc (SETOBJ * set, void (*gcmarker) (MOP))
-{
-  DB_VALUE *value;
-  int i, set_size;
-
-  if (set == NULL)
-    {
-      return;
-    }
-  set_size = setobj_size (set);
-  for (i = 0; i < set_size; i++)
-    {
-      setobj_get_element_ptr (set, i, &value);
-      pr_gc_value (value, gcmarker);
-    }
-
-  /* mark the owner, do we have any reference handles ? */
-  if (set->references != NULL && set->references->owner != NULL)
-    {
-      (*gcmarker) (set->references->owner);
-    }
-}
-
-#endif
-#endif
 
 /*
  * setobj_build_domain_from_col() - builds a set domain (a chained list of 

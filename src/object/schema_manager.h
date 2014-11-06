@@ -269,10 +269,6 @@ extern int sm_flush_for_multi_update (MOP class_mop);
 
 /* Workspace & Garbage collection functions */
 extern int sm_issystem (SM_CLASS * class_);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void sm_gc_class (MOP mop, void (*gcmarker) (MOP));
-extern void sm_gc_object (MOP mop, void (*gcmarker) (MOP));
-#endif
 
 
 /* Trigger support */

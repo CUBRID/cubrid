@@ -2539,27 +2539,6 @@ tr_drop_cache_trigger (TR_SCHEMA_CACHE * cache, DB_OBJECT * trigger_object)
 }
 
 /*
- * tr_gc_schema_cache() - This is called by the schema manager gc markers
- *                        to walk the trigger caches
- *    return: none
- *    cache(in): cache structure
- *    gcmarker(in): marker function
- *
- * Note:
- *    Since we currently keep triggers in the global mapping table which
- *    is also in non-workspace memory, we don't really have to do anything
- *    here.  If this should change, we need to mark all the MOPs
- *    in the cache's object list.
- *    Also the trigger structures themselves will also contain a pointer
- *    to their MOPs and these are allocated with malloc so they will
- *    already be marked.
- */
-void
-tr_gc_schema_cache (TR_SCHEMA_CACHE * cache, void (*gcmarker) (MOP))
-{
-}
-
-/*
  * tr_get_cache_objects() - This builds an object list for all of the triggers
  *                          found in a schema cache.
  *    return: error code

@@ -64,7 +64,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib jansson.lib libgcrypt.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib libregex38a.lib libexpat.lib jansson.lib libgcrypt.lib"
 				AdditionalLibraryDirectories="$(JAVA_HOME)\lib;..\external\lib;..\..\win\external\dll\win32\"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="libcubrid.def"
@@ -141,7 +141,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib jansson64.lib libgcrypt.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib libregex38a.lib libexpat.lib jansson64.lib libgcrypt.lib"
 				AdditionalLibraryDirectories="..\external\lib64;..\..\win\external\dll\x64\"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="libcubrid.def"
@@ -218,7 +218,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib jansson.lib libgcrypt.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib libregex38a.lib libexpat.lib jansson.lib libgcrypt.lib"
 				AdditionalLibraryDirectories="$(JAVA_HOME)\lib;..\external\lib;..\..\win\external\dll\win32\"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="libcubrid.def"
@@ -298,7 +298,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib jansson64.lib libgcrypt.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib libregex38a.lib libexpat.lib jansson64.lib libgcrypt.lib"
 				AdditionalLibraryDirectories="..\external\lib64;..\..\win\external\dll\x64\"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="libcubrid.def"

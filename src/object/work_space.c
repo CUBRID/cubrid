@@ -24,7 +24,6 @@
 #ident "$Id$"
 
 #include "config.h"
-#include "gc.h"			/* external/gc6.7 */
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -97,15 +96,6 @@ MOP ws_Reference_mops = NULL;
 
 
 /*
- * ws_Set_mops
- *    Linked list of set MOPs.
- *    This is a temporary solution for the disconnected set GC problem.
- *    All MOPs in this list are to serve as roots for the garbage collector.
- */
-
-MOP ws_Set_mops = NULL;
-
-/*
  * ws_Resident_classes
  *    This is a global list of resident class objects.
  *    Since the root of the class' resident instance list is kept in
@@ -122,15 +112,9 @@ DB_OBJLIST *ws_Resident_classes = NULL;
  *    This contains random information about the state of the workspace.
  */
 
-WS_STATISTICS ws_Stats =
-  { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 int ws_Num_dirty_mop = 0;
-
-/*
- * ws_Gc_enabled - whether use GC or not; set by PRM_GC_ENABLE
- */
-static bool ws_Gc_enabled = false;
 
 /*
  * We used to keep a global dirty list here. But for more efficient traversals
@@ -265,7 +249,7 @@ ws_make_mop (OID * oid)
 {
   MOP op;
 
-  op = (MOP) GC_MALLOC (sizeof (DB_OBJECT));
+  op = (MOP) malloc (sizeof (DB_OBJECT));
   if (op != NULL)
     {
       op->class_mop = NULL;
@@ -350,75 +334,7 @@ ws_free_mop (MOP op)
       ws_flush_properties (op);
     }
 
-  GC_FREE (op);
-}
-
-/*
- * ws_make_set_mop - makes a special set MOP.
- *    return: mop created
- *    setptr(in): opaque set pointer
- *
- * Note: These are a temporary solution to prevent objects in disconnected
- *       sets from being garbage collected.
- */
-MOP
-ws_make_set_mop (void *setptr)
-{
-  MOP op;
-
-  op = ws_make_mop (NULL);
-
-  if (op == NULL)
-    {
-      return NULL;
-    }
-  op->is_set = 1;
-  op->object = setptr;
-  ws_Stats.set_mops_allocated++;
-
-  /*
-   * chain these on the ws_Set_mops list, doubly linked so its quick
-   * to get them off, class_link is next pointer, dirty_link is prev pointer
-   */
-  if (ws_Set_mops != NULL)
-    {
-      ws_Set_mops->dirty_link = op;
-    }
-  op->class_link = ws_Set_mops;
-  ws_Set_mops = op;
-
-
-  return (op);
-}
-
-/*
- * ws_free_set_mop - frees a temporary set MOP.
- *    return: void
- *    op(in/out): set mop
- */
-void
-ws_free_set_mop (MOP op)
-{
-  if (op != NULL && op->is_set)
-    {
-      /* remove it from the list */
-      if (op->class_link != NULL)
-	{
-	  (op->class_link)->dirty_link = op->dirty_link;
-	}
-
-      if (op->dirty_link != NULL)
-	{
-	  (op->dirty_link)->class_link = op->class_link;
-	}
-      else
-	{
-	  ws_Set_mops = op->class_link;
-	}
-
-      ws_free_mop (op);
-      ws_Stats.set_mops_freed++;
-    }
+  free (op);
 }
 
 /*
@@ -483,7 +399,7 @@ ws_make_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj,
 {
   MOP op;
 
-  op = GC_MALLOC (sizeof (DB_OBJECT));
+  op = malloc (sizeof (DB_OBJECT));
   if (op != NULL)
     {
       op->class_ = NULL;
@@ -598,7 +514,9 @@ ws_cull_reference_mops (void *table, char *table2, long size, check_fn check)
     {
       next = mop->hash_link;
       if ((*check) (mop))
-	prev = mop;
+	{
+	  prev = mop;
+	}
       else
 	{
 	  if (!mop->reference)
@@ -611,9 +529,13 @@ ws_cull_reference_mops (void *table, char *table2, long size, check_fn check)
 	    }
 	  /* remove it from the list */
 	  if (prev == NULL)
-	    ws_Reference_mops = next;
+	    {
+	      ws_Reference_mops = next;
+	    }
 	  else
-	    prev->hash_link = next;
+	    {
+	      prev->hash_link = next;
+	    }
 
 	  /*
 	   * if there is no owner, this is a free standing reference and can
@@ -629,7 +551,9 @@ ws_cull_reference_mops (void *table, char *table2, long size, check_fn check)
 		{
 		  collector = WS_GET_REFMOP_COLLECTOR (mop);
 		  if (collector != NULL)
-		    (*collector) (ref);
+		    {
+		      (*collector) (ref);
+		    }
 		}
 	    }
 
@@ -639,7 +563,6 @@ ws_cull_reference_mops (void *table, char *table2, long size, check_fn check)
 	}
     }
 
-  ws_Stats.refmops_last_gc = count;
   ws_Stats.refmops_freed += count;
 }
 #endif
@@ -1203,10 +1126,11 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 
   new_mop->is_vid = 1;
 
-  vid_info = WS_VID_INFO (new_mop) =
-    (VID_INFO *) GC_MALLOC (sizeof (VID_INFO));
+  vid_info = WS_VID_INFO (new_mop) = (VID_INFO *) malloc (sizeof (VID_INFO));
   if (vid_info == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (VID_INFO));
       goto abort_it;
     }
 
@@ -1238,7 +1162,7 @@ abort_it:
   if (vid_info != NULL)
     {
       pr_clear_value (&vid_info->keys);
-      GC_FREE (vid_info);
+      free (vid_info);
     }
   return NULL;
 }
@@ -1837,9 +1761,6 @@ ws_cull_mops (void)
 		  pr_clear_value (&WS_VID_INFO (mops)->keys);
 		}
 
-	      /* if we just gc'd a class, could go ahead and gc the instances
-	         immediately since they have to go with the class */
-
 	      if (mops->class_mop != NULL)
 		{
 		  if (mops->class_mop != sm_Root_class_mop)
@@ -1876,7 +1797,6 @@ ws_cull_mops (void)
 	}
     }
 
-  ws_Stats.mops_last_gc = count;
   ws_Stats.mops_freed += count;
 }
 
@@ -1934,70 +1854,6 @@ ws_release_user_instance (MOP mop)
 
   ws_release_instance (mop);
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * ws_gc_mop - callback function for the garbage collector that will be
- * called for every MOP in the list of referenced MOPs.
- *    return: void
- *    mop(in/out): MOP that has been marked as referenced
- *    gcmarker(in): function to call to mark other mops
- *
- * Note:
- * This must examine the contents of this object and mark any other objects
- * that are referenced by this object.
- */
-void
-ws_gc_mop (MOP mop, void (*gcmarker) (MOP))
-{
-  MOP owner;
-
-  if (mop == NULL)
-    {
-      return;
-    }
-  /* ignore the rootclass mop */
-
-  if (mop == sm_Root_class_mop)
-    {
-      return;
-    }
-
-  if (mop->reference)
-    {
-      /* its a reference mop, mark the owning object */
-      owner = WS_GET_REFMOP_OWNER (mop);
-      if (owner != NULL)
-	{
-	  (*gcmarker) (owner);
-	}
-    }
-  else if (mop->is_set)
-    {
-      pr_gc_set ((SETOBJ *) mop->object, gcmarker);
-    }
-  else if (mop->class_mop == sm_Root_class_mop)
-    {
-      /* its a class */
-      if (mop->object != NULL)
-	sm_gc_class (mop, gcmarker);
-    }
-  /* ignore temporary MOPs */
-  else if (!mop->is_temp)
-    {
-
-      /* its an instance */
-      if (mop->is_vid)
-	{
-	  vid_gc_vmop (mop, gcmarker);
-	}
-      else if (mop->object != NULL)
-	{
-	  sm_gc_object (mop, gcmarker);
-	}
-    }
-}
-#endif
 
 /*
  * DIRTY LIST MAINTENANCE
@@ -2726,7 +2582,7 @@ ws_find_class (const char *name)
  */
 
 /*
- * ws_init - initialize workspace and associated modules (qfit, GC)
+ * ws_init - initialize workspace
  *    return: NO_ERROR if successful, error code otherwise
  *
  * Note: This function should be called once early in the database
@@ -2747,15 +2603,6 @@ ws_init (void)
   if (ws_Mop_table != NULL)
     {
       ws_final ();
-    }
-
-  /* initialize the garbage collector */
-  GC_INIT ();
-
-  ws_Gc_enabled = prm_get_bool_value (PRM_ID_GC_ENABLE);
-  if (!ws_Gc_enabled)
-    {
-      GC_disable ();
     }
 
   if (db_create_workspace_heap () == 0)
@@ -2814,8 +2661,6 @@ ws_init (void)
 
   /* Can't have any resident classes yet */
   ws_Resident_classes = NULL;
-
-  ws_Set_mops = NULL;
 
   return NO_ERROR;
 }
@@ -2882,7 +2727,6 @@ ws_final (void)
   /* clean up misc globals */
   ws_Mop_table = NULL;
   ws_Mop_table_size = 0;
-  ws_Set_mops = NULL;
   Null_object = NULL;
   Ws_dirty = false;
 }
@@ -3019,9 +2863,6 @@ ws_has_updated (void)
 void
 ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 {
-  /* no gc's during this period */
-  ws_gc_disable ();
-
   /* third clause applies if the sm_Root_class_mop is still being initialized */
   if ((class_mop == sm_Root_class_mop)
       || (mop->class_mop == sm_Root_class_mop) || (mop == class_mop))
@@ -3099,7 +2940,6 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 	}
     }
 
-  ws_gc_enable ();
   return;
 
 abort_it:
@@ -3108,7 +2948,6 @@ abort_it:
    * should be returning an error
    */
   mop->object = NULL;
-  ws_gc_disable ();
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -3901,52 +3740,6 @@ ws_decache_allxlockmops_but_norealclasses (void)
 }
 
 /*
- * EXTERNAL GARBAGE COLLECTOR
- */
-
-/*
- * ws_gc - cause a garbage collection if the flag is enabled
- *    return: void
- */
-void
-ws_gc (void)
-{
-  if (ws_Gc_enabled)
-    {
-      GC_gcollect ();
-    }
-  /* TODO: consider using GC_try_to_collect() or GC_collect_a_little() */
-}
-
-/*
- * ws_gc_enable - enable GC
- *    return: void
- */
-void
-ws_gc_enable (void)
-{
-  if (!ws_Gc_enabled && prm_get_bool_value (PRM_ID_GC_ENABLE))
-    {
-      ws_Gc_enabled = true;
-      GC_enable ();
-    }
-}
-
-/*
- * ws_gc_disable - disable GC
- *    return: void
- */
-void
-ws_gc_disable (void)
-{
-  if (ws_Gc_enabled)
-    {
-      ws_Gc_enabled = false;
-      GC_disable ();
-    }
-}
-
-/*
  * STRING UTILITIES
  */
 
@@ -4161,7 +3954,7 @@ ws_dump (FILE * fpp)
   int count, actual, decached, weird;
   unsigned int slot;
   int classtotal, insttotal, size, isize, icount, deleted;
-  MOP mop, inst, setmop;
+  MOP mop, inst;
   DB_OBJLIST *m;
 
   /* get mop totals */
@@ -4223,14 +4016,11 @@ ws_dump (FILE * fpp)
 	   ws_Stats.pinned_cleanings);
 
   /* gc stats */
-  fprintf (fpp, "%d garbage collections have occurred\n", ws_Stats.gcs);
-  fprintf (fpp, "%d MOPs allocated, %d freed, %d freed during last gc\n",
-	   ws_Stats.mops_allocated, ws_Stats.mops_freed,
-	   ws_Stats.mops_last_gc);
+  fprintf (fpp, "%d MOPs allocated, %d freed\n",
+	   ws_Stats.mops_allocated, ws_Stats.mops_freed);
   fprintf (fpp,
-	   "%d reference MOPs allocated, %d freed, %d freed during last gc\n",
-	   ws_Stats.refmops_allocated, ws_Stats.refmops_freed,
-	   ws_Stats.refmops_last_gc);
+	   "%d reference MOPs allocated, %d freed\n",
+	   ws_Stats.refmops_allocated, ws_Stats.refmops_freed);
 
   /* misc stats */
   fprintf (fpp,
@@ -4241,11 +4031,9 @@ ws_dump (FILE * fpp)
 	   ws_Stats.ignored_class_assignments);
 
 
-  for (setmop = ws_Set_mops, count = 0; setmop != NULL;
-       setmop = setmop->class_link, count++);
   fprintf (fpp,
-	   "%d active set mops, %d total set mops allocated, %d total set mops freed\n",
-	   count, ws_Stats.set_mops_allocated, ws_Stats.set_mops_freed);
+	   "%d total set mops allocated, %d total set mops freed\n",
+	   ws_Stats.set_mops_allocated, ws_Stats.set_mops_freed);
 
   /* dirty stats */
   count = actual = 0;
@@ -5590,7 +5378,7 @@ memory_error:
 
 /*
  * ml_ext_add - same as ml_add except that it allocates a mop in the external
- * area so it serves as a GC root.
+ * area.
  *    return: NO_ERROR or error code
  *    list(in/out): pointer to pointer to list head
  *    mop(in): mop to add to the list

@@ -541,23 +541,6 @@ AS_IF([test "$with_cci_only" = "yes"], [with_lzo2=no],
 		EXTERNAL_DIST="$EXTERNAL_DIST lzo-2.03"])])
 AC_MSG_RESULT([$with_lzo2])
 
-AC_MSG_CHECKING([for gc library])
-AC_ARG_WITH([gc],
-	AS_HELP_STRING([--with-gc=PATH],
-		[prefix for installed GC @<:@default=builtin@:>@]),
-	[with_gc=$withval],
-	[with_gc=builtin])
-AS_IF([test "$with_cci_only" = "yes"], [with_gc=no],
-	[AS_IF([test "$with_gc" = "builtin"],
-		[AC_CONFIG_SUBDIRS([external/gc6.7])
-		GC_LIBS="\$(top_builddir)/external/lib/libgc.la"
-		GC_INC="-I\$(top_builddir)/external/include/gc"
-		EXTERNAL_PKGS="$EXTERNAL_PKGS gc6.7"],
-		[GC_LIBS="-L$with_gc/lib -lgc"
-		GC_INC="-I$with_gc/include/gc"
-		EXTERNAL_DIST="$EXTERNAL_DIST gc6.7"])])
-AC_MSG_RESULT([$with_gc])
-
 AC_MSG_CHECKING([for libgcrypt library])
 AC_ARG_WITH([libgcrypt],
 	AS_HELP_STRING([--with-libgcrypt=PATH],
