@@ -13209,6 +13209,12 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	      index_info =
 		pt_to_index_info (parser, class_->info.name.db_object,
 				  where, plan, index_pred);
+
+	      if (pt_has_error (parser))
+		{
+		  return NULL;
+		}
+
 	      assert (index_info != NULL);
 	      access = pt_make_class_access_spec (parser, flat,
 						  class_->info.name.db_object,
