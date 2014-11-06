@@ -4905,6 +4905,7 @@ classobj_initialize_attributes (SM_ATTRIBUTE * attributes)
       attr->triggers = NULL;
       attr->header.name = NULL;
       attr->domain = NULL;
+      attr->comment = NULL;
       db_value_put_null (&attr->default_value.value);
       db_value_put_null (&attr->default_value.original_value);
     }
