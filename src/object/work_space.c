@@ -179,6 +179,7 @@ static WS_REPL_LIST ws_Repl_objs;
 static MOP ws_make_mop (OID * oid);
 static void ws_free_mop (MOP op);
 static void emergency_remove_dirty (MOP op);
+static void ws_remove_from_commit_mops_list (MOP op);
 static int ws_map_dirty_internal (MAPFUNC function, void *args,
 				  bool classes_only);
 static int add_class_object (MOP class_mop, MOP obj);
@@ -1631,6 +1632,64 @@ emergency_remove_dirty (MOP op)
 }
 
 /*
+ * ws_remove_from_commit_mops_list - 
+ *    return: void
+ *    op(in): mop that needs to be removed from ws_Commit_mops list
+ *
+ */
+static void
+ws_remove_from_commit_mops_list (MOP op)
+{
+  MOP mop, prev, next, to_be_next;
+
+  assert (op != NULL);
+
+  prev = NULL;
+  mop = ws_Commit_mops;
+  while (mop)
+    {
+      next = mop->commit_link;
+      if (next == mop)
+	{
+	  /* the last node */
+	  to_be_next = prev;
+	}
+      else
+	{
+	  to_be_next = next;
+	}
+
+      if (mop == op)
+	{
+	  if (prev == NULL)
+	    {
+	      assert (ws_Commit_mops == mop);
+
+	      ws_Commit_mops = to_be_next;
+	    }
+	  else
+	    {
+	      prev->commit_link = to_be_next;
+	    }
+
+	  op->commit_link = NULL;
+	  return;
+	}
+
+      prev = mop;
+      if (next == mop)
+	{
+	  /* the last node */
+	  next = NULL;
+	}
+      else
+	{
+	  mop = next;
+	}
+    }
+}
+
+/*
  * ws_cull_mops - callback function for the garbage collector
  *    return: void
  *
@@ -1790,8 +1849,11 @@ ws_cull_mops (void)
 		    }
 		}
 
+	      ws_remove_from_commit_mops_list (mops);
+
 	      /* return mop to the garbage collector */
 	      ws_free_mop (mops);
+
 	      count++;
 	    }
 	}
