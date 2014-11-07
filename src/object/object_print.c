@@ -2424,6 +2424,7 @@ obj_print_make_trigger_help (void)
       help_p->condition = NULL;
       help_p->action_time = NULL;
       help_p->action = NULL;
+      help_p->comment = NULL;
     }
   return help_p;
 }
