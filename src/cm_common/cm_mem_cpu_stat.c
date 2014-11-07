@@ -1248,7 +1248,6 @@ get_statdump_member_ptr (T_CM_DB_EXEC_STAT * stat, const char *prop_name)
 static void *
 extract_db_exec_stat (FILE * fp, const char *dbname, T_CM_ERROR * err_buf)
 {
-  unsigned int nitem = 0;
   char linebuf[LINE_MAX];
   char prop_name[100];
   T_CM_DB_EXEC_STAT *stat;
@@ -1268,15 +1267,6 @@ extract_db_exec_stat (FILE * fp, const char *dbname, T_CM_ERROR * err_buf)
       if (!member_ptr)
 	continue;
       *member_ptr = prop_val;
-      nitem++;
-    }
-  if (nitem < NELEMS (statdump_offset))
-    {
-      err_buf->err_code = CM_READ_STATDUMP_INFO_ERROR;
-      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-		ER (err_buf->err_code), dbname);
-      FREE_MEM (stat);
-      return NULL;
     }
 
   return stat;
