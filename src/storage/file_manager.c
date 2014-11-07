@@ -4178,6 +4178,7 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
       fhdr->num_user_pages = 0;
       fhdr->num_user_pages_mrkdelete += num_user_pages;
 
+      addr.vfid = vfid;
       addr.pgptr = fhdr_pgptr;
       addr.offset = FILE_HEADER_OFFSET;
       undo_data = num_user_pages;
