@@ -3330,8 +3330,8 @@ sm_force_write_all_classes (void)
 	}
 
       /* insert all class objects into the catalog classes */
-      if (locator_flush_all_instances
-	  (sm_Root_class_mop, DONT_DECACHE) != NO_ERROR)
+      if (locator_flush_all_instances (sm_Root_class_mop, DONT_DECACHE)
+	  != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -3346,8 +3346,8 @@ sm_force_write_all_classes (void)
        * the hierarchy makes class/class mutual references
        * so some class objects were inserted with no hierarchy values.
        */
-      if (locator_flush_all_instances
-	  (sm_Root_class_mop, DONT_DECACHE) != NO_ERROR)
+      if (locator_flush_all_instances (sm_Root_class_mop, DONT_DECACHE)
+	  != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -5949,7 +5949,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 {
   int error = NO_ERROR;
   MOBJ mem;
-  MOP object_class_mop;
+  MOP obj_class_mop;
   SM_CLASS *class_;
 
   if (obj != NULL)
@@ -6009,10 +6009,10 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	}
       else
 	{
-	  object_class_mop = ws_class_mop (obj);
-	  if (object_class_mop != NULL)
+	  obj_class_mop = ws_class_mop (obj);
+	  if (obj_class_mop != NULL)
 	    {
-	      if (locator_flush_class (object_class_mop) != NO_ERROR)
+	      if (locator_flush_class (obj_class_mop) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
@@ -6025,11 +6025,11 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 		}
 	      else
 		{
-		  object_class_mop = ws_class_mop (obj);
+		  obj_class_mop = ws_class_mop (obj);
 		  switch (class_->class_type)
 		    {
 		    case SM_CLASS_CT:
-		      if (locator_flush_all_instances (object_class_mop,
+		      if (locator_flush_all_instances (obj_class_mop,
 						       decache) != NO_ERROR)
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -6057,10 +6057,10 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	      if (error == NO_ERROR)
 		{
 		  /* don't need to pin here, we only wanted to check authorization */
-		  object_class_mop = ws_class_mop (obj);
-		  if (object_class_mop != NULL)
+		  obj_class_mop = ws_class_mop (obj);
+		  if (obj_class_mop != NULL)
 		    {
-		      if (locator_flush_class (object_class_mop) != NO_ERROR)
+		      if (locator_flush_class (obj_class_mop) != NO_ERROR)
 			{
 			  assert (er_errid () != NO_ERROR);
 			  return er_errid ();
@@ -6077,8 +6077,9 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			  switch (class_->class_type)
 			    {
 			    case SM_CLASS_CT:
-			      if (locator_flush_all_instances
-				  (object_class_mop, decache) != NO_ERROR)
+			      if (locator_flush_all_instances (obj_class_mop,
+							       decache) !=
+				  NO_ERROR)
 				{
 				  assert (er_errid () != NO_ERROR);
 				  error = er_errid ();

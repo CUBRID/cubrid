@@ -3659,8 +3659,6 @@ net_client_request_2recv_copyarea (int request, char *argbuf,
  *   datasize2(in):
  *   replybuf(in):
  *   replysize(in):
- *   recvbuffer(in):
- *   recvbuffer_size(in):
  *   reply_copy_area(out): copy area sent by server
  *
  * Note:

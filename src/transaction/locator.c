@@ -491,7 +491,8 @@ locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area,
   LC_COPYAREA_MANYOBJS *old_mobjs, *new_mobjs;
   LC_COPYAREA_ONEOBJ *old_obj, *new_obj;
   LC_COPYAREA *new_area = NULL;
-  int i, offset = -1;
+  int i, last_obj_offset = -1;
+  int last_obj_length = 0;
   int old_content_length = 0;
   char *ptr;
 
@@ -525,16 +526,16 @@ locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area,
 
       LC_COPY_ONEOBJ (new_obj, old_obj);
 
-      if (old_obj->offset > offset)
+      if (old_obj->offset > last_obj_offset)
 	{
-	  old_content_length = old_obj->length;
-	  offset = old_obj->offset;
+	  last_obj_offset = old_obj->offset;
+	  last_obj_length = old_obj->length;
 	}
     }
 
-  if (offset != -1)
+  if (last_obj_offset != -1)
     {
-      old_content_length += offset;
+      old_content_length = last_obj_offset + last_obj_length;
     }
 
   memcpy (new_area->mem, old_area->mem, old_content_length);

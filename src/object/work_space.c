@@ -172,7 +172,7 @@ int ws_Error_ignore_count = 0;
 
 #define OBJLIST_AREA_COUNT 4096
 
-static WS_FLUSH_ERR *ws_Error_link = NULL;
+static WS_REPL_FLUSH_ERR *ws_Repl_error_link = NULL;
 
 static WS_REPL_LIST ws_Repl_objs;
 
@@ -2692,7 +2692,7 @@ ws_final (void)
        */
       ws_clear_internal (true);
     }
-  ws_clear_all_errors_of_error_link ();
+  ws_clear_all_repl_errors_of_error_link ();
   ws_clear ();
 
   /* destroy the classname cache */
@@ -5450,16 +5450,17 @@ ws_set_ignore_error_list_for_mflush (int error_count, int *error_list)
  *    mop(in):
  */
 void
-ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr)
+ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj,
+				   char *content_ptr)
 {
-  WS_FLUSH_ERR *flush_err;
+  WS_REPL_FLUSH_ERR *flush_err;
   char *ptr;
 
-  flush_err = (WS_FLUSH_ERR *) malloc (sizeof (WS_FLUSH_ERR));
+  flush_err = (WS_REPL_FLUSH_ERR *) malloc (sizeof (WS_REPL_FLUSH_ERR));
   if (flush_err == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (WS_FLUSH_ERR));
+	      1, sizeof (WS_REPL_FLUSH_ERR));
       return;
     }
 
@@ -5471,8 +5472,8 @@ ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr)
   ptr = or_unpack_int (ptr, &flush_err->error_code);
   ptr = or_unpack_string_alloc (ptr, &flush_err->error_msg);
 
-  flush_err->error_link = ws_Error_link;
-  ws_Error_link = flush_err;
+  flush_err->error_link = ws_Repl_error_link;
+  ws_Repl_error_link = flush_err;
 
   return;
 }
@@ -5656,18 +5657,18 @@ ws_is_same_object (MOP mop1, MOP mop2)
  * ws_get_error_from_error_link() -
  *    return: void
  */
-WS_FLUSH_ERR *
-ws_get_error_from_error_link (void)
+WS_REPL_FLUSH_ERR *
+ws_get_repl_error_from_error_link (void)
 {
-  WS_FLUSH_ERR *flush_err;
+  WS_REPL_FLUSH_ERR *flush_err;
 
-  flush_err = ws_Error_link;
+  flush_err = ws_Repl_error_link;
   if (flush_err == NULL)
     {
       return NULL;
     }
 
-  ws_Error_link = flush_err->error_link;
+  ws_Repl_error_link = flush_err->error_link;
   flush_err->error_link = NULL;
 
   return flush_err;
@@ -5678,16 +5679,16 @@ ws_get_error_from_error_link (void)
  *    return: void
  */
 void
-ws_clear_all_errors_of_error_link (void)
+ws_clear_all_repl_errors_of_error_link (void)
 {
-  WS_FLUSH_ERR *flush_err, *next;
+  WS_REPL_FLUSH_ERR *flush_err, *next;
 
-  for (flush_err = ws_Error_link; flush_err; flush_err = next)
+  for (flush_err = ws_Repl_error_link; flush_err; flush_err = next)
     {
       next = flush_err->error_link;
-      ws_free_flush_error (flush_err);
+      ws_free_repl_flush_error (flush_err);
     }
-  ws_Error_link = NULL;
+  ws_Repl_error_link = NULL;
 
   return;
 }
@@ -5697,7 +5698,7 @@ ws_clear_all_errors_of_error_link (void)
  *    return: void
  */
 void
-ws_free_flush_error (WS_FLUSH_ERR * flush_err)
+ws_free_repl_flush_error (WS_REPL_FLUSH_ERR * flush_err)
 {
   assert (flush_err != NULL);
 
@@ -5705,6 +5706,9 @@ ws_free_flush_error (WS_FLUSH_ERR * flush_err)
     {
       free_and_init (flush_err->error_msg);
     }
+
+  db_value_clear (&flush_err->pkey_value);
+
   free_and_init (flush_err);
 
   return;
@@ -5874,12 +5878,11 @@ ws_clean_label_value_list (MOP mop)
  *    return: void
  */
 void
-ws_init_repl_objs (WS_FREE_RECDES_FUNC free_func)
+ws_init_repl_objs (void)
 {
   ws_Repl_objs.head = NULL;
   ws_Repl_objs.tail = NULL;
   ws_Repl_objs.num_items = 0;
-  ws_Repl_objs.free_recdes_func = free_func;
 }
 
 /*
@@ -5916,13 +5919,6 @@ void
 ws_free_repl_obj (WS_REPL_OBJ * obj)
 {
   db_value_free (obj->pkey_value);
-
-  if (obj->recdes.data != NULL)
-    {
-      assert (ws_Repl_objs.free_recdes_func != NULL);
-      ws_Repl_objs.free_recdes_func (&obj->recdes);
-    }
-
   free_and_init (obj);
 
   return;
@@ -5983,17 +5979,7 @@ ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key, RECDES * recdes,
   COPY_OID (&repl_obj->class_oid, class_oid);
   repl_obj->pkey_value = db_value_copy (key);
 
-  if (recdes != NULL)
-    {
-      repl_obj->recdes = *recdes;
-    }
-  else
-    {
-      assert (operation == LC_FLUSH_DELETE);
-      repl_obj->recdes.data = NULL;
-      repl_obj->recdes.area_size = repl_obj->recdes.length = 0;
-    }
-
+  repl_obj->recdes = recdes;
   repl_obj->has_index = has_index;
   repl_obj->operation = operation;
   repl_obj->next = NULL;

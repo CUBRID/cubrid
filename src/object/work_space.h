@@ -64,18 +64,16 @@ union vid_oid
   OID oid;			/* physical oid */
 };
 
-typedef struct ws_flush_err WS_FLUSH_ERR;
-struct ws_flush_err
+typedef struct ws_repl_flush_err WS_REPL_FLUSH_ERR;
+struct ws_repl_flush_err
 {
-  struct ws_flush_err *error_link;
+  struct ws_repl_flush_err *error_link;
   OID class_oid;
   int operation;
   int error_code;
   char *error_msg;
   DB_VALUE pkey_value;
 };
-
-typedef void (*WS_FREE_RECDES_FUNC) (RECDES * recdes);
 
 typedef struct ws_repl_obj WS_REPL_OBJ;
 struct ws_repl_obj
@@ -85,7 +83,7 @@ struct ws_repl_obj
   DB_VALUE *pkey_value;
   bool has_index;
   int operation;
-  RECDES recdes;
+  RECDES *recdes;
 };
 
 typedef struct ws_repl_list WS_REPL_LIST;
@@ -94,7 +92,6 @@ struct ws_repl_list
   WS_REPL_OBJ *head;
   WS_REPL_OBJ *tail;
   int num_items;
-  WS_FREE_RECDES_FUNC free_recdes_func;
 };
 
 typedef struct ws_value_list WS_VALUE_LIST;
@@ -763,17 +760,17 @@ extern int ws_set_ignore_error_list_for_mflush (int error_count,
 extern int ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key,
 				    RECDES * recdes, int operation,
 				    bool has_index);
-extern void ws_init_repl_objs (WS_FREE_RECDES_FUNC free_func);
+extern void ws_init_repl_objs (void);
 extern void ws_clear_all_repl_objs (void);
 extern void ws_free_repl_obj (WS_REPL_OBJ * obj);
 extern WS_REPL_OBJ *ws_get_repl_obj_from_list (void);
 
-extern void ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj,
-					  char *content_ptr);
+extern void ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj,
+					       char *content_ptr);
 
-extern WS_FLUSH_ERR *ws_get_error_from_error_link (void);
-extern void ws_clear_all_errors_of_error_link (void);
-extern void ws_free_flush_error (WS_FLUSH_ERR * flush_err);
+extern WS_REPL_FLUSH_ERR *ws_get_repl_error_from_error_link (void);
+extern void ws_clear_all_repl_errors_of_error_link (void);
+extern void ws_free_repl_flush_error (WS_REPL_FLUSH_ERR * flush_err);
 
 extern int ws_get_mvcc_snapshot_version (void);
 extern void ws_increment_mvcc_snapshot_version (void);

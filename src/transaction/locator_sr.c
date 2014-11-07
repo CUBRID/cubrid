@@ -7206,14 +7206,12 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj,
 /*
  * locator_repl_get_key_value () - read pkey value from copy_area
  *
- * return: NO_ERROR if all OK, ER_ status otherwise
+ * return: length of unpacked key value
  *
  *   key_value(out): primary key value
  *   force_area(in):
  *   obj(in): object that describes memory location of key_value
  *
- * Note: This function applies all the desired operations on each of
- *              object placed in the force_area.
  */
 static int
 locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area,
@@ -8476,7 +8474,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 					LOG_REPLICATION_SCHEMA,
 					is_insert ? RVREPL_DATA_INSERT :
 					RVREPL_DATA_DELETE, key_dbvalue,
-					REPL_INFO_TYPE_STMT_NORMAL);
+					REPL_INFO_TYPE_STMT_NORMAL, false);
 	}
 
       if (key_ins_del == NULL)
@@ -9551,7 +9549,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  error_code = repl_log_insert (thread_p, class_oid, old_oid,
 					LOG_REPLICATION_DATA,
 					RVREPL_DATA_UPDATE, repl_old_key,
-					repl_info);
+					repl_info, same_oid);
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -9562,7 +9560,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  error_code = repl_log_insert (thread_p, class_oid, old_oid,
 					LOG_REPLICATION_DATA,
 					RVREPL_DATA_UPDATE, repl_old_key,
-					repl_info);
+					repl_info, same_oid);
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}

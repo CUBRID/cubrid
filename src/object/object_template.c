@@ -2879,20 +2879,6 @@ obt_reset_force_flush (OBJ_TEMPLATE * template_ptr)
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
- * obt_set_bulk_flush - set bulk_flush flag of the template
- *
- * return : void
- * template_ptr (in/out)
- */
-void
-obt_set_bulk_flush (OBJ_TEMPLATE * template_ptr)
-{
-  assert (template_ptr != NULL);
-
-  template_ptr->bulk_flush = 1;
-}
-
-/*
  * obt_retain_after_finish
  *    return: none
  *    template(in):

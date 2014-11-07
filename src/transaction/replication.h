@@ -81,7 +81,7 @@ extern int repl_add_update_lsa (THREAD_ENTRY * thread_p,
 extern int repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 			    const OID * inst_oid, LOG_RECTYPE log_type,
 			    LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue,
-			    REPL_INFO_TYPE repl_type);
+			    REPL_INFO_TYPE repl_type, bool is_update_inplace);
 extern int repl_log_insert_schema (THREAD_ENTRY * thread_p,
 				   REPL_INFO_SCHEMA * repl_schema);
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);

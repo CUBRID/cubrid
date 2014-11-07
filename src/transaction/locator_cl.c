@@ -4182,7 +4182,7 @@ locator_repl_mflush_check_error (LC_COPYAREA * reply_copyarea)
       obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mobjs, i);
       content_ptr = reply_copyarea->mem + obj->offset;
 
-      ws_set_error_into_error_link (obj, content_ptr);
+      ws_set_repl_error_into_error_link (obj, content_ptr);
     }
 
   return;
@@ -4244,8 +4244,11 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	locator_force (mflush->copy_area, ws_Error_ignore_count,
 		       ws_Error_ignore_list);
 
+      assert (error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH);
+
       /* If the force failed and the system is down.. finish */
-      if (error_code != NO_ERROR && !BOOT_IS_CLIENT_RESTARTED ())
+      if (error_code == ER_LK_UNILATERALLY_ABORTED
+	  || (error_code != NO_ERROR && !BOOT_IS_CLIENT_RESTARTED ()))
 	{
 	  /* Free the memory ... and finish */
 	  mop_toid = mflush->mop_toids;
@@ -4669,8 +4672,7 @@ locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
 	  else
 	    {
 	      error_code = locator_mflush_force (mflush);
-	      if (error_code == NO_ERROR
-		  || error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	      if (error_code == NO_ERROR)
 		{
 		  enable_mem_to_disk = true;
 		}
@@ -5225,8 +5227,8 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       required_length = OR_VALUE_ALIGNED_SIZE (repl_obj->pkey_value);
       if (repl_obj->operation != LC_FLUSH_DELETE)
 	{
-	  assert (repl_obj->recdes.data != NULL);
-	  required_length += repl_obj->recdes.length + MAX_ALIGNMENT;
+	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
+	  required_length += repl_obj->recdes->length + MAX_ALIGNMENT;
 	}
 
       while (mflush->recdes.area_size < required_length)
@@ -5264,17 +5266,16 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       if (repl_obj->operation == LC_FLUSH_DELETE)
 	{
-	  assert (repl_obj->recdes.data == NULL);
-
+	  assert (repl_obj->recdes == NULL);
 	  mflush->recdes.length = 0;
 	}
       else
 	{
-	  assert (repl_obj->recdes.data != NULL);
+	  assert (repl_obj->recdes->data != NULL);
 
-	  memcpy (mflush->recdes.data, repl_obj->recdes.data,
-		  repl_obj->recdes.length);
-	  mflush->recdes.length = repl_obj->recdes.length;
+	  memcpy (mflush->recdes.data, repl_obj->recdes->data,
+		  repl_obj->recdes->length);
+	  mflush->recdes.length = repl_obj->recdes->length;
 	}
 
       mflush->mobjs->num_objs++;

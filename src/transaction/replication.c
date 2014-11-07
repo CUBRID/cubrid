@@ -290,6 +290,7 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   log_type(in): log type (DATA or SCHEMA)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
+ *   is_update_inplace(in): is it in-place update
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
@@ -297,7 +298,7 @@ int
 repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 		 const OID * inst_oid, LOG_RECTYPE log_type,
 		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue,
-		 REPL_INFO_TYPE repl_info)
+		 REPL_INFO_TYPE repl_info, bool is_update_inplace)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -316,6 +317,10 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
   /* If suppress_replication flag is set, do not write replication log. */
   if (tdes->suppress_replication != 0)
     {
+      /* clear repl lsa in tdes since no replication log will be written */
+      LSA_SET_NULL (&tdes->repl_insert_lsa);
+      LSA_SET_NULL (&tdes->repl_update_lsa);
+
       return NO_ERROR;
     }
 
@@ -408,7 +413,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 	}
       break;
     case RVREPL_DATA_UPDATE:
-      if (!LSA_ISNULL (&tdes->repl_insert_lsa))
+      if (is_update_inplace == false && !LSA_ISNULL (&tdes->repl_insert_lsa))
 	{
 	  /* MVCC update */
 	  LSA_COPY (&repl_rec->lsa, &tdes->repl_insert_lsa);
