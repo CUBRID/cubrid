@@ -209,7 +209,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
     on          <ブローカー名>\n\
     off         <ブローカー名>\n\
     reset       <ブローカー名>\n\

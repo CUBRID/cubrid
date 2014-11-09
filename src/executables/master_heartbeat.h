@@ -98,7 +98,9 @@ enum HB_RESOURCE_JOB
   HB_RJOB_MAX
 };
 
-/* heartbet resource process state */
+/*  heartbet resource process state
+ *  When change this, must be change the SERVER_STATE.
+ *  broker.c : enum SERVER_STATE */
 enum HB_PROC_STATE
 {
   HB_PSTATE_UNKNOWN = 0,
@@ -306,6 +308,7 @@ struct hb_proc_entry
   CSS_CONN_ENTRY *conn;
 
   bool being_shutdown;		/* whether the proc is being shut down */
+  bool server_hang;
 };
 
 /* heartbeat resources */
@@ -427,4 +430,7 @@ extern void hb_finish_deactivate_server_info (void);
 
 extern void hb_enable_er_log (void);
 extern void hb_disable_er_log (int reason, const char *msg_fmt, ...);
+
+extern int hb_return_proc_state_by_fd (int sfd);
+extern bool hb_is_hang_process (int sfd);
 #endif /* _MASTER_HEARTBEAT_H_ */

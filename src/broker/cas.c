@@ -1531,6 +1531,54 @@ unset_hang_check_time (void)
   return;
 }
 
+bool
+check_server_alive (const char *db_name, const char *db_host)
+{
+  int i, u_index;
+  char *unusable_db_name;
+  char *unusable_db_host;
+  const char *check_db_host = db_host;
+  const char *check_db_name = db_name;
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(LIBCAS_FOR_JSP)
+  if (cas_shard_flag == OFF && as_info != NULL && shm_appl != NULL
+      && shm_appl->monitor_server_flag)
+    {
+      /* if db_name is NULL, use the CAS shared memory */
+      if (db_name == NULL)
+	{
+	  check_db_name = as_info->database_name;
+	}
+
+      /* if db_host is NULL, use the CAS shared memory */
+      if (db_host == NULL)
+	{
+	  check_db_host = as_info->database_host;
+	}
+
+      u_index = shm_appl->unusable_databases_seq % 2;
+
+      for (i = 0; i < shm_appl->unusable_databases_cnt[u_index]; i++)
+	{
+	  unusable_db_name =
+	    shm_appl->unusable_databases[u_index][i].database_name;
+	  unusable_db_host =
+	    shm_appl->unusable_databases[u_index][i].database_host;
+
+	  if (strcmp (unusable_db_name, check_db_name) == 0
+	      && strcmp (unusable_db_host, check_db_host) == 0)
+	    {
+	      return false;
+	    }
+	}
+    }
+#endif /* !LIBCAS_FOR_JSP */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+  return true;
+}
+
 #ifndef LIBCAS_FOR_JSP
 static void
 cas_sig_handler (int signo)
@@ -2213,6 +2261,7 @@ cas_init ()
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (cas_shard_flag == OFF)
     {
+      css_register_check_server_alive_fn (check_server_alive);
       css_register_server_timeout_fn (set_hang_check_time);
     }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

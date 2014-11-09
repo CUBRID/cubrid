@@ -521,6 +521,9 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   shm_as_p->max_prepared_stmt_count = br_info_p->max_prepared_stmt_count;
 
   shm_as_p->monitor_hang_flag = br_info_p->monitor_hang_flag;
+  shm_as_p->monitor_server_flag = br_info_p->monitor_server_flag;
+  memset (shm_as_p->unusable_databases_cnt, 0,
+	  sizeof (shm_as_p->unusable_databases_cnt));
 
   strcpy (shm_as_p->log_dir, br_info_p->log_dir);
   strcpy (shm_as_p->slow_log_dir, br_info_p->slow_log_dir);

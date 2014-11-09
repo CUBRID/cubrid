@@ -117,9 +117,6 @@ static void css_check_master_socket_output (void);
 static int css_check_master_socket_exception (fd_set * fd_var);
 static void css_master_loop (void);
 static void css_free_entry (SOCKET_QUEUE_ENTRY * entry_p);
-static SOCKET_QUEUE_ENTRY *css_return_entry_of_server (char *name_p,
-						       SOCKET_QUEUE_ENTRY *
-						       anchor_p);
 
 #if !defined(WINDOWS)
 static void css_daemon_start (void);
@@ -706,6 +703,15 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 		}
 	      else
 		{
+#if !defined(WINDOWS)
+		  if (hb_is_hang_process (temp->fd))
+		    {
+		      css_reject_client_request (conn, rid, SERVER_HANG);
+		      free_and_init (server_name);
+		      css_free_conn (conn);
+		      return;
+		    }
+#endif
 		  if (css_send_new_request_to_server (temp->fd, conn->fd,
 						      rid))
 		    {
@@ -731,6 +737,15 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 	         We found a registered server, give the client a response
 	         telling it to re-connect using the server's port id.
 	       */
+#if !defined(WINDOWS)
+	      if (hb_is_hang_process (temp->fd))
+		{
+		  css_reject_client_request (conn, rid, SERVER_HANG);
+		  free_and_init (server_name);
+		  css_free_conn (conn);
+		  return;
+		}
+#endif
 	      buffer = htonl (SERVER_CONNECTED_NEW);
 	      css_send_data (conn, rid, (char *) &buffer, sizeof (int));
 	      buffer = htonl (temp->port_id);
@@ -1442,7 +1457,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
  *   name_p(in):
  *   anchor_p(in):
  */
-static SOCKET_QUEUE_ENTRY *
+SOCKET_QUEUE_ENTRY *
 css_return_entry_of_server (char *name_p, SOCKET_QUEUE_ENTRY * anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;

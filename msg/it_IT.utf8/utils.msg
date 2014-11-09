@@ -209,7 +209,7 @@ Commandi disponibili:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
     on          nome-broker\n\
     off         nome-broker\n\
     reset       nome-broker\n\

@@ -1485,8 +1485,8 @@ static int prm_ha_applylogdb_max_commit_interval_in_msecs_upper = INT_MAX;
 static int prm_ha_applylogdb_max_commit_interval_in_msecs_lower = 0;
 static unsigned int prm_ha_applylogdb_max_commit_interval_in_msecs_flag = 0;
 
-int PRM_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS = 30;
-static int prm_ha_check_disk_failure_interval_in_secs_default = 30;
+int PRM_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS = 15;
+static int prm_ha_check_disk_failure_interval_in_secs_default = 15;
 static int prm_ha_check_disk_failure_interval_in_secs_upper = INT_MAX;
 static int prm_ha_check_disk_failure_interval_in_secs_lower = 0;
 static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;

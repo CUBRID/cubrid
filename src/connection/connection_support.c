@@ -116,6 +116,10 @@ static const int CSS_TCP_MIN_NUM_RETRIES = 3;
 static void css_default_server_timeout_fn (void);
 static CSS_SERVER_TIMEOUT_FN css_server_timeout_fn =
   css_default_server_timeout_fn;
+static bool css_default_check_server_alive_fn (const char *db_name,
+					       const char *db_host);
+CSS_CHECK_SERVER_ALIVE_FN css_check_server_alive_fn =
+  css_default_check_server_alive_fn;
 #endif /* !SERVER_MODE */
 
 #if defined(WINDOWS)
@@ -625,6 +629,13 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 		  if (css_peer_alive (fd, time_unit) == false)
 		    {
 		      return ERROR_WHEN_READING_SIZE;
+		    }
+		  if (css_check_server_alive_fn != NULL)
+		    {
+		      if (css_check_server_alive_fn (NULL, NULL) == false)
+			{
+			  return ERROR_WHEN_READING_SIZE;
+			}
 		    }
 		}
 #endif /* CS_MODE && !WINDOWS */
@@ -2196,6 +2207,33 @@ css_peer_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen)
   return NO_ERRORS;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+#if !defined (SERVER_MODE)
+/*
+ * css_default_check_server_alive_fn () - check server alive
+ *
+ *   return: 
+ *   db_host(in): 
+ *   db_name(in): 
+ */
+static bool
+css_default_check_server_alive_fn (const char *db_name, const char *db_host)
+{
+  return true;
+}
+
+/*
+ * css_register_check_server_alive_fn () - regist the callback function
+ *
+ *   return: void
+ *   callback_fn(in):
+ */
+void
+css_register_check_server_alive_fn (CSS_CHECK_SERVER_ALIVE_FN callback_fn)
+{
+  css_check_server_alive_fn = callback_fn;
+}
+#endif /* !SERVER_MODE */
 
 /*
  * css_ha_server_state_string

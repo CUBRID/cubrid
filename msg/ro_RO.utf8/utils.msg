@@ -209,7 +209,7 @@ Comenzi disponibile:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
     on          nume-broker\n\
     off         nume-broker\n\
     reset       nume-broker\n\

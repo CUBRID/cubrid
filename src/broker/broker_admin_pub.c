@@ -2580,6 +2580,19 @@ admin_conf_change (int master_shm_id, const char *br_name,
 	  shm_as_p->as_info[i].cas_slow_log_reset = CAS_LOG_RESET_REOPEN;
 	}
     }
+  else if (strcasecmp (conf_name, "ENABLE_MONITOR_SERVER") == 0)
+    {
+      int monitor_server_flag;
+
+      monitor_server_flag = conf_get_value_table_on_off (conf_value);
+      if (monitor_server_flag < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_conf_error;
+	}
+      br_info_p->monitor_server_flag = monitor_server_flag;
+      shm_as_p->monitor_server_flag = monitor_server_flag;
+    }
   else
     {
       sprintf (admin_err_msg, "unknown keyword %s", conf_name);

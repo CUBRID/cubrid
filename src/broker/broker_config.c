@@ -892,6 +892,19 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
+      tmp_int = conf_get_value_table_on_off (ini_getstr (ini, sec_name,
+							 "ENABLE_MONITOR_SERVER",
+							 "ON", &lineno));
+      if (tmp_int < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+      else
+	{
+	  br_info[num_brs].monitor_server_flag = tmp_int;
+	}
+
       br_info[num_brs].shard_flag =
 	conf_get_value_table_on_off (ini_getstr (ini, sec_name,
 						 "SHARD", "OFF", &lineno));
@@ -1450,6 +1463,11 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
       if (tmp_str)
 	{
 	  fprintf (fp, "ENABLE_MONITOR_HANG\t=%s\n", tmp_str);
+	}
+      tmp_str = get_conf_string (br_info[i].monitor_server_flag, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "ENABLE_MONITOR_SERVER\t=%s\n", tmp_str);
 	}
       fprintf (fp, "REJECTED_CLIENTS_COUNT\t=%d\n",
 	       br_info[i].reject_client_count);

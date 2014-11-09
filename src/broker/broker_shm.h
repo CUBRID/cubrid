@@ -149,6 +149,9 @@
 #define SHARD_KEY_COLUMN_LEN     (32)
 #define SHARD_KEY_RANGE_MAX      (256)
 
+#define UNUSABLE_DATABASE_MAX    (200)
+#define PAIR_LIST                (2)
+
 /*
  * proxy need to reserve FD for 
  * broker, cas, log etc.. 
@@ -543,6 +546,15 @@ struct t_shm_proxy
   T_PROXY_INFO proxy_info[MAX_PROXY_NUM];
 };
 
+/* database server */
+typedef struct t_db_server T_DB_SERVER;
+struct t_db_server
+{
+  char database_name[SRV_CON_DBNAME_SIZE];
+  char database_host[MAXHOSTNAMELEN];
+  int state;
+};
+
 typedef struct t_shm_appl_server T_SHM_APPL_SERVER;
 struct t_shm_appl_server
 {
@@ -612,7 +624,10 @@ struct t_shm_appl_server
   int num_access_info;
   int acl_chn;
   int cas_rctime;		/* sec */
+  int unusable_databases_cnt[PAIR_LIST];
+  unsigned int unusable_databases_seq;
   bool monitor_hang_flag;
+  bool monitor_server_flag;
 #if !defined(WINDOWS)
   sem_t acl_sem;
 #endif
@@ -624,6 +639,8 @@ struct t_shm_appl_server
   T_SHARD_CONN_INFO shard_conn_info[SHARD_INFO_SIZE_LIMIT];	/* it is used only in shard */
 
   T_APPL_SERVER_INFO as_info[APPL_SERVER_NUM_LIMIT];
+
+  T_DB_SERVER unusable_databases[PAIR_LIST][UNUSABLE_DATABASE_MAX];
 };
 
 /* shared memory information */

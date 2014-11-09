@@ -1684,6 +1684,17 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 
   for (n = 0; n < hn; n++)
     {
+      if (css_check_server_alive_fn != NULL)
+	{
+	  if (css_check_server_alive_fn (db->name, hostlist[n]) == false)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "skip '%s@%s'\n",
+			    db->name, hostlist[n]);
+	      db_set_host_status (hostlist[n], DB_HS_UNUSABLE_DATABASES);
+	      continue;
+	    }
+	}
+
       er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n",
 		    db->name, hostlist[n]);
       error = net_client_init (db->name, hostlist[n]);

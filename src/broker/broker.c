@@ -48,6 +48,13 @@
 #include <sys/time.h>
 #endif
 
+#include "connection_defs.h"
+#include "connection_cl.h"
+
+#include "system_parameter.h"
+#include "databases_file.h"
+#include "util_func.h"
+
 #include "cas_error.h"
 #include "cas_common.h"
 #include "broker_error.h"
@@ -102,6 +109,8 @@
 #define		ENV_BUF_INIT_SIZE	512
 #define		ALIGN_ENV_BUF_SIZE(X)	\
 	((((X) + ENV_BUF_INIT_SIZE) / ENV_BUF_INIT_SIZE) * ENV_BUF_INIT_SIZE)
+
+#define         MONITOR_SERVER_INTERVAL 5
 
 #ifdef BROKER_DEBUG
 #define		BROKER_LOG(X)			\
@@ -198,6 +207,20 @@
 #define SOCKET_TIMEOUT_SEC	2
 #endif
 
+/* server state */
+enum SERVER_STATE
+{
+  SERVER_STATE_UNKNOWN = 0,
+  SERVER_STATE_DEAD = 1,
+  SERVER_STATE_DEREGISTERED = 2,
+  SERVER_STATE_STARTED = 3,
+  SERVER_STATE_NOT_REGISTERED = 4,
+  SERVER_STATE_REGISTERED = 5,
+  SERVER_STATE_REGISTERED_AND_TO_BE_STANDBY = 6,
+  SERVER_STATE_REGISTERED_AND_ACTIVE = 7,
+  SERVER_STATE_REGISTERED_AND_TO_BE_ACTIVE = 8
+};
+
 typedef struct t_clt_table T_CLT_TABLE;
 struct t_clt_table
 {
@@ -232,6 +255,7 @@ static THREAD_FUNC proxy_monitor_thr_f (void *arg);
 #if !defined(WINDOWS)
 static THREAD_FUNC proxy_listener_thr_f (void *arg);
 #endif /* !WINDOWS */
+static THREAD_FUNC server_monitor_thr_f (void *arg);
 
 static int read_nbytes_from_client (SOCKET sock_fd, char *buf, int size);
 
@@ -280,6 +304,18 @@ static void get_as_slow_log_filename (char *log_filename, int len,
 				      char *broker_name,
 				      T_APPL_SERVER_INFO * as_info_p,
 				      int as_index);
+
+static CSS_CONN_ENTRY *connect_to_master_for_server_monitor (const char
+							     *db_name,
+							     const char
+							     *db_host);
+static int get_server_state_from_master (CSS_CONN_ENTRY * conn,
+					 const char *db_name);
+
+static int insert_db_server_check_list (T_DB_SERVER * list_p,
+					int check_list_cnt,
+					const char *db_name,
+					const char *db_host);
 
 #if defined(WINDOWS)
 static int get_cputime_sec (int pid);
@@ -461,6 +497,7 @@ main (int argc, char *argv[])
   pthread_t cas_monitor_thread;
   pthread_t psize_check_thread;
   pthread_t hang_check_thread;
+  pthread_t server_monitor_thread;
   pthread_t proxy_monitor_thread;
 #if !defined(WINDOWS)
   pthread_t proxy_listener_thread;
@@ -577,6 +614,7 @@ main (int argc, char *argv[])
     }
   THREAD_BEGIN (psize_check_thread, psize_check_thr_f, NULL);
   THREAD_BEGIN (cas_monitor_thread, cas_monitor_thr_f, NULL);
+  THREAD_BEGIN (server_monitor_thread, server_monitor_thr_f, NULL);
 
   if (br_shard_flag == ON)
     {
@@ -2012,6 +2050,246 @@ cas_monitor_thr_f (void *ar)
       shm_br->br_info[br_index].num_busy_count = num_busy_uts;
       SLEEP_MILISEC (0, 100);
     }
+
+#if !defined(WINDOWS)
+  return NULL;
+#endif
+}
+
+static CSS_CONN_ENTRY *
+connect_to_master_for_server_monitor (const char *db_name,
+				      const char *db_host)
+{
+  int port_id;
+  unsigned short rid;
+
+  if (sysprm_load_and_init (db_name, NULL) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  port_id = prm_get_master_port_id ();
+  if (port_id <= 0)
+    {
+      return NULL;
+    }
+
+  /* timeout : 5000 milliseconds */
+  return (css_connect_to_master_timeout (db_host, port_id, 5000, &rid));
+}
+
+static int
+get_server_state_from_master (CSS_CONN_ENTRY * conn, const char *db_name)
+{
+  unsigned short request_id;
+  int error = NO_ERROR;
+  int server_state;
+  int buffer_size;
+  int *buffer = NULL;
+
+  if (conn == NULL)
+    {
+      return SERVER_STATE_DEAD;
+    }
+
+  error =
+    css_send_request (conn, GET_SERVER_STATE, &request_id, db_name,
+		      strlen (db_name) + 1);
+  if (error != NO_ERRORS)
+    {
+      return SERVER_STATE_DEAD;
+    }
+
+  /* timeout : 5000 milliseconds */
+  error =
+    css_receive_data (conn, request_id, (char **) &buffer, &buffer_size,
+		      5000);
+  if (error == NO_ERRORS)
+    {
+      if (buffer_size == sizeof (int))
+	{
+	  server_state = ntohl (*buffer);
+	  free_and_init (buffer);
+
+	  return server_state;
+	}
+    }
+
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+
+  return SERVER_STATE_UNKNOWN;
+}
+
+static int
+insert_db_server_check_list (T_DB_SERVER * list_p,
+			     int check_list_cnt, const char *db_name,
+			     const char *db_host)
+{
+  int i;
+
+  for (i = 0; i < check_list_cnt && i < UNUSABLE_DATABASE_MAX; i++)
+    {
+      if (strcmp (db_name, list_p[i].database_name) == 0
+	  && strcmp (db_host, list_p[i].database_host) == 0)
+	{
+	  return check_list_cnt;
+	}
+    }
+
+  if (i == UNUSABLE_DATABASE_MAX)
+    {
+      return UNUSABLE_DATABASE_MAX;
+    }
+
+  strncpy (list_p[i].database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
+  strncpy (list_p[i].database_host, db_host, MAXHOSTNAMELEN - 1);
+  list_p[i].state = -1;
+
+  return i + 1;
+}
+
+static THREAD_FUNC
+server_monitor_thr_f (void *arg)
+{
+  int i, j, cnt, port_id;
+  int u_index;
+  int check_list_cnt = 0;
+  T_APPL_SERVER_INFO *as_info_p;
+  T_DB_SERVER *check_list;
+  CSS_CONN_ENTRY *conn = NULL;
+  DB_INFO *db_info_p = NULL;
+  char **preferred_hosts;
+  char *unusable_db_name;
+  char *unusable_db_host;
+  char busy_cas_db_name[SRV_CON_DBNAME_SIZE];
+
+  check_list = malloc (sizeof (T_DB_SERVER) * UNUSABLE_DATABASE_MAX);
+
+  while (process_flag)
+    {
+      if (!shm_appl->monitor_server_flag || br_shard_flag == ON
+	  || shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS
+	  || check_list == NULL)
+	{
+	  shm_appl->unusable_databases_seq = 0;
+	  memset (shm_appl->unusable_databases_cnt, 0,
+		  sizeof (shm_appl->unusable_databases_cnt));
+	  SLEEP_MILISEC (MONITOR_SERVER_INTERVAL, 0);
+	  continue;
+	}
+
+      /* 1. collect server check list */
+      check_list_cnt = 0;
+      u_index = shm_appl->unusable_databases_seq % 2;
+
+      for (i = 0; i < shm_appl->unusable_databases_cnt[u_index]; i++)
+	{
+	  unusable_db_name =
+	    shm_appl->unusable_databases[u_index][i].database_name;
+	  unusable_db_host =
+	    shm_appl->unusable_databases[u_index][i].database_host;
+
+	  check_list_cnt =
+	    insert_db_server_check_list (check_list, check_list_cnt,
+					 unusable_db_name, unusable_db_host);
+	}
+
+      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
+	{
+	  as_info_p = &(shm_appl->as_info[i]);
+	  if (as_info_p->uts_status == UTS_STATUS_BUSY)
+	    {
+	      strncpy (busy_cas_db_name, as_info_p->database_name,
+		       SRV_CON_DBNAME_SIZE - 1);
+
+	      if (busy_cas_db_name[0] != '\0')
+		{
+		  preferred_hosts =
+		    util_split_string (shm_appl->preferred_hosts, ":");
+		  if (preferred_hosts != NULL)
+		    {
+		      for (j = 0; preferred_hosts[j] != NULL; j++)
+			{
+			  check_list_cnt =
+			    insert_db_server_check_list (check_list,
+							 check_list_cnt,
+							 busy_cas_db_name,
+							 preferred_hosts[j]);
+			}
+
+		      util_free_string_array (preferred_hosts);
+		    }
+
+		  db_info_p = cfg_find_db (busy_cas_db_name);
+		  if (db_info_p == NULL || db_info_p->hosts == NULL)
+		    {
+		      if (db_info_p)
+			{
+			  cfg_free_directory (db_info_p);
+			}
+		      continue;
+		    }
+
+		  for (j = 0; j < db_info_p->num_hosts; j++)
+		    {
+		      check_list_cnt =
+			insert_db_server_check_list (check_list,
+						     check_list_cnt,
+						     busy_cas_db_name,
+						     db_info_p->hosts[j]);
+		    }
+
+		  cfg_free_directory (db_info_p);
+		}
+	    }
+	}
+
+      /* 2. check server state */
+      for (i = 0; i < check_list_cnt; i++)
+	{
+	  conn =
+	    connect_to_master_for_server_monitor (check_list[i].database_name,
+						  check_list[i].
+						  database_host);
+	  check_list[i].state =
+	    get_server_state_from_master (conn, check_list[i].database_name);
+
+	  if (conn != NULL)
+	    {
+	      css_free_conn (conn);
+	      conn = NULL;
+	    }
+	}
+
+      /* 3. record server state to the shared memory */
+      cnt = 0;
+      u_index = (shm_appl->unusable_databases_seq + 1) % 2;
+
+      for (i = 0; i < check_list_cnt; i++)
+	{
+	  if (check_list[i].state < SERVER_STATE_REGISTERED
+	      && check_list[i].state != SERVER_STATE_UNKNOWN)
+	    {
+	      strncpy (shm_appl->unusable_databases[u_index][cnt].
+		       database_name, check_list[i].database_name,
+		       SRV_CON_DBNAME_SIZE - 1);
+	      strncpy (shm_appl->unusable_databases[u_index][cnt].
+		       database_host, check_list[i].database_host,
+		       MAXHOSTNAMELEN - 1);
+	      cnt++;
+	    }
+	}
+
+      shm_appl->unusable_databases_cnt[u_index] = cnt;
+      shm_appl->unusable_databases_seq++;
+
+      SLEEP_MILISEC (MONITOR_SERVER_INTERVAL, 0);
+    }
+
+  free_and_init (check_list);
 
 #if !defined(WINDOWS)
   return NULL;

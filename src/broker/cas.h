@@ -136,6 +136,8 @@ extern int query_seq_num_current_value (void);
 extern void set_hang_check_time (void);
 extern void unset_hang_check_time (void);
 
+extern bool check_server_alive (const char *db_name, const char *db_host);
+
 extern void cas_set_db_connect_status (int status);
 extern int cas_get_db_connect_status (void);
 

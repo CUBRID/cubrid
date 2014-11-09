@@ -10667,6 +10667,25 @@ report_abnormal_host_status (int err_code)
       cas_log_write_and_end (0, false, buf);
     }
 
+  if (db_get_host_list_with_given_status
+      (hostlist, list_size, DB_HS_UNUSABLE_DATABASES) > 0)
+    {
+      hostlist_p = hostlist;
+
+      p = buf;
+      last = p + sizeof (buf);
+      p +=
+	snprintf (p, MAX (last - p, 0),
+		  "WARNING: skipped unusable databases at %s", *hostlist_p++);
+      while (*hostlist_p != NULL)
+	{
+	  p += snprintf (p, MAX (last - p, 0), ", %s", *hostlist_p++);
+	}
+      snprintf (p, MAX (last - p, 0), ".");
+
+      cas_log_write_and_end (0, false, buf);
+    }
+
   if (err_code == NO_ERROR && db_need_reconnect () == true)
     {
       if (db_does_connected_host_have_status (DB_HS_MISMATCHED_RW_MODE))

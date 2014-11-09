@@ -8,8 +8,10 @@ EXPORTS
     cas_default_lock_timeout
     cas_send_result_flag
     cfg_find_db
+    cfg_free_directory
     char_isdigit
     css_connect_to_master_for_info
+    css_connect_to_master_timeout
     css_does_master_exist
     css_free_conn
     css_gethostname
@@ -33,6 +35,7 @@ EXPORTS
     css_get_sock_name
     css_check_magic
     css_register_server_timeout_fn
+    css_register_check_server_alive_fn 
     cub_vsnprintf
     da_create
     da_destroy
@@ -446,6 +449,8 @@ EXPORTS
     util_get_ha_mode_for_sa_utils
     util_is_localhost
     util_free_ha_conf
+    util_split_string
+    util_free_string_array
     utility_initialize
     util_byte_to_size_string
     util_size_string_to_byte

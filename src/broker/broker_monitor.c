@@ -88,6 +88,7 @@
 #define         PROXY_MONITOR_FLAG_MASK      0x04
 #define         METADATA_MONITOR_FLAG_MASK   0x08
 #define         CLIENT_MONITOR_FLAG_MASK     0x10
+#define         UNUSABLE_DATABASES_FLAG_MASK 0x20
 
 #if defined(WINDOWS) && !defined(PRId64)
 # define PRId64 "lld"
@@ -142,7 +143,8 @@ typedef enum
   FIELD_SHARD_Q_SIZE,
   FIELD_STMT_POOL_RATIO,
   FIELD_NUMBER_OF_CONNECTION_REJECTED,
-  FIELD_LAST = FIELD_NUMBER_OF_CONNECTION_REJECTED
+  FIELD_UNUSABLE_DATABASES,
+  FIELD_LAST = FIELD_UNUSABLE_DATABASES
 } FIELD_NAME;
 
 typedef enum
@@ -241,6 +243,7 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_SHARD_Q_SIZE, 7, "SHARD-Q", FIELD_RIGHT_ALIGN},
   {FIELD_STMT_POOL_RATIO, 20, "STMT-POOL-RATIO(%)", FIELD_RIGHT_ALIGN},
   {FIELD_NUMBER_OF_CONNECTION_REJECTED, 9, "#REJECT", FIELD_RIGHT_ALIGN},
+  {FIELD_UNUSABLE_DATABASES, 100, "UNUSABLE_DATABASES", FIELD_LEFT_ALIGN}
 };
 
 /* structure for appl monitoring */
@@ -366,6 +369,7 @@ static void endwin ();
 
 static int metadata_monitor (double elapsed_time);
 static int client_monitor (void);
+static int unusable_databases_monitor (void);
 
 static T_SHM_BROKER *shm_br;
 static bool display_job_queue = false;
@@ -617,6 +621,15 @@ main (int argc, char **argv)
 	      client_monitor ();
 	    }
 
+	  if (monitor_flag & UNUSABLE_DATABASES_FLAG_MASK)
+	    {
+	      if ((monitor_flag & ~UNUSABLE_DATABASES_FLAG_MASK) != 0)
+		{
+		  print_newline ();
+		}
+	      unusable_databases_monitor ();
+	    }
+
 	  if (monitor_flag == 0)
 	    {
 	      appl_monitor (br_vector, elapsed_time);
@@ -693,11 +706,12 @@ static void
 print_usage (void)
 {
   printf
-    ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-f] [<expr>]\n");
+    ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [-f] [<expr>]\n");
   printf ("\t<expr> part of broker name or SERVICE=[ON|OFF]\n");
   printf ("\t-q display job queue\n");
   printf ("\t-m display shard statistics information\n");
   printf ("\t-c display client information\n");
+  printf ("\t-u display unusable database server\n");
   printf ("\t-b brief mode (show broker info)\n");
   printf ("\t-S brief mode (show sharddb info)\n");
   printf ("\t-P brief mode (show proxy info)\n");
@@ -715,7 +729,7 @@ get_args (int argc, char *argv[], char *br_vector)
   regex_t re;
 #endif
 
-  char optchars[] = "hbqts:l:fmcSP";
+  char optchars[] = "hbqts:l:fmcSPu";
 
   display_job_queue = false;
   refresh_sec = 0;
@@ -760,6 +774,9 @@ get_args (int argc, char *argv[], char *br_vector)
 	  break;
 	case 'P':
 	  monitor_flag |= PROXY_MONITOR_FLAG_MASK;
+	  break;
+	case 'u':
+	  monitor_flag |= UNUSABLE_DATABASES_FLAG_MASK;
 	  break;
 	case 'h':
 	case '?':
@@ -2655,6 +2672,75 @@ client_monitor (void)
 	    }
 	}
       uw_shm_detach (shm_proxy_p);
+    }
+
+  return 0;
+}
+
+static int
+unusable_databases_monitor (void)
+{
+  T_SHM_APPL_SERVER *shm_appl = NULL;
+  int i, j, u_index;
+  char buf[LINE_MAX];
+  int buf_offset;
+
+  buf_offset = 0;
+  buf_offset = print_title (buf, buf_offset, FIELD_BROKER_NAME, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_UNUSABLE_DATABASES, NULL);
+
+  str_out ("%s", buf);
+  print_newline ();
+  for (i = strlen (buf); i > 0; i--)
+    {
+      str_out ("%s", "=");
+    }
+  print_newline ();
+
+  for (i = 0; i < shm_br->num_broker; i++)
+    {
+      str_out ("*%c", FIELD_DELIMITER);
+      print_value (FIELD_BROKER_NAME, shm_br->br_info[i].name,
+		   FIELD_T_STRING);
+
+      if (shm_br->br_info[i].service_flag == SERVICE_ON)
+	{
+	  shm_appl =
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
+					       appl_server_shm_id,
+					       SHM_APPL_SERVER,
+					       SHM_MODE_MONITOR);
+	  if (shm_appl == NULL)
+	    {
+	      str_out ("%s", "shared memory open error");
+	      print_newline ();
+	    }
+	  else
+	    {
+	      if (shm_appl->monitor_server_flag)
+		{
+		  u_index = shm_appl->unusable_databases_seq % 2;
+
+		  for (j = 0; j < shm_appl->unusable_databases_cnt[u_index];
+		       j++)
+		    {
+		      str_out ("%s@%s ",
+			       shm_appl->unusable_databases[u_index][j].
+			       database_name,
+			       shm_appl->unusable_databases[u_index][j].
+			       database_host);
+		    }
+		}
+	      print_newline ();
+	      uw_shm_detach (shm_appl);
+	    }
+	}
+
+      else
+	{
+	  str_out ("%c%s", FIELD_DELIMITER, "OFF");
+	  print_newline ();
+	}
     }
 
   return 0;

@@ -233,6 +233,7 @@ struct t_broker_info
   int hang_timeout;
   int reject_client_count;
 
+  char monitor_server_flag;
   char monitor_hang_flag;
   char reject_client_flag;	/* reject clients due to hanging cas/proxy */
 

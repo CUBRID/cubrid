@@ -142,6 +142,10 @@ static void css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
 static void css_process_ha_admin_info (CSS_CONN_ENTRY * conn,
 				       unsigned short request_id);
 
+static void css_process_server_state (CSS_CONN_ENTRY * conn,
+				      unsigned short request_id,
+				      char *server_name);
+
 /*
  * css_send_command_to_server()
  *   return: none
@@ -1903,6 +1907,46 @@ error_return:
 }
 
 /*
+ * css_process_server_state()
+ *   return: none
+ *   conn(in)
+ *   request_id(in)
+ *   server_name(in)
+ */
+static void
+css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id,
+			  char *server_name)
+{
+  int state = 0;
+#if !defined(WINDOWS)
+  SOCKET_QUEUE_ENTRY *temp;
+
+  temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+  if (temp == NULL || IS_INVALID_SOCKET (temp->fd))
+    {
+      state = HB_PSTATE_DEAD;
+      goto send_to_client;
+    }
+
+  if (!temp->ha_mode)
+    {
+      state = HB_PSTATE_UNKNOWN;
+      goto send_to_client;
+    }
+
+  state = hb_return_proc_state_by_fd (temp->fd);
+#endif
+
+send_to_client:
+  state = htonl (state);
+  if (css_send_data (conn, request_id,
+		     (char *) &state, sizeof (int)) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+}
+
+/*
  * css_process_info_request() - information server main loop
  *   return: none
  *   conn(in)
@@ -2031,6 +2075,12 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  break;
 	case ACTIVATE_HEARTBEAT:
 	  css_process_activate_heartbeat (conn, request_id);
+	  break;
+	case GET_SERVER_STATE:
+	  if (buffer != NULL)
+	    {
+	      css_process_server_state (conn, request_id, buffer);
+	    }
 	  break;
 	default:
 	  if (buffer != NULL)

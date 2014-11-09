@@ -122,6 +122,7 @@ enum css_client_request
   DEACT_CONFIRM_STOP_ALL = 39,	/* HA: confirm preparation for deactiavtion */
   DEACT_CONFIRM_NO_SERVER = 40,	/* HA: confirm the completion of deactivation */
   GET_HA_ADMIN_INFO = 41,	/* HA: get administrative info */
+  GET_SERVER_STATE = 42		/* broker: get the server state*/
 };
 
 /*
@@ -191,7 +192,8 @@ enum css_status
   ERROR_MESSAGE_FROM_MASTER = 5,	/* an error message is returned */
   SERVER_CONNECTED_NEW = 6,
   SERVER_CLIENTS_EXCEEDED = 7,
-  SERVER_INACCESSIBLE_IP = 8
+  SERVER_INACCESSIBLE_IP = 8,
+  SERVER_HANG = 9
 };
 
 /*

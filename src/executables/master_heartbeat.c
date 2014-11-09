@@ -3119,6 +3119,16 @@ hb_resource_demote_start_shutdown_server_proc (void)
 	}
       assert (proc->type == HB_PTYPE_SERVER);
 
+      if (proc->server_hang)
+	{
+	  /* terminate a hang server process immediately */
+	  if (!(kill (proc->pid, 0) && errno == ESRCH))
+	    {
+	      kill (proc->pid, SIGKILL);
+	    }
+	  continue;
+	}
+
       sock_entq = css_return_entry_by_conn (proc->conn,
 					    &css_Master_socket_anchor);
 
@@ -3151,6 +3161,12 @@ hb_resource_demote_confirm_shutdown_server_proc (void)
 
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
+      if (proc->server_hang)
+	{
+	  /* don't wait for a hang server process that has already been terminated */
+	  continue;
+	}
+
       if (proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE
 	  || proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
 	{
@@ -3760,6 +3776,7 @@ hb_alloc_new_proc (void)
       p->next = NULL;
       p->prev = NULL;
       p->being_shutdown = false;
+      p->server_hang = false;
       LSA_SET_NULL (&p->prev_eof);
       LSA_SET_NULL (&p->curr_eof);
 
@@ -4013,6 +4030,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 
   proc->state = HB_PSTATE_DEAD;
   proc->sfd = INVALID_SOCKET;
+  proc->server_hang = false;
   LSA_SET_NULL (&proc->prev_eof);
   LSA_SET_NULL (&proc->curr_eof);
 
@@ -4136,6 +4154,7 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
       proc->conn = conn;
       gettimeofday (&proc->rtime, NULL);
       proc->changemode_gap = 0;
+      proc->server_hang = false;
 
       if (proc->state == HB_PSTATE_REGISTERED)
 	{
@@ -4372,12 +4391,14 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
 static bool
 hb_resource_check_server_log_grow (void)
 {
+  int dead_cnt = 0;
   HB_PROC_ENTRY *proc;
 
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
       if (proc->type != HB_PTYPE_SERVER
-	  || proc->state != HB_PSTATE_REGISTERED_AND_ACTIVE)
+	  || proc->state != HB_PSTATE_REGISTERED_AND_ACTIVE
+	  || proc->server_hang == true)
 	{
 	  continue;
 	}
@@ -4393,9 +4414,15 @@ hb_resource_check_server_log_grow (void)
 	}
       else
 	{
-	  return false;
+	  proc->server_hang = true;
+	  dead_cnt++;
 	}
     }
+  if (dead_cnt > 0)
+    {
+      return false;
+    }
+
   return true;
 }
 
@@ -4705,7 +4732,7 @@ hb_thread_check_disk_failure (void *arg)
 	}
       else
 	{
-	  SLEEP_SEC (30);
+	  SLEEP_SEC (15);
 	}
     }
 
@@ -7169,4 +7196,76 @@ hb_finish_deactivate_server_info (void)
 
   hb_Deactivate_info.server_count = 0;
   hb_Deactivate_info.info_started = false;
+}
+
+/*
+ * hb_return_proc_state_by_fd() -
+ *   return: process state
+ *
+ *   sfd(in):
+ */
+int
+hb_return_proc_state_by_fd (int sfd)
+{
+  int rv;
+  int state = 0;
+  HB_PROC_ENTRY *proc;
+
+  if (hb_Resource == NULL)
+    {
+      return HB_PSTATE_UNKNOWN;
+    }
+
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+  proc = hb_return_proc_by_fd (sfd);
+  if (proc == NULL)
+    {
+      pthread_mutex_unlock (&hb_Resource->lock);
+      return HB_PSTATE_DEAD;
+    }
+
+  state = (int) proc->state;
+
+  if (proc->server_hang)
+    {
+      state = HB_PSTATE_DEAD;
+    }
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  return state;
+}
+
+/*
+ * hb_is_hang_process() -
+ *   return: 
+ *
+ *   sfd(in):
+ */
+bool
+hb_is_hang_process (int sfd)
+{
+  int rv;
+  HB_PROC_ENTRY *proc;
+
+  if (hb_Resource == NULL)
+    {
+      return false;
+    }
+
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+  proc = hb_return_proc_by_fd (sfd);
+  if (proc == NULL)
+    {
+      pthread_mutex_unlock (&hb_Resource->lock);
+      return false;
+    }
+
+  if (proc->server_hang)
+    {
+      pthread_mutex_unlock (&hb_Resource->lock);
+      return true;
+    }
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  return false;
 }

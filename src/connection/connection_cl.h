@@ -47,6 +47,10 @@ extern CSS_CONN_ENTRY *css_connect_to_cubrid_server (char *host_name,
 extern CSS_CONN_ENTRY *css_connect_to_master_for_info (const char *host_name,
 						       int port_id,
 						       unsigned short *rid);
+extern CSS_CONN_ENTRY *css_connect_to_master_timeout (const char *host_name,
+						      int port_id,
+						      int timeout,
+						      unsigned short *rid);
 extern bool css_does_master_exist (int port_id);
 
 extern int css_receive_data (CSS_CONN_ENTRY * conn, unsigned short rid,

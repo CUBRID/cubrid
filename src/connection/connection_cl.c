@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <assert.h>
+#include <math.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -1135,6 +1136,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 	break;
       }
     case SERVER_NOT_FOUND:
+    case SERVER_HANG:
     default:
       break;
     }
@@ -1176,7 +1178,26 @@ CSS_CONN_ENTRY *
 css_connect_to_master_for_info (const char *host_name, int port_id,
 				unsigned short *rid)
 {
+  return (css_connect_to_master_timeout (host_name, port_id, 0, rid));
+}
+
+/*
+ * css_connect_to_master_timeout () - connect to the master server
+ *   return:
+ *   host_name(in):
+ *   port_id(in):
+ *   timeout(in): timeout in milli-seconds
+ *   rid(out):
+ *
+ * Note: This will allow the client to extract information from the master,
+ *       as well as modify runtime parameters.
+ */
+CSS_CONN_ENTRY *
+css_connect_to_master_timeout (const char *host_name, int port_id,
+			       int timeout, unsigned short *rid)
+{
   CSS_CONN_ENTRY *conn;
+  double time = timeout;
 
   conn = css_make_conn (0);
   if (conn == NULL)
@@ -1184,8 +1205,10 @@ css_connect_to_master_for_info (const char *host_name, int port_id,
       return NULL;
     }
 
+  time = ceil (time / 1000);
+
   return (css_common_connect (host_name, conn, INFO_REQUEST, NULL, 0,
-			      port_id, 0, rid, true));
+			      port_id, (int) time, rid, true));
 }
 
 /*
