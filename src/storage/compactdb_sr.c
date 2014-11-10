@@ -195,6 +195,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
   int force_count = 0, updated_n_attrs_id = 0;
   int *atts_id = NULL;
   int error_code;
+  OID updated_oid;
 
   if (upd_scancache == NULL || attr_info == NULL || oid == NULL)
     {
@@ -209,10 +210,9 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
       copy_recdes.data = NULL;
 
       scan_code =
-	heap_mvcc_get_version_for_delete (thread_p, oid,
-					  &upd_scancache->class_oid,
-					  &copy_recdes, upd_scancache,
-					  COPY, NULL);
+	heap_mvcc_get_for_delete (thread_p, oid, &upd_scancache->class_oid,
+				  &copy_recdes, upd_scancache, COPY, NULL_CHN,
+				  NULL, &updated_oid);
       if (scan_code != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -222,6 +222,10 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
 	    }
 
 	  return -1;
+	}
+      if (!OID_ISNULL (&updated_oid))
+	{
+	  COPY_OID (oid, &updated_oid);
 	}
     }
 

@@ -245,6 +245,9 @@ typedef enum
   SNAPSHOT_TYPE_DIRTY		/* use dirty snapshot */
 } SNAPSHOT_TYPE;
 
+/* Forward definition. */
+struct mvcc_reev_data;
+
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p,
 				   const OID * class_oid);
 #ifdef DEBUG_CLASSREPR_CACHE
@@ -309,10 +312,17 @@ extern int heap_get_chn (THREAD_ENTRY * thread_p, const OID * oid);
 extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid,
 			   RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 			   int ispeeking, int chn);
-extern SCAN_CODE heap_get_last (THREAD_ENTRY * thread_p, OID * oid,
-				RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-				int ispeeking, int old_chn,
-				OID * updated_oid);
+extern SCAN_CODE heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid,
+					RECDES * recdes,
+					HEAP_SCANCACHE * scan_cache,
+					int ispeeking, int old_chn,
+					OID * updated_oid);
+extern SCAN_CODE heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid,
+					   OID * class_oid, RECDES * recdes,
+					   HEAP_SCANCACHE * scan_cache,
+					   int ispeeking, int old_chn,
+					   struct mvcc_reev_data
+					   *mvcc_reev_data, OID * update_oid);
 extern SCAN_CODE heap_get_with_class_oid (THREAD_ENTRY * thread_p,
 					  OID * class_oid, const OID * oid,
 					  RECDES * recdes,
@@ -656,21 +666,20 @@ extern int heap_vpid_next (const HFID * hfid, PAGE_PTR pgptr,
 extern int heap_vpid_prev (const HFID * hfid, PAGE_PTR pgptr,
 			   VPID * prev_vpid);
 
-extern int heap_get_pages_for_mvcc_chain_read (THREAD_ENTRY * thread_p,
-					       const OID * oid,
-					       PAGE_PTR * pgptr,
-					       PAGE_PTR * forward_pgptr,
-					       OID * forward_oid,
-					       bool * ignore_record);
-extern SCAN_CODE heap_get_mvcc_data (THREAD_ENTRY * thread_p, const OID * oid,
-				     MVCC_REC_HEADER * mvcc_rec_header,
-				     PAGE_PTR page_ptr,
-				     PAGE_PTR ovf_first_page,
-				     MVCC_SNAPSHOT * mvcc_snapshot);
-extern int heap_mvcc_lock_chain_for_delete (THREAD_ENTRY * thread_p,
-					    const HFID * hfid,
-					    OID * oid, OID * class_oid,
-					    HEAP_SCANCACHE * scan_p);
+extern SCAN_CODE heap_prepare_get_record (THREAD_ENTRY * thread_p,
+					  const OID * oid,
+					  OID * class_oid,
+					  OID * forward_oid,
+					  PAGE_PTR * home_page,
+					  PAGE_PTR * forward_page,
+					  INT16 * record_type);
+extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p,
+				       const OID * oid,
+				       const OID * forward_oid,
+				       PAGE_PTR home_page,
+				       PAGE_PTR forward_page,
+				       INT16 record_type,
+				       MVCC_REC_HEADER * mvcc_header);
 extern int heap_get_mvcc_rec_header_from_overflow (PAGE_PTR ovf_page,
 						   MVCC_REC_HEADER *
 						   mvcc_header,
@@ -679,12 +688,6 @@ extern int heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page,
 						 MVCC_REC_HEADER *
 						 mvcc_header);
 extern OID *heap_get_serial_class_oid (THREAD_ENTRY * thread_p);
-extern SCAN_CODE heap_mvcc_get_version_for_delete (THREAD_ENTRY * thread_p,
-						   OID * oid, OID * class_oid,
-						   RECDES * recdes,
-						   HEAP_SCANCACHE *
-						   scan_cache, int ispeeking,
-						   void *mvcc_reev_data);
 extern bool heap_is_mvcc_disabled_for_class (const OID * class_oid);
 extern int heap_rv_mvcc_redo_delete_relocated (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);

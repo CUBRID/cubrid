@@ -12285,6 +12285,13 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
        */
       COPY_OID (&class_oid, cls_oid);
     }
+  else if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+    {
+      /* We don't need class OID for vacuum workers. Avoid accessing heap
+       * without a good reason.
+       */
+      OID_SET_NULL (&class_oid);
+    }
   else
     {
       if (is_active)
@@ -28663,11 +28670,6 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   prev_vpid = header->prev_vpid;
   next_vpid = header->next_vpid;
 
-  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
-    {
-      oid_size += OR_OID_SIZE;
-    }
-
   /* check key order */
   for (i = 1; i < key_cnt; i++)
     {
@@ -29991,7 +29993,8 @@ locking_done:
     }
 
   if (need_count_only == false
-      && btrs_helper.oids_cnt == btrs_helper.pg_oid_cnt)
+      && btrs_helper.oids_cnt == btrs_helper.pg_oid_cnt
+      && !btrs_helper.keep_on_copying)
     {
       /* We have no more room. */
       LSA_COPY (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page));
@@ -30050,6 +30053,7 @@ locking_done:
 error:
 
   btrs_helper.oids_cnt = -1;
+  assert (er_errid () != NO_ERROR);
 
   /*
    * we need to make sure that
@@ -30093,6 +30097,7 @@ resume_next_search:
     {
       pgbuf_unfix_and_init (thread_p, bts->O_page);
     }
+  assert (VPID_ISNULL (&bts->O_vpid));
 
   if (key_limit_upper && btrs_helper.oids_cnt != -1)
     {
@@ -30851,12 +30856,6 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
        */
       if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	{
-	  if (bts->oid_pos > 1)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "index inconsistency.(unique violation).\n");
-	      return ER_FAILED;
-	    }
 
 	  /* bts->oid_pos == 1 */
 	  if (btrs_helper->rec_oid_cnt == 1)
@@ -31498,11 +31497,13 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	      return ER_FAILED;
 	    }
 	  assert (btrs_helper->rec.length % 4 == 0);
-
-	  btrs_helper->rec_oid_ptr =
-	    btrs_helper->rec.data + (bts->oid_pos * btrs_helper->oid_size);
 	  btrs_helper->offset = 0;
 	  btrs_helper->node_type = BTREE_OVERFLOW_NODE;
+
+	  btrs_helper->rec_oid_ptr =
+	    btree_leaf_get_nth_oid_ptr (&bts->btid_int, &btrs_helper->rec,
+					btrs_helper->node_type,
+					btrs_helper->offset, bts->oid_pos);
 	}
       else if (bts->C_page != NULL)
 	{
@@ -31523,17 +31524,15 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	    {
 	      return ER_FAILED;
 	    }
-	  if (bts->oid_pos == 0)
-	    {
-	      btrs_helper->rec_oid_ptr = btrs_helper->rec.data;
-	    }
-	  else
-	    {
-	      btrs_helper->rec_oid_ptr =
-		(btrs_helper->rec.data + btrs_helper->offset
-		 + ((bts->oid_pos - 1) * btrs_helper->oid_size));
-	    }
 	  btrs_helper->node_type = BTREE_LEAF_NODE;
+	  btrs_helper->rec_oid_ptr =
+	    btree_leaf_get_nth_oid_ptr (&bts->btid_int, &btrs_helper->rec,
+					btrs_helper->node_type,
+					btrs_helper->offset, bts->oid_pos);
+	}
+      else
+	{
+	  assert (false);
 	}
 
       btree_leaf_get_oid_from_oidptr (bts, btrs_helper->rec_oid_ptr,

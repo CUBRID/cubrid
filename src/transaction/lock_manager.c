@@ -7492,318 +7492,6 @@ end:
 }
 
 /*
- * lock_objects_lock_set - Lock many objects
- *
- * return: one of following values
- *     LK_GRANTED
- *     LK_NOTGRANTED_DUE_ABORTED
- *     LK_NOTGRANTED_DUE_TIMEOUT
- *     LK_NOTGRANTED_DUE_ERROR
- *
- *   lockset(in/out): Request the lock of many objects
- *
- */
-int
-lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
-{
-#if !defined (SERVER_MODE)
-  LK_SET_STANDALONE_XLOCK (lockset->reqobj_class_lock);
-  if (lockset->reqobj_inst_lock == X_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
-  return LK_GRANTED;
-#else /* !SERVER_MODE */
-  int tran_index;
-  int wait_msecs;
-  TRAN_ISOLATION isolation;
-  LK_LOCKINFO cls_lockinfo_space[LK_LOCKINFO_FIXED_COUNT];
-  LK_LOCKINFO *cls_lockinfo;
-  LK_LOCKINFO ins_lockinfo_space[LK_LOCKINFO_FIXED_COUNT];
-  LK_LOCKINFO *ins_lockinfo;
-  LC_LOCKSET_REQOBJ *reqobjects;	/* Description of one instance to
-					 * lock
-					 */
-  LC_LOCKSET_CLASSOF *reqclasses;	/* Description of one class of a
-					 * requested object to lock
-					 */
-  LOCK reqobj_class_lock;
-  LOCK reqobj_inst_lock;
-  int cls_count;
-  int ins_count;
-  int granted, i;
-  LK_ENTRY *root_class_entry = NULL;
-  LK_ENTRY *class_entry = NULL;
-  LK_ENTRY *inst_entry = NULL;
-  LOCK intention_mode;
-#if defined (EnableThreadMonitoring)
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL elapsed_time;
-#endif
-  bool is_mvcc_disabled_for_class = false;
-
-  if (lockset == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lock_objects_lock_set", "NULL lockset pointer");
-      return LK_NOTGRANTED_DUE_ERROR;
-    }
-
-#if defined (EnableThreadMonitoring)
-  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
-    {
-      tsc_getticks (&start_tick);
-    }
-#endif
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  wait_msecs = logtb_find_wait_msecs (tran_index);
-  isolation = logtb_find_isolation (tran_index);
-
-  /* We do not want to rollback the transaction in the event of a deadlock.
-   * For now, let's just wait a long time. If deadlock, the transaction is
-   * going to be notified of lock timeout instead of aborted.
-   */
-  if (lockset->quit_on_errors == false && wait_msecs == LK_INFINITE_WAIT)
-    {
-      wait_msecs = INT_MAX;	/* will be notified of lock timeout */
-    }
-
-  /* prepare cls_lockinfo and ins_lockinfo array */
-  if (lockset->num_reqobjs <= LK_LOCKINFO_FIXED_COUNT)
-    {
-      cls_lockinfo = &(cls_lockinfo_space[0]);
-      ins_lockinfo = &(ins_lockinfo_space[0]);
-    }
-  else
-    {				/* lockset->num_reqobjs > LK_LOCKINFO_FIXED_COUNT */
-      cls_lockinfo =
-	(LK_LOCKINFO *) db_private_alloc (thread_p,
-					  SIZEOF_LK_LOCKINFO *
-					  lockset->num_reqobjs);
-      if (cls_lockinfo == (LK_LOCKINFO *) NULL)
-	{
-	  return LK_NOTGRANTED_DUE_ERROR;
-	}
-      ins_lockinfo =
-	(LK_LOCKINFO *) db_private_alloc (thread_p,
-					  SIZEOF_LK_LOCKINFO *
-					  lockset->num_reqobjs);
-      if (ins_lockinfo == (LK_LOCKINFO *) NULL)
-	{
-	  db_private_free_and_init (thread_p, cls_lockinfo);
-	  return LK_NOTGRANTED_DUE_ERROR;
-	}
-    }
-
-  reqobjects = lockset->objects;
-  reqclasses = lockset->classes;
-
-  /* get reqobj_class_lock and reqobj_inst_lock considering isolation */
-  reqobj_class_lock = lockset->reqobj_class_lock;
-  reqobj_inst_lock = lockset->reqobj_inst_lock;
-
-  /* build cls_lockinfo and ins_lockinfo array */
-  cls_count = ins_count = 0;
-
-  for (i = 0; i < lockset->num_reqobjs; i++)
-    {
-      if (OID_ISNULL (&reqobjects[i].oid)
-	  || reqobjects[i].class_index < 0
-	  || reqobjects[i].class_index > lockset->num_classes_of_reqobjs)
-	{
-	  continue;
-	}
-
-      if (OID_IS_ROOTOID (&reqclasses[reqobjects[i].class_index].oid))
-	{
-	  /* requested object: class => build cls_lockinfo[cls_count] */
-	  COPY_OID (&cls_lockinfo[cls_count].oid, &reqobjects[i].oid);
-	  cls_lockinfo[cls_count].org_oidp = &reqobjects[i].oid;
-	  cls_lockinfo[cls_count].lock = reqobj_class_lock;
-	  /* increment cls_count */
-	  cls_count++;
-	}
-      else
-	{
-	  /* requested object: instance => build cls_lockinfo[cls_count] */
-	  COPY_OID (&ins_lockinfo[ins_count].oid, &reqobjects[i].oid);
-	  COPY_OID (&ins_lockinfo[ins_count].class_oid,
-		    &reqclasses[reqobjects[i].class_index].oid);
-	  ins_lockinfo[ins_count].org_oidp = &reqobjects[i].oid;
-	  ins_lockinfo[ins_count].lock = reqobj_inst_lock;
-	  /* increment ins_count */
-	  ins_count++;
-	}
-    }
-
-  if (cls_count > 0)
-    {
-      /* sort the cls_lockinfo to avoid deadlock */
-      if (cls_count > 1)
-	{
-	  (void) qsort (cls_lockinfo, cls_count, SIZEOF_LK_LOCKINFO,
-			lock_compare_lock_info);
-	}
-
-      /* hold the locks on the given class objects */
-      root_class_entry = lock_get_class_lock (oid_Root_class_oid, tran_index);
-
-      for (i = 0; i < cls_count; i++)
-	{
-	  /* hold an intention lock on the root class if it is needed. */
-	  intention_mode =
-	    (cls_lockinfo[i].lock <= S_LOCK ? IS_LOCK : IX_LOCK);
-	  if (root_class_entry == NULL
-	      || root_class_entry->granted_mode < intention_mode)
-	    {
-	      granted = lock_internal_perform_lock_object (thread_p,
-							   tran_index,
-							   oid_Root_class_oid,
-							   (OID *) NULL, NULL,
-							   intention_mode,
-							   wait_msecs,
-							   &root_class_entry,
-							   NULL);
-	      if (granted != LK_GRANTED)
-		{
-		  if (lockset->quit_on_errors == false
-		      && granted == LK_NOTGRANTED_DUE_TIMEOUT)
-		    {
-		      OID_SET_NULL (cls_lockinfo[i].org_oidp);
-		      continue;
-		    }
-		  goto error;
-		}
-	    }
-
-	  /* hold the locks on the given class objects */
-	  granted = lock_internal_perform_lock_object (thread_p,
-						       tran_index,
-						       &cls_lockinfo[i].oid,
-						       (OID *) NULL, NULL,
-						       cls_lockinfo[i].lock,
-						       wait_msecs,
-						       &class_entry,
-						       root_class_entry);
-	  if (granted != LK_GRANTED)
-	    {
-	      if (lockset->quit_on_errors == false
-		  && granted == LK_NOTGRANTED_DUE_TIMEOUT)
-		{
-		  OID_SET_NULL (cls_lockinfo[i].org_oidp);
-		  continue;
-		}
-	      goto error;
-	    }
-	}
-    }
-
-  if (ins_count > 0)
-    {
-      /* sort the ins_lockinfo to avoid deadlock */
-      if (ins_count > 1)
-	{
-	  (void) qsort (ins_lockinfo, ins_count, SIZEOF_LK_LOCKINFO,
-			lock_compare_lock_info);
-	}
-
-      /* hold the locks on the given instance objects */
-      for (i = 0; i < ins_count; i++)
-	{
-	  /* hold an intention lock on the class if it is needed. */
-	  intention_mode = (ins_lockinfo[i].lock <= S_LOCK
-			    ? IS_LOCK : IX_LOCK);
-	  class_entry = lock_get_class_lock (&ins_lockinfo[i].class_oid,
-					     tran_index);
-	  if (class_entry == NULL
-	      || class_entry->granted_mode < intention_mode)
-	    {
-	      granted = lock_internal_perform_lock_object (thread_p,
-							   tran_index,
-							   &ins_lockinfo[i].
-							   class_oid,
-							   (OID *) NULL, NULL,
-							   intention_mode,
-							   wait_msecs,
-							   &class_entry,
-							   root_class_entry);
-	      if (granted != LK_GRANTED)
-		{
-		  if (lockset->quit_on_errors == false
-		      && granted == LK_NOTGRANTED_DUE_TIMEOUT)
-		    {
-		      OID_SET_NULL (ins_lockinfo[i].org_oidp);
-		      continue;
-		    }
-		  goto error;
-		}
-	    }
-	  is_mvcc_disabled_for_class =
-	    heap_is_mvcc_disabled_for_class (&ins_lockinfo[i].class_oid);
-	  if (is_mvcc_disabled_for_class || ins_lockinfo[i].lock > S_LOCK)
-	    {
-	      /* Get lock if MVCC is disabled or otherwise if required lock is
-	       * stronger than S_LOCK.
-	       */
-	      /* hold the lock on the given instance */
-	      granted =
-		lock_internal_perform_lock_object (thread_p, tran_index,
-						   &ins_lockinfo[i].oid,
-						   &ins_lockinfo[i].class_oid,
-						   NULL, ins_lockinfo[i].lock,
-						   wait_msecs, &inst_entry,
-						   class_entry);
-	      if (granted != LK_GRANTED)
-		{
-		  if (lockset->quit_on_errors == false
-		      && granted == LK_NOTGRANTED_DUE_TIMEOUT)
-		    {
-		      OID_SET_NULL (ins_lockinfo[i].org_oidp);
-		      continue;
-		    }
-		  goto error;
-		}
-	    }
-	}
-    }
-
-  /* release memory space for cls_lockinfo and ins_lockinfo */
-  if (cls_lockinfo != &cls_lockinfo_space[0])
-    {
-      db_private_free_and_init (thread_p, cls_lockinfo);
-      db_private_free_and_init (thread_p, ins_lockinfo);
-    }
-
-#if defined (EnableThreadMonitoring)
-  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
-    }
-  if (MONITOR_WAITING_THREAD (elapsed_time))
-    {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_objects_lock_set)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "lock_objects_lock_set: %6d.%06d\n",
-		    elapsed_time.tv_sec, elapsed_time.tv_usec);
-    }
-#endif
-
-  return LK_GRANTED;
-
-error:
-  if (cls_lockinfo != &cls_lockinfo_space[0])
-    {
-      db_private_free_and_init (thread_p, cls_lockinfo);
-      db_private_free_and_init (thread_p, ins_lockinfo);
-    }
-  return granted;
-#endif /* !SERVER_MODE */
-}
-
-/*
  * lock_scan - Lock for scanning a heap
  *
  * return: one of following values)
@@ -8395,7 +8083,7 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       return;
     }
 
-  for (i = 0; i < lockset->num_reqobjs; i++)
+  for (i = 0; i < lockset->num_reqobjs_processed; i++)
     {
       oid = &lockset->objects[i].oid;
       if (OID_ISNULL (oid) || lockset->objects[i].class_index == -1)
@@ -8423,15 +8111,26 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       switch (isolation)
 	{
 	case TRAN_READ_COMMITTED:
-	  /* demote shared class lock or unlock shared instance lock */
-	  /* The intentional lock on the higher lock granule must be kept */
+	  /* demote shared class lock or unlock shared instance lock. */
+	  /* The intentional lock on the higher lock granule must be kept. */
 	  if (OID_IS_ROOTOID (class_oid))
 	    {
-	      lock_demote_shared_class_lock (thread_p, tran_index, oid);
+	      /* Don't release locks on classes. READ COMMITTED isolation is
+	       * only applied on instances, classes must have at least
+	       * REPEATABLE READ isolation.
+	       */
+	    }
+	  else if (heap_is_mvcc_disabled_for_class (class_oid))
+	    {
+	      /* Release S_LOCK after reading object. */
+	      lock_unlock_shared_inst_lock (thread_p, tran_index, oid);
 	    }
 	  else
 	    {
-	      lock_unlock_shared_inst_lock (thread_p, tran_index, oid);
+	      /* MVCC is not disabled for class. READ COMMITTED isolation uses
+	       * snapshot instead of locks. We don't have to release anything
+	       * here.
+	       */
 	    }
 	  break;
 

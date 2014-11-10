@@ -79,6 +79,10 @@
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_DELID) \
    && MVCCID_IS_VALID (MVCC_GET_DELID (rec_header_p)))
 
+#define MVCC_IS_HEADER_NEXT_VERSION_VALID(rec_header_p) \
+  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_NEXT_VERSION) \
+   && !OID_ISNULL (&MVCC_GET_NEXT_VERSION (rec_header_p)))
+
 #define MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE(rec_header_p) \
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID) \
    && MVCC_GET_INSID (rec_header_p) != MVCCID_ALL_VISIBLE)
@@ -130,6 +134,16 @@
 #define MVCC_SHOULD_TEST_CHN(thread_p, rec_header_p) \
   (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID) \
     || MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header_p))
+
+/* Check if given CHN is up-to-date according to MVCC header:
+ * 1. Given CHN must be non-NULL.
+ * 2. MVCC header CHN is either invalid (CHN is irrelevant) or header CHN
+ *    matches given CHN.
+ */
+#define MVCC_IS_CHN_UPTODATE(thread_p, rec_header_p, chn) \
+  (chn != NULL_CHN \
+   && (!MVCC_SHOULD_TEST_CHN (thread_p, rec_header_p) \
+       || chn == MVCC_GET_CHN (rec_header_p)))
 
 #define MVCC_SET_SNAPSHOT_DATA(snapshot, fnc, low_act_mvccid, \
 			       high_comp_mvccid, act_ids, cnt_act_ids, \

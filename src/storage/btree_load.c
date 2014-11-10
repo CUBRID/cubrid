@@ -3263,10 +3263,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 {
   OID unique_oid;
   bool is_null;
-  HEAP_CACHE_ATTRINFO attr_info;
   DB_VALUE val;
-  int force_count;
-  HEAP_SCANCACHE upd_scancache;
   int ret = NO_ERROR;
   OID part_oid;
   HFID class_hfid;

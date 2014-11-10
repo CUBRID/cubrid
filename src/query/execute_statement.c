@@ -7186,6 +7186,18 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
       PT_ASSIGNMENTS_HELPER ea;
       PT_NODE *rhs = NULL, *lhs = NULL;
 
+      /* Before we start evaluating assignments, we need to first lock
+       * the object. Assignments may depend on current object values which
+       * cannot be modified by others.
+       */
+      error = db_lock_write (oid);
+      if (error != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser,
+			     "update_object_by_oid failed to lock object.");
+	  return error;
+	}
+
       /* load structures for update */
       error = init_update_data (parser, statement, &assigns, &assigns_count,
 				&cls_info, &upd_cls_cnt, &dbvals, &vals_cnt,

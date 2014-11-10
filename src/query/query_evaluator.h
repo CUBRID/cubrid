@@ -806,7 +806,7 @@ extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p,
 					 DB_LOGICAL ev_res,
 					 int *qualification,
 					 FILTER_INFO * key_filter,
-					 RECDES * recdes, OID * oid);
+					 RECDES * recdes, const OID * oid);
 extern int eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 				  HEAP_SCANCACHE * scan_cache,
 				  REGU_VARIABLE_LIST regu_variable_list);

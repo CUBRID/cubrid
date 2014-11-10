@@ -11693,16 +11693,20 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	  if (mvcc_Enabled)
 	    {
 	      SCAN_CODE scan_code;
-	      RECDES copy_recdes;
-
-	      copy_recdes.data = NULL;
+	      OID updated_oid;
 
 	      /* TO DO - need to handle reevaluation */
+	      /* TO DO - Object should be locked with xbtree_find_unique.
+	       * Why do we need to get it again here?
+	       */
 	      scan_code =
-		heap_mvcc_get_version_for_delete (thread_p, &unique_oid,
-						  &class_oid, &copy_recdes,
-						  local_scan_cache, COPY,
-						  NULL);
+		heap_mvcc_get_for_delete (thread_p, &unique_oid, &class_oid,
+					  NULL, local_scan_cache, COPY,
+					  NULL_CHN, NULL, &updated_oid);
+	      if (!OID_ISNULL (&updated_oid))
+		{
+		  COPY_OID (&unique_oid, &updated_oid);
+		}
 
 	      if (scan_code != S_SUCCESS)
 		{
@@ -13745,7 +13749,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int err = NO_ERROR;
   int needs_pruning = DB_NOT_PARTITIONED_CLASS;
   HEAP_SCANCACHE scan_cache;
-  RECDES copy_recdes;
+  OID updated_oid;
   bool scan_cache_inited = false;
   SCAN_CODE scan_code;
   MVCC_INFO *curr_mvcc_info = NULL;
@@ -13756,6 +13760,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
   bool clear_list_id = false;
+  MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
   assert (xasl->list_id->tuple_cnt == 1);
   OID_SET_NULL (&last_cached_class_oid);
@@ -13948,17 +13953,16 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  (void) heap_scancache_start (thread_p, &scan_cache,
 					       class_hfid, class_oid, false,
-					       false, NULL);
+					       false, mvcc_snapshot);
 		  scan_cache_inited = true;
 		  COPY_OID (&last_cached_class_oid, class_oid);
 		}
 	      /* need to handle reevaluation */
-	      copy_recdes.data = NULL;
 	      scan_code =
-		heap_mvcc_get_version_for_delete (thread_p, oid, class_oid,
-						  &copy_recdes,
-						  &scan_cache, COPY,
-						  p_mvcc_reev_data);
+		heap_mvcc_get_for_delete (thread_p, oid, class_oid,
+					  NULL, &scan_cache,
+					  COPY, NULL_CHN, p_mvcc_reev_data,
+					  &updated_oid);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
@@ -14016,6 +14020,11 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  /* one tuple successfully reevaluated, do not clear list file */
 		  clear_list_id = false;
+
+		  if (!OID_ISNULL (&updated_oid))
+		    {
+		      COPY_OID (oid, &updated_oid);
+		    }
 		}
 	    }
 	  else

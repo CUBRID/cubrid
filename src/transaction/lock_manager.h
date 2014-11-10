@@ -224,8 +224,6 @@ extern int lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 extern int lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 				 const OID * class_oid, const BTID * btid,
 				 LOCK lock, int cond_flag, int scanid_bit);
-extern int lock_objects_lock_set (THREAD_ENTRY * thread_p,
-				  LC_LOCKSET * lockset);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
 		      bool is_indexscan, LOCK * current_lock,
 		      int *scanid_bit);

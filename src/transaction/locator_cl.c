@@ -4120,12 +4120,8 @@ locator_mflush_set_dirty (MOP mop, MOBJ ignore_object, void *ignore_argument)
 static int
 locator_repl_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 {
-  LC_COPYAREA_ONEOBJ *obj;	/* Describe one object in copy area */
   LC_COPYAREA *reply_copy_area = NULL;
-  OID *oid;
   int error_code = NO_ERROR;
-  int client_type;
-  int i;
 
   assert (mflush != NULL);
 

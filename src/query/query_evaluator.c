@@ -2847,7 +2847,7 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 DB_LOGICAL
 update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res,
 		       int *qualification, FILTER_INFO * key_filter,
-		       RECDES * recdes, OID * oid)
+		       RECDES * recdes, const OID * oid)
 {
   int q;
 
@@ -3097,10 +3097,10 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 	}
 
       mvcc_last_record.data = NULL;
-      if (heap_get_last (thread_p,
-			 DB_GET_OID (peek_dbval), &mvcc_last_record,
-			 scan_cache, true, NULL_CHN,
-			 &mvcc_updated_oid) != S_SUCCESS)
+      if (heap_mvcc_get_visible (thread_p,
+				 DB_GET_OID (peek_dbval), &mvcc_last_record,
+				 scan_cache, true, NULL_CHN,
+				 &mvcc_updated_oid) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS
 	      || er_errid () == ER_HEAP_UNKNOWN_OBJECT)

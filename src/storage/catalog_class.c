@@ -4605,27 +4605,21 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
 			      bool * need_mvcc_update)
 {
   PAGE_PTR pgptr = NULL, forward_pgptr = NULL;
-  bool ignore_record = false;
   MVCC_REC_HEADER mvcc_rec_header;
   int error = NO_ERROR;
+  OID forward_oid;
+  INT16 record_type;
 
   assert (oid != NULL && need_mvcc_update != NULL);
-  if (heap_get_pages_for_mvcc_chain_read (thread_p, oid, &pgptr,
-					  &forward_pgptr, NULL,
-					  &ignore_record) != NO_ERROR)
+  if (heap_prepare_get_record (thread_p, oid, NULL, &forward_oid,
+			       &pgptr, &forward_pgptr, &record_type)
+      != S_SUCCESS)
     {
       goto error;
     }
 
-  if (ignore_record)
-    {
-      /* Is this possible? */
-      assert (0);
-      goto error;
-    }
-
-  if (heap_get_mvcc_data (thread_p, oid, &mvcc_rec_header, pgptr,
-			  forward_pgptr, NULL) != S_SUCCESS)
+  if (heap_get_mvcc_header (thread_p, oid, &forward_oid, pgptr, forward_pgptr,
+			    record_type, &mvcc_rec_header) != S_SUCCESS)
     {
       goto error;
     }

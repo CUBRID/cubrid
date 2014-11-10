@@ -511,9 +511,16 @@ typedef enum
 
 typedef enum
 {
-  S_SELECT,
-  S_DELETE,
-  S_UPDATE
+  S_SELECT,			/* By default MVCC requires no locks for
+				 * select operations.
+				 */
+  S_SELECT_LOCK_DIRTY,		/* Read operation that doesn't plan to modify
+				 * the object, but has to know the exact fate
+				 * of last version. Can be used for foreign
+				 * key and unique constraint checks.
+				 */
+  S_DELETE,			/* Delete object operation. */
+  S_UPDATE			/* Update object operation. */
 } SCAN_OPERATION_TYPE;
 
 #define IS_WRITE_EXCLUSIVE_LOCK(lock) ((lock) == X_LOCK || (lock) == SCH_M_LOCK)
