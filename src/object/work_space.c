@@ -179,7 +179,7 @@ static WS_REPL_LIST ws_Repl_objs;
 static MOP ws_make_mop (OID * oid);
 static void ws_free_mop (MOP op);
 static void emergency_remove_dirty (MOP op);
-static void ws_remove_from_commit_mops_list (MOP op);
+static void ws_unlink_from_commit_mops_list (MOP op);
 static int ws_map_dirty_internal (MAPFUNC function, void *args,
 				  bool classes_only);
 static int add_class_object (MOP class_mop, MOP obj);
@@ -320,6 +320,12 @@ ws_free_mop (MOP op)
 {
   DB_VALUE *keys;
   unsigned int flags;
+
+  if (op->commit_link != NULL)
+    {
+      /* safe-guard to prevent FMR to access ws_Commit_mops list */
+      ws_unlink_from_commit_mops_list (op);
+    }
 
   ws_clean_label_value_list (op);
 
@@ -1632,13 +1638,13 @@ emergency_remove_dirty (MOP op)
 }
 
 /*
- * ws_remove_from_commit_mops_list - 
+ * ws_unlink_from_commit_mops_list - 
  *    return: void
- *    op(in): mop that needs to be removed from ws_Commit_mops list
+ *    op(in): mop that needs to be unlinked from ws_Commit_mops list
  *
  */
 static void
-ws_remove_from_commit_mops_list (MOP op)
+ws_unlink_from_commit_mops_list (MOP op)
 {
   MOP mop, prev, next, to_be_next;
 
@@ -1849,7 +1855,7 @@ ws_cull_mops (void)
 		    }
 		}
 
-	      ws_remove_from_commit_mops_list (mops);
+	      ws_unlink_from_commit_mops_list (mops);
 
 	      /* return mop to the garbage collector */
 	      ws_free_mop (mops);
