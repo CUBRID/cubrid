@@ -125,7 +125,7 @@ schema_constraint_meta (T_NET_BUF * net_buf)
 void
 schema_trigger_meta (T_NET_BUF * net_buf)
 {
-  net_buf_cp_int (net_buf, 10, NULL);
+  net_buf_cp_int (net_buf, 11, NULL);
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "NAME");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
@@ -145,6 +145,8 @@ schema_trigger_meta (T_NET_BUF * net_buf)
 			   "CONDITION_TIME");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "CONDITION");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_REMARKS_STR_LEN,
+			   "REMARKS");
 }
 
 void
