@@ -318,7 +318,7 @@ ws_make_mop (OID * oid)
 static void
 ws_free_mop (MOP op)
 {
-  DB_VALUE *keys;
+  DB_VALUE *keys = NULL;
   unsigned int flags;
 
   if (op->commit_link != NULL)
@@ -329,11 +329,19 @@ ws_free_mop (MOP op)
 
   ws_clean_label_value_list (op);
 
-  keys = ws_keys (op, &flags);
-
-  if (keys != NULL)
+  if (op->is_vid)
     {
-      pr_clear_value (keys);
+      keys = ws_keys (op, &flags);
+      if (keys != NULL)
+	{
+	  pr_clear_value (keys);
+	}
+
+      if (WS_VID_INFO (op))
+	{
+	  free (WS_VID_INFO (op));
+	  WS_VID_INFO (op) = NULL;
+	}
     }
 
   if (op->version != NULL)
