@@ -106,6 +106,39 @@ static int rv;
      }                                                      \
   } while (0)
 
+#define CALC_GLOBAL_STAT_DIFF_ARRAY(DIFF, NEW, OLD, MEMBER, CNT)       \
+  do {								       \
+    int i;							       \
+    for (i = 0; i < (CNT); i++)					       \
+      {								       \
+	if ((NEW)->MEMBER[i] >= (OLD)->MEMBER[i])                      \
+	  {							       \
+	    (DIFF)->MEMBER[i] = (NEW)->MEMBER[i] - (OLD)->MEMBER[i];   \
+	  }							       \
+	else							       \
+	 {							       \
+	   (DIFF)->MEMBER[i] = 0;				       \
+	 }							       \
+      }								       \
+  } while (0)
+
+#define CALC_STAT_DIFF_ARRAY(DIFF, NEW, OLD, MEMBER, CNT)	       \
+  do {								       \
+    int i;							       \
+    for (i = 0; i < (CNT); i++)					       \
+      {								       \
+	if ((NEW)->MEMBER[i] >= (OLD)->MEMBER[i])                      \
+	  {							       \
+	    (DIFF)->MEMBER[i] = (NEW)->MEMBER[i] - (OLD)->MEMBER[i];   \
+	  }							       \
+	else							       \
+	 {							       \
+	  (DIFF)->MEMBER[i] = (NEW)->MEMBER[i];                        \
+	  (OLD)->MEMBER[i] = 0;					       \
+	 }							       \
+      }								       \
+  } while (0)
+
 #define PUT_STAT(RES, NEW, MEMBER)     ((RES)->MEMBER = (NEW)->MEMBER)
 
 #define MNT_CALC_STATS(RES, NEW, OLD, DIFF_METHOD)                      \
@@ -211,6 +244,17 @@ static int rv;
 									\
     DIFF_METHOD (RES, NEW, OLD, vac_num_vacuumed_log_pages);            \
     DIFF_METHOD (RES, NEW, OLD, vac_num_to_vacuum_log_pages);           \
+									\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_fix_counters,		\
+			 PERF_PAGE_FIX_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_unfix_counters,		\
+			 PERF_PAGE_UNFIX_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_lock_time_counters,		\
+			 PERF_PAGE_LOCK_TIME_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_hold_time_counters,		\
+			 PERF_PAGE_HOLD_TIME_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_fix_time_counters,		\
+			 PERF_PAGE_FIX_TIME_COUNTERS);			\
 } while (0)
 
 
@@ -223,6 +267,8 @@ static const char *perf_stat_module_name (const int module);
 static int perf_get_module_type (THREAD_ENTRY * thread_p);
 static const char *perf_stat_page_type_name (const int page_type);
 static const char *perf_stat_page_mode_name (const int page_mode);
+static const char *perf_stat_holder_latch_name (const int holder_latch);
+static const char *perf_stat_cond_type_name (const int cond_type);
 static void perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
 						char *s,
 						int *remaining_size,
@@ -233,6 +279,24 @@ static void perf_stat_dump_unfix_page_array_stat (const UINT64 * stats_ptr,
 						  int *remaining_size,
 						  FILE * stream,
 						  bool print_zero_counters);
+static void perf_stat_dump_page_lock_time_array_stat (const UINT64 *
+						      stats_ptr, char *s,
+						      int *remaining_size,
+						      FILE * stream,
+						      bool
+						      print_zero_counters);
+static void perf_stat_dump_page_hold_time_array_stat (const UINT64 *
+						      stats_ptr, char *s,
+						      int *remaining_size,
+						      FILE * stream,
+						      bool
+						      print_zero_counters);
+static void perf_stat_dump_page_fix_time_array_stat (const UINT64 * stats_ptr,
+						     char *s,
+						     int *remaining_size,
+						     FILE * stream,
+						     bool
+						     print_zero_counters);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool mnt_Iscollecting_stats = false;
@@ -1671,16 +1735,24 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Vacuum_data_page_buffer_hit_ratio",
   "Vacuum_page_efficiency_ratio",
   "Vacuum_page_fetch_ratio",
+  "Data_page_fix_lock_acquire_time_msec",
+  "Data_page_fix_hold_acquire_time_msec",
+  "Data_page_fix_acquire_time_msec",
+  "Data_page_allocate_time_ratio",
 
   /* Array type statistics */
   "Num_data_page_fix_ext",
-  "Num_data_page_unfix_ext"
+  "Num_data_page_unfix_ext",
+  "Time_data_page_lock_acquire_time",
+  "Time_data_page_hold_acquire_time",
+  "Time_data_page_fix_acquire_time"
 };
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 int mnt_Num_tran_exec_stats = 0;
 
-#if defined(SERVER_MODE) && defined(HAVE_ATOMIC_BUILTINS)
+#if defined(SERVER_MODE) && defined(HAVE_ATOMIC_BUILTINS) \
+    && (defined (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402))
 #define ATOMIC_TAS(A,VAL)   ATOMIC_TAS_64(&(A),(VAL))
 #define ATOMIC_INC(A,VAL)   ATOMIC_INC_64(&(A),(VAL))
 #else /* SERVER_MODE && HAVE_ATOMIC_BUILTINS */
@@ -1689,7 +1761,8 @@ int mnt_Num_tran_exec_stats = 0;
 #if defined (SERVER_MODE)
 pthread_mutex_t mnt_Num_tran_stats_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
-#endif /* SERVER_MODE && HAVE_ATOMIC_BUILTINS */
+#endif /* SERVER_MODE && HAVE_ATOMIC_BUILTINS && 
+          (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402)) */
 
 #define ADD_STATS(STAT,VAR,VALUE)                        \
 do {                                                     \
@@ -1698,6 +1771,15 @@ do {                                                     \
       (STAT)->VAR += (VALUE);                            \
     }                                                    \
   ATOMIC_INC(mnt_Server_table.global_stats->VAR, VALUE); \
+} while (0)
+
+#define ADD_STATS_IN_ARRAY(STAT,VAR,POS,VALUE)			\
+do {								\
+  if ((STAT)->enable_local_stat)				\
+    {								\
+      (STAT)->VAR[(POS)] += (VALUE);                            \
+    }							        \
+  ATOMIC_INC(mnt_Server_table.global_stats->VAR[(POS)], VALUE); \
 } while (0)
 
 #define SET_STATS(STAT,VAR,VALUE)                        \
@@ -3517,26 +3599,33 @@ mnt_x_vac_log_to_vacuum_pages (THREAD_ENTRY * thread_p,
  *   return: none
  */
 void
-mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_mode)
+mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode,
+	       int latch_mode, int cond_type)
 {
-  UINT64 *counter;
+  MNT_SERVER_EXEC_STATS *stats;
   int module;
+  int offset;
 
-  module = perf_get_module_type (thread_p);
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
 
-  counter = (mnt_Server_table.global_stats->pbx_fix_counters
-	     + PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode));
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT
+	      && page_found_mode < PERF_PAGE_MODE_CNT);
+      assert (latch_mode >= PERF_HOLDER_LATCH_READ
+	      && latch_mode < PERF_HOLDER_LATCH_CNT);
+      assert (cond_type >= PERF_CONDITIONAL_FIX
+	      && cond_type < PERF_CONDITIONAL_FIX_CNT);
 
-#if defined (HAVE_ATOMIC_BUILTINS) \
-    && (defined (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402))
-  /* The former versions of 32-bit version GCC are unable to generate
-   * optimized code for 64-bit atomic increment operations.
-   * Refer https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185 for more info.
-   */
-  ATOMIC_INC_64 (counter, 1);
-#else
-  *counter += 1;
-#endif
+      offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode,
+					  latch_mode, cond_type);
+      assert (offset < PERF_PAGE_FIX_COUNTERS);
+
+      ADD_STATS_IN_ARRAY (stats, pbx_fix_counters, offset, 1);
+    }
 }
 
 /*
@@ -3544,30 +3633,140 @@ mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_mode)
  *   return: none
  */
 void
-mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int dirty)
+mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty,
+		 int dirtied_by_holder, int holder_latch)
 {
-  UINT64 *counter;
+  MNT_SERVER_EXEC_STATS *stats;
   int module;
+  int offset;
 
-  module = perf_get_module_type (thread_p);
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
 
-  counter = (mnt_Server_table.global_stats->pbx_unfix_counters
-	     + PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, dirty));
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (buf_dirty == 0 || buf_dirty == 1);
+      assert (dirtied_by_holder == 0 || dirtied_by_holder == 1);
+      assert (holder_latch >= PERF_HOLDER_LATCH_READ
+	      && holder_latch < PERF_HOLDER_LATCH_CNT);
 
-  assert (page_type != PAGE_UNKNOWN);
+      offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty,
+					    dirtied_by_holder, holder_latch);
+      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
 
-#if defined (HAVE_ATOMIC_BUILTINS) \
-    && (defined (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402))
-  /* The former versions of 32-bit version GCC are unable to generate
-   * optimized code for 64-bit atomic increment operations.
-   * Refer https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185 for more info.
-   */
-  ATOMIC_INC_64 (counter, 1);
-#else
-  *counter += 1;
-#endif
+      assert (page_type != PAGE_UNKNOWN);
+
+      ADD_STATS_IN_ARRAY (stats, pbx_unfix_counters, offset, 1);
+    }
 }
 
+/*
+ *   mnt_x_pbx_lock_acquire_time - 
+ *   return: none
+ */
+void
+mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type,
+			     int page_found_mode, int latch_mode,
+			     int cond_type, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT
+	      && page_found_mode < PERF_PAGE_MODE_CNT);
+      assert (latch_mode >= PERF_HOLDER_LATCH_READ
+	      && latch_mode < PERF_HOLDER_LATCH_CNT);
+      assert (cond_type >= PERF_CONDITIONAL_FIX
+	      && cond_type < PERF_CONDITIONAL_FIX_CNT);
+      assert (amount > 0);
+
+      offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode,
+					   latch_mode, cond_type);
+      assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
+
+      ADD_STATS_IN_ARRAY (stats, pbx_lock_time_counters, offset, amount);
+    }
+}
+
+/*
+ *   mnt_x_pbx_hold_acquire_time - 
+ *   return: none
+ */
+void
+mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type,
+			     int page_found_mode, int latch_mode,
+			     UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT
+	      && page_found_mode < PERF_PAGE_MODE_CNT);
+      assert (latch_mode >= PERF_HOLDER_LATCH_READ
+	      && latch_mode < PERF_HOLDER_LATCH_CNT);
+      assert (amount > 0);
+
+      offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode,
+					   latch_mode);
+      assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
+
+      ADD_STATS_IN_ARRAY (stats, pbx_hold_time_counters, offset, amount);
+    }
+}
+
+/*
+ *   mnt_x_pbx_fix_acquire_time - 
+ *   return: none
+ */
+void
+mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type,
+			    int page_found_mode, int latch_mode,
+			    int cond_type, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT
+	      && page_found_mode < PERF_PAGE_MODE_CNT);
+      assert (latch_mode >= PERF_HOLDER_LATCH_READ
+	      && latch_mode < PERF_HOLDER_LATCH_CNT);
+      assert (cond_type >= PERF_CONDITIONAL_FIX
+	      && cond_type < PERF_CONDITIONAL_FIX_CNT);
+      assert (amount > 0);
+
+      offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode,
+					  latch_mode, cond_type);
+      assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
+
+      ADD_STATS_IN_ARRAY (stats, pbx_fix_time_counters, offset, amount);
+    }
+}
 #endif /* SERVER_MODE || SA_MODE */
 
 
@@ -3616,6 +3815,7 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
   int remained_size;
   const char *s;
   char *p;
+  bool computed_stats;
 
   if (buffer == NULL || buf_size <= 0)
     {
@@ -3635,10 +3835,24 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
     }
 
   stats_ptr = (UINT64 *) stats;
-  for (i = 0; i < MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
-       - MNT_COUNT_OF_SERVER_EXEC_CALC_STATS; i++)
+  for (i = 0; i < MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS; i++)
     {
-      if (substr != NULL)
+      if (i == MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
+	  - MNT_COUNT_OF_SERVER_EXEC_CALC_STATS)
+	{
+	  ret = snprintf (p, remained_size, "\n *** OTHER STATISTICS *** \n");
+	  remained_size -= ret;
+
+	  if (remained_size <= 0)
+	    {
+	      return;
+	    }
+	}
+
+      computed_stats = (i < MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
+			- MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) ? false : true;
+
+      if (substr != NULL && computed_stats == false)
 	{
 	  s = strstr (mnt_Stats_name[i], substr);
 	}
@@ -3649,9 +3863,19 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
 
       if (s)
 	{
-	  ret =
-	    snprintf (p, remained_size, "%-29s = %10llu\n", mnt_Stats_name[i],
-		      (unsigned long long) stats_ptr[i]);
+	  if (computed_stats == false)
+	    {
+	      ret =
+		snprintf (p, remained_size, "%-29s = %10llu\n",
+			  mnt_Stats_name[i],
+			  (unsigned long long) stats_ptr[i]);
+	    }
+	  else
+	    {
+	      ret =
+		snprintf (p, remained_size, "%-29s = %10.2f\n",
+			  mnt_Stats_name[i], (float) stats_ptr[i] / 100);
+	    }
 	  remained_size -= ret;
 	  p += ret;
 	  if (remained_size <= 0)
@@ -3660,47 +3884,6 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
 	    }
 	}
     }
-
-  ret = snprintf (p, remained_size, "\n *** OTHER STATISTICS *** \n"
-		  "Data_page_buffer_hit_ratio    = %10.2f\n",
-		  (float) stats->pb_hit_ratio / 100);
-  remained_size -= ret;
-
-  if (remained_size <= 0)
-    {
-      return;
-    }
-
-  ret = snprintf (p, remained_size, "Log_page_buffer_hit_ratio    = %10.2f\n",
-		  (float) stats->log_hit_ratio / 100);
-  remained_size -= ret;
-
-  if (remained_size <= 0)
-    {
-      return;
-    }
-
-  ret = snprintf (p, remained_size, "Vacuum_data_page_buffer_hit_ratio  = "
-		  "%10.2f\n", (float) stats->vacuum_data_hit_ratio / 100);
-  remained_size -= ret;
-
-  if (remained_size <= 0)
-    {
-      return;
-    }
-
-  ret = snprintf (p, remained_size, "Vacuum_page_efficiency_ratio    = "
-		  "%10.2f\n", (float) stats->pb_vacuum_efficiency / 100);
-  remained_size -= ret;
-
-  if (remained_size <= 0)
-    {
-      return;
-    }
-
-  ret = snprintf (p, remained_size, "Vacuum_page_fetch_ratio    = "
-		  "%10.2f\n", (float) stats->pb_vacuum_fetch_ratio / 100);
-  remained_size -= ret;
 
   for (i = MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS;
        i < MNT_SERVER_EXEC_STATS_COUNT && remained_size > 0; i++)
@@ -3735,6 +3918,18 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
 	  perf_stat_dump_unfix_page_array_stat (stats->pbx_unfix_counters, p,
 						&remained_size, NULL, false);
 	  break;
+	case MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION:
+	  perf_stat_dump_page_lock_time_array_stat
+	    (stats->pbx_lock_time_counters, p, &remained_size, NULL, false);
+	  break;
+	case MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION:
+	  perf_stat_dump_page_hold_time_array_stat
+	    (stats->pbx_hold_time_counters, p, &remained_size, NULL, false);
+	  break;
+	case MNT_SERVER_PBX_FIX_TIME_STAT_POSITION:
+	  perf_stat_dump_page_fix_time_array_stat
+	    (stats->pbx_fix_time_counters, p, &remained_size, NULL, false);
+	  break;
 	default:
 	  break;
 	}
@@ -3756,6 +3951,7 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream,
   unsigned int i;
   UINT64 *stats_ptr;
   const char *s;
+  bool computed_stats;
 
   if (stream == NULL)
     {
@@ -3765,10 +3961,18 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream,
   fprintf (stream, "\n *** SERVER EXECUTION STATISTICS *** \n");
 
   stats_ptr = (UINT64 *) stats;
-  for (i = 0; i < MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
-       - MNT_COUNT_OF_SERVER_EXEC_CALC_STATS; i++)
+  for (i = 0; i < MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS; i++)
     {
-      if (substr != NULL)
+      if (i == MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
+	  - MNT_COUNT_OF_SERVER_EXEC_CALC_STATS)
+	{
+	  fprintf (stream, "\n *** OTHER STATISTICS *** \n");
+	}
+
+      computed_stats = (i < MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
+			- MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) ? false : true;
+
+      if (substr != NULL && computed_stats == false)
 	{
 	  s = strstr (mnt_Stats_name[i], substr);
 	}
@@ -3776,29 +3980,21 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream,
 	{
 	  s = mnt_Stats_name[i];
 	}
+
       if (s)
 	{
-	  fprintf (stream, "%-29s = %10llu\n", mnt_Stats_name[i],
-		   (unsigned long long) stats_ptr[i]);
+	  if (computed_stats == false)
+	    {
+	      fprintf (stream, "%-29s = %10llu\n", mnt_Stats_name[i],
+		       (unsigned long long) stats_ptr[i]);
+	    }
+	  else
+	    {
+	      fprintf (stream, "%-29s = %10.2f\n", mnt_Stats_name[i],
+		       (float) stats_ptr[i] / 100);
+	    }
 	}
     }
-
-  fprintf (stream, "\n *** OTHER STATISTICS *** \n");
-
-  fprintf (stream, "Data_page_buffer_hit_ratio         = %10.2f\n",
-	   (float) stats->pb_hit_ratio / 100);
-
-  fprintf (stream, "Log_page_buffer_hit_ratio          = %10.2f\n",
-	   (float) stats->log_hit_ratio / 100);
-
-  fprintf (stream, "Vacuum_data_page_buffer_hit_ratio  = %10.2f\n",
-	   (float) stats->vacuum_data_hit_ratio / 100);
-
-  fprintf (stream, "Vacuum_page_efficiency_ratio       = %10.2f\n",
-	   (float) stats->pb_vacuum_efficiency / 100);
-
-  fprintf (stream, "Vacuum_page_fetch_ratio            = %10.2f\n",
-	   (float) stats->pb_vacuum_fetch_ratio / 100);
 
   for (i = MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS;
        i < MNT_SERVER_EXEC_STATS_COUNT; i++)
@@ -3827,6 +4023,18 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream,
 	case MNT_SERVER_PBX_UNFIX_STAT_POSITION:
 	  perf_stat_dump_unfix_page_array_stat (stats->pbx_unfix_counters,
 						NULL, NULL, stream, false);
+	  break;
+	case MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION:
+	  perf_stat_dump_page_lock_time_array_stat
+	    (stats->pbx_lock_time_counters, NULL, NULL, stream, false);
+	  break;
+	case MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION:
+	  perf_stat_dump_page_hold_time_array_stat
+	    (stats->pbx_hold_time_counters, NULL, NULL, stream, false);
+	  break;
+	case MNT_SERVER_PBX_FIX_TIME_STAT_POSITION:
+	  perf_stat_dump_page_fix_time_array_stat
+	    (stats->pbx_fix_time_counters, NULL, NULL, stream, false);
 	  break;
 	default:
 	  break;
@@ -3881,61 +4089,131 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
   int page_type;
   int module;
   int offset;
+  int buf_dirty;
+  int holder_dirty;
+  int holder_latch;
+  int page_found_mode;
+  int cond_type;
   UINT64 *counter;
   UINT64 total_unfix_vacuum = 0;
   UINT64 total_unfix_vacuum_dirty = 0;
   UINT64 total_unfix = 0;
   UINT64 total_fix_vacuum = 0;
   UINT64 total_fix_vacuum_hit = 0;
+  UINT64 fix_time_usec = 0;
+  UINT64 lock_time_usec = 0;
+  UINT64 hold_time_usec = 0;
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
       for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
 	{
-	  offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, 0);
-
-	  assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-	  counter = stats->pbx_unfix_counters + offset;
-
-	  total_unfix += *counter;
-	  if (module == PERF_MODULE_VACUUM)
+	  for (buf_dirty = 0; buf_dirty <= 1; buf_dirty++)
 	    {
-	      total_unfix_vacuum += *counter;
-	    }
+	      for (holder_dirty = 0; holder_dirty <= 1; holder_dirty++)
+		{
+		  for (holder_latch = PERF_HOLDER_LATCH_READ;
+		       holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
+		    {
+		      offset =
+			PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type,
+						     buf_dirty, holder_dirty,
+						     holder_latch);
 
-	  offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, 1);
+		      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
+		      counter = stats->pbx_unfix_counters + offset;
 
-	  assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-	  counter = stats->pbx_unfix_counters + offset;
-
-	  total_unfix += *counter;
-	  if (module == PERF_MODULE_VACUUM)
-	    {
-	      total_unfix_vacuum += *counter;
-	      total_unfix_vacuum_dirty += *counter;
+		      total_unfix += *counter;
+		      if (module == PERF_MODULE_VACUUM)
+			{
+			  total_unfix_vacuum += *counter;
+			  if (holder_dirty == 1)
+			    {
+			      total_unfix_vacuum_dirty += *counter;
+			    }
+			}
+		    }
+		}
 	    }
 	}
     }
 
-  for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      offset =
-	PERF_PAGE_FIX_STAT_OFFSET (PERF_MODULE_VACUUM, page_type, OLD_PAGE);
+      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+	{
+	  for (page_found_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	       page_found_mode < PERF_PAGE_MODE_CNT; page_found_mode++)
+	    {
+	      for (holder_latch = PERF_HOLDER_LATCH_READ;
+		   holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
+		{
+		  offset =
+		    PERF_PAGE_HOLD_TIME_OFFSET (module, page_type,
+						page_found_mode,
+						holder_latch);
+		  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
+		  counter = stats->pbx_hold_time_counters + offset;
 
-      assert (offset < PERF_PAGE_FIX_COUNTERS);
-      counter = stats->pbx_fix_counters + offset;
+		  if (*counter)
+		    {
+		      hold_time_usec += *counter;
+		    }
 
-      total_fix_vacuum += *counter;
+		  for (cond_type = PERF_CONDITIONAL_FIX;
+		       cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
+		    {
+		      offset =
+			PERF_PAGE_FIX_TIME_OFFSET (module, page_type,
+						   page_found_mode,
+						   holder_latch, cond_type);
+		      assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
+		      counter = stats->pbx_fix_time_counters + offset;
+		      if (*counter)
+			{
+			  fix_time_usec += *counter;
+			}
 
-      offset =
-	PERF_PAGE_FIX_STAT_OFFSET (PERF_MODULE_VACUUM, page_type,
-				   OLD_PAGE_IF_EXISTS);
 
-      assert (offset < PERF_PAGE_FIX_COUNTERS);
-      counter = stats->pbx_fix_counters + offset;
+		      offset =
+			PERF_PAGE_LOCK_TIME_OFFSET (module, page_type,
+						    page_found_mode,
+						    holder_latch, cond_type);
+		      assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
+		      counter = stats->pbx_lock_time_counters + offset;
 
-      total_fix_vacuum += *counter;
-      total_fix_vacuum_hit += *counter;
+		      if (*counter)
+			{
+			  lock_time_usec += *counter;
+			}
+
+		      if (module == PERF_MODULE_VACUUM
+			  && page_found_mode != PERF_PAGE_MODE_NEW_LOCK_WAIT
+			  && page_found_mode != PERF_PAGE_MODE_NEW_NO_WAIT)
+			{
+			  offset =
+			    PERF_PAGE_FIX_STAT_OFFSET (module, page_type,
+						       page_found_mode,
+						       holder_latch,
+						       cond_type);
+
+			  assert (offset < PERF_PAGE_FIX_COUNTERS);
+			  counter = stats->pbx_fix_counters + offset;
+
+			  if (module == PERF_MODULE_VACUUM)
+			    {
+			      total_fix_vacuum += *counter;
+			      if (page_found_mode
+				  == PERF_PAGE_MODE_OLD_IN_BUFFER)
+				{
+				  total_fix_vacuum_hit += *counter;
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	}
     }
 
   stats->pb_vacuum_efficiency = (total_unfix_vacuum == 0) ? 0 :
@@ -3956,6 +4234,17 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
     (stats->log_num_fetches == 0) ? 0 :
     (stats->log_num_fetches - stats->log_num_fetch_ioreads) * 100 * 100
     / stats->log_num_fetches;
+
+  stats->pb_page_lock_acquire_time_10usec = 100 * lock_time_usec / 1000;
+  stats->pb_page_hold_acquire_time_10usec = 100 * hold_time_usec / 1000;
+  stats->pb_page_fix_acquire_time_10usec = 100 * fix_time_usec / 1000;
+
+  stats->pb_page_allocate_time_ratio =
+    (stats->pb_page_fix_acquire_time_10usec == 0) ? 0 :
+    ((stats->pb_page_fix_acquire_time_10usec
+      - stats->pb_page_hold_acquire_time_10usec
+      - stats->pb_page_lock_acquire_time_10usec) * 100 * 100
+     / stats->pb_page_fix_acquire_time_10usec);
 }
 
 
@@ -4057,6 +4346,8 @@ perf_stat_page_type_name (const int page_type)
       return "PAGE_BTREE";
     case PAGE_LOG:
       return "PAGE_LOG";
+    case PAGE_DROPPED_FILES:
+      return "PAGE_DROPPED";
     default:
       break;
     }
@@ -4071,11 +4362,15 @@ perf_stat_page_mode_name (const int page_mode)
 {
   switch (page_mode)
     {
-    case OLD_PAGE:
-      return "OLD_PAGE_NOT_IN_PB";
-    case NEW_PAGE:
-      return "NEW_PAGE";
-    case OLD_PAGE_IF_EXISTS:
+    case PERF_PAGE_MODE_OLD_LOCK_WAIT:
+      return "OLD_WAIT";
+    case PERF_PAGE_MODE_OLD_NO_WAIT:
+      return "OLD_NO_WAIT";
+    case PERF_PAGE_MODE_NEW_LOCK_WAIT:
+      return "NEW_WAIT";
+    case PERF_PAGE_MODE_NEW_NO_WAIT:
+      return "NEW_NO_WAIT";
+    case PERF_PAGE_MODE_OLD_IN_BUFFER:
       return "OLD_PAGE_IN_PB";
     default:
       break;
@@ -4083,6 +4378,56 @@ perf_stat_page_mode_name (const int page_mode)
   return "ERROR";
 }
 
+/*
+ * perf_stat_holder_latch_name () -
+ */
+static const char *
+perf_stat_holder_latch_name (const int holder_latch)
+{
+  switch (holder_latch)
+    {
+    case PERF_HOLDER_LATCH_READ:
+      return "READ";
+    case PERF_HOLDER_LATCH_WRITE:
+      return "WRITE";
+    case PERF_HOLDER_LATCH_MIXED:
+      return "MIXED";
+    default:
+      break;
+    }
+  return "ERROR";
+}
+
+/*
+ * perf_stat_cond_type_name () -
+ */
+static const char *
+perf_stat_cond_type_name (const int cond_type)
+{
+  switch (cond_type)
+    {
+    case PERF_CONDITIONAL_FIX:
+      return "COND";
+    case PERF_UNCONDITIONAL_FIX_NO_WAIT:
+      return "UNCOND";
+    case PERF_UNCONDITIONAL_FIX_WITH_WAIT:
+      return "UNCOND_WAIT";
+    default:
+      break;
+    }
+  return "ERROR";
+}
+
+/*
+ * perf_stat_dump_fix_page_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
 static void
 perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
 				    char *s, int *remaining_size,
@@ -4091,6 +4436,8 @@ perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
   int module;
   int page_type;
   int page_mode;
+  int latch_mode;
+  int cond_type;
   int offset;
   const UINT64 *counter;
   int ret;
@@ -4099,50 +4446,77 @@ perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
     {
       for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
 	{
-	  for (page_mode = OLD_PAGE; page_mode <= OLD_PAGE_IF_EXISTS;
-	       page_mode++)
+	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	       page_mode < PERF_PAGE_MODE_CNT; page_mode++)
 	    {
-	      offset =
-		PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode);
-
-	      assert (offset < PERF_PAGE_FIX_COUNTERS);
-	      counter = stats_ptr + offset;
-	      if (*counter == 0 && print_zero_counters == false)
+	      for (latch_mode = PERF_HOLDER_LATCH_READ;
+		   latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
 		{
-		  continue;
-		}
-
-	      if (s != NULL)
-		{
-		  assert (remaining_size != NULL);
-
-		  ret = snprintf (s, *remaining_size,
-				  "%-6s,%-14s,%-18s = %10llu\n",
-				  perf_stat_module_name (module),
-				  perf_stat_page_type_name (page_type),
-				  perf_stat_page_mode_name (page_mode),
-				  (long long unsigned int) *counter);
-		  *remaining_size -= ret;
-		  if (*remaining_size <= 0)
+		  for (cond_type = PERF_CONDITIONAL_FIX;
+		       cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
 		    {
-		      return;
-		    }
-		}
-	      else
-		{
-		  assert (stream != NULL);
+		      offset =
+			PERF_PAGE_FIX_STAT_OFFSET (module, page_type,
+						   page_mode, latch_mode,
+						   cond_type);
 
-		  fprintf (stream, "%-6s,%-14s,%-18s = %10llu\n",
-			   perf_stat_module_name (module),
-			   perf_stat_page_type_name (page_type),
-			   perf_stat_page_mode_name (page_mode),
-			   (long long unsigned int) *counter);
+		      assert (offset < PERF_PAGE_FIX_COUNTERS);
+		      counter = stats_ptr + offset;
+		      if (*counter == 0 && print_zero_counters == false)
+			{
+			  continue;
+			}
+
+		      if (s != NULL)
+			{
+			  assert (remaining_size != NULL);
+
+			  ret =
+			    snprintf (s, *remaining_size,
+				      "%-6s,%-14s,%-18s,%-5s,%-11s = %10llu\n",
+				      perf_stat_module_name (module),
+				      perf_stat_page_type_name (page_type),
+				      perf_stat_page_mode_name (page_mode),
+				      perf_stat_holder_latch_name
+				      (latch_mode),
+				      perf_stat_cond_type_name (cond_type),
+				      (long long unsigned int) *counter);
+			  *remaining_size -= ret;
+			  if (*remaining_size <= 0)
+			    {
+			      return;
+			    }
+			}
+		      else
+			{
+			  assert (stream != NULL);
+
+			  fprintf (stream,
+				   "%-6s,%-14s,%-18s,%-5s,%-11s = %10llu\n",
+				   perf_stat_module_name (module),
+				   perf_stat_page_type_name (page_type),
+				   perf_stat_page_mode_name (page_mode),
+				   perf_stat_holder_latch_name (latch_mode),
+				   perf_stat_cond_type_name (cond_type),
+				   (long long unsigned int) *counter);
+			}
+		    }
 		}
 	    }
 	}
     }
 }
 
+/*
+ * perf_stat_dump_unfix_page_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
 static void
 perf_stat_dump_unfix_page_array_stat (const UINT64 * stats_ptr,
 				      char *s, int *remaining_size,
@@ -4150,7 +4524,9 @@ perf_stat_dump_unfix_page_array_stat (const UINT64 * stats_ptr,
 {
   int module;
   int page_type;
-  int is_dirty;
+  int buf_dirty;
+  int holder_dirty;
+  int holder_latch;
   int offset;
   const UINT64 *counter;
   int ret;
@@ -4159,45 +4535,255 @@ perf_stat_dump_unfix_page_array_stat (const UINT64 * stats_ptr,
     {
       for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
 	{
-	  for (is_dirty = 0; is_dirty <= 1; is_dirty++)
+	  for (buf_dirty = 0; buf_dirty <= 1; buf_dirty++)
 	    {
-	      offset =
-		PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, is_dirty);
-
-	      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-	      counter = stats_ptr + offset;
-	      if (*counter == 0 && print_zero_counters == false)
+	      for (holder_dirty = 0; holder_dirty <= 1; holder_dirty++)
 		{
-		  continue;
-		}
-
-	      if (s != NULL)
-		{
-		  assert (remaining_size != NULL);
-
-		  ret = snprintf (s, *remaining_size,
-				  "%-6s,%-14s,%-9s = %10llu\n",
-				  perf_stat_module_name (module),
-				  perf_stat_page_type_name (page_type),
-				  is_dirty ? "DIRTY" : "NON_DIRTY",
-				  (long long unsigned int) *counter);
-		  *remaining_size -= ret;
-		  if (*remaining_size <= 0)
+		  for (holder_latch = PERF_HOLDER_LATCH_READ;
+		       holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
 		    {
-		      return;
-		    }
-		}
-	      else
-		{
-		  assert (stream != NULL);
+		      offset =
+			PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type,
+						     buf_dirty, holder_dirty,
+						     holder_latch);
 
-		  fprintf (stream, "%-6s,%-14s,%-9s = %10llu\n",
-			   perf_stat_module_name (module),
-			   perf_stat_page_type_name (page_type),
-			   is_dirty ? "DIRTY" : "NON_DIRTY",
-			   (long long unsigned int) *counter);
+		      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
+		      counter = stats_ptr + offset;
+		      if (*counter == 0 && print_zero_counters == false)
+			{
+			  continue;
+			}
+
+		      if (s != NULL)
+			{
+			  assert (remaining_size != NULL);
+
+			  ret = snprintf (s, *remaining_size,
+					  "%-6s,%-14s,%-13s,%-16s,%-5s = %10llu\n",
+					  perf_stat_module_name (module),
+					  perf_stat_page_type_name
+					  (page_type),
+					  buf_dirty ? "BUF_DIRTY" :
+					  "BUF_NON_DIRTY",
+					  holder_dirty ? "HOLDER_DIRTY" :
+					  "HOLDER_NON_DIRTY",
+					  perf_stat_holder_latch_name
+					  (holder_latch),
+					  (long long unsigned int) *counter);
+			  *remaining_size -= ret;
+			  if (*remaining_size <= 0)
+			    {
+			      return;
+			    }
+			}
+		      else
+			{
+			  assert (stream != NULL);
+
+			  fprintf (stream,
+				   "%-6s,%-14s,%-13s,%-16s,%-5s = %10llu\n",
+				   perf_stat_module_name (module),
+				   perf_stat_page_type_name (page_type),
+				   buf_dirty ? "BUF_DIRTY" : "BUF_NON_DIRTY",
+				   holder_dirty ? "HOLDER_DIRTY" :
+				   "HOLDER_NON_DIRTY",
+				   perf_stat_holder_latch_name (holder_latch),
+				   (long long unsigned int) *counter);
+			}
+		    }
 		}
 	    }
 	}
     }
+}
+
+/*
+ * perf_stat_dump_page_lock_time_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
+static void
+perf_stat_dump_page_lock_time_array_stat (const UINT64 * stats_ptr,
+					  char *s, int *remaining_size,
+					  FILE * stream,
+					  bool print_zero_counters)
+{
+  int module;
+  int page_type;
+  int page_mode;
+  int latch_mode;
+  int cond_type;
+  int offset;
+  const UINT64 *counter;
+  int ret;
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+	{
+	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	       page_mode < PERF_PAGE_MODE_CNT; page_mode++)
+	    {
+	      for (latch_mode = PERF_HOLDER_LATCH_READ;
+		   latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
+		{
+		  for (cond_type = PERF_CONDITIONAL_FIX;
+		       cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
+		    {
+		      offset =
+			PERF_PAGE_FIX_STAT_OFFSET (module, page_type,
+						   page_mode, latch_mode,
+						   cond_type);
+
+		      assert (offset < PERF_PAGE_FIX_COUNTERS);
+		      counter = stats_ptr + offset;
+		      if (*counter == 0 && print_zero_counters == false)
+			{
+			  continue;
+			}
+
+		      if (s != NULL)
+			{
+			  assert (remaining_size != NULL);
+
+			  ret =
+			    snprintf (s, *remaining_size,
+				      "%-6s,%-14s,%-18s,%-5s,%-11s = %16llu\n",
+				      perf_stat_module_name (module),
+				      perf_stat_page_type_name (page_type),
+				      perf_stat_page_mode_name (page_mode),
+				      perf_stat_holder_latch_name
+				      (latch_mode),
+				      perf_stat_cond_type_name (cond_type),
+				      (long long unsigned int) *counter);
+			  *remaining_size -= ret;
+			  if (*remaining_size <= 0)
+			    {
+			      return;
+			    }
+			}
+		      else
+			{
+			  assert (stream != NULL);
+
+			  fprintf (stream,
+				   "%-6s,%-14s,%-18s,%-5s,%-11s = %16llu\n",
+				   perf_stat_module_name (module),
+				   perf_stat_page_type_name (page_type),
+				   perf_stat_page_mode_name (page_mode),
+				   perf_stat_holder_latch_name (latch_mode),
+				   perf_stat_cond_type_name (cond_type),
+				   (long long unsigned int) *counter);
+			}
+		    }
+		}
+	    }
+	}
+    }
+}
+
+/*
+ * perf_stat_dump_page_hold_time_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
+static void
+perf_stat_dump_page_hold_time_array_stat (const UINT64 * stats_ptr,
+					  char *s, int *remaining_size,
+					  FILE * stream,
+					  bool print_zero_counters)
+{
+  int module;
+  int page_type;
+  int page_mode;
+  int latch_mode;
+  int offset;
+  const UINT64 *counter;
+  int ret;
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+	{
+	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	       page_mode < PERF_PAGE_MODE_CNT; page_mode++)
+	    {
+	      for (latch_mode = PERF_HOLDER_LATCH_READ;
+		   latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
+		{
+		  offset =
+		    PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_mode,
+						latch_mode);
+
+		  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
+		  counter = stats_ptr + offset;
+		  if (*counter == 0 && print_zero_counters == false)
+		    {
+		      continue;
+		    }
+
+		  if (s != NULL)
+		    {
+		      assert (remaining_size != NULL);
+
+		      ret = snprintf (s, *remaining_size,
+				      "%-6s,%-14s,%-18s,%-5s = %16llu\n",
+				      perf_stat_module_name (module),
+				      perf_stat_page_type_name (page_type),
+				      perf_stat_page_mode_name (page_mode),
+				      perf_stat_holder_latch_name
+				      (latch_mode),
+				      (long long unsigned int) *counter);
+		      *remaining_size -= ret;
+		      if (*remaining_size <= 0)
+			{
+			  return;
+			}
+		    }
+		  else
+		    {
+		      assert (stream != NULL);
+
+		      fprintf (stream, "%-6s,%-14s,%-18s,%-5s = %16llu\n",
+			       perf_stat_module_name (module),
+			       perf_stat_page_type_name (page_type),
+			       perf_stat_page_mode_name (page_mode),
+			       perf_stat_holder_latch_name (latch_mode),
+			       (long long unsigned int) *counter);
+		    }
+		}
+	    }
+	}
+    }
+}
+
+/*
+ * perf_stat_dump_page_fix_time_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
+static void
+perf_stat_dump_page_fix_time_array_stat (const UINT64 * stats_ptr,
+					 char *s, int *remaining_size,
+					 FILE * stream,
+					 bool print_zero_counters)
+{
+  /* the counters partitioning match with page fix statistics */
+  perf_stat_dump_page_lock_time_array_stat (stats_ptr, s, remaining_size,
+					    stream, print_zero_counters);
 }

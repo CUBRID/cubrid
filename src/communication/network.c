@@ -234,6 +234,14 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->pb_vacuum_fetch_ratio));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_page_lock_acquire_time_10usec));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_page_hold_acquire_time_10usec));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_page_fix_acquire_time_10usec));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_page_allocate_time_ratio));
+  ptr += OR_INT64_SIZE;
 
   for (i = 0; i < PERF_PAGE_FIX_COUNTERS; i++)
     {
@@ -244,6 +252,24 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   for (i = 0; i < PERF_PAGE_UNFIX_COUNTERS; i++)
     {
       OR_PUT_INT64 (ptr, &(stats->pbx_unfix_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_LOCK_TIME_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->pbx_lock_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_HOLD_TIME_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->pbx_hold_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_FIX_TIME_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->pbx_fix_time_counters[i]));
       ptr += OR_INT64_SIZE;
     }
 
@@ -453,6 +479,14 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->pb_vacuum_fetch_ratio));
   ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_page_lock_acquire_time_10usec));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_page_hold_acquire_time_10usec));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_page_fix_acquire_time_10usec));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_page_allocate_time_ratio));
+  ptr += OR_INT64_SIZE;
 
   for (i = 0; i < PERF_PAGE_FIX_COUNTERS; i++)
     {
@@ -463,6 +497,24 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   for (i = 0; i < PERF_PAGE_UNFIX_COUNTERS; i++)
     {
       OR_GET_INT64 (ptr, &(stats->pbx_unfix_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_LOCK_TIME_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->pbx_lock_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_HOLD_TIME_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->pbx_hold_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_FIX_TIME_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->pbx_fix_time_counters[i]));
       ptr += OR_INT64_SIZE;
     }
 

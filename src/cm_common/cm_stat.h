@@ -383,6 +383,15 @@ extern "C"
     unsigned int pb_vacuum_efficiency;
 
     unsigned int pb_vacuum_fetch_ratio;
+
+    /* MNT_SERVER_EXEC_STATS: pb_page_lock_acquire_time_10usec */
+    unsigned int pb_page_lock_acquire_time_msec;
+    /* MNT_SERVER_EXEC_STATS: pb_page_hold_acquire_time_10usec */
+    unsigned int pb_page_hold_acquire_time_msec;
+    /* MNT_SERVER_EXEC_STATS: pb_page_fix_acquire_time_10usec */
+    unsigned int pb_page_fix_acquire_time_msec;
+
+    unsigned int pb_page_allocate_time_ratio;
   } T_CM_DB_EXEC_STAT;
 
   int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,

@@ -51,24 +51,54 @@
 #define MAX_SERVER_NAMELENGTH           256
 #define SH_MODE 0644
 
-/* define as OLD_PAGE_IF_EXISTS + 1 ; cannot include page_buffer.h here */
-#define STAT_PAGE_MODE_MAX 3
-
-/* PAGE_TYPE x PERF_MODULE_TYPE x PAGE_FETCH_MODE */
+/* PERF_MODULE_TYPE x PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE * COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
-  ((PAGE_LAST + 1) * (PERF_MODULE_CNT) * (STAT_PAGE_MODE_MAX))
+  ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) \
+   * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
 
-/* PAGE_TYPE x PERF_MODULE_TYPE x DIRTY_OR_CLEAN */
+/* PERF_MODULE_TYPE x PAGE_TYPE x DIRTY_OR_CLEAN x DIRTY_OR_CLEAN x READ_OR_WRITE_OR_MIX */
 #define PERF_PAGE_UNFIX_COUNTERS \
-  ((PAGE_LAST + 1) * (PERF_MODULE_CNT) * 2)
+  ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * 2 * 2 * (PERF_HOLDER_LATCH_CNT))
 
+#define PERF_PAGE_LOCK_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
-#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_mode) \
-  ((((module) * (PAGE_LAST + 1) + (page_type)) * (STAT_PAGE_MODE_MAX)) + (page_mode))
+#define PERF_PAGE_HOLD_TIME_COUNTERS \
+    ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) \
+   * (PERF_HOLDER_LATCH_CNT))
 
-#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,is_dirty) \
-  ((((module) * (PAGE_LAST + 1) + (page_type)) * (2)) + (is_dirty))
+#define PERF_PAGE_FIX_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
+#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
+				  cond_type) \
+  ((module) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
+    * (PERF_CONDITIONAL_FIX_CNT) \
+    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
+       * (PERF_CONDITIONAL_FIX_CNT) \
+    + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
+    + (latch_mode) * (PERF_CONDITIONAL_FIX_CNT) + (cond_type))
+
+#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,\
+				    dirtied_by_holder,holder_latch) \
+  ((module) * (PAGE_LAST + 1) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
+   (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
+   (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) + \
+   (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) + (holder_latch))
+
+#define PERF_PAGE_LOCK_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
+				  cond_type) \
+	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
+				  cond_type)
+
+#define PERF_PAGE_HOLD_TIME_OFFSET(module,page_type,page_found_mode,latch_mode)\
+  ((module) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
+    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
+    + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) \
+    + (latch_mode))
+
+#define PERF_PAGE_FIX_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
+				  cond_type) \
+	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
+				  cond_type)
 
 typedef enum
 {
@@ -78,6 +108,36 @@ typedef enum
 
   PERF_MODULE_CNT
 } PERF_MODULE_TYPE;
+
+typedef enum
+{
+  PERF_HOLDER_LATCH_READ = 0,
+  PERF_HOLDER_LATCH_WRITE,
+  PERF_HOLDER_LATCH_MIXED,
+
+  PERF_HOLDER_LATCH_CNT
+} PERF_HOLDER_LATCH;
+
+typedef enum
+{
+  PERF_CONDITIONAL_FIX = 0,
+  PERF_UNCONDITIONAL_FIX_NO_WAIT,
+  PERF_UNCONDITIONAL_FIX_WITH_WAIT,
+
+  PERF_CONDITIONAL_FIX_CNT
+} PERF_CONDITIONAL_FIX_TYPE;
+
+typedef enum
+{
+  PERF_PAGE_MODE_OLD_LOCK_WAIT = 0,
+  PERF_PAGE_MODE_OLD_NO_WAIT,
+  PERF_PAGE_MODE_NEW_LOCK_WAIT,
+  PERF_PAGE_MODE_NEW_NO_WAIT,
+  PERF_PAGE_MODE_OLD_IN_BUFFER,
+
+  PERF_PAGE_MODE_CNT
+} PERF_PAGE_MODE;
+
 
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config
@@ -297,28 +357,44 @@ struct mnt_server_exec_stats
   /* ((fetches of vacuum - fetches of vacuum not found in PB) x 100 /
    * fetches of vacuum) x 100 */
   UINT64 vacuum_data_hit_ratio;
-  /* (100 x Number of unfix with of dirty pages of vacuum / total num of unfix of
-   * vacuum) x 100 */
+  /* (100 x Number of unfix with of dirty pages of vacuum / total num of unfixes
+   * from vacuum) x 100 */
   UINT64 pb_vacuum_efficiency;
   /* (100 x Number of unfix from vacuum / total num of unfix) x 100 */
   UINT64 pb_vacuum_fetch_ratio;
+  /* total time to acquire page lock (stored as 10 usec unit,
+   * displayed as miliseconds) */
+  UINT64 pb_page_lock_acquire_time_10usec;
+  /* total time to acquire page hold (stored as 10 usec unit,
+   * displayed as miliseconds) */
+  UINT64 pb_page_hold_acquire_time_10usec;
+  /* total time to acquire page fix (stored as 10 usec unit,
+   * displayed as miliseconds) */
+  UINT64 pb_page_fix_acquire_time_10usec;
+  /* ratio of time required to allocate a buffer for a page :
+   * (100 x (fix_time - lock_time - hold_time) / fix_time) x 100 */
+  UINT64 pb_page_allocate_time_ratio;
 
   /* array counters : do not include in MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS */
-  /* change MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS and MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS */
+  /* change MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS
+   * and MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS */
   UINT64 pbx_fix_counters[PERF_PAGE_FIX_COUNTERS];
   UINT64 pbx_unfix_counters[PERF_PAGE_UNFIX_COUNTERS];
+  UINT64 pbx_lock_time_counters[PERF_PAGE_LOCK_TIME_COUNTERS];
+  UINT64 pbx_hold_time_counters[PERF_PAGE_HOLD_TIME_COUNTERS];
+  UINT64 pbx_fix_time_counters[PERF_PAGE_FIX_TIME_COUNTERS];
 
   /* This must be kept as last member. Otherwise the
    * MNT_SERVER_EXEC_STATS_SIZEOF macro must be modified */
   bool enable_local_stat;	/* used for local stats */
 };
 
-/* number of field of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 90
+/* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 94
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 2
+#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 5
 /* number of computed stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 5
+#define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 9
 
 #define MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
   MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
@@ -328,7 +404,9 @@ struct mnt_server_exec_stats
    + MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS)
 
 #define MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS \
-(PERF_PAGE_FIX_COUNTERS + PERF_PAGE_UNFIX_COUNTERS)
+(PERF_PAGE_FIX_COUNTERS + PERF_PAGE_UNFIX_COUNTERS \
+ + PERF_PAGE_LOCK_TIME_COUNTERS + PERF_PAGE_HOLD_TIME_COUNTERS \
+ + PERF_PAGE_FIX_TIME_COUNTERS)
 
 #define MNT_SIZE_OF_SERVER_EXEC_STATS \
   (MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
@@ -342,7 +420,12 @@ struct mnt_server_exec_stats
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 0)
 #define MNT_SERVER_PBX_UNFIX_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 1)
-
+#define MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 2)
+#define MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 3)
+#define MNT_SERVER_PBX_FIX_TIME_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 4)
 
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
@@ -517,6 +600,8 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value,
 #if defined(SERVER_MODE) || defined (SA_MODE)
 extern int mnt_Num_tran_exec_stats;
 
+#define mnt_is_perf_tracking(thread_p) \
+  ((mnt_Num_tran_exec_stats > 0) ? true : false)
 /*
  * Statistics at file io level
  */
@@ -725,10 +810,35 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_vac_log_to_vacuum_pages(thread_p, num_entries) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_log_to_vacuum_pages(thread_p, num_entries)
 
-#define mnt_pbx_fix(thread_p,page_type,page_mode) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix(thread_p, page_type, page_mode)
-#define mnt_pbx_unfix(thread_p,page_type,dirty) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_unfix(thread_p, page_type, dirty)
+#define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix(thread_p, page_type, \
+						 page_found_mode,latch_mode, \
+						 cond_type)
+#define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_unfix(thread_p, page_type, \
+						   buf_dirty, \
+						   dirtied_by_holder, \
+						   holder_latch)
+#define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_hold_acquire_time(thread_p, \
+							       page_type, \
+							       page_found_mode, \
+							       latch_mode, \
+							       amount)
+#define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_lock_acquire_time(thread_p, \
+							       page_type, \
+							       page_found_mode, \
+							       latch_mode, \
+							       cond_type, \
+							       amount)
+#define mnt_pbx_fix_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix_acquire_time(thread_p, \
+							      page_type, \
+							      page_found_mode, \
+							      latch_mode, \
+							      cond_type, \
+							      amount)
 
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
@@ -845,10 +955,22 @@ extern void mnt_x_vac_log_to_vacuum_pages (THREAD_ENTRY * thread_p,
 					   unsigned int num_entries);
 
 extern void mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type,
-			   int page_mode);
+			   int page_found_mode, int latch_mode,
+			   int cond_type);
 extern void mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type,
-			     int dirty);
-
+			     int buf_dirty, int dirtied_by_holder,
+			     int holder_latch);
+extern void mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p,
+					 int page_type, int page_found_mode,
+					 int latch_mode, int cond_type,
+					 UINT64 amount);
+extern void mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p,
+					 int page_type, int page_found_mode,
+					 int latch_mode, UINT64 amount);
+extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p,
+					int page_type, int page_found_mode,
+					int latch_mode, int cond_type,
+					UINT64 amount);
 
 #else /* SERVER_MODE || SA_MODE */
 
@@ -946,8 +1068,11 @@ extern void mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type,
 #define mnt_vac_log_vacuumed_pages(thread_p, num_entries)
 #define mnt_vac_log_to_vacuum_pages(thread_p, num_entries)
 
-#define mnt_pbx_fix(thread_p,page_type,page_mode)
-#define mnt_pbx_unfix(thread_p,page_type,dirty)
+#define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type)
+#define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch)
+#define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount)
+#define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
+#define mnt_pbx_fix_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
 
 
 #endif /* CS_MODE */

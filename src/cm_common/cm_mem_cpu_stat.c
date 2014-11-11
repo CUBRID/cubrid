@@ -1227,7 +1227,13 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Vacuum_page_efficiency_ratio",
    offsetof (T_CM_DB_EXEC_STAT, pb_vacuum_efficiency)},
   {"Vacuum_page_fetch_ratio",
-   offsetof (T_CM_DB_EXEC_STAT, pb_vacuum_fetch_ratio)}
+   offsetof (T_CM_DB_EXEC_STAT, pb_vacuum_fetch_ratio)},
+  {"Time_data_page_lock_acquire_time",
+   offsetof (T_CM_DB_EXEC_STAT, pb_page_lock_acquire_time_msec)},
+  {"Time_data_page_hold_acquire_time",
+   offsetof (T_CM_DB_EXEC_STAT, pb_page_hold_acquire_time_msec)},
+  {"Time_data_page_fix_acquire_time",
+   offsetof (T_CM_DB_EXEC_STAT, pb_page_fix_acquire_time_msec)}
 };
 
 static unsigned int *
