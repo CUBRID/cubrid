@@ -744,8 +744,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
-  btid_int.new_file = (file_is_new_file (thread_p, &(btid_int.sys_btid->vfid))
-		       == FILE_NEW_FILE) ? 1 : 0;
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
 
 
@@ -1136,6 +1134,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 #endif
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
+  file_new_declare_as_old (thread_p, &btid->vfid);
 
   addr.vfid = NULL;
   addr.pgptr = NULL;
@@ -2644,7 +2644,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		  else if (load_args->curr_non_del_obj_count == 1)
 		    {
 		      /* this is the first non-deleted OID of the key; it
-		       * must be placed as the first OID 
+		       * must be placed as the first OID
 		       */
 		      MVCC_REC_HEADER first_mvcc_header;
 		      OID first_oid, first_class_oid;
@@ -2659,7 +2659,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 			{
 			  /* OID was already written to page so create a recdes
 			   * pointing to page; NOTE: we know the first OID is
-			   * of fixed size 
+			   * of fixed size
 			   */
 			  ret =
 			    spage_get_record (load_args->leaf.pgptr,
@@ -3975,7 +3975,7 @@ compare_driver (const void *first, const void *second, void *arg)
 
   assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
-  /* compare OID for non-unique index 
+  /* compare OID for non-unique index
    */
   if (c == DB_EQ)
     {
