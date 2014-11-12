@@ -1529,7 +1529,8 @@ round (double d)
 int
 pthread_mutex_init (pthread_mutex_t * mutex, pthread_mutexattr_t * attr)
 {
-  if (mutex->csp == &mutex->cs)
+  if (mutex->csp == &mutex->cs
+      && mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
     {
       /* already inited */
       assert (0);
@@ -1537,6 +1538,7 @@ pthread_mutex_init (pthread_mutex_t * mutex, pthread_mutexattr_t * attr)
     }
 
   mutex->csp = &mutex->cs;
+  mutex->watermark = WATERMARK_MUTEX_INITIALIZED;
   InitializeCriticalSection (mutex->csp);
 
   return 0;
@@ -1545,21 +1547,25 @@ pthread_mutex_init (pthread_mutex_t * mutex, pthread_mutexattr_t * attr)
 int
 pthread_mutex_destroy (pthread_mutex_t * mutex)
 {
-  if (mutex->csp != &mutex->cs)
+  if (mutex->csp != &mutex->cs
+      || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
     {
       if (mutex->csp == NULL)	/* inited by PTHREAD_MUTEX_INITIALIZER */
 	{
+	  mutex->watermark = 0;
 	  return 0;
 	}
 
       /* invalid destroy */
       assert (0);
       mutex->csp = NULL;
+      mutex->watermark = 0;
       return 0;
     }
 
   DeleteCriticalSection (mutex->csp);
   mutex->csp = NULL;
+  mutex->watermark = 0;
   return 0;
 }
 
@@ -1589,13 +1595,16 @@ void
 port_win_mutex_init_and_lock (pthread_mutex_t * mutex)
 {
   if (css_Internal_mutex_for_mutex_initialize.csp !=
-      &css_Internal_mutex_for_mutex_initialize.cs)
+      &css_Internal_mutex_for_mutex_initialize.cs
+      || css_Internal_mutex_for_mutex_initialize.watermark !=
+      WATERMARK_MUTEX_INITIALIZED)
     {
       pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
     }
 
   EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
-  if (mutex->csp != &mutex->cs)
+  if (mutex->csp != &mutex->cs
+      || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
     {
       /*
        * below assert means that lock without pthread_mutex_init
@@ -1615,13 +1624,16 @@ port_win_mutex_init_and_trylock (pthread_mutex_t * mutex)
   bool r;
 
   if (css_Internal_mutex_for_mutex_initialize.csp !=
-      &css_Internal_mutex_for_mutex_initialize.cs)
+      &css_Internal_mutex_for_mutex_initialize.cs
+      || css_Internal_mutex_for_mutex_initialize.watermark !=
+      WATERMARK_MUTEX_INITIALIZED)
     {
       pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
     }
 
   EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
-  if (mutex->csp != &mutex->cs)
+  if (mutex->csp != &mutex->cs
+      || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
     {
       /*
        * below assert means that trylock without pthread_mutex_init

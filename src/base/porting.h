@@ -521,12 +521,15 @@ extern "C"
   {
     CRITICAL_SECTION cs;
     CRITICAL_SECTION *csp;
+    UINT32 watermark;
   } pthread_mutex_t;
 
   typedef HANDLE pthread_mutexattr_t;
 
+/* Use a large prime as watermark */
+#define WATERMARK_MUTEX_INITIALIZED 0x96438AF7
 
-#define PTHREAD_MUTEX_INITIALIZER	{{ NULL, 0, 0, NULL, NULL, 0 }, NULL}
+#define PTHREAD_MUTEX_INITIALIZER	{{ NULL, 0, 0, NULL, NULL, 0 }, NULL, 0}
 
   typedef union
   {
@@ -571,7 +574,8 @@ extern "C"
 
   __inline int pthread_mutex_lock (pthread_mutex_t * mutex)
   {
-    if (mutex->csp == &mutex->cs)
+    if (mutex->csp == &mutex->cs
+	&& mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
       {
 	EnterCriticalSection (mutex->csp);
       }
@@ -598,7 +602,8 @@ extern "C"
 
   __inline int pthread_mutex_trylock (pthread_mutex_t * mutex)
   {
-    if (mutex->csp == &mutex->cs)
+    if (mutex->csp == &mutex->cs
+	&& mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
       {
 	if (TryEnterCriticalSection (mutex->csp))
 	  {
