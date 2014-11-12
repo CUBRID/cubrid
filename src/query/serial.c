@@ -215,7 +215,6 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p,
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
-  OID serial_class_oid;
   SCAN_CODE scan;
   RECDES recdesc;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
@@ -225,8 +224,8 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p,
   heap_scancache_quick_start (&scan_cache);
 
   /* get record into record desc */
-  scan = heap_get_with_class_oid (thread_p, &serial_class_oid, serial_oidp,
-				  &recdesc, &scan_cache, PEEK);
+  scan =
+    heap_get (thread_p, serial_oidp, &recdesc, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -246,7 +245,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p,
   /* retrieve attribute */
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
   assert (attrid != NOT_FOUND);
-  ret = heap_attrinfo_start (thread_p, &serial_class_oid, 1, &attrid,
+  ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, 1, &attrid,
 			     &attr_info);
   if (ret != NO_ERROR)
     {
@@ -496,7 +495,6 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  OID serial_class_oid;
   RECDES recdesc;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   DB_VALUE *val;
@@ -514,8 +512,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
   heap_scancache_quick_start_modify (&scan_cache);
 
   scan =
-    heap_get_with_class_oid (thread_p, &serial_class_oid, &entry->oid,
-			     &recdesc, &scan_cache, PEEK);
+    heap_get (thread_p, &entry->oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -532,7 +529,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
     }
 
   /* retrieve attribute */
-  ret = heap_attrinfo_start (thread_p, &serial_class_oid, -1, NULL,
+  ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL,
 			     &attr_info);
   if (ret != NO_ERROR)
     {
@@ -564,7 +561,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
     }
 
   ret = serial_update_serial_object (thread_p, scan_cache.pgptr, &recdesc,
-				     attr_info_p, &serial_class_oid,
+				     attr_info_p, oid_Serial_class_oid,
 				     &entry->oid, &key_val);
   if (ret != NO_ERROR)
     {
@@ -608,7 +605,6 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p,
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  OID serial_class_oid;
   RECDES recdesc;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   DB_VALUE *val = NULL;
@@ -629,8 +625,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p,
 
   heap_scancache_quick_start_modify (&scan_cache);
 
-  scan = heap_get_with_class_oid (thread_p, &serial_class_oid, serial_oidp,
-				  &recdesc, &scan_cache, PEEK);
+  scan =
+    heap_get (thread_p, serial_oidp, &recdesc, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -648,7 +644,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p,
     }
 
   /* retrieve attribute */
-  ret = heap_attrinfo_start (thread_p, &serial_class_oid, -1, NULL,
+  ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL,
 			     &attr_info);
   if (ret != NO_ERROR)
     {
@@ -773,7 +769,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p,
     }
 
   ret = serial_update_serial_object (thread_p, scan_cache.pgptr, &recdesc,
-				     attr_info_p, &serial_class_oid,
+				     attr_info_p, oid_Serial_class_oid,
 				     serial_oidp, &key_val);
   if (ret != NO_ERROR)
     {
