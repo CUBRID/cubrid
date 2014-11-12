@@ -7272,31 +7272,28 @@ classobj_free_class (SM_CLASS * class_)
       return;
     }
 
-  ws_free_string (class_->header.name);
-  ws_free_string (class_->loader_commands);
-  ws_free_string (class_->comment);
-  ml_free (class_->users);
-  ml_free (class_->inheritance);
+  ws_free_string_and_init (class_->header.name);
+  ws_free_string_and_init (class_->loader_commands);
+  ws_free_string_and_init (class_->comment);
+  ml_free_and_init (class_->users);
+  ml_free_and_init (class_->inheritance);
 
-  ws_list_free ((DB_LIST *) class_->representations,
-		(LFREEER) classobj_free_representation);
-  ws_list_free ((DB_LIST *) class_->method_files,
-		(LFREEER) classobj_free_method_file);
-  ws_list_free ((DB_LIST *) class_->query_spec,
-		(LFREEER) classobj_free_query_spec);
-  ws_list_free ((DB_LIST *) class_->resolutions,
-		(LFREEER) classobj_free_resolution);
+  ws_list_free_and_init (class_->representations,
+			 classobj_free_representation);
+  ws_list_free_and_init (class_->method_files, classobj_free_method_file);
+  ws_list_free_and_init (class_->query_spec, classobj_free_query_spec);
+  ws_list_free_and_init (class_->resolutions, classobj_free_resolution);
 
-  classobj_free_threaded_array ((DB_LIST *) class_->attributes,
-				(LFREEER) classobj_clear_attribute);
-  classobj_free_threaded_array ((DB_LIST *) class_->shared,
-				(LFREEER) classobj_clear_attribute);
-  classobj_free_threaded_array ((DB_LIST *) class_->class_attributes,
-				(LFREEER) classobj_clear_attribute);
-  classobj_free_threaded_array ((DB_LIST *) class_->methods,
-				(LFREEER) classobj_clear_method);
-  classobj_free_threaded_array ((DB_LIST *) class_->class_methods,
-				(LFREEER) classobj_clear_method);
+  classobj_free_threaded_array_and_init (class_->attributes,
+					 classobj_clear_attribute);
+  classobj_free_threaded_array_and_init (class_->shared,
+					 classobj_clear_attribute);
+  classobj_free_threaded_array_and_init (class_->class_attributes,
+					 classobj_clear_attribute);
+  classobj_free_threaded_array_and_init (class_->methods,
+					 classobj_clear_method);
+  classobj_free_threaded_array_and_init (class_->class_methods,
+					 classobj_clear_method);
 
   /* this shouldn't happen here ? - make sure we can't GC this away
    * in the middle of an edit.
@@ -7310,36 +7307,35 @@ classobj_free_class (SM_CLASS * class_)
 
   if (class_->stats != NULL)
     {
-      stats_free_statistics (class_->stats);
-      class_->stats = NULL;
+      stats_free_statistics_and_init (class_->stats);
     }
 
   if (class_->properties != NULL)
     {
-      classobj_free_prop (class_->properties);
+      classobj_free_prop_and_init (class_->properties);
     }
 
-  if (class_->virtual_query_cache)
+  if (class_->virtual_query_cache != NULL)
     {
-      mq_free_virtual_query_cache (class_->virtual_query_cache);
+      mq_free_virtual_query_cache_and_init (class_->virtual_query_cache);
     }
 
   if (class_->triggers != NULL)
     {
-      tr_free_schema_cache (class_->triggers);
+      tr_free_schema_cache_and_init (class_->triggers);
     }
 
   if (class_->auth_cache != NULL)
     {
-      au_free_authorization_cache (class_->auth_cache);
+      au_free_authorization_cache_and_init (class_->auth_cache);
     }
 
   if (class_->constraints != NULL)
     {
-      classobj_free_class_constraints (class_->constraints);
+      classobj_free_class_constraints_and_init (class_->constraints);
     }
 
-  db_ws_free (class_);
+  db_ws_free_and_init (class_);
 
 }
 

@@ -1053,6 +1053,31 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_FUNCTION_INDEX_ID "*FI*"
 #define SM_PREFIX_INDEX_ID "*PLID*"
 
+/* free_and_init routine */
+#define classobj_free_threaded_array_and_init(list, clear) \
+  do \
+    { \
+      classobj_free_threaded_array ((DB_LIST *)(list), (LFREEER)(clear)); \
+      (list) = NULL; \
+    } \
+  while (0)
+
+#define classobj_free_prop_and_init(properties) \
+  do \
+    { \
+      classobj_free_prop ((properties)); \
+      (properties) = NULL; \
+    } \
+  while (0)
+
+#define classobj_free_class_constraints_and_init(constraints) \
+  do \
+    { \
+      classobj_free_class_constraints ((constraints)); \
+      (constraints) = NULL; \
+    } \
+  while (0)
+
 /* Allocation areas */
 extern void classobj_area_init (void);
 

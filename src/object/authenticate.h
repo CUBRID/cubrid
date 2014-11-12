@@ -133,6 +133,15 @@ MOP au_get_dba_user (void);
 #define AU_MAX_PASSWORD_BUF     2048
 #define AU_MAX_COMMENT_CHARS    SM_MAX_COMMENT_LENGTH
 
+/* free_and_init routine */
+#define au_free_authorization_cache_and_init(cache) \
+  do \
+    { \
+      au_free_authorization_cache ((cache)); \
+      (cache) = NULL; \
+    } \
+  while (0)
+
 typedef enum au_fetchmode
 {
   AU_FETCH_READ,

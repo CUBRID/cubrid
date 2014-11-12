@@ -57,7 +57,14 @@
 
 #define TR_MAX_PRINT_STRING 2048
 
-
+/* free_and_init routine */
+#define tr_free_schema_cache_and_init(cache) \
+  do \
+    { \
+      tr_free_schema_cache ((cache)); \
+      (cache) = NULL; \
+    } \
+  while (0)
 
 typedef struct tr_trigger
 {

@@ -37,6 +37,16 @@
 extern "C"
 {
 #endif
+
+/* free_and_init routine */
+#define mq_free_virtual_query_cache_and_init(virtual_query_cache) \
+  do \
+    { \
+      mq_free_virtual_query_cache ((virtual_query_cache)); \
+      (virtual_query_cache) = NULL; \
+    } \
+  while (0)
+
   typedef enum
   { CASE_INSENSITIVE, CASE_SENSITIVE } CASE_SENSITIVENESS;
 

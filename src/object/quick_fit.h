@@ -27,6 +27,15 @@
 
 #ident "$Id$"
 
+/* free_and_init routine */
+#define db_ws_free_and_init(obj) \
+  do \
+    { \
+      db_ws_free ((obj)); \
+      (obj) = NULL; \
+    } \
+  while (0)
+
 extern HL_HEAPID db_create_workspace_heap (void);
 extern void db_destroy_workspace_heap (void);
 

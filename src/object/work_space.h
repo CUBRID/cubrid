@@ -460,6 +460,31 @@ typedef struct mop_iterator
       (mop)->composition_fetch |= (value & ~WS_MOP_COMPOSITION_FETCH_BIT); \
   } while (0)
 
+/* free_and_init routine */
+#define ws_free_string_and_init(str) \
+  do \
+    { \
+      ws_free_string ((str)); \
+      (str) = NULL; \
+    } \
+  while (0)
+
+#define ml_free_and_init(list) \
+  do \
+    { \
+      ml_free ((list)); \
+      (list) = NULL; \
+    } \
+  while (0)
+
+#define ws_list_free_and_init(list, function) \
+  do \
+    { \
+      ws_list_free ((DB_LIST *)(list), (LFREEER)(function)); \
+      (list) = NULL; \
+    } \
+  while (0)
+
 /*
  * WS_MAP constants
  *    These are returned as status codes by the workspace mapping functions.

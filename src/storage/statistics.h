@@ -44,6 +44,15 @@
 
 #define STATS_MIN_MAX_SIZE    sizeof(DB_DATA)
 
+/* free_and_init routine */
+#define stats_free_statistics_and_init(stats) \
+  do \
+    { \
+      stats_free_statistics ((stats)); \
+      (stats) = NULL; \
+    } \
+  while (0)
+
 /* B+tree statistical information */
 typedef struct btree_stats BTREE_STATS;
 struct btree_stats
