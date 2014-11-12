@@ -1694,7 +1694,7 @@ ws_unlink_from_commit_mops_list (MOP op)
       if (next == mop)
 	{
 	  /* the last node */
-	  next = NULL;
+	  mop = NULL;
 	}
       else
 	{
