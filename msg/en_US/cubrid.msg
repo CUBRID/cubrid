@@ -1687,6 +1687,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 289 The expression including %1$s is not allowed in this context.
 290 Transaction id is not an integer.
 291 Subquery is not allowed in ORDER BY FOR clause.
+292 Invalid use of aggregate functions.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

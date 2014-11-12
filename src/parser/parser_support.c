@@ -769,6 +769,27 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
+ * pt_is_analytic_function () -
+ *   return: true in arg if node is an analytic function
+ *   parser(in):
+ *   node(in):
+ */
+bool
+pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  if (node != NULL
+      && node->node_type == PT_FUNCTION
+      && node->info.function.analytic.is_analytic)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
+/*
  * pt_is_expr_wrapped_function () -
  *   return: true if node is a PT_FUNCTION node with which may be evaluated
  *	     like an expression

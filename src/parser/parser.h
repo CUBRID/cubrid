@@ -604,6 +604,8 @@ extern "C"
 				const PT_NODE * list);
   extern bool pt_is_aggregate_function (PARSER_CONTEXT * parser,
 					const PT_NODE * node);
+  extern bool pt_is_analytic_function (PARSER_CONTEXT * parser,
+				       const PT_NODE * node);
   extern bool pt_is_expr_wrapped_function (PARSER_CONTEXT * parser,
 					   const PT_NODE * node);
   extern PT_NODE *pt_find_spec (PARSER_CONTEXT * parser, const PT_NODE * from,

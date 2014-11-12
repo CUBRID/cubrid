@@ -227,6 +227,14 @@ static PT_NODE *pt_find_default_expression (PARSER_CONTEXT * parser,
 static PT_NODE *pt_find_aggregate_function (PARSER_CONTEXT * parser,
 					    PT_NODE * tree, void *arg,
 					    int *continue_walk);
+static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser,
+						PT_NODE * tree, void *arg,
+						int *continue_walk);
+static PT_NODE *pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser,
+						 PT_NODE * tree, void *arg,
+						 int *continue_walk);
+static PT_NODE *pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser,
+						     PT_NODE * node);
 static void pt_check_attribute_domain (PARSER_CONTEXT * parser,
 				       PT_NODE * attr_defs,
 				       PT_MISC_TYPE class_type,
@@ -402,6 +410,8 @@ static PT_NODE *pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser,
 					  int *continue_walk);
 
 static void pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node);
+
+static PT_NODE *pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
@@ -4658,6 +4668,191 @@ pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree,
     }
 
   return tree;
+}
+
+/*
+ * pt_find_aggregate_analytic_pre ()
+ *                 - check if current expression contains an aggregate or
+ *                   analytic function
+ *
+ * result         :
+ * parser(in)     :
+ * tree(in)       :
+ * arg(in)        : will point to the function if any is found
+ * continue_walk  :
+ */
+static PT_NODE *
+pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree,
+				void *arg, int *continue_walk)
+{
+  PT_NODE **function = (PT_NODE **) arg;
+
+  if (*continue_walk == PT_STOP_WALK)
+    {
+      return tree;
+    }
+
+  assert (*function == NULL);
+
+  if (tree && PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      PT_NODE *find = NULL;
+
+      /* For sub-queries, searching is limited to range of WHERE clause */
+      find = pt_find_aggregate_analytic_in_where (parser, tree);
+      if (find)
+	{
+	  *function = find;
+	}
+
+      /*
+       * Don't search children nodes of this query node, since
+       * pt_find_aggregate_analytic_in_where already did it.
+       * We may continue walking to search in the rest parts,
+       * See pt_find_aggregate_analytic_post.
+       */
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_FUNCTION (tree))
+    {
+      if (pt_is_aggregate_function (parser, tree)
+	  || pt_is_analytic_function (parser, tree))
+	{
+	  *function = tree;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * pt_find_aggregate_analytic_post ()
+ *
+ * result         :
+ * parser(in)     :
+ * tree(in)       :
+ * arg(in)        :
+ * continue_walk  :
+ */
+static PT_NODE *
+pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NODE * tree,
+				 void *arg, int *continue_walk)
+{
+  PT_NODE **function = (PT_NODE **) arg;
+
+  if (tree && PT_IS_QUERY_NODE_TYPE (tree->node_type) && *function == NULL)
+    {
+      /* Need to search the rest part of tree */
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+  return tree;
+}
+
+/*
+ * pt_find_aggregate_analytic_in_where ()
+ *                 - find an aggregate or analytic function in where clause
+ *
+ * result         : point to the found function if any; NULL otherwise
+ * parser(in)     :
+ * node(in)       :
+ * continue_walk  :
+ *
+ * [Note]
+ * This function will search whether an aggregate or analytic function exists
+ * in WHERE clause of below statements:
+ *     INSERT, DO, SET, DELETE, SELECT, UNION, DIFFERENCE, INTERSECTION, and
+ *     MERGE.
+ * It stops searching when meets the first aggregate or analytic function.
+ *
+ * 1) For below node types, searching is limited to child node who containing
+ *    WHERE clause:
+ *     PT_DO, PT_DELETE, PT_SET_SESSION_VARIABLES, PT_SELECT
+ *
+ * 2) For below node types, searching is executed on its args:
+ *     PT_UNION, PT_DIFFERENCE, PT_INTERSECTION
+ *
+ * 3) For below node types, searching is executed on its all nested nodes:
+ *     PT_FUNCTION, PT_EXPR, PT_MERGE, PT_INSERT
+ */
+static PT_NODE *
+pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *find = NULL;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_DO:
+      find = pt_find_aggregate_analytic_in_where (parser,
+						  node->info.do_.expr);
+      break;
+
+    case PT_SET_SESSION_VARIABLES:
+      find = pt_find_aggregate_analytic_in_where (parser,
+						  node->info.set_variables.
+						  assignments);
+      break;
+
+    case PT_DELETE:
+      find = pt_find_aggregate_analytic_in_where (parser,
+						  node->info.delete_.
+						  search_cond);
+      break;
+
+    case PT_SELECT:
+      find = pt_find_aggregate_analytic_in_where (parser,
+						  node->info.query.
+						  q.select.where);
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      /* search in args recursively */
+      find = pt_find_aggregate_analytic_in_where (parser,
+						  node->info.query.
+						  q.union_.arg1);
+
+      if (find)
+	{
+	  break;
+	}
+
+      find = pt_find_aggregate_analytic_in_where (parser,
+						  node->info.query.
+						  q.union_.arg2);
+      break;
+
+    case PT_FUNCTION:
+      if (pt_is_aggregate_function (parser, node)
+	  || pt_is_analytic_function (parser, node))
+	{
+	  find = node;
+	  break;
+	}
+
+      /* fall through to search nested nodes */
+
+    case PT_EXPR:
+    case PT_MERGE:
+    case PT_INSERT:
+      /* walk tree to search */
+      (void) parser_walk_tree (parser, node,
+			       pt_find_aggregate_analytic_pre, &find,
+			       pt_find_aggregate_analytic_post, &find);
+      break;
+
+    default:
+      /* for the rest node types, no need to search */
+      break;
+    }
+
+  return find;
 }
 
 /*
@@ -11687,6 +11882,11 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 
       if (!pt_has_error (parser))
 	{
+	  node = pt_check_where (parser, node);
+	}
+
+      if (!pt_has_error (parser))
+	{
 	  if (sc_info_ptr->system_class && PT_IS_QUERY (node))
 	    {
 	      /* do not cache the result if a system class is involved
@@ -17007,6 +17207,36 @@ pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node,
 	  || PT_IS_DIFFERENCE (arg))
 	{
 	  arg->info.query.q.union_.is_leaf_node = 1;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_check_where () -  do semantic checks on a node's where clause
+ *   return:
+ *   parser(in): the parser context
+ *   node(in): the node to check
+ */
+static PT_NODE *
+pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *function = NULL;
+
+  /* check if exists aggregate/analytic functions in where clause */
+  function = pt_find_aggregate_analytic_in_where (parser, node);
+  if (function != NULL)
+    {
+      if (pt_is_aggregate_function (parser, function))
+	{
+	  PT_ERRORm (parser, function, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_AGGREGATE);
+	}
+      else
+	{
+	  PT_ERRORm (parser, function, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
 	}
     }
 

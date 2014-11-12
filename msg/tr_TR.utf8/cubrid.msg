@@ -1687,6 +1687,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 289 Ifadesine dahil %1$s bu bağlamda yasaktır.
 290 Transaction id is not an integer.
 291 Subquery is not allowed in ORDER BY FOR clause.
+292 Invalid use of aggregate functions.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
