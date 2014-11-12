@@ -411,6 +411,10 @@ public class UConnection {
 	    	return connectionProperties.getLogSlowQueries();
 	}
 
+	public boolean getUseOldBooleanValue() {
+		return connectionProperties.getUseOldBooleanValue();
+	}
+
 	synchronized public void addElementToSet(CUBRIDOID oid,
 			String attributeName, Object value) {
 		errorHandler = new UError(this);

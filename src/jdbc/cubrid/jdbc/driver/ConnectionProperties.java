@@ -345,6 +345,9 @@ public class ConnectionProperties {
     BooleanConnectionProperty useLazyConnection = new BooleanConnectionProperty(
 	    "useLazyConnection", false);
 
+    BooleanConnectionProperty useOldBooleanValue = new BooleanConnectionProperty(
+	    "useOldBooleanValue", false);
+
     public boolean getLogOnException() {
 	return logOnException.getValueAsBoolean();
     }
@@ -394,5 +397,9 @@ public class ConnectionProperties {
 
     public boolean getUseLazyConnection() {
 	return useLazyConnection.getValueAsBoolean();
+    }
+
+    public boolean getUseOldBooleanValue() {
+        return useOldBooleanValue.getValueAsBoolean();
     }
 }

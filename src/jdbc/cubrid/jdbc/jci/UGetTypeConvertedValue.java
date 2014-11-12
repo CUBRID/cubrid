@@ -77,7 +77,7 @@ abstract public class UGetTypeConvertedValue {
 		else if (data instanceof Boolean)
 			return ((Boolean) data).booleanValue();
 		else if (data instanceof String)
-			return ((((String) data).compareTo("0") == 0) ? false : true);
+			return (((((String) data).trim()).compareTo("0") == 0) ? false : true);
 		else if (data instanceof Number)
 			return ((((Number) data).doubleValue() == (double) 0) ? false
 					: true);
