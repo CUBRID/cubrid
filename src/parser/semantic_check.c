@@ -13912,13 +13912,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	  query = pt_resolve_names (parser, query, &sc_info);
 	  if (pt_has_error (parser) || !query)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      if (error == NO_ERROR)
-		{
-		  error = ER_FAILED;	/* defense code */
-		}
-	      return error;
+	      return ER_FAILED;
 	    }
 
 	  query->info.query.limit = limit;
