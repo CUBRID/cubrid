@@ -2554,19 +2554,21 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 					     LC_FETCH_NEED_LAST_MVCC_VERSION);
 		  if (error != NO_ERROR)
 		    {
+		      if (trstate != NULL)
+			{
+			  tr_abort (trstate);
+			}
+		      if (temp != NULL)
+			{
+			  free_temp_object (temp);
+			}
+
 		      if (WS_IS_DELETED (object))
 			{
-			  if (trstate != NULL)
-			    {
-			      tr_abort (trstate);
-			      free_temp_object (temp);
-			    }
 			  return NO_ERROR;
 			}
-		      else
-			{
-			  return error;
-			}
+
+		      return error;
 		    }
 		}
 	      /* set pin after before trigger */
@@ -2728,6 +2730,10 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	      error = tr_after_object (trstate, object, temp);
 	    }
 	}
+    }
+
+  if (temp != NULL)
+    {
       /* free this after both before and after triggers have run */
       free_temp_object (temp);
     }
