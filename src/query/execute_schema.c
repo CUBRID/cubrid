@@ -4270,8 +4270,6 @@ end_create:
       return error;
     }
 
-  assert (er_errid () == NO_ERROR);
-
   return NO_ERROR;
 }
 
