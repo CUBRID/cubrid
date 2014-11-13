@@ -9393,7 +9393,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_scale;
   DB_C_NUMERIC src_numeric;
 
-  if (src == NULL)
+  if (src == NULL || DB_IS_NULL (src))
     {
       db_value_domain_init (dest, DB_TYPE_NUMERIC,
 			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
