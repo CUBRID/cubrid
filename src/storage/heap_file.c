@@ -11926,21 +11926,45 @@ try_again:
       *forward_page =
 	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		   PGBUF_CONDITIONAL_LATCH);
+      if (*forward_page != NULL)
+	{
+	  /* Pages successfully fixed. */
+	  return S_SUCCESS;
+	}
+
+      /* Failed to fix both pages. Try to fix home/forward pages in reversed
+       * order.
+       */
+      pgbuf_unfix_and_init (thread_p, *home_page);
+      *forward_page =
+	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+		   PGBUF_UNCONDITIONAL_LATCH);
       if (*forward_page == NULL)
 	{
-	  /* Failed to fix both pages. Unfix home and try again from the
-	   * beginning.
-	   */
-	  pgbuf_unfix_and_init (thread_p, *home_page);
-
+	  if (er_errid () == ER_PB_BAD_PAGEID)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_HEAP_UNKNOWN_OBJECT, 3, forward_oid->volid,
+		      forward_oid->pageid, forward_oid->slotid);
+	    }
+	  return S_ERROR;
+	}
+      *home_page =
+	pgbuf_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+		   PGBUF_CONDITIONAL_LATCH);
+      if (*home_page == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, *forward_page);
 	  if (try_count++ >= try_max)
 	    {
-	      /* Maximum attempts of fixing pages has been reached. Fail. */
+	      /* Maximum attempts of fixing pages has been reached.
+	       * Fail.
+	       */
 	      if (er_errid () == ER_PB_BAD_PAGEID)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
-			  oid->pageid, oid->slotid);
+			  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
+			  oid->slotid);
 		}
 	      else if (er_errid () == NO_ERROR)
 		{
@@ -11955,8 +11979,13 @@ try_again:
 	      goto try_again;
 	    }
 	}
-      /* Pages successfully fixed. */
-      return S_SUCCESS;
+      /* Home_page/forward_page are both fixed. However, since home page was
+       * unfixed, record may have changed (record type has changed or just the
+       * relocation link).
+       * Go back and repeat steps (if nothing was changed, pages are already
+       * fixed).
+       */
+      goto try_again;
 
     case REC_BIGONE:
       /* Need to get forward_oid and forward_page (first overflow page). */
