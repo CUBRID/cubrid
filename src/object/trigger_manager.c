@@ -7682,7 +7682,7 @@ define_trigger_classes (void)
   if ((class_mop = dbt_finish_class (tmp)) == NULL)
     goto tmp_error;
 
-  if (locator_create_heap_if_needed (class_mop, true) == NULL)
+  if (locator_create_heap_if_needed (class_mop, false) == NULL)
     {
       goto tmp_error;
     }
