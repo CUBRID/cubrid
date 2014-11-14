@@ -4010,6 +4010,11 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      error = er_errid ();
 	      goto end_create;
 	    }
+	  else if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      /* The class doesn't exist. We are creating the class. */
+	      er_clear ();
+	    }
 
 	  if (reuse_oid)
 	    {
@@ -4143,6 +4148,11 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      error = er_errid ();
 	      goto end_create;
 	    }
+	  else if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      /* The class doesn't exist. We are creating the class. */
+	      er_clear ();
+	    }
 
 	  sm_set_class_collation (newpci->obj, smclass->collation_id);
 
@@ -4269,6 +4279,8 @@ end_create:
     {
       return error;
     }
+
+  assert (er_errid () == NO_ERROR);
 
   return NO_ERROR;
 }
