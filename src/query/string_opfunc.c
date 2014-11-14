@@ -22580,6 +22580,9 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
   memset (hours_or_minutes, 0, sizeof (hours_or_minutes));
   memset (format_specifiers, 0, sizeof (format_specifiers));
 
+  res = NULL;
+  res2 = NULL;
+
   if (date_value == NULL || format == NULL
       || DB_IS_NULL (date_value) || DB_IS_NULL (format))
     {
@@ -23189,8 +23192,18 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
 
   result->need_clear = true;
 
+  return error_status;
+
 error:
-  /* do not free res as it was moved to result and will be freed later */
+  if (res != NULL)
+    {
+      db_private_free_and_init (NULL, res);
+    }
+
+  if (res != NULL)
+    {
+      db_private_free_and_init (NULL, res2);
+    }
 
   return error_status;
 }
