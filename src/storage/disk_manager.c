@@ -7288,8 +7288,8 @@ disk_get_first_total_free_numpages (THREAD_ENTRY * thread_p,
   *ntotal_pages = 0;
   *nfree_pages = 0;
 
-  volid = LOG_DBFIRST_VOLID;
-  do
+  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+       volid = fileio_find_next_perm_volume (thread_p, volid))
     {
       vpid.volid = volid;
       vpid.pageid = DISK_VOLHEADER_PAGE;
@@ -7320,10 +7320,7 @@ disk_get_first_total_free_numpages (THREAD_ENTRY * thread_p,
       (void) disk_verify_volume_header (thread_p, hdr_pgptr);
 
       pgbuf_unfix_and_init (thread_p, hdr_pgptr);
-
-      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
-  while (volid != NULL_VOLID);
 
   return -1;
 }

@@ -12029,8 +12029,8 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
     }
 
   /* phase 1. allocate disk-allocset page memory */
-  i = 0;
-  do
+  for (i = LOG_DBFIRST_VOLID; i != NULL_VOLID;
+       i = fileio_find_next_perm_volume (thread_p, i))
     {
       vpid.volid = i + LOG_DBFIRST_VOLID;
       vpid.pageid = DISK_VOLHEADER_PAGE;
@@ -12074,10 +12074,7 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
 	}
 
       pgbuf_unfix_and_init (thread_p, vhdr_pgptr);
-
-      i = fileio_find_next_perm_volume (thread_p, i);
     }
-  while (i != NULL_VOLID);
 
   /* phase 2. construct disk bitmap image with file tracker */
   num_files = file_get_numpages (thread_p, file_Tracker->vfid);
@@ -14776,8 +14773,8 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
       allvalid = DISK_ERROR;
     }
 
-  i = 0;
-  do
+  for (i = LOG_DBFIRST_VOLID; i != NULL_VOLID;
+       i = fileio_find_next_perm_volume (thread_p, i))
     {
       vpid.volid = i + LOG_DBFIRST_VOLID;
       vpid.pageid = DISK_VOLHEADER_PAGE;
@@ -14859,10 +14856,7 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
 	}
 
       pgbuf_set_dirty (thread_p, vhdr_pgptr, FREE);
-
-      i = fileio_find_next_perm_volume (thread_p, i);
     }
-  while (i != NULL_VOLID);
 
 end:
   if (space_info)

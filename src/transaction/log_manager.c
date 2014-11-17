@@ -11074,8 +11074,8 @@ log_recreate (THREAD_ENTRY * thread_p,
 
   LSA_SET_INIT_NONTEMP (&init_nontemp_lsa);
 
-  volid = LOG_DBFIRST_VOLID;
-  do
+  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+       volid = fileio_find_next_perm_volume (thread_p, volid))
     {
       char vol_fullname[PATH_MAX];
 
@@ -11139,10 +11139,7 @@ log_recreate (THREAD_ENTRY * thread_p,
 	  fprintf (out_fp, "%s... done\n", vol_fullname);
 	  fflush (out_fp);
 	}
-
-      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
-  while (volid != NULL_VOLID);
 
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p, false);

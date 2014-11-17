@@ -2273,7 +2273,6 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
 
       /* First the primary volume, then the rest of the volumes */
       num_vols = 0;
-      next_volid = LOG_DBFIRST_VOLID;
       strcpy (next_vol_fullname, boot_Db_full_name);
 
       /*
@@ -2281,7 +2280,8 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
        * called to mount the volumes. Thus, request to current volume for the
        * next volume instead of going directly through the volume identifier.
        */
-      do
+      for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;
+	   next_volid = fileio_find_next_perm_volume (thread_p, next_volid))
 	{
 	  num_vols++;
 	  if (next_volid != volid)
@@ -2297,10 +2297,7 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
 	    {
 	      return ER_FAILED;
 	    }
-
-	  next_volid = fileio_find_next_perm_volume (thread_p, next_volid);
 	}
-      while (next_volid != NULL_VOLID);
 
       if (use_volinfo == true)
 	{
@@ -2491,7 +2488,6 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
 
   /* First the primary volume, then the rest of the volumes */
   num_vols = 0;
-  next_volid = LOG_DBFIRST_VOLID;
   strcpy (next_vol_fullname, boot_Db_full_name);
 
   /*
@@ -2499,7 +2495,8 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
    * called to mount the volumes. Thus, request to current volume for the
    * next volume instead of going directly through the volume identifier.
    */
-  do
+  for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;
+       next_volid = fileio_find_next_perm_volume (thread_p, next_volid))
     {
       num_vols++;
       /* Have to make sure a label exists, before we try to use it below */
@@ -2525,10 +2522,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
 	{
 	  return ER_GENERIC_ERROR;
 	}
-
-      next_volid = fileio_find_next_perm_volume (thread_p, next_volid);
     }
-  while (next_volid != NULL_VOLID);
 
   if (num_vols != boot_Db_parm->nvols)
     {
@@ -4738,18 +4732,16 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag,
       index_btid = NULL;
     }
 
-  volid = LOG_DBFIRST_VOLID;
-  do
+  for (volid = LOG_DBFIRST_VOLID;
+       isvalid != DISK_ERROR && volid != NULL_VOLID;
+       volid = fileio_find_next_perm_volume (thread_p, volid))
     {
       isvalid = disk_check (thread_p, volid, repair);
       if (isvalid != DISK_VALID)
 	{
 	  error_code = ER_FAILED;
 	}
-
-      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
-  while (isvalid != DISK_ERROR && volid != NULL_VOLID);
 
   if (num_oids > 0)
     {

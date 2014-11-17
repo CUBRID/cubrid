@@ -8868,8 +8868,8 @@ pgbuf_initialize_statistics (void)
       pgbuf_initialize_vol_stat (&ps_info.vol_stat[volid]);
     }
 
-  volid = LOG_DBFIRST_VOLID;
-  do
+  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+       volid = fileio_find_next_perm_volume (NULL, volid))
     {
       vs = &ps_info.vol_stat[volid];
       vs->volid = volid;
@@ -8890,10 +8890,7 @@ pgbuf_initialize_statistics (void)
 	  ps->volid = volid;
 	  ps->pageid = pageid;
 	}
-
-      volid = fileio_find_next_perm_volume (NULL, volid);
     }
-  while (volid != NULL_VOLID);
 
   ps_info.ps_init_called = 1;
 

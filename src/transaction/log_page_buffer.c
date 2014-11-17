@@ -6228,10 +6228,11 @@ logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
     }
 
   /* First the primary volume, then the rest of the volumes */
-  next_volid = LOG_DBFIRST_VOLID;
+
   strcpy (next_vol_fullname, log_Db_fullname);
 
-  do
+  for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;
+       next_volid = fileio_find_next_perm_volume (thread_p, next_volid))
     {
       if (logpb_add_volume (NULL, next_volid, next_vol_fullname,
 			    DISK_PERMVOL_GENERIC_PURPOSE) != next_volid)
@@ -6245,10 +6246,7 @@ logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-
-      next_volid = fileio_find_next_perm_volume (thread_p, next_volid);
     }
-  while (next_volid != NULL_VOLID);
 
   return error_code;
 
@@ -8785,14 +8783,11 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * Record the checkpoint address on every volume header
    */
 
-  volid = LOG_DBFIRST_VOLID;
-  do
+  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+       volid = fileio_find_next_perm_volume (thread_p, volid))
     {
       (void) disk_set_checkpoint (thread_p, volid, &chkpt_lsa);
-
-      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
-  while (volid != NULL_VOLID);
 
   /*
    * Get the critical section again, so we can check if any archive can be
@@ -11130,8 +11125,8 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       goto error;
     }
 
-  volid = LOG_DBFIRST_VOLID;
-  do
+  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+       volid = fileio_find_next_perm_volume (thread_p, volid))
     {
       error_code =
 	logpb_next_where_path (to_db_fullname, toext_path, ext_name, ext_path,
@@ -11157,9 +11152,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
-  while (volid != NULL_VOLID);
 
   /*
    * We need to change the name of the volumes in our internal tables.
@@ -11427,7 +11420,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	  goto error;
 	}
 
-      do
+      for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+	   volid = fileio_find_next_perm_volume (thread_p, volid))
 	{
 	  error_code = logpb_next_where_path (to_db_fullname, toext_path,
 					      ext_name, ext_path,
@@ -11453,10 +11447,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	      error_code = ER_TM_CROSS_DEVICE_LINK;
 	      goto error;
 	    }
-
-	  volid = fileio_find_next_perm_volume (thread_p, volid);
 	}
-      while (volid != NULL_VOLID);
     }
 
   if (log_Gl.archive.vdes != NULL_VOLDES)
@@ -11658,8 +11649,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       goto error;
     }
 
-  volid = LOG_DBFIRST_VOLID;
-  do
+  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+       volid = fileio_find_next_perm_volume (thread_p, volid))
     {
       /* Change the name of the volume */
       error_code =
@@ -11745,9 +11736,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      volid = fileio_find_next_perm_volume (thread_p, volid);
     }
-  while (volid != NULL_VOLID);
 
   if (fromfile_paths_fp != NULL)
     {
@@ -11985,8 +11974,8 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       /*
        * DESTROY DATA VOLUMES
        */
-      volid = LOG_DBFIRST_VOLID;
-      do
+      for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+	   volid = fileio_find_next_perm_volume (thread_p, volid))
 	{
 	  vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
 	  if (vlabel != NULL)
@@ -11997,10 +11986,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	      fileio_unformat (thread_p, vlabel);
 	      free (vlabel);
 	    }
-
-	  volid = fileio_find_next_perm_volume (thread_p, volid);
 	}
-      while (volid != NULL_VOLID);
     }
 
   /* Destroy the database volume information */
