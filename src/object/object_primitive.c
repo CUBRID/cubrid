@@ -5794,7 +5794,14 @@ mr_setmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	  mem->oid.volid = oid->volid;
 	  mem->oid.pageid = oid->pageid;
 	  mem->oid.slotid = oid->slotid;
-	  mem->pointer = op;
+	  if (op->is_temp)
+	    {
+	      mem->pointer = NULL;
+	    }
+	  else
+	    {
+	      mem->pointer = op;
+	    }
 	}
     }
 #endif /* !SERVER_MODE */
