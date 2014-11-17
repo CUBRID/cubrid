@@ -50,6 +50,7 @@
 #include "parser.h"
 #include "memory_alloc.h"
 #include "execute_schema.h"
+#include "network_interface_cl.h"
 #if defined(SA_MODE)
 #include "jsp_sr.h"
 #endif /* SA_MODE */
