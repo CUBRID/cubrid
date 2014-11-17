@@ -228,12 +228,12 @@ uso: %2$s heartbeat <commando> [args]\n\
 \n\
 Commandi disponibili:\n\
     start          [database-name]\n\
-    stop           [-h <hostname>] [-i] [database-name]\n\
-    copylogdb      <start|stop> database-name node-name\n\
-    applylogdb     <start|stop> database-name node-name\n\
-    prefetchlogdb  <start|stop> database-name node-name\n\
+    stop           [-h <host-name>] [-i] [database-name]\n\
+    copylogdb      <start|stop> [-h <host-name>] database-name node-name\n\
+    applylogdb     <start|stop> [-h <host-name>] database-name node-name\n\
+    prefetchlogdb  <start|stop> [-h <host-name>] database-name node-name\n\
     replication    <start|stop> node-name\n\
-    status         [-v]\n\
+    status         [-v] [-h <host-name>]\n\
     reload\n
 31 argomento '%1$s' non è necessaria.\n
 32 Nome di database mancante.\n

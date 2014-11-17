@@ -228,12 +228,12 @@ cubrid 管理工具，版本 %1$s\n\
 \n\
 可用命令:\n\
     start          [数据库名]\n\
-    stop           [-h <hostname>] [-i] [数据库名]\n\
-    copylogdb      <start|stop> 数据库名 节点名\n\
-    applylogdb     <start|stop> 数据库名 节点名\n\
-    prefetchlogdb  <start|stop> 数据库名 节点名\n\
+    stop           [-h <host-name>] [-i] [数据库名]\n\
+    copylogdb      <start|stop> [-h <host-name>] 数据库名 节点名\n\
+    applylogdb     <start|stop> [-h <host-name>] 数据库名 节点名\n\
+    prefetchlogdb  <start|stop> [-h <host-name>] 数据库名 节点名\n\
     replication    <start|stop> 节点名\n\
-    status         [-v]\n\
+    status         [-v] [-h <host-name>]\n\
     reload\n
 31 不需要参数 '%1$s' .\n
 32 缺少数据库名.\n

@@ -141,6 +141,9 @@ static void css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
 					   unsigned short request_id);
 static void css_process_ha_admin_info (CSS_CONN_ENTRY * conn,
 				       unsigned short request_id);
+static void css_process_ha_start_util_process (CSS_CONN_ENTRY * conn,
+					       unsigned short request_id,
+					       char *args);
 
 static void css_process_server_state (CSS_CONN_ENTRY * conn,
 				      unsigned short request_id,
@@ -1033,8 +1036,15 @@ css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
+  int result;
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      goto error_return;
+    }
+
+  result = hb_check_request_eligibility (conn->fd);
+  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
     {
       goto error_return;
     }
@@ -1096,8 +1106,15 @@ css_process_ha_admin_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
+  int result;
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      goto error_return;
+    }
+
+  result = hb_check_request_eligibility (conn->fd);
+  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
     {
       goto error_return;
     }
@@ -1175,8 +1192,15 @@ css_process_ha_node_list_info (CSS_CONN_ENTRY * conn,
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
+  int result;
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      goto error_return;
+    }
+
+  result = hb_check_request_eligibility (conn->fd);
+  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
     {
       goto error_return;
     }
@@ -1241,8 +1265,15 @@ css_process_ha_process_list_info (CSS_CONN_ENTRY * conn,
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
+  int result;
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      goto error_return;
+    }
+
+  result = hb_check_request_eligibility (conn->fd);
+  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
     {
       goto error_return;
     }
@@ -1417,18 +1448,41 @@ css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
 {
 #if !defined(WINDOWS)
   pid_t pid;
+  int result;
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
+      result = hb_check_request_eligibility (conn->fd);
+      if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+	{
+	  goto error_return;
+	}
+
       pid = ntohl (*((int *) pid_p));
       hb_deregister_by_pid (pid);
     }
+  else
+    {
+      goto error_return;
+    }
 
-  if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id,
+		     HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
+
   return;
+
+error_return:
+  if (css_send_data (conn, request_id,
+		     HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  return;
+
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
@@ -1457,16 +1511,40 @@ css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
 				   unsigned short request_id, char *args)
 {
 #if !defined(WINDOWS)
+  int result;
+
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
+      result = hb_check_request_eligibility (conn->fd);
+      if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+	{
+	  goto error_return;
+	}
+
       hb_deregister_by_args (args);
     }
+  else
+    {
+      goto error_return;
+    }
 
-  if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id,
+		     HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
+
   return;
+
+error_return:
+  if (css_send_data (conn, request_id,
+		     HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  return;
+
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
@@ -1907,6 +1985,74 @@ error_return:
 }
 
 /*
+ * css_process_ha_start_util_process()
+ *   return: none
+ *   conn(in):
+ *   request_id(in):
+ *   args(in):
+ */
+static void
+css_process_ha_start_util_process (CSS_CONN_ENTRY * conn,
+				   unsigned short request_id, char *args)
+{
+#if !defined(WINDOWS)
+  int error = NO_ERROR;
+  int result;
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      goto error_return;
+    }
+
+  result = hb_check_request_eligibility (conn->fd);
+  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+    {
+      goto error_return;
+    }
+
+  error = hb_start_util_process (args);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  if (css_send_data
+      (conn, request_id, HA_REQUEST_SUCCESS,
+       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  return;
+
+error_return:
+  if (css_send_data
+      (conn, request_id, HA_REQUEST_FAILURE,
+       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  return;
+#else
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  return;
+#endif
+}
+
+/*
  * css_process_server_state()
  *   return: none
  *   conn(in)
@@ -2081,6 +2227,9 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	    {
 	      css_process_server_state (conn, request_id, buffer);
 	    }
+	  break;
+	case START_HA_UTIL_PROCESS:
+	  css_process_ha_start_util_process (conn, request_id, buffer);
 	  break;
 	default:
 	  if (buffer != NULL)

@@ -6721,6 +6721,87 @@ hb_activate_heartbeat (void)
   return NO_ERROR;
 }
 
+/*
+ * hb_start_util_process -
+ *   return: none
+ *
+ *   args(in):
+ *   str(out):
+ */
+int
+hb_start_util_process (char *args)
+{
+  int error = NO_ERROR;
+  char error_string[LINE_MAX] = "";
+  HB_PROC_ENTRY *proc;
+  int pid;
+
+  char executable_path[PATH_MAX];
+  int i, num_args = 0;
+  char *s, *save;
+  char argvs[HB_MAX_NUM_PROC_ARGV][HB_MAX_SZ_PROC_ARGV];
+  char *argvp[HB_MAX_NUM_PROC_ARGV];
+
+  if (hb_Resource == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  (void) pthread_mutex_lock (&hb_Resource->lock);
+  proc = hb_return_proc_by_args (args);
+  if (proc != NULL)
+    {
+      (void) pthread_mutex_unlock (&hb_Resource->lock);
+
+      snprintf (error_string, LINE_MAX,
+		"%s. (process already running, args:%s)",
+		HB_RESULT_FAILURE_STR, args);
+      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_UTIL_START_STR,
+		     error_string);
+      return NO_ERROR;
+    }
+
+  pid = fork ();
+  if (pid < 0)
+    {
+      (void) pthread_mutex_unlock (&hb_Resource->lock);
+
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK,
+		     0);
+      return ER_FAILED;
+    }
+  else if (pid == 0)
+    {
+      memset (argvp, 0, sizeof (argvp));
+      memset (argvs, 0, sizeof (argvs));
+      s = strtok_r (args, " \t\n", &save);
+      while (s)
+	{
+	  strncpy (argvs[num_args++], s, HB_MAX_SZ_PROC_ARGV - 1);
+	  s = strtok_r (NULL, " \t\n", &save);
+	}
+
+      for (i = 0; i < num_args; i++)
+	{
+	  argvp[i] = argvs[i];
+	}
+
+      envvar_bindir_file (executable_path, PATH_MAX, argvp[0]);
+      (void) execv (executable_path, argvp);
+
+      (void) pthread_mutex_unlock (&hb_Resource->lock);
+      css_master_cleanup (SIGTERM);
+      return NO_ERROR;
+    }
+  else
+    {
+      (void) pthread_mutex_unlock (&hb_Resource->lock);
+    }
+
+  return NO_ERROR;
+}
+
 
 /*
  * common

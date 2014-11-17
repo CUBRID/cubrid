@@ -122,7 +122,8 @@ enum css_client_request
   DEACT_CONFIRM_STOP_ALL = 39,	/* HA: confirm preparation for deactiavtion */
   DEACT_CONFIRM_NO_SERVER = 40,	/* HA: confirm the completion of deactivation */
   GET_HA_ADMIN_INFO = 41,	/* HA: get administrative info */
-  GET_SERVER_STATE = 42		/* broker: get the server state*/
+  GET_SERVER_STATE = 42,	/* broker: get the server state */
+  START_HA_UTIL_PROCESS = 43	/* HA: start ha utility process */
 };
 
 /*

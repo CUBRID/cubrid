@@ -151,6 +151,7 @@ enum HB_PROC_STATE
 #define HB_CMD_DEACTIVATE_STR                   "deactivate"
 #define HB_CMD_DEREGISTER_STR                   "deregister"
 #define HB_CMD_RELOAD_STR                       "reload"
+#define HB_CMD_UTIL_START_STR                   "util process start"
 
 enum HB_HOST_CHECK_RESULT
 {
@@ -427,6 +428,8 @@ extern int hb_get_deactivating_server_count (void);
 extern bool hb_is_deactivation_started (void);
 extern bool hb_is_deactivation_ready (void);
 extern void hb_finish_deactivate_server_info (void);
+
+extern int hb_start_util_process (char *args);
 
 extern void hb_enable_er_log (void);
 extern void hb_disable_er_log (int reason, const char *msg_fmt, ...);

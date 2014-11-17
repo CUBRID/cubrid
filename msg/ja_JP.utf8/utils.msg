@@ -228,12 +228,12 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
 \n\
 正しいコマンド:\n\
     start          [データベース名]\n\
-    stop           [-h <hostname>] [-i] [データベース名]\n\
-    copylogdb      <start|stop> [データベース名] [ノード名]\n\
-    applylogdb     <start|stop> [データベース名] [ノード名]\n\
-    prefetchlogdb  <start|stop> [データベース名] [ノード名]\n\
+    stop           [-h <host-name>] [-i] [データベース名]\n\
+    copylogdb      <start|stop> [-h <host-name>] [データベース名] [ノード名]\n\
+    applylogdb     <start|stop> [-h <host-name>] [データベース名] [ノード名]\n\
+    prefetchlogdb  <start|stop> [-h <host-name>] [データベース名] [ノード名]\n\
     replication    <start|stop> node-name\n\
-    status         [-v]\n\
+    status         [-v] [-h <host-name>]\n\
     reload\n
 31 '%1$s'パラメーターが必要です。\n
 32 データベース名が抜いています。\n

@@ -63,9 +63,17 @@
 
 #define COMMDB_CMD_ALLOWED_ON_REMOTE() \
   ((commdb_Arg_deact_stop_all == true) \
-  || (commdb_Arg_deact_confirm_stop_all == true) \
-  || (commdb_Arg_deact_confirm_no_server == true) \
-  || (commdb_Arg_deactivate_heartbeat == true))
+  || (commdb_Arg_deact_confirm_stop_all == true) 	\
+  || (commdb_Arg_deact_confirm_no_server == true) 	\
+  || (commdb_Arg_deactivate_heartbeat == true)		\
+  || (commdb_Arg_is_registered == true)			\
+  || (commdb_Arg_ha_deregister_by_args == true)		\
+  || (commdb_Arg_print_ha_node_info == true)		\
+  || (commdb_Arg_print_ha_process_info == true)		\
+  || (commdb_Arg_print_ha_ping_hosts_info == true)	\
+  || (commdb_Arg_print_ha_admin_info == true)		\
+  || (commdb_Arg_ha_start_util_process == true)		\
+  )
 
 typedef enum
 {
@@ -97,10 +105,17 @@ static void process_ha_node_info_query (CSS_CONN_ENTRY * conn,
 static void process_ha_process_info_query (CSS_CONN_ENTRY * conn,
 					   int verbose_yn);
 static void process_ha_ping_host_info_query (CSS_CONN_ENTRY * conn);
-static void process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
-					  char *pid_string);
-static void process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args);
+static int process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
+					 char *pid_string);
+static int process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args);
 
+static int process_reconfig_heartbeat (CSS_CONN_ENTRY * conn);
+static int process_deactivate_heartbeat (CSS_CONN_ENTRY * conn);
+static int process_deact_confirm_no_server (CSS_CONN_ENTRY * conn);
+static int process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn);
+static int process_deact_stop_all (CSS_CONN_ENTRY * conn);
+static int process_activate_heartbeat (CSS_CONN_ENTRY * conn);
+static int process_ha_start_util_process (CSS_CONN_ENTRY * conn, char *args);
 
 static int process_batch_command (CSS_CONN_ENTRY * conn);
 
@@ -132,6 +147,8 @@ static bool commdb_Arg_deact_stop_all = false;
 static bool commdb_Arg_deact_confirm_stop_all = false;
 static bool commdb_Arg_deact_confirm_no_server = false;
 static char *commdb_Arg_host_name = NULL;
+static bool commdb_Arg_ha_start_util_process = false;
+static char *commdb_Arg_ha_util_process_args = NULL;
 
 /*
  * send_request_no_args() - send request without argument
@@ -740,13 +757,14 @@ process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
 
 /*
  * process_ha_deregister_by_pid() - deregister heartbeat process by pid
- *   return:  none
+ *   return: NO_ERROR if successful, error code otherwise
  *   conn(in): connection info
  *   pid_string(in):
  */
-static void
+static int
 process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, char *pid_string)
 {
+  int error = NO_ERROR;
 #if !defined(WINDOWS)
   char *reply_buffer = NULL;
   int size = 0;
@@ -761,9 +779,13 @@ process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, char *pid_string)
 			  sizeof (pid));
   return_string (conn, rid, &reply_buffer, &size);
 
-  if (size && reply_buffer[0] != '\0')
+  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
     {
-      printf ("\n%s\n", reply_buffer);
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
     }
 
   if (reply_buffer != NULL)
@@ -772,18 +794,19 @@ process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, char *pid_string)
     }
 #endif /* !WINDOWS */
 
-  return;
+  return error;
 }
 
 /*
  * process_ha_deregister_by_args () - deregister heartbeat process by args
- *   return:  none
+ *   return: NO_ERROR if successful, error code otherwise
  *   conn(in): connection info
  *   args(in): process arguments
  */
-static void
+static int
 process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args)
 {
+  int error = NO_ERROR;
 #if !defined(WINDOWS)
   char *reply_buffer = NULL;
   int size = 0;
@@ -798,9 +821,13 @@ process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args)
 			  (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
-  if (size && reply_buffer[0] != '\0')
+  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
     {
-      printf ("%s\n\n", reply_buffer);
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
     }
 
   if (reply_buffer != NULL)
@@ -809,7 +836,8 @@ process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args)
     }
 
 #endif /* !WINDOWS */
-  return;
+
+  return error;
 }
 
 /*
@@ -1035,6 +1063,46 @@ process_activate_heartbeat (CSS_CONN_ENTRY * conn)
   return error;
 }
 
+/*
+ * process_ha_start_util_process () - start ha utility process
+ *   return: NO_ERROR if successful, error code otherwise
+ *   conn(in): connection info
+ *   args(in): process arguments
+ */
+static int
+process_ha_start_util_process (CSS_CONN_ENTRY * conn, char *args)
+{
+  int error = NO_ERROR;
+#if !defined(WINDOWS)
+  char *reply_buffer = NULL;
+  int size = 0;
+  char buffer[HB_MAX_SZ_PROC_ARGS];
+  int len;
+  unsigned short rid;
+
+  strncpy (buffer, args, sizeof (buffer) - 1);
+  len = strlen (buffer) + 1;
+  rid =
+    send_request_one_arg (conn, START_HA_UTIL_PROCESS, (char *) buffer, len);
+  return_string (conn, rid, &reply_buffer, &size);
+
+  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+    {
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+
+#endif /* !WINDOWS */
+  return error;
+}
 
 /*
  * process_batch_command() - process user command in batch mode
@@ -1111,14 +1179,16 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if (commdb_Arg_ha_deregister_by_pid)
     {
-      process_ha_deregister_by_pid (conn,
-				    (char *) commdb_Arg_ha_deregister_pid);
+      return process_ha_deregister_by_pid (conn,
+					   (char *)
+					   commdb_Arg_ha_deregister_pid);
     }
 
   if (commdb_Arg_ha_deregister_by_args)
     {
-      process_ha_deregister_by_args (conn,
-				     (char *) commdb_Arg_ha_deregister_args);
+      return process_ha_deregister_by_args (conn,
+					    (char *)
+					    commdb_Arg_ha_deregister_args);
     }
 
   if (commdb_Arg_reconfig_heartbeat)
@@ -1149,6 +1219,13 @@ process_batch_command (CSS_CONN_ENTRY * conn)
   if (commdb_Arg_activate_heartbeat)
     {
       return process_activate_heartbeat (conn);
+    }
+
+  if (commdb_Arg_ha_start_util_process)
+    {
+      return process_ha_start_util_process (conn,
+					    (char *)
+					    commdb_Arg_ha_util_process_args);
     }
 
   return NO_ERROR;
@@ -1192,6 +1269,7 @@ main (int argc, char **argv)
      COMMDB_DEACT_CONFIRM_NO_SERVER_S},
     {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
     {COMMDB_HA_ADMIN_INFO_L, 0, 0, COMMDB_HA_ADMIN_INFO_S},
+    {COMMDB_HA_START_UTIL_PROCESS_L, 1, 0, COMMDB_HA_START_UTIL_PROCESS_S},
     {0, 0, 0, 0}
   };
 
@@ -1331,6 +1409,14 @@ main (int argc, char **argv)
 	case COMMDB_HA_ADMIN_INFO_S:
 	  commdb_Arg_print_ha_admin_info = true;
 	  break;
+	case COMMDB_HA_START_UTIL_PROCESS_S:
+	  if (commdb_Arg_ha_util_process_args)
+	    {
+	      free (commdb_Arg_ha_util_process_args);
+	    }
+	  commdb_Arg_ha_util_process_args = strdup (optarg);
+	  commdb_Arg_ha_start_util_process = true;
+	  break;
 	default:
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 	  goto usage;
@@ -1339,7 +1425,6 @@ main (int argc, char **argv)
 
   er_init (NULL, ER_NEVER_EXIT);
 
-  /* only deactivation and demote allow to specify hostname */
   if (COMMDB_CMD_ALLOWED_ON_REMOTE () == true && commdb_Arg_host_name != NULL)
     {
       hostname = commdb_Arg_host_name;
@@ -1405,6 +1490,10 @@ end:
   if (commdb_Arg_host_name != NULL)
     {
       free_and_init (commdb_Arg_host_name);
+    }
+  if (commdb_Arg_ha_util_process_args != NULL)
+    {
+      free_and_init (commdb_Arg_ha_util_process_args);
     }
 
   return status;
