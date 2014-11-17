@@ -29596,8 +29596,18 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	  break;
 	}
 
+      /* Temporary disable count optimization. To enable it just remove these
+       * lines and also restore the condition in pt_find_lck_classes
+       */
+      if (agg_ptr->function == PT_COUNT_STAR)
+	{
+	  *is_scan_needed = true;
+	  break;
+	}
+
       /* If MVCC, we deal with a count optimization and the snapshot wasn't already
-       * taken then prepare current class for optimization and force a snapshot */
+       * taken then prepare current class for optimization and force a snapshot
+       */
       if (!*is_scan_needed && mvcc_Enabled
 	  && agg_ptr->function == PT_COUNT_STAR)
 	{
