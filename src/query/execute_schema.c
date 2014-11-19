@@ -11143,6 +11143,15 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	  goto exit;
 	}
     }
+  else if (is_att_prop_set (attr_chg_prop->p[P_COMMENT],
+			    ATT_CHG_PROPERTY_LOST))
+    {
+      if (found_att->comment != NULL)
+	{
+	  ws_free_string (found_att->comment);
+	  found_att->comment = NULL;
+	}
+    }
 
   assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
 
@@ -11763,7 +11772,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
     }
 
   /* comment */
-  attr_chg_properties->p[P_COMMENT] = ATT_CHG_PROPERTY_UNCHANGED;
+  attr_chg_properties->p[P_COMMENT] = 0;
+  attr_chg_properties->p[P_COMMENT] |= ATT_CHG_PROPERTY_LOST;
   comment = attr_def->info.attr_def.comment;
   if (comment != NULL)
     {
@@ -11771,8 +11781,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
       if (comment->info.value.data_value.str != NULL)
 	{
 	  attr_chg_properties->p[P_COMMENT] |= ATT_CHG_PROPERTY_DIFF;
-	  /* remove "UNCHANGED" flag */
-	  attr_chg_properties->p[P_COMMENT] &= ~ATT_CHG_PROPERTY_UNCHANGED;
+	  /* remove "LOST" flag */
+	  attr_chg_properties->p[P_COMMENT] &= ~ATT_CHG_PROPERTY_LOST;
 	}
     }
 
