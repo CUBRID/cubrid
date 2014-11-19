@@ -1312,13 +1312,12 @@ loop:
 		case THREAD_CSECT_PROMOTER_SUSPENDED:
 		case THREAD_LOCK_SUSPENDED:
 		case THREAD_PGBUF_SUSPENDED:
+		case THREAD_JOB_QUEUE_SUSPENDED:
 		  /* never try to wake thread up while the thread is waiting
 		   * for a critical section or a lock.
 		   */
 		  wakeup_now = false;
 		  break;
-
-		case THREAD_JOB_QUEUE_SUSPENDED:
 		case THREAD_CSS_QUEUE_SUSPENDED:
 		case THREAD_QMGR_ACTIVE_QRY_SUSPENDED:
 		case THREAD_QMGR_MEMBUF_PAGE_SUSPENDED:
@@ -1327,7 +1326,25 @@ loop:
 		  wakeup_now = true;
 		  break;
 
+		case THREAD_RESUME_NONE:
+		case THREAD_RESUME_DUE_TO_INTERRUPT:
+		case THREAD_RESUME_DUE_TO_SHUTDOWN:
+		case THREAD_PGBUF_RESUMED:
+		case THREAD_JOB_QUEUE_RESUMED:
+		case THREAD_CSECT_READER_RESUMED:
+		case THREAD_CSECT_WRITER_RESUMED:
+		case THREAD_CSECT_PROMOTER_RESUMED:
+		case THREAD_CSS_QUEUE_RESUMED:
+		case THREAD_QMGR_ACTIVE_QRY_RESUMED:
+		case THREAD_QMGR_MEMBUF_PAGE_RESUMED:
+		case THREAD_HEAP_CLSREPR_RESUMED:
+		case THREAD_LOCK_RESUMED:
+		case THREAD_LOGWR_RESUMED:
+		  /* thread is in resumed status, we don't need to wake up */
+		  wakeup_now = false;
+		  break;
 		default:
+		  assert (false);
 		  wakeup_now = false;
 		  break;
 		}
