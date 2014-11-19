@@ -69,7 +69,7 @@
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
 
-#define MAX_CON_HANDLE                  1024
+#define MAX_CON_HANDLE                  2048
 
 #define REQ_HANDLE_ALLOC_SIZE           256
 
