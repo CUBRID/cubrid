@@ -4311,7 +4311,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 {
   DB_DOMAIN *dom;
   DB_OBJECT *db;
-  PT_NODE *result = NULL, *s;
+  PT_NODE *result = NULL, *s, *result_last_node = NULL;
   PT_TYPE_ENUM t;
 
   t = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
@@ -4387,17 +4387,23 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 		   * later on.
 		   * PRESERVE THE ORDER OF THESE LISTS!
 		   */
-		  s->info.data_type.entity =
-		    pt_name_list_union (parser, s->info.data_type.entity,
-					result->info.data_type.entity);
-		  s->next = result;
-		  result->info.data_type.entity = NULL;
+		  result->info.data_type.entity =
+		    pt_name_list_union (parser, result->info.data_type.entity,
+					s->info.data_type.entity);
+		  s->info.data_type.entity = NULL;
+		  result_last_node->next = s;
+		  result_last_node = s;
 		}
-	      result = s;
+	      else
+		{
+		  result = result_last_node = s;
+		}
 	    }
 
 	  dom = (DB_DOMAIN *) db_domain_next (dom);
 	}
+      result_last_node = NULL;
+
       /*
        * Now run back over the flattened name list and ensure that
        * they all have the same spec id.
