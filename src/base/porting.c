@@ -1793,7 +1793,7 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
       ResetEvent (cond->events[COND_BROADCAST]);
       SetEvent (cond->broadcast_block_event);
 
-      /* 
+      /*
        * Remove additional signal if exists
        * (That's received in above THREAD UNSAFE AREA)
        */
@@ -2195,14 +2195,13 @@ int
 timeval_add_msec (struct timeval *added_time,
 		  const struct timeval *start_time, int msec)
 {
-  added_time->tv_sec = start_time->tv_sec + msec / 1000LL;
+  int usec;
 
-  if (start_time->tv_usec + ((msec % 1000LL) * 1000LL) >= 1000000LL)
-    {
-      added_time->tv_sec += 1;
-    }
-  added_time->tv_usec = (start_time->tv_usec +
-			 ((msec % 1000LL) * 1000LL) % 10000000LL);
+  added_time->tv_sec = start_time->tv_sec + msec / 1000LL;
+  usec = (msec % 1000LL) * 1000LL;
+
+  added_time->tv_sec += (start_time->tv_usec + usec) / 1000000LL;
+  added_time->tv_usec = (start_time->tv_usec + usec) % 1000000LL;
 
   return 0;
 }
