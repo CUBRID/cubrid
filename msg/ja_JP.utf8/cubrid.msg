@@ -1688,6 +1688,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 290 Transaction id is not an integer.
 291 Subquery is not allowed in ORDER BY FOR clause.
 292 Invalid use of aggregate functions.
+293 Value must be strictly increasing for each partition.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

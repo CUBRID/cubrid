@@ -6274,6 +6274,8 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   SM_ATTRIBUTE *smatt;
   bool chkflag = false;
   DB_QUERY_TYPE *query_columns = NULL, *column = NULL;
+  DB_VALUE *value1 = NULL, *value2 = NULL;
+  DB_VALUE_COMPARE_RESULT compare_result;
 
   assert (parser != NULL);
 
@@ -6604,7 +6606,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	      chkflag = true;
 	      break;
 	    }
-	  if (parts->info.parts.values)
+	  if (parts->info.parts.values != NULL)
 	    {
 	      parts->info.parts.values =
 		parser_walk_tree (parser,
@@ -6618,6 +6620,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 			      MSGCAT_SET_PARSER_SEMANTIC,
 			      MSGCAT_SEMANTIC_CONSTANT_TYPE_MISMATCH,
 			      parts->info.parts.name->info.name.original);
+
 		  goto pvl_free_end;
 		}
 	    }
@@ -6641,8 +6644,80 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 			      MSGCAT_SET_PARSER_SEMANTIC,
 			      MSGCAT_SEMANTIC_DUPLICATE_PARTITION_DEF,
 			      fpart->info.parts.name->info.name.original);
+
+		  goto pvl_free_end;
 		}
 	    }
+
+	  /* check value increasing for range partition */
+	  if (pinfo->info.partition.type == PT_PARTITION_RANGE)
+	    {
+	      fpart = parts->next;
+	      if (fpart != NULL)
+		{
+		  /* xxx.info.parts.values == NULL means maxvalue */
+		  if (parts->info.parts.values != NULL)
+		    {
+		      value1 =
+			pt_value_to_db (parser, parts->info.parts.values);
+		      if (value1 == NULL)
+			{
+			  if (!pt_has_error (parser))
+			    {
+			      PT_ERRORmf (parser, stmt,
+					  MSGCAT_SET_PARSER_SEMANTIC,
+					  MSGCAT_SEMANTIC_PARTITION_RANGE_INVALID,
+					  parts->info.parts.name->info.name.
+					  original);
+			    }
+
+			  goto pvl_free_end;
+			}
+		    }
+		  else
+		    {
+		      /* this is an error */
+		      PT_ERRORmf (parser, pinfo, MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_PARTITION_RANGE_ERROR,
+				  parts);
+
+		      goto pvl_free_end;
+		    }
+
+		  /* xxx.info.parts.values == NULL means maxvalue */
+		  if (fpart->info.parts.values != NULL)
+		    {
+		      value2 =
+			pt_value_to_db (parser, fpart->info.parts.values);
+		      if (value2 == NULL)
+			{
+			  if (!pt_has_error (parser))
+			    {
+			      PT_ERRORmf (parser, stmt,
+					  MSGCAT_SET_PARSER_SEMANTIC,
+					  MSGCAT_SEMANTIC_PARTITION_RANGE_INVALID,
+					  fpart->info.parts.name->info.name.
+					  original);
+			    }
+
+			  goto pvl_free_end;
+			}
+
+		      compare_result = db_value_compare (value1, value2);
+		      if (compare_result != DB_LT)
+			{
+			  /* this is an error */
+			  PT_ERRORmf (parser, pinfo,
+				      MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_PARTITION_RANGE_ERROR,
+				      parts);
+
+			  goto pvl_free_end;
+			}
+		    }
+		}
+	    }
+
 	  parts_cnt++;
 	}
 
