@@ -1987,8 +1987,14 @@ ws_dirty (MOP op)
 
   if (op->class_mop == NULL)
     {
-      /* SERIOUS INTERNAL ERROR */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CLASS_NOT_CACHED, 0);
+      /* in case of SERIALIZABLE conflict the object will be decached later */
+      if (er_errid () != ER_MVCC_SERIALIZABLE_CONFLICT)
+	{
+	  /* SERIOUS INTERNAL ERROR */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CLASS_NOT_CACHED,
+		  0);
+	}
+
       ws_Stats.uncached_classes++;
     }
   else

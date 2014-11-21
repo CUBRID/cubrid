@@ -9767,7 +9767,8 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p,
       scan_cache->page_latch = X_LOCK;
     }
 
-  if (BTREE_IS_MULTI_ROW_OP (op_type) && class_oid != NULL)
+  if (BTREE_IS_MULTI_ROW_OP (op_type) && class_oid != NULL
+      && !OID_EQ (class_oid, oid_Root_class_oid))
     {
       /* get class representation to find the total number of indexes */
       classrepr = heap_classrepr_get (thread_p, (OID *) class_oid, NULL,

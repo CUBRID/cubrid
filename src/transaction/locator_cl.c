@@ -4325,107 +4325,83 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	       */
 
 	      /* TODO: Must investigate what happens with MVCC and pruning */
-	      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+
+	      assert (obj->operation == LC_FLUSH_UPDATE
+		      || obj->operation == LC_FLUSH_UPDATE_PRUNE);
+
+	      /* Check if object OID has changed */
+	      if ((!OID_ISNULL (&obj->updated_oid)
+		   && !OID_EQ (WS_OID (mop_toid->mop),
+			       &obj->updated_oid))
+		  || (!OID_ISNULL (&obj->oid)
+		      && !OID_EQ (WS_OID (mop_toid->mop->class_mop),
+				  &obj->class_oid)))
 		{
-		  assert (obj->operation == LC_FLUSH_UPDATE
-			  || obj->operation == LC_FLUSH_UPDATE_PRUNE);
+		  MOP new_mop;
+		  MOP new_class_mop =
+		    ws_mop (&obj->class_oid, sm_Root_class_mop);
 
-		  /* Check if object OID has changed */
-		  if ((!OID_ISNULL (&obj->updated_oid)
-		       && !OID_EQ (WS_OID (mop_toid->mop),
-				   &obj->updated_oid))
-		      || (!OID_ISNULL (&obj->oid)
-			  && !OID_EQ (WS_OID (mop_toid->mop->class_mop),
-				      &obj->class_oid)))
+		  if (new_class_mop == NULL)
 		    {
-		      MOP new_mop;
-		      MOP new_class_mop =
-			ws_mop (&obj->class_oid, sm_Root_class_mop);
-
-		      if (new_class_mop == NULL)
+		      /* Error */
+		      error_code = ER_FAILED;
+		    }
+		  else
+		    {
+		      /* Make sure that we have the new class in workspace */
+		      if (new_class_mop->object == NULL)
 			{
-			  /* Error */
+			  int error = NO_ERROR;
+			  SM_CLASS *smclass = NULL;
+			  /* No need to check authorization here */
+			  error_code =
+			    au_fetch_class_force (new_class_mop,
+						  &smclass, AU_FETCH_READ);
+			}
+
+		      new_mop =
+			ws_mop (OID_ISNULL (&obj->updated_oid) ?
+				&obj->oid : &obj->updated_oid, new_class_mop);
+		      if (new_mop == NULL)
+			{
 			  error_code = ER_FAILED;
 			}
 		      else
 			{
-			  /* Make sure that we have the new class in workspace */
-			  if (new_class_mop->object == NULL)
+			  if (!mop_toid->mop->decached
+			      && mop_toid->mop->object != NULL)
 			    {
-			      int error = NO_ERROR;
-			      SM_CLASS *smclass = NULL;
-			      /* No need to check authorization here */
-			      error_code =
-				au_fetch_class_force (new_class_mop,
-						      &smclass,
-						      AU_FETCH_READ);
+			      /* Move buffered object to new mop */
+			      new_mop->object = mop_toid->mop->object;
+			      mop_toid->mop->object = NULL;
 			    }
 
-			  new_mop =
-			    ws_mop (OID_ISNULL (&obj->updated_oid) ?
-				    &obj->oid : &obj->updated_oid,
-				    new_class_mop);
-			  if (new_mop == NULL)
+			  if (WS_ISDIRTY (mop_toid->mop))
 			    {
-			      error_code = ER_FAILED;
+			      /* Reset dirty flag in old mop and set
+			       * it in the new mop.
+			       */
+			      WS_RESET_DIRTY (mop_toid->mop);
+			      ws_dirty (new_mop);
 			    }
-			  else
-			    {
-			      if (!mop_toid->mop->decached
-				  && mop_toid->mop->object != NULL)
-				{
-				  /* Move buffered object to new mop */
-				  new_mop->object = mop_toid->mop->object;
-				  mop_toid->mop->object = NULL;
-				}
 
-			      if (WS_ISDIRTY (mop_toid->mop))
-				{
-				  /* Reset dirty flag in old mop and set
-				   * it in the new mop.
-				   */
-				  WS_RESET_DIRTY (mop_toid->mop);
-				  ws_dirty (new_mop);
-				}
+			  /* preserve pruning type */
+			  new_mop->pruning_type = mop_toid->mop->pruning_type;
 
-			      /* preserve pruning type */
-			      new_mop->pruning_type =
-				mop_toid->mop->pruning_type;
+			  /* Set MVCC link */
+			  mop_toid->mop->mvcc_link = new_mop;
+			  /* Mvcc is link is not yet permanent */
+			  mop_toid->mop->permanent_mvcc_link = 0;
 
-			      /* Set MVCC link */
-			      mop_toid->mop->mvcc_link = new_mop;
-			      /* Mvcc is link is not yet permanent */
-			      mop_toid->mop->permanent_mvcc_link = 0;
+			  ws_move_label_value_list (new_mop, mop_toid->mop);
 
-			      ws_move_label_value_list (new_mop,
-							mop_toid->mop);
+			  /* Add object to class */
+			  ws_set_class (new_mop, new_class_mop);
 
-			      /* Add object to class */
-			      ws_set_class (new_mop, new_class_mop);
-
-			      /* Update MVCC snapshot version */
-			      ws_set_mop_fetched_with_current_snapshot
-				(new_mop);
-			    }
+			  /* Update MVCC snapshot version */
+			  ws_set_mop_fetched_with_current_snapshot (new_mop);
 			}
 		    }
-		}
-	      else if (obj->operation == LC_FLUSH_UPDATE_PRUNE)
-		{
-		  /* Check if class OID has changed */
-		  if (!OID_ISNULL (&obj->oid)
-		      && !OID_EQ (WS_OID (mop_toid->mop->class_mop),
-				  &obj->class_oid))
-		    {
-		      error_code =
-			ws_update_oid_and_class (mop_toid->mop, &obj->oid,
-						 &obj->class_oid);
-		    }
-		}
-	      else
-		{
-		  /* Unexpected case */
-		  assert (false);
 		}
 
 	      /* Do not return in case of error. Allow the allocated
@@ -4444,26 +4420,22 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  mop_toid = next_mop_toid;
 	}
 
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+      /* Adjust class_of attribute from _db_partition catalog class for
+       * each partitioned class that has been flushed. This is
+       * needed because in MVCC every update in _db_class produces new
+       * OID. However, we assume that this is a temporary solution. The
+       * correct one must integrate _db_partiton class in catalog classes
+       * structure and unlink it from each partition schema 
+       */
+      for (i = 0; error_code == NO_ERROR && i < mflush->mobjs->num_objs; i++)
 	{
-	  /* Adjust class_of attribute from _db_partition catalog class for
-	   * each partitioned class that has been flushed. This is
-	   * needed because in MVCC every update in _db_class produces new
-	   * OID. However, we assume that this is a temporary solution. The
-	   * correct one must integrate _db_partiton class in catalog classes
-	   * structure and unlink it from each partition schema 
-	   */
-	  for (i = 0; error_code == NO_ERROR && i < mflush->mobjs->num_objs;
-	       i++)
+	  obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
+	  if (OID_IS_ROOTOID (&obj->class_oid)
+	      && (obj->operation == LC_FLUSH_UPDATE
+		  || obj->operation == LC_FLUSH_UPDATE_PRUNE))
 	    {
-	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
-	      if (OID_IS_ROOTOID (&obj->class_oid)
-		  && (obj->operation == LC_FLUSH_UPDATE
-		      || obj->operation == LC_FLUSH_UPDATE_PRUNE))
-		{
-		  MOP mop = ws_mop (&obj->oid, sm_Root_class_mop);
-		  error_code = sm_adjust_partitions_parent (mop, true);
-		}
+	      MOP mop = ws_mop (&obj->oid, sm_Root_class_mop);
+	      error_code = sm_adjust_partitions_parent (mop, true);
 	    }
 	}
 

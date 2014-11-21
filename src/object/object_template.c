@@ -733,6 +733,14 @@ reset_template (OBJ_TEMPLATE * template_ptr)
   template_ptr->traversal = 0;
   template_ptr->traversed = 0;
   template_ptr->is_old_template = 0;
+  if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
+    {
+      template_ptr->check_serializable_conflict = 1;
+    }
+  else
+    {
+      template_ptr->check_serializable_conflict = 0;
+    }
   template_ptr->uniques_were_modified = 0;
   template_ptr->shared_was_modified = 0;
   template_ptr->fkeys_were_modified = 0;
@@ -885,6 +893,14 @@ make_template (MOP object, MOP classobj)
       template_ptr->is_old_template = 0;
       template_ptr->is_class_update = (object == classobj);
       template_ptr->check_uniques = obt_Check_uniques;
+      if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
+	{
+	  template_ptr->check_serializable_conflict = 1;
+	}
+      else
+	{
+	  template_ptr->check_serializable_conflict = 0;
+	}
       template_ptr->uniques_were_modified = 0;
       template_ptr->function_key_modified = 0;
 
@@ -2777,7 +2793,10 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
     {
       if ((check_uniques && template_ptr->uniques_were_modified)
 	  || template_ptr->fkeys_were_modified
-	  || template_ptr->function_key_modified || template_ptr->force_flush)
+	  || template_ptr->function_key_modified || template_ptr->force_flush
+	  || (template_ptr->check_serializable_conflict
+	      && template_ptr->object
+	      && !OID_ISTEMP (&(template_ptr->object->oid_info.oid))))
 	{
 	  if ((locator_flush_class (OBT_BASE_CLASSOBJ (template_ptr))
 	       != NO_ERROR)
@@ -2832,6 +2851,21 @@ obt_disable_unique_checking (OBJ_TEMPLATE * template_ptr)
   if (template_ptr)
     {
       template_ptr->check_uniques = 0;
+    }
+}
+
+/*
+ * obt_disable_serializable_conflict_checking : disable SERIALIZABLE conflicts
+ *					      checking
+ *      return: none
+ *      template(in): object template
+ */
+void
+obt_disable_serializable_conflict_checking (OBJ_TEMPLATE * template_ptr)
+{
+  if (template_ptr)
+    {
+      template_ptr->check_serializable_conflict = 0;
     }
 }
 

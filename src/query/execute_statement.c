@@ -6209,14 +6209,17 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = (void *) value;
 #endif
 
-  if (smclass != NULL && smclass->users != NULL)
+  if (smclass != NULL && smclass->users != NULL
+      && TM_TRAN_ISOLATION () < TRAN_REP_READ)
     {
       /* We have to flush the newly created trigger if the class it belongs to
        * has subclasses. This is because the same trigger is assigned to the
        * whole hierarchy and we have to make sure it does not remain a
        * temporary object when it is first compiled.
        * Since the class that this trigger belongs to might also be a
-       * temporary object, we actually have to flush the whole workspace
+       * temporary object, we actually have to flush the whole workspace.
+       * No need to flush in isolation levels >= repeatable read since already
+       * flushed in tr_create_trigger
        */
       error = locator_all_flush ();
     }
@@ -6377,7 +6380,7 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (error == NO_ERROR)
 	{
-	  if (count > 0)
+	  if (count > 0 || TM_TRAN_ISOLATION () >= TRAN_REP_READ)
 	    {
 	      /* need atomic operation */
 	      error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_TRIGGER);
@@ -6745,9 +6748,10 @@ static int update_object_tuple (PARSER_CONTEXT * parser,
 				CLIENT_UPDATE_CLASS_INFO * upd_classes_info,
 				int classes_cnt,
 				const int turn_off_unique_check,
+				const int
+				turn_off_serializable_conflict_check,
 				UPDATE_TYPE update_type, bool should_delete);
-static int update_object_by_oid (PARSER_CONTEXT * parser,
-				 PT_NODE * statement,
+static int update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
 				 UPDATE_TYPE update_type);
 static int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 			     CLIENT_UPDATE_INFO ** assigns_data,
@@ -6759,7 +6763,8 @@ static int do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec,
 				CLIENT_UPDATE_CLASS_INFO * cls);
 static int update_objs_for_list_file (PARSER_CONTEXT * parser,
 				      QFILE_LIST_ID * list_id,
-				      PT_NODE * statement);
+				      PT_NODE * statement,
+				      bool savepoint_started);
 static int update_class_attributes (PARSER_CONTEXT * parser,
 				    PT_NODE * statement);
 static int update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
@@ -6771,7 +6776,8 @@ static int update_check_for_constraints (PARSER_CONTEXT * parser,
 					 const PT_NODE * statement);
 static bool update_check_having_meta_attr (PARSER_CONTEXT * parser,
 					   PT_NODE * assignment);
-static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement,
+			      bool savepoint_started);
 static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser,
 					    PT_NODE * statement,
 					    PT_NODE ** non_null_attrs);
@@ -6919,6 +6925,8 @@ update_object_attribute (PARSER_CONTEXT * parser, DB_OTMPL * otemplate,
  *   upd_classes_info(in): array of classes info
  *   classes_cnt(in): no of classes
  *   turn_off_unique_check(in):
+ *   turn_off_serializable_conflict_check(in): true, if turn off SERIALIZABLE
+ *					      conflict checking
  *   update_type(in):
  *   should_delete(in):
  *
@@ -6929,6 +6937,7 @@ update_object_tuple (PARSER_CONTEXT * parser,
 		     CLIENT_UPDATE_INFO * assigns, int assigns_count,
 		     CLIENT_UPDATE_CLASS_INFO * upd_classes_info,
 		     int classes_cnt, const int turn_off_unique_check,
+		     const int turn_off_serializable_conflict_check,
 		     UPDATE_TYPE update_type, bool should_delete)
 {
   int error = NO_ERROR;
@@ -7007,6 +7016,11 @@ update_object_tuple (PARSER_CONTEXT * parser,
       if (turn_off_unique_check)
 	{
 	  obt_disable_unique_checking (otemplate);
+	}
+
+      if (turn_off_serializable_conflict_check)
+	{
+	  obt_disable_serializable_conflict_checking (otemplate);
 	}
 
       /* this is an update - force NOT NULL constraint check */
@@ -7241,7 +7255,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    {
 	      error =
 		update_object_tuple (parser, assigns, assigns_count,
-				     cls_info, upd_cls_cnt, 0, update_type,
+				     cls_info, upd_cls_cnt, 0, 0, update_type,
 				     false);
 	    }
 
@@ -7693,12 +7707,14 @@ error_return:
  *   parser(in): Parser context
  *   list_id(in): A list file of oid's and values
  *   statement(in): update statement
+ *   savepoint_started(in): true, if savepoint started
  *
  * Note:
  */
 static int
 update_objs_for_list_file (PARSER_CONTEXT * parser,
-			   QFILE_LIST_ID * list_id, PT_NODE * statement)
+			   QFILE_LIST_ID * list_id, PT_NODE * statement,
+			   bool savepoint_started)
 {
   int error = NO_ERROR;
   int idx = 0, count = 0, assign_count = 0;
@@ -7706,6 +7722,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL;
   int turn_off_unique_check;
+  int turn_off_server_serializable_conflict_check;
   CURSOR_ID cursor_id;
   DB_VALUE *dbvals = NULL;
   const char *savepoint_name = NULL;
@@ -7713,6 +7730,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   PT_NODE *check_where;
   bool has_unique, has_trigger;
   bool has_delete, should_delete = false;
+  bool client_check_serializable_conflict = false;
 
   if (list_id == NULL || statement == NULL)
     {
@@ -7746,31 +7764,38 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   /* if the list file contains more than 1 object we need to savepoint
    * the statement to guarantee statement atomicity.
    */
-  if (list_id->tuple_cnt > 1 || check_where || has_unique || has_trigger)
+  if (list_id->tuple_cnt > 1 || check_where || has_unique || has_trigger
+      || TM_TRAN_ISOLATION () >= TRAN_REP_READ)
     {
-      savepoint_name =
-	mq_generate_name (parser, "UusP", &update_savepoint_number);
-      error = tran_system_savepoint (savepoint_name);
-      if (error != NO_ERROR)
+      if (savepoint_started == false)
 	{
-	  goto done;
+	  savepoint_name =
+	    mq_generate_name (parser, "UusP", &update_savepoint_number);
+	  error = tran_system_savepoint (savepoint_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto done;
+	    }
 	}
     }
 
   /* 'turn_off_unique_check' is used when call update_object_tuple(). */
   if (list_id->tuple_cnt == 1 && upd_cls_cnt == 1)
     {
-      /* Instance level uniqueness checking is performed on the server
-       * when a new single row is inserted.
+      /* Instance level uniqueness and SERIALIZABLE conflict checking is
+       *  performed on the server when a new single row is inserted.
        */
       turn_off_unique_check = 0;
+      turn_off_server_serializable_conflict_check = 0;
     }
   else
     {
       /* list_id->tuple_cnt > 1 : multiple row update
-       * Statement level uniqueness checking is performed on the client
+       * Statement level uniqueness checking and SERIALIZABLE conflict
+       * is performed on the client
        */
       turn_off_unique_check = 1;
+      turn_off_server_serializable_conflict_check = 1;
     }
 
   /* open cursor */
@@ -7816,8 +7841,9 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
       /* perform update for current tuples */
       error = update_object_tuple (parser, assigns, assign_count,
 				   cls_info, upd_cls_cnt,
-				   turn_off_unique_check, NORMAL_UPDATE,
-				   should_delete);
+				   turn_off_unique_check,
+				   turn_off_server_serializable_conflict_check,
+				   NORMAL_UPDATE, should_delete);
 
       /* close cursor and restore to savepoint in case of error */
       if (error < NO_ERROR)
@@ -7853,14 +7879,23 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
     }
   cursor_close (&cursor_id);
 
-  /* check uniques */
-  if (has_unique)
+  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ
+      && turn_off_server_serializable_conflict_check)
     {
+      /* activate SERIALIZABLE conflict checks */
+      client_check_serializable_conflict = true;
+    }
 
+  /* check uniques or SERIALIZABLE conflicts if not already checked */
+  if (has_unique || client_check_serializable_conflict)
+    {
+      /* need to check unique or SERIALIZABLE conflicts */
       for (idx = upd_cls_cnt - 1; idx >= 0; idx--)
 	{
-	  if (!(cls_info[idx].spec->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE))
+	  if (!(cls_info[idx].spec->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE)
+	      && !client_check_serializable_conflict)
 	    {
+	      /* if not unique and don't want to check SERIALIZABLE conflict */
 	      continue;
 	    }
 	  error =
@@ -8386,6 +8421,7 @@ update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * assignment)
  *   return: Error code if update fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a update statement
+ *   savepoint_started(in): true, if savepoint started
  *
  * Note: If the statement is of type "update class foo ...", this
  *   routine updates class attributes of foo.  If the statement is of
@@ -8394,7 +8430,8 @@ update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * assignment)
  *   are not mixed in the same update statement.
  */
 static int
-update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
+update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement,
+		   bool savepoint_started)
 {
   int error = NO_ERROR;
   PT_NODE *non_null_attrs = NULL, *spec = statement->info.update.spec;
@@ -8525,7 +8562,8 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* update each oid */
-	  error = update_objs_for_list_file (parser, oid_list, statement);
+	  error = update_objs_for_list_file (parser, oid_list, statement,
+					     savepoint_started);
 
 	  regu_free_listid (oid_list);
 	  pt_end_query (parser, query_id_self);
@@ -8669,6 +8707,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   int result = NO_ERROR;
   const char *savepoint_name = NULL;
+  bool savepoint_started = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -8681,7 +8720,10 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (parser->au_save);
 
   /* savepoint for statement atomicity */
-  if (statement != NULL && statement->next != NULL)
+  if ((statement != NULL && statement->next != NULL)
+      || (TM_TRAN_ISOLATION () >= TRAN_REP_READ
+	  && (statement->info.update.object != NULL
+	      || !statement->info.update.server_update)))
     {
       savepoint_name = mq_generate_name (parser, "UmusP",
 					 &update_savepoint_number);
@@ -8695,6 +8737,8 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+
+      savepoint_started = true;
     }
 
   while (statement && (error >= 0))
@@ -8720,7 +8764,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
       else
 	{
 	  /* the following is the "normal" sql type execution */
-	  error = update_real_class (parser, statement);
+	  error = update_real_class (parser, statement, savepoint_started);
 	}
 
       if (error < NO_ERROR && er_errid () != NO_ERROR)
@@ -9156,13 +9200,17 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_waitsecs;
   PT_NODE *hint_arg;
   QUERY_ID query_id_self = parser->query_id;
+  bool savepoint_started = false;
 
   assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
 
   /* savepoint for statement atomicity */
-  if (statement != NULL && statement->next != NULL)
+  if ((statement != NULL && statement->next != NULL)
+      || (TM_TRAN_ISOLATION () >= TRAN_REP_READ
+	  && (statement->info.update.object != NULL
+	      || !statement->info.update.server_update)))
     {
       savepoint_name = mq_generate_name (parser, "UmusP",
 					 &update_savepoint_number);
@@ -9175,6 +9223,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return err;
 	}
+      savepoint_started = true;
     }
 
   for (err = NO_ERROR, result = 0; statement && (err >= NO_ERROR);
@@ -9309,7 +9358,8 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      /* in the case of OID list update, now update the selected OIDs */
-	      err = update_objs_for_list_file (parser, list_id, statement);
+	      err = update_objs_for_list_file (parser, list_id, statement,
+					       savepoint_started);
 	    }
 
 	  AU_RESTORE (au_save);
@@ -9413,7 +9463,8 @@ static int delete_object_by_oid (const PARSER_CONTEXT * parser,
 				 const PT_NODE * statement);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static int delete_list_by_oids (PARSER_CONTEXT * parser,
-				PT_NODE * statement, QFILE_LIST_ID * list_id);
+				PT_NODE * statement, QFILE_LIST_ID * list_id,
+				bool savepoint_started);
 static int build_xasl_for_server_delete (PARSER_CONTEXT * parser,
 					 PT_NODE * statement);
 static int delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -9574,10 +9625,11 @@ delete_object_by_oid (const PARSER_CONTEXT * parser,
  *   parser(in): Parser context
  *   statement(in): Delete statement
  *   list_id(in): A list file of oid's
+ *   savepoint_started(in): true, if savepoint already started
  */
 static int
 delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement,
-		     QFILE_LIST_ID * list_id)
+		     QFILE_LIST_ID * list_id, bool savepoint_started)
 {
   int error = NO_ERROR;
   int cursor_status;
@@ -9620,17 +9672,20 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   /* if the list file contains more than 1 object we need to savepoint
      the statement to guarantee statement atomicity. */
-  if (list_id->tuple_cnt >= 1)
+  if (list_id->tuple_cnt >= 1 || TM_TRAN_ISOLATION () >= TRAN_REP_READ)
     {
-      savepoint_name =
-	mq_generate_name (parser, "UdsP", &delete_savepoint_number);
-
-      error = tran_system_savepoint (savepoint_name);
-      if (error != NO_ERROR)
+      if (savepoint_started == false)
 	{
-	  goto cleanup;
+	  savepoint_name =
+	    mq_generate_name (parser, "UdsP", &delete_savepoint_number);
+
+	  error = tran_system_savepoint (savepoint_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  has_savepoint = true;
 	}
-      has_savepoint = true;
     }
 
   if (!cursor_open (&cursor_id, list_id, false, false))
@@ -9683,7 +9738,16 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	  if (flush_to_server[idx] == -1)
 	    {
-	      flush_to_server[idx] = has_unique_constraint (mop);
+	      /* the following code may be improved to not flush every time */
+	      if (has_unique_constraint (mop)
+		  || TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+		{
+		  flush_to_server[idx] = 1;
+		}
+	      else
+		{
+		  flush_to_server[idx] = 0;
+		}
 	    }
 	  error = delete_object_tuple (mop);
 	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
@@ -10007,7 +10071,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* delete each oid */
-      error = delete_list_by_oids (parser, statement, oid_list);
+      error = delete_list_by_oids (parser, statement, oid_list, false);
       regu_free_listid (oid_list);
       pt_end_query (parser, query_id_self);
     }
@@ -10448,13 +10512,16 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *hint_arg;
   int query_flag;
   QUERY_ID query_id_self = parser->query_id;
+  bool savepoint_started = false;
 
   assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
 
   /* savepoint for statement atomicity */
-  if (statement != NULL && statement->next != NULL)
+  if ((statement != NULL && statement->next != NULL)
+      || (TM_TRAN_ISOLATION () >= TRAN_REP_READ
+	  && !statement->info.delete_.server_delete))
     {
       savepoint_name = mq_generate_name (parser, "UmdsP",
 					 &delete_savepoint_number);
@@ -10467,6 +10534,8 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return err;
 	}
+
+      savepoint_started = true;
     }
 
   for (err = NO_ERROR, result = 0; statement && (err >= NO_ERROR);
@@ -10574,7 +10643,8 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization
 						   checking during execution */
 	      /* delete each oid */
-	      err = delete_list_by_oids (parser, statement, list_id);
+	      err = delete_list_by_oids (parser, statement, list_id,
+					 savepoint_started);
 	      AU_RESTORE (au_save);
 	      if (old_wait_msecs >= -1)
 		{
@@ -12954,7 +13024,11 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 
 	  /* if the list file contains more than 1 object we need to savepoint
 	     the statement to guarantee statement atomicity. */
-	  if (((QFILE_LIST_ID *) qry->etc)->tuple_cnt > 1 && !*savepoint_name)
+	  if ((((QFILE_LIST_ID *) qry->etc)->tuple_cnt > 1
+	       && !*savepoint_name) || (TM_TRAN_ISOLATION () >= TRAN_REP_READ
+					&& statement->node_type == PT_INSERT
+					&& statement->info.insert.
+					odku_assignments))
 	    {
 	      *savepoint_name = mq_generate_name (parser, "UisP",
 						  &insert_savepoint_number);
@@ -13507,6 +13581,11 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return error;
 	}
       if (has_trigger != 0)
+	{
+	  need_savepoint = true;
+	}
+      else if (TM_TRAN_ISOLATION () >= TRAN_REP_READ
+	       && !statement->info.insert.server_allowed)
 	{
 	  need_savepoint = true;
 	}
@@ -15891,7 +15970,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       else
 	{
 	  /* OID list update */
-	  err = update_objs_for_list_file (parser, list_id, statement);
+	  err = update_objs_for_list_file (parser, list_id, statement, true);
 	}
 
       /* set result count */
@@ -16672,7 +16751,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      /* OID list update */
-	      err = update_objs_for_list_file (parser, list_id, statement);
+	      err =
+		update_objs_for_list_file (parser, list_id, statement, true);
 	    }
 
 	  AU_RESTORE (au_save);

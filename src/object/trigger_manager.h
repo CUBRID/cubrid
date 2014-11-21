@@ -389,7 +389,7 @@ extern int tr_add_cache_trigger (TR_SCHEMA_CACHE * cache,
 extern int tr_drop_cache_trigger (TR_SCHEMA_CACHE * cache,
 				  DB_OBJECT * trigger_object);
 
-extern int tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
+extern int tr_delete_triggers_for_class (TR_SCHEMA_CACHE ** cache,
 					 DB_OBJECT * class_object);
 
 

@@ -468,7 +468,7 @@ static int update_subclasses (DB_OBJLIST * subclasses);
 static int lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_);
 static int update_class (SM_TEMPLATE * template_, MOP * classmop,
 			 int auto_res);
-static void remove_class_triggers (MOP classop, SM_CLASS * class_);
+static int remove_class_triggers (MOP classop, SM_CLASS * class_);
 static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static char *sm_default_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE type,
@@ -13038,34 +13038,48 @@ sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop)
  *    Inform the trigger manager that the class is going away so
  *    it can update the triggers defined for this class.
  *    Need a better strategy for handling errors here.
- *   return: none
+ *   return: error code
  *   classop(in):
  *   class(in): class structure
  */
 
-static void
+static int
 remove_class_triggers (MOP classop, SM_CLASS * class_)
 {
   SM_ATTRIBUTE *att;
+  int error = NO_ERROR;
 
   /* use tr_delete triggers_for_class() instead of tr_delete_schema_cache
    * so that we physically delete the triggers.
    */
   for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
     {
-      (void) tr_delete_triggers_for_class (att->triggers, classop);
+      error = tr_delete_triggers_for_class (&att->triggers, classop);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
       att->triggers = NULL;
     }
 
   for (att = class_->class_attributes; att != NULL;
        att = (SM_ATTRIBUTE *) att->header.next)
     {
-      (void) tr_delete_triggers_for_class (att->triggers, classop);
+      error = tr_delete_triggers_for_class (&att->triggers, classop);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
       att->triggers = NULL;
     }
 
-  (void) tr_delete_triggers_for_class (class_->triggers, classop);
+  error = tr_delete_triggers_for_class (&class_->triggers, classop);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
   class_->triggers = NULL;
+  return NO_ERROR;
 }
 
 /*
@@ -13397,7 +13411,11 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
    * Note that this does not just invalidate the triggers,
    * it deletes them forever.
    */
-  remove_class_triggers (op, class_);
+  error = remove_class_triggers (op, class_);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   /* This to be maintained as long as the class is cached in the workspace,
    * dirty or not. When the deleted class is flushed, the name is removed.

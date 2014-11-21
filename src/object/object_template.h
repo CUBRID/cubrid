@@ -143,6 +143,11 @@ typedef struct obj_template
   unsigned check_uniques:1;
 
   /*
+   * Set if need to check SERIALIZABLE conflicts   
+   */
+  unsigned check_serializable_conflict:1;
+
+  /*
    * Set if we ever make an assignment for an attribute that has the
    * UNIQUE constraint.  Speeds up a common test.
    */
@@ -218,6 +223,8 @@ extern int obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname,
 
 extern void obt_set_label (OBJ_TEMPLATE * template_ptr, DB_VALUE * label);
 extern void obt_disable_unique_checking (OBJ_TEMPLATE * template_ptr);
+extern void obt_disable_serializable_conflict_checking (OBJ_TEMPLATE
+							* template_ptr);
 extern bool obt_enable_unique_checking (bool new_state);
 extern void obt_set_force_flush (OBJ_TEMPLATE * template_ptr);
 extern void obt_reset_force_flush (OBJ_TEMPLATE * template_ptr);

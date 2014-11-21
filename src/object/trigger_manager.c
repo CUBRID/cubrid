@@ -41,11 +41,14 @@
 #include "parser.h"
 #include "system_parameter.h"
 #include "locator_cl.h"
+#include "transaction_cl.h"
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
 #define TR_EXECUTION_ENABLED (tr_Execution_enabled == true)
-
+#define UNIQUE_SAVEPOINT_RENAME_TRIGGER "rENAMEtRIGGER"
+#define UNIQUE_SAVEPOINT_DROP_TRIGGER "dROPtRIGGER"
+#define UNIQUE_SAVEPOINT_CREATE_TRIGGER "cREATEtRIGGER"
 
 /*
  * IS_USER_EVENT
@@ -241,7 +244,8 @@ static int check_semantics (TR_TRIGGER * trigger);
 static PT_NODE *tr_check_correlation (PARSER_CONTEXT * parser, PT_NODE * node,
 				      void *arg, int *walk_on);
 
-static int tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback);
+static int tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback,
+				     bool need_savepoint);
 
 static bool value_as_boolean (DB_VALUE * value);
 static int signal_evaluation_error (TR_TRIGGER * trigger, int error);
@@ -2905,7 +2909,7 @@ tr_delete_schema_cache (TR_SCHEMA_CACHE * cache, DB_OBJECT * class_object)
  *
  *
  *    return: error code
- *    cache(in): schema cache
+ *    cache(in/out): schema cache
  *    class_object(in): class_object
  *
  * Note:
@@ -2915,7 +2919,7 @@ tr_delete_schema_cache (TR_SCHEMA_CACHE * cache, DB_OBJECT * class_object)
  *    to assume that he does not want its triggers to remain around.
  */
 int
-tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
+tr_delete_triggers_for_class (TR_SCHEMA_CACHE ** cache,
 			      DB_OBJECT * class_object)
 {
   TR_TRIGGER *trigger;
@@ -2924,7 +2928,7 @@ tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
   int didwork = 1;
   int error;
 
-  if (NULL == cache)
+  if ((NULL == cache) || (*cache == NULL))
     {
       return (NO_ERROR);
     }
@@ -2937,11 +2941,11 @@ tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
 
       /* need better error handling here */
       if ((error =
-	   tr_validate_schema_cache (cache, class_object)) != NO_ERROR)
+	   tr_validate_schema_cache (*cache, class_object)) != NO_ERROR)
 	{
 	  break;
 	}
-      for (m = cache->objects; m != NULL; m = m->next)
+      for (m = (*cache)->objects; m != NULL; m = m->next)
 	{
 	  trigger = tr_map_trigger (m->op, 0);
 	  if (trigger == NULL)
@@ -2953,7 +2957,12 @@ tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
 	      continue;
 	    }
 
-	  tr_drop_trigger_internal (trigger, 0);
+	  error = tr_drop_trigger_internal (trigger, 0, false);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+
 	  didwork = 1;
 
 	  /* we can only delete one trigger per operation, because we need
@@ -2964,11 +2973,11 @@ tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
 	}
     }
 
-
-  tr_free_schema_cache (cache);
+  tr_free_schema_cache (*cache);
+  *cache = NULL;
 
   AU_ENABLE (save);
-  return NO_ERROR;
+  return error;
 }
 
 
@@ -3939,6 +3948,7 @@ tr_create_trigger (const char *name,
   DB_OBJECT *object;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
   bool tr_object_map_added = false;
+  bool has_savepoint = false;
 
   object = NULL;
   trigger = tr_make_trigger ();
@@ -4053,6 +4063,18 @@ tr_create_trigger (const char *name,
       && compile_trigger_activity (trigger, trigger->action, 0))
     goto error;
 
+
+  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+    {
+      /* protect against multiple flushes to server */
+      if (tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_TRIGGER) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      has_savepoint = true;
+    }
+
   /*
    * from here down, the unwinding when errors are encountered gets
    * rather complex
@@ -4102,9 +4124,27 @@ tr_create_trigger (const char *name,
 	goto error;
     }
 
+  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+    {
+      /* need to flush in isolation level >= RR, since in case of serializable
+       * conflict we have to abort the current command
+       */
+      if (locator_all_flush () != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   return (object);
 
 error:
+
+  if (has_savepoint && er_errid () != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_TRIGGER);
+    }
+
   if (trigger != NULL)
     {
       if (object != NULL)
@@ -4328,10 +4368,24 @@ tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag)
  *
  */
 static int
-tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback)
+tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback,
+			  bool need_savepoint)
 {
   int error = NO_ERROR;
   int save;
+  bool has_savepoint = false;
+
+  if (need_savepoint)
+    {
+      /* protect against multiple flushes to server */
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_DROP_TRIGGER);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      has_savepoint = true;
+    }
 
   AU_DISABLE (save);
 
@@ -4415,6 +4469,13 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback)
     }
 
   AU_ENABLE (save);
+
+  if (need_savepoint && error != NO_ERROR
+      && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_TRIGGER);
+    }
+
   return (error);
 }
 
@@ -4436,7 +4497,7 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
   char *trigger_name = NULL;
   int save;
 
-  /* Do we need to disable authorizationjust for check_authorization ? */
+  /* Do we need to disable authorization just for check_authorization ? */
   AU_DISABLE (save);
 
   /*
@@ -4480,7 +4541,9 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
 
       if (error == NO_ERROR)
 	{
-	  error = tr_drop_trigger_internal (trigger, 0);
+	  bool need_savepoint = (TM_TRAN_ISOLATION () >= TRAN_REP_READ);
+
+	  error = tr_drop_trigger_internal (trigger, 0, need_savepoint);
 	}
     }
 
@@ -4615,7 +4678,8 @@ signal_evaluation_error (TR_TRIGGER * trigger, int error)
    * on the name 'n' times for each level of call
    */
 
-  if (er_errid () != error && er_errid () != ER_LK_UNILATERALLY_ABORTED)
+  if (er_errid () != error && er_errid () != ER_LK_UNILATERALLY_ABORTED
+      && er_errid () != ER_MVCC_SERIALIZABLE_CONFLICT)
     {
       msg = er_msg ();
       if (msg == NULL)
@@ -5796,7 +5860,7 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
 	{
 	  next = t->next;
 	  /* this will also remove it from the tr_Uncommitted_triggers list */
-	  tr_drop_trigger_internal (t->trigger, 1);
+	  tr_drop_trigger_internal (t->trigger, 1, false);
 	}
       /*
        * shouldn't be necessary if tr_drop_trigger_intenral is doing its job
@@ -6057,7 +6121,7 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
  *    target(in): target object
  *
  * Note:
- *    This functio removes any deferred activities for a trigger.
+ *    This function removes any deferred activities for a trigger.
  *    If the target argument is NULL, all of the deferred activities for
  *    the given trigger are removed.  If supplied, only those
  *    activities associated with the target object are removed.
@@ -7110,8 +7174,9 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name,
   char *tr_name = NULL;
   int save;
   MOP mop1, mop2;
+  bool has_savepoint = false;
 
-  /* Do we need to disable authorizationjust for check_authorization ? */
+  /* Do we need to disable authorization just for check_authorization ? */
   AU_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, true);
@@ -7142,7 +7207,21 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name,
 	}
       else
 	{
-	  error = trigger_table_rename (trigger_object, newname);
+	  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+	    {
+	      /* protect against multiple flushes to server */
+	      error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
+	      if (error == NO_ERROR)
+		{
+		  has_savepoint = true;
+		}
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      error = trigger_table_rename (trigger_object, newname);
+	    }
+
 	  /* might need to abort the transaction here */
 	  if (!error)
 	    {
@@ -7200,6 +7279,13 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name,
     }
 
   AU_ENABLE (save);
+
+  if (has_savepoint && error != NO_ERROR
+      && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
+    }
 
   if (tr_name)
     {
