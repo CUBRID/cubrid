@@ -435,14 +435,6 @@ typedef unsigned int SESSION_ID;
 #define DB_ROW_COUNT_NOT_SET			-2
 #define SERVER_SESSION_KEY_SIZE			8
 
-typedef struct session_key SESSION_KEY;
-struct session_key
-{
-  SESSION_ID id;		/* hash key for a session. */
-  int fd;			/* the socket(file) descriptor of
-				 * the associated connection.
-				 */
-};
 typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;
 struct dbdef_vol_ext_info
 {

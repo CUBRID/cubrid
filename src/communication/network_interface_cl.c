@@ -4363,7 +4363,6 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   int err_code = NO_ERROR;
   int tran_index = NULL_TRAN_INDEX;
   int row_count = DB_ROW_COUNT_NOT_SET;
-  SESSION_KEY key;
 
   ENTER_SERVER ();
 
@@ -5083,29 +5082,28 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count,
   return NO_ERROR;
 #else
   int result = NO_ERROR;
-  SESSION_KEY key;
+  SESSION_ID id;
 
   ENTER_SERVER ();
 
-  key.fd = INVALID_SOCKET;
   if (db_Session_id == DB_EMPTY_SESSION)
     {
-      result = xsession_create_new (NULL, &key);
+      result = xsession_create_new (NULL, &id);
     }
   else
     {
-      key.id = db_Session_id;
-      if (xsession_check_session (NULL, &key) != NO_ERROR)
+      id = db_Session_id;
+      if (xsession_check_session (NULL, id) != NO_ERROR)
 	{
 	  /* create new session */
-	  if (xsession_create_new (NULL, &key) != NO_ERROR)
+	  if (xsession_create_new (NULL, &id) != NO_ERROR)
 	    {
 	      result = ER_FAILED;
 	    }
 	}
     }
 
-  db_Session_id = key.id;
+  db_Session_id = id;
   *session_id = db_Session_id;
 
   /* get row count */
@@ -5154,13 +5152,10 @@ csession_end_session (SESSION_ID session_id)
   return NO_ERROR;
 #else
   int result = NO_ERROR;
-  SESSION_KEY key;
 
   ENTER_SERVER ();
 
-  key.id = session_id;
-  key.fd = INVALID_SOCKET;
-  result = xsession_end_session (NULL, &key);
+  result = xsession_end_session (NULL, session_id);
 
   EXIT_SERVER ();
 
@@ -9133,7 +9128,7 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
 }
 
 /*
- * thread_kill_or_interrupt_tran - 
+ * thread_kill_or_interrupt_tran -
  *
  * return:
  *
@@ -10033,7 +10028,7 @@ sysprm_dump_server_parameters (FILE * outfp)
  *
  *   hfid(in):
  *   class_oid(in):
- *   has_visible_instance(in): true if we need to check for a visible record 
+ *   has_visible_instance(in): true if we need to check for a visible record
  *
  * NOTE:
  */

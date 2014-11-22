@@ -8033,7 +8033,7 @@ sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * sthread_kill_or_interrupt_tran - 
+ * sthread_kill_or_interrupt_tran -
  *
  * return:
  *
@@ -8603,7 +8603,7 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 /*
  * sbtree_get_key_type () - Obtains key type from index b-tree.
  *
- * return : 
+ * return :
  * thread_p (in) :
  * rid (in) :
  * request (in) :
@@ -9914,7 +9914,7 @@ void
 ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid,
 				 char *request, int reqlen)
 {
-  SESSION_KEY key = { DB_EMPTY_SESSION, INVALID_SOCKET };
+  SESSION_ID id = DB_EMPTY_SESSION;
   int row_count = -1, area_size;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -9925,35 +9925,27 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid,
   SESSION_PARAM *session_params = NULL;
   int error = NO_ERROR, update_parameter_values = 0;
 
-  ptr = or_unpack_int (request, &key.id);
+  ptr = or_unpack_int (request, &id);
   ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
   ptr = sysprm_unpack_session_parameters (ptr, &session_params);
   ptr = or_unpack_string_alloc (ptr, &db_user);
   ptr = or_unpack_string_alloc (ptr, &host);
   ptr = or_unpack_string_alloc (ptr, &program_name);
 
-  if (key.id == DB_EMPTY_SESSION
+  if (id == DB_EMPTY_SESSION
       || memcmp (server_session_key, xboot_get_server_session_key (),
 		 SERVER_SESSION_KEY_SIZE) != 0
-      || xsession_check_session (thread_p, &key) != NO_ERROR)
+      || xsession_check_session (thread_p, id) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
       /* create new session */
-      error = xsession_create_new (thread_p, &key);
+      error = xsession_create_new (thread_p, &id);
       if (error != NO_ERROR)
 	{
 	  return_error_to_client (thread_p, rid);
 	}
     }
-
-  /* update session_id for this connection */
-  assert (thread_p != NULL);
-  assert (thread_p->conn_entry != NULL);
-
-  key.fd = thread_p->conn_entry->fd;
-  xsession_set_session_key (thread_p, &key);
-  thread_p->conn_entry->session_id = key.id;
 
   /* get row count */
   xsession_get_row_count (thread_p, &row_count);
@@ -9996,7 +9988,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid,
       area = (char *) malloc (area_size);
       if (area != NULL)
 	{
-	  ptr = or_pack_int (area, key.id);
+	  ptr = or_pack_int (area, id);
 	  ptr = or_pack_int (ptr, row_count);
 	  ptr = or_pack_stream (ptr, xboot_get_server_session_key (),
 				SERVER_SESSION_KEY_SIZE);
@@ -10058,15 +10050,14 @@ ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid,
 		      char *request, int reqlen)
 {
   int err = NO_ERROR;
-  SESSION_KEY key;
+  SESSION_ID id;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL;
 
-  (void) or_unpack_int (request, &key.id);
-  key.fd = thread_p->conn_entry->fd;
+  (void) or_unpack_int (request, &id);
 
-  err = xsession_end_session (thread_p, &key);
+  err = xsession_end_session (thread_p, id);
 
   ptr = or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
@@ -10998,7 +10989,7 @@ slocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
 
   /*
    * This is for asynchronouse working.
-   * Regardless of whethea or not the processing of the actual work is done, 
+   * Regardless of whethea or not the processing of the actual work is done,
    * we will send the client a response.
    */
   error = css_send_data_to_client (thread_p->conn_entry, rid,
@@ -11041,7 +11032,7 @@ slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
 
   /*
    * This is for asynchronouse working.
-   * Regardless of whethea or not the processing of the actual work is done, 
+   * Regardless of whethea or not the processing of the actual work is done,
    * we will send the client a response.
    */
   error = css_send_data_to_client (thread_p->conn_entry, rid,

@@ -27,54 +27,43 @@
 /*
  *  xsession_create_new () - create a new session
  *  return		: error code
- *  session_id (in/out) : session id
+ *  id (in/out) : session id
  * Note: this function allocates a new session id and creates a session for
  * it
  */
 int
-xsession_create_new (THREAD_ENTRY * thread_p, SESSION_KEY * key)
+xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id)
 {
   int status = NO_ERROR;
 
-  assert (key != NULL);
+  assert (id != NULL);
 
-  return session_state_create (thread_p, key);
+  return session_state_create (thread_p, id);
 }
 
 /*
  *  xsession_check_session  () - validates the session with session_id
  *  return	    : error code
- *  session_id (in) : session id
+ *  id (in) : session id
  * Note: this function checks if the session with session_id is still active
  * and updates the last access timeout for it
  */
 int
-xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
+xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 {
-  return session_check_session (thread_p, key);
-}
-
-/*
- *  xsession_set_session_key () -
- *  return          : error code
- *  session_key (in) : session identifier
- */
-int
-xsession_set_session_key (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
-{
-  return session_set_session_key (thread_p, key);
+  return session_check_session (thread_p, id);
 }
 
 /*
  *  xsession_end_session () - end the session with session_id
  *  return	    : error code
- *  session_id (in) : session id
+ *  id (in) : session id
  *  thread_p (in)
  */
 int
-xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
+xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 {
-  return session_state_destroy (thread_p, key);
+  return session_state_destroy (thread_p, id);
 }
 
 /*

@@ -67,6 +67,7 @@
 #include "object_representation.h"
 #include "connection_error.h"
 #include "log_impl.h"
+#include "session.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -362,8 +363,8 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
    * when initializing temp_conn in css_process_new_client
    */
   assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx
-            && conn->csect.name == css_Csect_name_conn)
-          || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
+	   && conn->csect.name == css_Csect_name_conn)
+	  || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
@@ -434,11 +435,16 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 	}
     }
 #if defined(SERVER_MODE)
-  conn->session_p = NULL;
+  if (conn->session_p)
+    {
+      session_state_decrease_ref_count (NULL, conn->session_p);
+      conn->session_p = NULL;
+      conn->session_id = DB_EMPTY_SESSION;
+    }
 
   assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx
-            && conn->csect.name == css_Csect_name_conn)
-          || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
+	   && conn->csect.name == css_Csect_name_conn)
+	  || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
   csect_exit_critical_section (NULL, &conn->csect);
 }
@@ -2410,9 +2416,9 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
 }
 
 /*
- * clear_wait_queue_entry_and_free_buffer () - remove data_wait_queue entry 
- *                                             when completing or aborting 
- *                                             to receive buffer 
+ * clear_wait_queue_entry_and_free_buffer () - remove data_wait_queue entry
+ *                                             when completing or aborting
+ *                                             to receive buffer
  *                                             from data_wait_queue.
  *   return: void
  *   conn(in): connection entry
@@ -2441,7 +2447,7 @@ clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp,
     }
   else
     {
-      /* connection_handler_thread may proceed ahead of me right after timeout 
+      /* connection_handler_thread may proceed ahead of me right after timeout
        * has happened. If the case, we must free the buffer.
        */
       if (*bufferp != NULL)
@@ -2879,8 +2885,8 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
    * when initializing temp_conn in css_process_new_client
    */
   assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx
-            && conn->csect.name == css_Csect_name_conn)
-          || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
+	   && conn->csect.name == css_Csect_name_conn)
+	  || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
@@ -2902,8 +2908,8 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 
 #if defined(SERVER_MODE)
   assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx
-            && conn->csect.name == css_Csect_name_conn)
-          || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
+	   && conn->csect.name == css_Csect_name_conn)
+	  || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
@@ -2912,8 +2918,8 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 /*
  * css_set_user_access_status() - set user access status information
  *   return: void
- *   db_user(in): 
- *   host(in): 
+ *   db_user(in):
+ *   host(in):
  *   program_name(in):
  */
 void
@@ -2969,7 +2975,7 @@ css_set_user_access_status (const char *db_user, const char *host,
 /*
  * css_get_user_access_status() - get user access status informations
  *   return: void
- *   num_user(in): 
+ *   num_user(in):
  *   access_status_array(out):
  */
 void

@@ -106,7 +106,7 @@ struct session_query_entry
 typedef struct session_state SESSION_STATE;
 struct session_state
 {
-  SESSION_KEY key;		/* session key */
+  SESSION_ID id;		/* session id */
   SESSION_STATE *stack;		/* used in freelist */
   SESSION_STATE *next;		/* used in hash table */
   pthread_mutex_t mutex;	/* state mutex */
@@ -121,11 +121,11 @@ struct session_state
   PREPARED_STATEMENT *statements;
   SESSION_QUERY_ENTRY *queries;
   struct timeval session_timeout;
-  SOCKET related_socket;
   SESSION_PARAM *session_parameters;
   char *trace_stats;
   char *plan_string;
   int trace_format;
+  int ref_count;
   TZ_REGION session_tz_region;
 };
 
@@ -144,7 +144,7 @@ static LF_ENTRY_DESCRIPTOR session_state_Descriptor = {
   offsetof (SESSION_STATE, stack),
   offsetof (SESSION_STATE, next),
   offsetof (SESSION_STATE, del_id),
-  offsetof (SESSION_STATE, key),
+  offsetof (SESSION_STATE, id),
   offsetof (SESSION_STATE, mutex),
 
   LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE,
@@ -196,6 +196,11 @@ static void session_free_sentry_data (THREAD_ENTRY * thread_p,
 static void session_set_conn_entry_data (THREAD_ENTRY * thread_p,
 					 SESSION_STATE * session_p);
 static SESSION_STATE *session_get_session_state (THREAD_ENTRY * thread_p);
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+static int session_state_verify_ref_count (THREAD_ENTRY * thread_p,
+					   SESSION_STATE * session_p);
+#endif
+
 
 /*
  * session_state_alloc () - allocate a new session state
@@ -261,6 +266,7 @@ session_state_init (void *st)
   session_p->session_parameters = NULL;
   session_p->trace_stats = NULL;
   session_p->plan_string = NULL;
+  session_p->ref_count = 0;
   session_p->trace_format = QUERY_TRACE_TEXT;
 
   return NO_ERROR;
@@ -285,7 +291,7 @@ session_state_uninit (void *st)
     {
       return NO_ERROR;
     }
-  er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->key.id);
+  er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -323,7 +329,7 @@ session_state_uninit (void *st)
 
   er_log_debug (ARG_FILE_LINE,
 		"session_free_session closed %d queries for %d\n", cnt,
-		session->key.id);
+		session->id);
 
   pr_clear_value (&session->cur_insert_id);
   pr_clear_value (&session->last_insert_id);
@@ -350,18 +356,17 @@ session_state_uninit (void *st)
 static int
 session_key_copy (void *src, void *dest)
 {
-  SESSION_KEY *src_k, *dest_k;
+  SESSION_ID *src_id, *dest_id;
 
   if (src == NULL || dest == NULL)
     {
       return ER_FAILED;
     }
 
-  src_k = (SESSION_KEY *) src;
-  dest_k = (SESSION_KEY *) dest;
+  src_id = (SESSION_ID *) src;
+  dest_id = (SESSION_ID *) dest;
 
-  dest_k->id = src_k->id;
-  dest_k->fd = src_k->fd;
+  *dest_id = *src_id;
 
   /* all ok */
   return NO_ERROR;
@@ -379,8 +384,8 @@ session_key_copy (void *src, void *dest)
 static unsigned int
 session_key_hash (void *key, int hash_table_size)
 {
-  SESSION_KEY *key_p = (SESSION_KEY *) key;
-  return (key_p->id % hash_table_size);
+  SESSION_ID id = *((SESSION_ID *) key);
+  return (id % hash_table_size);
 }
 
 /*
@@ -392,10 +397,10 @@ session_key_hash (void *key, int hash_table_size)
 static int
 session_key_compare (void *k1, void *k2)
 {
-  SESSION_KEY *key1, *key2;
+  SESSION_ID *key1, *key2;
 
-  key1 = (SESSION_KEY *) k1;
-  key2 = (SESSION_KEY *) k2;
+  key1 = (SESSION_ID *) k1;
+  key2 = (SESSION_ID *) k2;
 
   if (k1 == NULL || k2 == NULL)
     {
@@ -404,7 +409,7 @@ session_key_compare (void *k1, void *k2)
       return 0;
     }
 
-  if (key1->id == key2->id)
+  if (*key1 == *key2)
     {
       /* equal */
       return 0;
@@ -425,7 +430,7 @@ session_key_compare (void *k1, void *k2)
 static int
 session_key_increment (void *key, void *existing)
 {
-  SESSION_KEY *key_p = (SESSION_KEY *) key;
+  SESSION_ID *key_p = (SESSION_ID *) key;
 
   if (key == NULL)
     {
@@ -433,7 +438,7 @@ session_key_increment (void *key, void *existing)
     }
   else
     {
-      key_p->id++;
+      (*key_p)++;
       return NO_ERROR;
     }
 }
@@ -546,7 +551,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
  *	 session starts.
  */
 int
-session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
+session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 {
   LF_TRAN_ENTRY *t_entry =
     thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
@@ -554,13 +559,40 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
   SESSION_ID next_session_id;
   int ret;
 
+  assert (id != NULL);
+
+#if defined (SERVER_MODE)
+  if (thread_p && thread_p->conn_entry && thread_p->conn_entry->session_p)
+    {
+      SESSION_ID old_id = thread_p->conn_entry->session_id;
+
+      assert (thread_p->conn_entry->session_p->id == old_id);
+
+      ret = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &old_id,
+			  (void **) &session_p);
+      if (ret != NO_ERROR || session_p == NULL)
+	{
+	  return ret;
+	}
+
+      assert (session_p == thread_p->conn_entry->session_p);
+
+#if !defined(NDEBUG)
+      session_state_verify_ref_count (thread_p, session_p);
+#endif
+      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+      session_state_decrease_ref_count (thread_p, session_p);
+      pthread_mutex_unlock (&session_p->mutex);
+    }
+#endif
+
   /* create search key */
   next_session_id = ATOMIC_INC_32 (&sessions.last_session_id, 1);
-  key->id = next_session_id;
+  *id = next_session_id;
 
   /* insert new entry into hash table */
   ret =
-    lf_hash_insert (t_entry, &sessions.sessions_table, (void *) key,
+    lf_hash_insert (t_entry, &sessions.sessions_table, (void *) id,
 		    (void **) &session_p);
   if (ret != NO_ERROR)
     {
@@ -575,7 +607,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
 
   /* inserted key might have been incremented; if last_session_id was not
      modified in the meantime, store the new value */
-  ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, key->id);
+  ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 
   /* initialize the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
@@ -584,14 +616,22 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
       return ER_FAILED;
     }
 
+#if defined (SERVER_MODE)
+#if !defined (NDEBUG)
+  (void) session_state_verify_ref_count (thread_p, session_p);
+#endif
+  /* increase reference count of new session_p */
+  session_state_increase_ref_count (thread_p, session_p);
+
   /* set as thread session */
   session_set_conn_entry_data (thread_p, session_p);
+#endif
 
   /* done with the entry */
   pthread_mutex_unlock (&session_p->mutex);
 
   /* debug logging */
-  er_log_debug (ARG_FILE_LINE, "adding session with id %u\n", key->id);
+  er_log_debug (ARG_FILE_LINE, "adding session with id %u\n", *id);
   if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG) == true)
     {
       LF_HASH_TABLE_ITERATOR it;
@@ -603,7 +643,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
       for (state = lf_hash_iterate (&it); state != NULL;
 	   state = lf_hash_iterate (&it))
 	{
-	  er_log_debug (ARG_FILE_LINE, "session %u", state->key.id);
+	  er_log_debug (ARG_FILE_LINE, "session %u", state->id);
 	}
 
       er_log_debug (ARG_FILE_LINE, "finished printing active sessions\n");
@@ -615,20 +655,20 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
 /*
  * session_state_destroy () - close a session state
  *   return	    : NO_ERROR or error code
- *   session_id(in) : the identifier for the session
+ *   id(in) : the identifier for the session
  */
 int
-session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
+session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
 {
   LF_TRAN_ENTRY *t_entry =
     thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_STATE *session_p;
   int error = NO_ERROR, success = 0;
 
-  er_log_debug (ARG_FILE_LINE, "removing session %u", key->id);
+  er_log_debug (ARG_FILE_LINE, "removing session %u", id);
 
   error =
-    lf_hash_find (t_entry, &sessions.sessions_table, (void *) key,
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id,
 		  (void **) &session_p);
   if (error != NO_ERROR)
     {
@@ -639,15 +679,33 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_SES_SESSION_EXPIRED;
     }
-  else if (session_p->key.fd != key->fd)
+
+#if defined (SERVER_MODE)
+  if (thread_p != NULL && thread_p->conn_entry != NULL
+      && thread_p->conn_entry->session_p != NULL)
     {
-      pthread_mutex_unlock (&session_p->mutex);
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      return ER_SES_SESSION_EXPIRED;
+      thread_p->conn_entry->session_p = NULL;
+      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
     }
 
+  assert (session_p->ref_count > 0);
+
+  session_state_decrease_ref_count (thread_p, session_p);
+
+  if (session_p->ref_count > 0)
+    {
+      /* This session_state is busy, I can't remove */
+      pthread_mutex_unlock (&session_p->mutex);
+
+      return NO_ERROR;
+    }
+
+  /* Now we can destroy this session */
+  assert (session_p->ref_count == 0);
+#endif
+
   error =
-    lf_hash_delete (t_entry, &sessions.sessions_table, (void *) key,
+    lf_hash_delete (t_entry, &sessions.sessions_table, (void *) &id,
 		    &success);
   if (error != NO_ERROR)
     {
@@ -662,36 +720,53 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
       return ER_FAILED;
     }
 
-#if defined(SERVER_MODE)
-  if (thread_p != NULL && thread_p->conn_entry != NULL
-      && thread_p->conn_entry->session_p != NULL)
-    {
-      thread_p->conn_entry->session_p = NULL;
-    }
-#endif
-
   return error;
 }
 
 /*
- * session_check_session () - check if the session state with id session_id
+ * session_check_session () - check if the session state with id
  *			      exists and update the timeout for it
  *   return	    : NO_ERROR or error code
- *   session_id(in) : the identifier for the session
+ *   id(in) : the identifier for the session
  */
 int
-session_check_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
+session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 {
   LF_TRAN_ENTRY *t_entry =
     thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_STATE *session_p = NULL;
   int error = NO_ERROR;
 
-  er_log_debug (ARG_FILE_LINE, "updating timeout for session_id %u\n",
-		key->id);
+  er_log_debug (ARG_FILE_LINE, "updating timeout for session_id %u\n", id);
+
+#if defined (SERVER_MODE)
+  if (thread_p && thread_p->conn_entry && thread_p->conn_entry->session_p)
+    {
+      SESSION_ID old_id = thread_p->conn_entry->session_id;
+
+      assert (thread_p->conn_entry->session_p->id == old_id);
+
+      error =
+	lf_hash_find (t_entry, &sessions.sessions_table, (void *) &old_id,
+		      (void **) &session_p);
+      if (error != NO_ERROR || session_p == NULL)
+	{
+	  return error;
+	}
+
+      assert (session_p == thread_p->conn_entry->session_p);
+
+#if !defined(NDEBUG)
+      session_state_verify_ref_count (thread_p, session_p);
+#endif
+      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+      session_state_decrease_ref_count (thread_p, session_p);
+      pthread_mutex_unlock (&session_p->mutex);
+    }
+#endif
 
   error =
-    lf_hash_find (t_entry, &sessions.sessions_table, (void *) key,
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id,
 		  (void **) &session_p);
   if (error != NO_ERROR)
     {
@@ -710,46 +785,14 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
       return ER_FAILED;
     }
 
-  /* need to do this under the critical section because we cannot rely on the
-   * session_p pointer after we left it */
+#if defined (SERVER_MODE)
+#if !defined (NDEBUG)
+  (void) session_state_verify_ref_count (thread_p, session_p);
+#endif
+  /* increase reference count of new session_p */
+  session_state_increase_ref_count (thread_p, session_p);
   session_set_conn_entry_data (thread_p, session_p);
-
-  /* done with the entry */
-  pthread_mutex_unlock (&session_p->mutex);
-
-  return error;
-}
-
-/*
- * session_set_session_key () -
- *   return          : NO_ERROR or error code
- *   session_key(in) : the identifier for the session
- */
-int
-session_set_session_key (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
-{
-  LF_TRAN_ENTRY *t_entry =
-    thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
-  SESSION_STATE *session_p = NULL;
-  int error = NO_ERROR;
-
-  er_log_debug (ARG_FILE_LINE, "set related socket for session_id %u\n",
-		key->id);
-
-  error =
-    lf_hash_find (t_entry, &sessions.sessions_table, (void *) key,
-		  (void **) &session_p);
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  else if (session_p == NULL)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      return ER_SES_SESSION_EXPIRED;
-    }
-
-  session_p->key.fd = key->fd;
+#endif
 
   /* done with the entry */
   pthread_mutex_unlock (&session_p->mutex);
@@ -767,9 +810,9 @@ session_remove_expired_sessions (struct timeval *timeout)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_SESSIONS);
   LF_HASH_TABLE_ITERATOR it;
-  SESSION_STATE *state, *prev_state = NULL, *session_p;
+  SESSION_STATE *state, *next_state = NULL, *session_p;
   int err = NO_ERROR, success = 0;
-  bool remove = false;
+  bool is_expired = false;
   SESSION_TIMEOUT_INFO timeout_info;
 
   timeout_info.count = -1;
@@ -777,47 +820,60 @@ session_remove_expired_sessions (struct timeval *timeout)
   timeout_info.timeout = timeout;
 
   it = lf_hash_create_iterator (t_entry, &sessions.sessions_table);
-  for (state = lf_hash_iterate (&it); state != NULL;
-       state = lf_hash_iterate (&it))
+  state = lf_hash_iterate (&it);
+  while (state)
     {
-      if (prev_state != NULL && remove)
+      /* iterate next. the mutex lock of the current state will be released */
+      next_state = lf_hash_iterate (&it);
+
+      if (lf_hash_find (t_entry, &sessions.sessions_table,
+			(void *) &state->id,
+			(void **) &session_p) != NO_ERROR)
 	{
-	  /* remove previously iterated state; this must be done after we've
-	     iterated over it so we don't hold a mutex */
-	  if (lf_hash_find (t_entry, &sessions.sessions_table,
-			    (void *) &prev_state->key,
-			    (void **) &session_p) != NO_ERROR)
+	  err = ER_FAILED;
+	  break;
+	}
+      else if (session_p == NULL)
+	{
+	  err = ER_FAILED;
+	  break;
+	}
+
+      if (session_check_timeout (state, &timeout_info, &is_expired) !=
+	  NO_ERROR)
+	{
+	  pthread_mutex_unlock (&session_p->mutex);
+	  err = ER_FAILED;
+	  break;
+	}
+
+      if (is_expired)
+	{
+	  if (lf_hash_delete (t_entry, &sessions.sessions_table,
+			      (void *) &state->id, &success) != NO_ERROR)
 	    {
-	      return ER_FAILED;
-	    }
-	  else if (session_p == NULL)
-	    {
-	      return ER_FAILED;
+	      err = ER_FAILED;
+	      break;
 	    }
 
-	  if (lf_hash_delete
-	      (t_entry, &sessions.sessions_table, (void *) &prev_state->key,
-	       &success) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
 	  if (!success)
 	    {
 	      /* we don't have clear operations on this hash table, this
 	         shouldn't happen */
 	      pthread_mutex_unlock (&session_p->mutex);
 	      assert_release (false);
-	      return ER_FAILED;
+	      err = ER_FAILED;
+	      break;
 	    }
 	}
-
-      if (session_check_timeout (state, &timeout_info, &remove) != NO_ERROR)
+      else
 	{
-	  return ER_FAILED;
+	  pthread_mutex_unlock (&session_p->mutex);
 	}
 
-      prev_state = state;
+      state = next_state;
     }
+
   if (timeout_info.session_ids != NULL)
     {
       assert (timeout_info.count > 0);
@@ -862,7 +918,7 @@ session_check_timeout (SESSION_STATE * session_p,
 	}
       for (i = 0; i < timeout_info->count; i++)
 	{
-	  if (timeout_info->session_ids[i] == session_p->key.id)
+	  if (timeout_info->session_ids[i] == session_p->id)
 	    {
 	      /* also update timeout */
 	      if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
@@ -876,14 +932,14 @@ session_check_timeout (SESSION_STATE * session_p,
       /* remove this session: timeout expired and it doesn't have an active
        * connection. */
       er_log_debug (ARG_FILE_LINE, "timeout expired for session %u\n",
-		    session_p->key.id);
+		    session_p->id);
 
       (*remove) = true;
     }
   else
     {
       er_log_debug (ARG_FILE_LINE, "timeout ok for session %u\n",
-		    session_p->key.id);
+		    session_p->id);
     }
 
   return err;
@@ -1226,13 +1282,12 @@ session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name)
  *   session_id(out): session_id
  */
 int
-session_get_session_id (THREAD_ENTRY * thread_p, SESSION_KEY * key)
+session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id)
 {
-  assert (key != NULL);
+  assert (id != NULL);
 
 #if !defined(SERVER_MODE)
-  key->id = thread_get_current_session_id ();
-  key->fd = INVALID_SOCKET;
+  *id = thread_get_current_session_id ();
 
   return NO_ERROR;
 #else
@@ -1246,8 +1301,7 @@ session_get_session_id (THREAD_ENTRY * thread_p, SESSION_KEY * key)
       return ER_FAILED;
     }
 
-  key->id = thread_p->conn_entry->session_id;
-  key->fd = thread_p->conn_entry->fd;
+  *id = thread_p->conn_entry->session_id;
 
   return NO_ERROR;
 #endif /*SERVER_MODE */
@@ -1485,7 +1539,7 @@ session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
 #if 0
   er_log_debug (ARG_FILE_LINE,
 		"setting row_count for session %u to %d\n",
-		state_p->key.id, state_p->row_count);
+		state_p->id, state_p->row_count);
 #endif
 
   state_p->row_count = row_count;
@@ -1597,7 +1651,7 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
     }
 
   er_log_debug (ARG_FILE_LINE, "create statement %s(%d)\n", name,
-		state_p->key.id);
+		state_p->id);
 
   if (state_p->statements == NULL)
     {
@@ -1651,7 +1705,7 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "success %s(%d)\n", name, state_p->key.id);
+  er_log_debug (ARG_FILE_LINE, "success %s(%d)\n", name, state_p->id);
 
   return NO_ERROR;
 
@@ -1744,7 +1798,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       /* if we don't have an alias print, we do not search for the XASL id */
       *xasl_entry = NULL;
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name,
-		    state_p->key.id);
+		    state_p->id);
       return NO_ERROR;
     }
 
@@ -1752,12 +1806,12 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
   if (entry == NULL)
     {
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name,
-		    state_p->key.id);
+		    state_p->id);
     }
   else
     {
       er_log_debug (ARG_FILE_LINE, "found xasl_id for %s(%d)\n", name,
-		    state_p->key.id);
+		    state_p->id);
     }
 
   *xasl_entry = entry;
@@ -1786,7 +1840,7 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
     }
 
   er_log_debug (ARG_FILE_LINE, "dropping %s from session_id %d\n", name,
-		state_p->key.id);
+		state_p->id);
 
   for (stmt_p = state_p->statements, prev = NULL; stmt_p != NULL;
        prev = stmt_p, stmt_p = stmt_p->next)
@@ -1988,7 +2042,7 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
 {
   LF_TRAN_ENTRY *t_entry =
     thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
-  SESSION_KEY key;
+  SESSION_ID id;
   SESSION_STATE *state_p = NULL;
   int name_len;
   const char *name_str;
@@ -2008,13 +2062,13 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
   name_str = DB_GET_STRING (name);
   name_len = (name_str != NULL) ? strlen (name_str) : 0;
 
-  if (session_get_session_id (thread_p, &key) != NO_ERROR)
+  if (session_get_session_id (thread_p, &id) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
   ret =
-    lf_hash_find (t_entry, &sessions.sessions_table, (void *) &key,
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id,
 		  (void **) &state_p);
   if (ret != NO_ERROR)
     {
@@ -2022,12 +2076,6 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name,
     }
   else if (state_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      return ER_FAILED;
-    }
-  else if (state_p->key.fd != key.fd)
-    {
-      pthread_mutex_unlock (&state_p->mutex);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
@@ -2179,7 +2227,7 @@ session_dump_session (SESSION_STATE * session)
   PREPARED_STATEMENT *pcurent, *pnext;
   DB_VALUE v;
 
-  fprintf (stdout, "SESSION ID = %d\n", session->key.id);
+  fprintf (stdout, "SESSION ID = %d\n", session->id);
 
   db_value_coerce (&session->last_insert_id, &v,
 		   db_type_to_db_domain (DB_TYPE_VARCHAR));
@@ -2616,6 +2664,7 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p,
        * session data for this conn_entry
        */
       thread_p->conn_entry->session_p = session_p;
+      thread_p->conn_entry->session_id = session_p->id;
     }
 #endif
 }
@@ -2683,18 +2732,18 @@ session_get_session_state (THREAD_ENTRY * thread_p)
 #else
   LF_TRAN_ENTRY *t_entry =
     thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
-  SESSION_KEY key;
+  SESSION_ID id;
   int error = NO_ERROR;
   SESSION_STATE *state_p = NULL;
 
-  error = session_get_session_id (thread_p, &key);
+  error = session_get_session_id (thread_p, &id);
   if (error != NO_ERROR)
     {
       return NULL;
     }
 
   error =
-    lf_hash_find (t_entry, &sessions.sessions_table, (void *) &key,
+    lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id,
 		  (void **) &state_p);
   if (error != NO_ERROR)
     {
@@ -2703,12 +2752,6 @@ session_get_session_state (THREAD_ENTRY * thread_p)
     }
   else if (state_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      return NULL;
-    }
-  else if (state_p->key.fd != key.fd)
-    {
-      pthread_mutex_unlock (&state_p->mutex);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return NULL;
     }
@@ -2890,3 +2933,106 @@ session_get_session_tz_region (THREAD_ENTRY * thread_p)
 
   return &session_p->session_tz_region;
 }
+
+
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+/*
+ * session_state_verify_ref_count () -
+ *   return  :
+ *
+ */
+static int
+session_state_verify_ref_count (THREAD_ENTRY * thread_p,
+				SESSION_STATE * session_p)
+{
+  int ref_count = 0;
+  CSS_CONN_ENTRY *conn, *next;
+
+  if (session_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
+  if (css_Active_conn_anchor == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
+  csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+
+  for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
+    {
+      if (session_p->id == conn->session_id)
+	{
+	  ref_count++;
+	}
+    }
+
+  if (ref_count != session_p->ref_count)
+    {
+      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      assert (0);
+      return ER_FAILED;
+    }
+
+  csect_exit (NULL, CSECT_CONN_ACTIVE);
+
+  return NO_ERROR;
+}
+#endif
+
+/*
+ * session_state_increase_ref_count () -
+ *   return  :
+ *
+ */
+#if defined (SERVER_MODE)
+int
+session_state_increase_ref_count (THREAD_ENTRY * thread_p,
+				  SESSION_STATE * state_p)
+{
+  if (state_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
+  ATOMIC_INC_32 (&state_p->ref_count, 1);
+
+  if (state_p->ref_count <= 0)
+    {
+      assert (state_p->ref_count > 0);
+      ATOMIC_TAS_32 (&state_p->ref_count, 1);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * session_state_decrease_ref_count () -
+ *   return  :
+ *
+ */
+int
+session_state_decrease_ref_count (THREAD_ENTRY * thread_p,
+				  SESSION_STATE * state_p)
+{
+  if (state_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
+  ATOMIC_INC_32 (&state_p->ref_count, -1);
+
+  if (state_p->ref_count < 0)
+    {
+      assert (state_p->ref_count >= 0);
+      ATOMIC_TAS_32 (&state_p->ref_count, 0);
+    }
+
+  return NO_ERROR;
+}
+#endif

@@ -30,16 +30,13 @@
 
 extern int session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
-extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key);
+extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_state_destroy (THREAD_ENTRY * thread_p,
-				  const SESSION_KEY * key);
+				  const SESSION_ID id);
 extern int session_check_session (THREAD_ENTRY * thread_p,
-				  const SESSION_KEY * key);
-extern int session_set_session_key (THREAD_ENTRY * thread_p,
-				    const SESSION_KEY * key);
+				  const SESSION_ID id);
 extern int session_remove_expired_sessions (struct timeval *timeout);
-extern int session_get_session_id (THREAD_ENTRY * thread_p,
-				   SESSION_KEY * key);
+extern int session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_get_last_insert_id (THREAD_ENTRY * thread_p,
 				       DB_VALUE * value,
 				       bool update_last_insert_id);
@@ -96,6 +93,12 @@ extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p,
 					     DB_VALUE * result);
 extern SESSION_PARAM *session_get_session_parameter (THREAD_ENTRY * thread_p,
 						     PARAM_ID id);
+#if defined (SERVER_MODE)
+extern int session_state_increase_ref_count (THREAD_ENTRY * thread_p,
+					     struct session_state *state_p);
+extern int session_state_decrease_ref_count (THREAD_ENTRY * thread_p,
+					     struct session_state *state_p);
+#endif
 extern int session_get_trace_stats (THREAD_ENTRY * thread_p,
 				    DB_VALUE * result);
 extern int session_set_trace_stats (THREAD_ENTRY * thread_p, char *scan_stats,
