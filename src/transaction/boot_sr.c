@@ -2723,7 +2723,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 		  "Failed to initialize timezone module");
 	}
-      return ER_TZ_LOAD_ERROR;
+      return NULL_TRAN_INDEX;
     }
 
   /* open the system message catalog, before prm_ ?  */
@@ -4024,7 +4024,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 		  "Failed to initialize timezone module");
 	}
-      return ER_TZ_LOAD_ERROR;
+      return NULL_TRAN_INDEX;
     }
 
   /* open the system message catalog, before prm_ ?  */
