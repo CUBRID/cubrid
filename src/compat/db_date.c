@@ -2213,7 +2213,14 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
 	  return NULL;
 	}
       else
-	time_parts_found++;
+	{
+	  time_parts_found++;
+	}
+
+      if (p >= strend)
+	{
+	  break;
+	}
     }
 
   /* Allow trailing ':' separator if time is incomplete */
@@ -2222,7 +2229,7 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
       p--;
     }
 
-  if (*p == '.')
+  if (p < strend && *p == '.')
     {
       p++;
 
@@ -3170,7 +3177,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
 
   if (p)
     {
-      if (p[0] == ' ')
+      if (p < strend && p[0] == ' ')
 	{
 	  while (p < strend && char_isspace (*p))
 	    {
