@@ -21576,6 +21576,12 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       goto cleanup;
     }
 
+  error = pt_copy_upddel_hints_to_select (parser, statement, aptr_statement);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
   aptr_statement = mq_translate (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
