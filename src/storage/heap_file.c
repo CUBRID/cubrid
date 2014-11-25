@@ -26941,7 +26941,7 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 				       new_version_recdes->length)
 	      &&
 	      (heap_mvcc_insert_into_page
-	       (thread_p, forward_recdes_p, hfid, forward_page,
+	       (thread_p, new_version_recdes, hfid, forward_page,
 		&new_version_slotid) == NO_ERROR))
 	    {
 	      /* Successfully inserted new version into forward page */
