@@ -1513,7 +1513,10 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 				       (type == DB_TYPE_FLOAT) ?
 				       DB_GET_FLOAT (value)
 				       : DB_GET_DOUBLE (value)));
-	if (!strchr (pos, '.'))
+
+	/* if tout flushed, then this float/double should be the first content */
+	if ((pos < tout->ptr && !strchr (pos, '.'))
+	    || (pos > tout->ptr && !strchr (tout->buffer, '.')))
 	  {
 	    CHECK_PRINT_ERROR (text_print (tout, ".", 1, NULL));
 	  }
