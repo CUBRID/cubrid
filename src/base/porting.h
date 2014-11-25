@@ -720,7 +720,7 @@ extern "C"
 #define ATOMIC_INC_64(ptr, amount) \
 	(InterlockedExchangeAdd64(ptr, amount) + amount)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
-	(InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == cmp_val)
+	(InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val)
 #else				/* _WIN64 */
 /*
  * These functions are used on Windows 32bit OS.
@@ -741,7 +741,7 @@ extern "C"
 #define ATOMIC_INC_64(ptr, amount) \
 	(win32_exchange_add64(ptr, amount) + amount)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
-	(InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == cmp_val)
+	(InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val)
 #endif				/* _WIN64 */
 
 #else				/* WINDOWS */

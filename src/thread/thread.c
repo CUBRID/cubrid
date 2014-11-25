@@ -2755,8 +2755,8 @@ thread_vacuum_master_thread (void *arg_p)
     0, 0
   };
   int rv = 0;
-  int wakeup_time;
-  const int max_wakeup_time = 300;
+  int wakeup_time_msec;
+  INT64 tmp_usec;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
@@ -2776,9 +2776,16 @@ thread_vacuum_master_thread (void *arg_p)
       er_clear ();
 
       gettimeofday (&timeout, NULL);
-      wakeup_time =
+      wakeup_time_msec =
 	prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
-      to.tv_sec = timeout.tv_sec + wakeup_time;
+      to.tv_sec = timeout.tv_sec + (wakeup_time_msec / 1000LL);
+      tmp_usec = timeout.tv_usec + (wakeup_time_msec % 1000LL) * 1000LL;
+      if (tmp_usec >= 1000000)
+	{
+	  to.tv_sec += 1;
+	  tmp_usec -= 1000000;
+	}
+      to.tv_nsec = ((int) tmp_usec) * 1000;
 
       rv = pthread_mutex_lock (&thread_Vacuum_master_thread.lock);
       thread_Vacuum_master_thread.is_running = false;

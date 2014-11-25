@@ -223,6 +223,10 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->vac_num_to_vacuum_log_pages));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->vac_num_prefetch_requests_log_pages));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->vac_num_prefetch_hits_log_pages));
+  ptr += OR_INT64_SIZE;
 
   OR_PUT_INT64 (ptr, &(stats->pb_hit_ratio));
   ptr += OR_INT64_SIZE;
@@ -467,6 +471,10 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->vac_num_vacuumed_log_pages));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->vac_num_to_vacuum_log_pages));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->vac_num_prefetch_requests_log_pages));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->vac_num_prefetch_hits_log_pages));
   ptr += OR_INT64_SIZE;
 
   OR_GET_INT64 (ptr, &(stats->pb_hit_ratio));

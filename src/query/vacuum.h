@@ -80,7 +80,9 @@ extern bool vacuum_Master_is_process_log_phase;
 #define VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE true
 #define VACUUM_LOG_ADD_DROPPED_FILE_UNDO false
 
-#define VACUUM_MAX_WORKER_COUNT	  20
+#define VACUUM_MAX_WORKER_COUNT	  50
+/* number of log pages in each vacuum block */
+#define VACUUM_LOG_BLOCK_PAGES_DEFAULT 31
 
 /* VACUUM_WORKER_STATE - State of vacuum workers */
 typedef enum vacuum_worker_state VACUUM_WORKER_STATE;
@@ -244,7 +246,6 @@ extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p,
 					       VFID * vacuum_data_vfid);
 extern int vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p,
 						 VFID * dropped_files_vfid);
-extern int vacuum_load_data_from_disk (THREAD_ENTRY * thread_p);
 extern int vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p);
 extern int vacuum_initialize (THREAD_ENTRY * thread_p,
 			      int vacuum_data_npages,

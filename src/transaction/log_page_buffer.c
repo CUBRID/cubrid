@@ -92,6 +92,7 @@
 #include "log_compress.h"
 #include "event_log.h"
 #include "thread.h"
+#include "tsc_timer.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -1171,6 +1172,17 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 						 */
   int rv;
   bool retry;
+  bool is_perf_tracking;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 fix_wait_time;
+  PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
+
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
 
   assert (pageid != NULL_PAGEID);
   assert ((fetch_mode == NEW_PAGE) || (fetch_mode == OLD_PAGE));
@@ -1184,6 +1196,8 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
       /*
        * Page is not resident. Find a replacement buffer for it
        */
+
+      stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
       while (1)
 	{
@@ -1255,6 +1269,24 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   csect_exit (thread_p, CSECT_LOG_PB);
 
   mnt_log_fetches (thread_p);
+
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      fix_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      /* log page fix time : use dummy values for latch type and conditional
+       * type; use PERF_PAGE_MODE_OLD_LOCK_WAIT and PERF_PAGE_MODE_OLD_IN_BUFFER
+       * for page type : page is not found in log page buffer and must be
+       * read from archive vs page is found in log page buffer */
+      if (fix_wait_time > 0)
+	{
+	  mnt_pbx_fix_acquire_time (thread_p, PAGE_LOG,
+				    stat_page_found, PERF_HOLDER_LATCH_READ,
+				    PERF_UNCONDITIONAL_FIX_WITH_WAIT,
+				    fix_wait_time);
+	}
+    }
 
   assert (log_bufptr != NULL);
 
@@ -2156,9 +2188,20 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   register struct log_buffer *log_bufptr = NULL;
   LOG_PAGE *ret_pgptr = NULL;
   int rv;
+  bool is_perf_tracking;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 fix_wait_time;
+  PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
+
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
 
   if (!VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
     {
@@ -2184,8 +2227,8 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
     {
       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, log_pgptr);
       mnt_log_fetch_ioreads (thread_p);
+      stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
     }
-  mnt_log_fetches (thread_p);
 
   if (!VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
     {
@@ -2193,6 +2236,26 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
        *       consequences are possible.
        */
       LOG_CS_EXIT (thread_p);
+    }
+
+  mnt_log_fetches (thread_p);
+
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      fix_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      /* log page fix time : use dummy values for latch type and conditional
+       * type; use PERF_PAGE_MODE_OLD_LOCK_WAIT and PERF_PAGE_MODE_OLD_IN_BUFFER
+       * for page type : page is not found in log page buffer and must be
+       * read from archive vs page is found in log page buffer */
+      if (fix_wait_time > 0)
+	{
+	  mnt_pbx_fix_acquire_time (thread_p, PAGE_LOG,
+				    stat_page_found, PERF_HOLDER_LATCH_READ,
+				    PERF_UNCONDITIONAL_FIX_WITH_WAIT,
+				    fix_wait_time);
+	}
     }
 
   return ret_pgptr;

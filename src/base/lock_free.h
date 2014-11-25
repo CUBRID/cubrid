@@ -142,16 +142,27 @@ struct lf_tran_entry
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1 }
 
-struct lf_tran_system
+typedef struct lf_bitmap LF_BITMAP;
+struct lf_bitmap
 {
-  /* pointer array to thread dtran entries */
-  LF_TRAN_ENTRY *entries;
-
   /* bitfield for entries array */
   unsigned int *bitfield;
 
   /* capacity */
   int entry_count;
+};
+
+
+struct lf_tran_system
+{
+  /* pointer array to thread dtran entries */
+  LF_TRAN_ENTRY *entries;
+
+  /* capacity */
+  int entry_count;
+
+  /* lock-free bitmap */
+  LF_BITMAP lf_bitmap;
 
   /* global delete ID for all delete operations */
   UINT64 global_transaction_id;
@@ -170,7 +181,7 @@ struct lf_tran_system
 };
 
 #define LF_TRAN_SYSTEM_INITIALIZER \
-  { NULL, NULL, 0, 0, 0, 100, 0, NULL }
+  { NULL, 0, {NULL, 0}, 0, 0, 100, 0, NULL }
 
 #define LF_TRAN_CLEANUP_NECESSARY(e) ((e)->tran_system->min_active_transaction_id > (e)->last_cleanup_id)
 
@@ -413,5 +424,12 @@ extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE *
 extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (INT32 capacity,
 							   int data_size);
 extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
+
+/* lock free bitmap */
+extern int lf_bitmap_init (LF_BITMAP * bitmap, int entries_cnt,
+			   int *adjusted_entries_cnt);
+extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
+extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
+extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
 
 #endif /* _LOCK_FREE_H_ */

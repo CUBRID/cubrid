@@ -573,7 +573,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MVCC_ENABLED "mvcc_enabled"
 
-#define PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL "vacuum_master_interval_in_secs"
+#define PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL "vacuum_master_interval_in_msecs"
 
 #define PRM_NAME_VACUUM_DATA_PAGES "vacuum_data_pages"
 #define PRM_NAME_VACUUM_LOG_BLOCK_PAGES "vacuum_log_block_pages"
@@ -592,6 +592,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TZ_LEAP_SECOND_SUPPORT "tz_leap_second_support"
 
 #define PRM_NAME_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION "optimizer_enable_aggregate_optimization"
+
+#define PRM_NAME_VACUUM_PREFETCH_LOG_NBUFFERS "vacuum_prefetch_log_pages"
+#define PRM_NAME_VACUUM_PREFETCH_LOG_BUFFER_SIZE "vacuum_prefetch_log_buffer_size"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1912,8 +1915,8 @@ bool PRM_MVCC_ENABLED = true;
 static bool prm_mvcc_enabled_default = true;
 static unsigned int prm_mvcc_enabled_flag = 0;
 
-int PRM_VACUUM_MASTER_WAKEUP_INTERVAL = 1;
-static int prm_vacuum_master_wakeup_interval_default = 1;
+int PRM_VACUUM_MASTER_WAKEUP_INTERVAL = 10;
+static int prm_vacuum_master_wakeup_interval_default = 10;
 static int prm_vacuum_master_wakeup_interval_lower = 1;
 static unsigned int prm_vacuum_master_wakeup_interval_flag = 0;
 
@@ -1923,8 +1926,9 @@ static int prm_vacuum_data_pages_lower = 10;
 static int prm_vacuum_data_pages_upper = 10000;
 static unsigned int prm_vacuum_data_pages_flag = 0;
 
-int PRM_VACUUM_LOG_BLOCK_PAGES = 32;
-static int prm_vacuum_log_block_pages_default = 32;
+int PRM_VACUUM_LOG_BLOCK_PAGES = VACUUM_LOG_BLOCK_PAGES_DEFAULT;
+static int prm_vacuum_log_block_pages_default =
+  VACUUM_LOG_BLOCK_PAGES_DEFAULT;
 static int prm_vacuum_log_block_pages_lower = 4;
 static int prm_vacuum_log_block_pages_upper = 1024;
 static unsigned int prm_vacuum_log_block_pages_flag = 0;
@@ -1966,6 +1970,17 @@ static unsigned int prm_leap_second_support_flag = 0;
 bool PRM_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION = true;
 static bool prm_optimizer_enable_aggregate_optimization_default = true;
 static unsigned int prm_optimizer_enable_aggregate_optimization_flag = 0;
+
+/* buffer for 2 x maximum vacuum workers, each prefetch buffer block having
+ * (PRM_VACUUM_LOG_BLOCK_PAGES + 1) */
+int PRM_VACUUM_PREFETCH_LOG_NBUFFERS =
+  2 * VACUUM_MAX_WORKER_COUNT * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
+static int prm_vacuum_prefetch_log_nbuffers_default =
+  2 * VACUUM_MAX_WORKER_COUNT * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
+static unsigned int prm_vacuum_prefetch_log_nbuffers_flag = 0;
+/* buffers for all vacuum workers + 1 for job queue */
+static int prm_vacuum_prefetch_log_nbuffers_lower =
+  (VACUUM_MAX_WORKER_COUNT + 1) * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4730,7 +4745,27 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_VACUUM_PREFETCH_LOG_NBUFFERS,
+   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
+   PRM_INTEGER,
+   (void *) &prm_vacuum_prefetch_log_nbuffers_flag,
+   (void *) &prm_vacuum_prefetch_log_nbuffers_default,
+   (void *) &PRM_VACUUM_PREFETCH_LOG_NBUFFERS,
+   (void *) NULL, (void *) &prm_vacuum_prefetch_log_nbuffers_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_VACUUM_PREFETCH_LOG_BUFFER_SIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
+   PRM_INTEGER,
+   (void *) &prm_vacuum_prefetch_log_nbuffers_flag,
+   (void *) &prm_vacuum_prefetch_log_nbuffers_default,
+   (void *) &PRM_VACUUM_PREFETCH_LOG_NBUFFERS,
+   (void *) NULL, (void *) &prm_vacuum_prefetch_log_nbuffers_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) prm_size_to_log_pages,
+   (DUP_PRM_FUNC) prm_log_pages_to_size}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

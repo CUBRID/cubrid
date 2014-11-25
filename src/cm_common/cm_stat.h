@@ -370,6 +370,8 @@ extern "C"
     unsigned int pc_num_class_oid_hash_entries;
     unsigned int vac_num_vacuumed_log_pages;
     unsigned int vac_num_to_vacuum_log_pages;
+    unsigned int vac_num_prefetch_requests_log_pages;
+    unsigned int vac_num_prefetch_hits_log_pages;
 
     /* Other statistics */
     unsigned int pb_hit_ratio;

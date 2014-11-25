@@ -348,6 +348,8 @@ struct mnt_server_exec_stats
 
   UINT64 vac_num_vacuumed_log_pages;
   UINT64 vac_num_to_vacuum_log_pages;
+  UINT64 vac_num_prefetch_requests_log_pages;
+  UINT64 vac_num_prefetch_hits_log_pages;
 
   /* Other statistics (change MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) */
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
@@ -390,7 +392,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 94
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 96
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
 #define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 5
 /* number of computed stats of MNT_SERVER_EXEC_STATS structure */
@@ -810,6 +812,12 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_vac_log_to_vacuum_pages(thread_p, num_entries) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_log_to_vacuum_pages(thread_p, num_entries)
 
+#define mnt_vac_prefetch_log_requests_pages(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_prefetch_log_requests_pages(thread_p)
+
+#define mnt_vac_prefetch_log_hits_pages(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_prefetch_log_hits_pages(thread_p)
+
 #define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix(thread_p, page_type, \
 						 page_found_mode,latch_mode, \
@@ -953,7 +961,8 @@ extern void mnt_x_vac_log_vacuumed_pages (THREAD_ENTRY * thread_p,
 					  unsigned int num_entries);
 extern void mnt_x_vac_log_to_vacuum_pages (THREAD_ENTRY * thread_p,
 					   unsigned int num_entries);
-
+extern void mnt_x_vac_prefetch_log_requests_pages (THREAD_ENTRY * thread_p);
+extern void mnt_x_vac_prefetch_log_hits_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type,
 			   int page_found_mode, int latch_mode,
 			   int cond_type);
@@ -1067,6 +1076,8 @@ extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p,
 
 #define mnt_vac_log_vacuumed_pages(thread_p, num_entries)
 #define mnt_vac_log_to_vacuum_pages(thread_p, num_entries)
+#define mnt_vac_prefetch_log_requests_pages(thread_p)
+#define mnt_vac_prefetch_log_hits_pages(thread_p)
 
 #define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type)
 #define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch)

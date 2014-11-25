@@ -3738,12 +3738,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	  fileio_dismount_all (thread_p);
 	  goto error;
 	}
-      error_code = vacuum_load_data_from_disk (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  fileio_dismount_all (thread_p);
-	  goto error;
-	}
     }
 
   /*
@@ -6105,10 +6099,9 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
        *       up. Remove initialize/load from here when stand-alone is fixed
        *       to use non-MVCC type operations.
        */
-      vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages,
-			 &boot_Db_parm->vacuum_data_vfid,
-			 &boot_Db_parm->dropped_files_vfid);
-      if (vacuum_load_data_from_disk (thread_p) != NO_ERROR)
+      if (vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages,
+			     &boot_Db_parm->vacuum_data_vfid,
+			     &boot_Db_parm->dropped_files_vfid) != NO_ERROR)
 	{
 	  goto error;
 	}

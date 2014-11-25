@@ -244,6 +244,8 @@ static int rv;
 									\
     DIFF_METHOD (RES, NEW, OLD, vac_num_vacuumed_log_pages);            \
     DIFF_METHOD (RES, NEW, OLD, vac_num_to_vacuum_log_pages);           \
+    DIFF_METHOD (RES, NEW, OLD, vac_num_prefetch_requests_log_pages);   \
+    DIFF_METHOD (RES, NEW, OLD, vac_num_prefetch_hits_log_pages);       \
 									\
     DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_fix_counters,		\
 			 PERF_PAGE_FIX_COUNTERS);			\
@@ -1728,6 +1730,8 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_plan_cache_class_oid_hash_entries",
   "Num_vacuum_log_pages_vacuumed",
   "Num_vacuum_log_pages_to_vacuum",
+  "Num_vacuum_prefetch_requests_log_pages",
+  "Num_vacuum_prefetch_hits_log_pages",
 
   /* computed statistics */
   "Data_page_buffer_hit_ratio",
@@ -3595,6 +3599,44 @@ mnt_x_vac_log_to_vacuum_pages (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * mnt_x_vac_prefetch_log_requests_pages -
+ *		  Increase vac_num_prefetch_requests_log_pages when a
+ *		  log page is requested from vacuum prefetch log buffer
+ *
+ *   return: none
+ */
+void
+mnt_x_vac_prefetch_log_requests_pages (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, vac_num_prefetch_requests_log_pages, 1);
+    }
+}
+
+/*
+ * mnt_x_vac_prefetch_log_hits_pages -
+ *		  Increase vac_num_prefetch_hits_log_pages when a
+ *		  log page is hit in vacuum prefetch log buffer
+ *
+ *   return: none
+ */
+void
+mnt_x_vac_prefetch_log_hits_pages (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, vac_num_prefetch_hits_log_pages, 1);
+    }
+}
+
+/*
  *   mnt_x_pbx_fix - 
  *   return: none
  */
@@ -4155,7 +4197,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 		  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
 		  counter = stats->pbx_hold_time_counters + offset;
 
-		  if (*counter)
+		  if (page_type != PAGE_LOG && *counter > 0)
 		    {
 		      hold_time_usec += *counter;
 		    }
@@ -4169,11 +4211,11 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 						   holder_latch, cond_type);
 		      assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
 		      counter = stats->pbx_fix_time_counters + offset;
-		      if (*counter)
+		      /* do not include fix time of log pages */
+		      if (page_type != PAGE_LOG && *counter > 0)
 			{
 			  fix_time_usec += *counter;
 			}
-
 
 		      offset =
 			PERF_PAGE_LOCK_TIME_OFFSET (module, page_type,
@@ -4182,7 +4224,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 		      assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
 		      counter = stats->pbx_lock_time_counters + offset;
 
-		      if (*counter)
+		      if (page_type != PAGE_LOG && *counter > 0)
 			{
 			  lock_time_usec += *counter;
 			}
