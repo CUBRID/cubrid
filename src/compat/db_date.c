@@ -1515,9 +1515,13 @@ fill_local_ampm_str (char str[10], bool am)
   if (init_tm (&tm) == -1)
     {
       if (am)
-	strcpy (str, "am");
+	{
+	  strcpy (str, "am");
+	}
       else
-	strcpy (str, "pm");
+	{
+	  strcpy (str, "pm");
+	}
     }
   else
     {
@@ -1562,8 +1566,8 @@ db_date_locale_init (void)
 static bool
 is_local_am_str (const char *p, const char *p_end)
 {
-  return (p + local_am_strlen - 1 < p_end) &&
-    (intl_mbs_ncasecmp (p, local_am_str, local_am_strlen) == 0);
+  return ((p + local_am_strlen - 1 < p_end)
+	  && (intl_mbs_ncasecmp (p, local_am_str, local_am_strlen) == 0));
 }
 
 /*
@@ -1575,8 +1579,8 @@ is_local_am_str (const char *p, const char *p_end)
 static bool
 is_local_pm_str (const char *p, const char *p_end)
 {
-  return (p + local_pm_strlen - 1 < p_end) &&
-    (intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen) == 0);
+  return ((p + local_pm_strlen - 1 < p_end)
+	  && (intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen) == 0));
 }
 
 /*
@@ -1655,7 +1659,9 @@ parse_date_separated (char const *str, char const *strend, DB_DATE * date,
 	    {
 	      /* '/' separator found */
 	      if (separator == 0)
-		new_separator = 1;
+		{
+		  new_separator = 1;
+		}
 	    }
 	  else
 	    {
@@ -1806,9 +1812,8 @@ parse_date_separated (char const *str, char const *strend, DB_DATE * date,
     {
       int year, month, day;
 
-      cdate =
-	julian_encode
-	(date_parts[month_part], date_parts[day_part], date_parts[year_part]);
+      cdate = julian_encode (date_parts[month_part], date_parts[day_part],
+			     date_parts[year_part]);
       julian_decode (cdate, &month, &day, &year, NULL);
 
       if (day == date_parts[day_part]
@@ -1821,7 +1826,9 @@ parse_date_separated (char const *str, char const *strend, DB_DATE * date,
 	{
 	  /* parsing successfull, but unexpected value */
 	  if (syntax_check)
-	    *syntax_check = p;
+	    {
+	      *syntax_check = p;
+	    }
 
 	  return NULL;
 	}
@@ -1897,8 +1904,8 @@ parse_mtime_separated (char const *str, char const *strend,
 
   /* skip separators */
   q = p;
-  while (p < strend && !char_isspace (*p) && !char_isalpha (*p) &&
-	 !char_isdigit (*p))
+  while (p < strend && !char_isspace (*p) && !char_isalpha (*p)
+	 && !char_isdigit (*p))
     {
       if (sep_ch)
 	{
@@ -1930,8 +1937,8 @@ parse_mtime_separated (char const *str, char const *strend,
   /* read minutes value */
   if (p < strend && char_isdigit (*p))
     {
-      while (p < strend && char_isdigit (*p) &&
-	     DATETIME_FIELD_LIMIT - (*p - '0') / 10 > m)
+      while (p < strend && char_isdigit (*p)
+	     && DATETIME_FIELD_LIMIT - (*p - '0') / 10 > m)
 	{
 	  if (m < DATETIME_FIELD_LIMIT)
 	    {
@@ -1950,9 +1957,8 @@ parse_mtime_separated (char const *str, char const *strend,
       /* skip any separators */
       q = p;
 
-      while
-	(p < strend && !char_isspace (*p) && !char_isalpha (*p) &&
-	 !char_isdigit (*p))
+      while (p < strend && !char_isspace (*p) && !char_isalpha (*p)
+	     && !char_isdigit (*p))
 	{
 	  if (sep_ch)
 	    {
@@ -1983,9 +1989,8 @@ parse_mtime_separated (char const *str, char const *strend,
       /* read seconds value */
       if (p < strend && char_isdigit (*p))
 	{
-	  while
-	    (p < strend && char_isdigit (*p) &&
-	     DATETIME_FIELD_LIMIT - (*p - '0') / 10 > s)
+	  while (p < strend && char_isdigit (*p)
+		 && (DATETIME_FIELD_LIMIT - (*p - '0') / 10 > s))
 	    {
 	      if (s < DATETIME_FIELD_LIMIT)
 		{
@@ -2133,7 +2138,9 @@ parse_mtime_separated (char const *str, char const *strend,
     {
       /* time parsed successfully, but the found value was unexpected */
       if (syntax_check)
-	*syntax_check = p;
+	{
+	  *syntax_check = p;
+	}
       return NULL;
     }
 
@@ -2191,12 +2198,10 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
       time_parts_found++;
     }
 
-  while
-    (((time_parts_found && p[0] == ':' &&
-       (++p < strend && char_isdigit (*p)))
-      ||
-      (!time_parts_found && char_isdigit (p[0])))
-     && time_parts_found < DIM (time_parts))
+  while (((time_parts_found && p[0] == ':'
+	   && (++p < strend && char_isdigit (*p)))
+	  || (!time_parts_found && char_isdigit (p[0])))
+	 && time_parts_found < DIM (time_parts))
     {
       do
 	{
@@ -2253,8 +2258,7 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
 	}
     }
 
-  /* infer the hours, minutes and seconds from the number of time parts read
-   * */
+  /* infer the hours, minutes and seconds from the number of time parts read */
   switch (time_parts_found)
     {
     case 3:
