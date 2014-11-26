@@ -29853,7 +29853,6 @@ resume_next_search:
     {
       pgbuf_unfix_and_init (thread_p, bts->O_page);
     }
-  assert (VPID_ISNULL (&bts->O_vpid));
 
   if (key_limit_upper && btrs_helper.oids_cnt != -1)
     {
