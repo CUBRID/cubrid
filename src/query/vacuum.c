@@ -4219,6 +4219,12 @@ vacuum_data_remove_finished_entries (THREAD_ENTRY * thread_p)
 	      if (removed_indexes == removed_indexes_p)
 		{
 		  new_removed_indexes = (int *) malloc (mem_size);
+		  if (new_removed_indexes != NULL)
+		    {
+		      /* copy values from stack array to alloced array */
+		      memcpy (new_removed_indexes, removed_indexes,
+			      n_removed_indexes * sizeof (removed_indexes[0]));
+		    }
 		}
 	      else
 		{
