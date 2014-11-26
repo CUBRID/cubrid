@@ -11780,10 +11780,7 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
   SCAN_CODE scan = S_SUCCESS;
   int try_count = 0;
   int try_max = 20;
-
-#if !defined (NDEBUG)
   DISK_ISVALID oid_is_valid;
-#endif
 
   assert (oid != NULL);
   assert (forward_oid != NULL);
@@ -11791,14 +11788,17 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
   assert (home_page != NULL);
   assert (forward_page != NULL);
 
-#if !defined (NDEBUG)
   oid_is_valid = HEAP_ISVALID_OID (oid);
   if (oid_is_valid != DISK_VALID)
     {
       assert (false);
+      if (oid_is_valid != DISK_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
+		  oid->volid, oid->pageid, oid->slotid);
+	}
       return S_ERROR;
     }
-#endif
 
 try_again:
 

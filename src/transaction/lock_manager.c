@@ -6164,69 +6164,79 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 				      MSGCAT_LK_RES_ROOT_CLASS_TYPE));
       break;
     case LOCK_RESOURCE_CLASS:
-      classname = heap_get_class_name (thread_p, &res_ptr->key.oid);
-      if (classname == NULL)
+      if (!OID_ISTEMP (&res_ptr->key.oid))
 	{
-	  /* We must stop processing if an interrupt occurs */
-	  if (er_errid () == ER_INTERRUPTED)
+	  /* Don't get class names for temporary class objects. */
+	  classname = heap_get_class_name (thread_p, &res_ptr->key.oid);
+	  if (classname == NULL)
 	    {
-	      return;
+	      /* We must stop processing if an interrupt occurs */
+	      if (er_errid () == ER_INTERRUPTED)
+		{
+		  return;
+		}
 	    }
-	}
-      else
-	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					  MSGCAT_SET_LOCK,
-					  MSGCAT_LK_RES_CLASS_TYPE),
-		   classname);
-	  free_and_init (classname);
-	}
-      break;
-    case LOCK_RESOURCE_INSTANCE:
-      classname = heap_get_class_name (thread_p, &res_ptr->key.class_oid);
-      if (classname == NULL)
-	{
-	  /* We must stop processing if an interrupt occurs */
-	  if (er_errid () == ER_INTERRUPTED)
-	    {
-	      return;
-	    }
-	}
-      else if (!BTID_IS_NULL (&res_ptr->key.btid))
-	{
-	  char *btname = NULL;
-
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					  MSGCAT_SET_LOCK,
-					  MSGCAT_LK_RES_INDEX_KEY_TYPE),
-		   res_ptr->key.class_oid.volid,
-		   res_ptr->key.class_oid.pageid,
-		   res_ptr->key.class_oid.slotid, classname);
-	  free_and_init (classname);
-
-	  if (heap_get_indexinfo_of_btid (thread_p, &res_ptr->key.class_oid,
-					  &res_ptr->key.btid, NULL, NULL,
-					  NULL, NULL, &btname,
-					  NULL) == NO_ERROR)
+	  else
 	    {
 	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 					      MSGCAT_SET_LOCK,
-					      MSGCAT_LK_INDEXNAME), btname);
-	    }
-	  if (btname != NULL)
-	    {
-	      free_and_init (btname);
+					      MSGCAT_LK_RES_CLASS_TYPE),
+		       classname);
+	      free_and_init (classname);
 	    }
 	}
-      else
+      break;
+    case LOCK_RESOURCE_INSTANCE:
+      if (!OID_ISTEMP (&res_ptr->key.class_oid))
 	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					  MSGCAT_SET_LOCK,
-					  MSGCAT_LK_RES_INSTANCE_TYPE),
-		   res_ptr->key.class_oid.volid,
-		   res_ptr->key.class_oid.pageid,
-		   res_ptr->key.class_oid.slotid, classname);
-	  free_and_init (classname);
+	  /* Don't get class names for temporary class objects. */
+	  classname = heap_get_class_name (thread_p, &res_ptr->key.class_oid);
+	  if (classname == NULL)
+	    {
+	      /* We must stop processing if an interrupt occurs */
+	      if (er_errid () == ER_INTERRUPTED)
+		{
+		  return;
+		}
+	    }
+	  else if (!BTID_IS_NULL (&res_ptr->key.btid))
+	    {
+	      char *btname = NULL;
+
+	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
+					      MSGCAT_SET_LOCK,
+					      MSGCAT_LK_RES_INDEX_KEY_TYPE),
+		       res_ptr->key.class_oid.volid,
+		       res_ptr->key.class_oid.pageid,
+		       res_ptr->key.class_oid.slotid, classname);
+	      free_and_init (classname);
+
+	      if (heap_get_indexinfo_of_btid (thread_p,
+					      &res_ptr->key.class_oid,
+					      &res_ptr->key.btid, NULL, NULL,
+					      NULL, NULL, &btname,
+					      NULL) == NO_ERROR)
+		{
+		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
+						  MSGCAT_SET_LOCK,
+						  MSGCAT_LK_INDEXNAME),
+			   btname);
+		}
+	      if (btname != NULL)
+		{
+		  free_and_init (btname);
+		}
+	    }
+	  else
+	    {
+	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
+					      MSGCAT_SET_LOCK,
+					      MSGCAT_LK_RES_INSTANCE_TYPE),
+		       res_ptr->key.class_oid.volid,
+		       res_ptr->key.class_oid.pageid,
+		       res_ptr->key.class_oid.slotid, classname);
+	      free_and_init (classname);
+	    }
 	}
       break;
     default:
