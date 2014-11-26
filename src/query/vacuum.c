@@ -589,16 +589,16 @@ static void vacuum_verify_vacuum_data_debug (void);
 #define VACUUM_VERIFY_VACUUM_DATA()
 #endif /* NDEBUG */
 
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)
 static int vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
 					     VACUUM_DATA_ENTRY * entry,
 					     BLOCK_LOG_BUFFER
 					     * block_log_buffer);
-#endif /* SERVER_MODE */
 static int vacuum_copy_log_page (THREAD_ENTRY * thread_p,
 				 LOG_PAGEID log_pageid,
 				 BLOCK_LOG_BUFFER * block_log_buffer,
 				 LOG_PAGE * log_page);
+#endif /* SERVER_MODE */
 
 /*
  * xvacuum () - Server function for vacuuming classes
@@ -2512,8 +2512,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
    *       called in SA_MODE, the code must be also adapted.
    */
   assert (false);
-#endif
 
+  return NO_ERROR;
+#else
   assert (worker != NULL);
 
   /* Initialize log_vacuum */
@@ -2791,6 +2792,7 @@ end:
   pgbuf_unfix_all (thread_p);
 
   return error_code;
+#endif
 }
 
 /*
@@ -7203,7 +7205,6 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
 end:
   return error;
 }
-#endif /* SERVER_MODE */
 
 /*
  * vacuum_copy_log_page () - Loads a log page to be processed by vacuum from
@@ -7256,3 +7257,4 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
 
   return error;
 }
+#endif /* SERVER_MODE */
