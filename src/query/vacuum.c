@@ -689,7 +689,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
     ((size_t) LOG_PAGESIZE) * ((size_t) VACUUM_PREFETCH_LOG_PAGES)
     + (size_t) MAX_ALIGNMENT;
 
-  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER,
+  vacuum_er_log (VACUUM_ER_LOG_MASTER,
 		 "VACUUM INIT: prefetch pages:%d, log_page_size:%d, "
 		 "prefetch buffer size:%lld, job_queue_capacity:%d.",
 		 (int) VACUUM_PREFETCH_LOG_PAGES,
