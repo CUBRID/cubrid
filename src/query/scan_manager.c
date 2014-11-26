@@ -5915,6 +5915,10 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		      return S_ERROR;
 		    }
 		}
+	      else
+		{
+		  assert (HEAP_ISVALID_OID (isidp->curr_oidp));
+		}
 	    }
 	  else if (scan_id->position == S_ON)
 	    {
@@ -5943,6 +5947,12 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		      isidp->curr_oidp =
 			GET_NTH_OID (isidp->oid_list.oidp, isidp->curr_oidno);
 		    }
+		  /* TODO: Index covering case keeps OID's in
+		   *       isidp->indx_cov.list_id and not in isidp->oid_list.
+		   */
+		  assert (SCAN_IS_INDEX_COVERED (isidp)
+			  || (HEAP_ISVALID_OID (isidp->curr_oidp)
+			      == DISK_VALID));
 		}
 	      else
 		{
@@ -6028,6 +6038,10 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			      return S_ERROR;
 			    }
 			}
+		      else
+			{
+			  assert (HEAP_ISVALID_OID (isidp->curr_oidp));
+			}
 		    }
 		}
 	    }
@@ -6043,12 +6057,18 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
+      assert (scan_id->position == S_ON);
+
       scan_id->stats.key_qualified_rows++;
 
       /* get pages for read */
       if (!SCAN_IS_INDEX_COVERED (isidp))
 	{
 	  mnt_bt_noncovered (thread_p);
+
+	  assert (isidp->curr_oidno >= 0);
+	  assert (isidp->curr_oidp != NULL);
+	  assert (HEAP_ISVALID_OID (isidp->curr_oidp));
 
 	  if (thread_is_on_trace (thread_p))
 	    {
@@ -6155,6 +6175,10 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   char *class_name_p;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   OID updated_oid;
+
+  assert (scan_id != NULL);
+  assert (isidp != NULL);
+  assert (isidp->curr_oidp != NULL && !OID_ISNULL (isidp->curr_oidp));
 
   if (scan_id->fixed == false)
     {

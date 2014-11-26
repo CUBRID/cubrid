@@ -20522,6 +20522,7 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
   int ret = NO_ERROR;
   BTREE_NODE_HEADER *header = NULL;
   BTREE_NODE_TYPE node_type;
+  RECDES rec;
 
   if (BTS->use_desc_index)
     {
@@ -20583,9 +20584,29 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
     }
   else
     {
-      BTS->oid_pos = 0;
+      /* Key may be fence and fences must be filtered out. */
+      if (spage_get_record (BTS->C_page, BTS->slot_id, &rec, PEEK) !=
+	  S_SUCCESS)
+	{
+	  assert (false);
+	  goto exit_on_error;
+	}
+      assert (rec.length % 4 == 0);
 
-      assert_release (BTS->slot_id <= key_cnt);
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	{
+	  /* Filter out fence key. */
+	  ret = btree_find_next_index_record (thread_p, BTS);
+	  if (ret != NO_ERROR)
+	    {
+	      return ret;
+	    }
+	}
+      else
+	{
+	  BTS->oid_pos = 0;
+	  assert_release (BTS->slot_id <= key_cnt);
+	}
     }
 
   return ret;
@@ -30139,6 +30160,8 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	  return ER_FAILED;
 	}
       assert (btrs_helper->rec.length % 4 == 0);
+      assert (!btree_leaf_is_flaged (&btrs_helper->rec,
+				     BTREE_LEAF_RECORD_FENCE));
       btrs_helper->node_type = BTREE_LEAF_NODE;
 
       if (bts->oid_pos > 0)
@@ -30323,6 +30346,7 @@ btree_handle_current_oid (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   assert (bts != NULL);
   assert (btrs_helper != NULL);
   assert (which_action != NULL);
+  assert (inst_oid != NULL && HEAP_ISVALID_OID (inst_oid) == DISK_VALID);
 
   *which_action = BTREE_CONTINUE;
 

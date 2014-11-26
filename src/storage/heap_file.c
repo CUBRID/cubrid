@@ -112,33 +112,17 @@ static int rv;
 
 #define HEAP_DEBUG_SCANCACHE_INITPATTERN (12345)
 
-#define HEAP_ISJUNK_OID(oid) \
-  ((oid)->slotid == HEAP_HEADER_AND_CHAIN_SLOTID || \
-   (oid)->slotid < 0 || (oid)->volid < 0 || (oid)->pageid < 0)
-
 #if defined(CUBRID_DEBUG)
-#define HEAP_ISVALID_OID(oid) \
-  (HEAP_ISJUNK_OID(oid)       \
-   ? DISK_INVALID             \
-   : disk_isvalid_page((oid)->volid, (oid)->pageid))
-
 #define HEAP_DEBUG_ISVALID_SCANRANGE(scan_range) \
   heap_scanrange_isvalid(scan_range)
-
 #else /* CUBRID_DEBUG */
-#define HEAP_ISVALID_OID(oid) \
-  (HEAP_ISJUNK_OID(oid)       \
-   ? DISK_INVALID             \
-   : DISK_VALID)
+#define HEAP_DEBUG_ISVALID_SCANRANGE(scan_range) (DISK_VALID)
+#endif /* !CUBRID_DEBUG */
 
 #define HEAP_IS_PAGE_OF_OID(pgptr, oid) \
   (((pgptr) != NULL) \
    && pgbuf_get_volume_id (pgptr) == (oid)->volid \
    && pgbuf_get_page_id (pgptr) == (oid)->pageid)
-
-#define HEAP_DEBUG_ISVALID_SCANRANGE(scan_range) (DISK_VALID)
-
-#endif /* !CUBRID_DEBUG */
 
 #define HEAP_SET_RELOCATE_DELETE_INFO(mvcc_relocate_delete, datasource_oid_p, \
 				      next_version_p) \

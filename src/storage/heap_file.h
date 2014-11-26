@@ -59,6 +59,22 @@
 
 #define HEAP_MAX_ALIGN INT_ALIGNMENT	/* maximum alignment for heap record */
 
+#define HEAP_ISJUNK_OID(oid) \
+  ((oid)->slotid == HEAP_HEADER_AND_CHAIN_SLOTID || \
+   (oid)->slotid < 0 || (oid)->volid < 0 || (oid)->pageid < 0)
+
+#if defined (NDEBUG)
+#define HEAP_ISVALID_OID(oid) \
+  (HEAP_ISJUNK_OID(oid)       \
+   ? DISK_INVALID             \
+   : DISK_VALID)
+#else
+#define HEAP_ISVALID_OID(oid) \
+  (HEAP_ISJUNK_OID(oid)       \
+   ? DISK_INVALID             \
+   : disk_isvalid_page (NULL, (oid)->volid, (oid)->pageid))
+#endif
+
 /*
  * Heap scan structures
  */
