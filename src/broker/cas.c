@@ -333,7 +333,7 @@ static const char *server_func_name[] = {
 static T_REQ_INFO req_info;
 #ifndef LIBCAS_FOR_JSP
 static SOCKET srv_sock_fd;
-static int cas_req_count = 1;
+static int cas_req_count = 0;
 #endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
@@ -1611,6 +1611,37 @@ cas_free (bool free_srv_handle)
     {
       hm_srv_handle_free_all (true);
     }
+#if defined(WINDOWS)
+  if (shm_appl->use_pdh_flag)
+    {
+      if ((as_info->pid == as_info->pdh_pid)
+	  && (as_info->pdh_workset > shm_appl->appl_server_max_size))
+	{
+	  cas_log_write_and_end (0, true,
+				 "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+				 as_info->pdh_workset / ONE_K,
+				 shm_appl->appl_server_max_size / ONE_K);
+	}
+
+      if ((as_info->pid == as_info->pdh_pid)
+	  && (as_info->pdh_workset > shm_appl->appl_server_hard_limit))
+	{
+	  cas_log_write_and_end (0, true,
+				 "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				 as_info->pdh_workset / ONE_K,
+				 shm_appl->appl_server_hard_limit / ONE_K);
+	}
+    }
+  else
+    {
+      if (cas_req_count > 500)
+	{
+	  cas_log_write_and_end (0, true,
+				 "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)",
+				 cas_req_count, 500);
+	}
+    }
+#else /* WINDOWS */
 #if defined(AIX)
   /* In linux, getsize() returns VSM(55M). but in AIX, getsize() returns
    * vritual meory size for data(900K). so, the size of cub_cas process exceeds
@@ -1637,6 +1668,7 @@ cas_free (bool free_srv_handle)
 			     as_info->psize / ONE_K,
 			     shm_appl->appl_server_hard_limit / ONE_K);
     }
+#endif /* !WINDOWS */
 
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
@@ -2731,7 +2763,7 @@ restart_is_needed (void)
     }
   else
     {
-      if (cas_req_count % 500 == 0)
+      if (cas_req_count > 500)
 	return 1;
       else
 	return 0;
