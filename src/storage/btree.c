@@ -16429,7 +16429,7 @@ btree_compress_records (THREAD_ENTRY * thread_p, BTID_INT * btid,
   int offset, new_offset;
   int key_type = BTREE_NORMAL_KEY;
   LEAF_REC leaf_pnt;
-  int error;
+  int error = NO_ERROR;
 
   assert (rec != NULL);
   assert (key_cnt >= 2);
@@ -16505,7 +16505,7 @@ btree_compress_records (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	}
     }
 
-  return diff_column;
+  return error;
 }
 
 static int
