@@ -64,4 +64,8 @@ public class CUBRIDTimetz extends Time {
 			return super.toString() + " " + timezone;
 		}
 	}
+
+	public String getTimezone() {
+		return timezone;
+	}
 }

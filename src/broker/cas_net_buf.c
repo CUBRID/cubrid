@@ -601,8 +601,9 @@ net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz, int *tz_size,
   net_arg_get_time (hh, mm, ss, arg);
 
   memcpy (&tmp_i, cur_p, NET_SIZE_INT);
-  *tz_size = ntohl (tmp_i) - NET_SIZE_TIME;
-  cur_p += NET_SIZE_INT + NET_SIZE_TIME;
+  /* skip dummy Y,M,D, milisecond values */
+  *tz_size = ntohl (tmp_i) - NET_SIZE_TIME - 4 * NET_SIZE_SHORT;
+  cur_p += NET_SIZE_INT + NET_SIZE_TIME + 4 * NET_SIZE_SHORT;
 
   *tz = cur_p;
 }
@@ -645,8 +646,9 @@ net_arg_get_timestamptz (short *yr, short *mon, short *day, short *hh,
   net_arg_get_timestamp (yr, mon, day, hh, mm, ss, arg);
 
   memcpy (&tmp_i, cur_p, NET_SIZE_INT);
-  *tz_size = ntohl (tmp_i) - NET_SIZE_TIMESTAMP;
-  cur_p += NET_SIZE_INT + NET_SIZE_TIMESTAMP;
+  /* skip dummy milisecond values */
+  *tz_size = ntohl (tmp_i) - NET_SIZE_TIMESTAMP - NET_SIZE_SHORT;
+  cur_p += NET_SIZE_INT + NET_SIZE_TIMESTAMP + NET_SIZE_SHORT;
 
   *tz = cur_p;
 }

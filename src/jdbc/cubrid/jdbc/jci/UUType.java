@@ -45,6 +45,8 @@ import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
+import cubrid.sql.CUBRIDTimetz;
+import cubrid.sql.CUBRIDTimestamptz;
 
 /**
  * CUBRID Data Type을 정의해 놓은 class이다.
@@ -167,9 +169,16 @@ abstract public class UUType {
 			return UUType.U_TYPE_NUMERIC;
 		else if (value instanceof Date)
 			return UUType.U_TYPE_DATE;
+		else if (value instanceof CUBRIDTimetz)
+			return UUType.U_TYPE_TIMETZ;
 		else if (value instanceof Time)
 			return UUType.U_TYPE_TIME;
-		else if (value instanceof Timestamp) {
+		else if (value instanceof CUBRIDTimestamptz) {
+			if (CUBRIDTimestamp.isTimestampType((Timestamp) value)) {
+				return UUType.U_TYPE_TIMESTAMPTZ;
+			}
+			return UUType.U_TYPE_DATETIMETZ;
+		} else if (value instanceof Timestamp) {
 			if (CUBRIDTimestamp.isTimestampType((Timestamp) value)) {
 				return UUType.U_TYPE_TIMESTAMP;
 			}

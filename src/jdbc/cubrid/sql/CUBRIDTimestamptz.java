@@ -70,4 +70,8 @@ public class CUBRIDTimestamptz extends CUBRIDTimestamp {
 			return super.toString() + " " + timezone;
 		}
 	}
+
+	public String getTimezone() {
+		return timezone;
+	}
 }

@@ -50,6 +50,8 @@ import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDLobHandle;
 import cubrid.jdbc.util.ByteArrayBuffer;
 import cubrid.sql.CUBRIDOID;
+import cubrid.sql.CUBRIDTimetz;
+import cubrid.sql.CUBRIDTimestamptz;
 
 class UOutputBuffer {
 	private UConnection u_con;
@@ -174,6 +176,20 @@ class UOutputBuffer {
 		return 18;
 	}
 
+	int addTimetz(CUBRIDTimetz value) throws IOException {
+		int timezone_len;
+		String timezone_str;
+
+		timezone_str = value.getTimezone();
+		timezone_len = timezone_str.length();
+
+		dataBuffer.writeInt(14 + timezone_len);
+		writeTime(value);
+		dataBuffer.write(timezone_str.getBytes(), 0, timezone_len);
+
+		return 4 + 14 + timezone_len;
+	}
+
 	private void writeTime(Time date) throws IOException {
 		c.setTime(date);
 		dataBuffer.writeShort((short) 0);
@@ -185,10 +201,25 @@ class UOutputBuffer {
 		dataBuffer.writeShort((short) 0);
 	}
 
+
 	int addTimestamp(Timestamp value) throws IOException {
 		dataBuffer.writeInt(14);
 		writeTimestamp(value, false);
 		return 18;
+	}
+
+	int addTimestamptz(CUBRIDTimestamptz value) throws IOException {
+		int timezone_len;
+		String timezone_str;
+
+		timezone_str = value.getTimezone();
+		timezone_len = timezone_str.length();
+
+		dataBuffer.writeInt(14 + timezone_len);
+		writeTimestamp(value, false);
+		dataBuffer.write(timezone_str.getBytes(), 0, timezone_len);
+
+		return 4 + 14 + timezone_len;
 	}
 
 	private void writeTimestamp(Timestamp date, boolean withMili)
@@ -211,6 +242,20 @@ class UOutputBuffer {
 		dataBuffer.writeInt(14);
 		writeTimestamp(value, true);
 		return 18;
+	}
+
+	int addDatetimetz(CUBRIDTimestamptz value) throws IOException {
+		int timezone_len;
+		String timezone_str;
+
+		timezone_str = value.getTimezone();
+		timezone_len = timezone_str.length();
+
+		dataBuffer.writeInt(14 + timezone_len);
+		writeTimestamp(value, true);
+		dataBuffer.write(timezone_str.getBytes(), 0, timezone_len);
+
+		return 4 + 14 + timezone_len;
 	}
 
 	int addOID(CUBRIDOID value) throws IOException {
@@ -327,6 +372,14 @@ class UOutputBuffer {
 			} else {
 				return addTime(UGetTypeConvertedValue.getTime(value));
 			}
+
+		case UUType.U_TYPE_TIMETZ:
+			if (value == null) {
+				return addTimetz(UGetTypeConvertedValue.getTimetz(new Timestamp(0)));
+			} else {
+				return addTimetz(UGetTypeConvertedValue.getTimetz(value));
+			}
+
 		case UUType.U_TYPE_TIMESTAMP:
 			if (value == null) {
 				return addTimestamp(UGetTypeConvertedValue
@@ -334,6 +387,15 @@ class UOutputBuffer {
 			} else {
 				return addTimestamp(UGetTypeConvertedValue.getTimestamp(value));
 			}
+
+		case UUType.U_TYPE_TIMESTAMPTZ:
+			if (value == null) {
+				return addTimestamptz(UGetTypeConvertedValue
+				        .getTimestamptz(new Timestamp(0)));
+			} else {
+				return addTimestamptz(UGetTypeConvertedValue.getTimestamptz(value));
+			}
+
 		case UUType.U_TYPE_DATETIME:
 			if (value == null) {
 				return addDatetime(UGetTypeConvertedValue
@@ -341,6 +403,15 @@ class UOutputBuffer {
 			} else {
 				return addDatetime(UGetTypeConvertedValue.getTimestamp(value));
 			}
+
+		case UUType.U_TYPE_DATETIMETZ:
+			if (value == null) {
+				return addDatetimetz(UGetTypeConvertedValue
+				        .getTimestamptz(new Timestamp(0)));
+			} else {
+				return addDatetimetz(UGetTypeConvertedValue.getTimestamptz(value));
+			}
+
 		case UUType.U_TYPE_FLOAT:
 			if (value == null) {
 				return addFloat(UGetTypeConvertedValue.getFloat(0));
@@ -481,8 +552,11 @@ class UOutputBuffer {
 		case UUType.U_TYPE_MONETARY:
 		case UUType.U_TYPE_DATE:
 		case UUType.U_TYPE_TIME:
+		case UUType.U_TYPE_TIMETZ:
 		case UUType.U_TYPE_TIMESTAMP:
+		case UUType.U_TYPE_TIMESTAMPTZ:
 		case UUType.U_TYPE_DATETIME:
+		case UUType.U_TYPE_DATETIMETZ:
 		case UUType.U_TYPE_OBJECT:
 		case UUType.U_TYPE_BLOB:
 		case UUType.U_TYPE_CLOB:
