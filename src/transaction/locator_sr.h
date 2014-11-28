@@ -50,16 +50,12 @@ enum
 
 extern bool locator_Dont_check_foreign_key;
 
-extern EHID *locator_initialize (THREAD_ENTRY * thread_p,
-				 EHID * classname_table);
+extern int locator_initialize (THREAD_ENTRY * thread_p);
 extern void locator_finalize (THREAD_ENTRY * thread_p);
-extern int
-locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p,
-					   int tran_index,
-					   LOG_LSA * savep_lsa);
+extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p,
+						      LOG_LSA * savep_lsa);
 extern int locator_savepoint_transient_class_name_entries (THREAD_ENTRY *
 							   thread_p,
-							   int tran_index,
 							   LOG_LSA *
 							   savep_lsa);
 extern DISK_ISVALID locator_check_class_names (THREAD_ENTRY * thread_p);

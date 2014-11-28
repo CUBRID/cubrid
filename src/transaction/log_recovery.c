@@ -793,6 +793,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   bool did_incom_recovery;
   int tran_index;
   INT64 num_redo_log_records;
+  int error_code = NO_ERROR;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
@@ -805,7 +806,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery:LOG_FIND_TDES");
       return;
     }
 
@@ -819,7 +821,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
        */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_LOG_CORRUPTED_DB_DUE_CRASH_NOLOGGING, 0);
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery:LOG_HAS_LOGGING_BEEN_IGNORED");
       log_Gl.hdr.has_logging_been_skipped = false;
     }
 
@@ -868,7 +871,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
   if (logpb_fetch_start_append_page (thread_p) == NULL)
     {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery:logpb_fetch_start_append_page");
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_LOG_RECOVERY_FINISHED, 0);
       return;
@@ -953,6 +957,18 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   (void) fileio_synchronize_all (thread_p, false);
 
   logpb_flush_header (thread_p);
+
+  /* re-cache Tracker */
+  error_code = locator_initialize (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery:locator_initialize");
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_RECOVERY_FINISHED, 0);
+      return;
+    }
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED,
 	  0);

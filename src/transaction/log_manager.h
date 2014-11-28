@@ -214,12 +214,10 @@ extern void log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p,
 extern void log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 						LOG_TDES * tdes);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
+					   const char *classname,
 					   const OID * class_oid);
 extern bool log_is_class_being_modified (THREAD_ENTRY * thread_p,
 					 const OID * class_oid);
-extern void log_increase_num_transient_classnames (int tran_index);
-extern void log_decrease_num_transient_classnames (int tran_index);
-extern int log_get_num_transient_classnames (int tran_index);
 extern TRAN_STATE log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				    bool retain_lock);
 extern TRAN_STATE log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes);

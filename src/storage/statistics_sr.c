@@ -138,6 +138,15 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 #endif
 
   class_name = heap_get_class_name (thread_p, class_id_p);
+  if (class_name == NULL)
+    {
+      /* something wrong. give up.
+       */
+      assert (false);
+      assert (error_code == NO_ERROR);
+
+      return error_code;
+    }
 
   /* before go further, we should get the lock to disable updating schema */
   lk_grant_code = lock_object (thread_p, class_id_p, oid_Root_class_oid,

@@ -6529,8 +6529,16 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
       && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
+      char *classname;
 
-      if (log_add_to_modified_class_list (thread_p, oid) != NO_ERROR)
+      classname = heap_get_class_name (thread_p, oid);
+      if (classname == NULL)
+	{
+	  return NULL;
+	}
+
+      if (log_add_to_modified_class_list (thread_p, classname, oid) !=
+	  NO_ERROR)
 	{
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -7946,7 +7954,16 @@ try_again:
   if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
       && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
-      if (log_add_to_modified_class_list (thread_p, oid) != NO_ERROR)
+      char *classname = NULL;
+
+      classname = heap_get_class_name (thread_p, oid);
+      if (classname == NULL)
+	{
+	  goto error;
+	}
+
+      if (log_add_to_modified_class_list (thread_p, classname, oid) !=
+	  NO_ERROR)
 	{
 	  goto error;
 	}
@@ -8060,8 +8077,16 @@ heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
   if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
       && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
+      char *classname = NULL;
 
-      if (log_add_to_modified_class_list (thread_p, oid) != NO_ERROR)
+      classname = heap_get_class_name (thread_p, oid);
+      if (classname == NULL)
+	{
+	  return NULL;
+	}
+
+      if (log_add_to_modified_class_list (thread_p, classname, oid) !=
+	  NO_ERROR)
 	{
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -23455,7 +23480,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor,
   FILE_HEAP_DES hfdes;
   HEAP_CACHE_ATTRINFO attr_info;
   OR_CLASSREP *repr = NULL;
-  char *class_name = NULL;
+  char *classname = NULL;
   char class_oid_str[64] = { 0 };
   bool is_heap_attrinfo_started = false;
   INT64 num_recs = 0;
@@ -23517,8 +23542,8 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor,
       goto cleanup;
     }
 
-  class_name = heap_get_class_name (thread_p, &hfdes.class_oid);
-  if (class_name == NULL)
+  classname = heap_get_class_name (thread_p, &hfdes.class_oid);
+  if (classname == NULL)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -23527,7 +23552,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor,
 
   idx = 0;
 
-  error = db_make_string_copy (out_values[idx], class_name);
+  error = db_make_string_copy (out_values[idx], classname);
   idx++;
   if (error != NO_ERROR)
     {
@@ -23602,9 +23627,9 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor,
 
 cleanup:
 
-  if (class_name != NULL)
+  if (classname != NULL)
     {
-      free_and_init (class_name);
+      free_and_init (classname);
     }
 
   if (is_heap_attrinfo_started)

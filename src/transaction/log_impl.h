@@ -724,9 +724,10 @@ struct log_topops_stack
 typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
 struct modified_class_entry
 {
-  MODIFIED_CLASS_ENTRY *next;
-  OID class_oid;
-  LOG_LSA last_modified_lsa;
+  MODIFIED_CLASS_ENTRY *m_next;
+  const char *m_classname;	/* Name of the modified class */
+  OID m_class_oid;
+  LOG_LSA m_last_modified_lsa;
 };
 
 /* there can be following transitions in transient lobs

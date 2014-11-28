@@ -1236,6 +1236,8 @@ mht_dump (FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
 	}
     }
 
+  fprintf (out_fp, "\n");
+
   return (cont);
 }
 
@@ -1253,7 +1255,8 @@ mht_get (MHT_TABLE * ht, const void *key)
   unsigned int hash;
   HENTRY_PTR hentry;
 
-  assert (ht != NULL && key != NULL);
+  assert (ht != NULL);
+  assert (key != NULL);
 
   /*
    * Hash the key and make sure that the return value is between 0 and size
@@ -1417,10 +1420,10 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data,
 	  if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
 	    {
 	      if (opt & MHT_OPT_INSERT_IF_NOT_EXISTS)
-	        {
-	          /* Return data for this option */
-	      	  return hentry->data;
-	        }
+		{
+		  /* Return data for this option */
+		  return hentry->data;
+		}
 
 	      /* Replace the old data with the new one */
 	      if (!(opt & MHT_OPT_KEEP_KEY))

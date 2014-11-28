@@ -120,7 +120,9 @@ struct boot_dbparm
   HFID hfid;			/* Heap file where this information is stored.
 				 * It is only used for validation purposes */
   HFID rootclass_hfid;		/* Heap file where classes are stored */
+#if 1				/* TODO - not used */
   EHID classname_table;		/* The hash file of class names */
+#endif
   CTID ctid;			/* The catalog file */
   VFID query_vfid;		/* Query file */
   char rootclass_name[10];	/* Name of the root class */
@@ -3626,7 +3628,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    * classes
    */
 
-  if (locator_initialize (thread_p, &boot_Db_parm->classname_table) == NULL)
+  error_code = locator_initialize (thread_p);
+  if (error_code != NO_ERROR)
     {
       fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
@@ -5994,7 +5997,9 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   boot_Db_parm->trk_vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->hfid.vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->rootclass_hfid.vfid.volid = LOG_DBFIRST_VOLID;
+#if 1				/* TODO */
   boot_Db_parm->classname_table.vfid.volid = LOG_DBFIRST_VOLID;
+#endif
   boot_Db_parm->ctid.vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->ctid.xhid.vfid.volid = LOG_DBFIRST_VOLID;
 
@@ -6034,11 +6039,13 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
+#if 1				/* TODO */
   if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING,
 		     -1, &boot_Db_parm->rootclass_oid, -1, false) == NULL)
     {
       goto error;
     }
+#endif
 
   if (catalog_create (thread_p, &boot_Db_parm->ctid, -1, -1) == NULL)
     {
@@ -6126,7 +6133,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 	}
     }
 
-  if (locator_initialize (thread_p, &boot_Db_parm->classname_table) == NULL)
+  error_code = locator_initialize (thread_p);
+  if (error_code != NO_ERROR)
     {
       goto error;
     }
@@ -6307,8 +6315,9 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
 	{
 	  goto error_rem_allvols;
 	}
-      if (locator_initialize (thread_p, &boot_Db_parm->classname_table) ==
-	  NULL)
+
+      error_code = locator_initialize (thread_p);
+      if (error_code != NO_ERROR)
 	{
 	  goto error_rem_allvols;
 	}
@@ -6541,7 +6550,8 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
    * classes
    */
 
-  if (locator_initialize (thread_p, &boot_Db_parm->classname_table) == NULL)
+  error_code = locator_initialize (thread_p);
+  if (error_code != NO_ERROR)
     {
       fileio_dismount_all (thread_p);
       return ER_FAILED;

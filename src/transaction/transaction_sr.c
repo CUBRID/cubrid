@@ -80,8 +80,6 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   state = log_commit (thread_p, tran_index, retain_lock);
 
-  (void) locator_drop_transient_class_name_entries (thread_p, tran_index,
-						    NULL);
 #if defined(ENABLE_SYSTEMTAP)
   if (state == TRAN_UNACTIVE_COMMITTED ||
       state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS ||
@@ -150,9 +148,6 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 #endif
 
   state = log_abort (thread_p, tran_index);
-
-  (void) locator_drop_transient_class_name_entries (thread_p, tran_index,
-						    NULL);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_TRAN_ABORT (tran_index, state);
@@ -243,7 +238,6 @@ int
 xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
 {
   LOG_LSA *lsa;
-  int tran_index;
   int error_code = NO_ERROR;
 
   /*
@@ -260,9 +254,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
   else
     {
       LSA_COPY (topop_lsa, lsa);
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       error_code = locator_savepoint_transient_class_name_entries (thread_p,
-								   tran_index,
 								   lsa);
       if (error_code != NO_ERROR)
 	{
@@ -294,7 +286,6 @@ TRAN_STATE
 xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
 			LOG_LSA * topop_lsa)
 {
-  int tran_index;
   TRAN_STATE state;
 
   /*
@@ -308,14 +299,14 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
     case LOG_RESULT_TOPOP_ABORT:
       if (log_get_parent_lsa_system_op (thread_p, topop_lsa) == topop_lsa)
 	{
-	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	  (void) locator_drop_transient_class_name_entries (thread_p,
-							    tran_index,
 							    topop_lsa);
 	}
       if (result == LOG_RESULT_TOPOP_ABORT)
 	{
+	  int tran_index;
 	  LOG_TDES *tdes;
+
 	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	  tdes = LOG_FIND_TDES (tran_index);
 	  if (tdes == NULL)
@@ -366,7 +357,6 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name,
 			LOG_LSA * savept_lsa)
 {
   LOG_LSA *lsa;
-  int tran_index;
   int error_code = NO_ERROR;
 
   /*
@@ -383,10 +373,8 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name,
   else
     {
       LSA_COPY (savept_lsa, lsa);
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      error_code =
-	locator_savepoint_transient_class_name_entries (thread_p, tran_index,
-							lsa);
+      error_code = locator_savepoint_transient_class_name_entries (thread_p,
+								   lsa);
       if (error_code != NO_ERROR)
 	{
 	  LSA_SET_NULL (savept_lsa);
@@ -419,17 +407,9 @@ TRAN_STATE
 xtran_server_partial_abort (THREAD_ENTRY * thread_p, const char *savept_name,
 			    LOG_LSA * savept_lsa)
 {
-  int tran_index;
   TRAN_STATE state;
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   state = log_abort_partial (thread_p, savept_name, savept_lsa);
-
-  if (!LSA_ISNULL (savept_lsa))
-    {
-      (void) locator_drop_transient_class_name_entries (thread_p, tran_index,
-							savept_lsa);
-    }
 
   return state;
 }
@@ -519,9 +499,8 @@ xtran_server_2pc_prepare (THREAD_ENTRY * thread_p)
   /* Make the transient classname entries permanent; If transaction aborted
      after this point, these operations will also be undone, just like
      previous operations of the transaction.  */
-  locator_drop_transient_class_name_entries (thread_p,
-					     LOG_FIND_THREAD_TRAN_INDEX
-					     (thread_p), NULL);
+  (void) locator_drop_transient_class_name_entries (thread_p, NULL);
+
   return log_2pc_prepare (thread_p);
 }
 
@@ -594,15 +573,11 @@ TRAN_STATE
 xtran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
 				      int global_tranid)
 {
-  int tran_index;
-
   /* Make the transient classname entries permanent; If transaction aborted
    * after this point, these operations will also be undone, just like
    * previous operations of the transaction.
    */
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  locator_drop_transient_class_name_entries (thread_p, tran_index, NULL);
+  (void) locator_drop_transient_class_name_entries (thread_p, NULL);
 
   return log_2pc_prepare_global_tran (thread_p, global_tranid);
 }

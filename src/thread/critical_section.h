@@ -49,7 +49,7 @@ enum
   CSECT_ER_MSG_CACHE,		/* Latch for error msg cache */
   CSECT_WFG,			/* Latch for wait-for-graph */
   CSECT_LOG,			/* Latch for log manager */
-  CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for temp classname to classOID entries */
+  CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for classname to classOID entries */
   CSECT_FILE_NEWFILE,		/* Latch related to new file table */
   CSECT_QPROC_QUERY_TABLE,	/* Latch for query manager table */
   CSECT_QPROC_XASL_CACHE,	/* Latch for XASL cache (mht: memory hash table) */

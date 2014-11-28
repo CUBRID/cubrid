@@ -55,7 +55,6 @@ static int class_objects = 0;
 static int total_objects = 0;
 static int failed_objects = 0;
 static RECDES *Diskrec = NULL;
-static LIST_MOPS *class_table;
 
 static int compactdb_start (bool verbose_flag);
 static void process_class (DB_OBJECT * class_, bool verbose_flag);
@@ -149,6 +148,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 static int
 compactdb_start (bool verbose_flag)
 {
+  LIST_MOPS *class_table = NULL;
   int i;
   SM_CLASS *class_ptr;
   HFID *hfid;
@@ -157,10 +157,15 @@ compactdb_start (bool verbose_flag)
   /*
    * Build class name table
    */
-  class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ);
-  if (class_table == NULL)
+
+  if (prm_get_integer_value (PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY) != 2)
     {
-      return 1;
+      class_table = locator_get_all_mops (sm_Root_class_mop,
+					  DB_FETCH_QUERY_READ);
+      if (class_table == NULL)
+	{
+	  return 1;		/* error */
+	}
     }
 
   if (prm_get_integer_value (PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY) == 1)
