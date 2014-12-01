@@ -276,10 +276,10 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
  *                  started.
  *
  * NOTE:Finish the latest nested top macro operation by either
- *              committing, aborting, or attaching to outter parent.
+ *              aborting or attaching to outter parent.
  *
  *      Note that a top operation is not associated with the current
- *              transaction, thus, it can be committed and/or aborted
+ *              transaction, thus, it can be aborted
  *              independently of the transaction.
  */
 TRAN_STATE
@@ -287,6 +287,9 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
 			LOG_LSA * topop_lsa)
 {
   TRAN_STATE state;
+
+  assert (result == LOG_RESULT_TOPOP_ABORT
+	  || result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 
   /*
    * Execute some few remaining actions before the start top nested action is

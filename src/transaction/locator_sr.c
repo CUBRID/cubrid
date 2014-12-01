@@ -10208,7 +10208,6 @@ locator_repair_btree_by_insert (THREAD_ENTRY * thread_p, OID * class_oid,
 				BTID * btid, DB_VALUE * key, OID * inst_oid)
 {
   DISK_ISVALID isvalid = DISK_INVALID;
-  LOG_LSA lsa;
 #if defined(SERVER_MODE)
   int tran_index;
 
@@ -10221,19 +10220,18 @@ locator_repair_btree_by_insert (THREAD_ENTRY * thread_p, OID * class_oid,
       return DISK_INVALID;
     }
 
-  if (xtran_server_start_topop (thread_p, &lsa) == NO_ERROR)
+  log_start_system_op (thread_p);
+
+  if (btree_perform_insert (thread_p, btid, key,
+			    class_oid, inst_oid, SINGLE_ROW_INSERT, NULL,
+			    NULL, NULL /* TO DO */ ) != NULL)
     {
-      if (btree_perform_insert (thread_p, btid, key,
-				class_oid, inst_oid, SINGLE_ROW_INSERT, NULL,
-				NULL, NULL /* TO DO */ ) != NULL)
-	{
-	  isvalid = DISK_VALID;
-	  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_COMMIT, &lsa);
-	}
-      else
-	{
-	  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
-	}
+      isvalid = DISK_VALID;
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+    }
+  else
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
     }
 
 #if defined(SERVER_MODE)
@@ -10251,7 +10249,6 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
   DB_VALUE key;
   bool clear_key = false;
   int dummy_unique;
-  LOG_LSA lsa;
   DISK_ISVALID isvalid = DISK_INVALID;
   /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery issue regarding
    *       MVCCID. Must find a solution to recover MVCC info on rollback
@@ -10273,30 +10270,28 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
   if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK)
       == LK_GRANTED)
     {
-      if (xtran_server_start_topop (thread_p, &lsa) == NO_ERROR)
+      log_start_system_op (thread_p);
+
+      if (mvcc_Enabled)
 	{
-	  if (mvcc_Enabled)
-	    {
-	      /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery
-	       *       issue regarding MVCCID. Must find a solution to recover
-	       *       MVCC info on rollback (otherwise we will have
-	       *       inconsistencies regarding visibility).
-	       */
-	      /* mvcc_args_p = &mvcc_args;
-	         mvcc_args_p->purpose = MVCC_BTREE_DELETE_OBJECT; */
-	    }
-	  if (btree_delete (thread_p, btid, &key, class_oid, inst_oid,
-			    locked_keys, &dummy_unique, SINGLE_ROW_DELETE,
-			    NULL, NULL /* mvcc_args_p */ ) != NULL)
-	    {
-	      isvalid = DISK_VALID;
-	      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_COMMIT,
-				      &lsa);
-	    }
-	  else
-	    {
-	      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
-	    }
+	  /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery
+	   *       issue regarding MVCCID. Must find a solution to recover
+	   *       MVCC info on rollback (otherwise we will have
+	   *       inconsistencies regarding visibility).
+	   */
+	  /* mvcc_args_p = &mvcc_args;
+	     mvcc_args_p->purpose = MVCC_BTREE_DELETE_OBJECT; */
+	}
+      if (btree_delete (thread_p, btid, &key, class_oid, inst_oid,
+			locked_keys, &dummy_unique, SINGLE_ROW_DELETE,
+			NULL, NULL /* mvcc_args_p */ ) != NULL)
+	{
+	  isvalid = DISK_VALID;
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	}
+      else
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	}
 
 #if defined(SERVER_MODE)

@@ -13739,7 +13739,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   REGU_VARLIST_LIST outptr;
   REGU_VARIABLE *varptr;
   DB_VALUE *rightvalp, *thirdvalp;
-  LOG_LSA lsa;
   CL_ATTR_ID attrid;
   int n_increment;
   int savepoint_used = 0;
@@ -13790,11 +13789,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   /* in this function,
      several instances can be updated, so it need to be atomic */
-  if (xtran_server_start_topop (thread_p, &lsa) != NO_ERROR)
-    {
-      qexec_failure_line (__LINE__, xasl_state);
-      return ER_FAILED;
-    }
+  log_start_system_op (thread_p);
   savepoint_used = 1;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -14058,20 +14053,11 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       if (lock_is_instant_lock_mode (tran_index))
 	{
-	  if (xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_COMMIT, &lsa)
-	      != TRAN_UNACTIVE_COMMITTED)
-	    {
-	      goto exit_on_error;
-	    }
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 	}
       else
 	{
-	  if (xtran_server_end_topop
-	      (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
-	       &lsa) != TRAN_ACTIVE)
-	    {
-	      goto exit_on_error;
-	    }
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 	}
     }
 
@@ -14112,7 +14098,7 @@ exit_on_error:
 
   if (savepoint_used)
     {
-      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
     }
 
   /* clear some kinds of error code; it's click counter! */

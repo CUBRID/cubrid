@@ -850,7 +850,6 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
   LOG_DATA_ADDR addr;
   int ret;
   int sp_success;
-  LOG_LSA lsa;
   int tran_index;
   LOCK lock_mode = NULL_LOCK;
 
@@ -872,11 +871,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
    */
   if (lock_mode != X_LOCK)
     {
-      ret = xtran_server_start_topop (thread_p, &lsa);
-      if (ret != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      log_start_system_op (thread_p);
     }
 
   if (lock_mode != X_LOCK
@@ -940,11 +935,9 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 	}
     }
 
-  if (lock_mode != X_LOCK
-      && xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_COMMIT, &lsa)
-      != TRAN_UNACTIVE_COMMITTED)
+  if (lock_mode != X_LOCK)
     {
-      return ER_FAILED;
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
     }
 
   return NO_ERROR;
@@ -953,7 +946,7 @@ exit_on_error:
 
   if (lock_mode != X_LOCK)
     {
-      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
     }
 
   return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
