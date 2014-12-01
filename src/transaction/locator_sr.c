@@ -1008,7 +1008,49 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
   assert (strlen (oldname) < 255);
   assert (newname != NULL);
   assert (strlen (newname) < 255);
+  assert (!OID_ISNULL (class_oid));
 
+  renamed = LC_CLASSNAME_RESERVED;	/* init */
+
+  /* Make it sure there's no existing class which has new class name
+   */
+  if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE,
+			     INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return LC_CLASSNAME_ERROR;
+    }
+
+  entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames,
+					       newname);
+  if (entry != NULL)
+    {
+      if (entry->e_current.action == LC_CLASSNAME_EXIST)
+	{
+	  assert (!OID_ISNULL (&entry->e_current.oid));
+	  renamed = LC_CLASSNAME_ERROR;
+	}
+      else if (entry->e_current.action == LC_CLASSNAME_RESERVED
+	       || entry->e_current.action == LC_CLASSNAME_RESERVED_RENAME)
+	{
+	  if (!LSA_ISNULL (&entry->e_current.savep_lsa))
+	    {
+	      renamed = LC_CLASSNAME_ERROR;
+	    }
+	}
+    }
+
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
+  if (renamed != LC_CLASSNAME_RESERVED)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST,
+	      1, newname);
+      return renamed;
+    }
+
+  /* do reserve with new class name
+   */
   renamed = xlocator_reserve_class_name (thread_p, newname, class_oid);
   if (renamed != LC_CLASSNAME_RESERVED)
     {
