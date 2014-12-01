@@ -11816,7 +11816,10 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
   oid_is_valid = HEAP_ISVALID_OID (oid);
   if (oid_is_valid != DISK_VALID)
     {
-      assert (false);
+      /* oid_is_valid == DISK_INVALID or (DISK_ERROR and !ER_INTERRUPTED)
+       * are not expected here.
+       */
+      assert (oid_is_valid == DISK_ERROR && er_errid () == ER_INTERRUPTED);
       if (oid_is_valid != DISK_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
