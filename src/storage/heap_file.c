@@ -11809,19 +11809,15 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
 
   assert (oid != NULL);
   assert (forward_oid != NULL);
-  assert (forward_page != NULL);
   assert (home_page != NULL);
   assert (forward_page != NULL);
 
   oid_is_valid = HEAP_ISVALID_OID (oid);
   if (oid_is_valid != DISK_VALID)
     {
-      /* oid_is_valid == DISK_INVALID or (DISK_ERROR and !ER_INTERRUPTED)
-       * are not expected here.
-       */
-      assert (oid_is_valid == DISK_ERROR && er_errid () == ER_INTERRUPTED);
       if (oid_is_valid != DISK_ERROR)
 	{
+	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
 		  oid->volid, oid->pageid, oid->slotid);
 	}

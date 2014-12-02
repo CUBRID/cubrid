@@ -30353,7 +30353,7 @@ btree_handle_current_oid (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   assert (bts != NULL);
   assert (btrs_helper != NULL);
   assert (which_action != NULL);
-  assert (inst_oid != NULL && HEAP_ISVALID_OID (inst_oid) == DISK_VALID);
+  assert (inst_oid != NULL && HEAP_ISVALID_OID (inst_oid) != DISK_INVALID);
 
   *which_action = BTREE_CONTINUE;
 
