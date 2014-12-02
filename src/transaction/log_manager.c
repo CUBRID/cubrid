@@ -206,10 +206,10 @@ static bool log_No_logging = false;
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid,
 				   const INT64 * log_dbcreation);
-static void log_create_internal (THREAD_ENTRY * thread_p,
-				 const char *db_fullname, const char *logpath,
-				 const char *prefix_logname, DKNPAGES npages,
-				 INT64 * db_creation);
+static int log_create_internal (THREAD_ENTRY * thread_p,
+				const char *db_fullname, const char *logpath,
+				const char *prefix_logname, DKNPAGES npages,
+				INT64 * db_creation);
 static int log_initialize_internal (THREAD_ENTRY * thread_p,
 				    const char *db_fullname,
 				    const char *logpath,
@@ -852,7 +852,7 @@ log_get_num_pages_for_creation (int db_npages)
 /*
  * log_create - create the active portion of the log
  *
- * return: nothing
+ * return: 
  *
  *   db_fullname(in): Full name of the database
  *   logpath(in): Directory where the log volumes reside
@@ -878,15 +878,22 @@ int
 log_create (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    const char *logpath, const char *prefix_logname, DKNPAGES npages)
 {
+  int error_code = NO_ERROR;
   INT64 db_creation;
 
   db_creation = time (NULL);
   if (db_creation == -1)
     {
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      return error_code;
     }
-  log_create_internal (thread_p, db_fullname, logpath, prefix_logname, npages,
-		       &db_creation);
+
+  error_code = log_create_internal (thread_p, db_fullname, logpath,
+				    prefix_logname, npages, &db_creation);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   return NO_ERROR;
 }
@@ -904,7 +911,7 @@ log_create (THREAD_ENTRY * thread_p, const char *db_fullname,
  *
  * NOTE:
  */
-static void
+static int
 log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 		     const char *logpath, const char *prefix_logname,
 		     DKNPAGES npages, INT64 * db_creation)
@@ -929,14 +936,16 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   (void) umask (S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
   /* Initialize the log buffer pool and the log names */
-  if (logpb_initialize_pool (thread_p) != NO_ERROR)
+  error_code = logpb_initialize_pool (thread_p);
+  if (error_code != NO_ERROR)
     {
-      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_create");
+      goto error;
     }
-  if (logpb_initialize_log_names (thread_p, db_fullname, logpath,
-				  prefix_logname) != NO_ERROR)
+  error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath,
+					   prefix_logname);
+  if (error_code != NO_ERROR)
     {
-      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_create");
+      goto error;
     }
 
   logpb_decache_archive_info (thread_p);
@@ -944,13 +953,12 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
   /* Initialize the log header */
-  if (logpb_initialize_header (thread_p, &log_Gl.hdr, prefix_logname, npages,
-			       db_creation) != NO_ERROR)
+  error_code =
+    logpb_initialize_header (thread_p, &log_Gl.hdr, prefix_logname, npages,
+			     db_creation);
+  if (error_code != NO_ERROR)
     {
-      logpb_finalize_pool ();
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_create");
-      LOG_CS_EXIT (thread_p);
-      return;
+      goto error;
     }
 
   loghdr_pgptr = logpb_create_header_page (thread_p);
@@ -967,11 +975,9 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
       || logpb_fetch_start_append_page (thread_p) == NULL
       || loghdr_pgptr == NULL)
     {
-      logpb_finalize_pool ();
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_create");
-      LOG_CS_EXIT (thread_p);
-      return;
+      goto error;
     }
+
   LSA_SET_NULL (&log_Gl.append.prev_lsa);
   /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
   LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
@@ -1006,9 +1012,10 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   }
 #endif /* CUBRID_DEBUG */
 
-  if (logpb_flush_page (thread_p, loghdr_pgptr, DONT_FREE) != NO_ERROR)
+  error_code = logpb_flush_page (thread_p, loghdr_pgptr, DONT_FREE);
+  if (error_code != NO_ERROR)
     {
-      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_create");
+      goto error;
     }
 #if defined(CUBRID_DEBUG)
   {
@@ -1037,10 +1044,10 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   fileio_dismount (thread_p, log_Gl.append.vdes);
 
-  if (logpb_create_volume_info (NULL) != NO_ERROR)
+  error_code = logpb_create_volume_info (NULL);
+  if (error_code != NO_ERROR)
     {
-      logpb_finalize_pool ();
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_create");
+      goto error;
     }
 
   /* Create the information file to append log info stuff to the DBA */
@@ -1067,14 +1074,20 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
       if (volid1 != LOG_DBLOG_BKUPINFO_VOLID
 	  || volid2 != LOG_DBLOG_ACTIVE_VOLID)
 	{
-	  logpb_finalize_pool ();
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_create");
+	  goto error;
 	}
     }
 
   logpb_finalize_pool ();
-
   LOG_CS_EXIT (thread_p);
+
+  return NO_ERROR;
+
+error:
+  logpb_finalize_pool ();
+  LOG_CS_EXIT (thread_p);
+
+  return (error_code == NO_ERROR) ? ER_FAILED : error_code;
 }
 
 /*
@@ -10982,7 +10995,7 @@ error:
 /*
  * log_recreate - RECREATE THE LOG WITHOUT REMOVING THE DATABASE
  *
- * return: nothing
+ * return: 
  *
  *   db_fullname(in): Full name of the database
  *   logpath(in): Directory where the log volumes reside
@@ -11019,7 +11032,7 @@ error:
  *        This function must be run offline. That is, it should not be
  *              run when there are multiusers in the system.
  */
-void
+int
 log_recreate (THREAD_ENTRY * thread_p,
 	      const char *db_fullname, const char *logpath,
 	      const char *prefix_logname, DKNPAGES log_npages, FILE * out_fp)
@@ -11034,8 +11047,17 @@ log_recreate (THREAD_ENTRY * thread_p,
   int ret = NO_ERROR;
 
   ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &db_creation);
-  log_create_internal (thread_p, db_fullname, logpath, prefix_logname,
-		       log_npages, &db_creation);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  ret = log_create_internal (thread_p, db_fullname, logpath, prefix_logname,
+			     log_npages, &db_creation);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
 
   (void) log_initialize_internal (thread_p, db_fullname, logpath,
 				  prefix_logname, false, NULL, true);
@@ -11116,6 +11138,8 @@ log_recreate (THREAD_ENTRY * thread_p,
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p, false);
   (void) log_commit (thread_p, NULL_TRAN_INDEX, false);
+
+  return ret;
 }
 
 /*

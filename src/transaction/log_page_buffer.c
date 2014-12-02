@@ -842,6 +842,8 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   pthread_cond_init (&writer_info->flush_end_cond, NULL);
   pthread_mutex_init (&writer_info->flush_end_mutex, NULL);
 
+  writer_info->is_init = true;
+
   return error_code;
 
 error:
@@ -869,40 +871,45 @@ logpb_finalize_pool (void)
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
 
   r = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
-  if (log_Pb.pool != NULL)
+
+  if (log_Pb.pool == NULL)
     {
-      if (log_Gl.append.log_pgptr != NULL)
-	{
-	  logpb_free_without_mutex (log_Gl.append.log_pgptr);
-	  log_Gl.append.log_pgptr = NULL;
-	  log_Gl.append.delayed_free_log_pgptr = NULL;
-	}
-      logpb_set_nxio_lsa (&NULL_LSA);
-      LSA_SET_NULL (&log_Gl.append.prev_lsa);
-      /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
-      LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+      /* logpb already finalized */
+      csect_exit (NULL, CSECT_LOG_PB);
+      return;
+    }
+
+  if (log_Gl.append.log_pgptr != NULL)
+    {
+      logpb_free_without_mutex (log_Gl.append.log_pgptr);
+      log_Gl.append.log_pgptr = NULL;
+      log_Gl.append.delayed_free_log_pgptr = NULL;
+    }
+  logpb_set_nxio_lsa (&NULL_LSA);
+  LSA_SET_NULL (&log_Gl.append.prev_lsa);
+  /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
+  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
 
 #if defined(CUBRID_DEBUG)
-      if (logpb_is_any_dirty () == true || logpb_is_any_fix () == true)
-	{
-	  er_log_debug (ARG_FILE_LINE, "log_pbpool_final: Log Buffer"
-			" pool contains dirty or fixed pages at the end.\n");
-	  logpb_dump (stdout);
-	}
+  if (logpb_is_any_dirty () == true || logpb_is_any_fix () == true)
+    {
+      er_log_debug (ARG_FILE_LINE, "log_pbpool_final: Log Buffer"
+		    " pool contains dirty or fixed pages at the end.\n");
+      logpb_dump (stdout);
+    }
 #endif /* CUBRID_DEBUG */
 
-      /*
-       * Remove hash table
-       */
-      if (log_Pb.ht != NULL)
-	{
-	  mht_destroy (log_Pb.ht);
-	  log_Pb.ht = NULL;
-	}
-
-      free_and_init (log_Pb.pool);
-      log_Pb.num_buffers = 0;
+  /*
+   * Remove hash table
+   */
+  if (log_Pb.ht != NULL)
+    {
+      mht_destroy (log_Pb.ht);
+      log_Pb.ht = NULL;
     }
+
+  free_and_init (log_Pb.pool);
+  log_Pb.num_buffers = 0;
 
   /*
    * Remove all the buffer pool areas
@@ -12579,18 +12586,19 @@ logpb_finalize_flush_info (void)
 #endif /* SERVER_MODE */
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
-  rv = pthread_mutex_lock (&flush_info->flush_mutex);
-
   if (flush_info->toflush != NULL)
     {
+      rv = pthread_mutex_lock (&flush_info->flush_mutex);
       free_and_init (flush_info->toflush);
+
+      flush_info->max_toflush = 0;
+      flush_info->num_toflush = 0;
+
+      pthread_mutex_unlock (&flush_info->flush_mutex);
+      pthread_mutex_destroy (&flush_info->flush_mutex);
     }
 
-  flush_info->max_toflush = 0;
-  flush_info->num_toflush = 0;
-
-  pthread_mutex_unlock (&flush_info->flush_mutex);
-  pthread_mutex_destroy (&flush_info->flush_mutex);
+  return;
 }
 
 /*
@@ -12609,27 +12617,33 @@ logpb_finalize_writer_info (void)
   LOGWR_ENTRY *entry, *next_entry;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
-  rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
-  entry = writer_info->writer_list;
-  while (entry)
+  if (writer_info->is_init == true)
     {
-      next_entry = entry->next;
-      free (entry);
-      entry = next_entry;
+      rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
+      entry = writer_info->writer_list;
+      while (entry)
+	{
+	  next_entry = entry->next;
+	  free (entry);
+	  entry = next_entry;
+	}
+      writer_info->writer_list = NULL;
+      writer_info->is_init = false;
+      pthread_mutex_unlock (&writer_info->wr_list_mutex);
+
+      pthread_mutex_destroy (&writer_info->wr_list_mutex);
+
+      pthread_mutex_destroy (&writer_info->flush_start_mutex);
+      pthread_cond_destroy (&writer_info->flush_start_cond);
+
+      pthread_mutex_destroy (&writer_info->flush_wait_mutex);
+      pthread_cond_destroy (&writer_info->flush_wait_cond);
+
+      pthread_mutex_destroy (&writer_info->flush_end_mutex);
+      pthread_cond_destroy (&writer_info->flush_end_cond);
     }
-  writer_info->writer_list = NULL;
-  pthread_mutex_unlock (&writer_info->wr_list_mutex);
 
-  pthread_mutex_destroy (&writer_info->wr_list_mutex);
-
-  pthread_mutex_destroy (&writer_info->flush_start_mutex);
-  pthread_cond_destroy (&writer_info->flush_start_cond);
-
-  pthread_mutex_destroy (&writer_info->flush_wait_mutex);
-  pthread_cond_destroy (&writer_info->flush_wait_cond);
-
-  pthread_mutex_destroy (&writer_info->flush_end_mutex);
-  pthread_cond_destroy (&writer_info->flush_end_cond);
+  return;
 }
 
 /*

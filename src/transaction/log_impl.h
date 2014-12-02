@@ -589,6 +589,7 @@ struct logwr_info
   pthread_mutex_t flush_end_mutex;
   bool skip_flush;
   bool flush_completed;
+  bool is_init;
 
   /* to measure the time spent by the last LWT delaying LFT */
   bool trace_last_writer;
@@ -602,7 +603,7 @@ struct logwr_info
     PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
     PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
     PTHREAD_MUTEX_INITIALIZER,                                 \
-    false, false, false,                                       \
+    false, false, false, false,                                       \
     /* last_writer_client_info */                              \
     { -1, {'0'}, {'0'}, {'0'}, {'0'}, {'0'}, 0 },              \
     0                                                          \

@@ -6625,8 +6625,12 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
 	    }
 	}
 
-      log_recreate (thread_p, boot_Db_full_name,
-		    log_path, log_prefix, log_npages, out_fp);
+      error_code = log_recreate (thread_p, boot_Db_full_name,
+				 log_path, log_prefix, log_npages, out_fp);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
     }
   else
     {

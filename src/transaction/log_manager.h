@@ -233,10 +233,10 @@ extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 extern void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		 LOG_LSA * start_posplsa, LOG_RECTYPE posp_type);
-extern void log_recreate (THREAD_ENTRY * thread_p,
-			  const char *db_fullname, const char *logpath,
-			  const char *prefix_logname, DKNPAGES log_npages,
-			  FILE * outfp);
+extern int log_recreate (THREAD_ENTRY * thread_p,
+			 const char *db_fullname, const char *logpath,
+			 const char *prefix_logname, DKNPAGES log_npages,
+			 FILE * outfp);
 extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p,
 				      const char *db_fullname,
 				      const char *logpath,
