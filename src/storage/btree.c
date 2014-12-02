@@ -7734,6 +7734,7 @@ btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid,
   int valid = DISK_VALID;
   int request_mode;
   int retry_count = 0;
+  int retry_max = 20;
   char output[LINE_MAX];
   BTREE_NODE_HEADER *header = NULL;
   BTREE_NODE_TYPE node_type;
@@ -7763,11 +7764,18 @@ btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid,
   (void) pgbuf_check_page_ptype (thread_p, root_pgptr, PAGE_BTREE);
 
 retry_repair:
-  if (retry_count > 10)
+  if (retry_count >= retry_max)
     {
       valid = DISK_ERROR;
       goto exit_repair;
     }
+
+#if defined(SERVER_MODE)
+  if (retry_count > 0)
+    {
+      thread_sleep (10);
+    }
+#endif
 
   if (current_pgptr)
     {
