@@ -2558,6 +2558,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		    {
 		      trstate = NULL;
 		    }
+
+		  object = ws_mvcc_latest_version (object);
 		}
 
 	      /* in some cases, the object has been decached in before
