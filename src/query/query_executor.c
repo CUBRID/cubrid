@@ -9905,20 +9905,20 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      if (tuple_cnt == 1)
 		{
-		  repl_info = REPL_INFO_TYPE_STMT_START;
+		  repl_info = REPL_INFO_TYPE_RBR_START;
 		}
 	      else if (tuple_cnt == aptr->list_id->tuple_cnt)
 		{
-		  repl_info = REPL_INFO_TYPE_STMT_END;
+		  repl_info = REPL_INFO_TYPE_RBR_END;
 		}
 	      else
 		{
-		  repl_info = REPL_INFO_TYPE_STMT_NORMAL;
+		  repl_info = REPL_INFO_TYPE_RBR_NORMAL;
 		}
 	    }
 	  else
 	    {
-	      repl_info = REPL_INFO_TYPE_STMT_NORMAL;
+	      repl_info = REPL_INFO_TYPE_RBR_NORMAL;
 	    }
 	  tuple_cnt++;
 
@@ -10167,7 +10167,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		     btid_dup_key_locked, NULL, NULL, 0,
 		     LC_FLUSH_DELETE, current_op_type,
 		     internal_class->scan_cache, &force_count, false,
-		     REPL_INFO_TYPE_STMT_NORMAL,
+		     REPL_INFO_TYPE_RBR_NORMAL,
 		     DB_NOT_PARTITIONED_CLASS, NULL, NULL,
 		     &mvcc_reev_data, false);
 
@@ -11212,7 +11212,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					      0, LC_FLUSH_DELETE, op_type,
 					      internal_class->scan_cache,
 					      &force_count, false,
-					      REPL_INFO_TYPE_STMT_NORMAL,
+					      REPL_INFO_TYPE_RBR_NORMAL,
 					      DB_NOT_PARTITIONED_CLASS, NULL,
 					      NULL, &mvcc_reev_data, false);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -11746,7 +11746,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 					  &btid, false, NULL, NULL, 0,
 					  LC_FLUSH_DELETE, local_op_type,
 					  local_scan_cache, &force_count,
-					  false, REPL_INFO_TYPE_STMT_NORMAL,
+					  false, REPL_INFO_TYPE_RBR_NORMAL,
 					  DB_NOT_PARTITIONED_CLASS, NULL,
 					  NULL, NULL, false);
 
@@ -12076,7 +12076,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
   RECDES rec_descriptor = { 0, -1, REC_HOME, NULL };
   SCAN_CODE scan_code;
   DB_VALUE *val = NULL;
-  REPL_INFO_TYPE repl_info = REPL_INFO_TYPE_STMT_NORMAL;
+  REPL_INFO_TYPE repl_info = REPL_INFO_TYPE_RBR_NORMAL;
   int error = NO_ERROR;
   bool need_clear = 0;
   OID unique_oid;
@@ -12699,7 +12699,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						scan_cache_op_type,
 						&scan_cache, &force_count,
 						false,
-						REPL_INFO_TYPE_STMT_NORMAL,
+						REPL_INFO_TYPE_RBR_NORMAL,
 						insert->pruning_type,
 						pcontext, func_indx_preds,
 						NULL, false) != NO_ERROR)
@@ -12900,7 +12900,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						scan_cache_op_type,
 						&scan_cache, &force_count,
 						false,
-						REPL_INFO_TYPE_STMT_NORMAL,
+						REPL_INFO_TYPE_RBR_NORMAL,
 						insert->pruning_type,
 						pcontext, NULL, NULL, false)
 		  != NO_ERROR)
@@ -13677,7 +13677,7 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 					    false, &attr_info, &attrid, 1,
 					    area_op, op_type, &scan_cache,
 					    &force_count, false,
-					    REPL_INFO_TYPE_STMT_NORMAL,
+					    REPL_INFO_TYPE_RBR_NORMAL,
 					    pruning_type, NULL, NULL,
 					    NULL, false);
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)

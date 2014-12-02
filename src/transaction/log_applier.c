@@ -540,7 +540,7 @@ static int la_update_query_execute_with_values (const char *sql,
 						int arg_count,
 						DB_VALUE * vals,
 						bool au_disable);
-static int la_apply_schema_log (LA_ITEM * item);
+static int la_apply_statement_log (LA_ITEM * item);
 static int la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 			      int *total_rows, LOG_PAGEID final_pageid);
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
@@ -3317,7 +3317,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid,
 
       break;
 
-    case LOG_REPLICATION_SCHEMA:
+    case LOG_REPLICATION_STATEMENT:
       ptr = or_unpack_int (area, &item->item_type);
       ptr = or_unpack_string (ptr, &item->class_name);
       ptr = or_unpack_string (ptr, &str_value);
@@ -5675,14 +5675,15 @@ la_update_query_execute_with_values (const char *sql, int arg_count,
  * Note:
  */
 static int
-la_apply_schema_log (LA_ITEM * item)
+la_apply_statement_log (LA_ITEM * item)
 {
-  char *ddl;
+  char *stmt_text;
   int error = NO_ERROR, error2 = NO_ERROR;
   const char *error_msg = "";
   DB_OBJECT *user = NULL, *save_user = NULL;
-  char buf[256];
   char sql_log_err[LINE_MAX];
+  bool is_ddl = false;
+  int res;
 
   error = la_flush_repl_items (true);
   if (error != NO_ERROR)
@@ -5728,17 +5729,26 @@ la_apply_schema_log (LA_ITEM * item)
     case CUBRID_STMT_SET_TRIGGER:
 
     case CUBRID_STMT_UPDATE_STATS:
+      is_ddl = true;
+
+    case CUBRID_STMT_INSERT:
+    case CUBRID_STMT_DELETE:
+    case CUBRID_STMT_UPDATE:
 
       /*
        * When we create the schema objects, the object's owner must be changed
        * to the appropriate owner.
        * Special alter statement, non partitioned -> partitioned is the same.
+       * Also, the result of statement-based DML replication may be affected by user
        */
       if ((item->item_type == CUBRID_STMT_CREATE_CLASS
 	   || item->item_type == CUBRID_STMT_CREATE_SERIAL
 	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE
 	   || item->item_type == CUBRID_STMT_CREATE_TRIGGER
-	   || item->item_type == CUBRID_STMT_ALTER_CLASS)
+	   || item->item_type == CUBRID_STMT_ALTER_CLASS
+	   || item->item_type == CUBRID_STMT_INSERT
+	   || item->item_type == CUBRID_STMT_DELETE
+	   || item->item_type == CUBRID_STMT_UPDATE)
 	  && (item->db_user != NULL && item->db_user[0] != '\0'))
 	{
 	  user = au_find_user (item->db_user);
@@ -5771,19 +5781,19 @@ la_apply_schema_log (LA_ITEM * item)
 	    }
 	}
 
-      ddl = db_get_string (&item->key);
+      stmt_text = db_get_string (&item->key);
+      assert (stmt_text != NULL);
 
       /* write sql log */
       if (la_enable_sql_logging)
 	{
-	  if (sl_write_schema_sql
+	  if (sl_write_statement_sql
 	      (item->class_name, item->db_user, item->item_type,
-	       ddl, item->ha_sys_prm) != NO_ERROR)
+	       stmt_text, item->ha_sys_prm) != NO_ERROR)
 	    {
-	      help_sprint_value (&item->key, buf, 255);
 	      snprintf (sql_log_err, sizeof (sql_log_err),
-			"failed to write SQL log. class: %s, key: %s",
-			item->class_name, buf);
+			"failed to write SQL log. class: %s, stmt: %s",
+			item->class_name, stmt_text);
 
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
@@ -5794,7 +5804,7 @@ la_apply_schema_log (LA_ITEM * item)
 
       if (item->ha_sys_prm != NULL)
 	{
-	  er_log_debug (ARG_FILE_LINE, "la_apply_schema_log : %s\n",
+	  er_log_debug (ARG_FILE_LINE, "la_apply_statement_log : %s\n",
 			item->ha_sys_prm);
 	  er_stack_push ();
 	  error2 = db_set_system_parameters_for_ha_repl (item->ha_sys_prm);
@@ -5809,7 +5819,8 @@ la_apply_schema_log (LA_ITEM * item)
 	  er_stack_pop ();
 	}
 
-      if (la_update_query_execute (ddl, false) < 0)
+      res = la_update_query_execute (stmt_text, false);
+      if (res < 0)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -5820,15 +5831,27 @@ la_apply_schema_log (LA_ITEM * item)
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
 	}
-      else
+      else if (is_ddl == true)
 	{
 	  la_Info.schema_counter++;
+	}
+      else if (item->item_type == CUBRID_STMT_INSERT)
+	{
+	  la_Info.insert_counter += res;
+	}
+      else if (item->item_type == CUBRID_STMT_DELETE)
+	{
+	  la_Info.delete_counter += res;
+	}
+      else if (item->item_type == CUBRID_STMT_UPDATE)
+	{
+	  la_Info.update_counter += res;
 	}
 
       if (item->ha_sys_prm != NULL)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"la_apply_schema_log : reset sysprm\n");
+			"la_apply_statement_log : reset sysprm\n");
 	  er_stack_push ();
 	  error2 =
 	    db_reset_system_parameters_from_assignments (item->ha_sys_prm);
@@ -5860,16 +5883,15 @@ la_apply_schema_log (LA_ITEM * item)
 
   if (error != NO_ERROR)
     {
-      help_sprint_value (&item->key, buf, 255);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "apply_schema : error %d class %s key %s\n", error,
-		    item->class_name, buf);
+		    "apply_statement : error %d class %s stmt %s\n", error,
+		    item->class_name, stmt_text);
 #endif
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HA_LA_FAILED_TO_APPLY_SCHEMA, 3, item->class_name, buf,
-	      error, error_msg);
+	      ER_HA_LA_FAILED_TO_APPLY_STATEMENT, 3, item->class_name,
+	      stmt_text, error, error_msg);
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5977,9 +5999,9 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 		  assert_release (false);
 		}
 	    }
-	  else if (item->log_type == LOG_REPLICATION_SCHEMA)
+	  else if (item->log_type == LOG_REPLICATION_STATEMENT)
 	    {
-	      error = la_apply_schema_log (item);
+	      error = la_apply_statement_log (item);
 	    }
 	  else
 	    {
@@ -6252,7 +6274,7 @@ la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
 	    }
 
 	  if (curr_log_record->type == LOG_REPLICATION_DATA
-	      || curr_log_record->type == LOG_REPLICATION_SCHEMA)
+	      || curr_log_record->type == LOG_REPLICATION_STATEMENT)
 	    {
 	      next_item =
 		la_make_repl_item (curr_log_page, curr_log_record->type,
@@ -6363,7 +6385,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       return ER_INTERRUPTED;
 
     case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_SCHEMA:
+    case LOG_REPLICATION_STATEMENT:
       /* add the replication log to the target transaction */
       error = la_set_repl_log (pg_ptr, lrec->type, lrec->trid, final);
       if (error != NO_ERROR)
@@ -8280,7 +8302,7 @@ lp_prefetch_log_record (LOG_RECORD_HEADER * lrec, LOG_LSA * final,
 	  free_and_init (item);
 	}
     }
-  else if (lrec->type == LOG_REPLICATION_SCHEMA)
+  else if (lrec->type == LOG_REPLICATION_STATEMENT)
     {
       lp_Info.op = LP_OP_SYNC;
     }

@@ -40,10 +40,10 @@
 
 typedef enum
 {
-  REPL_INFO_TYPE_SCHEMA,
-  REPL_INFO_TYPE_STMT_START,
-  REPL_INFO_TYPE_STMT_NORMAL,
-  REPL_INFO_TYPE_STMT_END
+  REPL_INFO_TYPE_SBR,		/* statement-based */
+  REPL_INFO_TYPE_RBR_START,	/* row-based start */
+  REPL_INFO_TYPE_RBR_NORMAL,	/* row-based normal */
+  REPL_INFO_TYPE_RBR_END	/* row-based end */
 } REPL_INFO_TYPE;
 
 typedef struct repl_info REPL_INFO;
@@ -53,12 +53,12 @@ struct repl_info
   char *info;
 };
 
-typedef struct repl_info_schema REPL_INFO_SCHEMA;
-struct repl_info_schema
+typedef struct repl_info_statement REPL_INFO_SBR;
+struct repl_info_statement
 {
   int statement_type;
   char *name;
-  char *ddl;
+  char *stmt_text;
   char *db_user;
   char *sys_prm_context;
 };
@@ -82,8 +82,8 @@ extern int repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 			    const OID * inst_oid, LOG_RECTYPE log_type,
 			    LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue,
 			    REPL_INFO_TYPE repl_type, bool is_update_inplace);
-extern int repl_log_insert_schema (THREAD_ENTRY * thread_p,
-				   REPL_INFO_SCHEMA * repl_schema);
+extern int repl_log_insert_statement (THREAD_ENTRY * thread_p,
+				      REPL_INFO_SBR * repl_info);
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);
 extern int repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa);

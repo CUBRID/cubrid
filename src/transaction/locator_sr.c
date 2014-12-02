@@ -4858,7 +4858,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 						      &scan_cache,
 						      &force_count,
 						      false,
-						      REPL_INFO_TYPE_STMT_NORMAL,
+						      REPL_INFO_TYPE_RBR_NORMAL,
 						      DB_NOT_PARTITIONED_CLASS,
 						      NULL, NULL, NULL,
 						      false);
@@ -5214,7 +5214,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 							     &scan_cache,
 							     &force_count,
 							     false,
-							     REPL_INFO_TYPE_STMT_NORMAL,
+							     REPL_INFO_TYPE_RBR_NORMAL,
 							     DB_NOT_PARTITIONED_CLASS,
 							     NULL, NULL,
 							     NULL, false);
@@ -6983,15 +6983,15 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 
 	  if (mobjs->start_multi_update && i == 0)
 	    {
-	      repl_info = REPL_INFO_TYPE_STMT_START;
+	      repl_info = REPL_INFO_TYPE_RBR_START;
 	    }
 	  else if (mobjs->end_multi_update && (i + 1) == mobjs->num_objs)
 	    {
-	      repl_info = REPL_INFO_TYPE_STMT_END;
+	      repl_info = REPL_INFO_TYPE_RBR_END;
 	    }
 	  else
 	    {
-	      repl_info = REPL_INFO_TYPE_STMT_NORMAL;
+	      repl_info = REPL_INFO_TYPE_RBR_NORMAL;
 	    }
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
 
@@ -7508,7 +7508,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 				      &recdes, has_index, NULL, 0,
 				      SINGLE_ROW_UPDATE, force_scancache,
 				      &force_count, false,
-				      REPL_INFO_TYPE_STMT_NORMAL,
+				      REPL_INFO_TYPE_RBR_NORMAL,
 				      pruning_type, NULL, NULL, false);
 
 	      if (error_code == NO_ERROR)
@@ -7717,7 +7717,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 				  NULL, &recdes, has_index, NULL, 0,
 				  SINGLE_ROW_UPDATE, force_scancache,
 				  &force_count, false,
-				  REPL_INFO_TYPE_STMT_NORMAL, pruning_type,
+				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type,
 				  NULL, NULL, false);
 
 	  if (error_code == NO_ERROR)
@@ -8630,10 +8630,10 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	{
 	  error_code = repl_log_insert (thread_p, class_oid, inst_oid,
 					datayn ? LOG_REPLICATION_DATA :
-					LOG_REPLICATION_SCHEMA,
+					LOG_REPLICATION_STATEMENT,
 					is_insert ? RVREPL_DATA_INSERT :
 					RVREPL_DATA_DELETE, key_dbvalue,
-					REPL_INFO_TYPE_STMT_NORMAL, false);
+					REPL_INFO_TYPE_RBR_NORMAL, false);
 	}
 
       if (key_ins_del == NULL)
@@ -12719,15 +12719,15 @@ xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
     {
       switch (repl_info->repl_info_type)
 	{
-	case REPL_INFO_TYPE_SCHEMA:
+	case REPL_INFO_TYPE_SBR:
 	  error_code =
-	    repl_log_insert_schema (thread_p,
-				    (REPL_INFO_SCHEMA *) repl_info->info);
+	    repl_log_insert_statement (thread_p,
+				       (REPL_INFO_SBR *) repl_info->info);
 	  break;
 	default:
 	  error_code = ER_REPL_ERROR;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
-		  "can't make repl schema info");
+		  "can't make repl sbr info");
 	  break;
 	}
     }

@@ -3067,7 +3067,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_SCHEMA:
+    case LOG_REPLICATION_STATEMENT:
     case LOG_UNLOCK_COMMIT:
     case LOG_UNLOCK_ABORT:
     case LOG_DUMMY_HA_SERVER_STATE:
@@ -4777,7 +4777,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    case LOG_2PC_ABORT_INFORM_PARTICPS:
 	    case LOG_DUMMY_CRASH_RECOVERY:
 	    case LOG_REPLICATION_DATA:
-	    case LOG_REPLICATION_SCHEMA:
+	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_UNLOCK_COMMIT:
 	    case LOG_UNLOCK_ABORT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
@@ -5350,7 +5350,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_CLIENT_USER_POSTPONE_DATA:
 		case LOG_SAVEPOINT:
 		case LOG_REPLICATION_DATA:
-		case LOG_REPLICATION_SCHEMA:
+		case LOG_REPLICATION_STATEMENT:
 		case LOG_UNLOCK_COMMIT:
 		case LOG_UNLOCK_ABORT:
 		case LOG_DUMMY_HA_SERVER_STATE:
@@ -6517,7 +6517,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
       break;
 
     case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_SCHEMA:
+    case LOG_REPLICATION_STATEMENT:
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
 					sizeof (struct log_replication),
 					&log_lsa, log_pgptr);

@@ -731,7 +731,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
 				      obj_oid, obj_oid, class_oid, NULL,
 				      false, SINGLE_ROW_UPDATE,
 				      (HEAP_SCANCACHE *) NULL, false,
-				      REPL_INFO_TYPE_STMT_NORMAL);
+				      REPL_INFO_TYPE_RBR_NORMAL);
     }
   else
     {

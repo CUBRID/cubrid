@@ -187,7 +187,7 @@ db_open_local (void)
   session->statements = NULL;
   session->is_subsession_for_prepared = false;
   session->next = NULL;
-  session->ddl_stmts_for_replication = NULL;
+  session->stmts_for_replication = NULL;
 
   return session;
 }
@@ -624,32 +624,32 @@ db_compile_statement_local (DB_SESSION * session)
     }
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
-      && is_schema_repl_log_statment (statement)
+      && is_stmt_based_repl_type (statement)
       && log_does_allow_replication () == true)
     {
       unsigned int save_custom;
-      if (session->ddl_stmts_for_replication == NULL)
+      if (session->stmts_for_replication == NULL)
 	{
 	  int size = sizeof (char *) * session->dimension;
 
-	  session->ddl_stmts_for_replication = (char **) malloc (size);
+	  session->stmts_for_replication = (char **) malloc (size);
 
-	  if (session->ddl_stmts_for_replication == NULL)
+	  if (session->stmts_for_replication == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
-	  memset (session->ddl_stmts_for_replication, '\0', size);
+	  memset (session->stmts_for_replication, 0, size);
 	}
 
       save_custom = parser->custom_print;
       parser->custom_print |= PT_CHARSET_COLLATE_USER_ONLY;
-      session->ddl_stmts_for_replication[stmt_ndx] =
+      session->stmts_for_replication[stmt_ndx] =
 	parser_print_tree_with_quotes (parser, statement);
       parser->custom_print = save_custom;
 
-      assert_release (session->ddl_stmts_for_replication[stmt_ndx] != NULL);
+      assert_release (session->stmts_for_replication[stmt_ndx] != NULL);
     }
 
   /* do semantic check for the statement */
@@ -1826,10 +1826,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	}
     }
 
-  if (session->ddl_stmts_for_replication != NULL)
+  if (session->stmts_for_replication != NULL)
     {
-      parser->ddl_stmt_for_replication =
-	session->ddl_stmts_for_replication[stmt_ndx];
+      parser->stmt_for_replication = session->stmts_for_replication[stmt_ndx];
     }
 
   /* forget about any previous compilation errors, if any */
@@ -3492,11 +3491,11 @@ db_close_session_local (DB_SESSION * session)
 	}
     }
 
-  parser->ddl_stmt_for_replication = NULL;
+  parser->stmt_for_replication = NULL;
 
-  if (session->ddl_stmts_for_replication != NULL)
+  if (session->stmts_for_replication != NULL)
     {
-      free_and_init (session->ddl_stmts_for_replication);
+      free_and_init (session->stmts_for_replication);
     }
 
   session->dimension = session->stmt_ndx = 0;

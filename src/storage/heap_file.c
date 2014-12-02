@@ -22738,7 +22738,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 				  updated_n_attrs_id, LC_FLUSH_UPDATE,
 				  SINGLE_ROW_UPDATE, upd_scancache,
 				  &force_count, false,
-				  REPL_INFO_TYPE_STMT_NORMAL,
+				  REPL_INFO_TYPE_RBR_NORMAL,
 				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
 				  true);
   if (error != NO_ERROR)

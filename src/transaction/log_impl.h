@@ -1390,7 +1390,7 @@ enum log_rectype
 					 */
 #endif
   LOG_REPLICATION_DATA = 39,	/* Replication log for insert, delete or update */
-  LOG_REPLICATION_SCHEMA = 40,	/* Replication log for schema, index, trigger or system catalog updates */
+  LOG_REPLICATION_STATEMENT = 40,	/* Replication log for schema, index, trigger or system catalog updates */
   LOG_UNLOCK_COMMIT = 41,	/* for repl_agent to guarantee the order of */
   LOG_UNLOCK_ABORT = 42,	/* transaction commit, we append the unlock info.
 				   before calling lock_unlock_all()

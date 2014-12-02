@@ -1097,7 +1097,7 @@ $ LOADDB
 1028 Applicateur du journal: enregistrement EOF inattendu dans le journal de transactions. LSA: %1$lld|%2$d.
 1029 Applicateur du journal: invalide la page du journal de réplication. page HDR: %1$1lld|%2$d, finale: %3$lld|%4$d, LSA annexé: %5$lld|%6$d, LSA EOF: %7$lld|%8$d, l'état des fichiers ha: %9$d, est en fin de journal (end-of-log): %10$d.
 1030 Applicateur du journal: enregistrement invalide de réplication. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s.
+1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s.
 1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s

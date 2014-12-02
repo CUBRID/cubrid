@@ -1097,7 +1097,7 @@ $ LOADDB
 1028 log applier: Archive 로그에 예상치 못한 EOF 로그 레코드가 있습니다. LSA: %1$lld|%2$d.
 1029 log applier: 잘못된 로그 페이지/오프셋. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: 잘못된 로그 레코드. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: Schema 복제 로그 반영에 실패하였습니다. class: "%1$s", schema: "%2$s", server error: %3$d, ddl: %4$s.
+1031 log applier: 복제 로그 반영에 실패하였습니다. class: "%1$s", statement: "%2$s", server error: %3$d, ddl: %4$s.
 1032 log applier: Insert 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1033 log applier: Update 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1034 log applier: Delete 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", server error: %3$d, %4$s

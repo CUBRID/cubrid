@@ -517,6 +517,21 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		    hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
+	      break;
+	    case PT_HINT_USE_SBR:	/* statement-based replication */
+	      if (node->node_type == PT_INSERT)
+		{
+		  node->info.insert.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint |= hint_table[i].hint;
+		}
+	      break;
 	    default:
 	      break;
 	    }

@@ -1097,7 +1097,7 @@ $ LOADDB
 1028 log applier: 在存档日志中遇到意外的EOF记录. LSA: %1$lld|%2$d.
 1029 log applier: 非法复制日志 页/偏移. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: 非法复制记录. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: 应用 schema 日志失败. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s. 
+1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s. 
 1032 log applier: 应用 insert 日志失败. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1033 log applier: 应用 update 日志失败. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1034 log applier: 应用 delete 日志失败. class: "%1$s", key: "%2$s", server error: %3$d, %4$s

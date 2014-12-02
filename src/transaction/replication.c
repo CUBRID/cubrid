@@ -347,13 +347,13 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
     {
       switch (repl_info)
 	{
-	case REPL_INFO_TYPE_STMT_START:
+	case REPL_INFO_TYPE_RBR_START:
 	  repl_rec->rcvindex = RVREPL_DATA_UPDATE_START;
 	  break;
-	case REPL_INFO_TYPE_STMT_END:
+	case REPL_INFO_TYPE_RBR_END:
 	  repl_rec->rcvindex = RVREPL_DATA_UPDATE_END;
 	  break;
-	case REPL_INFO_TYPE_STMT_NORMAL:
+	case REPL_INFO_TYPE_RBR_NORMAL:
 	default:
 	  break;
 	}
@@ -479,8 +479,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
  *      descriptor (tdes)
  */
 int
-repl_log_insert_schema (THREAD_ENTRY * thread_p,
-			REPL_INFO_SCHEMA * repl_schema)
+repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -517,17 +516,17 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
     }
 
   repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[tdes->cur_repl_record];
-  repl_rec->repl_type = LOG_REPLICATION_SCHEMA;
-  repl_rec->rcvindex = RVREPL_SCHEMA;
+  repl_rec->repl_type = LOG_REPLICATION_STATEMENT;
+  repl_rec->rcvindex = RVREPL_STATEMENT;
   repl_rec->must_flush = LOG_REPL_COMMIT_NEED_FLUSH;
   OID_SET_NULL (&repl_rec->inst_oid);
 
   /* make the common info for the schema replication */
   repl_rec->length = OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
-    + or_packed_string_length (repl_schema->name, &strlen1)
-    + or_packed_string_length (repl_schema->ddl, &strlen2)
-    + or_packed_string_length (repl_schema->db_user, &strlen3)
-    + or_packed_string_length (repl_schema->sys_prm_context, &strlen4);
+    + or_packed_string_length (repl_info->name, &strlen1)
+    + or_packed_string_length (repl_info->stmt_text, &strlen2)
+    + or_packed_string_length (repl_info->db_user, &strlen3)
+    + or_packed_string_length (repl_info->sys_prm_context, &strlen4);
   if ((repl_rec->repl_data = (char *) malloc (repl_rec->length)) == NULL)
     {
       error = ER_REPL_ERROR;
@@ -536,19 +535,18 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
       return error;
     }
   ptr = repl_rec->repl_data;
-  ptr = or_pack_int (ptr, repl_schema->statement_type);
-  ptr = or_pack_string_with_length (ptr, repl_schema->name, strlen1);
-  ptr = or_pack_string_with_length (ptr, repl_schema->ddl, strlen2);
-  ptr = or_pack_string_with_length (ptr, repl_schema->db_user, strlen3);
-  ptr = or_pack_string_with_length (ptr, repl_schema->sys_prm_context,
-				    strlen4);
+  ptr = or_pack_int (ptr, repl_info->statement_type);
+  ptr = or_pack_string_with_length (ptr, repl_info->name, strlen1);
+  ptr = or_pack_string_with_length (ptr, repl_info->stmt_text, strlen2);
+  ptr = or_pack_string_with_length (ptr, repl_info->db_user, strlen3);
+  ptr = or_pack_string_with_length (ptr, repl_info->sys_prm_context, strlen4);
 
-  er_log_debug (ARG_FILE_LINE, "repl_log_insert_schema:"
-		" repl_schema { type %d, name %s, ddl %s, user %s, "
+  er_log_debug (ARG_FILE_LINE, "repl_log_insert_statement:"
+		" repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
 		"sys_prm_context %s }\n",
-		repl_schema->statement_type, repl_schema->name,
-		repl_schema->ddl, repl_schema->db_user,
-		repl_schema->sys_prm_context);
+		repl_info->statement_type, repl_info->name,
+		repl_info->stmt_text, repl_info->db_user,
+		repl_info->sys_prm_context);
   LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
 
   tdes->cur_repl_record++;

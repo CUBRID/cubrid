@@ -1097,7 +1097,7 @@ $ LOADDB
 1028 uygulayıcı log: arşiv log beklenmedik EOF kaydı. LSA: %1$lld|%2$d.
 1029 uygulayıcı log: geçersiz çoğaltma log page/offset. sayfa HDR: %1$1lld|%2$d, final: %3$lld|%4$d, ekleme LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha dosya durumu: %9$d, is end-of-log: %10$d.
 1030 uygulayıcı log: geçersiz çoğaltma kayıt. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, önceki tran LSA: %8$lld|%9$d, tür: %10$d.
-1031 uygulayıcı log: şema çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", şema: "%2$s", İç hata: %3$d, %4$s.
+1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s.
 1032 uygulayıcı log: ekleme çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", anahtar: "%2$s", İç hata: %3$d, %4$s
 1033 uygulayıcı log: güncelleme çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", anahtar: "%2$s", İç hata: %3$d, %4$s
 1034 uygulayıcı log: silme çoğaltma log uygulanması başarısız oldu. sınıfı:  "%1$s", anahtar: "%2$s", İç hata: %3$d, %4$s

@@ -589,8 +589,8 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_REPLICATION_DATA:
       return "LOG_REPLICATION_DATA";
-    case LOG_REPLICATION_SCHEMA:
-      return "LOG_REPLICATION_SCHEMA";
+    case LOG_REPLICATION_STATEMENT:
+      return "LOG_REPLICATION_STATEMENT";
     case LOG_UNLOCK_COMMIT:
       return "LOG_UNLOCK_COMMIT";
     case LOG_UNLOCK_ABORT:
@@ -4906,7 +4906,7 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    (&(tdes->repl_records[tdes->append_repl_recidx]));
 
 	  if ((repl_rec->repl_type == LOG_REPLICATION_DATA
-	       || repl_rec->repl_type == LOG_REPLICATION_SCHEMA)
+	       || repl_rec->repl_type == LOG_REPLICATION_STATEMENT)
 	      &&
 	      ((is_commit
 		&& repl_rec->must_flush != LOG_REPL_DONT_NEED_FLUSH)
@@ -4926,7 +4926,7 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 	      log = (struct log_replication *) node->data_header;
 	      if (repl_rec->rcvindex == RVREPL_DATA_DELETE
-		  || repl_rec->rcvindex == RVREPL_SCHEMA)
+		  || repl_rec->rcvindex == RVREPL_STATEMENT)
 		{
 		  LSA_SET_NULL (&log->lsa);
 		}
@@ -7303,7 +7303,7 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    case LOG_2PC_PREPARE:
 		    case LOG_2PC_START:
 		    case LOG_REPLICATION_DATA:
-		    case LOG_REPLICATION_SCHEMA:
+		    case LOG_REPLICATION_STATEMENT:
 		    case LOG_UNLOCK_COMMIT:
 		    case LOG_UNLOCK_ABORT:
 		    case LOG_DUMMY_HA_SERVER_STATE:
@@ -9197,7 +9197,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
       break;
 
     case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_SCHEMA:
+    case LOG_REPLICATION_STATEMENT:
       log_page_p =
 	log_dump_record_replication (thread_p, out_fp, log_lsa, log_page_p);
       break;
@@ -10217,7 +10217,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    case LOG_2PC_ABORT_DECISION:
 	    case LOG_2PC_ABORT_INFORM_PARTICPS:
 	    case LOG_REPLICATION_DATA:
-	    case LOG_REPLICATION_SCHEMA:
+	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_UNLOCK_COMMIT:
 	    case LOG_UNLOCK_ABORT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
@@ -10610,7 +10610,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    case LOG_SAVEPOINT:
 		    case LOG_DUMMY_HEAD_POSTPONE:
 		    case LOG_REPLICATION_DATA:
-		    case LOG_REPLICATION_SCHEMA:
+		    case LOG_REPLICATION_STATEMENT:
 		    case LOG_UNLOCK_COMMIT:
 		    case LOG_UNLOCK_ABORT:
 		    case LOG_DUMMY_HA_SERVER_STATE:

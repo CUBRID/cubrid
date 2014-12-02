@@ -1097,7 +1097,7 @@ $ LOADDB
 1028 log applier: înregistrare EOF neaşteptată în log. LSA: %1$lld|%2$d.
 1029 log applier: pagină/offset invalid în logul de replicare. HDR de pagină: %1$1lld|%2$d, final: %3$lld|%4$d, APPEND LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, stare HA a fişierului: %9$d, este end-of-log: %10$d.
 1030 log applier: înregistrare de replicare invalidă. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s. 
+1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s. 
 1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s

@@ -505,8 +505,8 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 }
 
 int
-sl_write_schema_sql (char *class_name, char *db_user, int item_type,
-		     char *ddl, char *ha_sys_prm)
+sl_write_statement_sql (char *class_name, char *db_user, int item_type,
+			char *stmt_text, char *ha_sys_prm)
 {
   int rc, error = NO_ERROR;
   PARSER_CONTEXT *parser;
@@ -516,7 +516,7 @@ sl_write_schema_sql (char *class_name, char *db_user, int item_type,
 
   parser = parser_create_parser ();
 
-  buffer = pt_append_nulstring (parser, buffer, ddl);
+  buffer = pt_append_nulstring (parser, buffer, stmt_text);
   buffer = pt_append_nulstring (parser, buffer, ";");
 
   if (ha_sys_prm != NULL)

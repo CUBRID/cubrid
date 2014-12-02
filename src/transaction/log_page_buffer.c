@@ -3995,7 +3995,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
       break;
 
     case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_SCHEMA:
+    case LOG_REPLICATION_STATEMENT:
       node->data_header_length = sizeof (struct log_replication);
       break;
 
@@ -4151,7 +4151,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
     case LOG_RUN_NEXT_CLIENT_POSTPONE:
     case LOG_RUN_NEXT_CLIENT_UNDO:
     case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_SCHEMA:
+    case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
     case LOG_START_CHKPT:
       assert (rlength == 0 && rdata == NULL);

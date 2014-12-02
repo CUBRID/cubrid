@@ -2555,7 +2555,7 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p,
     case LOG_END_CHKPT:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_SCHEMA:
+    case LOG_REPLICATION_STATEMENT:
     case LOG_UNLOCK_COMMIT:
     case LOG_UNLOCK_ABORT:
     case LOG_END_OF_LOG:

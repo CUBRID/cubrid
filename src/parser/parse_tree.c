@@ -1232,7 +1232,7 @@ parser_create_parser (void)
   parser->is_in_and_list = 0;
   parser->is_holdable = 0;
   parser->auto_param_count = 0;
-  parser->ddl_stmt_for_replication = NULL;
+  parser->stmt_for_replication = NULL;
   parser->return_generated_keys = 0;
 
   return parser;

@@ -926,7 +926,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
     {
       repl_log_insert (thread_p, serial_class_oidp, serial_oidp,
 		       LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE,
-		       key_val, REPL_INFO_TYPE_STMT_NORMAL, true);
+		       key_val, REPL_INFO_TYPE_RBR_NORMAL, true);
       repl_add_update_lsa (thread_p, serial_oidp);
 
       if (lock_mode != X_LOCK)

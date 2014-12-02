@@ -366,13 +366,13 @@ truncate_need_repl_log (PT_NODE * statement)
 }
 
 /*
- * is_schema_repl_log_statment()
- *   return: true if it's a schema replications log statement
+ * is_stmt_based_repl_type()
+ *   return: true if it's a statement-based replication log statement
  *           otherwise false
  *   node(in):
  */
 bool
-is_schema_repl_log_statment (const PT_NODE * node)
+is_stmt_based_repl_type (const PT_NODE * node)
 {
   /* All DDLs will be replicated via schema replication */
   if (pt_is_ddl_statement (node))
@@ -386,6 +386,24 @@ is_schema_repl_log_statment (const PT_NODE * node)
     case PT_DROP_VARIABLE:
     case PT_TRUNCATE:
       return true;
+    case PT_INSERT:
+      if (node->info.insert.hint & PT_HINT_USE_SBR)
+	{
+	  return true;
+	}
+      break;
+    case PT_DELETE:
+      if (node->info.delete_.hint & PT_HINT_USE_SBR)
+	{
+	  return true;
+	}
+      break;
+    case PT_UPDATE:
+      if (node->info.update.hint & PT_HINT_USE_SBR)
+	{
+	  return true;
+	}
+      break;
     default:
       break;
     }
@@ -2873,7 +2891,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
-  bool need_schema_replication = false;
+  bool need_stmt_replication = false;
   int suppress_repl_error = NO_ERROR;
 
   /* If it is an internally created statement,
@@ -2918,9 +2936,9 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* disable data replication log for schema replication log types in HA mode */
       if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
-	  && is_schema_repl_log_statment (statement))
+	  && is_stmt_based_repl_type (statement))
 	{
-	  need_schema_replication = true;
+	  need_stmt_replication = true;
 
 	  /* since we are going to suppress writing replication logs,
 	   * we need to flush all dirty objects to server not to lose them.
@@ -3170,29 +3188,36 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 	}
 
+      /* restore execution flag */
+      parser->exec_mode = old_exec_mode;
+
       /* enable data replication log */
-      if (need_schema_replication)
+      if (need_stmt_replication)
 	{
+	  int repl_error = NO_ERROR;
+
 	  /* before enable data replication log,
 	   * we have to flush all dirty objects to server not to write
 	   * redundant data replication logs for DDLs
 	   */
-	  if (error == NO_ERROR)
+	  if (error >= 0)
 	    {
-	      error = locator_all_flush ();
+	      repl_error = locator_all_flush ();
 	    }
 
 	  suppress_repl_error = db_set_suppress_repl_on_transaction (false);
-	}
 
-      /* restore execution flag */
-      parser->exec_mode = old_exec_mode;
+	  /* write schema replication log */
+	  if (error >= 0 && repl_error == NO_ERROR
+	      && suppress_repl_error == NO_ERROR)
+	    {
+	      repl_error = do_replicate_statement (parser, statement);
+	    }
 
-      /* write schema replication log */
-      if (error == NO_ERROR
-	  && need_schema_replication && suppress_repl_error == NO_ERROR)
-	{
-	  error = do_replicate_schema (parser, statement);
+	  if (repl_error != NO_ERROR)
+	    {
+	      error = repl_error;
+	    }
 	}
     }
 
@@ -3298,7 +3323,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
-  bool need_schema_replication = false;
+  bool need_stmt_based_repl = false;
   int suppress_repl_error;
 
   assert (parser->query_id == NULL_QUERY_ID);
@@ -3342,9 +3367,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* disable data replication log for schema replication log types in HA mode */
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
-      && is_schema_repl_log_statment (statement))
+      && is_stmt_based_repl_type (statement))
     {
-      need_schema_replication = true;
+      need_stmt_based_repl = true;
 
       /* since we are going to suppress writing replication logs,
        * we need to flush all dirty objects to server not to lose them
@@ -3558,28 +3583,35 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
-  /* enable data replication log */
-  if (need_schema_replication)
-    {
-      /* before enable data replication log
-       * we have to flush all dirty objects to server not to write
-       * redundant data replication logs for DDLs */
-      if (err == NO_ERROR)
-	{
-	  err = locator_all_flush ();
-	}
-
-      suppress_repl_error = db_set_suppress_repl_on_transaction (false);
-    }
-
   /* restore execution flag */
   parser->exec_mode = old_exec_mode;
 
-  /* write schema replication log */
-  if (err == NO_ERROR
-      && need_schema_replication && suppress_repl_error == NO_ERROR)
+  /* enable data replication log */
+  if (need_stmt_based_repl)
     {
-      err = do_replicate_schema (parser, statement);
+      int repl_error = NO_ERROR;
+
+      /* before enable data replication log
+       * we have to flush all dirty objects to server not to write
+       * redundant data replication logs for DDLs and SBR statements */
+      if (err >= 0)
+	{
+	  repl_error = locator_all_flush ();
+	}
+
+      suppress_repl_error = db_set_suppress_repl_on_transaction (false);
+
+      /* write schema replication log */
+      if (err >= 0 && repl_error == NO_ERROR
+	  && suppress_repl_error == NO_ERROR)
+	{
+	  repl_error = do_replicate_statement (parser, statement);
+	}
+
+      if (repl_error != NO_ERROR)
+	{
+	  err = repl_error;
+	}
     }
 
 end:
@@ -14988,37 +15020,37 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   REPL_INFO repl_info;
-  REPL_INFO_SCHEMA repl_schema;
+  REPL_INFO_SBR repl_stmt;
   PARSER_VARCHAR *name = NULL;
-  static const char *unknown_schema_name = "-";
+  static const char *unknown_name = "-";
 
   if (log_does_allow_replication () == false)
     {
       return NO_ERROR;
     }
 
-  assert_release (parser->ddl_stmt_for_replication != NULL);
+  assert_release (parser->stmt_for_replication != NULL);
 
   switch (statement->node_type)
     {
     case PT_CREATE_ENTITY:
       name =
 	pt_print_bytes (parser, statement->info.create_entity.entity_name);
-      repl_schema.statement_type = CUBRID_STMT_CREATE_CLASS;
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_CLASS;
       break;
 
     case PT_ALTER:
       name = pt_print_bytes (parser, statement->info.alter.entity_name);
-      repl_schema.statement_type = CUBRID_STMT_ALTER_CLASS;
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_CLASS;
       break;
 
     case PT_RENAME:
       name = pt_print_bytes (parser, statement->info.rename.old_name);
-      repl_schema.statement_type = CUBRID_STMT_RENAME_CLASS;
+      repl_stmt.statement_type = CUBRID_STMT_RENAME_CLASS;
       break;
 
     case PT_DROP:
@@ -15030,86 +15062,86 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return NO_ERROR;
 	}
-      repl_schema.statement_type = CUBRID_STMT_DROP_CLASS;
+      repl_stmt.statement_type = CUBRID_STMT_DROP_CLASS;
       break;
 
     case PT_CREATE_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
-      repl_schema.statement_type = CUBRID_STMT_CREATE_INDEX;
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_INDEX;
       break;
 
     case PT_ALTER_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
-      repl_schema.statement_type = CUBRID_STMT_ALTER_INDEX;
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_INDEX;
       break;
 
     case PT_DROP_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
-      repl_schema.statement_type = CUBRID_STMT_DROP_INDEX;
+      repl_stmt.statement_type = CUBRID_STMT_DROP_INDEX;
       break;
 
     case PT_CREATE_SERIAL:
-      repl_schema.statement_type = CUBRID_STMT_CREATE_SERIAL;
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_SERIAL;
       break;
 
     case PT_ALTER_SERIAL:
-      repl_schema.statement_type = CUBRID_STMT_ALTER_SERIAL;
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_SERIAL;
       break;
 
     case PT_DROP_SERIAL:
-      repl_schema.statement_type = CUBRID_STMT_DROP_SERIAL;
+      repl_stmt.statement_type = CUBRID_STMT_DROP_SERIAL;
       break;
 
     case PT_CREATE_STORED_PROCEDURE:
-      repl_schema.statement_type = CUBRID_STMT_CREATE_STORED_PROCEDURE;
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_STORED_PROCEDURE;
       break;
 
     case PT_ALTER_STORED_PROCEDURE:
-      repl_schema.statement_type = CUBRID_STMT_ALTER_STORED_PROCEDURE;
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_STORED_PROCEDURE;
       break;
 
     case PT_DROP_STORED_PROCEDURE:
-      repl_schema.statement_type = CUBRID_STMT_DROP_STORED_PROCEDURE;
+      repl_stmt.statement_type = CUBRID_STMT_DROP_STORED_PROCEDURE;
       break;
 
     case PT_CREATE_USER:
-      repl_schema.statement_type = CUBRID_STMT_CREATE_USER;
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_USER;
       break;
 
     case PT_ALTER_USER:
-      repl_schema.statement_type = CUBRID_STMT_ALTER_USER;
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_USER;
       break;
 
     case PT_DROP_USER:
-      repl_schema.statement_type = CUBRID_STMT_DROP_USER;
+      repl_stmt.statement_type = CUBRID_STMT_DROP_USER;
       break;
 
     case PT_GRANT:
-      repl_schema.statement_type = CUBRID_STMT_GRANT;
+      repl_stmt.statement_type = CUBRID_STMT_GRANT;
       break;
 
     case PT_REVOKE:
-      repl_schema.statement_type = CUBRID_STMT_REVOKE;
+      repl_stmt.statement_type = CUBRID_STMT_REVOKE;
       break;
 
     case PT_CREATE_TRIGGER:
-      repl_schema.statement_type = CUBRID_STMT_CREATE_TRIGGER;
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_TRIGGER;
       break;
 
     case PT_RENAME_TRIGGER:
-      repl_schema.statement_type = CUBRID_STMT_RENAME_TRIGGER;
+      repl_stmt.statement_type = CUBRID_STMT_RENAME_TRIGGER;
       break;
 
     case PT_DROP_TRIGGER:
-      repl_schema.statement_type = CUBRID_STMT_DROP_TRIGGER;
+      repl_stmt.statement_type = CUBRID_STMT_DROP_TRIGGER;
       break;
 
     case PT_REMOVE_TRIGGER:
-      repl_schema.statement_type = CUBRID_STMT_REMOVE_TRIGGER;
+      repl_stmt.statement_type = CUBRID_STMT_REMOVE_TRIGGER;
       break;
 
     case PT_ALTER_TRIGGER:
-      repl_schema.statement_type = CUBRID_STMT_SET_TRIGGER;
+      repl_stmt.statement_type = CUBRID_STMT_SET_TRIGGER;
       break;
 
     case PT_TRUNCATE:
@@ -15118,11 +15150,21 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NO_ERROR;
 	}
 
-      repl_schema.statement_type = CUBRID_STMT_TRUNCATE;
+      repl_stmt.statement_type = CUBRID_STMT_TRUNCATE;
       break;
 
     case PT_UPDATE_STATS:
-      repl_schema.statement_type = CUBRID_STMT_UPDATE_STATS;
+      repl_stmt.statement_type = CUBRID_STMT_UPDATE_STATS;
+      break;
+
+    case PT_INSERT:
+      repl_stmt.statement_type = CUBRID_STMT_INSERT;
+      break;
+    case PT_DELETE:
+      repl_stmt.statement_type = CUBRID_STMT_DELETE;
+      break;
+    case PT_UPDATE:
+      repl_stmt.statement_type = CUBRID_STMT_UPDATE;
       break;
 
     case PT_DROP_VARIABLE:	/* DROP VARIABLE statements are not replicated intentionally. */
@@ -15130,29 +15172,37 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  repl_info.repl_info_type = REPL_INFO_TYPE_SCHEMA;
+  repl_info.repl_info_type = REPL_INFO_TYPE_SBR;
   if (name == NULL)
     {
-      repl_schema.name = (char *) unknown_schema_name;
+      repl_stmt.name = (char *) unknown_name;
     }
   else
     {
-      repl_schema.name = (char *) pt_get_varchar_bytes (name);
+      repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
-  repl_schema.ddl = parser->ddl_stmt_for_replication;
-  repl_schema.db_user = db_get_user_name ();
-  repl_schema.sys_prm_context = sysprm_print_parameters_for_ha_repl ();
+  repl_stmt.stmt_text = parser->stmt_for_replication;
+  repl_stmt.db_user = db_get_user_name ();
 
-  assert_release (repl_schema.db_user != NULL);
+  if (pt_is_ddl_statement (statement) == true)
+    {
+      repl_stmt.sys_prm_context = sysprm_print_parameters_for_ha_repl ();
+    }
+  else
+    {
+      repl_stmt.sys_prm_context = NULL;
+    }
 
-  repl_info.info = (char *) &repl_schema;
+  assert_release (repl_stmt.db_user != NULL);
+
+  repl_info.info = (char *) &repl_stmt;
 
   error = locator_flush_replication_info (&repl_info);
 
-  db_string_free (repl_schema.db_user);
-  if (repl_schema.sys_prm_context)
+  db_string_free (repl_stmt.db_user);
+  if (repl_stmt.sys_prm_context)
     {
-      free (repl_schema.sys_prm_context);
+      free (repl_stmt.sys_prm_context);
     }
 
   return error;

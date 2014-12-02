@@ -258,7 +258,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
 				      LC_FLUSH_UPDATE,
 				      SINGLE_ROW_UPDATE, upd_scancache,
 				      &force_count, false,
-				      REPL_INFO_TYPE_STMT_NORMAL,
+				      REPL_INFO_TYPE_RBR_NORMAL,
 				      DB_NOT_PARTITIONED_CLASS, NULL,
 				      NULL, NULL, false);
       if (error_code != NO_ERROR)

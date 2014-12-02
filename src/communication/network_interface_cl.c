@@ -10182,30 +10182,31 @@ repl_set_info (REPL_INFO * repl_info)
   char *request = NULL, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-  REPL_INFO_SCHEMA *repl_schema;
+  REPL_INFO_SBR *repl_schema;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   switch (repl_info->repl_info_type)
     {
-    case REPL_INFO_TYPE_SCHEMA:
-      repl_schema = (REPL_INFO_SCHEMA *) repl_info->info;
+    case REPL_INFO_TYPE_SBR:
+      repl_schema = (REPL_INFO_SBR *) repl_info->info;
       request_size = OR_INT_SIZE	/* REPL_INFO.REPL_INFO_TYPE */
 	+ OR_INT_SIZE		/* REPL_INFO_SCHEMA.statement_type */
 	+ length_const_string (repl_schema->name, &strlen1)
-	+ length_const_string (repl_schema->ddl, &strlen2)
+	+ length_const_string (repl_schema->stmt_text, &strlen2)
 	+ length_const_string (repl_schema->db_user, &strlen3)
 	+ length_const_string (repl_schema->sys_prm_context, &strlen4);
 
       request = (char *) malloc (request_size);
       if (request)
 	{
-	  ptr = or_pack_int (request, REPL_INFO_TYPE_SCHEMA);
+	  ptr = or_pack_int (request, REPL_INFO_TYPE_SBR);
 	  ptr = or_pack_int (ptr, repl_schema->statement_type);
 	  ptr =
 	    pack_const_string_with_length (ptr, repl_schema->name, strlen1);
 	  ptr =
-	    pack_const_string_with_length (ptr, repl_schema->ddl, strlen2);
+	    pack_const_string_with_length (ptr, repl_schema->stmt_text,
+					   strlen2);
 	  ptr =
 	    pack_const_string_with_length (ptr, repl_schema->db_user,
 					   strlen3);

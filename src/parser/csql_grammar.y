@@ -23698,6 +23698,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"SELECT_BTREE_NODE_INFO", NULL, PT_HINT_SELECT_BTREE_NODE_INFO}
   ,
+  {"USE_SBR", NULL, PT_HINT_USE_SBR}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 

@@ -9139,6 +9139,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, " NO_SORT_LIMIT ");
 	}
 
+      if (p->info.delete_.hint & PT_HINT_USE_SBR)
+	{
+	  q = pt_append_nulstring (parser, q, " USE_SBR ");
+	}
+
       q = pt_append_nulstring (parser, q, " */");
     }
   if (r1)
@@ -13230,6 +13235,12 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_varchar (parser, b, vc);
 	  b = pt_append_nulstring (parser, b, ")");
 	}
+
+      if (p->info.insert.hint & PT_HINT_USE_SBR)
+	{
+	  b = pt_append_nulstring (parser, b, " USE_SBR");
+	}
+
       b = pt_append_nulstring (parser, b, " */ ");
     }
   b = pt_append_nulstring (parser, b, "into ");
@@ -16190,7 +16201,12 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " NO_SORT_LIMIT ");
 	}
 
-      b = pt_append_nulstring (parser, b, " */");
+      if (p->info.update.hint & PT_HINT_USE_SBR)
+	{
+	  b = pt_append_nulstring (parser, b, " USE_SBR ");
+	}
+
+      b = pt_append_nulstring (parser, b, " */ ");
     }
 
   if (!IS_UPDATE_OBJ (p))

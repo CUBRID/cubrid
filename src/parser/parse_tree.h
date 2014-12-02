@@ -1197,9 +1197,7 @@ typedef enum
   PT_HINT_QUERY_CACHE = 0x1000,	/* 0001 0000 0000 0000 *//* query_cache */
   PT_HINT_REEXECUTE = 0x2000,	/* 0010 0000 0000 0000 *//* reexecute */
   PT_HINT_JDBC_CACHE = 0x4000,	/* 0100 0000 0000 0000 *//* jdbc_cache */
-#if 0				/* not used */
-  PT_HINT_NO_STATS = 0x8000,	/* 1000 0000 0000 0000 *//* no_stats */
-#endif
+  PT_HINT_USE_SBR = 0x8000,	/* 1000 0000 0000 0000 *//* statement based replication */
   PT_HINT_USE_IDX_DESC = 0x10000,	/* 0001 0000 0000 0000 0000 *//* descending index scan */
   PT_HINT_NO_COVERING_IDX = 0x20000,	/* 0010 0000 0000 0000 0000 *//* do not use covering index scan */
   PT_HINT_INSERT_MODE = 0x40000,	/* 0100 0000 0000 0000 0000 *//* set insert_executeion_mode */
@@ -3667,7 +3665,7 @@ struct parser_context
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
 
-  char *ddl_stmt_for_replication;
+  char *stmt_for_replication;
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;
