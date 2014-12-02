@@ -375,6 +375,8 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser,
 					     PT_NODE * node);
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser,
 						    PT_NODE * node);
+static void pt_update_host_var_data_type (PARSER_CONTEXT * parser,
+					  PT_NODE * hv_node);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -25811,13 +25813,12 @@ error_collation:
  *					    change is made.
  *  return: void
  *  node (in/out) :
- *  domain (in)	  : the expected domain
  */
 static void
 pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser,
 					PT_NODE * node)
 {
-  PT_NODE *or_next = NULL;
+  PT_NODE *p = NULL;
 
   assert (node != NULL);
   assert (node->expected_domain != NULL);
@@ -25827,53 +25828,49 @@ pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser,
       return;
     }
 
-  if (node->data_type != NULL && node->expected_domain != NULL)
+  pt_update_host_var_data_type (parser, node);
+
+  for (p = node->or_next; p != NULL; p = p->or_next)
     {
-      if (PT_IS_CHAR_STRING_TYPE (node->data_type->type_enum)
-	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (node->expected_domain)))
-	{
-	  node->data_type->info.data_type.collation_id =
-	    node->expected_domain->collation_id;
-	  node->data_type->info.data_type.units =
-	    node->expected_domain->codeset;
-	  node->data_type->info.data_type.collation_flag =
-	    node->expected_domain->collation_flag;
-	}
-      else if (node->data_type->type_enum !=
-	       pt_db_to_type_enum (TP_DOMAIN_TYPE (node->expected_domain)))
-	{
-	  parser_free_node (parser, node->data_type);
-	  node->data_type =
-	    pt_domain_to_data_type (parser, node->expected_domain);
-	}
+      pt_update_host_var_data_type (parser, p);
+    }
+}
+
+/* pt_update_host_var_data_type - update data type of HOST_VAR node
+ *                                to be the same with expected domain
+ *                                If data_type is not present, no
+ *                                change is made.
+ *  return: void
+ *  hv_node (in/out) :
+ */
+static void
+pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node)
+{
+  PT_NODE *dt;
+  TP_DOMAIN *dom;
+
+  if (hv_node->node_type != PT_HOST_VAR || hv_node->data_type == NULL
+      || hv_node->expected_domain == NULL)
+    {
+      return;
     }
 
-  or_next = node->or_next;
-  while (or_next)
+  dt = hv_node->data_type;
+  dom = hv_node->expected_domain;
+
+  if (PT_IS_CHAR_STRING_TYPE (dt->type_enum)
+      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dom)))
     {
-      if (or_next->node_type == PT_HOST_VAR
-	  && or_next->data_type != NULL && or_next->expected_domain != NULL)
-	{
-	  if (PT_IS_CHAR_STRING_TYPE (or_next->data_type->type_enum)
-	      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (or_next->expected_domain)))
-	    {
-	      or_next->data_type->info.data_type.collation_id =
-		or_next->expected_domain->collation_id;
-	      or_next->data_type->info.data_type.units =
-		or_next->expected_domain->codeset;
-	      or_next->data_type->info.data_type.collation_flag =
-		or_next->expected_domain->collation_flag;
-	    }
-	  else if (or_next->data_type->type_enum
-		   !=
-		   pt_db_to_type_enum (TP_DOMAIN_TYPE
-				       (node->expected_domain)))
-	    {
-	      parser_free_node (parser, or_next->data_type);
-	      or_next->data_type =
-		pt_domain_to_data_type (parser, node->expected_domain);
-	    }
-	}
-      or_next = or_next->or_next;
+      dt->info.data_type.collation_id = dom->collation_id;
+      dt->info.data_type.units = dom->codeset;
+      dt->info.data_type.collation_flag = dom->collation_flag;
+    }
+  else if (dt->type_enum != pt_db_to_type_enum (TP_DOMAIN_TYPE (dom))
+	   || (dt->type_enum == PT_TYPE_NUMERIC
+	       && (dt->info.data_type.precision != dom->precision
+		   || dt->info.data_type.dec_precision != dom->scale)))
+    {
+      parser_free_node (parser, hv_node->data_type);
+      hv_node->data_type = pt_domain_to_data_type (parser, dom);
     }
 }

@@ -8763,7 +8763,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 				  TP_DOMAIN *domain_ptr = NOT_NULL_VALUE
 				    (tmp_domain_ptr,
 				     agg_p->accumulator_domain.value_dom);
-				  /* accumulator domain should be used instead of 
+				  /* accumulator domain should be used instead of
 				   * agg_p->domain for SUM/AVG evaluation
 				   * at the end cast the result to agg_p->domain
 				   */
@@ -9272,7 +9272,12 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p,
 	      assert ((dom_type == DB_TYPE_OID)
 		      || (dom_type == DB_TYPE_VOBJ));
 	    }
-	  else if (val_type != dom_type)
+	  else if (val_type != dom_type
+		   || (val_type == DB_TYPE_NUMERIC
+		       && (peek_value_p->domain.numeric_info.precision
+			   != regu_var_p->domain->precision
+			   || peek_value_p->domain.numeric_info.scale
+			   != regu_var_p->domain->scale)))
 	    {
 	      if (REGU_VARIABLE_IS_FLAGED (regu_var_p,
 					   REGU_VARIABLE_ANALYTIC_WINDOW))
@@ -13469,7 +13474,7 @@ qdata_get_agg_hkey_size (AGGREGATE_HASH_KEY * key)
 /*
  * qdata_get_agg_hvalue_size () - get aggregate hash value size
  *   returns: size
- *   value(in): hash 
+ *   value(in): hash
  *   ret_delta(in): if false return actual size, if true return difference in
  *                  size between previously computed size and current size
  */
@@ -13960,7 +13965,7 @@ qdata_load_agg_hentry_from_list (THREAD_ENTRY * thread_p,
  *   tuple_list_id(in): list file containing unsorted tuples
  *   partial_list_id(in): list file containing partial accumulators
  *   temp_dbval_array(in): array of temporary values used for holding counters
- * 
+ *
  * NOTE: This function will clear the hash table!
  */
 int
