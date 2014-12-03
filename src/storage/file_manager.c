@@ -14040,8 +14040,8 @@ file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       rv_pages = (FILE_RECV_DELETE_PAGES *) rcv->data;
       fhdr->num_user_pages_mrkdelete -= rv_pages->deleted_npages;
-
-      if (rv_pages->need_compaction == 1)
+      if (rv_pages->need_compaction == 1
+	  && log_is_in_crash_recovery () == false)
 	{
 	  vpid = pgbuf_get_vpid_ptr (rcv->pgptr);
 	  vfid.volid = vpid->volid;
