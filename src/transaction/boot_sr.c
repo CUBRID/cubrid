@@ -2714,7 +2714,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 		  "Failed to initialize language module");
 	}
-      return NULL_TRAN_INDEX;
+      goto exit_on_error;
     }
 
   /* initialize time zone data, optional module */
@@ -2725,7 +2725,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 		  "Failed to initialize timezone module");
 	}
-      return NULL_TRAN_INDEX;
+      goto exit_on_error;
     }
 
   /* open the system message catalog, before prm_ ?  */
@@ -2734,19 +2734,31 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
       /* need an appropriate error */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      return NULL_TRAN_INDEX;
+      goto exit_on_error;
     }
 
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
-      return NULL_TRAN_INDEX;
+      goto exit_on_error;
     }
 
   area_init (false);
-  set_area_init ();
-  pr_area_init ();
-  tp_init ();
+  error_code = set_area_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+  error_code = pr_area_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+  error_code = tp_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* Initialize tsc-timer */
   tsc_init ();
@@ -2768,7 +2780,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 		    strlen (ROOTCLASS_NAME) + 1, ROOTCLASS_NAME,
 		    DB_SIZEOF (boot_Db_parm->rootclass_name));
       /* Destroy everything */
-      return NULL_TRAN_INDEX;
+      goto exit_on_error;
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2776,7 +2788,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      client_credential->db_name);
-      return NULL_TRAN_INDEX;
+      goto exit_on_error;
     }
 
   /*
@@ -2801,7 +2813,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST,
 	      1, db_path);
-      return NULL_TRAN_INDEX;
+      goto exit_on_error;
     }
   boot_remove_useless_path_separator (db_path, db_pathbuf);
   db_path = db_pathbuf;
@@ -2819,7 +2831,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST,
 	      1, log_path);
-      return NULL_TRAN_INDEX;
+      goto exit_on_error;
     }
   boot_remove_useless_path_separator (log_path, log_pathbuf);
   log_path = log_pathbuf;
@@ -2868,7 +2880,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	      cub_dirname_r (lob_path, fixed_pathbuf, PATH_MAX);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
-	      return NULL_TRAN_INDEX;
+	      goto exit_on_error;
 	    }
 	}
       boot_remove_useless_path_separator (lob_path, p);
@@ -3299,7 +3311,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 		  "Failed to initialize language module");
 	}
-      return ER_LOC_INIT;
+      error_code = ER_LOC_INIT;
+      goto error;
     }
 
   /* initialize time zone data, optional module */
@@ -3310,21 +3323,24 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 		  "Failed to initialize timezone module");
 	}
-      return ER_TZ_LOAD_ERROR;
+      error_code = ER_TZ_LOAD_ERROR;
+      goto error;
     }
 
   if (msgcat_init () != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+      error_code = ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+      goto error;
     }
 
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
-      return ER_BO_CANT_LOAD_SYSPRM;
+      error_code = ER_BO_CANT_LOAD_SYSPRM;
+      goto error;
     }
 
   common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
@@ -3334,7 +3350,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      db_name);
-      return ER_BO_UNKNOWN_DATABASE;
+      error_code = ER_BO_UNKNOWN_DATABASE;
+      goto error;
     }
 
   /*
@@ -3354,7 +3371,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_FILE, 1,
 		  DATABASES_FILENAME);
 	}
-      return ER_CFG_NO_FILE;
+      error_code = ER_CFG_NO_FILE;
+      goto error;
     }
 
   if (dir == NULL || ((db = cfg_find_db_list (dir, db_name)) == NULL))
@@ -3398,13 +3416,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	}
       if (db == NULL)
 	{
-	  if (dir != NULL)
-	    {
-	      cfg_free_directory (dir);
-	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 		  db_name);
-	  return ER_BO_UNKNOWN_DATABASE;
+	  error_code = ER_BO_UNKNOWN_DATABASE;
+	  goto error;
 	}
     }
 
@@ -3439,9 +3454,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
     {
-      cfg_free_directory (dir);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
-      return ER_BO_CANT_LOAD_SYSPRM;
+      error_code = ER_BO_CANT_LOAD_SYSPRM;
+      goto error;
     }
 
   mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
@@ -3449,42 +3464,41 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE)
       && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
-      cfg_free_directory (dir);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf",
 	      "common", prm_get_name (PRM_ID_HA_MODE),
 	      css_ha_mode_string (common_ha_mode), db_name,
 	      css_ha_mode_string (prm_get_integer_value (PRM_ID_HA_MODE)));
-      return ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
+      error_code = ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
+      goto error;
     }
 
   /* reinit msg catalog to reflect PRM_MAX_THREADS */
   msgcat_final ();
   if (msgcat_init () != NO_ERROR)
     {
-      cfg_free_directory (dir);
-      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+      error_code = ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+      goto error;
     }
 
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
-      cfg_free_directory (dir);
-      return error_code;
+      goto error;
     }
 
   /* reinitialize thread mgr to reflect # of active requests */
   if (thread_initialize_manager () != NO_ERROR)
     {
-      cfg_free_directory (dir);
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      goto error;
     }
   if (er_init_internal
       (prm_get_string_value (PRM_ID_ER_LOG_FILE),
        prm_get_integer_value (PRM_ID_ER_EXIT_ASK), true) != NO_ERROR)
     {
-      cfg_free_directory (dir);
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      goto error;
     }
   er_clear ();
 
@@ -3492,13 +3506,25 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    * of this is done inside ws_init().
    */
   area_init (false);
-  set_area_init ();
-  pr_area_init ();
+  error_code = set_area_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = pr_area_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   locator_initialize_areas ();
 
   /* initialize the type/doain module (also sets up an area) */
-  tp_init ();
+  error_code = tp_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   /* Initialize tsc-timer */
   tsc_init ();
@@ -3525,8 +3551,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       if (from_backup == false || er_errid () == ER_IO_MOUNT_LOCKED)
 	{
-	  cfg_free_directory (dir);
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  goto error;
 	}
     }
 
@@ -3538,8 +3564,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       if (from_backup == false || er_errid () == ER_IO_MOUNT_LOCKED)
 	{
-	  cfg_free_directory (dir);
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  goto error;
 	}
       db_charset_db_header = INTL_CODESET_NONE;
     }
@@ -3550,14 +3576,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = spage_boot (thread_p);
   if (error_code != NO_ERROR)
     {
-      cfg_free_directory (dir);
-      return error_code;
+      goto error;
     }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
-      cfg_free_directory (dir);
-      return error_code;
+      goto error;
     }
 
   /*
@@ -3579,8 +3603,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 				  log_prefix, r_args);
       if (error_code != NO_ERROR)
 	{
-	  cfg_free_directory (dir);
-	  return error_code;
+	  goto error;
 	}
     }
 
@@ -3601,7 +3624,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) ==
       NULL)
     {
-      fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
       goto error;
     }
@@ -3609,7 +3631,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = boot_get_db_parm (thread_p, boot_Db_parm, boot_Db_parm_oid);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all (thread_p);
       goto error;
     }
 
@@ -3619,7 +3640,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 				       LOG_DBFIRST_VOLID, boot_mount, NULL);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all (thread_p);
       goto error;
     }
 
@@ -3631,7 +3651,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = locator_initialize (thread_p);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
       goto error;
     }
@@ -3648,17 +3667,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = file_tracker_cache_vfid (&boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all (thread_p);
       goto error;
     }
   catalog_initialize (&boot_Db_parm->ctid);
 
   (void) qexec_initialize_xasl_cache (thread_p);
-  qfile_initialize_list_cache (thread_p);
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
-      fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
+      goto error;
+    }
+  error_code = qfile_initialize_list_cache (thread_p);
+  if (error_code != NO_ERROR)
+    {
       goto error;
     }
   (void) qexec_initialize_filter_pred_cache (thread_p);
@@ -3673,7 +3694,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = disk_reinit_all_tmp (thread_p);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all (thread_p);
       goto error;
     }
 
@@ -3724,6 +3744,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 		lang_charset_cubrid_name (db_charset_db_header),
 		lang_charset_cubrid_name (db_charset_db_root));
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
+      error_code = ER_LOC_INIT;
       goto error;
     }
 
@@ -3772,7 +3793,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 					TRAN_DEFAULT_ISOLATION_LEVEL ());
   if (tran_index == NULL_TRAN_INDEX)
     {
-      fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
       goto error;
     }
@@ -3966,7 +3986,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   return NO_ERROR;
 
 error:
-  cfg_free_directory (dir);
+  if (dir != NULL)
+    {
+      cfg_free_directory (dir);
+      dir = NULL;
+    }
   prev_err_msg = (char *) er_msg ();
   if (prev_err_msg != NULL)
     {
@@ -3980,6 +4004,21 @@ error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_UNABLE_TO_RESTART_SERVER, 1, "");
     }
+
+  session_states_finalize (thread_p);
+  log_final (thread_p);
+  qexec_finalize_filter_pred_cache (thread_p);
+  qfile_finalize_list_cache (thread_p);
+  qexec_finalize_xasl_cache (thread_p);
+
+#if defined(SERVER_MODE)
+  css_final_conn_list ();
+#endif
+
+  er_stack_push ();
+  boot_server_all_finalize (thread_p, false);
+  er_stack_pop ();
+
   return error_code;
 }
 
@@ -4052,7 +4091,10 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 
   area_init (false);
 
-  tp_init ();
+  if (tp_init () != NO_ERROR)
+    {
+      return NULL_TRAN_INDEX;
+    }
 
   if (boot_restart_server (thread_p, print_restart, db_name, true, true,
 			   r_args) != NO_ERROR)
@@ -6588,7 +6630,11 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
 
       (void) lang_set_charset (INTL_CODESET_ISO88591);
 
-      tp_init ();
+      error_code = tp_init ();
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
 
       /* Initialize tsc-timer */
       tsc_init ();

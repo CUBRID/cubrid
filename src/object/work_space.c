@@ -2673,18 +2673,16 @@ ws_find_class (const char *name)
 int
 ws_init (void)
 {
-  int error = NO_ERROR;
+  int error_code = NO_ERROR;
   unsigned int i;
   size_t allocsize;
 
-  /*
-   * this function needs to be left active after a database shutdown,
-   * (in case of server crash).  Because of this, it must be able
-   * to restart itself if initialized twice
-   */
+  /* ws_init() shouldn't invoked twice without ws_final() */
   if (ws_Mop_table != NULL)
     {
-      ws_final ();
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
     }
 
   if (db_create_workspace_heap () == 0)
@@ -2696,11 +2694,31 @@ ws_init (void)
    * area_init() must have been called earlier.
    * These need to all be returning errors !
    */
-  ws_area_init ();		/* object lists */
-  pr_area_init ();		/* DB_VALUE */
-  set_area_init ();		/* set reference */
-  obt_area_init ();		/* object templates, assignment templates */
-  classobj_area_init ();	/* schema templates */
+  error_code = ws_area_init ();	/* object lists */
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = pr_area_init ();	/* DB_VALUE */
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = set_area_init ();	/* set reference */
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = obt_area_init ();	/* object templates, assignment templates */
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = classobj_area_init ();	/* schema templates */
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   /* build the MOP table */
   ws_Mop_table_size = prm_get_integer_value (PRM_ID_WS_HASHTABLE_SIZE);
@@ -2711,7 +2729,8 @@ ws_init (void)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, allocsize);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   for (i = 0; i < ws_Mop_table_size; i++)
@@ -2725,7 +2744,8 @@ ws_init (void)
   if (Null_object == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      return (er_errid ());
+      error_code = er_errid ();
+      goto error;
     }
 
   /* start with nothing dirty */
@@ -2738,13 +2758,43 @@ ws_init (void)
 
   if (Classname_cache == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   /* Can't have any resident classes yet */
   ws_Resident_classes = NULL;
 
   return NO_ERROR;
+
+error:
+  db_destroy_workspace_heap ();
+
+  ws_area_final ();
+  pr_area_final ();
+  set_area_final ();
+  obt_area_final ();
+  classobj_area_final ();
+
+  if (ws_Mop_table != NULL)
+    {
+      free (ws_Mop_table);
+      ws_Mop_table = NULL;
+    }
+
+  if (Null_object != NULL)
+    {
+      ws_free_mop (Null_object);
+      Null_object = NULL;
+    }
+
+  if (Classname_cache != NULL)
+    {
+      mht_destroy (Classname_cache);
+      Classname_cache = NULL;
+    }
+
+  return error_code;
 }
 
 /*
@@ -4422,13 +4472,34 @@ ws_need_flush (void)
 
 /*
  * ws_area_init - initialize area for object list links.
- *    return: void
+ *    return: NO_ERROR or error code.
  */
-void
-ws_area_init ()
+int
+ws_area_init (void)
 {
   Objlist_area = area_create ("Object list links", sizeof (DB_OBJLIST),
 			      OBJLIST_AREA_COUNT, true);
+  if (Objlist_area == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * ws_area_final - finalize area for object list links.
+ *    return: none.
+ */
+void
+ws_area_final (void)
+{
+  if (Objlist_area != NULL)
+    {
+      area_destroy (Objlist_area);
+      Objlist_area = NULL;
+    }
 }
 
 /*

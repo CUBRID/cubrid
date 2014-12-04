@@ -544,7 +544,8 @@ extern void ws_abort_transaction (void);
 extern int ws_init (void);
 extern void ws_final (void);
 extern void ws_clear (void);
-extern void ws_area_init (void);
+extern int ws_area_init (void);
+extern void ws_area_final (void);
 
 /* MOP allocation functions */
 extern MOP ws_mop (OID * oid, MOP class_mop);

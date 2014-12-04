@@ -165,6 +165,7 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
 };
 
 AREA *tp_Domain_area = NULL;
+static bool tp_Initialized = false;
 
 extern unsigned int db_on_server;
 
@@ -683,21 +684,18 @@ static UINT64 tp_ubi_times_ten (UINT64 ubi, bool * truncated);
 
 /*
  * tp_init - Global initialization for this module.
- *    return: none
+ *    return: NO_ERROR or error code
  */
-void
+int
 tp_init (void)
 {
   TP_DOMAIN *d;
   int i;
 
-  /*
-   * we need to add safe guard to prevent any client from calling
-   * this initialize function several times during the client's life time
-   */
-  if (tp_Domain_area != NULL)
+  if (tp_Initialized)
     {
-      return;
+      assert (tp_Domain_area != NULL);
+      return NO_ERROR;
     }
 
   /* create our allocation area */
@@ -706,6 +704,12 @@ tp_init (void)
 #else /* !SERVER_MODE */
   tp_Domain_area = area_create ("Domains", sizeof (TP_DOMAIN), 1024, false);
 #endif /* SERVER_MODE */
+
+  if (tp_Domain_area == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   /*
    * Make sure the next pointer on all the built-in domains is clear.
@@ -743,6 +747,10 @@ tp_init (void)
       d->built_in_index = tp_Midxkey_domains[0]->built_in_index;
       d->is_desc = false;
     }
+
+  tp_Initialized = true;
+
+  return NO_ERROR;
 }
 
 /*
@@ -785,6 +793,12 @@ tp_final (void)
 {
   TP_DOMAIN *dlist, *d, *next, *prev;
   int i;
+
+  if (!tp_Initialized)
+    {
+      assert (tp_Domain_area == NULL);
+      return;
+    }
 
   /*
    * Make sure the next pointer on all the built-in domains is clear.
@@ -846,6 +860,14 @@ tp_final (void)
 	    }
 	}
     }
+
+  if (tp_Domain_area != NULL)
+    {
+      area_destroy (tp_Domain_area);
+      tp_Domain_area = NULL;
+    }
+
+  tp_Initialized = false;
 }
 
 /*
@@ -1171,7 +1193,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj,
 	    TP_DOMAIN *d;
 	    for (d = new_->setdomain; d != NULL; d = d->next)
 	      {
-	        assert (d->is_cached == 0);
+		assert (d->is_cached == 0);
 	      }
 	  }
 	}

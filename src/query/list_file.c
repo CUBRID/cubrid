@@ -5933,6 +5933,11 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
       free_and_init (qfile_List_cache.tran_list);
     }
 
+  if (qfile_List_cache.ht_assigned)
+    {
+      free_and_init (qfile_List_cache.ht_assigned);
+    }
+
   /* list cache entry pool */
   if (qfile_List_cache_entry_pool.pool)
     {

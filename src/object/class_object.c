@@ -185,11 +185,36 @@ static int classobj_check_function_constraint_info (DB_SEQ * constraint_seq,
 						    bool *
 						    has_function_constraint);
 
-void
+/*
+ * classobj_area_init - Initialize the area for schema templates.
+ *    return: NO_ERROR or error code.
+ */
+int
 classobj_area_init (void)
 {
   Template_area =
     area_create ("Schema templates", sizeof (SM_TEMPLATE), 4, false);
+  if (Template_area == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * classobj_area_final - Finalize the area for schema templates.
+ *    return: none.
+ */
+void
+classobj_area_final (void)
+{
+  if (Template_area != NULL)
+    {
+      area_destroy (Template_area);
+      Template_area = NULL;
+    }
 }
 
 /* THREADED ARRAYS */

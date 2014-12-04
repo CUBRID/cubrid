@@ -150,7 +150,8 @@ extern AREA *Set_Ref_Area;	/* Area for allocation of set reference structures */
 extern AREA *Set_Obj_Area;	/* Area for allocation of set object structures */
 
 extern DB_COLLECTION *set_create (DB_TYPE type, int initial_size);
-extern void set_area_init (void);
+extern int set_area_init (void);
+extern void set_area_final (void);
 extern DB_COLLECTION *set_create_basic (void);
 extern DB_COLLECTION *set_create_multi (void);
 extern DB_COLLECTION *set_create_sequence (int size);

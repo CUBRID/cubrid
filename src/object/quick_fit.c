@@ -52,7 +52,11 @@ db_create_workspace_heap (void)
 void
 db_destroy_workspace_heap (void)
 {
-  hl_unregister_lea_heap (ws_heap_id);
+  if (ws_heap_id != 0)
+    {
+      hl_unregister_lea_heap (ws_heap_id);
+      ws_heap_id = 0;
+    }
 }
 
 /*

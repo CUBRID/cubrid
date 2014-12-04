@@ -156,18 +156,56 @@ static void free_temp_object (MOP obj);
 
 /*
  * obt_area_init
- *    return: none
+ *    return: NO_ERROR or error code.
  *
  */
 
-void
+int
 obt_area_init (void)
 {
   Template_area = area_create ("Object templates", sizeof (OBJ_TEMPLATE),
 			       32, true);
+  if (Template_area == NULL)
+    {
+      goto error;
+    }
 
   Assignment_area =
     area_create ("Assignment templates", sizeof (OBJ_TEMPASSIGN), 64, false);
+  if (Assignment_area == NULL)
+    {
+      goto error;
+    }
+
+  return NO_ERROR;
+
+error:
+  obt_area_final ();
+
+  assert (er_errid () != NO_ERROR);
+
+  return er_errid ();
+}
+
+/*
+ * obt_area_final
+ *    return: NO_ERROR or error code.
+ *
+ */
+void
+obt_area_final (void)
+{
+  if (Template_area != NULL)
+    {
+      area_destroy (Template_area);
+      Template_area = NULL;
+    }
+
+  if (Assignment_area != NULL)
+    {
+      area_destroy (Assignment_area);
+      Assignment_area = NULL;
+    }
 }
 
 /*

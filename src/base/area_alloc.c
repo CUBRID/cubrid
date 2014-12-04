@@ -143,7 +143,7 @@ area_final (void)
     }
   area_List = NULL;
 
-  tp_Domain_area = Set_Ref_Area = Set_Obj_Area = NULL;
+  Set_Ref_Area = Set_Obj_Area = NULL;
   pthread_mutex_destroy (&area_List_lock);
 }
 
@@ -163,6 +163,7 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
 {
   AREA *area;
   size_t adjust;
+  size_t size;
 #if defined (SERVER_MODE)
   unsigned int i;
   int rv;
@@ -171,6 +172,8 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
   area = (AREA *) malloc (sizeof (AREA));
   if (area == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (AREA));
       return NULL;
     }
 
@@ -181,6 +184,12 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
   else
     {
       area->name = strdup (name);
+      if (area->name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, strlen (name) + 1);
+	  goto error;
+	}
     }
 
   /* always make sure element size is a double word multiple */
@@ -214,45 +223,66 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
   area->f_cnt = NULL;
   area->failure_function = NULL;
 
-  area->blocks = (AREA_BLOCK **) malloc (sizeof (void *) * area->n_threads);
+  size = sizeof (void *) * area->n_threads;
+  area->blocks = (AREA_BLOCK **) malloc (size);
   if (area->blocks == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       goto error;
     }
 
-  area->free = (AREA_FREE_LIST **) malloc (sizeof (void *) * area->n_threads);
+  size = sizeof (void *) * area->n_threads;
+  area->free = (AREA_FREE_LIST **) malloc (size);
   if (area->free == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       goto error;
     }
 
-  area->n_allocs = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  size = sizeof (size_t) * area->n_threads;
+  area->n_allocs = (size_t *) malloc (size);
   if (area->n_allocs == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       goto error;
     }
 
-  area->n_frees = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  size = sizeof (size_t) * area->n_threads;
+  area->n_frees = (size_t *) malloc (size);
   if (area->n_frees == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       goto error;
     }
 
-  area->b_cnt = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  size = sizeof (size_t) * area->n_threads;
+  area->b_cnt = (size_t *) malloc (size);
   if (area->b_cnt == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       goto error;
     }
 
-  area->a_cnt = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  size = sizeof (size_t) * area->n_threads;
+  area->a_cnt = (size_t *) malloc (size);
   if (area->a_cnt == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       goto error;
     }
 
-  area->f_cnt = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  size = sizeof (size_t) * area->n_threads;
+  area->f_cnt = (size_t *) malloc (size);
   if (area->f_cnt == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       goto error;
     }
 
@@ -286,8 +316,8 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
 
   return (area);
 
-#if defined (SERVER_MODE)
 error:
+#if defined (SERVER_MODE)
   if (area->blocks)
     {
       free_and_init (area->blocks);
@@ -316,6 +346,8 @@ error:
     {
       free_and_init (area->f_cnt);
     }
+#endif /* SERVER_MODE */
+
   if (area->name)
     {
       free_and_init (area->name);
@@ -324,10 +356,8 @@ error:
   free_and_init (area);
 
   return NULL;
-#endif /* SERVER_MODE */
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * area_destroy - Removes an area
  *   return: none
@@ -372,7 +402,6 @@ area_destroy (AREA * area)
 
   free_and_init (area);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * area_grow - Allocate a new block for an area and add it to the list

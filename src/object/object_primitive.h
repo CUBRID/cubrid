@@ -363,7 +363,8 @@ extern void pr_free_string (char *str);
 extern char *pr_valstring (DB_VALUE *);
 
 /* area init */
-extern void pr_area_init (void);
+extern int pr_area_init (void);
+extern void pr_area_final (void);
 
 extern int pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain);
 

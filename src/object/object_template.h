@@ -241,7 +241,8 @@ extern DB_VALUE *obt_check_assignment (SM_ATTRIBUTE * att,
 				       unsigned force_check_not_null);
 extern int obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 				int check_non_null);
-extern void obt_area_init (void);
+extern int obt_area_init (void);
+extern void obt_area_final (void);
 extern int obt_find_attribute (OBJ_TEMPLATE * template_ptr,
 			       int use_base_class, const char *name,
 			       SM_ATTRIBUTE ** attp);

@@ -112,9 +112,7 @@ extern void area_final (void);
 /* area definition */
 extern AREA *area_create (const char *name, size_t element_size,
 			  size_t alloc_count, bool need_gc);
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern void area_destroy (AREA * area);
-#endif
 
 /* allocation functions */
 extern void *area_alloc (AREA * area);

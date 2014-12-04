@@ -2273,16 +2273,38 @@ PR_TYPE *tp_Type_resultset = &tp_ResultSet;
 
 /*
  * pr_area_init - Initialize the area for allocation of value containers.
- *    return: void
+ *    return: NO_ERROR or error code.
  * Note:
  *    This must be called at a suitable point in system initialization.
  */
-void
+int
 pr_area_init (void)
 {
   Value_area = area_create ("Value containers", sizeof (DB_VALUE),
 			    VALUE_AREA_COUNT, false);
+  if (Value_area == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
   pr_init_ordered_mem_sizes ();
+
+  return NO_ERROR;
+}
+
+/*
+ * pr_area_final - Finalize the area for allocation of value containers.
+ *    return: none.
+ */
+void
+pr_area_final (void)
+{
+  if (Value_area != NULL)
+    {
+      area_destroy (Value_area);
+      Value_area = NULL;
+    }
 }
 
 /*

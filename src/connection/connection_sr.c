@@ -555,19 +555,22 @@ css_final_conn_list (void)
   assert (css_Num_active_conn == 0);
   assert (css_Active_conn_anchor == NULL);
 
-  for (i = 0; i < css_Num_max_conn; i++)
+  if (css_Conn_array != NULL)
     {
-      conn = &css_Conn_array[i];
+      for (i = 0; i < css_Num_max_conn; i++)
+	{
+	  conn = &css_Conn_array[i];
 #if defined(SERVER_MODE)
-      assert (conn->idx == i);
-      assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-      assert (conn->csect.name == css_Csect_name_conn);
+	  assert (conn->idx == i);
+	  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
+	  assert (conn->csect.name == css_Csect_name_conn);
 #endif
 
-      csect_finalize_critical_section (&conn->csect);
-    }
+	  csect_finalize_critical_section (&conn->csect);
+	}
 
-  free_and_init (css_Conn_array);
+      free_and_init (css_Conn_array);
+    }
 }
 
 /*

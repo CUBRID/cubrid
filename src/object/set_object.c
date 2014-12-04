@@ -163,11 +163,10 @@ static int check_set_object (DB_VALUE * var, int *removed_ptr);
 
 /*
  * set_area_init() - Initialize the areas used for set storage
- *      return: none
+ *      return: NO_ERROR or error code
  *
  */
-
-void
+int
 set_area_init (void)
 {
   /* we need to add safe guard to prevent any client from calling */
@@ -178,14 +177,52 @@ set_area_init (void)
       Set_Ref_Area = area_create ("Set references",
 				  sizeof (DB_COLLECTION), SET_AREA_COUNT,
 				  true);
+      if (Set_Ref_Area == NULL)
+	{
+	  goto error;
+	}
     }
+
   if (Set_Obj_Area == NULL)
     {
       Set_Obj_Area = area_create ("Set objects",
 				  sizeof (COL), SET_AREA_COUNT, false);
+      if (Set_Obj_Area == NULL)
+	{
+	  goto error;
+	}
     }
 
   col_initialize ();
+
+  return NO_ERROR;
+
+error:
+  set_area_final ();
+
+  assert (er_errid () != NO_ERROR);
+
+  return er_errid ();
+}
+
+/*
+ * set_area_final() - Finalize the areas used for set storage
+ *      return: none
+ */
+void
+set_area_final (void)
+{
+  if (Set_Ref_Area != NULL)
+    {
+      area_destroy (Set_Ref_Area);
+      Set_Ref_Area = NULL;
+    }
+
+  if (Set_Obj_Area != NULL)
+    {
+      area_destroy (Set_Obj_Area);
+      Set_Obj_Area = NULL;
+    }
 }
 
 /* VALUE BLOCK RESOURCE */
@@ -813,7 +850,11 @@ col_new (long size, int settype)
 
   if (Set_Obj_Area == NULL)
     {
-      set_area_init ();
+      err = set_area_init ();
+      if (err != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   col = (COL *) area_alloc (Set_Obj_Area);
@@ -2023,7 +2064,10 @@ set_make_reference (void)
 
   if (Set_Ref_Area == NULL)
     {
-      set_area_init ();
+      if (set_area_init () != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   ref = (DB_COLLECTION *) area_alloc (Set_Ref_Area);

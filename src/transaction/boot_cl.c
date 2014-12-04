@@ -299,6 +299,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   unsigned int length;
   int error_code = NO_ERROR;
   DB_INFO *db = NULL;
+#if !defined(WINDOWS)
+  bool dl_initialized = false;
+#endif /* !WINDOWS */
   const char *hosts[2];
 #if defined (CS_MODE)
   char format[BOOT_FORMAT_MAX_LENGTH];
@@ -539,6 +542,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 #else /* !SOLARIS && !LINUX && !AIX */
   (void) dl_initiate_module ();
 #endif /* !SOLARIS && !LINUX && !AIX */
+  dl_initialized = true;
 #endif /* !WINDOWS */
 
 #if defined(CS_MODE)
@@ -560,7 +564,11 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   /* this must be done before the init_server because recovery steps
    * may need domains.
    */
-  tp_init ();
+  error_code = tp_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   /* Initialize tsc-timer */
   tsc_init ();
@@ -676,6 +684,58 @@ error_exit:
       free_and_init (client_credential->db_user);
     }
 
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      er_log_debug (ARG_FILE_LINE, "boot_initialize_client: "
+		    "unregister client { tran %d }\n", tm_Tran_index);
+      boot_shutdown_client (false);
+    }
+  else
+    {
+      if (boot_Server_credential.db_full_name)
+	{
+	  db_private_free_and_init (NULL,
+				    boot_Server_credential.db_full_name);
+	}
+      if (boot_Server_credential.host_name)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
+	}
+
+      showstmt_metadata_final ();
+      tran_free_savepoint_list ();
+      set_final ();
+      tr_final ();
+      au_final ();
+      sm_final ();
+      ws_final ();
+      es_final ();
+      tp_final ();
+
+#if !defined(WINDOWS)
+      if (dl_initialized == true)
+	{
+	  (void) dl_destroy_module ();
+	  dl_initialized = false;
+	}
+#endif /* !WINDOWS */
+
+      locator_free_areas ();
+      sysprm_final ();
+      area_final ();
+
+      lang_final ();
+      tz_unload ();
+
+#if defined(WINDOWS)
+      pc_final ();
+#endif /* WINDOWS */
+
+      memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
+      memset (boot_Server_credential.server_session_key, 0xFF,
+	      SERVER_SESSION_KEY_SIZE);
+    }
+
   return error_code;
 }
 
@@ -764,7 +824,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 		  "Failed to initialize timezone module");
 	}
-      return ER_TZ_LOAD_ERROR;
+      error_code = ER_TZ_LOAD_ERROR;
+      goto error;
     }
 
   /* database name must be specified */
@@ -772,7 +833,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      "(null)");
-      return ER_BO_UNKNOWN_DATABASE;
+      error_code = ER_BO_UNKNOWN_DATABASE;
+      goto error;
     }
 
   /* open the system message catalog, before prm_ ?  */
@@ -812,7 +874,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       if (db == NULL
 	  || (db->num_hosts > 1
 	      && (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
-		  || BOOT_LOG_REPLICATOR_TYPE (client_credential->client_type)
+		  || BOOT_LOG_REPLICATOR_TYPE (client_credential->
+					       client_type)
 		  || BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))))
 	{
 	  error_code = ER_NET_NO_EXPLICIT_SERVER_HOST;
@@ -1142,7 +1205,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* this must be done before the register_client because recovery steps
    * may need domains.
    */
-  tp_init ();
+  error_code = tp_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   /* Initialize tsc-timer */
   tsc_init ();
@@ -1362,12 +1429,32 @@ error:
 
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      er_log_debug (ARG_FILE_LINE, "boot_shutdown_client: "
+      er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 		    "unregister client { tran %d }\n", tm_Tran_index);
       boot_shutdown_client (false);
     }
   else
     {
+      if (boot_Server_credential.db_full_name)
+	{
+	  db_private_free_and_init (NULL,
+				    boot_Server_credential.db_full_name);
+	}
+      if (boot_Server_credential.host_name)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
+	}
+
+      showstmt_metadata_final ();
+      tran_free_savepoint_list ();
+      set_final ();
+      tr_final ();
+      au_final ();
+      sm_final ();
+      ws_final ();
+      es_final ();
+      tp_final ();
+
 #if !defined(WINDOWS)
       if (dl_initialized == true)
 	{
@@ -1375,14 +1462,21 @@ error:
 	  dl_initialized = false;
 	}
 #endif /* !WINDOWS */
-      /*msgcat_final (); */
-      lang_final ();
-      tz_unload ();
+
+      locator_free_areas ();
       sysprm_final ();
       area_final ();
+
+      lang_final ();
+      tz_unload ();
+
 #if defined(WINDOWS)
       pc_final ();
 #endif /* WINDOWS */
+
+      memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
+      memset (boot_Server_credential.server_session_key, 0xFF,
+	      SERVER_SESSION_KEY_SIZE);
     }
 
   return error_code;
@@ -3371,8 +3465,9 @@ boot_define_serial (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL,
-				  index_col_names, 0);
+  error_code =
+    db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL,
+		       index_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3768,8 +3863,8 @@ boot_define_collations (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, CT_DBCOLL_CHARSET_ID_COLUMN, "integer",
-				  NULL);
+  error_code =
+    smt_add_attribute (def, CT_DBCOLL_CHARSET_ID_COLUMN, "integer", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3782,8 +3877,8 @@ boot_define_collations (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, CT_DBCOLL_EXPANSIONS_COLUMN, "integer",
-				  NULL);
+  error_code =
+    smt_add_attribute (def, CT_DBCOLL_EXPANSIONS_COLUMN, "integer", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5739,8 +5834,9 @@ boot_destroy_catalog_classes (void)
   AU_DISABLE (save);
 
   /* drop method of db_authorization */
-  error_code = db_drop_class_method (locator_find_class ("db_authorization"),
-				     "check_authorization");
+  error_code =
+    db_drop_class_method (locator_find_class ("db_authorization"),
+			  "check_authorization");
   /* error checking */
   if (error_code != NO_ERROR)
     {

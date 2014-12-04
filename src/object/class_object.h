@@ -1079,7 +1079,8 @@ extern const int SM_MAX_STRING_LENGTH;
   while (0)
 
 /* Allocation areas */
-extern void classobj_area_init (void);
+extern int classobj_area_init (void);
+extern void classobj_area_final (void);
 
 /* Threaded arrays */
 extern DB_LIST *classobj_alloc_threaded_array (int size, int count);
