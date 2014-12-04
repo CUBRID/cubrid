@@ -1884,9 +1884,9 @@ db_query_format_is_non_null (DB_QUERY_TYPE * query_type)
 	}
     }
 
-  /* 
-   * query_type is not an attribute. 
-   * It may be an expression and will be treated as nullable. 
+  /*
+   * query_type is not an attribute.
+   * It may be an expression and will be treated as nullable.
    */
   return 0;
 }
@@ -3786,7 +3786,11 @@ db_query_end_internal (DB_QUERY_RESULT * result, bool notify_server)
 {
   int error = NO_ERROR;
 
-  CHECK_CONNECT_ERROR ();
+  if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)
+    {
+      error = ER_OBJ_NO_CONNECT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0);
+    }
 
   /* Silently return if the result structure has already been freed */
   if ((result) && (result->status == T_CLOSED))
@@ -3798,7 +3802,7 @@ db_query_end_internal (DB_QUERY_RESULT * result, bool notify_server)
     {
       if (result->type == T_SELECT)
 	{
-	  if (notify_server)
+	  if (notify_server && error == NO_ERROR)
 	    {
 	      if (qmgr_end_query (result->res.s.query_id) != NO_ERROR)
 		{
