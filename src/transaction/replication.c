@@ -426,7 +426,15 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 	   * for the update case, this function is called before the heap
 	   * file update, so we don't need to LSA for update log here.
 	   */
-	  LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+	  if (LSA_ISNULL (&tdes->tail_lsa))
+	    {
+	      LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+	    }
+	  else
+	    {
+	      LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
+	    }
+
 	}
       break;
     case RVREPL_DATA_DELETE:
@@ -434,7 +442,14 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
        * for the delete case, we don't need to find out the target
        * LSA. Delete is operation is possible without "After Image"
        */
-      LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+      if (LSA_ISNULL (&tdes->tail_lsa))
+	{
+	  LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+	}
+      else
+	{
+	  LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
+	}
       break;
     default:
       break;
@@ -547,7 +562,7 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 		repl_info->statement_type, repl_info->name,
 		repl_info->stmt_text, repl_info->db_user,
 		repl_info->sys_prm_context);
-  LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+  LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
 
   tdes->cur_repl_record++;
 
