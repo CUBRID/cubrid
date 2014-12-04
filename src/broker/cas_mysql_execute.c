@@ -61,7 +61,8 @@
 
 #include "error_code.h"
 
-#define MYSQL_DEFAULT_WAIT_TIMEOUT 18000
+#define MYSQL_DEFAULT_WAIT_TIMEOUT 1800	/* 30m */
+#define MYSQL_MIN_WAIT_TIMEOUT 60	/* 1m */
 
 #if !defined(WINDOWS)
 #define STRING_APPEND(buffer_p, avail_size_holder, ...) \
@@ -3456,7 +3457,7 @@ cas_mysql_set_mysql_wait_timeout (void)
       goto release_and_return;
     }
 
-  wait_timeout = (int) (wait_timeout * 2 / 3);
+  wait_timeout = (int) (wait_timeout * 1 / 3);
 
   /**
    * CAS will be stopped if there is no request 60 seconds.
@@ -3466,9 +3467,9 @@ cas_mysql_set_mysql_wait_timeout (void)
     {
       wait_timeout = MYSQL_DEFAULT_WAIT_TIMEOUT;
     }
-  else if (wait_timeout < 60)
+  else if (wait_timeout < MYSQL_MIN_WAIT_TIMEOUT)
     {
-      wait_timeout = 60;
+      wait_timeout = MYSQL_MIN_WAIT_TIMEOUT;
     }
 
 release_and_return:
@@ -3483,7 +3484,8 @@ release_and_return:
 int
 cas_mysql_get_mysql_wait_timeout (void)
 {
-  return mysql_wait_timeout;
+  return MAX (MYSQL_MIN_WAIT_TIMEOUT,
+	      MIN (shm_appl->mysql_keepalive_interval, mysql_wait_timeout));
 }
 
 int

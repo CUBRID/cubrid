@@ -2263,6 +2263,20 @@ admin_conf_change (int master_shm_id, const char *br_name,
       br_info_p->mysql_read_timeout = val;
       shm_as_p->mysql_read_timeout = val;
     }
+  else if (strcasecmp (conf_name, "MYSQL_KEEPALIVE_INTERVAL") == 0)
+    {
+      int val;
+
+      val = (int) ut_time_string_to_sec (conf_value, "sec");
+
+      if (val < MIN_MYSQL_KEEPALIVE_INTERVAL)
+	{
+	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
+	  goto set_conf_error;
+	}
+      br_info_p->mysql_keepalive_interval = val;
+      shm_as_p->mysql_keepalive_interval = val;
+    }
   else if (strcasecmp (conf_name, "SHARD_PROXY_LOG") == 0)
     {
       char proxy_log_mode;

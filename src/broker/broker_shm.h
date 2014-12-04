@@ -172,6 +172,8 @@
   snprintf(BUF, BROKER_NAME_LEN, "%s_acl_sem", BROKER_NAME)
 #endif
 
+#define MIN_MYSQL_KEEPALIVE_INTERVAL		60	/* 60s */
+
 #define         SEQ_NUMBER              1
 #define         MAGIC_NUMBER            (MAJOR_VERSION * 1000000 + MINOR_VERSION * 10000 + SEQ_NUMBER)
 
@@ -614,6 +616,7 @@ struct t_shm_appl_server
   int session_timeout;
   int query_timeout;
   int mysql_read_timeout;
+  int mysql_keepalive_interval;
   int num_appl_server;
   int max_string_length;
   int job_queue_size;
