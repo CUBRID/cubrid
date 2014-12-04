@@ -2122,7 +2122,7 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
   if (len >= MAX_STRING_OID_LENGTH && (bufp = (char *) malloc (len)) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

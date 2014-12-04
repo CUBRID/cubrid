@@ -8602,7 +8602,7 @@ qo_search_planner (QO_PLANNER * planner)
 	  if (planner->join_info == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, join_info_bytes);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) join_info_bytes);
 	      plan = NULL;
 	      goto end;
 	    }

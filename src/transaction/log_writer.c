@@ -405,7 +405,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode,
       if (logwr_Gl.logpg_area == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, logwr_Gl.logpg_area_size);
+		  1, (size_t) logwr_Gl.logpg_area_size);
 	  logwr_Gl.logpg_area_size = 0;
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
@@ -1202,7 +1202,7 @@ logwr_archive_active_log (void)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      LOG_PAGESIZE);
+	      (size_t) LOG_PAGESIZE);
       goto error;
     }
 
@@ -1279,7 +1279,7 @@ logwr_archive_active_log (void)
       /* Error archiving header page into archive */
       error_code = ER_LOG_WRITE;
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
-	      0, 0, archive_name);
+	      0LL, 0LL, archive_name);
       goto error;
     }
 

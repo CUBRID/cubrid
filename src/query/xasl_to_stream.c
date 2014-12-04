@@ -3948,7 +3948,7 @@ xts_save_odku_info (const ODKU_INFO * odku_info)
   if (!buf)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size);
+	      (size_t) size);
       return ER_FAILED;
     }
 

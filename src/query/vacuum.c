@@ -630,7 +630,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
 {
   int error_code = NO_ERROR;
   int i;
-  size_t size_vacuum_prefetch_log_buffer;
+  long long unsigned size_vacuum_prefetch_log_buffer;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -686,23 +686,31 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
     }
 
   size_vacuum_prefetch_log_buffer =
-    ((size_t) LOG_PAGESIZE) * ((size_t) VACUUM_PREFETCH_LOG_PAGES)
-    + (size_t) MAX_ALIGNMENT;
+    (((long long unsigned) VACUUM_PREFETCH_LOG_PAGES) * LOG_PAGESIZE)
+    + MAX_ALIGNMENT;
 
   vacuum_er_log (VACUUM_ER_LOG_MASTER,
 		 "VACUUM INIT: prefetch pages:%d, log_page_size:%d, "
-		 "prefetch buffer size:%lld, job_queue_capacity:%d.",
+		 "prefetch buffer size:%llu, job_queue_capacity:%d.",
 		 (int) VACUUM_PREFETCH_LOG_PAGES,
-		 (int) LOG_PAGESIZE, size_vacuum_prefetch_log_buffer,
+		 (int) LOG_PAGESIZE,
+		 size_vacuum_prefetch_log_buffer,
 		 (int) VACUUM_JOB_QUEUE_CAPACITY);
 
+  if (!MEM_SIZE_IS_VALID (size_vacuum_prefetch_log_buffer))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
+	      "vacuum_prefetch_log_pages");
+      error_code = ER_PRM_BAD_VALUE;
+      goto error;
+    }
+
   vacuum_Prefetch_log_buffer =
-    (LOG_PAGE *) malloc (size_vacuum_prefetch_log_buffer);
+    (LOG_PAGE *) malloc ((size_t) size_vacuum_prefetch_log_buffer);
   if (vacuum_Prefetch_log_buffer == NULL)
     {
-      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size_vacuum_prefetch_log_buffer);
+	      1, (size_t) size_vacuum_prefetch_log_buffer);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -4223,7 +4231,8 @@ vacuum_data_remove_finished_entries (THREAD_ENTRY * thread_p)
 		    {
 		      /* copy values from stack array to alloced array */
 		      memcpy (new_removed_indexes, removed_indexes,
-			      n_removed_indexes * sizeof (removed_indexes[0]));
+			      n_removed_indexes *
+			      sizeof (removed_indexes[0]));
 		    }
 		}
 	      else
@@ -7205,8 +7214,9 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
   block_log_buffer->last_page = start_log_pageid + i - 1;
 
   vacuum_er_log (VACUUM_ER_LOG_MASTER,
-		 "VACUUM : prefetched %d log pages from %d to %d", i,
-		 block_log_buffer->start_page, block_log_buffer->last_page);
+		 "VACUUM : prefetched %d log pages from %lld to %lld", i,
+		 (long long int) block_log_buffer->start_page,
+		 (long long int) block_log_buffer->last_page);
 
 end:
   return error;

@@ -1317,7 +1317,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
   if (rec.data == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+	      1, (size_t) size);
       goto exit_on_error;
     }
 
@@ -1404,7 +1404,7 @@ btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
   if (rec.data == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, rec.area_size);
+	      1, (size_t) rec.area_size);
       goto exit_on_error;
     }
 
@@ -3592,7 +3592,7 @@ btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, domain_size);
+		  1, (size_t) domain_size);
 	  goto exit_on_error;
 	}
     }
@@ -8253,7 +8253,7 @@ btree_keyoid_checkscan_start (THREAD_ENTRY * thread_p, BTID * btid,
   if (btscan->oid_ptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, btscan->oid_area_size);
+	      1, (size_t) btscan->oid_area_size);
       return ER_FAILED;
     }
 
@@ -13842,7 +13842,7 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, domain_size);
+		  1, (size_t) domain_size);
 	  goto exit_on_error;
 	}
     }
@@ -14103,7 +14103,7 @@ btree_append_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, domain_size);
+		  1, (size_t) domain_size);
 	  goto exit_on_error;
 	}
     }
@@ -14363,7 +14363,7 @@ btree_insert_oid_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, domain_size);
+		  1, (size_t) domain_size);
 	  goto exit_on_error;
 	}
     }
@@ -29440,7 +29440,7 @@ start_locking:
 	      if (new_ptr == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) new_size);
 		  /* memory space allocation has failed. */
 		  er_log_debug (ARG_FILE_LINE,
 				"btree_range_search() : Part of OIDs are"
@@ -32150,7 +32150,7 @@ xbtree_mvcc_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
   if (oid_ptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, ISCAN_OID_BUFFER_SIZE);
+	      1, (size_t) ISCAN_OID_BUFFER_SIZE);
       return ER_FAILED;
     }
   scan_init_index_scan (&index_scan_id, oid_ptr, &mvcc_snapshot_dirty);
@@ -32357,7 +32357,7 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p,
       if (domain_ptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, domain_size);
+		  1, (size_t) domain_size);
 	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit_on_error;
 	}

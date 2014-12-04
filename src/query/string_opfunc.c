@@ -5658,7 +5658,7 @@ qstr_replace (unsigned char *src_buf, int src_len, int src_size,
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
-		  src_size);
+		  (size_t) src_size);
 	  goto exit;
 	}
 
@@ -5739,7 +5739,7 @@ qstr_replace (unsigned char *src_buf, int src_len, int src_size,
     {
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
-	      *result_size + 1);
+	      (size_t) (*result_size + 1));
       goto exit;
     }
 
@@ -29300,7 +29300,8 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str,
       if (res == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
+		  (size_t) 0);
 	  return error_status;
 	}
 

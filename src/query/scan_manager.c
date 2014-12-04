@@ -1031,7 +1031,7 @@ scan_alloc_oid_buf (void)
   if (oid_buf_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, oid_buf_size);
+	      1, (size_t) oid_buf_size);
     }
 
   return oid_buf_p;

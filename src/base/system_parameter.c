@@ -8196,7 +8196,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	    if (val == NULL)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (value));
+			ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			(size_t) (strlen (value)));
 		return PRM_ERR_NO_MEM_FOR_PRM;
 	      }
 	  }
@@ -8443,7 +8444,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  strlen (value.str) + 1);
+			  (size_t) (strlen (value.str) + 1));
 		  return PRM_ERR_NO_MEM_FOR_PRM;
 		}
 
@@ -8626,7 +8627,7 @@ prm_set_force (SYSPRM_PARAM * prm, const char *value)
   if (prm->force_value == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (value) + 1);
+	      (size_t) (strlen (value) + 1));
       return PRM_ERR_NO_MEM_FOR_PRM;
     }
 
@@ -10071,7 +10072,7 @@ static SESSION_PARAM *
 sysprm_alloc_session_parameters (void)
 {
   SESSION_PARAM *result = NULL;
-  int size;
+  size_t size;
 
   if (NUM_SESSION_PRM == 0)
     {
@@ -10277,7 +10278,8 @@ sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
 	    if (value->str == NULL)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (str) + 1);
+			ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			(size_t) (strlen (str) + 1));
 		return NULL;
 	      }
 	  }
@@ -10303,7 +10305,7 @@ sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			(temp + 1) * OR_INT_SIZE);
+			(size_t) ((temp + 1) * OR_INT_SIZE));
 		return NULL;
 	      }
 	    else
@@ -10959,7 +10961,7 @@ static void
 sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
 					SYSPRM_PARAM * prm)
 {
-  int size;
+  size_t size;
 
   switch (prm->datatype)
     {
@@ -10984,7 +10986,7 @@ sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      strlen (PRM_GET_STRING (prm->value)) + 1);
+		      (size_t) (strlen (PRM_GET_STRING (prm->value)) + 1));
 	    }
 	}
       else
@@ -11154,7 +11156,7 @@ sysprm_print_parameters_for_ha_repl (void)
   int i, n, len = LINE_MAX;
   char buf[LINE_MAX];
   char *ptr = NULL, *q = NULL;
-  int size;
+  size_t size;
 
   memset (buf, 0, LINE_MAX);
   ptr = buf;

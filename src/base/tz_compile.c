@@ -329,7 +329,7 @@ extern const TZ_COUNTRY tz_countries[];
     (a) = strdup((b)); \
     if((a) == NULL) { \
     err_status = ER_OUT_OF_VIRTUAL_MEMORY; \
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0); \
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, (size_t) 0); \
     goto exit; \
   } \
 } while (0)
@@ -5642,7 +5642,8 @@ tzc_extend (TZ_DATA * tzd)
   if (all_countries == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      all_country_count * sizeof (TZ_COUNTRY));
       goto exit;
     }
 
@@ -5651,7 +5652,8 @@ tzc_extend (TZ_DATA * tzd)
   if (all_timezone_names == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      all_timezones_count * sizeof (char *));
       goto exit;
     }
 
@@ -5660,7 +5662,8 @@ tzc_extend (TZ_DATA * tzd)
   if (all_timezones == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      all_timezones_count * sizeof (TZ_TIMEZONE));
       goto exit;
     }
 
@@ -5669,7 +5672,8 @@ tzc_extend (TZ_DATA * tzd)
   if (all_names == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      all_timezones_and_aliases_count * sizeof (TZ_NAME));
       goto exit;
     }
 
@@ -5679,7 +5683,8 @@ tzc_extend (TZ_DATA * tzd)
   if (old_tzd_offset_rule_map == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      old_tzd.timezone_count * sizeof (OFFSET_RULE_INTERVAL));
       goto exit;
     }
 
@@ -5689,7 +5694,8 @@ tzc_extend (TZ_DATA * tzd)
   if (tzd_offset_rule_map == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      tzd->timezone_count * sizeof (OFFSET_RULE_INTERVAL));
       goto exit;
     }
 
@@ -5698,7 +5704,8 @@ tzc_extend (TZ_DATA * tzd)
   if (mark_ruleset == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      old_tzd.ds_ruleset_count * sizeof (char));
       goto exit;
     }
 
@@ -5869,7 +5876,8 @@ tzc_extend (TZ_DATA * tzd)
   if (all_offset_rules == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      all_offset_rule_count * sizeof (TZ_OFFSET_RULE));
       goto exit;
     }
 
@@ -6090,7 +6098,8 @@ tzc_extend (TZ_DATA * tzd)
   if (all_ds_rulesets == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      all_ds_ruleset_count * sizeof (TZ_DS_RULESET));
       goto exit;
     }
 
@@ -6099,7 +6108,8 @@ tzc_extend (TZ_DATA * tzd)
   if (all_ds_rules == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
+	      all_ds_rule_count * sizeof (TZ_DS_RULE));
       goto exit;
     }
 

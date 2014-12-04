@@ -1188,9 +1188,10 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 				  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					  ER_OUT_OF_VIRTUAL_MEMORY,
 					  1,
-					  strlen
-					  (constraints->func_index_info->
-					   expr_str) + 1);
+					  (size_t) (strlen
+						    (constraints->
+						     func_index_info->
+						     expr_str) + 1));
 				  *continue_walk = PT_STOP_WALK;
 				  return tree;
 				}

@@ -1540,7 +1540,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
-		  1, (sort_param->tot_buffers * DB_PAGESIZE));
+		  1, (size_t) (sort_param->tot_buffers * DB_PAGESIZE));
 	  goto cleanup;
 	}
     }
@@ -2574,7 +2574,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		    {
 		      error = ER_OUT_OF_VIRTUAL_MEMORY;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      error, 1, long_recdes.area_size);
+			      error, 1, (size_t) long_recdes.area_size);
 		      goto exit_on_error;
 		    }
 		}

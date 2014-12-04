@@ -2097,7 +2097,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
   if (atts == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, atts_size);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) atts_size);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error_return;
@@ -3005,8 +3005,8 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
     }
 
   error =
-	sm_is_global_only_constraint (ctemplate->op, sm_constraint, &is_global,
-				      ctemplate);
+    sm_is_global_only_constraint (ctemplate->op, sm_constraint, &is_global,
+				  ctemplate);
   if (error != NO_ERROR)
     {
       goto error_exit;

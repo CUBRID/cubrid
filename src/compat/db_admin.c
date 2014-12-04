@@ -1992,7 +1992,7 @@ db_get_user_and_host_name (void)
     {
       db_string_free (username);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, len);
+	      1, (size_t) len);
       return 0;
     }
 

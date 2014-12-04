@@ -145,6 +145,7 @@ static const char *er_unknown_severity = "Unknown severity level";
 #define ER_MALLOC(size)	er_malloc_helper((size), __FILE__, __LINE__)
 
 #define SPEC_CODE_LONGLONG ((char)0x88)
+#define SPEC_CODE_SIZE_T ((char)0x89)
 
 /*
  * Use this macro for freeing msg_area things so that you don't forget
@@ -2951,6 +2952,12 @@ er_study_spec (const char *conversion_spec, char *simple_spec,
       *p++ = *q++;
       *p++ = *q++;
     }
+  else if (*q == 'z')
+    {
+      /* size_t type */
+      class_ = SPEC_CODE_SIZE_T;
+      *p++ = *q++;
+    }
   else if (*q == 'h')
     {
       /*
@@ -3147,6 +3154,18 @@ er_estimate_size (ER_FMT * fmt, va_list * ap)
 
 	case SPEC_CODE_LONGLONG:
 	  (void) va_arg (args, long long int);
+	  n = MAX_INT_WIDTH;
+	  break;
+
+	case SPEC_CODE_SIZE_T:
+	  if (sizeof (size_t) == sizeof (long long int))
+	    {
+	      (void) va_arg (args, long long int);
+	    }
+	  else
+	    {
+	      (void) va_arg (args, int);
+	    }
 	  n = MAX_INT_WIDTH;
 	  break;
 
@@ -3644,6 +3663,16 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
 	case SPEC_CODE_LONGLONG:
 	  er_Msg->args[i].longlong_value = va_arg (args, long long);
 	  break;
+	case SPEC_CODE_SIZE_T:
+	  if (sizeof (size_t) == sizeof (long long int))
+	    {
+	      er_Msg->args[i].longlong_value = va_arg (args, long long);
+	    }
+	  else
+	    {
+	      er_Msg->args[i].int_value = va_arg (args, int);
+	    }
+	  break;
 	case 'p':
 	  er_Msg->args[i].pointer_value = va_arg (args, void *);
 	  break;
@@ -3732,6 +3761,16 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
 	  break;
 	case SPEC_CODE_LONGLONG:
 	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].longlong_value);
+	  break;
+	case SPEC_CODE_SIZE_T:
+	  if (sizeof (size_t) == sizeof (long long int))
+	    {
+	      sprintf (s, fmt->spec[n].spec, er_Msg->args[n].longlong_value);
+	    }
+	  else
+	    {
+	      sprintf (s, fmt->spec[n].spec, er_Msg->args[n].int_value);
+	    }
 	  break;
 	case 'p':
 	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].pointer_value);

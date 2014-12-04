@@ -183,7 +183,7 @@ while (0)
 /* no more memory */
 #define	PUT_UCI_ERR_NOMOREMEMORY(size)	\
 	er_set(ER_ERROR_SEVERITY, __FILE__, __LINE__, \
-		ER_OUT_OF_VIRTUAL_MEMORY, 1, (size))
+		ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (size))
 
 /* input host variables is given less than # of positional markers */
 #define	PUT_UCI_ERR_TOOFEWHOSTVARS(num_markers)	\

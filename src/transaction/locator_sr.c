@@ -445,7 +445,7 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	{
 	  free_and_init (entry);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, strlen (classname) + 1);
+		  1, (size_t) (strlen (classname) + 1));
 	  goto error;
 	}
 
@@ -733,7 +733,8 @@ start:
 	{
 	  free_and_init (entry);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname) + 1);
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) (strlen (classname) + 1));
 	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	  return LC_CLASSNAME_ERROR;
 	}
@@ -5818,7 +5819,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    {
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code,
-		      1, strlen (old_classname) + 1);
+		      1, (size_t) (strlen (old_classname) + 1));
 	      goto error;
 	    }
 	  assert (copy_old_classname != NULL);
@@ -9849,7 +9850,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
   if (copy_rec.data == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      copy_rec.area_size);
+	      (size_t) (copy_rec.area_size));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -9911,7 +9912,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      copy_rec.data, -(copy_rec.length));
+		      (size_t) (-(copy_rec.length)));
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error;
 	    }
@@ -10570,7 +10571,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   if (isid.oid_list.oidp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, ISCAN_OID_BUFFER_SIZE);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) ISCAN_OID_BUFFER_SIZE);
 
       isallvalid = DISK_ERROR;
       goto error;
@@ -11032,7 +11033,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   if (isid.oid_list.oidp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, ISCAN_OID_BUFFER_SIZE);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) ISCAN_OID_BUFFER_SIZE);
       goto error;
     }
   /* alloc index key copy_buf */

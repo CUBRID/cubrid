@@ -5219,7 +5219,7 @@ load_properties (void)
       if (us_Property_map[SERVER_START_LIST].property_value == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (value) + 1);
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (value) + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }

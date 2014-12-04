@@ -85,7 +85,7 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
     {
       method_clear_vacomm_buffer (vacomm_buffer_p);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, strlen (host_p) + 1);
+	      1, (size_t) (strlen (host_p) + 1));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -94,7 +94,7 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
     {
       method_clear_vacomm_buffer (vacomm_buffer_p);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, strlen (server_name_p) + 1);
+	      1, (size_t) (strlen (server_name_p) + 1));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -103,7 +103,7 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
     {
       method_clear_vacomm_buffer (vacomm_buffer_p);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, VACOMM_BUFFER_SIZE);
+	      1, (size_t) VACOMM_BUFFER_SIZE);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -149,7 +149,7 @@ method_send_value_to_server (DB_VALUE * dbval_p,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      dbval_length + VACOMM_BUFFER_HEADER_SIZE);
+		      (size_t) (dbval_length + VACOMM_BUFFER_HEADER_SIZE));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 

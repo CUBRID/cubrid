@@ -12420,7 +12420,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		if (!temp)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			    ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
+			    ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
 		  }
 		else
 		  {
@@ -23646,7 +23646,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p,
   if (func_state->current_key.data == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      DB_PAGESIZE);
+	      (size_t) DB_PAGESIZE);
       return ER_FAILED;
     }
   func_state->current_key.area_size = DB_PAGESIZE;
@@ -23676,7 +23676,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p,
   if (group_type_list.domp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      DB_PAGESIZE);
+	      (size_t) DB_PAGESIZE);
       return ER_FAILED;
     }
   group_type_list.domp[0] = &tp_Integer_domain;
@@ -23694,7 +23694,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p,
   if (func_state->group_list_id->tpl_descr.f_valp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      DB_PAGESIZE);
+	      (size_t) DB_PAGESIZE);
       return ER_FAILED;
     }
   func_state->group_list_id->tpl_descr.f_valp[0] = &func_state->cgtc_dbval;
@@ -23707,7 +23707,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p,
   if (value_type_list.domp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      DB_PAGESIZE);
+	      (size_t) DB_PAGESIZE);
       return ER_FAILED;
     }
   value_type_list.domp[0] = &tp_Integer_domain;
@@ -23725,7 +23725,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p,
   if (func_state->value_list_id->tpl_descr.f_valp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      DB_PAGESIZE);
+	      (size_t) DB_PAGESIZE);
       return ER_FAILED;
     }
   func_state->value_list_id->tpl_descr.f_valp[0] = &func_state->csktc_dbval;

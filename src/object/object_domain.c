@@ -1299,7 +1299,7 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
+		      (size_t) (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error_return;
 	    }
@@ -4803,7 +4803,7 @@ tp_null_terminate (const DB_VALUE * src, char **strp, int str_len,
       if (*strp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, str_size + 1);
+		  1, (size_t) (str_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -5078,7 +5078,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 	  if (strp == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size + 1);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (size + 1));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  do_alloc = true;
@@ -5405,7 +5405,7 @@ tp_ltoa (DB_BIGINT value, char *string, int radix)
       if (string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (tp - tmp) + sign + 1);
+		  1, (size_t) ((tp - tmp) + sign + 1));
 	  return NULL;
 	}
     }

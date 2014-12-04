@@ -1145,7 +1145,7 @@ lock_initialize_tran_lock_table (void)
   if (lk_Gl.tran_lock_table == (LK_TRAN_LOCK *) NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (SIZEOF_LK_TRAN_LOCK * lk_Gl.num_trans));
+	      1, (size_t) (SIZEOF_LK_TRAN_LOCK * lk_Gl.num_trans));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -1287,7 +1287,7 @@ lock_initialize_deadlock_detection (void)
   if (lk_Gl.TWFG_node == (LK_WFG_NODE *) NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (SIZEOF_LK_WFG_NODE * lk_Gl.num_trans));
+	      1, (size_t) (SIZEOF_LK_WFG_NODE * lk_Gl.num_trans));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   /* initialize transaction WFG node table */
@@ -5534,7 +5534,7 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (SIZEOF_LK_WFG_EDGE * lk_Gl.max_TWFG_edge));
+		      (size_t) (SIZEOF_LK_WFG_EDGE * lk_Gl.max_TWFG_edge));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;	/* no method */
 	    }
 	  (void) memcpy ((char *) lk_Gl.TWFG_edge, temp_ptr,
@@ -10008,7 +10008,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p,
 	{
 	  pthread_mutex_unlock (&tran_lock->hold_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (SIZEOF_LK_ACQOBJ_LOCK * acqlocks->nobj_locks));
+		  1, (size_t) (SIZEOF_LK_ACQOBJ_LOCK * acqlocks->nobj_locks));
 	  acqlocks->nobj_locks = 0;
 	  return;
 	}
@@ -12599,7 +12599,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
       pthread_mutex_unlock (&res->res_mutex);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buf_size);
+	      1, (size_t) buf_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

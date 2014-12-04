@@ -5561,7 +5561,7 @@ qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
   if (ret_buf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (QMGR_SQL_ID_LENGTH + 1));
+	      1, (size_t) (QMGR_SQL_ID_LENGTH + 1));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

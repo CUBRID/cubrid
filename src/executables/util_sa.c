@@ -2291,7 +2291,8 @@ genlocale (UTIL_FUNCTION_ARG * arg)
 	  if (curr_lf->ldml_file == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_path));
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) strlen (input_path));
 	      err_status = EXIT_FAILURE;
 	      goto exit;
 	    }
@@ -2302,7 +2303,7 @@ genlocale (UTIL_FUNCTION_ARG * arg)
   if (ld == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_path));
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) strlen (input_path));
       err_status = EXIT_FAILURE;
       goto exit;
     }
@@ -2315,7 +2316,7 @@ genlocale (UTIL_FUNCTION_ARG * arg)
       if (ld[i] == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_path));
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) strlen (input_path));
 	  err_status = EXIT_FAILURE;
 	  goto exit;
 	}

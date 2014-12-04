@@ -6221,7 +6221,7 @@ pt_alloc_packing_buf (int size)
     {
       /* make sure an error is set, one way or another */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, PACKING_MMGR_CHUNK_SIZE);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PACKING_MMGR_CHUNK_SIZE);
       res = NULL;
     }
   else

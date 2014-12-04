@@ -490,7 +490,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   if (ptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, packed_size);
+	      1, (size_t) packed_size);
       return ER_FAILED;
     }
   *buffer = ptr;
@@ -1149,7 +1149,8 @@ char **
 db_cp_colname_list (char **colname_list, int cnt)
 {
   char **newname_list;
-  int size, i;
+  int i;
+  size_t size;
 
   if (colname_list == NULL)
     {
@@ -1325,7 +1326,7 @@ db_final_client_query_result (void)
 static DB_QUERY_TYPE *
 db_cp_query_type_helper (DB_QUERY_TYPE * src, DB_QUERY_TYPE * dest)
 {
-  int size;
+  size_t size;
 
   if (TP_DOMAIN_COLLATION_FLAG (src->domain) != TP_DOMAIN_COLL_NORMAL)
     {
@@ -1490,8 +1491,9 @@ db_get_query_type (DB_TYPE * type_list, int *size_list,
   SM_DOMAIN **domainp;
   SM_DOMAIN **src_domainp;
   int *sizep;
-  int k, size;
+  int k;
   int type_cnt;
+  size_t size;
 
   CHECK_CONNECT_NULL ();
 
@@ -2037,10 +2039,11 @@ db_get_objfetch_query_result (DB_VALUE * val_list, int val_cnt,
   DB_QUERY_RESULT *r;
   DB_QUERY_TYPE *typep;
   DB_VALUE *valp, **ovalp;
-  int k, str_size;
+  int k;
   int *sizep;
   char **namep;
   char **attr_namep;
+  size_t str_size;
 
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (val_list);
@@ -3920,7 +3923,7 @@ db_set_execution_plan (char *plan, int length)
     {
       db_Execution_plan_length = -1;
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, db_Execution_plan_length);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) db_Execution_plan_length);
       return;
     }
 

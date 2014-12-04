@@ -5146,7 +5146,7 @@ do_find_auto_increment_serial (MOP * auto_increment_obj,
 {
   MOP serial_class = NULL;
   char *serial_name = NULL;
-  int serial_name_size;
+  size_t serial_name_size;
   DB_IDENTIFIER serial_obj_id;
   int error = NO_ERROR;
 
@@ -6525,7 +6525,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
       if (names[names_count] == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, DB_MAX_IDENTIFIER_LENGTH + 1);
+		  1, (size_t) (DB_MAX_IDENTIFIER_LENGTH + 1));
 	  error = ER_FAILED;
 	  goto error_return;
 	}
@@ -13637,7 +13637,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser,
   q = query = (char *) malloc (query_len + 1);
   if (query == NULL)
     {
-      ERROR1 (error, ER_OUT_OF_VIRTUAL_MEMORY, query_len + 1);
+      ERROR1 (error, ER_OUT_OF_VIRTUAL_MEMORY, (size_t) (query_len + 1));
       return error;
     }
 
@@ -14423,7 +14423,7 @@ save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info,
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-	      strlen (constr_att_name->info.name.original) + 1);
+	      (size_t) (strlen (constr_att_name->info.name.original) + 1));
       goto error_exit;
     }
 
@@ -14729,7 +14729,7 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
   if (func_index_info->expr_str == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (expr_str));
+	      (size_t) strlen (expr_str));
       goto error_exit;
     }
 
@@ -14789,7 +14789,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
   int error = NO_ERROR;
   const char *class_name = NULL;
   char *query_str = NULL;
-  int query_str_len = 0;
+  size_t query_str_len = 0;
   char *expr_str = NULL;
   int expr_str_len = 0;
   int saved_func_index_pos = -1, saved_attr_index_start = -1;
@@ -15006,7 +15006,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
   int error;
   const char *class_name = NULL;
   char *query_str = NULL;
-  int query_str_len = 0;
+  size_t query_str_len = 0;
   char *pred_str = NULL;
   int pred_str_len = 0;
   bool free_packing_buff = false;

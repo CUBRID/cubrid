@@ -218,7 +218,7 @@ ws_abort_transaction (void)
       if (er_errid () != ER_OUT_OF_VIRTUAL_MEMORY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, 0);
+		  1, (size_t) 0);
 	}
     }
   else

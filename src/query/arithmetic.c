@@ -4480,7 +4480,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
       if (buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, 128);
+		  1, (size_t) 128);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 

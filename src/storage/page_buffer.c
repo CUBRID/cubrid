@@ -3891,7 +3891,7 @@ pgbuf_cache_permanent_volume_for_temporary (VOLID volid)
 	{
 	  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, nbytes);
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) nbytes);
 	  return;
 	}
       pgbuf_Pool.permvols_tmparea_volids = (VOLID *) area;
@@ -4174,25 +4174,39 @@ pgbuf_initialize_bcb_table (void)
   PGBUF_BCB *bufptr;
   PGBUF_IOPAGE_BUFFER *ioptr;
   int i;
-  size_t alloc_size;
+  long long unsigned alloc_size;
 
   /* allocate space for page buffer BCB table */
-  alloc_size = (size_t) pgbuf_Pool.num_buffers * PGBUF_BCB_SIZE;
-  pgbuf_Pool.BCB_table = (PGBUF_BCB *) malloc (alloc_size);
+  alloc_size = (long long unsigned) pgbuf_Pool.num_buffers * PGBUF_BCB_SIZE;
+  if (!MEM_SIZE_IS_VALID (alloc_size))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
+	      "data_buffer_pages");
+      return ER_PRM_BAD_VALUE;
+    }
+  pgbuf_Pool.BCB_table = (PGBUF_BCB *) malloc ((size_t) alloc_size);
   if (pgbuf_Pool.BCB_table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, alloc_size);
+	      1, (size_t) alloc_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* allocate space for io page buffers */
-  alloc_size = (size_t) pgbuf_Pool.num_buffers * PGBUF_IOPAGE_BUFFER_SIZE;
-  pgbuf_Pool.iopage_table = (PGBUF_IOPAGE_BUFFER *) malloc (alloc_size);
+  alloc_size =
+    (long long unsigned) pgbuf_Pool.num_buffers * PGBUF_IOPAGE_BUFFER_SIZE;
+  if (!MEM_SIZE_IS_VALID (alloc_size))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
+	      "data_buffer_pages");
+      return ER_PRM_BAD_VALUE;
+    }
+  pgbuf_Pool.iopage_table =
+    (PGBUF_IOPAGE_BUFFER *) malloc ((size_t) alloc_size);
   if (pgbuf_Pool.iopage_table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, alloc_size);
+	      1, (size_t) alloc_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

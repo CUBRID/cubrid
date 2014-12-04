@@ -2878,7 +2878,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid,
   /* Do I need to log anything ? */
   if (logchange != false)
     {
-      int undo_size, redo_size;
+      size_t undo_size, redo_size;
 
       undo_size = (sizeof (*undo_recv)
 		   + (int) strlen (disk_vhdr_get_vol_fullname (vhdr)));
@@ -7226,7 +7226,7 @@ disk_rv_redo_dboutside_init_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (malloc_io_page_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, IO_PAGESIZE);
+	      1, (size_t) IO_PAGESIZE);
       return ER_FAILED;
     }
 

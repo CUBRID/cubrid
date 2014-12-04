@@ -2260,7 +2260,7 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
       else
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1);
+			       ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1LL);
 	}
     }
 
@@ -2294,7 +2294,7 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
   if (vol_fd == NULL_VOLDES)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1);
+			   ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1LL);
     }
 
   if (tmp_vol_desc != NULL_VOLDES)
@@ -2406,7 +2406,8 @@ fileio_create_backup_volume (THREAD_ENTRY * thread_p,
 		  continue;
 		}
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1);
+				   ER_IO_FORMAT_FAIL, 3, vol_label_p, -1,
+				   -1LL);
 	      return NULL_VOLDES;
 	    }
 	  return vdes;
@@ -2422,8 +2423,10 @@ fileio_create_backup_volume (THREAD_ENTRY * thread_p,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_IO_FORMAT_OUT_OF_SPACE, 5, vol_label_p,
-		      atleast_npages, ((IO_PAGESIZE / 1024) * atleast_npages),
-		      num_free, ((IO_PAGESIZE / 1024) * num_free));
+		      atleast_npages,
+		      (long long) ((IO_PAGESIZE / 1024) * atleast_npages),
+		      num_free,
+		      (long long) ((IO_PAGESIZE / 1024) * num_free));
 	      return NULL_VOLDES;
 	    }
 	}
@@ -2616,7 +2619,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_IO_FORMAT_OUT_OF_SPACE, 5, vol_label_p, npages,
 		      (offset / 1024), max_npages,
-		      ((page_size / 1024) * max_npages));
+		      (long long) ((page_size / 1024) * max_npages));
 	    }
 	  vol_fd = NULL_VOLDES;
 	  return vol_fd;
@@ -2746,7 +2749,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd,
   if (malloc_io_page_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, IO_PAGESIZE);
+	      1, (size_t) IO_PAGESIZE);
       return -1;
     }
 
@@ -2984,7 +2987,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc,
   if (malloc_io_page_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, IO_PAGESIZE);
+	      1, (size_t) IO_PAGESIZE);
       goto error;
     }
 
@@ -3067,7 +3070,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel,
   if (malloc_io_page_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, IO_PAGESIZE);
+	      1, (size_t) IO_PAGESIZE);
       return ER_FAILED;
     }
 
@@ -4843,7 +4846,7 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
   if (io_page_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, IO_PAGESIZE);
+	      1, (size_t) IO_PAGESIZE);
       return NULL;
     }
 
@@ -5009,7 +5012,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
       if (io_page_p == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, IO_PAGESIZE);
+		  1, (size_t) IO_PAGESIZE);
 	  return NULL;
 	}
 
@@ -6378,7 +6381,7 @@ fileio_get_volume_label (VOLID vol_id, bool is_peek)
       if (ret == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (vol_label_p));
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) strlen (vol_label_p));
 	}
 
       return ret;
@@ -7032,7 +7035,7 @@ fileio_initialize_backup (const char *db_full_name_p,
   if (session_p->bkup.buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      session_p->bkup.iosize);
+	      (size_t) session_p->bkup.iosize);
 
       goto error;
     }
@@ -7041,7 +7044,7 @@ fileio_initialize_backup (const char *db_full_name_p,
   if (session_p->dbfile.area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size);
+	      (size_t) size);
 
       goto error;
     }
@@ -7682,7 +7685,8 @@ fileio_finish_backup (THREAD_ENTRY * thread_p,
     {
       /* Note: we do not know the exact malloc size that failed */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, FILEIO_MAX_USER_RESPONSE_SIZE);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) FILEIO_MAX_USER_RESPONSE_SIZE);
       return NULL;
     }
   else
@@ -7792,7 +7796,7 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p,
   if (node_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size);
+	      (size_t) size);
       goto exit_on_error;
     }
 
@@ -10224,7 +10228,7 @@ fileio_continue_restore (THREAD_ENTRY * thread_p,
 	  if (session_p->dbfile.area == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
 	      return NULL;
 	    }
 	}
@@ -10678,7 +10682,7 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p,
       if (malloc_io_pgptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, IO_PAGESIZE);
+		  1, (size_t) IO_PAGESIZE);
 	  return ER_FAILED;
 	}
       memset ((char *) malloc_io_pgptr, 0, IO_PAGESIZE);
@@ -11573,7 +11577,8 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p,
     {
       /* Note: we do not know the exact malloc size that failed */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, FILEIO_MAX_USER_RESPONSE_SIZE);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) FILEIO_MAX_USER_RESPONSE_SIZE);
       return ER_FAILED;
     }
   else
@@ -12446,7 +12451,7 @@ fileio_page_bitmap_create (int vol_id, int total_pages)
       free_and_init (page_bitmap);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, page_bitmap_size);
+	      1, (size_t) page_bitmap_size);
       return NULL;
     }
   memset (page_bitmap->bitmap, 0x0, page_bitmap_size);

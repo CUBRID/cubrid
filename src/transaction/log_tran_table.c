@@ -319,7 +319,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   if (log_Gl.trantable.all_tdes == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, i);
+	      1, (size_t) i);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -2609,7 +2609,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   if (buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+	      1, (size_t) size);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -4311,7 +4311,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
       if (snapshot->active_ids == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+		  1, (size_t) size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -5829,7 +5829,8 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
       if (curr_mvcc_info->mvcc_sub_ids == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10));
+		  1, (size_t) (OR_MVCCID_SIZE
+			       * (curr_mvcc_info->max_sub_ids + 10)));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       curr_mvcc_info->max_sub_ids += 10;

@@ -7896,7 +7896,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  db_get_string_size (&value) + 1);
+		  (size_t) (db_get_string_size (&value) + 1));
 
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_return;

@@ -12828,7 +12828,7 @@ heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes)
 	{
 	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-		  recdes->area_size);
+		  (size_t) recdes->area_size);
 	  goto exit_on_error;
 	}
     }
@@ -12846,7 +12846,7 @@ heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes)
 	    {
 	      ret = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-		      -(recdes->length));
+		      (size_t) (-(recdes->length)));
 	      goto exit_on_error;
 	    }
 	  recdes->area_size = -recdes->length;
@@ -14128,7 +14128,8 @@ heap_get_class_name_of_instance (THREAD_ENTRY * thread_p,
 	  if (copy_classname == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname) + 1);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (strlen (classname) + 1));
 	    }
 	  else
 	    {
@@ -14189,7 +14190,8 @@ heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p, const OID * oid,
 	  if (copy_classname == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname) + 1);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (strlen (classname) + 1));
 	    }
 	  else
 	    {
@@ -20129,7 +20131,7 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk,
 		  if (ptr == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1, i);
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) i);
 		      return DISK_ERROR;
 		    }
 		  else
@@ -20248,7 +20250,8 @@ heap_chnguess_initialize (void)
     {
       ret = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-	      heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
+	      (size_t) (heap_Guesschn_area.nbytes
+			* heap_Guesschn_area.num_entries));
       mht_destroy (heap_Guesschn_area.ht);
       free_and_init (heap_Guesschn_area.entries);
       goto exit_on_error;
@@ -20331,7 +20334,8 @@ heap_chnguess_realloc (void)
     {
       ret = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-	      heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
+	      (size_t) (heap_Guesschn_area.nbytes
+			* heap_Guesschn_area.num_entries));
       heap_Guesschn_area.bitindex = save_bitindex;
       heap_Guesschn_area.nbytes = save_nbytes;
       heap_Guesschn_area.num_clients = HEAP_NBYTES_TO_NBITS (save_nbytes);

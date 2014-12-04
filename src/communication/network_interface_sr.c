@@ -5935,7 +5935,8 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	    {
 	      reply_buffer_size = 0;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, reply_buffer_size);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) reply_buffer_size);
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  else
@@ -8330,7 +8331,7 @@ xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
   if (databuf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, data_len);
+	      1, (size_t) data_len);
       return ER_FAILED;
     }
   ptr = or_pack_string_with_length (databuf, print_str, print_len);
@@ -8642,7 +8643,7 @@ sbtree_get_key_type (THREAD_ENTRY * thread_p, unsigned int rid,
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		  reply_data_size);
+		  (size_t) reply_data_size);
 	  reply_data_size = 0;
 	}
       else
@@ -8828,7 +8829,7 @@ sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
   if (area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, area_size);
+	      1, (size_t) area_size);
       return_error_to_client (thread_p, rid);
       area_size = 0;
     }
@@ -8875,7 +8876,7 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
   if (reply_data == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, reply_data_size);
+	      1, (size_t) reply_data_size);
       rc = PRM_ERR_NO_MEM_FOR_PRM;
       reply_data_size = 0;
     }
@@ -10001,7 +10002,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid,
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, area_size);
+		  1, (size_t) area_size);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  area_size = 0;
 	  return_error_to_client (thread_p, rid);
@@ -10274,7 +10275,7 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid,
   if (info == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, data_size);
+	      1, (size_t) data_size);
       goto error;
     }
   memcpy (info, data_request, data_size);
@@ -10373,7 +10374,7 @@ ssession_get_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid,
   if (data_reply == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, reply_size);
+	      1, (size_t) reply_size);
       err = ER_FAILED;
       goto error;
     }
@@ -10632,7 +10633,7 @@ ssession_get_session_variable (THREAD_ENTRY * thread_p, unsigned int rid,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size);
+	      (size_t) size);
       return_error_to_client (thread_p, rid);
       size = 0;
       err = ER_FAILED;
@@ -10952,7 +10953,7 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid,
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size);
+	      (size_t) size);
       return_error_to_client (thread_p, rid);
       size = 0;
       err = ER_FAILED;

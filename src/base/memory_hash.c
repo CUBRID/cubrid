@@ -933,7 +933,7 @@ mht_create (const char *name, int est_size,
   MHT_TABLE *ht;
   HENTRY_PTR *hvector;		/* Entries of hash table         */
   unsigned int ht_estsize;
-  unsigned int size;
+  size_t size;
 
   assert (hash_func != NULL && cmp_func != NULL);
 
@@ -1023,7 +1023,7 @@ mht_rehash (MHT_TABLE * ht)
   float rehash_factor;
   unsigned int hash;
   unsigned int est_size;
-  unsigned int size;
+  size_t size;
   unsigned int i;
 
   /* Find an estimated size for hash table entries */

@@ -187,7 +187,7 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
       if (area->name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, strlen (name) + 1);
+		  1, (size_t) (strlen (name) + 1));
 	  goto error;
 	}
     }

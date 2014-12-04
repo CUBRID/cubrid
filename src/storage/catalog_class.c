@@ -546,7 +546,8 @@ static OR_VALUE *
 catcls_allocate_or_value (int size)
 {
   OR_VALUE *value_p;
-  int msize, i;
+  int i;
+  size_t msize;
 
   msize = size * sizeof (OR_VALUE);
   value_p = (OR_VALUE *) malloc (msize);
@@ -943,7 +944,7 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
 
@@ -1126,7 +1127,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -1389,7 +1390,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -1628,7 +1629,7 @@ catcls_get_or_value_from_attrid (THREAD_ENTRY * thread_p, OR_BUF * buf,
   vars = or_get_var_table (buf, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -1699,7 +1700,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -1827,7 +1828,7 @@ catcls_get_or_value_from_method (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -1912,7 +1913,7 @@ catcls_get_or_value_from_method_signiture (THREAD_ENTRY * thread_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -1998,7 +1999,7 @@ catcls_get_or_value_from_method_argument (THREAD_ENTRY * thread_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -2068,7 +2069,7 @@ catcls_get_or_value_from_method_file (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -2140,7 +2141,7 @@ catcls_get_or_value_from_resolution (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -2220,7 +2221,7 @@ catcls_get_or_value_from_query_spec (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
+      size_t msize = size * sizeof (OR_VARINFO);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
@@ -3174,7 +3175,8 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p,
   if (bound_bits == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, bound_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      (size_t) bound_size);
       goto error;
     }
   memset (bound_bits, 0, bound_size);
@@ -3362,7 +3364,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
       if (bound_bits == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) size);
 	  goto error;
 	}
       memset (bound_bits, 0, size);
@@ -4085,7 +4087,8 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
   if (record.data == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, record.length);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      (size_t) record.length);
       goto error;
     }
 
@@ -4374,7 +4377,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
       if (record.data == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, record.length);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  (size_t) record.length);
 	  goto error;
 	}
 
@@ -5433,7 +5437,8 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
   if (record.data == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, record.length);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      (size_t) record.length);
       goto error;
     }
 

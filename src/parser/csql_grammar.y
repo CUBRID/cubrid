@@ -22522,7 +22522,7 @@ parser_save_and_set_cannot_cache (bool value)
 {
   if (parser_cannot_cache_sp >= parser_cannot_cache_limit)
     {
-      int new_size = parser_cannot_cache_limit * 2 * sizeof (bool);
+      size_t new_size = parser_cannot_cache_limit * 2 * sizeof (bool);
       bool *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22606,7 +22606,7 @@ parser_save_and_set_wjc (int value)
 {
   if (parser_wjc_sp >= parser_wjc_limit)
     {
-      int new_size = parser_wjc_limit * 2 * sizeof (int);
+      size_t new_size = parser_wjc_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22645,7 +22645,7 @@ parser_save_and_set_ic (int value)
 {
   if (parser_instnum_sp >= parser_instnum_limit)
     {
-      int new_size = parser_instnum_limit * 2 * sizeof (int);
+      size_t new_size = parser_instnum_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22684,7 +22684,7 @@ parser_save_and_set_gc (int value)
 {
   if (parser_groupbynum_sp >= parser_groupbynum_limit)
     {
-      int new_size = parser_groupbynum_limit * 2 * sizeof (int);
+      size_t new_size = parser_groupbynum_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22723,7 +22723,7 @@ parser_save_and_set_oc (int value)
 {
   if (parser_orderbynum_sp >= parser_orderbynum_limit)
     {
-      int new_size = parser_orderbynum_limit * 2 * sizeof (int);
+      size_t new_size = parser_orderbynum_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22762,7 +22762,7 @@ parser_save_and_set_sysc (int value)
 {
   if (parser_sysc_sp >= parser_sysc_limit)
     {
-      int new_size = parser_sysc_limit * 2 * sizeof (int);
+      size_t new_size = parser_sysc_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22801,7 +22801,7 @@ parser_save_and_set_prc (int value)
 {
   if (parser_prc_sp >= parser_prc_limit)
     {
-      int new_size = parser_prc_limit * 2 * sizeof (int);
+      size_t new_size = parser_prc_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22840,7 +22840,7 @@ parser_save_and_set_cbrc (int value)
 {
   if (parser_cbrc_sp >= parser_cbrc_limit)
     {
-      int new_size = parser_cbrc_limit * 2 * sizeof (int);
+      size_t new_size = parser_cbrc_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22879,7 +22879,7 @@ parser_save_and_set_serc (int value)
 {
   if (parser_serc_sp >= parser_serc_limit)
     {
-      int new_size = parser_serc_limit * 2 * sizeof (int);
+      size_t new_size = parser_serc_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22918,7 +22918,7 @@ parser_save_and_set_pseudoc (int value)
 {
   if (parser_pseudoc_sp >= parser_pseudoc_limit)
     {
-      int new_size = parser_pseudoc_limit * 2 * sizeof (int);
+      size_t new_size = parser_pseudoc_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22957,7 +22957,7 @@ parser_save_and_set_sqc (int value)
 {
   if (parser_sqc_sp >= parser_sqc_limit)
     {
-      int new_size = parser_sqc_limit * 2 * sizeof (int);
+      size_t new_size = parser_sqc_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -22996,7 +22996,7 @@ parser_save_and_set_hvar (int value)
 {
   if (parser_hvar_sp >= parser_hvar_limit)
     {
-      int new_size = parser_hvar_limit * 2 * sizeof (int);
+      size_t new_size = parser_hvar_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -23035,7 +23035,7 @@ parser_save_found_Oracle_outer ()
 {
   if (parser_oracle_sp >= parser_oracle_limit)
     {
-      int new_size = parser_oracle_limit * 2 * sizeof (int);
+      size_t new_size = parser_oracle_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -23101,7 +23101,7 @@ parser_push_orderby_node (PT_NODE * node)
 {
   if (parser_orderby_node_sp >= parser_orderby_node_limit)
     {
-      int new_size = parser_orderby_node_limit * 2 * sizeof (PT_NODE **);
+      size_t new_size = parser_orderby_node_limit * 2 * sizeof (PT_NODE **);
       PT_NODE **new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -23146,7 +23146,7 @@ parser_push_select_stmt_node (PT_NODE * node)
 {
   if (parser_select_node_sp >= parser_select_node_limit)
     {
-      int new_size = parser_select_node_limit * 2 * sizeof (PT_NODE **);
+      size_t new_size = parser_select_node_limit * 2 * sizeof (PT_NODE **);
       PT_NODE **new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -23197,7 +23197,7 @@ parser_push_hint_node (PT_NODE * node)
 {
   if (parser_hint_node_sp >= parser_hint_node_limit)
     {
-      int new_size = parser_hint_node_limit * 2 * sizeof (PT_NODE **);
+      size_t new_size = parser_hint_node_limit * 2 * sizeof (PT_NODE **);
       PT_NODE **new_p = malloc (new_size);
       if (new_p == NULL)
 	{
@@ -23248,7 +23248,7 @@ parser_push_join_type (int v)
 {
   if (parser_join_type_sp >= parser_join_type_limit)
     {
-      int new_size = parser_join_type_limit * 2 * sizeof (int);
+      size_t new_size = parser_join_type_limit * 2 * sizeof (int);
       int *new_p = malloc (new_size);
       if (new_p == NULL)
 	{

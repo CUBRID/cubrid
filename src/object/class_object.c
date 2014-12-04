@@ -1043,7 +1043,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
       /* Fill the BTID into the sequence */
       if (shared_cons_name)
 	{
-	  int len = strlen (shared_cons_name) + 10;
+	  size_t len = strlen (shared_cons_name) + 10;
 
 	  pbuf = (char *) malloc (len);
 	  if (pbuf)
@@ -1481,7 +1481,7 @@ classobj_put_index_id (DB_SEQ ** properties,
 
       if ((id == NULL || BTID_IS_NULL (id)) && shared_cons_name)
 	{
-	  int len = strlen (shared_cons_name) + 10;
+	  size_t len = strlen (shared_cons_name) + 10;
 
 	  pbuf = (char *) malloc (len);
 	  if (pbuf)
@@ -8851,7 +8851,7 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
   if (fi_info->expr_str == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size + 1));
+	      (size_t) (size + 1));
       goto error;
     }
   memset (fi_info->expr_str, 0, size + 1);
@@ -8937,7 +8937,7 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
   if (fi_domain_buf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      fi_domain_size);
+	      (size_t) fi_domain_size);
       return NULL;
     }
   ptr = fi_domain_buf;

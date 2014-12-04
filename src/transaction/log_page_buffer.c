@@ -671,7 +671,7 @@ logpb_expand_pool (int num_new_buffers)
 	{
 	  csect_exit (NULL, CSECT_LOG_PB);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+		  1, (size_t) size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -753,7 +753,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 	  if (log_data_ptr == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, log_data_length);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) log_data_length);
 	    }
 
 	  if (log_zip_undo == NULL || log_zip_redo == NULL
@@ -3141,7 +3141,7 @@ prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node,
   if (node->udata == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, length);
+	      1, (size_t) length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3174,7 +3174,7 @@ prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node,
   if (node->rdata == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, length);
+	      1, (size_t) length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3216,7 +3216,7 @@ prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node,
       if (node->udata == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, length);
+		  1, (size_t) length);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -3264,7 +3264,7 @@ prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node,
       if (node->rdata == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, length);
+		  1, (size_t) length);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -3721,7 +3721,7 @@ prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p,
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   redo = (struct log_redo *) node->data_header;
@@ -3769,7 +3769,7 @@ prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p,
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   dbout_redo = (struct log_dbout_redo *) node->data_header;
@@ -3807,7 +3807,7 @@ prior_lsa_gen_user_client_record (THREAD_ENTRY * thread_p,
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3846,7 +3846,7 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p,
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3888,7 +3888,7 @@ prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p,
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -4024,7 +4024,8 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
       if (node->data_header == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) node->data_header_length);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -6789,7 +6790,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 		{
 		  fileio_dismount (thread_p, vdes);
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
-			  3, 0, 0, arv_name);
+			  3, 0LL, 0LL, arv_name);
 
 		  LOG_ARCHIVE_CS_EXIT (thread_p);
 		  return NULL;
@@ -7127,7 +7128,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 		{
 		  fileio_dismount (thread_p, vdes);
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
-			  3, 0, 0, arv_name);
+			  3, 0LL, 0LL, arv_name);
 
 		  LOG_ARCHIVE_CS_EXIT (thread_p);
 
@@ -7341,7 +7342,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
     {
       /* Error archiving header page into archive */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
-	      0, 0, arv_name);
+	      0LL, 0LL, arv_name);
       goto error;
     }
 
@@ -7924,7 +7925,7 @@ logpb_get_remove_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID safe_pageid,
 	    {
 	      fileio_dismount (thread_p, vdes);
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3,
-		      0, 0, arv_name);
+		      0LL, 0LL, arv_name);
 	      return -1;
 	    }
 	  fileio_dismount (thread_p, vdes);
@@ -12968,7 +12969,7 @@ logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length)
       if (data_ptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_len);
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) alloc_len);
 	  if (thread_p->log_data_ptr)
 	    {
 	      free_and_init (thread_p->log_data_ptr);
@@ -12992,7 +12993,7 @@ logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length)
       if (data_ptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, alloc_len);
+		  1, (size_t) alloc_len);
 	  if (log_data_ptr)
 	    {
 	      free_and_init (log_data_ptr);
@@ -13091,7 +13092,8 @@ logpb_get_data_ptr (THREAD_ENTRY * thread_p)
 	    {
 	      thread_p->log_data_length = 0;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, thread_p->log_data_length);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) thread_p->log_data_length);
 	    }
 	}
       return thread_p->log_data_ptr;
@@ -13259,7 +13261,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
 	{
 	  fileio_dismount (thread_p, vdes);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
-		  3, 0, 0, arv_name);
+		  3, 0LL, 0LL, arv_name);
 
 	  LOG_ARCHIVE_CS_EXIT (thread_p);
 	  return NULL_PAGEID;

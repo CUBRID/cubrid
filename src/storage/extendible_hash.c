@@ -571,7 +571,7 @@ ehash_allocate_recdes (RECDES * recdes_p, int size, short type)
       if (recdes_p->data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, recdes_p->area_size);
+		  1, (size_t) recdes_p->area_size);
 	}
     }
 
@@ -5009,7 +5009,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
 	  if (str_next_key_p == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, key_size);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) key_size);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 

@@ -630,7 +630,7 @@ db_compile_statement_local (DB_SESSION * session)
       unsigned int save_custom;
       if (session->stmts_for_replication == NULL)
 	{
-	  int size = sizeof (char *) * session->dimension;
+	  size_t size = sizeof (char *) * session->dimension;
 
 	  session->stmts_for_replication = (char **) malloc (size);
 
@@ -2401,7 +2401,7 @@ set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  strlen (name->info.name.original) + 1);
+			  (size_t) (strlen (name->info.name.original) + 1));
 		  goto error;
 		}
 	      memcpy (into_name, name->info.name.original,

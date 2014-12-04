@@ -526,7 +526,7 @@ lf_freelist_alloc_block (LF_FREELIST * freelist)
 	{
 	  /* we use a decoy size since we don't know it */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, 1);
+		  1, (size_t) 1);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -2491,7 +2491,7 @@ lf_circular_queue_create (INT32 capacity, int data_size)
     {
       free (queue);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      capacity * data_size);
+	      (size_t) capacity * data_size);
       return NULL;
     }
 

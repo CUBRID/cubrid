@@ -4464,7 +4464,7 @@ intl_text_single_byte_to_utf8_ext (void *t,
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, in_size * 2 + 1);
+		  1, (size_t) (in_size * 2 + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4562,7 +4562,7 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, in_size + 1);
+		  1, (size_t) (in_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4807,7 +4807,7 @@ intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf,
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, in_size * 3 + 1);
+		  1, (size_t) (in_size * 3 + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4914,7 +4914,7 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, in_size + 1);
+		  1, (size_t) (in_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }

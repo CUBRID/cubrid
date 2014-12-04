@@ -670,7 +670,8 @@ loader_set_quoted_string_buffer (void)
 	  if (qstr_Malloc_buffer == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	              ER_OUT_OF_VIRTUAL_MEMORY, 1, qstr_Malloc_buffer_size);
+	              ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	              (size_t) qstr_Malloc_buffer_size);
 	      YY_FATAL_ERROR (er_msg());        
 	      return;
 	    }
@@ -697,7 +698,8 @@ loader_append_string (char c)
 	  if (qstr_Malloc_buffer == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	              ER_OUT_OF_VIRTUAL_MEMORY, 1, qstr_Malloc_buffer_size);
+	              ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	              (size_t) qstr_Malloc_buffer_size);
 	      YY_FATAL_ERROR (er_msg());        
 	      return;
 	    }
@@ -725,7 +727,7 @@ loader_append_string (char c)
 	        {
 	          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	                  ER_OUT_OF_VIRTUAL_MEMORY, 1, 
-	                  qstr_Malloc_buffer_size);
+	                  (size_t) qstr_Malloc_buffer_size);
 	          YY_FATAL_ERROR (er_msg());        
 	          return;
 	        }
@@ -801,7 +803,7 @@ loader_make_string_by_yytext (void)
       if (str->val == NULL)
         {
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	          ER_OUT_OF_VIRTUAL_MEMORY, 1, str->size + 1);
+	          ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (str->size + 1));
 	  YY_FATAL_ERROR (er_msg());        
 	  return NULL;
         }
@@ -864,7 +866,7 @@ loader_make_string_by_buffer (void)
 		}
 		
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	              ER_OUT_OF_VIRTUAL_MEMORY, 1, qstr_Buf_idx);
+	              ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) qstr_Buf_idx);
 	      YY_FATAL_ERROR (er_msg());        
 	      return NULL;
 	    }

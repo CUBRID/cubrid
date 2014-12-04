@@ -62,7 +62,7 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
       if (log_zip->log_data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, buf_size);
+		  1, (size_t) buf_size);
 	}
       log_zip->buf_size = buf_size;
     }
@@ -132,7 +132,7 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
       if (log_unzip->log_data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, buf_size);
+		  1, (size_t) buf_size);
 	}
       log_unzip->buf_size = buf_size;
     }
@@ -222,7 +222,7 @@ log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip)
     {
       free_and_init (log_zip);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buf_size);
+	      1, (size_t) buf_size);
       return NULL;
     }
   log_zip->buf_size = buf_size;
@@ -236,7 +236,7 @@ log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip)
 	  free_and_init (log_zip->log_data);
 	  free_and_init (log_zip);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, LZO1X_1_MEM_COMPRESS);
+		  1, (size_t) LZO1X_1_MEM_COMPRESS);
 	  return NULL;
 	}
     }

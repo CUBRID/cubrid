@@ -782,7 +782,8 @@ alloc_vector_buffer (void)
 	{
 	  r = pthread_mutex_unlock (&css_Vector_buffer_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, CSS_NUM_INTERNAL_VECTOR_BUF * CSS_VECTOR_SIZE);
+		  1,
+		  (size_t) (CSS_NUM_INTERNAL_VECTOR_BUF * CSS_VECTOR_SIZE));
 	  return -1;
 	}
 
@@ -2399,7 +2400,7 @@ css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
   if (ip_info->address_list == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, ip_address_list_buffer_size);
+	      1, (size_t) ip_address_list_buffer_size);
       goto error;
     }
 
@@ -2461,7 +2462,7 @@ css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      ip_address_list_buffer_size);
+		      (size_t) ip_address_list_buffer_size);
 	      goto error;
 	    }
 	}

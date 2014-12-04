@@ -651,7 +651,7 @@ sm_add_static_method (const char *name, void (*function) ())
       if (new_->name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, strlen (name) + 1);
+		  1, (size_t) (strlen (name) + 1));
 	  free (new_);
 	  return;
 	}
@@ -14328,7 +14328,8 @@ sm_default_constraint_name (const char *class_name,
 	  if (name_all == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, name_length + 1);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (name_length + 1));
 	      goto exit;
 	    }
 	  strcpy (name_all, class_name);
@@ -14482,7 +14483,7 @@ sm_default_constraint_name (const char *class_name,
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, name_length + 1);
+		  1, (size_t) (name_length + 1));
 	}
     }
 
@@ -15054,7 +15055,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-	      strlen (c->name) + 1);
+	      (size_t) (strlen (c->name) + 1));
       goto error_exit;
     }
 
@@ -15087,7 +15088,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  strlen (attr_name) + 1);
+		  (size_t) (strlen (attr_name) + 1));
 	  goto error_exit;
 	}
     }
@@ -15186,7 +15187,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  strlen (ref_cls->header.name) + 1);
+		  (size_t) (strlen (ref_cls->header.name) + 1));
 	  goto error_exit;
 	}
 
@@ -15222,7 +15223,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	    {
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		      strlen (attr_name) + 1);
+		      (size_t) (strlen (attr_name) + 1));
 	      goto error_exit;
 	    }
 	}

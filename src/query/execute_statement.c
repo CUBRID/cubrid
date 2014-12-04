@@ -1077,7 +1077,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
   DB_VALUE val;
   DB_IDENTIFIER *db_id;
   char *p;
-  int serial_name_size;
+  size_t serial_name_size;
   int save;
 
   OID_SET_NULL (serial_obj_id);
@@ -1197,7 +1197,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int found = 0, r = 0, save;
   bool au_disable_flag = false;
   char *p = NULL;
-  int name_size;
+  size_t name_size;
   const char *comment = NULL;
 
   CHECK_MODIFICATION_ERROR ();
@@ -17751,7 +17751,7 @@ do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (class_oids == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      num_classes * OR_OID_SIZE);
+	      (size_t) (num_classes * OR_OID_SIZE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

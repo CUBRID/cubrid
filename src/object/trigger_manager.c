@@ -1595,7 +1595,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
 	  if (text == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) length);
 	      return er_errid ();
 	    }
 	  strcpy (text, EVAL_PREFIX);

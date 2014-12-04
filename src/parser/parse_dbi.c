@@ -1343,7 +1343,7 @@ pt_string_to_db_domain (const char *s, const char *class_name)
   if (stmt == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (prefix) + strlen (s) + 1);
+	      (size_t) (strlen (prefix) + strlen (s) + 1));
       return (DB_DOMAIN *) NULL;
     }
 
@@ -1762,7 +1762,7 @@ pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt,
       if (str_val == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_len + 1);
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (str_len + 1));
 	  err = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}

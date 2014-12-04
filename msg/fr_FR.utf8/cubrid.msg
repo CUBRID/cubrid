@@ -68,7 +68,7 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Message manquant pour code d'erreur %1$d.
 2 Défaut système interne: aucune information plus spécifique n'est disponible.
-3 Mémoire virtuelle épuisée: incapable d'allouer %1$lld octets de mémoire.
+3 Mémoire virtuelle épuisée: incapable d'allouer %1$zd octets de mémoire.
 4 A été interrompue.
 5 Clé = "%1$s" est introuvable dans la table de hachage "%2$s".
 6 Une table de hachage avec NULL mémoire a été fourni à une fonction de table de hachage.

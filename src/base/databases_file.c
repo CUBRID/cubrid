@@ -532,7 +532,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 	{
 	  *info_p = NULL;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, stat_buffer.st_size + 1);
+		  1, (size_t) (stat_buffer.st_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       read (vdes, line, stat_buffer.st_size);
@@ -1398,7 +1398,8 @@ cfg_copy_hosts (const char **host_array, int *num_hosts)
   char **new_array;
   const char *host;
   char *buffer;
-  int num, buffer_size;
+  int num;
+  size_t buffer_size;
 
   assert (host_array != NULL);
   assert (num_hosts != NULL);

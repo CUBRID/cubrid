@@ -122,7 +122,7 @@ event_file_open (const char *path)
   if (tpath == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, strlen (path));
+	      1, (size_t) strlen (path));
       return NULL;
     }
 
@@ -138,7 +138,7 @@ event_file_open (const char *path)
 	      if (tpath == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dir));
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) strlen (dir));
 		  return NULL;
 		}
 

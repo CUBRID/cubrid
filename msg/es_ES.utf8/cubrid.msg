@@ -68,7 +68,7 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Faltando mensaje para el codigo de error %1$d.
 2 Fallo del sistema interno: no hay más información específica disponible.
-3 Sin memoria virtual: no se pueden asignar %1$lld bytes de memoria.
+3 Sin memoria virtual: no se pueden asignar %1$zd bytes de memoria.
 4 Ha sido interrumpido.
 5 Clave = "%1$s" no ha sido encontrada en la tabla hash "%2$s".
 6 Una tabla hash de memoria NULL fue suministrada a una función de tabla hash.

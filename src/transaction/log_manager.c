@@ -1233,7 +1233,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (log_Gl.loghdr_pgptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, LOG_PAGESIZE);
+	      1, (size_t) LOG_PAGESIZE);
       logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE,
 			 "log_xinit");
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -8126,7 +8126,7 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
       if (ptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, length);
+		  1, (size_t) length);
 	  return;
 	}
       /* Copy the data */

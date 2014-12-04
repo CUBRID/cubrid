@@ -96,6 +96,10 @@ extern "C"
 #define ULLONG_MAX	18446744073709551615ULL
 #endif
 
+
+#define MEM_SIZE_IS_VALID(size) \
+  (((long long unsigned) (size) >> (8 * sizeof (size_t) - 1)) == 0)
+
 #if defined (WINDOWS)
 #include <fcntl.h>
 #include <direct.h>

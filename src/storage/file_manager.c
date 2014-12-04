@@ -12061,7 +12061,7 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
       if (vol_ids_map[i] == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, vhdr->page_alloctb_npages * IO_PAGESIZE);
+		  1, (size_t) (vhdr->page_alloctb_npages * IO_PAGESIZE));
 	  pgbuf_unfix_and_init (thread_p, vhdr_pgptr);
 	  allvalid = DISK_ERROR;
 	  goto end;

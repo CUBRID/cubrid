@@ -1059,7 +1059,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
   if (var->name == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, len + 1);
+	      1, (size_t) (len + 1));
       goto error;
     }
 
@@ -1154,7 +1154,7 @@ db_value_alloc_and_copy (const DB_VALUE * src)
   if (str == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      length + 1);
+	      (size_t) (length + 1));
       return NULL;
     }
 
@@ -1781,7 +1781,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       if (data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, stmt_p->info_length);
+		  1, (size_t) stmt_p->info_length);
 	  return ER_FAILED;
 	}
       memcpy (data, stmt_p->info, stmt_p->info_length);
@@ -2946,7 +2946,7 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p,
 				SESSION_STATE * session_p)
 {
   int ref_count = 0;
-  CSS_CONN_ENTRY *conn, *next;
+  CSS_CONN_ENTRY *conn;
 
   if (session_p == NULL)
     {

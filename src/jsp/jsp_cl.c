@@ -2135,7 +2135,7 @@ jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
   if (buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      req_size);
+	      (size_t) req_size);
       return er_errid ();
     }
 
@@ -2779,7 +2779,7 @@ redo:
   if (!buffer)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      res_size);
+	      (size_t) res_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
