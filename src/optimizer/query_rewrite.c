@@ -7189,6 +7189,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
 		  assert (derived->info.query.q.select.where == NULL);
 		  derived->info.query.q.select.where = limit;
+		  derived->info.query.limit =
+		    parser_copy_tree_list (parser, node->info.query.limit);
 
 		  node = derived;
 		}

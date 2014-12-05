@@ -935,7 +935,8 @@ static int qexec_open_scan (THREAD_ENTRY * thread_p,
 			    VAL_DESCR * vd, bool force_select_lock,
 			    int fixed, int grouped, bool iscan_oid_order,
 			    SCAN_ID * s_id, QUERY_ID query_id,
-			    SCAN_OPERATION_TYPE scan_op_type);
+			    SCAN_OPERATION_TYPE scan_op_type,
+			    bool scan_immediately_stop);
 static void qexec_close_scan (THREAD_ENTRY * thread_p,
 			      ACCESS_SPEC_TYPE * curr_spec);
 static void qexec_end_scan (THREAD_ENTRY * thread_p,
@@ -7314,7 +7315,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   outer_spec->fixed_scan,
 			   outer_spec->grouped_scan,
 			   true, &outer_spec->s_id, xasl_state->query_id,
-			   S_SELECT) != NO_ERROR)
+			   S_SELECT, false) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -7326,7 +7327,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   inner_spec->fixed_scan,
 			   inner_spec->grouped_scan,
 			   true, &inner_spec->s_id, xasl_state->query_id,
-			   S_SELECT) != NO_ERROR)
+			   S_SELECT, false) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -7394,7 +7395,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 		 VAL_LIST * val_list, VAL_DESCR * vd,
 		 bool force_select_lock, int fixed, int grouped,
 		 bool iscan_oid_order, SCAN_ID * s_id, QUERY_ID query_id,
-		 SCAN_OPERATION_TYPE scan_op_type)
+		 SCAN_OPERATION_TYPE scan_op_type,
+		 bool scan_immediately_stop)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
@@ -7699,6 +7701,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto exit_on_error;
     }				/* switch */
+
+  s_id->scan_immediately_stop = scan_immediately_stop;
 
   return NO_ERROR;
 
@@ -9882,7 +9886,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_open_scan
       (thread_p, specp, xasl->val_list, &xasl_state->vd, false,
        specp->fixed_scan, specp->grouped_scan, true, &specp->s_id,
-       xasl_state->query_id, S_SELECT) != NO_ERROR)
+       xasl_state->query_id, S_SELECT, false) != NO_ERROR)
     {
       if (savepoint_used)
 	{
@@ -10967,10 +10971,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   assert (xasl->scan_op_type == S_SELECT);
   /* force_select_lock = false */
   if (qexec_open_scan (thread_p, specp, xasl->val_list,
-		       &xasl_state->vd, false,
-		       specp->fixed_scan,
+		       &xasl_state->vd, false, specp->fixed_scan,
 		       specp->grouped_scan, true, &specp->s_id,
-		       xasl_state->query_id, S_SELECT) != NO_ERROR)
+		       xasl_state->query_id, S_SELECT, false) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -12550,11 +12553,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       assert (xasl->scan_op_type == S_SELECT);
       /* force_select_lock = false */
       if (qexec_open_scan (thread_p, specp, xasl->val_list,
-			   &xasl_state->vd, false,
-			   specp->fixed_scan,
+			   &xasl_state->vd, false, specp->fixed_scan,
 			   specp->grouped_scan, true,
 			   &specp->s_id, xasl_state->query_id,
-			   S_SELECT) != NO_ERROR)
+			   S_SELECT, false) != NO_ERROR)
 	{
 	  if (savepoint_used)
 	    {
@@ -14957,8 +14959,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   bool has_index_scan = false;
   int old_wait_msecs, wait_msecs;
   int error;
-
-  /* create new instant heap memory and save old */
+  DB_LOGICAL limit_zero;
+  bool scan_immediately_stop = false;
 
   /*
    * Pre_processing
@@ -14974,20 +14976,20 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (xasl->limit_row_count)
     {
-      DB_LOGICAL l;
-
-      l = eval_limit_count_is_0 (thread_p, xasl->limit_row_count,
-				 &xasl_state->vd);
-      if (l == V_TRUE)
+      limit_zero = eval_limit_count_is_0 (thread_p, xasl->limit_row_count,
+					  &xasl_state->vd);
+      if (limit_zero == V_TRUE)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"This statement has no record by 'limit 0' clause.\n");
-	  qexec_clear_mainblock_iterations (thread_p, xasl);
-	  return NO_ERROR;
-	}
-      else if (l == V_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
+	  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL))
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "This statement has no record by 'limit 0' clause.\n");
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      scan_immediately_stop = true;
+	    }
 	}
     }
 
@@ -15514,7 +15516,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					       iscan_oid_order,
 					       &specp->s_id,
 					       xasl_state->query_id,
-					       xasl->scan_op_type) !=
+					       xasl->scan_op_type,
+					       scan_immediately_stop) !=
 			      NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p,
@@ -15552,7 +15555,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					       iscan_oid_order,
 					       &specp->s_id,
 					       xasl_state->query_id,
-					       xptr->scan_op_type) !=
+					       xptr->scan_op_type,
+					       scan_immediately_stop) !=
 			      NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p,
@@ -19257,7 +19261,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				   &xasl_state->vd, false, true, false, false,
 				   &xasl->spec_list->s_id,
 				   xasl_state->query_id,
-				   S_SELECT) != NO_ERROR)
+				   S_SELECT, false) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}

@@ -370,7 +370,9 @@ struct scan_id_struct
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
   } s;
+
   SCAN_STATS stats;
+  bool scan_immediately_stop;
 };				/* Scan Identifier */
 
 /* Structure used in condition reevaluation at SELECT */

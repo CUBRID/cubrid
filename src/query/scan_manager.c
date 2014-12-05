@@ -2913,6 +2913,7 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed,
   /* value list and descriptor */
   scan_id->val_list = val_list;	/* points to the XASL tree */
   scan_id->vd = vd;		/* set value descriptor pointer */
+  scan_id->scan_immediately_stop = false;
 }
 
 /*
@@ -6981,6 +6982,12 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 {
   SCAN_CODE result = S_ERROR;
 
+  if (s_id->scan_immediately_stop == true)
+    {
+      result = S_END;
+      goto end;
+    }
+
   switch (s_id->single_fetch)
     {
     case QPROC_NO_SINGLE_INNER:
@@ -7098,6 +7105,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       break;
     }
 
+end:
   /* maintain what is apparently supposed to be an invariant--
    * S_END implies position is "after" the scan
    */
