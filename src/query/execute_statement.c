@@ -11718,8 +11718,10 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
   OR_BUF buf;
   DB_VALUE *val = NULL;
   TP_DOMAIN *attr_dom = NULL, *dom = NULL, *setdomain = NULL;
+  int *asc_desc = NULL;
 
   midxkey.buf = NULL;
+  asc_desc = db_constraint_asc_desc (constraint);
 
   /* compute key size */
   for (attr_count = 0, attr = constraint->attributes; *attr != NULL;
@@ -11738,17 +11740,13 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
 	  goto error_return;
 	}
 
+      if (asc_desc != NULL && asc_desc[attr_count] == 1)
+	{
+	  attr_dom->is_desc = 1;
+	}
+
       if (val != NULL && !DB_IS_NULL (val))
 	{
-#if !defined (NDEBUG)
-	  {
-	    TP_DOMAIN *d;
-
-	    d = tp_domain_resolve_value (val, NULL);
-	    assert (tp_domain_match (attr_dom, d, TP_EXACT_MATCH));
-	  }
-#endif /* NDEBUG */
-
 	  if (attr_dom->type->index_lengthval != NULL)
 	    {
 	      buf_size += (*(attr_dom->type->index_lengthval)) (val);
