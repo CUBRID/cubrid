@@ -352,6 +352,9 @@ static int locator_check_primary_key_upddel (THREAD_ENTRY * thread_p,
 static void locator_incr_num_transient_classnames (int tran_index);
 static void locator_decr_num_transient_classnames (int tran_index);
 static int locator_get_num_transient_classnames (int tran_index);
+static bool locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p,
+					       LOCATOR_CLASSNAME_ENTRY *
+					       entry);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -450,10 +453,13 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	}
 
       entry->e_tran_index = NULL_TRAN_INDEX;
+
       entry->e_current.action = LC_CLASSNAME_EXIST;
       COPY_OID (&entry->e_current.oid, &class_oid);
       LSA_SET_NULL (&entry->e_current.savep_lsa);
       entry->e_current.prev = NULL;
+
+      assert (locator_is_exist_class_name_entry (thread_p, entry));
 
       (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
     }
@@ -591,6 +597,7 @@ xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname,
   LOCATOR_CLASSNAME_ACTION *old_action;
   LC_FIND_CLASSNAME reserve = LC_CLASSNAME_RESERVED;
   OID tmp_classoid;
+  int tran_index;
 
   if (classname == NULL)
     {
@@ -599,6 +606,8 @@ xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname,
 
   assert (classname != NULL);
   assert (strlen (classname) < 255);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
 start:
   reserve = LC_CLASSNAME_RESERVED;
@@ -615,14 +624,22 @@ start:
   /* Is there any entries on the classname hash table ? */
   entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames,
 					       classname);
-  if (entry != NULL && entry->e_current.action != LC_CLASSNAME_EXIST)
+
+  if (locator_is_exist_class_name_entry (thread_p, entry))
     {
+      /* There is a class with such a name on the classname cache. */
+      reserve = LC_CLASSNAME_EXIST;
+    }
+  else if (entry != NULL)
+    {
+      assert (entry->e_current.action != LC_CLASSNAME_EXIST);
+
       /*
        * We can only proceed if the entry belongs to the current transaction,
        * otherwise, we must lock the class associated with the classname and
        * retry the operation once the lock is granted.
        */
-      if (entry->e_tran_index == LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+      if (entry->e_tran_index == tran_index)
 	{
 	  /*
 	   * The name can be reserved only if it has been deleted or
@@ -632,7 +649,8 @@ start:
 	   */
 	  if (entry->e_current.action == LC_CLASSNAME_DELETED
 	      || entry->e_current.action == LC_CLASSNAME_DELETED_RENAME
-	      || entry->e_current.action == LC_CLASSNAME_RESERVED)
+	      || (entry->e_current.action == LC_CLASSNAME_RESERVED
+		  && LSA_ISNULL (&entry->e_current.savep_lsa)))
 	    {
 	      /*
 	       * The entry can be changed.
@@ -668,7 +686,9 @@ start:
 	    }
 	  else
 	    {
-	      assert (entry->e_current.action ==
+	      assert ((entry->e_current.action == LC_CLASSNAME_RESERVED
+		       && !LSA_ISNULL (&entry->e_current.savep_lsa))
+		      || entry->e_current.action ==
 		      LC_CLASSNAME_RESERVED_RENAME);
 
 	      reserve = LC_CLASSNAME_EXIST;
@@ -709,14 +729,6 @@ start:
 	    }
 	}
     }
-  else if (entry != NULL)
-    {
-      assert (entry->e_current.action == LC_CLASSNAME_EXIST);
-      assert (entry->e_tran_index == NULL_TRAN_INDEX);
-
-      /* There is a class with such a name on the classname cache. */
-      reserve = LC_CLASSNAME_EXIST;
-    }
   else
     {
       entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry));
@@ -739,11 +751,14 @@ start:
 	  return LC_CLASSNAME_ERROR;
 	}
 
-      entry->e_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      entry->e_tran_index = tran_index;
+
       entry->e_current.action = LC_CLASSNAME_RESERVED;
       COPY_OID (&entry->e_current.oid, class_oid);
       LSA_SET_NULL (&entry->e_current.savep_lsa);
       entry->e_current.prev = NULL;
+
+      assert (locator_is_exist_class_name_entry (thread_p, entry) == false);
 
       (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
 
@@ -762,6 +777,9 @@ start:
    */
   if (reserve == LC_CLASSNAME_RESERVED && entry != NULL)
     {
+      assert (locator_is_exist_class_name_entry (thread_p, entry) == false);
+      assert (entry->e_tran_index == tran_index);
+
       if (lock_object (thread_p, class_oid, oid_Root_class_oid,
 		       SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
@@ -830,6 +848,7 @@ xlocator_delete_class_name (THREAD_ENTRY * thread_p, const char *classname)
   LOCATOR_CLASSNAME_ACTION *old_action;
   LC_FIND_CLASSNAME classname_delete = LC_CLASSNAME_DELETED;
   OID tmp_classoid;
+  int tran_index;
 
   if (classname == NULL)
     {
@@ -838,6 +857,8 @@ xlocator_delete_class_name (THREAD_ENTRY * thread_p, const char *classname)
 
   assert (classname != NULL);
   assert (strlen (classname) < 255);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
 start:
   classname_delete = LC_CLASSNAME_DELETED;
@@ -856,20 +877,32 @@ start:
   if (entry != NULL)
     {
       assert (entry->e_tran_index == NULL_TRAN_INDEX
-	      || entry->e_tran_index ==
-	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	      || entry->e_tran_index == tran_index);
 
       COPY_OID (&tmp_classoid, &entry->e_current.oid);
     }
 
-  if (entry != NULL && entry->e_current.action != LC_CLASSNAME_EXIST)
+  if (locator_is_exist_class_name_entry (thread_p, entry))
     {
+      /* There is a class with such a name on the classname cache.
+       * We should convert it to transient one.
+       */
+      entry->e_tran_index = tran_index;
+      entry->e_current.action = LC_CLASSNAME_DELETED;
+
+      locator_incr_num_transient_classnames (entry->e_tran_index);
+    }
+  else if (entry != NULL)
+    {
+      assert (entry->e_current.action != LC_CLASSNAME_EXIST);
+      assert (entry->e_tran_index == tran_index);
+
       /*
        * We can only proceed if the entry belongs to the current transaction,
        * otherwise, we must lock the class associated with the classname and
        * retry the operation once the lock is granted.
        */
-      if (entry->e_tran_index == LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+      if (entry->e_tran_index == tran_index)
 	{
 	  /*
 	   * The name can be deleted only if it has been reserved by current
@@ -947,18 +980,6 @@ start:
 	    }
 	}
     }
-  else if (entry != NULL)
-    {
-      assert (entry->e_current.action == LC_CLASSNAME_EXIST);
-
-      /* There is a class with such a name on the classname cache.
-       * We should convert it to transient one.
-       */
-      entry->e_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      entry->e_current.action = LC_CLASSNAME_DELETED;
-
-      locator_incr_num_transient_classnames (entry->e_tran_index);
-    }
   else
     {
       /* Some kind of failure. We must notify the error to the caller.
@@ -999,6 +1020,7 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME renamed;
+  int tran_index;
 
   if (oldname == NULL || newname == NULL)
     {
@@ -1011,47 +1033,8 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
   assert (strlen (newname) < 255);
   assert (!OID_ISNULL (class_oid));
 
-  renamed = LC_CLASSNAME_RESERVED;	/* init */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  /* Make it sure there's no existing class which has new class name
-   */
-  if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE,
-			     INF_WAIT) != NO_ERROR)
-    {
-      assert (false);
-      return LC_CLASSNAME_ERROR;
-    }
-
-  entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames,
-					       newname);
-  if (entry != NULL)
-    {
-      if (entry->e_current.action == LC_CLASSNAME_EXIST)
-	{
-	  assert (!OID_ISNULL (&entry->e_current.oid));
-	  renamed = LC_CLASSNAME_ERROR;
-	}
-      else if (entry->e_current.action == LC_CLASSNAME_RESERVED
-	       || entry->e_current.action == LC_CLASSNAME_RESERVED_RENAME)
-	{
-	  if (!LSA_ISNULL (&entry->e_current.savep_lsa))
-	    {
-	      renamed = LC_CLASSNAME_ERROR;
-	    }
-	}
-    }
-
-  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-
-  if (renamed != LC_CLASSNAME_RESERVED)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST,
-	      1, newname);
-      return renamed;
-    }
-
-  /* do reserve with new class name
-   */
   renamed = xlocator_reserve_class_name (thread_p, newname, class_oid);
   if (renamed != LC_CLASSNAME_RESERVED)
     {
@@ -1071,6 +1054,8 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
 					       newname);
   if (entry != NULL)
     {
+      assert (entry->e_current.action == LC_CLASSNAME_RESERVED);
+
       entry->e_current.action = LC_CLASSNAME_RESERVED_RENAME;
       renamed = xlocator_delete_class_name (thread_p, oldname);
       entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames,
@@ -1090,6 +1075,10 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
 	      renamed = LC_CLASSNAME_ERROR;
 	      goto error;
 	    }
+
+	  assert (locator_is_exist_class_name_entry (thread_p, entry) ==
+		  false);
+	  assert (entry->e_tran_index == tran_index);
 
 	  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) !=
 	      NO_ERROR)
@@ -1127,7 +1116,7 @@ error:
  *                                  LC_CLASSNAME_ERROR)
  *
  *   classname(in): Name of class to find
- *   class_oid(in): Set as a side effect
+ *   class_oid(out): Set as a side effect
  *   lock(in): Lock to acquire for the class
  *
  * Note: Find the class identifier of the given class name and lock the
@@ -1142,9 +1131,12 @@ LC_FIND_CLASSNAME
 xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname,
 			 OID * class_oid, LOCK lock)
 {
+  int tran_index;
   LOCATOR_CLASSNAME_ENTRY *entry;
   LOCK tmp_lock;
   LC_FIND_CLASSNAME find = LC_CLASSNAME_EXIST;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
 start:
   find = LC_CLASSNAME_EXIST;
@@ -1161,27 +1153,37 @@ start:
 
   if (entry != NULL)
     {
+      COPY_OID (class_oid, &entry->e_current.oid);
+      assert (find == LC_CLASSNAME_EXIST);
+    }
+
+  if (locator_is_exist_class_name_entry (thread_p, entry))
+    {
+      assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
+    }
+  else if (entry != NULL)
+    {
+      assert (entry->e_current.action != LC_CLASSNAME_EXIST);
+
       /*
        * We can only proceed if the entry belongs to the current transaction,
        * otherwise, we must lock the class associated with the classname and
        * retry the operation once the lock is granted.
        */
-      COPY_OID (class_oid, &entry->e_current.oid);
+      assert (find == LC_CLASSNAME_EXIST);
 
-      if (entry->e_tran_index == LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+      if (entry->e_tran_index == tran_index)
 	{
 	  if (entry->e_current.action == LC_CLASSNAME_DELETED
 	      || entry->e_current.action == LC_CLASSNAME_DELETED_RENAME)
 	    {
-	      OID_SET_NULL (class_oid);
+	      OID_SET_NULL (class_oid);	/* clear */
 	      find = LC_CLASSNAME_DELETED;
 	    }
-	}
-      else if (entry->e_current.action == LC_CLASSNAME_EXIST)
-	{
-	  /* OK, go ahead */
-	  assert (entry->e_tran_index == NULL_TRAN_INDEX);
-	  assert (find == LC_CLASSNAME_EXIST);
+	  else
+	    {
+	      assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
+	    }
 	}
       else
 	{
@@ -1206,7 +1208,7 @@ start:
 	      /*
 	       * Unable to acquired lock
 	       */
-	      OID_SET_NULL (class_oid);
+	      OID_SET_NULL (class_oid);	/* clear */
 	      return LC_CLASSNAME_ERROR;
 	    }
 	  else
@@ -1237,7 +1239,7 @@ start:
 	  /*
 	   * Unable to acquired lock
 	   */
-	  OID_SET_NULL (class_oid);
+	  OID_SET_NULL (class_oid);	/* clear */
 	  find = LC_CLASSNAME_ERROR;
 	}
       else
@@ -1246,6 +1248,17 @@ start:
 			      false);
 	}
     }
+
+#if !defined(NDEBUG)
+  if (find == LC_CLASSNAME_EXIST)
+    {
+      assert (!OID_ISNULL (class_oid));
+    }
+  else if (find == LC_CLASSNAME_ERROR)
+    {
+      assert (OID_ISNULL (class_oid));
+    }
+#endif
 
   return find;
 }
@@ -1288,6 +1301,9 @@ locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname,
       goto error;		/* should be impossible */
     }
 
+  assert (locator_is_exist_class_name_entry (thread_p, entry) == false);
+  assert (entry->e_tran_index == LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
   if (entry->e_current.action != LC_CLASSNAME_EXIST)
     {
       /*
@@ -1321,6 +1337,7 @@ locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname,
 	  LSA_SET_NULL (&entry->e_current.savep_lsa);
 	  entry->e_current.prev = old_action;
 	}
+
       COPY_OID (&entry->e_current.oid, class_oid);
     }
 
@@ -1464,38 +1481,30 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
       return NO_ERROR;		/* do nothing */
     }
 
-  assert (entry != NULL);
-  assert (entry->e_name != NULL);
-  assert (!OID_ISNULL (&entry->e_current.oid));
 
   if (!(entry->e_tran_index == NULL_TRAN_INDEX
 	|| entry->e_tran_index == tran_index))
     {
-      assert (false);		/* something wrong */
+      assert (false);		/* is impossible */
       return NO_ERROR;
     }
 
+  assert (entry->e_name != NULL);
+  assert (!OID_ISNULL (&entry->e_current.oid));
+
 #if !defined(NDEBUG)
-  if (entry->e_tran_index == NULL_TRAN_INDEX)
-    {
-      assert (entry->e_current.action == LC_CLASSNAME_EXIST);
-    }
   if (entry->e_current.action == LC_CLASSNAME_EXIST)
     {
-      assert (entry->e_tran_index == NULL_TRAN_INDEX
-	      || !LSA_ISNULL (&entry->e_current.savep_lsa));
-    }
-
-  if (LSA_ISNULL (&entry->e_current.savep_lsa))
-    {
-      assert (entry->e_current.prev == NULL);
+      assert (locator_is_exist_class_name_entry (thread_p, entry));
     }
 #endif
 
   assert (savep_lsa == NULL || !LSA_ISNULL (savep_lsa));
 
-  if (entry->e_current.action != LC_CLASSNAME_EXIST)
+  if (locator_is_exist_class_name_entry (thread_p, entry) == false)
     {
+      assert (entry->e_tran_index == tran_index);
+
       if (savep_lsa == NULL && tdes->state != TRAN_UNACTIVE_ABORTED)
 	{
 	  /* is commit; get current */
@@ -1512,12 +1521,12 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
 	  if (entry->e_current.action == LC_CLASSNAME_RESERVED
 	      || entry->e_current.action == LC_CLASSNAME_RESERVED_RENAME)
 	    {
-	      assert (heap_does_exist (thread_p, oid_Root_class_oid,
-				       &entry->e_current.oid));
-
 	      entry->e_tran_index = NULL_TRAN_INDEX;
+
 	      entry->e_current.action = LC_CLASSNAME_EXIST;
 	      LSA_SET_NULL (&entry->e_current.savep_lsa);
+
+	      assert (locator_is_exist_class_name_entry (thread_p, entry));
 	    }
 	  else
 	    {
@@ -1550,17 +1559,20 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
 	      || LSA_ISNULL (&entry->e_current.savep_lsa)
 	      || LSA_LT (savep_lsa, &entry->e_current.savep_lsa))
 	    {
+	      assert (entry->e_current.prev == NULL);
+
 	      locator_decr_num_transient_classnames (entry->e_tran_index);
 
 	      if (entry->e_current.action == LC_CLASSNAME_DELETED
 		  || entry->e_current.action == LC_CLASSNAME_DELETED_RENAME)
 		{
-		  assert (heap_does_exist (thread_p, oid_Root_class_oid,
-					   &entry->e_current.oid));
-
 		  entry->e_tran_index = NULL_TRAN_INDEX;
+
 		  entry->e_current.action = LC_CLASSNAME_EXIST;
 		  LSA_SET_NULL (&entry->e_current.savep_lsa);
+
+		  assert (locator_is_exist_class_name_entry
+			  (thread_p, entry));
 		}
 	      else
 		{
@@ -1575,39 +1587,27 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
 	}			/* else */
     }
 
-  /* check iff non-dropped entry */
-  if (entry->e_current.action == LC_CLASSNAME_EXIST)
-    {
-      assert (entry->e_tran_index == NULL_TRAN_INDEX
-	      || !LSA_ISNULL (&entry->e_current.savep_lsa));
-
-      assert (heap_does_exist
-	      (thread_p, oid_Root_class_oid, &entry->e_current.oid));
-
-      entry->e_tran_index = NULL_TRAN_INDEX;
-      LSA_SET_NULL (&entry->e_current.savep_lsa);
-
 #if !defined(NDEBUG)
-      {
-	OID class_oid;
+  /* check iff permanent entry */
+  if (locator_is_exist_class_name_entry (thread_p, entry))
+    {
+      OID class_oid;
 
-	COPY_OID (&class_oid, &entry->e_current.oid);
+      COPY_OID (&class_oid, &entry->e_current.oid);
 
-	if (class_oid.slotid <= 0 || class_oid.volid < 0
-	    || class_oid.pageid < 0)
-	  {
-	    assert (false);
-	  }
+      if (class_oid.slotid <= 0 || class_oid.volid < 0
+	  || class_oid.pageid < 0)
+	{
+	  assert (false);
+	}
 
-	if (disk_isvalid_page (thread_p, class_oid.volid,
-			       class_oid.pageid) != DISK_VALID)
-	  {
-	    assert (false);
-	  }
-      }
-#endif
-
+      if (disk_isvalid_page (thread_p, class_oid.volid,
+			     class_oid.pageid) != DISK_VALID)
+	{
+	  assert (false);
+	}
     }
+#endif
 
   return NO_ERROR;
 }
@@ -1641,7 +1641,7 @@ locator_defence_drop_class_name_entry (const void *name, void *ent,
   assert (tran_index != NULL_TRAN_INDEX);
 
 #if !defined(NDEBUG)
-  if (entry->e_current.action == LC_CLASSNAME_EXIST)
+  if (locator_is_exist_class_name_entry (thread_p, entry))
     {
       OID class_oid;
 
@@ -1667,7 +1667,7 @@ locator_defence_drop_class_name_entry (const void *name, void *ent,
   /* check iff uncleared entry */
   if (entry->e_tran_index == tran_index)
     {
-      assert (entry->e_current.action != LC_CLASSNAME_EXIST);
+      assert (entry->e_tran_index != NULL_TRAN_INDEX);
 
       (void) locator_drop_class_name_entry (thread_p, entry->e_name,
 					    savep_lsa);
@@ -1804,9 +1804,12 @@ locator_savepoint_class_name_entry (const char *classname,
 				    LOG_LSA * savep_lsa)
 {
   THREAD_ENTRY *thread_p;
+  int tran_index;
   LOCATOR_CLASSNAME_ENTRY *entry;
 
   thread_p = thread_get_thread_entry_info ();
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   assert (csect_check_own (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE) == 1);
 
@@ -1818,20 +1821,26 @@ locator_savepoint_class_name_entry (const char *classname,
       return ER_FAILED;
     }
 
-  assert (entry != NULL);
+  if (!(entry->e_tran_index == NULL_TRAN_INDEX
+	|| entry->e_tran_index == tran_index))
+    {
+      assert (false);		/* is impossible */
+      return ER_FAILED;
+    }
+
   assert (entry->e_name != NULL);
   assert (!OID_ISNULL (&entry->e_current.oid));
 
-  assert (entry->e_tran_index == NULL_TRAN_INDEX
-	  || entry->e_tran_index == LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  if (LSA_ISNULL (&entry->e_current.savep_lsa))
+  /* check iff need to savepoint */
+  if (locator_is_exist_class_name_entry (thread_p, entry) == false)
     {
-      entry->e_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      LSA_COPY (&entry->e_current.savep_lsa, savep_lsa);
-    }
+      assert (entry->e_tran_index == tran_index);
 
-  assert (entry->e_tran_index == LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      if (LSA_ISNULL (&entry->e_current.savep_lsa))
+	{
+	  LSA_COPY (&entry->e_current.savep_lsa, savep_lsa);
+	}
+    }
 
   return NO_ERROR;
 }
@@ -12150,15 +12159,17 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 	      COPY_OID (&(*hlock)->classes[n].oid, &entry->e_current.oid);
 	      assert (find == LC_CLASSNAME_EXIST);
 	    }
-	  else
-	    {
-	      find = LC_CLASSNAME_DELETED;
-	    }
 
 	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
-	  if (entry != NULL)
+	  if (locator_is_exist_class_name_entry (thread_p, entry))
 	    {
+	      assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
+	    }
+	  else if (entry != NULL)
+	    {
+	      assert (entry->e_current.action != LC_CLASSNAME_EXIST);
+
 	      /*
 	       * We can only proceed if the entry belongs to the current
 	       * transaction, otherwise, we must lock the class associated
@@ -12175,8 +12186,12 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 		    {
 		      find = LC_CLASSNAME_DELETED;
 		    }
+		  else
+		    {
+		      assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
+		    }
 		}
-	      else if (entry->e_current.action != LC_CLASSNAME_EXIST)
+	      else
 		{
 		  /*
 		   * Do not know the fate of this entry until the transaction is
@@ -12213,7 +12228,10 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 		    }
 		}
 	    }
-
+	  else
+	    {
+	      find = LC_CLASSNAME_DELETED;
+	    }
 	}			/* while (retry) */
 
       if (find == LC_CLASSNAME_EXIST)
@@ -13773,4 +13791,35 @@ locator_get_num_transient_classnames (int tran_index)
     {
       return 1;			/* someone exists */
     }
+}
+
+/*
+ * locator_is_exist_class_name_entry -
+ *
+ * return:
+ *
+ *   entry(in):
+ *
+ * NOTE: debugging function
+ */
+static bool
+locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p,
+				   LOCATOR_CLASSNAME_ENTRY * entry)
+{
+  if (entry != NULL && entry->e_current.action == LC_CLASSNAME_EXIST)
+    {
+      assert (entry->e_name != NULL);
+      assert (entry->e_tran_index == NULL_TRAN_INDEX);
+
+      assert (!OID_ISNULL (&entry->e_current.oid));
+      assert (heap_does_exist (thread_p, oid_Root_class_oid,
+			       &entry->e_current.oid));
+
+      assert (LSA_ISNULL (&entry->e_current.savep_lsa));
+      assert (entry->e_current.prev == NULL);
+
+      return true;
+    }
+
+  return false;
 }
