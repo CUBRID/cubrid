@@ -176,6 +176,16 @@ static int rv;
  */
 #define PGBUF_FLUSH_VICTIM_BOOST_MULT 10
 
+#define PGBUF_NEIGHBOR_FLUSH_NONDIRTY \
+  (prm_get_bool_value (PRM_ID_PB_NEIGHBOR_FLUSH_NONDIRTY))
+
+#define PGBUF_MAX_NEIGHBOR_PAGES 32
+#define PGBUF_NEIGHBOR_PAGES \
+  (prm_get_integer_value (PRM_ID_PB_NEIGHBOR_FLUSH_PAGES))
+
+#define PGBUF_NEIGHBOR_POS(idx) (PGBUF_NEIGHBOR_PAGES - 1 + (idx))
+
+
 #if defined(SERVER_MODE)
 
 #define MUTEX_LOCK_VIA_BUSY_WAIT(rv, m) \
@@ -272,6 +282,17 @@ struct pgbuf_holder_stat
   unsigned dirtied_by_holder:1;	/* page was dirtied by holder */
   unsigned hold_has_write_latch:1;	/* page has/had write latch */
   unsigned hold_has_read_latch:1;	/* page has/had read latch */
+};
+
+typedef struct pgbuf_batch_flush_helper PGBUF_BATCH_FLUSH_HELPER;
+
+struct pgbuf_batch_flush_helper
+{
+  int npages;
+  int fwd_offset;
+  int back_offset;
+  PGBUF_BCB *pages_bufptr[2 * PGBUF_MAX_NEIGHBOR_PAGES - 1];
+  VPID vpids[2 * PGBUF_MAX_NEIGHBOR_PAGES - 1];
 };
 
 /* BCB holder entry */
@@ -581,6 +602,7 @@ struct pgbuf_ps_info
 #endif /* PAGE_STATISTICS */
 
 static PGBUF_BUFFER_POOL pgbuf_Pool;	/* The buffer Pool */
+static PGBUF_BATCH_FLUSH_HELPER pgbuf_Flush_helper;
 
 #if defined(CUBRID_DEBUG)
 /* A buffer guard to detect over runs .. */
@@ -801,6 +823,10 @@ static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
 static bool pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p,
 					     PAGE_PTR pgptr,
 					     PAGE_TYPE ptype, bool no_error);
+static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
+					      PGBUF_BCB * bufptr,
+					      int *flushed_pages);
+static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -2955,6 +2981,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       /* for each victim candidate, do flush task */
       for (i = 0; i < victim_count; i++)
 	{
+	  int flushed_pages = 0;
+
 	  bufptr = victim_cand_list[i].bufptr;
 
 	  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
@@ -2980,10 +3008,20 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      continue;
 	    }
 
-	  mnt_pb_replacements (thread_p);
+	  if (PGBUF_NEIGHBOR_PAGES > 1)
+	    {
+	      error = pgbuf_flush_page_and_neighbors_fb (thread_p, bufptr,
+							 &flushed_pages);
+	      /* BCB mutex already unlocked by neighbor flush function */
+	    }
+	  else
+	    {
+	      error = pgbuf_flush_page_with_wal (thread_p, bufptr);
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      flushed_pages = (error == NO_ERROR) ? 1 : 0;
+	    }
 
-	  error = pgbuf_flush_page_with_wal (thread_p, bufptr);
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  mnt_pb_replacements (thread_p);
 
 	  if (error != NO_ERROR)
 	    {
@@ -2992,7 +3030,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      return ER_FAILED;
 	    }
 
-	  total_flushed_count++;
+	  total_flushed_count += flushed_pages;
 
 	  if (total_flushed_count > cfg_check_cnt
 	      && ((pgbuf_Pool.lru_victim_req_cnt
@@ -9432,4 +9470,403 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
 	}
     }
   return false;
+}
+
+enum
+{
+  NEIGHBOR_ABORT_RANGE = 1,
+
+  NEIGHBOR_ABORT_NOTFOUND_NONDIRTY_BACK,
+  NEIGHBOR_ABORT_NOTFOUND_DIRTY_BACK,
+
+  NEIGHBOR_ABORT_LATCH_NONDIRTY_BACK,
+  NEIGHBOR_ABORT_LATCH_DIRTY_BACK,
+
+  NEIGHBOR_ABORT_NONDIRTY_NOT_ALLOWED,
+  NEIGHBOR_ABORT_TWO_CONSECTIVE_NONDIRTIES,
+  NEIGHBOR_ABORT_TOO_MANY_NONDIRTIES
+};
+/*
+ * pgbuf_flush_page_and_neighbors_fb () - Flush page pointed to by the supplied
+ *				       BCB and also flush neighbor pages
+ *
+ * return : error code or NO_ERROR
+ * thread_p (in) : thread entry
+ * bufptr (in)	 : BCB to flush
+ * flushed_pages(out): actual number of flushed pages
+ */
+static int
+pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
+				   PGBUF_BCB * bufptr, int *flushed_pages)
+{
+#define PGBUG_PAGES_COUNT_THRESHOLD 4
+  int error = NO_ERROR, i;
+  LOG_LSA log_newest_oldest_unflush_lsa;
+  VPID first_vpid, vpid;
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BATCH_FLUSH_HELPER *helper = &pgbuf_Flush_helper;
+  bool prev_page_dirty = true;
+  int dirty_pages_cnt = 0;
+  int pos;
+  bool forward;
+  bool search_nondirty;
+  int written_pages;
+  int abort_reason;
+#if defined (SERVER_MODE)
+  int rv;
+#endif
+#if defined(ENABLE_SYSTEMTAP)
+  int tran_index;
+  QMGR_TRAN_ENTRY *tran_entry;
+  QUERY_ID query_id = -1;
+  bool monitored = false;
+#endif /* ENABLE_SYSTEMTAP */
+
+#if defined(ENABLE_SYSTEMTAP)
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tran_entry = qmgr_get_tran_entry (tran_index);
+  if (tran_entry->query_entry_list_p)
+    {
+      query_id = tran_entry->query_entry_list_p->query_id;
+      monitored = true;
+      CUBRID_IO_WRITE_START (query_id);
+    }
+#endif /* ENABLE_SYSTEMTAP */
+
+  /* init */
+  helper->npages = 0;
+  helper->fwd_offset = 0;
+  helper->back_offset = 0;
+
+  /* add bufptr as middle page */
+  pgbuf_add_bufptr_to_batch (bufptr, 0);
+  VPID_COPY (&first_vpid, &bufptr->vpid);
+  LSA_COPY (&log_newest_oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
+  pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+  VPID_COPY (&vpid, &first_vpid);
+
+  /* Now search around bufptr->vpid for neighbors.
+   */
+  forward = true;
+  search_nondirty = false;
+  abort_reason = 0;
+  for (i = 1; i < PGBUF_NEIGHBOR_PAGES;)
+    {
+      if (forward == true)
+	{
+	  if (first_vpid.pageid <= PAGEID_MAX - (helper->fwd_offset + 1))
+	    {
+	      vpid.pageid = first_vpid.pageid + helper->fwd_offset + 1;
+	    }
+	  else
+	    {
+	      abort_reason = NEIGHBOR_ABORT_RANGE;
+	      break;
+	    }
+	}
+      else
+	{
+	  if (first_vpid.pageid >= helper->back_offset + 1)
+	    {
+	      vpid.pageid = first_vpid.pageid - helper->back_offset - 1;
+	    }
+	  else if (PGBUF_NEIGHBOR_FLUSH_NONDIRTY == false
+		   || search_nondirty == true)
+	    {
+	      abort_reason = NEIGHBOR_ABORT_RANGE;
+	      break;
+	    }
+	  else
+	    {
+	      search_nondirty = true;
+	      forward = true;
+	      continue;
+	    }
+	}
+
+      hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&vpid)];
+
+      bufptr = pgbuf_search_hash_chain (hash_anchor, &vpid);
+      if (bufptr == NULL)
+	{
+	  /* Page not found: change direction or abandon batch */
+	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	  if (search_nondirty == true)
+	    {
+	      if (forward == false)
+		{
+		  abort_reason = NEIGHBOR_ABORT_NOTFOUND_NONDIRTY_BACK;
+		  break;
+		}
+	      else
+		{
+		  forward = false;
+		  continue;
+		}
+	    }
+	  else
+	    {
+	      if (forward == true)
+		{
+		  forward = false;
+		  continue;
+		}
+	      else if (PGBUF_NEIGHBOR_FLUSH_NONDIRTY == true)
+		{
+		  search_nondirty = true;
+		  forward = true;
+		  continue;
+		}
+	      else
+		{
+		  abort_reason = NEIGHBOR_ABORT_NOTFOUND_DIRTY_BACK;
+		  break;
+		}
+	    }
+	}
+
+      /* Abandon batch for:
+       * fixed pages, latched pages or with 'avoid_victim' */
+      if (bufptr->fcnt > 0
+	  || bufptr->latch_mode != PGBUF_NO_LATCH
+	  || bufptr->avoid_victim == true)
+	{
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  if (search_nondirty == true)
+	    {
+	      if (forward == false)
+		{
+		  abort_reason = NEIGHBOR_ABORT_LATCH_NONDIRTY_BACK;
+		  break;
+		}
+	      else
+		{
+		  forward = false;
+		  continue;
+		}
+	    }
+	  else
+	    {
+	      if (forward == true)
+		{
+		  forward = false;
+		  continue;
+		}
+	      else if (PGBUF_NEIGHBOR_FLUSH_NONDIRTY == true)
+		{
+		  search_nondirty = true;
+		  forward = true;
+		  continue;
+		}
+	      else
+		{
+		  abort_reason = NEIGHBOR_ABORT_LATCH_DIRTY_BACK;
+		  break;
+		}
+	    }
+	}
+
+      if (bufptr->dirty == false)
+	{
+	  if (search_nondirty == false)
+	    {
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      if (forward == true)
+		{
+		  forward = false;
+		  continue;
+		}
+	      else if (PGBUF_NEIGHBOR_FLUSH_NONDIRTY == true)
+		{
+		  search_nondirty = true;
+		  forward = true;
+		  continue;
+		}
+	      abort_reason = NEIGHBOR_ABORT_NONDIRTY_NOT_ALLOWED;
+	      break;
+	    }
+
+	  if (prev_page_dirty == false)
+	    {
+	      /* two consecutive non-dirty pages */
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      abort_reason = NEIGHBOR_ABORT_TWO_CONSECTIVE_NONDIRTIES;
+	      break;
+	    }
+	}
+      else
+	{
+	  if (LSA_LT (&log_newest_oldest_unflush_lsa,
+		      &bufptr->oldest_unflush_lsa))
+	    {
+	      LSA_COPY (&log_newest_oldest_unflush_lsa,
+			&bufptr->oldest_unflush_lsa);
+	    }
+	  dirty_pages_cnt++;
+	}
+
+      if (helper->npages > PGBUG_PAGES_COUNT_THRESHOLD
+	  && ((2 * dirty_pages_cnt) < helper->npages))
+	{
+	  /* too many nondirty pages */
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  helper->npages = 1;
+	  abort_reason = NEIGHBOR_ABORT_TOO_MANY_NONDIRTIES;
+	  break;
+	}
+
+      prev_page_dirty = bufptr->dirty;
+
+      /* add bufptr to batch */
+      pgbuf_add_bufptr_to_batch (bufptr, vpid.pageid - first_vpid.pageid);
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      i++;
+    }
+
+  if (prev_page_dirty == true)
+    {
+      if (helper->fwd_offset > 0
+	  && helper->pages_bufptr[PGBUF_NEIGHBOR_POS (helper->fwd_offset)]->
+	  dirty == false)
+	{
+	  helper->fwd_offset--;
+	  helper->npages--;
+	}
+      if (helper->back_offset > 0
+	  && helper->pages_bufptr[PGBUF_NEIGHBOR_POS (-helper->back_offset)]->
+	  dirty == false)
+	{
+	  helper->back_offset--;
+	  helper->npages--;
+	}
+    }
+
+  if (helper->npages <= 1)
+    {
+      /* flush only first page */
+      bufptr = helper->pages_bufptr[PGBUF_NEIGHBOR_POS (0)];
+      error = pgbuf_flush_page_with_wal (thread_p, bufptr);
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      if (error == NO_ERROR)
+	{
+	  *flushed_pages = 1;
+	}
+      return error;
+    }
+
+  /* WAL protocol: force log record to disk */
+  logpb_flush_log_for_wal (thread_p, &log_newest_oldest_unflush_lsa);
+
+  written_pages = 0;
+  for (pos = PGBUF_NEIGHBOR_POS (-helper->back_offset);
+       pos <= PGBUF_NEIGHBOR_POS (helper->fwd_offset); pos++)
+    {
+      bufptr = helper->pages_bufptr[pos];
+
+      MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
+      if (!VPID_EQ (&bufptr->vpid, &helper->vpids[pos]))
+	{
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  continue;
+	}
+
+      if (bufptr->dirty)
+	{
+	  error = pgbuf_flush_page_with_wal (thread_p, bufptr);
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  if (error == NO_ERROR)
+	    {
+	      written_pages++;
+	    }
+	}
+      else
+	{
+	  /* write a non-dirty page */
+	  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+	  FILEIO_PAGE *iopage;
+
+	  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+
+	  memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage),
+		  IO_PAGESIZE);
+	  bufptr->avoid_victim = true;
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+	  /* flush buffer page */
+	  if (fileio_write (thread_p,
+			    fileio_get_volume_descriptor (bufptr->vpid.volid),
+			    iopage, bufptr->vpid.pageid, IO_PAGESIZE) != NULL)
+	    {
+	      written_pages++;
+	      mnt_pb_iowrites (thread_p, 1);
+	      /* ignore error */
+
+#if defined(ENABLE_SYSTEMTAP)
+	      if (monitored == true)
+		{
+		  CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 1);
+		}
+#endif /* ENABLE_SYSTEMTAP */
+	    }
+
+	  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
+	  bufptr->avoid_victim = false;
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+#if defined(ENABLE_SYSTEMTAP)
+	  if (monitored == true)
+	    {
+	      CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 0);
+	    }
+#endif /* ENABLE_SYSTEMTAP */
+	}
+    }
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_page_and_neighbors_fb: "
+		"collected_pages:%d, written:%d, back_offset:%d, fwd_offset%d, "
+		"abort_reason:%d", helper->npages, written_pages,
+		helper->back_offset, helper->fwd_offset, abort_reason);
+
+  *flushed_pages = written_pages;
+  helper->npages = 0;
+
+  return error;
+#undef PGBUG_PAGES_COUNT_THRESHOLD
+}
+
+/*
+ * pgbuf_add_bufptr_to_batch () - Add a page to the flush helper
+ * return : void
+ * bufptr (in) : BCB of page to add
+ */
+static void
+pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx)
+{
+  PGBUF_BATCH_FLUSH_HELPER *helper = &pgbuf_Flush_helper;
+  int pos;
+
+  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM
+	  && bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
+
+  assert (bufptr->latch_mode == PGBUF_NO_LATCH
+	  || bufptr->latch_mode == PGBUF_LATCH_FLUSH
+	  || bufptr->latch_mode == PGBUF_LATCH_READ
+	  || bufptr->latch_mode == PGBUF_LATCH_WRITE);
+
+  assert (idx > -PGBUF_NEIGHBOR_PAGES && idx < PGBUF_NEIGHBOR_PAGES);
+  pos = PGBUF_NEIGHBOR_POS (idx);
+
+  VPID_COPY (&helper->vpids[pos], &bufptr->vpid);
+  helper->pages_bufptr[pos] = bufptr;
+
+  helper->npages++;
+  if (idx > 0)
+    {
+      helper->fwd_offset++;
+    }
+  else if (idx < 0)
+    {
+      helper->back_offset++;
+    }
 }

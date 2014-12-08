@@ -596,6 +596,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_VACUUM_PREFETCH_LOG_NBUFFERS "vacuum_prefetch_log_pages"
 #define PRM_NAME_VACUUM_PREFETCH_LOG_BUFFER_SIZE "vacuum_prefetch_log_buffer_size"
 
+#define PRM_NAME_PB_NEIGHBOR_FLUSH_NONDIRTY "data_buffer_neighbor_flush_nondirty"
+#define PRM_NAME_PB_NEIGHBOR_FLUSH_PAGES "data_buffer_neighbor_flush_pages"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1981,6 +1984,16 @@ static unsigned int prm_vacuum_prefetch_log_nbuffers_flag = 0;
 /* buffers for all vacuum workers + 1 for job queue */
 static int prm_vacuum_prefetch_log_nbuffers_lower =
   (VACUUM_MAX_WORKER_COUNT + 1) * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
+
+bool PRM_PB_NEIGHBOR_FLUSH_NONDIRTY = false;
+static unsigned int prm_pb_neighbor_flush_nondirty_flag = 0;
+static bool prm_pb_neighbor_flush_nondirty_default = false;
+
+unsigned int PRM_PB_NEIGHBOR_FLUSH_PAGES = 8;
+static unsigned int prm_pb_neighbor_flush_pages_flag = 0;
+static unsigned int prm_pb_neighbor_flush_pages_default = 8;
+static unsigned int prm_pb_neighbor_flush_pages_upper = 32;
+static unsigned int prm_pb_neighbor_flush_pages_lower = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4765,7 +4778,29 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) &prm_vacuum_prefetch_log_nbuffers_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_log_pages,
-   (DUP_PRM_FUNC) prm_log_pages_to_size}
+   (DUP_PRM_FUNC) prm_log_pages_to_size},
+  {PRM_NAME_PB_NEIGHBOR_FLUSH_NONDIRTY,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   (void *) &prm_pb_neighbor_flush_nondirty_flag,
+   (void *) &prm_pb_neighbor_flush_nondirty_default,
+   (void *) &PRM_PB_NEIGHBOR_FLUSH_NONDIRTY,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_PB_NEIGHBOR_FLUSH_PAGES,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_pb_neighbor_flush_pages_flag,
+   (void *) &prm_pb_neighbor_flush_pages_default,
+   (void *) &PRM_PB_NEIGHBOR_FLUSH_PAGES,
+   (void *) &prm_pb_neighbor_flush_pages_upper,
+   (void *) &prm_pb_neighbor_flush_pages_lower,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
