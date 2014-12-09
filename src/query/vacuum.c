@@ -394,7 +394,7 @@ struct vacuum_dropped_files_page
 
 #define VACUUM_DROPPED_FILE_FLAG_DUPLICATE 0x8000
 
-/* Overwritten versions of pgbuf_fix, pgbuf_unfix and pgbuf_set_dirty, 
+/* Overwritten versions of pgbuf_fix, pgbuf_unfix and pgbuf_set_dirty,
  * adapted for the needs of vacuum and its dropped files pages.
  */
 #define vacuum_fix_dropped_entries_page(thread_p, vpidp, latch) \
@@ -2246,7 +2246,7 @@ vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *				      by log manager and should be saved in
  *				      lock-free buffer.
  *
- * return	      : Void. 
+ * return	      : Void.
  * thread_p (in)      : Thread entry.
  * start_lsa (in)     : Log block starting LSA.
  * oldest_mvccid (in) : Log block oldest MVCCID.
@@ -3227,6 +3227,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
   int ulength;
   char *new_undo_data_buffer = NULL;
   bool is_zipped = false;
+  volatile LOG_RECTYPE log_rec_type = LOG_SMALLER_LOGREC_TYPE;
 
   assert (log_lsa_p != NULL && log_page_p != NULL);
   assert (log_record_data != NULL);
@@ -3247,10 +3248,11 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
 
   /* Get log record header */
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, log_lsa_p);
+  log_rec_type = log_rec_header->type;
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), log_lsa_p,
 		      log_page_p);
 
-  if (log_rec_header->type == LOG_MVCC_UNDO_DATA)
+  if (log_rec_type == LOG_MVCC_UNDO_DATA)
     {
       /* Get log record mvcc_undo information */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo),
@@ -3275,8 +3277,8 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), log_lsa_p,
 			  log_page_p);
     }
-  else if (log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
-	   || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+  else if (log_rec_type == LOG_MVCC_UNDOREDO_DATA
+	   || log_rec_type == LOG_MVCC_DIFF_UNDOREDO_DATA)
     {
       /* Get log record undoredo information */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo),
@@ -4501,7 +4503,7 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
   if (!is_chkpt_block_incomplete
       || chkpt_blockid <= vacuum_Data->last_blockid)
     {
-      /* Checkpoint_block was completely recovered. Just consume remaining 
+      /* Checkpoint_block was completely recovered. Just consume remaining
        * entries in buffer.
        */
       error_code = vacuum_consume_buffer_log_blocks (thread_p);
@@ -4898,9 +4900,10 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 
       /* Get record header */
       log_rec_header_p = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
+      assert (log_rec_header_p->type == LOG_REDO_DATA);
+
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa,
 			  log_page_p);
-      assert (log_rec_header_p->type == LOG_REDO_DATA);
 
       /* Get redo structure */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), &log_lsa,

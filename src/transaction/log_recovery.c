@@ -3544,6 +3544,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   void *block_particps_ids;	/* A block of participant ids */
   int temp_length;
   int tran_index;
+  volatile TRANID tran_id;
+  volatile LOG_RECTYPE log_rtype;
   int i;
   int data_header_size = 0;
   MVCCID mvccid = MVCCID_NULL;
@@ -3749,6 +3751,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	  log_lsa.offset = lsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
+	  tran_id = log_rec->trid;
+	  log_rtype = log_rec->type;
+
 	  /* Get the address of next log record to scan */
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
 
@@ -3784,15 +3789,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      break;
 	    }
 
-	  switch (log_rec->type)
+	  switch (log_rtype)
 	    {
 	    case LOG_MVCC_UNDOREDO_DATA:
 	    case LOG_MVCC_DIFF_UNDOREDO_DATA:
 	    case LOG_UNDOREDO_DATA:
 	    case LOG_DIFF_UNDOREDO_DATA:
 	      /* Is diff record type? */
-	      if (log_rec->type == LOG_DIFF_UNDOREDO_DATA
-		  || log_rec->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+	      if (log_rtype == LOG_DIFF_UNDOREDO_DATA
+		  || log_rtype == LOG_MVCC_DIFF_UNDOREDO_DATA)
 		{
 		  is_diff_rec = true;
 		}
@@ -3802,8 +3807,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		}
 
 	      /* Does record belong to a MVCC op */
-	      if (log_rec->type == LOG_MVCC_UNDOREDO_DATA
-		  || log_rec->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+	      if (log_rtype == LOG_MVCC_UNDOREDO_DATA
+		  || log_rtype == LOG_MVCC_DIFF_UNDOREDO_DATA)
 		{
 		  is_mvcc_op = true;
 		}
@@ -4040,7 +4045,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    case LOG_MVCC_REDO_DATA:
 	    case LOG_REDO_DATA:
 	      /* Does log record belong to a MVCC op? */
-	      is_mvcc_op = (log_rec->type == LOG_MVCC_REDO_DATA);
+	      is_mvcc_op = (log_rtype == LOG_MVCC_REDO_DATA);
 
 	      LSA_COPY (&rcv_lsa, &log_lsa);
 
@@ -4187,8 +4192,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  || rcvindex == RVBT_KEYVAL_DEL_OID_TRUNCATE)
 		{
 		  tdes = LOG_FIND_TDES (logtb_find_tran_index (thread_p,
-							       log_rec->
-							       trid));
+							       tran_id));
 		  /* if RVBT_OID_TRUNCATE or RVBT_KEYVAL_DEL_OID_TRUNCATE
 		   * redo log is the last log of the tranx,
 		   * then NEVER redo it.
@@ -4480,7 +4484,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      break;
 
 	    case LOG_2PC_PREPARE:
-	      tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
+	      tran_index = logtb_find_tran_index (thread_p, tran_id);
 	      if (tran_index == NULL_TRAN_INDEX)
 		{
 		  break;
@@ -4525,7 +4529,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      break;
 
 	    case LOG_2PC_START:
-	      tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
+	      tran_index = logtb_find_tran_index (thread_p, tran_id);
 	      if (tran_index != NULL_TRAN_INDEX)
 		{
 		  /* The transaction was still alive at the time of crash. */
@@ -4615,7 +4619,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      break;
 
 	    case LOG_2PC_RECV_ACK:
-	      tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
+	      tran_index = logtb_find_tran_index (thread_p, tran_id);
 	      if (tran_index != NULL_TRAN_INDEX)
 		{
 		  /* The transaction was still alive at the time of crash. */
@@ -4674,7 +4678,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
-	      tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
+	      tran_index = logtb_find_tran_index (thread_p, tran_id);
 	      if (tran_index != NULL_TRAN_INDEX
 		  && tran_index != LOG_SYSTEM_TRAN_INDEX)
 		{
@@ -4791,7 +4795,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 #if defined(CUBRID_DEBUG)
 	      er_log_debug (ARG_FILE_LINE, "log_recovery_redo: Unknown record"
 			    " type = %d (%s)... May be a system error",
-			    log_rec->type, log_to_string (log_rec->type));
+			    log_rtype, log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED,
 		      1, log_lsa.pageid);
@@ -5043,7 +5047,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   LOG_ZIP *undo_unzip_ptr = NULL;
   bool is_mvcc_op;
   VACUUM_WORKER *worker = NULL;
-  TRANID trid;
+  volatile TRANID tran_id;
+  volatile LOG_RECTYPE log_rtype;
+
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -5086,15 +5092,15 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
-  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID;
-       trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
+  for (tran_id = LOG_FIRST_VACUUM_WORKER_TRANID;
+       tran_id <= LOG_LAST_VACUUM_WORKER_TRANID; tran_id++)
     {
-      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
+      worker = vacuum_rv_get_worker_by_trid (thread_p, tran_id);
       if (worker->state == VACUUM_WORKER_STATE_RECOVERY
 	  && LSA_ISNULL (&worker->tdes->undo_nxlsa))
 	{
 	  /* Nothing to recover for this worker */
-	  vacuum_rv_finish_worker_recovery (thread_p, trid);
+	  vacuum_rv_finish_worker_recovery (thread_p, tran_id);
 	}
     }
 
@@ -5134,11 +5140,14 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  log_lsa.offset = lsa_ptr->offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
+	  tran_id = log_rec->trid;
+	  log_rtype = log_rec->type;
+
 	  LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
 
-	  if (LOG_IS_VACUUM_WORKER_TRANID (log_rec->trid))
+	  if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
 	    {
-	      worker = vacuum_rv_get_worker_by_trid (thread_p, log_rec->trid);
+	      worker = vacuum_rv_get_worker_by_trid (thread_p, tran_id);
 	      if (worker->state == VACUUM_WORKER_STATE_RECOVERY)
 		{
 		  tdes = worker->tdes;
@@ -5153,7 +5162,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  else
 	    {
 	      /* Active worker transaction */
-	      tran_index = logtb_find_tran_index (thread_p, log_rec->trid);
+	      tran_index = logtb_find_tran_index (thread_p, tran_id);
 	      if (tran_index == NULL_TRAN_INDEX)
 		{
 #if defined(CUBRID_DEBUG)
@@ -5187,7 +5196,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    {
 	      LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
 
-	      switch (log_rec->type)
+	      switch (log_rtype)
 		{
 		case LOG_MVCC_UNDOREDO_DATA:
 		case LOG_MVCC_DIFF_UNDOREDO_DATA:
@@ -5199,8 +5208,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		   * transaction is unilaterally aborted by the system
 		   */
 
-		  if (log_rec->type == LOG_MVCC_UNDOREDO_DATA
-		      || log_rec->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+		  if (log_rtype == LOG_MVCC_UNDOREDO_DATA
+		      || log_rtype == LOG_MVCC_DIFF_UNDOREDO_DATA)
 		    {
 		      is_mvcc_op = true;
 		    }
@@ -5273,7 +5282,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_MVCC_UNDO_DATA:
 		case LOG_UNDO_DATA:
 		  /* Does the record belong to a MVCC op? */
-		  is_mvcc_op = log_rec->type == LOG_MVCC_UNDO_DATA;
+		  is_mvcc_op = log_rtype == LOG_MVCC_UNDO_DATA;
 
 		  LSA_COPY (&rcv_lsa, &log_lsa);
 		  /*
@@ -5448,8 +5457,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 				" log located at %lld|%d,"
 				" Bad log_rectype = %d\n (%s).\n",
 				(long long int) log_lsa.pageid,
-				log_lsa.offset, log_rec->type,
-				log_to_string (log_rec->type));
+				log_lsa.offset, log_rtype,
+				log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
 		  /* Remove the transaction from the recovery process */
 		  if (tdes->mvcc_info != NULL)
@@ -5460,10 +5469,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  (void) log_complete (thread_p, tdes, LOG_ABORT,
 				       LOG_DONT_NEED_NEWTRID);
-		  if (LOG_IS_VACUUM_WORKER_TRANID (log_rec->trid))
+		  if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
 		    {
-		      vacuum_rv_finish_worker_recovery (thread_p,
-							log_rec->trid);
+		      vacuum_rv_finish_worker_recovery (thread_p, tran_id);
 		    }
 		  else
 		    {
@@ -5479,7 +5487,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  er_log_debug (ARG_FILE_LINE,
 				"log_recovery_undo: Unknown record"
 				" type = %d (%s)\n ... May be a system error",
-				log_rec->type, log_to_string (log_rec->type));
+				log_rtype, log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_PAGE_CORRUPTED, 1, log_lsa.pageid);
@@ -5495,10 +5503,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  (void) log_complete (thread_p, tdes, LOG_ABORT,
 				       LOG_DONT_NEED_NEWTRID);
-		  if (LOG_IS_VACUUM_WORKER_TRANID (log_rec->trid))
+		  if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
 		    {
-		      vacuum_rv_finish_worker_recovery (thread_p,
-							log_rec->trid);
+		      vacuum_rv_finish_worker_recovery (thread_p, tran_id);
 		    }
 		  else
 		    {
@@ -5518,8 +5525,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		       */
 		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
 			{
-			  assert (!LOG_IS_VACUUM_WORKER_TRANID
-				  (log_rec->trid));
+			  assert (!LOG_IS_VACUUM_WORKER_TRANID (tran_id));
 			  log_append_abort_client_loose_ends (thread_p, tdes);
 			  /*
 			   * Now the client transaction manager should request
@@ -5535,11 +5541,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			    }
 			  (void) log_complete (thread_p, tdes, LOG_ABORT,
 					       LOG_DONT_NEED_NEWTRID);
-			  if (LOG_IS_VACUUM_WORKER_TRANID (log_rec->trid))
+			  if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
 			    {
 			      vacuum_rv_finish_worker_recovery (thread_p,
-								log_rec->
-								trid);
+								tran_id);
 			    }
 			  else
 			    {
