@@ -13476,10 +13476,14 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
   PAGE_PTR pgptr = NULL;
   bool doesexist = true;
   INT16 rectype;
+  bool old_check_interrupt;
+
+  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
   if (HEAP_ISVALID_OID (oid) != DISK_VALID)
     {
-      return false;
+      doesexist = false;
+      goto exit_on_end;
     }
 
   /*
@@ -13490,7 +13494,8 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
   if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid)
       && HEAP_ISVALID_OID (class_oid) != DISK_VALID)
     {
-      return false;
+      doesexist = false;
+      goto exit_on_end;
     }
 
   while (doesexist)
@@ -13498,7 +13503,8 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
       if (oid->slotid == HEAP_HEADER_AND_CHAIN_SLOTID || oid->slotid < 0
 	  || oid->pageid < 0 || oid->volid < 0)
 	{
-	  return false;
+	  doesexist = false;
+	  goto exit_on_end;
 	}
 
       vpid.volid = oid->volid;
@@ -13517,8 +13523,9 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 		      oid->slotid);
 	    }
 
-	  /* something went wrong, return */
-	  return false;
+	  /* something went wrong, give up */
+	  doesexist = false;
+	  goto exit_on_end;
 	}
 
       doesexist = spage_is_slot_exist (pgptr, oid->slotid);
@@ -13551,7 +13558,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 				      snapshot_type) == NULL)
 		{
 		  doesexist = false;
-		  break;
+		  goto exit_on_end;
 		}
 	    }
 
@@ -13574,6 +13581,10 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 	  break;
 	}
     }
+
+exit_on_end:
+
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
 
   return doesexist;
 }
