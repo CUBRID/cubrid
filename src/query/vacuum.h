@@ -56,6 +56,10 @@
 						 * operations and their
 						 * recovery.
 						 */
+#define VACUUM_ER_LOG_ARCHIVES		2048	/* Log when archives are
+						 * removed or when vacuum
+						 * fails to find archives.
+						 */
 
 #define VACUUM_ER_LOG_VERBOSE		0xFFFFFFFF	/* Log all activity
 							 * related to vacuum.

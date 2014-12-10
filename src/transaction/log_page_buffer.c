@@ -2308,6 +2308,15 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
       if (logpb_fetch_from_archive (thread_p, pageid,
 				    log_pgptr, NULL, NULL, true) == NULL)
 	{
+#if defined (SERVER_MODE)
+	  if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
+	    {
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER
+			     | VACUUM_ER_LOG_ARCHIVES,
+			     "VACUUM ERROR: Failed to fetch page %lld from "
+			     "archives.", pageid);
+	    }
+#endif /* SERVER_MODE */
 	  goto error;
 	}
     }
@@ -7663,18 +7672,21 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 		 log_Gl.hdr.last_arv_num_for_syscrashes);
 	}
 
-      if (mvcc_Enabled)
+      vacuum_first_pageid = vacuum_data_get_first_log_pageid (thread_p);
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES,
+		     "VACUUM: First log pageid in vacuum data is %lld",
+		     vacuum_first_pageid);
+      if (vacuum_first_pageid != NULL_PAGEID)
 	{
-	  vacuum_first_pageid = vacuum_data_get_first_log_pageid (thread_p);
-	  if (vacuum_first_pageid != NULL_PAGEID)
+	  min_arv_required_for_vacuum =
+	    logpb_get_archive_number (thread_p, vacuum_first_pageid);
+	  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES,
+			 "VACUUM: First archive number used for vacuum is %d",
+			 min_arv_required_for_vacuum);
+	  if (min_arv_required_for_vacuum >= 0)
 	    {
-	      min_arv_required_for_vacuum =
-		logpb_get_archive_number (thread_p, vacuum_first_pageid);
-	      if (min_arv_required_for_vacuum >= 0)
-		{
-		  last_arv_num_to_delete =
-		    MIN (last_arv_num_to_delete, min_arv_required_for_vacuum);
-		}
+	      last_arv_num_to_delete =
+		MIN (last_arv_num_to_delete, min_arv_required_for_vacuum);
 	    }
 	}
 
@@ -7691,6 +7703,10 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES,
+		     "VACUUM: last_arv_num_to_delete is %d",
+		     last_arv_num_to_delete);
     }
 
   LOG_CS_EXIT (thread_p);
