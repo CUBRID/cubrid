@@ -175,8 +175,7 @@ set_area_init (void)
   if (Set_Ref_Area == NULL)
     {
       Set_Ref_Area = area_create ("Set references",
-				  sizeof (DB_COLLECTION), SET_AREA_COUNT,
-				  true);
+				  sizeof (DB_COLLECTION), SET_AREA_COUNT);
       if (Set_Ref_Area == NULL)
 	{
 	  goto error;
@@ -186,7 +185,7 @@ set_area_init (void)
   if (Set_Obj_Area == NULL)
     {
       Set_Obj_Area = area_create ("Set objects",
-				  sizeof (COL), SET_AREA_COUNT, false);
+				  sizeof (COL), SET_AREA_COUNT);
       if (Set_Obj_Area == NULL)
 	{
 	  goto error;

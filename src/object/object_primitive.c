@@ -2281,7 +2281,7 @@ int
 pr_area_init (void)
 {
   Value_area = area_create ("Value containers", sizeof (DB_VALUE),
-			    VALUE_AREA_COUNT, false);
+			    VALUE_AREA_COUNT);
   if (Value_area == NULL)
     {
       assert (er_errid () != NO_ERROR);

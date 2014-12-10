@@ -4478,7 +4478,7 @@ int
 ws_area_init (void)
 {
   Objlist_area = area_create ("Object list links", sizeof (DB_OBJLIST),
-			      OBJLIST_AREA_COUNT, true);
+			      OBJLIST_AREA_COUNT);
   if (Objlist_area == NULL)
     {
       assert (er_errid () != NO_ERROR);

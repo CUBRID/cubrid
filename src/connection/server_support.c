@@ -3437,7 +3437,7 @@ css_check_accessibility (SOCKET new_fd)
 }
 
 int
-css_set_accessible_ip_info ()
+css_set_accessible_ip_info (void)
 {
   int ret_val;
   IP_INFO *tmp_accessible_ip_info;
@@ -3486,7 +3486,7 @@ css_set_accessible_ip_info ()
 }
 
 int
-css_free_accessible_ip_info ()
+css_free_accessible_ip_info (void)
 {
   int ret_val;
 

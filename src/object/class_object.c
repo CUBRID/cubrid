@@ -192,8 +192,7 @@ static int classobj_check_function_constraint_info (DB_SEQ * constraint_seq,
 int
 classobj_area_init (void)
 {
-  Template_area =
-    area_create ("Schema templates", sizeof (SM_TEMPLATE), 4, false);
+  Template_area = area_create ("Schema templates", sizeof (SM_TEMPLATE), 4);
   if (Template_area == NULL)
     {
       assert (er_errid () != NO_ERROR);

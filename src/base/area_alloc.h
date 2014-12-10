@@ -44,7 +44,7 @@
 typedef struct area_free_list AREA_FREE_LIST;
 struct area_free_list
 {
-  struct area_free_list *next;
+  AREA_FREE_LIST *next;
 };
 
 /*
@@ -56,40 +56,23 @@ struct area_free_list
 typedef struct area_block AREA_BLOCK;
 struct area_block
 {
-  struct area_block *next;
+  AREA_BLOCK *next;
   char *data;
   char *pointer;
   char *max;
 };
 
+
 /*
- * AREA - Primary structure for an allocation area.
+ * AREA_ENTRY - Structure for a thread entry.
  *   These are usually initialized in static space by a higher module
  *   and passed to the ws_area functions.  The "blocks" and "free" fields
  *   must be initialized to NULL by the higher module as these will
  *   be allocated by the area functions.
  */
-typedef struct area AREA;
-struct area
+typedef struct area_entry AREA_ENTRY;
+struct area_entry
 {
-  struct area *next;
-
-  char *name;
-  size_t element_size;
-  size_t alloc_count;
-
-#if defined (SERVER_MODE)
-  size_t n_threads;
-
-  AREA_BLOCK **blocks;
-  AREA_FREE_LIST **free;
-
-  size_t *n_allocs;
-  size_t *n_frees;
-  size_t *b_cnt;
-  size_t *a_cnt;
-  size_t *f_cnt;
-#else				/* SERVER_MODE */
   AREA_BLOCK *blocks;
   AREA_FREE_LIST *free;
 
@@ -98,10 +81,24 @@ struct area
   size_t b_cnt;
   size_t a_cnt;
   size_t f_cnt;
-#endif				/* SERVER_MODE */
+};
+
+/*
+ * AREA - Primary structure for an allocation area.
+ */
+typedef struct area AREA;
+struct area
+{
+  AREA *next;
+
+  char *name;
+  size_t element_size;
+  size_t alloc_count;
+
+  size_t n_threads;
+  AREA_ENTRY *area_entries;
 
   void (*failure_function) (void);
-  bool need_gc;
 };
 
 
@@ -111,7 +108,7 @@ extern void area_final (void);
 
 /* area definition */
 extern AREA *area_create (const char *name, size_t element_size,
-			  size_t alloc_count, bool need_gc);
+			  size_t alloc_count);
 extern void area_destroy (AREA * area);
 
 /* allocation functions */

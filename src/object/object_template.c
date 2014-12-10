@@ -163,15 +163,14 @@ static void free_temp_object (MOP obj);
 int
 obt_area_init (void)
 {
-  Template_area = area_create ("Object templates", sizeof (OBJ_TEMPLATE),
-			       32, true);
+  Template_area = area_create ("Object templates", sizeof (OBJ_TEMPLATE), 32);
   if (Template_area == NULL)
     {
       goto error;
     }
 
   Assignment_area =
-    area_create ("Assignment templates", sizeof (OBJ_TEMPASSIGN), 64, false);
+    area_create ("Assignment templates", sizeof (OBJ_TEMPASSIGN), 64);
   if (Assignment_area == NULL)
     {
       goto error;

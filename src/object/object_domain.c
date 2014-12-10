@@ -700,9 +700,9 @@ tp_init (void)
 
   /* create our allocation area */
 #if defined (SERVER_MODE)
-  tp_Domain_area = area_create ("Domains", sizeof (TP_DOMAIN), 32, false);
+  tp_Domain_area = area_create ("Domains", sizeof (TP_DOMAIN), 32);
 #else /* !SERVER_MODE */
-  tp_Domain_area = area_create ("Domains", sizeof (TP_DOMAIN), 1024, false);
+  tp_Domain_area = area_create ("Domains", sizeof (TP_DOMAIN), 1024);
 #endif /* SERVER_MODE */
 
   if (tp_Domain_area == NULL)
