@@ -1086,7 +1086,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VPID page_vpid,
 						   OLD_PAGE,
 						   PGBUF_LATCH_WRITE, &page,
 						   &forward_page);
-		  if (error_code == ER_FAILED)
+		  if (error_code != NO_ERROR)
 		    {
 		      /* Failed fix */
 		      goto end;
@@ -1376,6 +1376,15 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VPID page_vpid,
 			pgbuf_fix (thread_p, &page_vpid, OLD_PAGE,
 				   PGBUF_LATCH_WRITE,
 				   PGBUF_UNCONDITIONAL_LATCH);
+		      if (page == NULL)
+			{
+			  vacuum_er_log (VACUUM_ER_LOG_ERROR |
+					 VACUUM_ER_LOG_HEAP,
+					 "VACUUM ERROR: Failed to fix heap "
+					 "page (%d, %d).",
+					 page_vpid.volid, page_vpid.pageid);
+			  break;
+			}
 		      /* Update page header */
 		      page_header_p = (SPAGE_HEADER *) page;
 
