@@ -68,7 +68,7 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Mesaj absent pentru codul de eroare %1$d.
 2 Eroare internă: nu sunt disponibile informaţii detaliate.
-3 Memorie virtuală epuizată: eşec la alocarea a %1$zd bytes.
+3 Memorie virtuală epuizată: eşec la alocarea a %1$zu bytes.
 4 A fost intrerupt.
 5 Cheia = "%1$s" nu a fost gasită în tabela hash "%2$s".
 6 O tabelă de memorie hash nulă a fost furnizată unei funcţii peste o tabelă hash.

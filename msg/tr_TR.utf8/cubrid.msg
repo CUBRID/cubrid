@@ -68,7 +68,7 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Hata kodu %1$d eksik mesaj.
 2 Dahili sistem hatası: daha fazla ayrıntılı bilgi mevcut bulunmamaktadır.
-3 Sanal bellek harici: %1$zd bayt bellek ayıramadı.
+3 Sanal bellek harici: %1$zu bayt bellek ayıramadı.
 4 Kesildi.
 5 Anahtar = "%1$s" karma tablosu "%2$s" bulunamadı.
 6 NULL bellek karma tablo bir karma tablo işlevi sağlanmıştır.

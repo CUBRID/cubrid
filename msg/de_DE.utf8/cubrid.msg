@@ -68,7 +68,7 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Fehlende Nachricht für Fehlercode %1$d.
 2 Interner Systemfehler: keine mehr spezifischen Informationen zur Verfügung.
-3 Virtueller Speicher Fehler: kann %1$zd Speicherbytes nicht zuzuordnen.
+3 Virtueller Speicher Fehler: kann %1$zu Speicherbytes nicht zuzuordnen.
 4 Wurde unterbrochen.
 5 Schlüssel = "%1$s" wurde in die Hash-Tabelle "%2$s" nicht gefunden.
 6 Eine NULL-Speicher Hash-Tabelle wurde zugeführt zu einer Hash-Tabelle-Funktion.

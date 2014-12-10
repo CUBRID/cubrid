@@ -4237,6 +4237,10 @@ pgbuf_initialize_bcb_table (void)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
 	      "data_buffer_pages");
+      if (pgbuf_Pool.BCB_table != NULL)
+	{
+	  free_and_init (pgbuf_Pool.BCB_table);
+	}
       return ER_PRM_BAD_VALUE;
     }
   pgbuf_Pool.iopage_table =
@@ -4245,6 +4249,10 @@ pgbuf_initialize_bcb_table (void)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, (size_t) alloc_size);
+      if (pgbuf_Pool.BCB_table != NULL)
+	{
+	  free_and_init (pgbuf_Pool.BCB_table);
+	}
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

@@ -2956,7 +2956,23 @@ er_study_spec (const char *conversion_spec, char *simple_spec,
     {
       /* size_t type */
       class_ = SPEC_CODE_SIZE_T;
+#if defined (WINDOWS)
+      *p++ = 'I';
+      q++;
+#elif defined (__GNUC__)
       *p++ = *q++;
+#else
+      if (sizeof (size_t) == sizeof (long long int))
+	{
+	  *p++ = 'l';
+	  *p++ = 'l';
+	}
+      else
+	{
+	  /* no size modifier */
+	}
+      q++;
+#endif /* WINDOWS */
     }
   else if (*q == 'h')
     {

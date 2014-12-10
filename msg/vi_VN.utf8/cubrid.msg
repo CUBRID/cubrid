@@ -68,7 +68,7 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Missing message for error code %1$d.
 2 Internal system failure: no more specific information is available.
-3 Out of virtual memory: unable to allocate %1$zd memory bytes.
+3 Out of virtual memory: unable to allocate %1$zu memory bytes.
 4 Has been interrupted.
 5 Key = "%1$s" was not found in hash table "%2$s".
 6 A NULL memory hash table was supplied to a hash table function.

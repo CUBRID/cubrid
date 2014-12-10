@@ -68,7 +68,7 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Messaggio mancante per il codice di errore %1$d.
 2 Guasto interno del sistema: nessuna informazione più specifiche è disponibile.
-3 Memoria virtuale esaurita: Impossibile allocare %1$zd byte di memoria.
+3 Memoria virtuale esaurita: Impossibile allocare %1$zu byte di memoria.
 4 è stato interrotto.
 5 Chiave = "%1$s" non è stato trovato in tabella hash "%2$s".
 6 Una tabella di memoria hash è stato fornito a una funzione della tabella hash.

@@ -98,7 +98,8 @@ extern "C"
 
 
 #define MEM_SIZE_IS_VALID(size) \
-  (((long long unsigned) (size) >> (8 * sizeof (size_t) - 1)) == 0)
+  (((long long unsigned) (size) <= ULONG_MAX) \
+   || (sizeof (long long unsigned) <= sizeof (size_t)))
 
 #if defined (WINDOWS)
 #include <fcntl.h>
