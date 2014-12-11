@@ -133,6 +133,10 @@ area_final (void)
 	{
 	  free_and_init (area->name);
 	}
+      if (area->area_entries != NULL)
+	{
+	  free_and_init (area->area_entries);
+	}
       free_and_init (area);
     }
   area_List = NULL;
