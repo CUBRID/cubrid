@@ -32,8 +32,12 @@
 #include <math.h>
 #include <assert.h>
 #include <errno.h>
+#if defined (WINDOWS)
+#include <winsock2.h>
+#else
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#endif
 
 #include "thread.h"
 #include "porting.h"
@@ -635,7 +639,7 @@ crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len, int *dest)
 
   gcry_md_hash_buffer (GCRY_MD_CRC32, hash_result, src, src_len);
 
-  *dest = htonl (*(uint32_t *) hash_result);
+  *dest = htonl (*(UINT32 *) hash_result);
 
 exit_and_free:
   if (hash_result != NULL)
