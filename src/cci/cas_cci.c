@@ -982,6 +982,7 @@ prepare_error:
   if (req_handle)
     {
       hm_req_handle_free (con_handle, req_handle);
+      req_handle = NULL;
     }
 
   if (error == CCI_ER_QUERY_TIMEOUT &&
@@ -1630,6 +1631,7 @@ prepare_execute_error:
   if (req_handle)
     {
       hm_req_handle_free (con_handle, req_handle);
+      req_handle = NULL;
     }
 
   if (error == CCI_ER_QUERY_TIMEOUT &&
@@ -2352,6 +2354,7 @@ cci_close_req_handle (int mapped_stmt_id)
       error = CCI_ER_NO_ERROR;
     }
   hm_req_handle_free (con_handle, req_handle);
+  req_handle = NULL;
 
   if (IS_OUT_TRAN (con_handle))
     {
@@ -2541,6 +2544,7 @@ cci_schema_info_internal (int mapped_conn_id, T_CCI_SCH_TYPE type, char *arg1,
   if (error < 0)
     {
       hm_req_handle_free (con_handle, req_handle);
+      req_handle = NULL;
     }
 
 ret:
@@ -2689,6 +2693,7 @@ cci_oid_get (int mapped_conn_id, char *oid_str, char **attr_name,
   if (error < 0)
     {
       hm_req_handle_free (con_handle, req_handle);
+      req_handle = NULL;
     }
 
 ret:
@@ -3171,6 +3176,7 @@ cci_col_get (int mapped_conn_id, char *oid_str, char *col_attr, int *col_size,
   if (error < 0)
     {
       hm_req_handle_free (con_handle, req_handle);
+      req_handle = NULL;
       goto error;
     }
 
@@ -4501,6 +4507,7 @@ cci_row_count (int mapped_conn_id, int *row_count, T_CCI_ERROR * err_buf)
 				&(con_handle->err_buf));
     }
   hm_req_handle_free (con_handle, req_handle);
+  req_handle = NULL;
 
 ret:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
@@ -4663,6 +4670,7 @@ cci_get_last_insert_id (int mapped_conn_id, void *value,
 				     &(con_handle->err_buf));
     }
   hm_req_handle_free (con_handle, req_handle);
+  req_handle = NULL;
 
 ret:
   set_error_buffer (&(con_handle->err_buf), error, NULL);

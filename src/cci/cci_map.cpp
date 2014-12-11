@@ -181,6 +181,7 @@ T_CCI_ERROR_CODE map_close_otc (T_CCI_CONN mapped_conn_id)
 		  && statement_array[i]->mapped_stmt_id >= 0)
 		{
 		  map_close_ots (statement_array[i]->mapped_stmt_id);
+		  statement_array[i]->mapped_stmt_id = -1;
 		}
 	    }
 	}

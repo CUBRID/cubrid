@@ -517,6 +517,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
 	}
       cci_mht_rem (con->stmt_pool, victim->sql_text, true, true);
       hm_req_handle_free (con, victim);
+      victim = NULL;
     }
 
   key = strdup (sql);
@@ -531,7 +532,14 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  map_get_ots_value (mapped_statement_id, data, true);
+  if (map_get_ots_value (mapped_statement_id, data, true) != CCI_ER_NO_ERROR)
+    {
+      FREE (key);
+      FREE (data);
+
+      return CCI_ER_REQ_HANDLE;
+    }
+
   if (!cci_mht_put_data (con->stmt_pool, key, data))
     {
       FREE (key);
@@ -722,6 +730,12 @@ hm_release_statement (int mapped_id, T_CON_HANDLE ** connection,
 		      T_REQ_HANDLE ** statement)
 {
   T_CCI_ERROR_CODE error;
+
+  if (*statement)
+    {
+      assert (mapped_id == (*statement)->mapped_stmt_id);
+      (*statement)->mapped_stmt_id = -1;
+    }
 
   error = map_close_ots (mapped_id);
   if (error != CCI_ER_NO_ERROR)
