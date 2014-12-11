@@ -42,6 +42,7 @@
 #include "numeric_opfunc.h"
 #include "db.h"
 #include "query_opfunc.h"
+#include "crypt_opfunc.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -5203,4 +5204,65 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
 end:
 
   return error;
+}
+
+/*
+ * db_crc32_dbval() - crc32
+ *   return: error code
+ *   result(out):
+ *   value(in) : input db_value
+ */
+int
+db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int error_status = NO_ERROR;
+  int hash_result = 0;
+
+  assert (result != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (value))
+    {
+      PRIM_SET_NULL (result);
+      return error_status;
+    }
+  else
+    {
+      type = DB_VALUE_DOMAIN_TYPE (value);
+
+      if (QSTR_IS_ANY_CHAR (type))
+	{
+	  error_status =
+	    crypt_crc32 (NULL, DB_PULL_STRING (value),
+			 DB_GET_STRING_SIZE (value), &hash_result);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  DB_MAKE_INT (result, hash_result);
+	}
+      else
+	{
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	  goto error;
+	}
+    }
+
+  return error_status;
+
+error:
+  PRIM_SET_NULL (result);
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      return NO_ERROR;
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
+      return error_status;
+    }
 }

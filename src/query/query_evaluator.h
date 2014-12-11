@@ -457,7 +457,8 @@ typedef enum
   T_TO_DATETIME_TZ,
   T_TO_TIMESTAMP_TZ,
   T_TO_TIME_TZ,
-  T_UTC_TIMESTAMP
+  T_UTC_TIMESTAMP,
+  T_CRC32
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

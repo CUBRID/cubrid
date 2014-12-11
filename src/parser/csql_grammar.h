@@ -870,7 +870,8 @@ static FUNCTION_MAP functions[] = {
   {"to_datetime_tz", PT_TO_DATETIME_TZ},
   {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
   {"to_time_tz", PT_TO_TIME_TZ},
-  {"utc_timestamp", PT_UTC_TIMESTAMP}
+  {"utc_timestamp", PT_UTC_TIMESTAMP},
+  {"crc32", PT_CRC32}
 };
 
 

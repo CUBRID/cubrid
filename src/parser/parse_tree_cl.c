@@ -4041,6 +4041,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "to_time_tz ";
     case PT_UTC_TIMESTAMP:
       return "utc_timestamp ";
+    case PT_CRC32:
+      return "crc32 ";
     default:
       return "unknown opcode";
     }
@@ -12459,6 +12461,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_UTC_TIMESTAMP:
       q = pt_append_nulstring (parser, q, " utc_timestamp() ");
       break;
+    case PT_CRC32:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " crc32(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
     }
 
   for (t = p->or_next; t; t = t->or_next)
@@ -18247,6 +18255,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_TO_BASE64:
 	case PT_FROM_BASE64:
 	case PT_TZ_OFFSET:
+	case PT_CRC32:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:
@@ -18897,6 +18906,7 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
+    case PT_CRC32:
       return true;
     case PT_TZ_OFFSET:
     default:

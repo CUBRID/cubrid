@@ -8113,7 +8113,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_FROM_BASE64
 		       || node->info.expr.op == PT_FROM_BASE64
 		       || node->info.expr.op == PT_SLEEP
-		       || node->info.expr.op == PT_TZ_OFFSET)
+		       || node->info.expr.op == PT_TZ_OFFSET
+		       || node->info.expr.op == PT_CRC32)
 		{
 		  r1 = NULL;
 
@@ -9901,6 +9902,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_UTC_TIMESTAMP:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL,
 					     T_UTC_TIMESTAMP, domain);
+		  break;
+
+		case PT_CRC32:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_CRC32, domain);
 		  break;
 
 		default:
@@ -25496,6 +25501,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_TO_BASE64:
 	case T_FROM_BASE64:
 	case T_TZ_OFFSET:
+	case T_CRC32:
 	  break;
 	default:
 	  return true;

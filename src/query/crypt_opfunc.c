@@ -32,6 +32,8 @@
 #include <math.h>
 #include <assert.h>
 #include <errno.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "thread.h"
 #include "porting.h"
@@ -511,12 +513,11 @@ exit_and_free:
   return error_status;
 }
 
-
 /*
  * crypt_sha_two() -
  *   return:
  *   thread_p(in):
- *   src(in): 
+ *   src(in):
  *   src_len(in):
  *   need_hash_len(in):
  *   dest_p(out)
@@ -592,6 +593,54 @@ exit_and_free:
   if (dest != NULL)
     {
       db_private_free_and_init (thread_p, dest);
+    }
+  return error_status;
+}
+
+/*
+ * crypt_crc32() -
+ *   return: error code
+ *   thread_p(in):
+ *   src(in): original message
+ *   src_len(in): length of original message
+ *   dest(out): crc32 result
+ * Note:
+ */
+int
+crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len, int *dest)
+{
+  int hash_length;
+  char *hash_result;
+  int error_status = NO_ERROR;
+
+  assert (src != NULL);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (init_gcrypt () != NO_ERROR)
+    {
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  hash_length = gcry_md_get_algo_dlen (GCRY_MD_CRC32);
+  hash_result = (char *) db_private_alloc (thread_p, hash_length);
+  if (hash_result == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit_and_free;
+    }
+
+  gcry_md_hash_buffer (GCRY_MD_CRC32, hash_result, src, src_len);
+
+  *dest = htonl (*(uint32_t *) hash_result);
+
+exit_and_free:
+  if (hash_result != NULL)
+    {
+      db_private_free_and_init (thread_p, hash_result);
     }
   return error_status;
 }

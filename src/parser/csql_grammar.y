@@ -301,7 +301,8 @@ static FUNCTION_MAP functions[] = {
   {"to_datetime_tz", PT_TO_DATETIME_TZ},
   {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
   {"to_time_tz", PT_TO_TIME_TZ},
-  {"utc_timestamp", PT_UTC_TIMESTAMP}
+  {"utc_timestamp", PT_UTC_TIMESTAMP},
+  {"crc32", PT_CRC32}
 };
 
 
@@ -23881,6 +23882,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_SHA_ONE:
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
+    case PT_CRC32:
       if (c != 1)
         {
 	  return NULL;

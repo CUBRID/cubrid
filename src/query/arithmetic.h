@@ -72,4 +72,5 @@ extern int db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
  * But currently, there is just one such functions.
  */
 extern int db_sleep (DB_VALUE * result, DB_VALUE * value);
+extern int db_crc32_dbval (DB_VALUE * result, DB_VALUE * value);
 #endif /* _ARITHMETIC_H_ */

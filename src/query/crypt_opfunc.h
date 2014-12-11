@@ -45,5 +45,7 @@ extern int crypt_sha_two (THREAD_ENTRY * thread_p, const char *src,
 			  int *dest_len_p);
 extern int crypt_generate_random_bytes (THREAD_ENTRY * thread_p, char *dest,
 					int length);
+extern int crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len,
+			int *dest);
 
 #endif

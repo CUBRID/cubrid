@@ -4800,6 +4800,22 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads_count = num;
       break;
+    case PT_CRC32:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
 
     default:
       return false;
@@ -6965,6 +6981,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_UTC_TIMESTAMP:
+    case PT_CRC32:
       return false;
 
     default:
@@ -9261,6 +9278,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
+    case PT_CRC32:
       return true;
 
     default:
@@ -12847,6 +12865,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
       do_detect_collation = false;
+      break;
+
+    case PT_CRC32:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_INTEGER);
       break;
 
     default:
@@ -19888,6 +19911,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	DB_MAKE_TIMESTAMP (result, timestamp);
 	return 1;
       }
+
+    case PT_CRC32:
+      error = db_crc32_dbval (result, arg1);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
 
     default:
       break;

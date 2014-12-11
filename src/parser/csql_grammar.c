@@ -39327,6 +39327,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_SHA_ONE:
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
+    case PT_CRC32:
       if (c != 1)
         {
 	  return NULL;

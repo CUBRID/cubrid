@@ -531,6 +531,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_COLLATION:
     case T_TZ_OFFSET:
     case T_SLEEP:
+    case T_CRC32:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
@@ -4027,6 +4028,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	DB_MAKE_TIMESTAMP (arithptr->value, timestamp);
 	break;
       }
+
+    case T_CRC32:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_crc32_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
 
     default:
       break;
