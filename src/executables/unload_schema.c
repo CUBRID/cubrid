@@ -658,6 +658,9 @@ export_serial (FILE * outfp)
     "[comment] "
     "from [db_serial] where [class_name] is null and [att_name] is null";
 
+  DB_MAKE_NULL (&diff_value);
+  DB_MAKE_NULL (&answer_value);
+
   error = db_compile_and_execute_local (query, &query_result, &query_error);
   if (error < 0)
     {
