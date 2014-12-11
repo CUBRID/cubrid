@@ -531,6 +531,7 @@ area_free (AREA * area, void *ptr)
 
   link = (AREA_FREE_LIST *) ptr;
   link->next = area_entry_p->free;
+  area_entry_p->free = link;
   area_entry_p->n_frees++;
   area_entry_p->f_cnt++;
   area_entry_p->a_cnt--;
