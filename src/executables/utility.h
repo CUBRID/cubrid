@@ -794,8 +794,7 @@ typedef struct _ha_config
 #define UTIL_BROKER_NAME        "cubrid_broker" UTIL_EXE_EXT
 #define UTIL_MONITOR_NAME       "broker_monitor" UTIL_EXE_EXT
 #define UTIL_TESTER_NAME        "broker_tester" UTIL_EXE_EXT
-#define UTIL_CUB_AUTO_NAME      "cub_auto" UTIL_EXE_EXT
-#define UTIL_CUB_JS_NAME        "cub_js" UTIL_EXE_EXT
+#define UTIL_CUB_MANAGER_NAME   "cub_manager" UTIL_EXE_EXT
 #define UTIL_ADMIN_NAME         "cub_admin" UTIL_EXE_EXT
 #define UTIL_SQLX_NAME          "sqlx" UTIL_EXE_EXT
 #define UTIL_CSQL_NAME          "csql" UTIL_EXE_EXT

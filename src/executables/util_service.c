@@ -106,10 +106,9 @@ typedef enum
 
 typedef enum
 {
-  MANAGER_STOPPED = 0,
-  MANAGER_RUNNING,
-  MANAGER_ALL_RUNNING,
-  MANAGER_STATUS_ERROR,
+  MANAGER_SERVER_RUNNING = 0,
+  MANAGER_SERVER_STOPPED,
+  MANAGER_SERVER_STATUS_ERROR
 } UTIL_MANAGER_SERVER_STATUS_E;
 
 typedef struct
@@ -276,10 +275,8 @@ static const char *command_string (int command_type);
 static bool is_server_running (const char *type, const char *server_name,
 			       int pid);
 static int is_broker_running (void);
-static UTIL_MANAGER_SERVER_STATUS_E get_manager_running_status (unsigned int
-								sleep_time,
-								bool
-								show_log);
+static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
+
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
 #endif
@@ -1223,12 +1220,12 @@ check_all_services_status (unsigned int sleep_time,
   if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
     {
       UTIL_MANAGER_SERVER_STATUS_E manager_status;
-      manager_status = get_manager_running_status (0, false);
+      manager_status = is_manager_running (0);
 
       if ((expected_status == ALL_SERVICES_RUNNING
-	   && manager_status != MANAGER_ALL_RUNNING)
+	   && manager_status != MANAGER_SERVER_RUNNING)
 	  || (expected_status == ALL_SERVICES_STOPPED
-	      && manager_status != MANAGER_STOPPED))
+	      && manager_status != MANAGER_SERVER_STOPPED))
 	{
 	  return false;
 	}
@@ -2279,109 +2276,47 @@ process_broker (int command_type, int argc, const char **argv,
   return status;
 }
 
-/*
- * get_manager_running_status -
- *
- * return:
- *
- */
 static UTIL_MANAGER_SERVER_STATUS_E
-get_manager_running_status (unsigned int sleep_time, bool show_log)
+is_manager_running (unsigned int sleep_time)
 {
   FILE *input;
-  char buf[100], cmd[PATH_MAX];
+  char buf[16], cmd[PATH_MAX];
   struct stat stbuf;
-
-  int manager_proc_running_counts = 0;
-  bool have_error = false;
-  UTIL_MANAGER_SERVER_STATUS_E ret_value = MANAGER_STOPPED;
-
-  buf[0] = '\0';
-  cmd[0] = '\0';
 
   sleep (sleep_time);
 
-  /* check cub_auto */
-  (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_CUB_AUTO_NAME);
-  if (stat (cmd, &stbuf) != -1)
+  /* check cub_manager */
+  (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_CUB_MANAGER_NAME);
+  if (stat (cmd, &stbuf) == -1)
     {
-      strcat (cmd, " getpid");	/* add command argument */
-      input = popen (cmd, "r");
-      if (input != NULL)
-	{
-	  memset (buf, '\0', sizeof (buf));
-	  if (fgets (buf, 100, input) != NULL)
-	    {
-	      if (atoi (buf) > 0)
-		{
-		  manager_proc_running_counts++;
-		}
-	      else
-		{
-		  have_error = true;
-		  if (show_log == true)
-		    {
-		      fprintf (stderr, "%s\n", buf);
-		    }
-		}
-	    }
-	  pclose (input);
-	}
+      /* Not install manager server */
+      return MANAGER_SERVER_STATUS_ERROR;
     }
 
-  /* chech cub_js */
-  (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_CUB_JS_NAME);
-  if (stat (cmd, &stbuf) != -1)
+  strcat (cmd, " getpid");
+  input = popen (cmd, "r");
+  if (input == NULL)
     {
-      strcat (cmd, " getpid");	/* add command argument */
-      input = popen (cmd, "r");
-      if (input != NULL)
-	{
-	  memset (buf, '\0', sizeof (buf));
-	  if (fgets (buf, 100, input) != NULL)
-	    {
-	      if (atoi (buf) > 0)
-		{
-		  manager_proc_running_counts++;
-		}
-	      else
-		{
-		  have_error = true;
-		  if (show_log == true)
-		    {
-		      fprintf (stderr, "%s\n", buf);
-		    }
-		}
-	    }
-	  pclose (input);
-	}
+      /* Failed to run cub_manager process */
+      return MANAGER_SERVER_STATUS_ERROR;
     }
 
-  if (have_error == true)
+  memset (buf, '\0', sizeof (buf));
+  if (fgets (buf, 16, input) == NULL)
     {
-      ret_value = MANAGER_STATUS_ERROR;
-      goto ret;
+      pclose (input);
+      return MANAGER_SERVER_STOPPED;
     }
-
-  /* convert return value into enum: UTIL_MANAGER_SERVER_STATUS_E */
-  switch (manager_proc_running_counts)
+  if (atoi (buf) > 0)
     {
-    case 0:
-      ret_value = MANAGER_STOPPED;
-      break;
-    case 1:
-      ret_value = MANAGER_RUNNING;
-      break;
-    case 2:
-      ret_value = MANAGER_ALL_RUNNING;
-      break;
-    default:
-      ret_value = MANAGER_STATUS_ERROR;
-      break;
+      pclose (input);
+      return MANAGER_SERVER_RUNNING;
     }
-
-ret:
-  return ret_value;
+  else
+    {
+      pclose (input);
+      return MANAGER_SERVER_STATUS_ERROR;
+    }
 }
 
 /*
@@ -2396,26 +2331,26 @@ ret:
 static int
 process_manager (int command_type, bool process_window_service)
 {
-  int cub_auto, cub_js, status;
-  char cub_auto_path[PATH_MAX];
-  char cub_js_path[PATH_MAX];
+  int cub_manager, status = NO_ERROR;
+  char cub_manager_path[PATH_MAX];
+  UTIL_MANAGER_SERVER_STATUS_E manager_status;
   struct stat stbuf;
+  
+  cub_manager_path[0] = '\0';
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		 PRINT_MANAGER_NAME, command_string (command_type));
 
-  (void) envvar_bindir_file (cub_auto_path, PATH_MAX, UTIL_CUB_AUTO_NAME);
-  (void) envvar_bindir_file (cub_js_path, PATH_MAX, UTIL_CUB_JS_NAME);
-  if (stat (cub_auto_path, &stbuf) == -1 || stat (cub_js_path, &stbuf) == -1)
+  (void) envvar_bindir_file (cub_manager_path, PATH_MAX, UTIL_CUB_MANAGER_NAME);
+  if (stat (cub_manager_path, &stbuf) == -1)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
       return ER_GENERIC_ERROR;
     }
 
-  status = NO_ERROR;
-
-  if (get_manager_running_status (0, true) == MANAGER_STATUS_ERROR)
+  manager_status = is_manager_running (0);
+  if (manager_status == MANAGER_SERVER_STATUS_ERROR)
     {
       status = ER_GENERIC_ERROR;
       print_result (PRINT_MANAGER_NAME, status, command_type);
@@ -2425,7 +2360,7 @@ process_manager (int command_type, bool process_window_service)
   switch (command_type)
     {
     case START:
-      if (get_manager_running_status (0, false) != MANAGER_ALL_RUNNING)
+      if (manager_status == MANAGER_SERVER_STOPPED)
 	{
 	  if (process_window_service)
 	    {
@@ -2435,33 +2370,21 @@ process_manager (int command_type, bool process_window_service)
 		COMMAND_TYPE_START, NULL
 	      };
 
-	      cub_auto =
-		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, false, NULL);
+	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, 
+				      true, false, false, NULL);
 #endif
 	    }
 	  else
 	    {
-	      {
 		const char *args[] =
-		  { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_START, NULL };
-		cub_auto =
-		  proc_execute (UTIL_CUB_AUTO_NAME, args, false, false, false,
+		  { UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_START, NULL };
+		cub_manager =
+		  proc_execute (UTIL_CUB_MANAGER_NAME, args, false, false, false,
 				NULL);
-	      }
-	      {
-		const char *args[] =
-		  { UTIL_CUB_JS_NAME, COMMAND_TYPE_START, NULL };
-		cub_js =
-		  proc_execute (UTIL_CUB_JS_NAME, args, false, false, false,
-				NULL);
-	      }
-
 	    }
 
 	  status =
-	    get_manager_running_status (3, false) ==
-	    MANAGER_ALL_RUNNING ? NO_ERROR : ER_GENERIC_ERROR;
+		(is_manager_running (1) == MANAGER_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
       else
@@ -2474,7 +2397,7 @@ process_manager (int command_type, bool process_window_service)
 	}
       break;
     case STOP:
-      if (get_manager_running_status (0, false) != MANAGER_STOPPED)
+      if (manager_status == MANAGER_SERVER_RUNNING)
 	{
 	  if (process_window_service)
 	    {
@@ -2484,31 +2407,20 @@ process_manager (int command_type, bool process_window_service)
 		COMMAND_TYPE_STOP, NULL
 	      };
 
-	      cub_auto =
-		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, false, NULL);
+	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
+				      true, false, false, NULL);
 #endif
 	    }
 	  else
 	    {
-	      {
 		const char *args[] =
-		  { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_STOP, NULL };
-		cub_auto =
-		  proc_execute (UTIL_CUB_AUTO_NAME, args, true, false, false,
+		  { UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_STOP, NULL };
+		status =
+		  proc_execute (UTIL_CUB_MANAGER_NAME, args, true, false, false,
 				NULL);
-	      }
-	      {
-		const char *args[] =
-		  { UTIL_CUB_JS_NAME, COMMAND_TYPE_STOP, NULL };
-		cub_js =
-		  proc_execute (UTIL_CUB_JS_NAME, args, true, false, false,
-				NULL);
-	      }
 	    }
 	  status =
-	    get_manager_running_status (2, false) ==
-	    MANAGER_STOPPED ? NO_ERROR : ER_GENERIC_ERROR;
+		(is_manager_running (1) == MANAGER_SERVER_STOPPED) ? NO_ERROR : ER_GENERIC_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
       else
@@ -2522,14 +2434,13 @@ process_manager (int command_type, bool process_window_service)
       break;
     case STATUS:
       {
-	switch (get_manager_running_status (0, false))
+	switch (manager_status)
 	  {
-	  case MANAGER_ALL_RUNNING:
+	  case MANAGER_SERVER_RUNNING:
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			   PRINT_MANAGER_NAME);
 	    break;
-	  case MANAGER_RUNNING:
-	  case MANAGER_STOPPED:
+	  case MANAGER_SERVER_STOPPED:
 	  default:
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			   PRINT_MANAGER_NAME);

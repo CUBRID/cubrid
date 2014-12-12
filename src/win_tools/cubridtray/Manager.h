@@ -35,8 +35,7 @@
 class CEasyManager  
 {
 private:
-	bool bCheckEMSAuto();
-	bool bCheckEMSJS();
+	bool bCheckEMSCMServer();
 
 public:
 	bool bEasyManagerServerCheckOnly();

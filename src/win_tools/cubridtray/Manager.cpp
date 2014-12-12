@@ -53,7 +53,7 @@ CEasyManager::~CEasyManager()
 
 bool CEasyManager::bCheckEasyManagerServer()
 {
-	if( bCheckEMSAuto() && bCheckEMSJS() )
+	if( bCheckEMSCMServer() )
 		return true;
 
 	bStopEasyManagerServer();
@@ -114,38 +114,11 @@ bool CEasyManager::bStopEasyManagerServer()
 	return true;
 }
 
-bool CEasyManager::bCheckEMSAuto()
+bool CEasyManager::bCheckEMSCMServer()
 {
 	CManageRegistry* cReg = new CManageRegistry( "cmserver" );
 	char* sPath = cReg->sGetItem( "ROOT_PATH" );
-	char* sCmd = "bin\\cub_auto.exe";
-
-	if( !sPath )
-	{
-		delete cReg;
-		return false;
-	}
-
-	int dSize = strlen( sPath ) + strlen( sCmd );
-	char* sFullName = new char[ dSize + 5 ];
-	memset( sFullName, 0x00, dSize + 5 );
-	sprintf( sFullName, "%s\\%s", sPath, sCmd );
-
-	CProcess* cProc = new CProcess();
-	unsigned long lRes = cProc->FindProcess( sFullName );
-
-	delete cProc;
-	delete cReg;
-
-	if( lRes <= 0 ) return false;
-	return true;
-}
-
-bool CEasyManager::bCheckEMSJS()
-{
-	CManageRegistry* cReg = new CManageRegistry( "cmserver" );
-	char* sPath = cReg->sGetItem( "ROOT_PATH" );
-	char* sCmd = "bin\\cub_js.exe";
+	char* sCmd = "bin\\cub_manager.exe";
 
 	if( !sPath )
 	{
@@ -170,7 +143,7 @@ bool CEasyManager::bCheckEMSJS()
 
 bool CEasyManager::bEasyManagerServerCheckOnly()
 {
-	if( bCheckEMSAuto() && bCheckEMSJS() )
+	if( bCheckEMSCMServer() )
 		return true;
 	else
 		return false;
