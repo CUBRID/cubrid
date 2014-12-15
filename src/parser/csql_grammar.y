@@ -9368,7 +9368,7 @@ view_attr_def
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| identifier
+	| identifier opt_comment_spec
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ATTR_DEF);
@@ -9377,6 +9377,7 @@ view_attr_def
 			  {
 			    node->data_type = NULL;
 			    node->info.attr_def.attr_name = $1;
+			    node->info.attr_def.comment = $2;
 			    node->info.attr_def.attr_type = PT_NORMAL;
 			  }
 
