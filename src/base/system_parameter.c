@@ -8983,21 +8983,29 @@ void
 sysprm_final (void)
 {
   SYSPRM_PARAM *prm;
-  char **valp;
   int i;
 
   for (i = 0; i < NUM_PRM; i++)
     {
       prm = &prm_Def[i];
-      if (PRM_IS_ALLOCATED (*prm->dynamic_flag) && PRM_IS_STRING (prm))
+      if (PRM_IS_ALLOCATED (*prm->dynamic_flag))
 	{
-	  char *str = PRM_GET_STRING (prm->value);
+	  switch (prm->datatype)
+	    {
+	    case PRM_STRING:
+	      free_and_init (PRM_GET_STRING (prm->value));
+	      PRM_CLEAR_BIT (PRM_ALLOCATED, *prm->dynamic_flag);
+	      break;
 
-	  free_and_init (str);
-	  PRM_CLEAR_BIT (PRM_ALLOCATED, *prm->dynamic_flag);
+	    case PRM_INTEGER_LIST:
+	      free_and_init (PRM_GET_INTEGER_LIST (prm->value));
+	      PRM_CLEAR_BIT (PRM_ALLOCATED, *prm->dynamic_flag);
+	      break;
 
-	  valp = (char **) prm->value;
-	  *valp = NULL;
+	    default:
+	      /* do nothing */
+	      break;
+	    }
 	}
 
       /* reset all dynamic flags */
