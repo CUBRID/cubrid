@@ -9925,8 +9925,20 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_OBJECT *class_op;
   DB_METHOD *method = NULL;
 
-  assert (parser != NULL && node != NULL &&
-	  node->info.method_call.method_name != NULL);
+  /* Note: it is possible that an error has been raised eariler.
+   * An example is that, method_name is NULL due to a connection lost,
+   * i.e. db_Connect_status is 0, 'MSGCAT_SEMANTIC_METH_NO_TARGET' is set.
+   * So we must check error first.
+   */
+
+  assert (parser != NULL);
+
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  assert (node != NULL && node->info.method_call.method_name != NULL);
 
   DB_MAKE_NULL (&val);
 
