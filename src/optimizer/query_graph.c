@@ -2085,9 +2085,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
   PT_OP_TYPE op_type = PT_AND;
   int i, n, t;
 
+  env = QO_TERM_ENV (term);
+
   QO_ASSERT (env, QO_TERM_LOCATION (term) >= 0);
 
-  env = QO_TERM_ENV (term);
   parser = QO_ENV_PARSER (env);
   pt_expr = QO_TERM_PT_EXPR (term);
   merge_applies = 1;		/* until proven otherwise */
