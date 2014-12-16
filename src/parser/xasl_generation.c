@@ -25614,7 +25614,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   statement = pt_add_row_oid_name (parser, statement);
   /* add source table to spec */
   statement->info.query.q.select.from =
-    parser_append_node (parser_copy_tree_list (parser, info->using),
+    parser_append_node (parser_copy_tree_list (parser, info->using_clause),
 			statement->info.query.q.select.from);
 
   /* set search condition */
@@ -25757,7 +25757,8 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 
   subq->info.query.q.select.list =
     parser_copy_tree_list (parser, select_list);
-  subq->info.query.q.select.from = parser_copy_tree (parser, info->using);
+  subq->info.query.q.select.from =
+    parser_copy_tree (parser, info->using_clause);
 
   expr = parser_new_node (parser, PT_EXPR);
   if (expr == NULL)
@@ -25964,8 +25965,9 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *copy_assigns, *save_assigns;
 
   from = parser_copy_tree (parser, info->into);
-  from = parser_append_node (parser_copy_tree_list (parser, info->using),
-			     from);
+  from =
+    parser_append_node (parser_copy_tree_list (parser, info->using_clause),
+			from);
 
   if (from == NULL || from->node_type != PT_SPEC
       || from->info.spec.range_var == NULL)

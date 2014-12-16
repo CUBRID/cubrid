@@ -96,7 +96,7 @@ extern int locator_flush_all_instances (MOP class_mop, bool decache);
 extern int locator_flush_for_multi_update (MOP class_mop);
 extern int locator_all_flush (void);
 extern int locator_repl_flush_all (void);
-extern MOP locator_add_class (MOBJ class, const char *classname);
+extern MOP locator_add_class (MOBJ classobj, const char *classname);
 extern MOP locator_add_instance (MOBJ instance, MOP class_mop);
 extern MOP locator_add_root (OID * root_oid, MOBJ class_root);
 extern int locator_remove_class (MOP class_mop);

@@ -7433,7 +7433,7 @@ mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 	     broker execution */
 	  mq_reset_ids (parser, node, spec);
 	}
-      for (spec = node->info.merge.using; spec; spec = spec->next)
+      for (spec = node->info.merge.using_clause; spec; spec = spec->next)
 	{
 	  /* only reset IDs, in case query will be rewritten as SELECT for
 	     broker execution */
@@ -10218,7 +10218,7 @@ mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement,
     case PT_MERGE:
       {
 	spec = statement->info.merge.into;
-	spec->next = statement->info.merge.using;
+	spec->next = statement->info.merge.using_clause;
 
 	while (spec && spec->info.spec.id != spec_id)
 	  {

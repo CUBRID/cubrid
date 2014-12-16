@@ -2987,7 +2987,7 @@ struct pt_table_option_info
 struct pt_merge_info
 {
   PT_NODE *into;		/* INTO PT_SPEC */
-  PT_NODE *using;		/* USING PT_SPEC */
+  PT_NODE *using_clause;	/* USING PT_SPEC */
   PT_NODE *search_cond;		/* PT_EXPR */
   struct
   {

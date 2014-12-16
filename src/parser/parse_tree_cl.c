@@ -17659,7 +17659,7 @@ pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 		void *arg)
 {
   p->info.merge.into = g (parser, p->info.merge.into, arg);
-  p->info.merge.using = g (parser, p->info.merge.using, arg);
+  p->info.merge.using_clause = g (parser, p->info.merge.using_clause, arg);
   p->info.merge.search_cond = g (parser, p->info.merge.search_cond, arg);
   p->info.merge.insert.attr_list =
     g (parser, p->info.merge.insert.attr_list, arg);
@@ -17690,7 +17690,7 @@ static PT_NODE *
 pt_init_merge (PT_NODE * p)
 {
   p->info.merge.into = NULL;
-  p->info.merge.using = NULL;
+  p->info.merge.using_clause = NULL;
   p->info.merge.search_cond = NULL;
   p->info.merge.insert.attr_list = NULL;
   p->info.merge.insert.search_cond = NULL;
@@ -17764,7 +17764,7 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_varchar (parser, q, r1);
 
   q = pt_append_nulstring (parser, q, " using ");
-  r1 = pt_print_bytes_spec_list (parser, p->info.merge.using);
+  r1 = pt_print_bytes_spec_list (parser, p->info.merge.using_clause);
   q = pt_append_varchar (parser, q, r1);
 
   if (p->info.merge.search_cond)

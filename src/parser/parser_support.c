@@ -852,7 +852,7 @@ pt_find_spec_in_statement (PARSER_CONTEXT * parser, const PT_NODE * stmt,
       spec = pt_find_spec (parser, stmt->info.merge.into, name);
       if (spec == NULL)
 	{
-	  spec = pt_find_spec (parser, stmt->info.merge.using, name);
+	  spec = pt_find_spec (parser, stmt->info.merge.using_clause, name);
 	}
       break;
 

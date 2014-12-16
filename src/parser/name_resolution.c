@@ -1410,7 +1410,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
 	  {
 	    assignments = node->info.merge.update.assignment;
 	    assert (node->info.merge.into->next == NULL);
-	    node->info.merge.into->next = node->info.merge.using;
+	    node->info.merge.into->next = node->info.merge.using_clause;
 	    spec = node->info.merge.into;
 	  }
 
@@ -3178,7 +3178,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	}
 
       assert (node->info.merge.into->next == NULL);
-      node->info.merge.into->next = node->info.merge.using;
+      node->info.merge.into->next = node->info.merge.using_clause;
 
       scopestack.specs = node->info.merge.into;
       bind_arg->scopes = &scopestack;
@@ -8461,8 +8461,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
       && statement->info.merge.into != NULL)
     {
       /* chain merge specs for flat name resolving */
-      statement->info.merge.into->next = statement->info.merge.using;
-      statement->info.merge.using = NULL;
+      statement->info.merge.into->next = statement->info.merge.using_clause;
+      statement->info.merge.using_clause = NULL;
     }
 
   /* Replace each Entity Spec with an Equivalent flat list */
@@ -8474,7 +8474,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
       && statement->info.merge.into != NULL)
     {
       /* unchain merge specs */
-      statement->info.merge.using = statement->info.merge.into->next;
+      statement->info.merge.using_clause = statement->info.merge.into->next;
       statement->info.merge.into->next = NULL;
     }
 
@@ -9628,7 +9628,7 @@ pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   /* bind names for the rest of insert values list */
-  scopestack->specs = node->info.merge.using;
+  scopestack->specs = node->info.merge.using_clause;
   bind_arg->scopes = scopestack;
   spec_frame->next = bind_arg->spec_frames;
   spec_frame->extra_specs = NULL;
@@ -9639,7 +9639,7 @@ pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
 		      pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
   /* bind names for insert search condition */
-  scopestack->specs = node->info.merge.using;
+  scopestack->specs = node->info.merge.using_clause;
   bind_arg->scopes = scopestack;
   spec_frame->next = bind_arg->spec_frames;
   spec_frame->extra_specs = NULL;
@@ -9695,7 +9695,7 @@ pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node,
 
   /* resolve rhs with both source and target specs */
   scopestack->specs = node->info.merge.into;
-  node->info.merge.into->next = node->info.merge.using;
+  node->info.merge.into->next = node->info.merge.using_clause;
   bind_arg->scopes = scopestack;
   spec_frame->next = bind_arg->spec_frames;
   spec_frame->extra_specs = NULL;

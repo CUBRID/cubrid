@@ -7657,7 +7657,7 @@ merge_stmt
 			if (merge)
 			  {
 			    merge->info.merge.into = $5;
-			    merge->info.merge.using = $7;
+			    merge->info.merge.using_clause = $7;
 			    merge->info.merge.search_cond = $9;
 			  }
 
