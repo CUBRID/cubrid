@@ -598,7 +598,7 @@ delvoldb (UTIL_FUNCTION_ARG * arg)
   start_transaction = true;
 
   num_volid = 0;
-  while (*vol_ids != '\0' && end != NULL)
+  while (*vol_ids != '\0')
     {
       res = str_to_int32 (&i, &end, vol_ids, 10);
       if (res < 0)
@@ -609,7 +609,6 @@ delvoldb (UTIL_FUNCTION_ARG * arg)
 				 vol_ids);
 	  goto error_exit;
 	}
-      vol_ids = end + 1;
 
       if (i <= 0)
 	{
@@ -639,6 +638,13 @@ delvoldb (UTIL_FUNCTION_ARG * arg)
 				 MAX_DELVOL_ID_LIST_NUM);
 	  goto error_exit;
 	}
+
+      if (*end == '\0')
+	{
+	  break;
+	}
+
+      vol_ids = end + 1;
     }
 
   if (ask_verify)
