@@ -2551,9 +2551,11 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel,
 	    void *ignore_arg)
 {
   char check_vlabel[PATH_MAX];
+  int vdes;
 
-  if (fileio_mount (thread_p, boot_Db_full_name, vlabel, volid,
-		    false, false) == NULL_VOLDES)
+  vdes = fileio_mount (thread_p, boot_Db_full_name, vlabel, volid,
+		       false, false);
+  if (vdes == NULL_VOLDES)
     {
       return ER_FAILED;
     }
@@ -2561,7 +2563,7 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel,
   /* Check the label and give a warning if labels are not the same */
   if (xdisk_get_fullname (thread_p, volid, check_vlabel) == NULL)
     {
-      fileio_dismount (thread_p, volid);
+      fileio_dismount (thread_p, vdes);
       return ER_FAILED;
     }
 
