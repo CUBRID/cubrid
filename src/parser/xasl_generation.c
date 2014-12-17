@@ -12989,8 +12989,14 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	      parser_free_tree (parser, pred_attrs);
 	      parser_free_tree (parser, rest_attrs);
 	      parser_free_tree (parser, reserved_attrs);
-	      free_and_init (pred_offsets);
-	      free_and_init (rest_offsets);
+	      if (pred_offsets != NULL)
+		{
+		  free_and_init (pred_offsets);
+		}
+	      if (rest_offsets != NULL)
+		{
+		  free_and_init (rest_offsets);
+		}
 	      if (reserved_offsets != NULL)
 		{
 		  free_and_init (reserved_offsets);
@@ -13064,8 +13070,21 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 					  table_info->value_list,
 					  reserved_offsets);
 
+	      parser_free_tree (parser, pred_attrs);
+	      parser_free_tree (parser, rest_attrs);
 	      parser_free_tree (parser, reserved_attrs);
-	      free_and_init (reserved_offsets);
+	      if (pred_offsets != NULL)
+		{
+		  free_and_init (pred_offsets);
+		}
+	      if (rest_offsets != NULL)
+		{
+		  free_and_init (rest_offsets);
+		}
+	      if (reserved_offsets != NULL)
+		{
+		  free_and_init (reserved_offsets);
+		}
 
 	      index_info =
 		pt_to_index_info (parser, class_->info.name.db_object,
@@ -13133,7 +13152,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		      where_key_part = where_key_part_save;
 		    }
 		  parser_free_tree (parser, key_attrs);
-		  free_and_init (key_offsets);
+		  if (key_offsets != NULL)
+		    {
+		      free_and_init (key_offsets);
+		    }
 		  return NULL;
 		}
 
@@ -13147,9 +13169,20 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		       &cache_range) != NO_ERROR)
 		    {
 		      parser_free_tree (parser, key_attrs);
-		      free_and_init (key_offsets);
+		      if (key_offsets != NULL)
+			{
+			  free_and_init (key_offsets);
+			}
 		      parser_free_tree (parser, pred_attrs);
-		      free_and_init (pred_offsets);
+		      if (pred_offsets != NULL)
+			{
+			  free_and_init (pred_offsets);
+			}
+		      parser_free_tree (parser, rest_attrs);
+		      if (rest_offsets != NULL)
+			{
+			  free_and_init (rest_offsets);
+			}
 		      return NULL;
 		    }
 		}
@@ -13202,9 +13235,18 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	      parser_free_tree (parser, key_attrs);
 	      parser_free_tree (parser, pred_attrs);
 	      parser_free_tree (parser, rest_attrs);
-	      free_and_init (key_offsets);
-	      free_and_init (pred_offsets);
-	      free_and_init (rest_offsets);
+	      if (key_offsets != NULL)
+		{
+		  free_and_init (key_offsets);
+		}
+	      if (pred_offsets != NULL)
+		{
+		  free_and_init (pred_offsets);
+		}
+	      if (rest_offsets != NULL)
+		{
+		  free_and_init (rest_offsets);
+		}
 
 	      /*
 	       * pt_make_class_spec() will return NULL if passed a
