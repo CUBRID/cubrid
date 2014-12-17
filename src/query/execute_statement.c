@@ -6387,7 +6387,8 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       priority = get_priority (parser, p_node);
     }
-  else if (statement->info.alter_trigger.trigger_status != NULL)
+  else if (statement->info.alter_trigger.trigger_status == PT_ACTIVE
+	   || statement->info.alter_trigger.trigger_status == PT_INACTIVE)
     {
       status =
 	convert_misc_to_tr_status (statement->info.

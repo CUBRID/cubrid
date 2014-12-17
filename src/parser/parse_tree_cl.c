@@ -6706,6 +6706,11 @@ pt_apply_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p,
 static PT_NODE *
 pt_init_alter_trigger (PT_NODE * p)
 {
+  p->info.alter_trigger.trigger_owner = NULL;
+  p->info.alter_trigger.trigger_priority = NULL;
+  p->info.alter_trigger.trigger_spec_list = NULL;
+  p->info.alter_trigger.comment = NULL;
+  p->info.alter_trigger.trigger_status = PT_MISC_DUMMY;
   return (p);
 }
 
@@ -6736,7 +6741,8 @@ pt_print_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " priority ");
       b = pt_append_varchar (parser, b, r1);
     }
-  else if (p->info.alter_trigger.trigger_status)
+  else if (p->info.alter_trigger.trigger_status == PT_ACTIVE
+	   || p->info.alter_trigger.trigger_status == PT_INACTIVE)
     {
       b = pt_append_nulstring (parser, b, " status ");
       b = pt_append_nulstring (parser, b, pt_show_misc_type
