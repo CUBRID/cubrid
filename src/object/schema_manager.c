@@ -16403,7 +16403,8 @@ update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
   MOP *sub_partitions = NULL;
   SM_TEMPLATE *sub_ctemplate = NULL;
   SM_CLASS_CONSTRAINT *sm_cons = NULL;
-  SM_CLASS_CONSTRAINT *con = NULL;
+  SM_CLASS_CONSTRAINT *pk = NULL;
+  SM_FOREIGN_KEY_INFO *fk = NULL;
 
   assert (ctemplate != NULL);
 
@@ -16456,8 +16457,27 @@ update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 
       if (old_name != NULL)
 	{
-	  con = classobj_find_constraint_by_name (sm_cons, old_name);
-	  if (con == NULL)
+	  pk = classobj_find_cons_primary_key (sm_cons);
+	  if (pk == NULL)
+	    {
+	      assert (false);
+
+	      error = ER_FK_REF_CLASS_HAS_NOT_PK;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		      sm_class_name (ctemplate->op));
+	      goto error_exit;
+	    }
+
+	  for (fk = pk->fk_info; fk != NULL; fk = fk->next)
+	    {
+	      if (fk->name != NULL
+		  && intl_identifier_casecmp (fk->name, old_name) == 0)
+		{
+		  break;
+		}
+	    }
+
+	  if (fk == NULL)
 	    {
 	      error = ER_SM_CONSTRAINT_NOT_FOUND;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
