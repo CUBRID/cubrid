@@ -10456,6 +10456,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	    }
 	  else if (ev_res != V_TRUE)
 	    {
+	      /*
+	       * To exclude the heap OID of which record cannot satisfy the
+	       * conditions of the index filter predicate.
+	       */
+	      num_heap_oids--;
 	      continue;
 	    }
 	}
