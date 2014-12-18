@@ -7676,7 +7676,8 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
       vacuum_er_log (VACUUM_ER_LOG_ARCHIVES,
 		     "VACUUM: First log pageid in vacuum data is %lld",
 		     vacuum_first_pageid);
-      if (vacuum_first_pageid != NULL_PAGEID)
+      if (vacuum_first_pageid != NULL_PAGEID
+	  && logpb_is_page_in_archive (vacuum_first_pageid))
 	{
 	  min_arv_required_for_vacuum =
 	    logpb_get_archive_number (thread_p, vacuum_first_pageid);
@@ -7687,6 +7688,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 	    {
 	      last_arv_num_to_delete =
 		MIN (last_arv_num_to_delete, min_arv_required_for_vacuum);
+	    }
+	  else
+	    {
+	      /* Page should be in archive. */
+	      assert (false);
 	    }
 	}
 
