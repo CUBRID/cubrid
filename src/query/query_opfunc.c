@@ -543,9 +543,14 @@ qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
       return false;
     }
 
-  (*(pr_type_p->setval)) (dest_p, src_p, true);
-
-  return true;
+  if ((*(pr_type_p->setval)) (dest_p, src_p, true) == NO_ERROR)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
 }
 
 /*

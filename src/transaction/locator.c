@@ -474,6 +474,8 @@ locator_allocate_copy_area_by_length (int min_length)
       copyarea = (LC_COPYAREA *) malloc (min_length + sizeof (*copyarea));
       if (copyarea == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (size_t) (min_length + sizeof (*copyarea)));
 	  return NULL;
 	}
     }
