@@ -3354,6 +3354,14 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
 
+  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+    {
+      /* Vacuum workers are always considered active (since they have no
+       * transactions).
+       */
+      return true;
+    }
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
 
