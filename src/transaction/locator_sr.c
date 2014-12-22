@@ -226,8 +226,8 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 int n_att_id, int op_type,
 				 HEAP_SCANCACHE * scan_cache,
 				 int *force_count, bool not_check_fk,
-				 REPL_INFO_TYPE repl_info, int pruning_type,
-				 PRUNING_CONTEXT * pcontext,
+				 REPL_INFO_TYPE repl_info_type,
+				 int pruning_type, PRUNING_CONTEXT * pcontext,
 				 MVCC_REEV_DATA * mvcc_reev_data,
 				 bool force_in_place);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
@@ -5758,7 +5758,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		      int has_index, ATTR_ID * att_id, int n_att_id,
 		      int op_type, HEAP_SCANCACHE * scan_cache,
 		      int *force_count, bool not_check_fk,
-		      REPL_INFO_TYPE repl_info, int pruning_type,
+		      REPL_INFO_TYPE repl_info_type, int pruning_type,
 		      PRUNING_CONTEXT * pcontext,
 		      MVCC_REEV_DATA * mvcc_reev_data, bool force_in_place)
 {
@@ -5775,6 +5775,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   HEAP_SCANCACHE *local_scan_cache;
   OID new_oid;
   bool is_update_inplace = false, no_data_new_address = false;
+  REPL_INFO repl_info;
 
   if (new_oid_p == NULL)
     {
@@ -5796,6 +5797,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   copy_recdes.data = NULL;
 
   *force_count = 0;
+
+  repl_info.repl_info_type = repl_info_type;
+  repl_info.need_replication = true;
+  repl_info.info = NULL;
 
   if (OID_IS_ROOTOID (class_oid))
     {
@@ -6251,7 +6256,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		    locator_update_index (thread_p, recdes, oldrecdes,
 					  att_id, n_att_id, oid, new_oid_p,
 					  class_oid, NULL, false, op_type,
-					  local_scan_cache, true, repl_info);
+					  local_scan_cache, &repl_info);
 		}
 	      else
 		{
@@ -6265,7 +6270,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 					  class_oid, search_btid,
 					  search_btid_duplicate_key_locked,
 					  op_type, local_scan_cache,
-					  true, repl_info);
+					  &repl_info);
 		}
 	      if (error_code != NO_ERROR)
 		{
@@ -6356,7 +6361,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        */
       if (is_update_inplace
 	  && !LOG_CHECK_LOG_APPLIER (thread_p)
-	  && log_does_allow_replication () == true)
+	  && log_does_allow_replication () == true
+	  && repl_info.need_replication == true)
 	{
 	  repl_add_update_lsa (thread_p, oid);
 	}
@@ -9082,9 +9088,10 @@ end:
  *					   search_btid
  *   op_type(in):
  *   scan_cache(in):
- *   need_replication(in): true if replication is needed.
+ *   repl_info(in/out): replication info, set need_replication to false when
+ *                      no primary is found
  *
- * Note: Updatet the index entries of the given object.
+ * Note: Update the index entries of the given object.
  */
 int
 locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
@@ -9092,8 +9099,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		      OID * old_oid, OID * new_oid, OID * class_oid,
 		      BTID * search_btid,
 		      bool search_btid_duplicate_key_locked, int op_type,
-		      HEAP_SCANCACHE * scan_cache,
-		      bool need_replication, REPL_INFO_TYPE repl_info)
+		      HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info)
 {
   HEAP_CACHE_ATTRINFO space_attrinfo[2];
   HEAP_CACHE_ATTRINFO *new_attrinfo = NULL;
@@ -9199,6 +9205,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
   if (new_num_found == 0)
     {
+      /* No need to replicate this record since there is no primary key */
+      if (repl_info != NULL)
+	{
+	  repl_info->need_replication = false;
+	}
+
       return NO_ERROR;
     }
 
@@ -9245,7 +9257,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   for (i = 0; i < num_btids; i++)
     {
       index = &(new_attrinfo->last_classrepr->indexes[i]);
-      if (pk_btid_index == -1 && need_replication
+      if (pk_btid_index == -1 && repl_info != NULL
+	  && repl_info->need_replication == true
 	  && !LOG_CHECK_LOG_APPLIER (thread_p)
 	  && index->type == BTREE_PRIMARY_KEY
 	  && log_does_allow_replication () == true)
@@ -9683,6 +9696,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
   if (pk_btid_index != -1)
     {
+      assert (repl_info != NULL);
+
       if (repl_old_key == NULL)
 	{
 	  key_domain = NULL;
@@ -9718,7 +9733,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  error_code = repl_log_insert (thread_p, class_oid, old_oid,
 					LOG_REPLICATION_DATA,
 					RVREPL_DATA_UPDATE, repl_old_key,
-					repl_info, same_oid);
+					repl_info->repl_info_type, same_oid);
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -9729,7 +9744,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  error_code = repl_log_insert (thread_p, class_oid, old_oid,
 					LOG_REPLICATION_DATA,
 					RVREPL_DATA_UPDATE, repl_old_key,
-					repl_info, same_oid);
+					repl_info->repl_info_type, same_oid);
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}
@@ -9744,6 +9759,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
       tdes = LOG_FIND_TDES (tran_index);
 
       LSA_SET_NULL (&tdes->repl_insert_lsa);
+
+      /* No need to replicate this record since there is no primary key */
+      if (repl_info != NULL)
+	{
+	  repl_info->need_replication = false;
+	}
     }
 
   heap_attrinfo_end (thread_p, new_attrinfo);

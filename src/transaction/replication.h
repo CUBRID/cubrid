@@ -49,8 +49,9 @@ typedef enum
 typedef struct repl_info REPL_INFO;
 struct repl_info
 {
-  int repl_info_type;
   char *info;
+  int repl_info_type;
+  bool need_replication;
 };
 
 typedef struct repl_info_statement REPL_INFO_SBR;

@@ -730,8 +730,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
       success = locator_update_index (NULL, rec, &oldrec, NULL, 0,
 				      obj_oid, obj_oid, class_oid, NULL,
 				      false, SINGLE_ROW_UPDATE,
-				      (HEAP_SCANCACHE *) NULL, false,
-				      REPL_INFO_TYPE_RBR_NORMAL);
+				      (HEAP_SCANCACHE *) NULL, NULL);
     }
   else
     {

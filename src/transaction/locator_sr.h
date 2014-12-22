@@ -147,7 +147,7 @@ extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 				 OID * class_oid, BTID * search_btid,
 				 bool duplicate_key_locked, int op_type,
 				 HEAP_SCANCACHE * scan_cache,
-				 bool replyn, REPL_INFO_TYPE repl_info);
+				 REPL_INFO * repl_info);
 extern int locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid,
 				     OID * oid, RECDES * recdes);
 extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT *

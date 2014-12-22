@@ -9090,7 +9090,7 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  REPL_INFO repl_info = { 0, NULL };
+  REPL_INFO repl_info = { NULL, 0, false };
   REPL_INFO_SBR repl_schema = { 0, NULL, NULL, NULL, NULL };
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
