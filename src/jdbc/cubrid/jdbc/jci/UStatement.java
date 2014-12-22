@@ -725,7 +725,9 @@ public class UStatement {
 		} else if (relatedConnection
 		        .protoVersionIsAbove(UConnection.PROTOCOL_V1)) {
 			// send queryTimeout in seconds
-			remainingTime = relatedConnection.getRemainingTime(queryTimeout);
+			remainingTime = relatedConnection
+			        .getRemainingTime(queryTimeout * 1000);
+			remainingTime = (long) Math.ceil(remainingTime / 1000.0);
 		}
 		if (queryTimeout > 0 && remainingTime <= 0) {
 			throw relatedConnection.createJciException(UErrorCode.ER_TIMEOUT);
