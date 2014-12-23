@@ -1421,7 +1421,7 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
     spage_max_space_for_new_record (thread_p, load_args->nleaf.pgptr);
 
   nleaf_rec.pnt = *pageid;
-  key_len = btree_get_key_length (key);
+  key_len = btree_get_disk_size_of_key (key);
   if (key_len < BTREE_MAX_KEYLEN_INPAGE)
     {
       nleaf_rec.key_len = key_len;
@@ -1709,7 +1709,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	   * the varying key length is larger than the fixed key length
 	   * in pathological cases like char(4)
 	   */
-	  new_max = btree_get_key_length (&prefix_key);
+	  new_max = btree_get_disk_size_of_key (&prefix_key);
 	  new_max = BTREE_GET_KEY_LEN_IN_PAGE (new_max);
 	  max_key_len = MAX (new_max, max_key_len);
 
@@ -2332,7 +2332,7 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key,
   int error;
 
   /* form the leaf record (create the header & insert the key) */
-  key_len = load_args->cur_key_len = btree_get_key_length (this_key);
+  key_len = load_args->cur_key_len = btree_get_disk_size_of_key (this_key);
   if (key_len < BTREE_MAX_KEYLEN_INPAGE)
     {
       key_type = BTREE_NORMAL_KEY;

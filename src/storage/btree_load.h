@@ -259,7 +259,7 @@ extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p,
 					   int null_delta, int oid_delta,
 					   int key_delta);
 
-extern int btree_get_key_length (DB_VALUE *);
+extern int btree_get_disk_size_of_key (DB_VALUE *);
 extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       void *node_rec, DB_VALUE * key,
 			       int node_type, int key_type,
