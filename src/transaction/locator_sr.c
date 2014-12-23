@@ -1817,8 +1817,7 @@ locator_savepoint_class_name_entry (const char *classname,
 					       classname);
   if (entry == NULL)
     {
-      assert (false);		/* is impossible */
-      return ER_FAILED;
+      return NO_ERROR;		/* do nothing */
     }
 
   if (!(entry->e_tran_index == NULL_TRAN_INDEX
