@@ -4353,6 +4353,7 @@ catalog_get_representation_directory (THREAD_ENTRY * thread_p,
   int i, item_count;
   char *repr_p;
   REPR_ID *repr_set_p;
+  size_t buf_size;
 
   *repr_count_p = 0;
 
@@ -4367,13 +4368,15 @@ catalog_get_representation_directory (THREAD_ENTRY * thread_p,
     }
 
   *repr_count_p = item_count;
-  *repr_id_set_p = (REPR_ID *) malloc (*repr_count_p * sizeof (REPR_ID));
+  buf_size = *repr_count_p * sizeof (REPR_ID);
+  *repr_id_set_p = (REPR_ID *) malloc (buf_size);
   if (*repr_id_set_p == NULL)
     {
       pgbuf_unfix_and_init (thread_p, page_p);
 
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, buf_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   repr_set_p = *repr_id_set_p;

@@ -2395,6 +2395,7 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
   MOBJ obj;
   int max, cnt, i;
   DB_OBJECT **mops;
+  size_t buf_size;
 
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (set);
@@ -2407,11 +2408,14 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
   max = set_size (set);
   if (max)
     {
-      mops = (DB_OBJECT **) malloc ((max + 1) * sizeof (DB_OBJECT *));
+      buf_size = (max + 1) * sizeof (DB_OBJECT *);
+      mops = (DB_OBJECT **) malloc (buf_size);
       if (mops == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  return (er_errid ());
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, buf_size);
+	  return error;
 	}
       cnt = 0;
 

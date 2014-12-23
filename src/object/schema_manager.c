@@ -5684,6 +5684,9 @@ sm_class_check_uniques (MOP classop)
 		      if (buf_start == NULL)
 			{
 			  buf_malloced = 0;
+			  error = ER_OUT_OF_VIRTUAL_MEMORY;
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 			  goto error_class_check_uniques;
 			}
 		    }
@@ -5692,6 +5695,9 @@ sm_class_check_uniques (MOP classop)
 		      buf_start = malloc (buf_size);
 		      if (buf_start == NULL)
 			{
+			  error = ER_OUT_OF_VIRTUAL_MEMORY;
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 			  goto error_class_check_uniques;
 			}
 		      memcpy (buf_start, buffer, buf_len);

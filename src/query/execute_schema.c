@@ -3823,7 +3823,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
   char class_name[DB_MAX_IDENTIFIER_LENGTH];
   DB_VALUE *minval, *parts_val, *fmin_val, partsize;
   int part_cnt = 0, part_add = -1;
-  int size;
+  size_t buf_size;
   SM_CLASS *smclass;
   bool reuse_oid = false;
 
@@ -3955,8 +3955,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci = (PART_CLASS_INFO *) malloc (sizeof (PART_CLASS_INFO));
 	  if (newpci == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PART_CLASS_INFO));
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto end_create;
 	    }
 
@@ -3965,11 +3966,13 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci->next = pci.next;
 	  pci.next = newpci;
 
-	  newpci->pname = (char *) malloc (strlen (class_name) + 5 + 13);
+	  buf_size = strlen (class_name) + 5 + 13;
+	  newpci->pname = (char *) malloc (buf_size);
 	  if (newpci->pname == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto end_create;
 	    }
 
@@ -4074,8 +4077,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci = (PART_CLASS_INFO *) malloc (sizeof (PART_CLASS_INFO));
 	  if (newpci == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PART_CLASS_INFO));
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto end_create;
 	    }
 
@@ -4085,13 +4089,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  pci.next = newpci;
 
 	  part_name = (char *) parts->info.parts.name->info.name.original;
-	  size = strlen (class_name) + 5 + 1 + strlen (part_name);
+	  buf_size = strlen (class_name) + 5 + 1 + strlen (part_name);
 
-	  newpci->pname = (char *) malloc (size);
+	  newpci->pname = (char *) malloc (buf_size);
 	  if (newpci->pname == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto end_create;
 	    }
 	  sprintf (newpci->pname, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
@@ -4361,6 +4366,7 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
   DB_COLLECTION *dbc = NULL;
   int save;
   bool au_disable_flag = false;
+  size_t buf_size;
 
   AU_DISABLE (save);
   au_disable_flag = true;
@@ -4440,13 +4446,16 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
 	  goto fail_return;
 	}
 
-      query_str = (char *) malloc (strlen (query) + strlen (base_obj) +
-				   7 /* strlen("SELECT ") */  +
-				   6 /* strlen(" FROM ") */  +
-				   2 /* [] */  +
-				   1 /* terminating null */ );
+      buf_size =
+	strlen (query) + strlen (base_obj) + 7 /* strlen("SELECT ") */  +
+	6 /* strlen(" FROM ") */  +
+	2 /* [] */  +
+	1 /* terminating null */ ;
+      query_str = (char *) malloc (buf_size);
       if (query_str == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, buf_size);
 	  goto fail_return;
 	}
       sprintf (query_str, "SELECT %s FROM [%s]", query, base_obj);
@@ -7920,6 +7929,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
   PT_NODE *p;
   int error = NO_ERROR;
   const char *comment = NULL;
+  size_t buf_size;
 
   fk_info = (PT_FOREIGN_KEY_INFO *) & (cnstr->info.constraint.un.foreign_key);
 
@@ -7935,11 +7945,14 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
     {
       n_ref_atts = pt_length_of_list (fk_info->referenced_attrs);
 
-      ref_attrs = (char **) malloc ((n_ref_atts + 1) * sizeof (char *));
+      buf_size = (n_ref_atts + 1) * sizeof (char *);
+      ref_attrs = (char **) malloc (buf_size);
       if (ref_attrs == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, buf_size);
+	  return error;
 	}
 
       i = 0;
@@ -7989,6 +8002,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
   PT_NODE *cnstr;
   int max_attrs = 0;
   char **att_names = NULL;
+  size_t buf_size;
 
   /*  Find the size of the largest UNIQUE constraint list and allocate
      a character array large enough to contain it. */
@@ -8016,12 +8030,14 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
   if (max_attrs > 0)
     {
-      att_names = (char **) malloc ((max_attrs + 1) * sizeof (char *));
+      buf_size = (max_attrs + 1) * sizeof (char *);
+      att_names = (char **) malloc (buf_size);
 
       if (att_names == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, buf_size);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       else
 	{

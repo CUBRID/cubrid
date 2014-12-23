@@ -1621,6 +1621,8 @@ obj_print_make_class_help (void)
   new_p = (CLASS_HELP *) malloc (sizeof (CLASS_HELP));
   if (new_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CLASS_HELP));
       return NULL;
     }
   new_p->name = NULL;
@@ -1722,6 +1724,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   bool force_print_att_coll = false;
   bool has_comment = false;
   int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
+  size_t buf_size = 0;
 
   buffer = NULL;
   if (parser == NULL)
@@ -1866,9 +1869,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
       if (class_->inheritance != NULL)
 	{
 	  count = ws_list_length ((DB_LIST *) class_->inheritance);
-	  strs = (char **) malloc (sizeof (char *) * (count + 1));
+	  buf_size = sizeof (char *) * (count + 1);
+	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 	  i = 0;
@@ -1896,9 +1902,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
       if (class_->users != NULL)
 	{
 	  count = ws_list_length ((DB_LIST *) class_->users);
-	  strs = (char **) malloc (sizeof (char *) * (count + 1));
+	  buf_size = sizeof (char *) * (count + 1);
+	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 	  i = 0;
@@ -1953,9 +1962,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
 	  if (count > 0)
 	    {
-	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 
@@ -2006,9 +2018,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
 	  if (count > 0)
 	    {
-	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 
@@ -2059,9 +2074,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
 	  if (count > 0)
 	    {
-	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 	      i = 0;
@@ -2106,9 +2124,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
 	  if (count > 0)
 	    {
-	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 	      i = 0;
@@ -2134,9 +2155,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
       if (class_->resolutions != NULL)
 	{
 	  count = ws_list_length ((DB_LIST *) class_->resolutions);
-	  strs = (char **) malloc (sizeof (char *) * (count + 1));
+	  buf_size = sizeof (char *) * (count + 1);
+	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 	  i = 0;
@@ -2174,9 +2198,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
 	  if (count > 0)
 	    {
-	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 	      i = 0;
@@ -2201,9 +2228,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
       if (class_->query_spec != NULL)
 	{
 	  count = ws_list_length ((DB_LIST *) class_->query_spec);
-	  strs = (char **) malloc (sizeof (char *) * (count + 1));
+	  buf_size = sizeof (char *) * (count + 1);
+	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 	  i = 0;
@@ -2253,9 +2283,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
 	  if (count > 0)
 	    {
-	      strs = (char **) malloc (sizeof (char *) * (count + 1));
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 
@@ -2294,12 +2327,15 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	{
 	  bool is_print_partition = true;
 
-	  strs = (char **) malloc (sizeof (char *) * (part_count + 2));
+	  buf_size = sizeof (char *) * (part_count + 2);
+	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
-	  memset (strs, 0, sizeof (char *) * (part_count + 2));
+	  memset (strs, 0, buf_size);
 
 	  description =
 	    obj_print_describe_partition_info (parser, class_->partition_of);
@@ -2627,6 +2663,7 @@ help_trigger_names (char ***names_ptr)
   char **names;
   char *name;
   int count, i;
+  size_t buf_size;
 
   names = NULL;
 
@@ -2637,11 +2674,13 @@ help_trigger_names (char ***names_ptr)
       count = ws_list_length ((DB_LIST *) triggers);
       if (count)
 	{
-	  names = (char **) malloc (sizeof (char *) * (count + 1));
+	  buf_size = sizeof (char *) * (count + 1);
+	  names = (char **) malloc (buf_size);
 	  if (names == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	    }
 	  else
 	    {
@@ -2788,6 +2827,7 @@ help_obj (MOP op)
   char **strs;
   char temp_buffer[SM_MAX_IDENTIFIER_LENGTH + 4];	/* Include room for _=_\0 */
   int pin;
+  size_t buf_size;
   DB_VALUE value;
   PARSER_VARCHAR *buffer;
 
@@ -2840,9 +2880,12 @@ help_obj (MOP op)
 	      if (class_->ordered_attributes != NULL)
 		{
 		  count = class_->att_count + class_->shared_count + 1;
-		  strs = (char **) malloc (sizeof (char *) * count);
+		  buf_size = sizeof (char *) * count;
+		  strs = (char **) malloc (buf_size);
 		  if (strs == NULL)
 		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		      goto error_exit;
 		    }
 		  i = 0;

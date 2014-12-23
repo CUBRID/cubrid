@@ -243,8 +243,9 @@ db_gadget_bind (DB_GADGET * gadget,
   gadget->attrs[i].value = (DB_VALUE *) malloc (sizeof (DB_VALUE));
   if (gadget->attrs[i].value == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (DB_VALUE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   return tp_value_coerce (dbval, gadget->attrs[i].value,

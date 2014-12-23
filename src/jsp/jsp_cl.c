@@ -3214,8 +3214,9 @@ jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray,
       *next_val_list = (DB_ARG_LIST *) calloc (1, sizeof (DB_ARG_LIST));
       if (*next_val_list == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ARG_LIST));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       (*next_val_list)->next = (DB_ARG_LIST *) 0;
 

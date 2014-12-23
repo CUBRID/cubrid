@@ -415,6 +415,7 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
 {
   LC_OIDMAP *o;
   OR_TEMPOID *t;
+  size_t buf_size;
 
   /* get the oidset we're building */
   if (fix->oidset == NULL)
@@ -442,17 +443,20 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
       t = (OR_TEMPOID *) malloc (sizeof (OR_TEMPOID));
       if (t == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (OR_TEMPOID));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      t->references =
-	(void **) malloc (sizeof (void *) * TF_FIXUP_REFERENCE_QUANT);
+
+      buf_size = sizeof (void *) * TF_FIXUP_REFERENCE_QUANT;
+      t->references = (void **) malloc (buf_size);
       if (t->references == NULL)
 	{
 	  free_and_init (t);
 
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       t->refsize = TF_FIXUP_REFERENCE_QUANT;
       t->references[0] = ref;
@@ -466,12 +470,13 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
 	{
 	  /* its time to grow */
 	  t->refsize = t->refcount + TF_FIXUP_REFERENCE_QUANT;
-	  t->references = (void **)
-	    realloc (t->references, t->refsize * sizeof (void *));
+	  buf_size = t->refsize * sizeof (void *);
+	  t->references = (void **) realloc (t->references, buf_size);
 	  if (t->references == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	}
       t->references[t->refcount] = ref;

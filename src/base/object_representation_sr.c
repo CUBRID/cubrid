@@ -865,6 +865,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
   char *ptr;
   int max, insert, i, newsize, nsubs;
   char *subset = NULL;
+  size_t buf_size;
 
   nsubs = 0;
   if (!OR_VAR_IS_NULL (record->data, ORC_SUBCLASSES_INDEX))
@@ -899,19 +900,22 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
       if ((insert + nsubs + 1) > max)
 	{
 	  newsize = insert + nsubs + 10;
+
+	  buf_size = newsize * sizeof (OID);
 	  if (array == NULL)
 	    {
-	      array = (OID *) malloc (newsize * sizeof (OID));
+	      array = (OID *) malloc (buf_size);
 	    }
 	  else
 	    {
-	      array = (OID *) realloc (array, newsize * sizeof (OID));
+	      array = (OID *) realloc (array, buf_size);
 	    }
 
 	  if (array == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
 	  for (i = max; i < newsize; i++)
