@@ -548,11 +548,10 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      AU_DISABLE (turn_on_auth);
 	    }
 
-	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
-
 	  if (error != NO_ERROR)
 	    {
 	      method_clear_scan_buffer (scan_buffer_p);
+	      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
 	      return S_ERROR;
 	    }
 
@@ -564,7 +563,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 			  1);
 		}
 	      method_clear_scan_buffer (scan_buffer_p);
-
+	      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
 	      return S_ERROR;
 	    }
 
@@ -573,6 +572,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	  if (dbval_list->val == NULL)
 	    {
 	      pr_clear_value (&val);
+	      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
 	      return S_ERROR;
 	    }
 
@@ -584,6 +584,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	  else if (db_value_clone (&val, dbval_list->val) != NO_ERROR)
 	    {
 	      pr_clear_value (&val);
+	      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
 	      return S_ERROR;
 	    }
 	  pr_clear_value (&val);
@@ -592,18 +593,20 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	  meth_sig = meth_sig->next;
 	}
 
+      /* enter server after all jsp functions are finished */
+      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
       return S_SUCCESS;
     }
   else if (crs_result == DB_CURSOR_END)
     {
-      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
       method_clear_scan_buffer (scan_buffer_p);
+      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
       return S_END;
     }
   else
     {
-      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
       method_clear_scan_buffer (scan_buffer_p);
+      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
       return crs_result;
     }
 }
