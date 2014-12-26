@@ -650,4 +650,6 @@ extern void btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p,
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				     RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);
+extern VPID *btree_get_root_page (THREAD_ENTRY * thread_p, BTID * btid, VPID *
+				  root_vpid);
 #endif /* _BTREE_H_ */

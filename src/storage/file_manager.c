@@ -592,9 +592,19 @@ file_descriptor_dump_multi_page_object_heap (FILE * fp,
 					     const FILE_OVF_HEAP_DES *
 					     ovf_hfile_des_p);
 static void
-file_descriptor_dump_btree_overflow_key_file_des (FILE * fp,
-						  const FILE_OVF_BTREE_DES
-						  * btree_ovf_des_p);
+file_descriptor_dump_btree (THREAD_ENTRY * thread_p, FILE * fp,
+			    const FILE_BTREE_DES
+			    * btree_des_p, const VFID * vfid);
+static void
+file_descriptor_dump_btree_overflow_key (FILE * fp,
+					 const FILE_OVF_BTREE_DES
+					 * btree_ovf_des_p);
+static void
+file_descriptor_dump_extendible_hash (THREAD_ENTRY * thread_p, FILE * fp,
+				      const FILE_EHASH_DES * ext_hash_des_p);
+static void
+file_descriptor_dump_long_data (THREAD_ENTRY * thread_p, FILE * fp,
+				const FILE_LO_DES * lo_des_p);
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp,
 				      const OID * class_oid_p);
 static void file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
@@ -3290,6 +3300,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
   fhdr->last_allocset_vpid = table_vpids[0];
   fhdr->last_allocset_offset = offsetof (FILE_HEADER, allocset);
 
+  VPID_SET_NULL (&fhdr->first_alloc_vpid);
+
   /* Add the description comments */
   ret = file_descriptor_insert (thread_p, fhdr, file_des);
   if (ret != NO_ERROR)
@@ -4902,6 +4914,43 @@ file_get_numpages_plus_numpages_overhead (THREAD_ENTRY * thread_p,
   return *numpages + *overhead_numpages;
 }
 #endif
+
+/*
+ * file_get_first_alloc_vpid () - get the page identifier of the first allocated page of
+ *                   the given file
+ *   return: pageid or NULL_PAGEID
+ *   vfid(in): Complete file identifier
+ *   first_vpid(out):
+ */
+VPID *
+file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID *
+			   vfid, VPID * first_vpid)
+{
+  VPID vpid;
+  FILE_HEADER *fhdr;
+  PAGE_PTR fhdr_pgptr = NULL;
+
+  vpid.volid = vfid->volid;
+  vpid.pageid = vfid->fileid;
+
+  fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			  PGBUF_UNCONDITIONAL_LATCH);
+  if (fhdr_pgptr == NULL)
+    {
+      return NULL;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
+  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
+
+  assert (!VPID_ISNULL (&fhdr->first_alloc_vpid));
+  VPID_COPY (first_vpid, &fhdr->first_alloc_vpid);
+
+  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
+
+  return first_vpid;
+}
 
 /*
  * file_guess_numpages_overhead () - Guess the number of additonal overhead
@@ -7032,6 +7081,11 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       first_new_vpid->volid = allocset->volid;
       first_new_vpid->pageid = alloc_pageid;
       answer = FILE_ALLOCSET_ALLOC_NPAGES;
+
+      if (VPID_ISNULL (&fhdr->first_alloc_vpid))
+	{
+	  VPID_COPY (&fhdr->first_alloc_vpid, first_new_vpid);
+	}
     }
   else
     {
@@ -14482,40 +14536,26 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
       break;
 
     case FILE_BTREE:
-      {
-	const FILE_BTREE_DES *btree_des_p = (FILE_BTREE_DES *) file_des_p;
-
-	file_print_class_name_index_name_with_attrid (thread_p, fp,
-						      &btree_des_p->class_oid,
-						      vfid,
-						      btree_des_p->attr_id);
-	break;
-      }
+      file_descriptor_dump_btree (thread_p, fp, (const FILE_BTREE_DES *)
+				  file_des_p, vfid);
+      break;
 
     case FILE_BTREE_OVERFLOW_KEY:
-      file_descriptor_dump_btree_overflow_key_file_des (fp,
-							(const
-							 FILE_OVF_BTREE_DES *)
-							file_des_p);
+      file_descriptor_dump_btree_overflow_key (fp,
+					       (const FILE_OVF_BTREE_DES *)
+					       file_des_p);
       break;
 
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
-      {
-	const FILE_EHASH_DES *ext_hash_des_p = (FILE_EHASH_DES *) file_des_p;
-
-	file_print_name_of_class_with_attrid (thread_p, fp,
-					      &ext_hash_des_p->class_oid,
-					      ext_hash_des_p->attr_id);
-	break;
-      }
+      file_descriptor_dump_extendible_hash (thread_p, fp,
+					    (const FILE_EHASH_DES *)
+					    file_des_p);
+      break;
     case FILE_LONGDATA:
-      {
-	const FILE_LO_DES *lo_des_p = (FILE_LO_DES *) file_des_p;
-
-	file_print_class_name_of_instance (thread_p, fp, &lo_des_p->oid);
-	break;
-      }
+      file_descriptor_dump_long_data (thread_p, fp,
+				      (const FILE_LO_DES *) file_des_p);
+      break;
     case FILE_CATALOG:
     case FILE_QUERY_AREA:
     case FILE_TMP:
@@ -14548,14 +14588,40 @@ file_descriptor_dump_multi_page_object_heap (FILE * fp,
 }
 
 static void
-file_descriptor_dump_btree_overflow_key_file_des (FILE * fp,
-						  const FILE_OVF_BTREE_DES *
-						  btree_ovf_des_p)
+file_descriptor_dump_btree (THREAD_ENTRY * thread_p, FILE * fp,
+			    const FILE_BTREE_DES *
+			    btree_des_p, const VFID * vfid)
+{
+  file_print_class_name_index_name_with_attrid (thread_p, fp,
+						&btree_des_p->class_oid,
+						vfid, btree_des_p->attr_id);
+}
+
+static void
+file_descriptor_dump_btree_overflow_key (FILE * fp,
+					 const FILE_OVF_BTREE_DES *
+					 btree_ovf_des_p)
 {
   fprintf (fp, "Overflow keys for BTID: %2d|%4d|%4d\n",
 	   btree_ovf_des_p->btid.vfid.volid,
 	   btree_ovf_des_p->btid.vfid.fileid,
 	   btree_ovf_des_p->btid.root_pageid);
+}
+
+static void
+file_descriptor_dump_extendible_hash (THREAD_ENTRY * thread_p, FILE * fp,
+				      const FILE_EHASH_DES * ext_hash_des_p)
+{
+  file_print_name_of_class_with_attrid (thread_p, fp,
+					&ext_hash_des_p->class_oid,
+					ext_hash_des_p->attr_id);
+}
+
+static void
+file_descriptor_dump_long_data (THREAD_ENTRY * thread_p, FILE * fp,
+				const FILE_LO_DES * lo_des_p)
+{
+  file_print_class_name_of_instance (thread_p, fp, &lo_des_p->oid);
 }
 
 static void

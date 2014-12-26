@@ -5104,7 +5104,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		  int num_oids, int num_nulls, int num_keys)
 {
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
-  VPID vpid;
+  VPID first_page_vpid, root_vpid;
   PAGE_PTR page_ptr = NULL;
   FILE_BTREE_DES btree_descriptor;
   bool is_file_created = false;
@@ -5129,18 +5129,23 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   /* create a file descriptor, allocate and initialize the root page */
   if (file_create (thread_p, &btid->vfid, 2, FILE_BTREE, &btree_descriptor,
-		   &vpid, 1) == NULL)
+		   &first_page_vpid, 1) == NULL || btree_get_root_page
+      (thread_p, btid, &root_vpid) == NULL)
     {
       goto error;
     }
+
+  assert (VPID_EQ (&first_page_vpid, &root_vpid));
+
   is_file_created = true;
 
   vacuum_log_add_dropped_file (thread_p, &btid->vfid,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   alignment = BTREE_MAX_ALIGN;
-  if (btree_initialize_new_page (thread_p, &btid->vfid, FILE_BTREE, &vpid, 1,
-				 (void *) &alignment) == false)
+  if (btree_initialize_new_page
+      (thread_p, &btid->vfid, FILE_BTREE, &root_vpid, 1,
+       (void *) &alignment) == false)
     {
       goto error;
     }
@@ -5150,8 +5155,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
    * btree_initialize_new_page; we want the current contents of
    * the page.
    */
-  page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			PGBUF_UNCONDITIONAL_LATCH);
+  page_ptr =
+    pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+	       PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
       goto error;
@@ -5220,7 +5226,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   /* set the B+tree index identifier */
-  btid->root_pageid = vpid.pageid;
+  btid->root_pageid = root_vpid.pageid;
 
   return btid;
 
@@ -6705,6 +6711,20 @@ exit_on_error:
 }
 
 /*
+ * btree_get_root_page () -
+ *   return: pageid or NULL_PAGEID
+ *   btid(in): B+tree index identifier
+ *   first_vpid(out):
+ *
+ * Note: get the page identifier of the first allocated page of the given file.
+ */
+VPID *
+btree_get_root_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid)
+{
+  return file_get_first_alloc_vpid (thread_p, &btid->vfid, root_vpid);
+}
+
+/*
  * btree_get_stats () - Get Statistical Information about the B+tree index
  *   return: NO_ERROR
  *   stat_info_p(in/out): Structure to store and
@@ -7610,7 +7630,7 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
       goto exit_on_end;
     }
 
-  if (file_find_nthpages (thread_p, &btid->vfid, &vpid, 0, 1) != 1)
+  if (btree_get_root_page (thread_p, btid, &vpid) == NULL)
     {
       goto exit_on_end;
     }
@@ -8083,7 +8103,7 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid,
 	  return DISK_ERROR;
 	}
 
-      if (file_find_nthpages (thread_p, &btid.vfid, &vpid, 0, 1) != 1)
+      if (btree_get_root_page (thread_p, &btid, &vpid) == NULL)
 	{
 	  if (fd != area)
 	    {
@@ -9023,7 +9043,7 @@ btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp)
 	  continue;
 	}
 
-      if (file_find_nthpages (thread_p, &btid.vfid, &vpid, 0, 1) != 1)
+      if (btree_get_root_page (thread_p, &btid, &vpid) == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -28020,7 +28040,7 @@ btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
       goto exit_on_end;
     }
 
-  if (file_find_nthpages (thread_p, &btid->vfid, &vpid, 0, 1) != 1)
+  if (btree_get_root_page (thread_p, btid, &vpid) == NULL)
     {
       ret = ER_FAILED;
       goto exit_on_end;

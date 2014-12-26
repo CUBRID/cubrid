@@ -197,6 +197,8 @@ struct file_header
   VPID last_allocset_vpid;	/* Address of last allocation set */
   INT16 last_allocset_offset;	/* Offset of last allocation set at vpid */
 
+  VPID first_alloc_vpid;	/* The first allocation page */
+
   struct
   {
     int total_length;		/* Total length of description of file */
@@ -269,6 +271,8 @@ extern INT32 file_get_numpages_plus_numpages_overhead (THREAD_ENTRY *
 						       INT32 *
 						       overhead_numpages);
 #endif
+extern VPID *file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID *
+					vfid, VPID * first_vpid);
 extern int file_get_numfiles (THREAD_ENTRY * thread_p);
 extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p,
 					   const VFID * vfid, INT32 npages);

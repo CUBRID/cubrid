@@ -684,7 +684,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   LOAD_ARGS load_args_info, *load_args;
   int init_pgcnt, i, first_alloc_nthpage;
   int file_created = 0, cur_class, attr_offset;
-  VPID vpid;
+  VPID first_page_vpid, root_vpid;
   INT16 save_volid;
   FILE_BTREE_DES btdes;
   BTID_INT btid_int;
@@ -884,10 +884,14 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   init_pgcnt = BTREE_NUM_ALLOC_PAGES;
 
   if (file_create (thread_p, &btid->vfid, init_pgcnt, FILE_BTREE, &btdes,
-		   &vpid, 1) == NULL)
+		   &first_page_vpid, 1) == NULL || btree_get_root_page
+      (thread_p, btid, &root_vpid) == NULL)
     {
       goto error;
     }
+
+  assert (VPID_EQ (&first_page_vpid, &root_vpid));
+
   file_created = 1;
 
   vacuum_log_add_dropped_file (thread_p, &btid->vfid,
@@ -903,17 +907,17 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
    *       The pages are initialized in btree_get_page
    */
 
-  ret_vpid = file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, &vpid,
-						&first_alloc_nthpage,
-						init_pgcnt, NULL, NULL,
-						NULL, NULL);
+  ret_vpid =
+    file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid,
+				       &root_vpid, &first_alloc_nthpage,
+				       init_pgcnt, NULL, NULL, NULL, NULL);
 
   if (ret_vpid == NULL && er_errid () != ER_INTERRUPTED)
     {
       /* try to allocate pages as many as possible */
       for (i = 0; i < init_pgcnt; i++)
 	{
-	  if (file_alloc_pages (thread_p, &btid->vfid, &vpid, 1,
+	  if (file_alloc_pages (thread_p, &btid->vfid, &root_vpid, 1,
 				NULL, NULL, NULL) == NULL)
 	    {
 	      break;
@@ -953,12 +957,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
     }
 
   /* Allocate a root page and save the page_id */
-  if (file_find_nthpages (thread_p, &load_args->btid->sys_btid->vfid, &vpid,
-			  0, 1) != 1)
+  if (file_find_nthpages
+      (thread_p, &load_args->btid->sys_btid->vfid, &root_vpid, 0, 1) != 1)
     {
       goto error;
     }
-  load_args->btid->sys_btid->root_pageid = vpid.pageid;
+  load_args->btid->sys_btid->root_pageid = root_vpid.pageid;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {

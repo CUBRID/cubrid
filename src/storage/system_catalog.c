@@ -2761,7 +2761,7 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p,
 		DKNPAGES expected_pages, DKNPAGES expected_index_entries)
 {
   PAGE_PTR page_p;
-  VPID vpid;
+  VPID first_page_vpid;
   int new_space;
   bool is_overflow_page = false;
 
@@ -2773,14 +2773,14 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p,
     }
 
   if (file_create (thread_p, &catalog_id_p->vfid, expected_pages,
-		   FILE_CATALOG, NULL, &vpid, 1) == NULL)
+		   FILE_CATALOG, NULL, &first_page_vpid, 1) == NULL)
     {
       (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
       return NULL;
     }
 
   if (catalog_initialize_new_page (thread_p, &catalog_id_p->vfid,
-				   FILE_CATALOG, &vpid, 1,
+				   FILE_CATALOG, &first_page_vpid, 1,
 				   (void *) is_overflow_page) == false)
     {
       (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
@@ -2788,7 +2788,7 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p,
       return NULL;
     }
 
-  catalog_id_p->hpgid = vpid.pageid;
+  catalog_id_p->hpgid = first_page_vpid.pageid;
 
   /*
    * Note: we fetch the page as old since it was initialized during the
@@ -2796,7 +2796,7 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p,
    * contents of the page.
    */
 
-  page_p = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+  page_p = pgbuf_fix (thread_p, &first_page_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		      PGBUF_UNCONDITIONAL_LATCH);
   if (page_p == NULL)
     {
@@ -2814,7 +2814,7 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p,
     }
 
   new_space = spage_max_space_for_new_record (thread_p, page_p);
-  catalog_update_max_space (&vpid, new_space);
+  catalog_update_max_space (&first_page_vpid, new_space);
   pgbuf_unfix_and_init (thread_p, page_p);
 
   return catalog_id_p;
