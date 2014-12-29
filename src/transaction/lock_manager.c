@@ -3235,8 +3235,6 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
 			 int tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *inst_entry;
-  int s_count, x_count;
   LOCK max_class_lock = NULL_LOCK;	/* escalated class lock mode */
   int granted;
   int wait_msecs;
@@ -3282,48 +3280,17 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
 
   /* class_entry->granted_mode : IS_LOCK, IX_LOCK or SIX_LOCK */
 
-  /* count shared and exclusive instance locks for the class */
-  s_count = x_count = 0;
-  inst_entry = tran_lock->inst_hold_list;
-  for (; inst_entry != (LK_ENTRY *) NULL; inst_entry = inst_entry->tran_next)
-    {
-      if (!OID_EQ (&class_entry->res_head->key.oid,
-		   &inst_entry->res_head->key.class_oid))
-	{
-	  continue;
-	}
-
-      switch (inst_entry->granted_mode)
-	{
-	case S_LOCK:
-	  s_count++;
-	  break;
-	case NS_LOCK:
-	case NX_LOCK:
-	case U_LOCK:
-	case X_LOCK:
-	  x_count++;
-	  break;
-	default:
-	  break;
-	}
-    }
-
-  /* find the class that has the largest number of instance locks */
-  if (s_count < x_count)
+  /* Because to count the shared and exclusive instance locks may
+   * cause high CPU usage, we used a simple rule to decide
+   * the escalated class lock mode */
+  if (class_entry->granted_mode == IX_LOCK
+      || class_entry->granted_mode == SIX_LOCK)
     {
       max_class_lock = X_LOCK;
     }
   else
     {
-      if (class_entry->granted_mode == IX_LOCK)
-	{
-	  max_class_lock = SIX_LOCK;
-	}
-      else
-	{
-	  max_class_lock = S_LOCK;
-	}
+      max_class_lock = S_LOCK;
     }
 
   pthread_mutex_unlock (&tran_lock->hold_mutex);
