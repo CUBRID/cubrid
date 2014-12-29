@@ -5334,6 +5334,20 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
     }
   ptr = or_pack_int (ptr, offset);
 
+  if (aggregate->function == PT_PERCENTILE_CONT
+      || aggregate->function == PT_PERCENTILE_DISC)
+    {
+      /* percentile_reguvar */
+      offset = xts_save_regu_variable
+	(aggregate->info.percentile.percentile_reguvar);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+
+      ptr = or_pack_int (ptr, offset);
+    }
+
   return ptr;
 }
 
@@ -5437,6 +5451,19 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
   ptr = or_pack_int (ptr, analytic->ignore_nulls);
 
   ptr = or_pack_int (ptr, analytic->is_const_operand);
+
+  if (analytic->function == PT_PERCENTILE_CONT
+      || analytic->function == PT_PERCENTILE_DISC)
+    {
+      offset = xts_save_regu_variable (analytic->
+				       info.percentile.percentile_reguvar);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+
+      ptr = or_pack_int (ptr, offset);
+    }
 
   return ptr;
 }
@@ -6860,6 +6887,11 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
   int size = 0;
   int tmp_size = 0;
 
+  if (regu_var == NULL)
+    {
+      return 0;
+    }
+
   /* we prepend the domain before we pack the regu_variable */
   size += or_packed_domain_size (regu_var->domain, 0);
   size += OR_INT_SIZE;		/* type */
@@ -7046,6 +7078,25 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
 
   size += PTR_SIZE;		/* sort_info */
 
+  /* percentile value */
+  if (aggregate->function == PT_PERCENTILE_CONT
+      || aggregate->function == PT_PERCENTILE_DISC)
+    {
+      /* percentile_reguvar */
+      size += OR_INT_SIZE;
+      if (aggregate->info.percentile.percentile_reguvar != NULL)
+	{
+	  tmp_size = xts_sizeof_regu_variable
+	    (aggregate->info.percentile.percentile_reguvar);
+	  if (tmp_size == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  size += tmp_size;
+	}
+    }
+
   return size;
 }
 
@@ -7100,6 +7151,25 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
       return ER_FAILED;
     }
   size += tmp_size;
+
+  /* percentile value */
+  if (analytic->function == PT_PERCENTILE_CONT
+      || analytic->function == PT_PERCENTILE_DISC)
+    {
+      size += OR_INT_SIZE;
+      if (analytic->info.percentile.percentile_reguvar != NULL)
+	{
+	  tmp_size = xts_sizeof_regu_variable (analytic->
+					       info.percentile.
+					       percentile_reguvar);
+	  if (tmp_size == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  size += tmp_size;
+	}
+    }
 
   return size;
 }

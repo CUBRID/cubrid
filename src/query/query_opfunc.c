@@ -401,10 +401,12 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 		      VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
 
-static int qdata_aggregate_evaluate_median_function (THREAD_ENTRY * thread_p,
-						     AGGREGATE_TYPE * agg_p,
-						     QFILE_LIST_SCAN_ID *
-						     scan_id);
+static int qdata_aggregate_evaluate_interpolation_function (THREAD_ENTRY *
+							    thread_p,
+							    AGGREGATE_TYPE *
+							    agg_p,
+							    QFILE_LIST_SCAN_ID
+							    * scan_id);
 
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *,
 				   int, DB_VALUE **) =
@@ -417,8 +419,8 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
 						  VAL_DESCR * val_desc_p);
 
 static int
-qdata_update_agg_interpolate_func_value_and_domain (AGGREGATE_TYPE * agg_p,
-						    DB_VALUE * val);
+qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p,
+						      DB_VALUE * val);
 
 /*
  * qdata_dummy () -
@@ -7489,10 +7491,19 @@ qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      /* init agg_info */
-      agg_p->agg_info.const_array = NULL;
-      agg_p->agg_info.list_len = 0;
-      agg_p->agg_info.nlargers = 0;
+      if (agg_p->function == PT_CUME_DIST
+	  || agg_p->function == PT_PERCENT_RANK)
+	{
+	  /* init info.dist_percent */
+	  agg_p->info.dist_percent.const_array = NULL;
+	  agg_p->info.dist_percent.list_len = 0;
+	  agg_p->info.dist_percent.nlargers = 0;
+	}
+      else
+	{
+	  /* If there are other functions need initializing. Do it here. */
+	  ;
+	}
     }
 
   return NO_ERROR;
@@ -7876,12 +7887,13 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 {
   AGGREGATE_TYPE *agg_p;
   AGGREGATE_ACCUMULATOR *accumulator;
-  DB_VALUE dbval;
+  DB_VALUE dbval, *percentile_val = NULL;
   PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
   OR_BUF buf;
   char *disk_repr_p = NULL;
   int dbval_size, i, error;
+  AGGREGATE_PERCENTILE_INFO *percentile = NULL;
 
   DB_MAKE_NULL (&dbval);
 
@@ -7963,14 +7975,14 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	  /* convert domain to the median domains (number, date/time)
 	   * to make 1,2,11 '1','2','11' result the same
 	   */
-	  if (agg_p->function == PT_MEDIAN)
+	  if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	    {
 	      /* never be null type */
 	      assert (!DB_IS_NULL (&dbval));
 
 	      error =
-		qdata_update_agg_interpolate_func_value_and_domain (agg_p,
-								    &dbval);
+		qdata_update_agg_interpolation_func_value_and_domain (agg_p,
+								      &dbval);
 	      if (error != NO_ERROR)
 		{
 		  pr_clear_value (&dbval);
@@ -8016,13 +8028,60 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 
 	  db_private_free_and_init (thread_p, disk_repr_p);
 	  pr_clear_value (&dbval);
-	  continue;
+
+	  /* for PERCENTILE funcs, we have to check percentile value */
+	  if (agg_p->function != PT_PERCENTILE_CONT
+	      && agg_p->function != PT_PERCENTILE_DISC)
+	    {
+	      continue;
+	    }
 	}
 
-      if (agg_p->function == PT_MEDIAN)
+      if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	{
+	  percentile = &agg_p->info.percentile;
+	  /* when build value */
+	  if (agg_p->function == PT_PERCENTILE_CONT
+	      || agg_p->function == PT_PERCENTILE_DISC)
+	    {
+	      assert (percentile->percentile_reguvar != NULL);
+
+	      error = fetch_peek_dbval (thread_p,
+					percentile->percentile_reguvar,
+					val_desc_p, NULL, NULL, NULL,
+					&percentile_val);
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+
+		  return ER_FAILED;
+		}
+	    }
+
 	  if (agg_p->accumulator.curr_cnt < 1)
 	    {
+	      if (agg_p->function == PT_PERCENTILE_CONT
+		  || agg_p->function == PT_PERCENTILE_DISC)
+		{
+		  if (DB_VALUE_TYPE (percentile_val) != DB_TYPE_DOUBLE)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_QPROC_INVALID_DATATYPE, 0);
+		      return ER_FAILED;
+		    }
+
+		  percentile->cur_group_percentile =
+		    DB_GET_DOUBLE (percentile_val);
+		  if (percentile->cur_group_percentile < 0
+		      || percentile->cur_group_percentile > 1)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE, 1,
+			      percentile->cur_group_percentile);
+		      return ER_FAILED;
+		    }
+		}
+
 	      if (agg_p->sort_list == NULL)
 		{
 		  TP_DOMAIN *tmp_domain_p = NULL;
@@ -8083,7 +8142,9 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 			{
 			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-				  "MEDIAN", "DOUBLE, DATETIME, TIME");
+				  qdump_function_type_string (agg_p->
+							      function),
+				  "DOUBLE, DATETIME, TIME");
 
 			  pr_clear_value (&dbval);
 			  return error;
@@ -8105,6 +8166,20 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 
 	  /* clear value */
 	  pr_clear_value (&dbval);
+
+	  /* percentile value check */
+	  if (agg_p->function == PT_PERCENTILE_CONT
+	      || agg_p->function == PT_PERCENTILE_DISC)
+	    {
+	      if (DB_VALUE_TYPE (percentile_val) != DB_TYPE_DOUBLE
+		  || DB_GET_DOUBLE (percentile_val) !=
+		  percentile->cur_group_percentile)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP, 0);
+		  return ER_FAILED;
+		}
+	    }
 	}
       else if (agg_p->function == PT_GROUP_CONCAT)
 	{
@@ -8476,17 +8551,17 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	{
 	  /* calculate the result for CUME_DIST */
 	  dbl =
-	    (double) (agg_p->agg_info.nlargers +
+	    (double) (agg_p->info.dist_percent.nlargers +
 		      1) / (agg_p->accumulator.curr_cnt + 1);
 	  assert (dbl <= 1.0 && dbl > 0.0);
 	  DB_MAKE_DOUBLE (agg_p->accumulator.value, dbl);
 
 	  /* free const_array */
-	  if (agg_p->agg_info.const_array != NULL)
+	  if (agg_p->info.dist_percent.const_array != NULL)
 	    {
 	      db_private_free_and_init (thread_p,
-					agg_p->agg_info.const_array);
-	      agg_p->agg_info.list_len = 0;
+					agg_p->info.dist_percent.const_array);
+	      agg_p->info.dist_percent.list_len = 0;
 	    }
 	  continue;
 	}
@@ -8500,18 +8575,18 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	  else
 	    {
 	      dbl =
-		(double) (agg_p->agg_info.nlargers) /
+		(double) (agg_p->info.dist_percent.nlargers) /
 		agg_p->accumulator.curr_cnt;
 	    }
 	  assert (dbl <= 1.0 && dbl >= 0.0);
 	  DB_MAKE_DOUBLE (agg_p->accumulator.value, dbl);
 
 	  /* free const_array */
-	  if (agg_p->agg_info.const_array != NULL)
+	  if (agg_p->info.dist_percent.const_array != NULL)
 	    {
 	      db_private_free_and_init (thread_p,
-					agg_p->agg_info.const_array);
-	      agg_p->agg_info.list_len = 0;
+					agg_p->info.dist_percent.const_array);
+	      agg_p->info.dist_percent.list_len = 0;
 	    }
 	  continue;
 	}
@@ -8564,14 +8639,13 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 		      goto exit;
 		    }
 
-		  /* median don't need to read all rows */
-		  if (agg_p->function == PT_MEDIAN
-		      && list_id_p->tuple_cnt > 0)
+		  /* median and percentile funcs don't need to read all rows */
+		  if (list_id_p->tuple_cnt > 0
+		      && QPROC_IS_INTERPOLATION_FUNC (agg_p))
 		    {
 		      error =
-			qdata_aggregate_evaluate_median_function (thread_p,
-								  agg_p,
-								  &scan_id);
+			qdata_aggregate_evaluate_interpolation_function
+			(thread_p, agg_p, &scan_id);
 		      if (error != NO_ERROR)
 			{
 			  qfile_close_scan (thread_p, &scan_id);
@@ -11545,6 +11619,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   int coll_id;
+  ANALYTIC_PERCENTILE_FUNCTION_INFO *percentile_info_p = NULL;
+  DB_VALUE *peek_value_p = NULL;
 
   DB_MAKE_NULL (&dbval);
   DB_MAKE_NULL (&sqr_val);
@@ -11620,7 +11696,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       && func_p->function != PT_NTH_VALUE
       && func_p->function != PT_RANK
       && func_p->function != PT_DENSE_RANK
-      && func_p->function != PT_LEAD && func_p->function != PT_LAG)
+      && func_p->function != PT_LEAD
+      && func_p->function != PT_LAG && !QPROC_IS_INTERPOLATION_FUNC (func_p))
     {
       if (func_p->function == PT_COUNT || func_p->function == PT_COUNT_STAR)
 	{
@@ -11964,92 +12041,167 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       break;
 
     case PT_MEDIAN:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
+      if (func_p->function == PT_PERCENTILE_CONT
+	  || func_p->function == PT_PERCENTILE_DISC)
+	{
+	  percentile_info_p = &func_p->info.percentile;
+	}
+
       if (func_p->curr_cnt < 1)
 	{
-	  /* determine domain based on first value */
-	  switch (func_p->opr_dbtype)
+	  if (func_p->function == PT_PERCENTILE_CONT
+	      || func_p->function == PT_PERCENTILE_DISC)
 	    {
-	    case DB_TYPE_SHORT:
-	    case DB_TYPE_INTEGER:
-	    case DB_TYPE_BIGINT:
-	    case DB_TYPE_FLOAT:
-	    case DB_TYPE_DOUBLE:
-	    case DB_TYPE_MONETARY:
-	    case DB_TYPE_NUMERIC:
-	      if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+	      error = fetch_peek_dbval (thread_p,
+					percentile_info_p->percentile_reguvar,
+					NULL, NULL, NULL, NULL,
+					&peek_value_p);
+	      if (error != NO_ERROR)
 		{
-		  if (func_p->is_const_operand)
-		    {
-		      func_p->domain =
-			tp_domain_resolve_default (func_p->opr_dbtype);
-		    }
-		  else
-		    {
-		      func_p->domain =
-			tp_domain_resolve_default (DB_TYPE_DOUBLE);
-		    }
-		}
-	      break;
+		  assert (er_errid () != NO_ERROR);
 
-	    case DB_TYPE_DATE:
-	      if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
-		{
-		  func_p->domain = tp_domain_resolve_default (DB_TYPE_DATE);
-		}
-	      break;
-
-	    case DB_TYPE_DATETIME:
-	    case DB_TYPE_TIMESTAMP:
-	      if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
-		{
-		  func_p->domain =
-		    tp_domain_resolve_default (DB_TYPE_DATETIME);
-		}
-	      break;
-
-	    case DB_TYPE_TIME:
-	      if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
-		{
-		  func_p->domain = tp_domain_resolve_default (DB_TYPE_TIME);
-		}
-	      break;
-
-	    default:
-	      /* try to cast dbval to double, datetime then time */
-	      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-
-	      dom_status = tp_value_cast (&dbval, &dbval,
-					  tmp_domain_p, false);
-	      if (dom_status != DOMAIN_COMPATIBLE)
-		{
-		  /* try datetime */
-		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
-
-		  dom_status = tp_value_cast (&dbval, &dbval,
-					      tmp_domain_p, false);
-		}
-
-	      /* try time */
-	      if (dom_status != DOMAIN_COMPATIBLE)
-		{
-		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
-
-		  dom_status = tp_value_cast (&dbval, &dbval,
-					      tmp_domain_p, false);
-		}
-
-	      if (dom_status != DOMAIN_COMPATIBLE)
-		{
-		  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-			  "MEDIAN", "DOUBLE, DATETIME, TIME");
-
-		  pr_clear_value (&dbval);
 		  return ER_FAILED;
 		}
 
-	      /* update domain */
-	      func_p->domain = tmp_domain_p;
+	      if ((peek_value_p == NULL)
+		  || (DB_VALUE_TYPE (peek_value_p) != DB_TYPE_DOUBLE))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_QPROC_INVALID_DATATYPE, 0);
+		  return ER_FAILED;
+		}
+
+	      percentile_info_p->cur_group_percentile =
+		DB_GET_DOUBLE (peek_value_p);
+	      if ((percentile_info_p->cur_group_percentile < 0)
+		  || (percentile_info_p->cur_group_percentile > 1))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE, 1,
+			  percentile_info_p->cur_group_percentile);
+		  return ER_FAILED;
+		}
+	    }
+
+	  if (func_p->is_first_exec_time)
+	    {
+	      func_p->is_first_exec_time = false;
+	      /* determine domain based on first value */
+	      switch (func_p->opr_dbtype)
+		{
+		case DB_TYPE_SHORT:
+		case DB_TYPE_INTEGER:
+		case DB_TYPE_BIGINT:
+		case DB_TYPE_FLOAT:
+		case DB_TYPE_DOUBLE:
+		case DB_TYPE_MONETARY:
+		case DB_TYPE_NUMERIC:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      if (func_p->is_const_operand)
+			{
+			  func_p->domain =
+			    tp_domain_resolve_default (func_p->opr_dbtype);
+			}
+		      else
+			{
+			  func_p->domain =
+			    tp_domain_resolve_default (DB_TYPE_DOUBLE);
+			}
+		    }
+		  break;
+
+		case DB_TYPE_DATE:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_DATE);
+		    }
+		  break;
+
+		case DB_TYPE_DATETIME:
+		case DB_TYPE_TIMESTAMP:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_DATETIME);
+		    }
+		  break;
+
+		case DB_TYPE_TIME:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_TIME);
+		    }
+		  break;
+
+		default:
+		  /* try to cast dbval to double, datetime then time */
+		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+		  dom_status = tp_value_cast (&dbval, &dbval,
+					      tmp_domain_p, false);
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      /* try datetime */
+		      tmp_domain_p =
+			tp_domain_resolve_default (DB_TYPE_DATETIME);
+
+		      dom_status = tp_value_cast (&dbval, &dbval,
+						  tmp_domain_p, false);
+		    }
+
+		  /* try time */
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+
+		      dom_status = tp_value_cast (&dbval, &dbval,
+						  tmp_domain_p, false);
+		    }
+
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			      qdump_function_type_string (func_p->function),
+			      "DOUBLE, DATETIME, TIME");
+
+		      pr_clear_value (&dbval);
+		      return ER_FAILED;
+		    }
+
+		  /* update domain */
+		  func_p->domain = tmp_domain_p;
+		}
+	    }
+	}
+
+      /* percentile value check */
+      if (func_p->function == PT_PERCENTILE_CONT
+	  || func_p->function == PT_PERCENTILE_DISC)
+	{
+	  error = fetch_peek_dbval (thread_p,
+				    percentile_info_p->percentile_reguvar,
+				    NULL, NULL, NULL, NULL, &peek_value_p);
+	  if (error != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+
+	      return ER_FAILED;
+	    }
+
+	  if ((peek_value_p == NULL)
+	      || (DB_VALUE_TYPE (peek_value_p) != DB_TYPE_DOUBLE)
+	      || (DB_GET_DOUBLE (peek_value_p)
+		  != func_p->info.percentile.cur_group_percentile))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP, 0);
+	      return ER_FAILED;
 	    }
 	}
 
@@ -12528,7 +12680,7 @@ error_return:
 }
 
 /*
- * qdata_aggregate_evaluate_median_function () -
+ * qdata_aggregate_evaluate_interpolation_function () -
  * return : error code or NO_ERROR
  * thread_p (in)    : thread entry
  * agg_p (in)       :
@@ -12536,16 +12688,18 @@ error_return:
  * NOTE: scan_id is release at the caller
  */
 static int
-qdata_aggregate_evaluate_median_function (THREAD_ENTRY * thread_p,
-					  AGGREGATE_TYPE * agg_p,
-					  QFILE_LIST_SCAN_ID * scan_id)
+qdata_aggregate_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
+						 AGGREGATE_TYPE * agg_p,
+						 QFILE_LIST_SCAN_ID * scan_id)
 {
   int error = NO_ERROR;
   int tuple_count;
-  double row_num_d, f_row_num_d, c_row_num_d;
+  double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
 
-  assert (agg_p != NULL && agg_p->function == PT_MEDIAN
-	  && scan_id != NULL && scan_id->status == S_OPENED);
+  assert (agg_p != NULL
+	  && scan_id != NULL
+	  && scan_id->status == S_OPENED
+	  && QPROC_IS_INTERPOLATION_FUNC (agg_p));
 
   tuple_count = scan_id->list_id.tuple_cnt;
   if (tuple_count < 1)
@@ -12553,16 +12707,39 @@ qdata_aggregate_evaluate_median_function (THREAD_ENTRY * thread_p,
       return NO_ERROR;
     }
 
-  row_num_d = ((double) (tuple_count - 1)) / 2;
-  f_row_num_d = floor (row_num_d);
-  c_row_num_d = ceil (row_num_d);
+  if (agg_p->function == PT_MEDIAN)
+    {
+      percentile_d = 0.5;
+    }
+  else
+    {
+      percentile_d = agg_p->info.percentile.cur_group_percentile;
 
-  error = qdata_get_median_function_result (thread_p, scan_id,
-					    scan_id->list_id.type_list.
-					    domp[0], 0, row_num_d,
-					    f_row_num_d, c_row_num_d,
-					    agg_p->accumulator.value,
-					    &agg_p->domain);
+      if (agg_p->function == PT_PERCENTILE_DISC)
+	{
+	  percentile_d = ceil (percentile_d * tuple_count) / tuple_count;
+	}
+    }
+
+  row_num_d = ((double) (tuple_count - 1)) * percentile_d;
+  f_row_num_d = floor (row_num_d);
+
+  if (agg_p->function == PT_PERCENTILE_DISC)
+    {
+      c_row_num_d = f_row_num_d;
+    }
+  else
+    {
+      c_row_num_d = ceil (row_num_d);
+    }
+
+  error = qdata_get_interpolation_function_result (thread_p, scan_id,
+						   scan_id->list_id.type_list.
+						   domp[0], 0, row_num_d,
+						   f_row_num_d, c_row_num_d,
+						   agg_p->accumulator.value,
+						   &agg_p->domain,
+						   agg_p->function);
 
   if (TP_DOMAIN_TYPE (agg_p->domain) != agg_p->opr_dbtype)
     {
@@ -12573,7 +12750,7 @@ qdata_aggregate_evaluate_median_function (THREAD_ENTRY * thread_p,
 }
 
 /*
- * qdata_apply_median_function_coercion () - coerce input value for use in
+ * qdata_apply_interpolation_function_coercion () - coerce input value for use in
  *					     MEDIAN function evaluation
  *   returns: error code or NO_ERROR
  *   f_value(in): input value
@@ -12582,9 +12759,11 @@ qdata_aggregate_evaluate_median_function (THREAD_ENTRY * thread_p,
  *   result(out): result as DB_VALUE
  */
 int
-qdata_apply_median_function_coercion (DB_VALUE * f_value,
-				      TP_DOMAIN ** result_dom,
-				      double *d_result, DB_VALUE * result)
+qdata_apply_interpolation_function_coercion (DB_VALUE * f_value,
+					     TP_DOMAIN ** result_dom,
+					     double *d_result,
+					     DB_VALUE * result,
+					     FUNC_TYPE function)
 {
   DB_TYPE type;
   int error = NO_ERROR;
@@ -12657,15 +12836,16 @@ qdata_apply_median_function_coercion (DB_VALUE * f_value,
       if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	{
 	  error =
-	    qdata_update_interpolate_func_value_and_domain (f_value,
-							    result,
-							    result_dom);
+	    qdata_update_interpolation_func_value_and_domain (f_value,
+							      result,
+							      result_dom);
 	  if (error != NO_ERROR)
 	    {
 	      assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-		      "MEDIAN", "DOUBLE, DATETIME, TIME");
+		      qdump_function_type_string (function),
+		      "DOUBLE, DATETIME, TIME");
 
 	      error = ER_FAILED;
 	      goto end;
@@ -12687,7 +12867,7 @@ end:
 }
 
 /*
- * qdata_interpolate_median_function_values () - interpolate two values for use
+ * qdata_interpolation_function_values () - interpolate two values for use
  *						 in MEDIAN function evaluation
  *   returns: error code or NO_ERROR
  *   f_value(in): "floor" value (i.e. first value in tuple order)
@@ -12700,13 +12880,14 @@ end:
  *   result(out): result as DB_VALUE
  */
 int
-qdata_interpolate_median_function_values (DB_VALUE * f_value,
-					  DB_VALUE * c_value,
-					  double row_num_d,
-					  double f_row_num_d,
-					  double c_row_num_d,
-					  TP_DOMAIN ** result_dom,
-					  double *d_result, DB_VALUE * result)
+qdata_interpolation_function_values (DB_VALUE * f_value,
+				     DB_VALUE * c_value,
+				     double row_num_d,
+				     double f_row_num_d,
+				     double c_row_num_d,
+				     TP_DOMAIN ** result_dom,
+				     double *d_result,
+				     DB_VALUE * result, FUNC_TYPE function)
 {
   DB_DATE date;
   DB_DATETIME datetime;
@@ -12733,15 +12914,16 @@ qdata_interpolate_median_function_values (DB_VALUE * f_value,
 	   * and save domain for next coerce
 	   */
 	  error =
-	    qdata_update_interpolate_func_value_and_domain (f_value,
-							    f_value,
-							    result_dom);
+	    qdata_update_interpolation_func_value_and_domain (f_value,
+							      f_value,
+							      result_dom);
 	  if (error != NO_ERROR)
 	    {
 	      assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-		      "MEDIAN", "DOUBLE, DATETIME, TIME");
+		      qdump_function_type_string (function),
+		      "DOUBLE, DATETIME, TIME");
 
 	      error = ER_FAILED;
 	      goto end;
@@ -12934,7 +13116,7 @@ end:
 }
 
 /*
- * qdata_get_median_function_result () -
+ * qdata_get_interpolation_function_result () -
  * return : error code or NO_ERROR
  * thread_p (in)     : thread entry
  * scan_id (in)      :
@@ -12947,14 +13129,16 @@ end:
  *
  */
 int
-qdata_get_median_function_result (THREAD_ENTRY * thread_p,
-				  QFILE_LIST_SCAN_ID * scan_id,
-				  TP_DOMAIN * domain,
-				  int pos,
-				  double row_num_d,
-				  double f_row_num_d,
-				  double c_row_num_d,
-				  DB_VALUE * result, TP_DOMAIN ** result_dom)
+qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p,
+					 QFILE_LIST_SCAN_ID * scan_id,
+					 TP_DOMAIN * domain,
+					 int pos,
+					 double row_num_d,
+					 double f_row_num_d,
+					 double c_row_num_d,
+					 DB_VALUE * result,
+					 TP_DOMAIN ** result_dom,
+					 FUNC_TYPE function)
 {
   int error = NO_ERROR;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
@@ -13012,8 +13196,9 @@ qdata_get_median_function_result (THREAD_ENTRY * thread_p,
   if (f_row_num_d == c_row_num_d)
     {
       error =
-	qdata_apply_median_function_coercion (f_value, result_dom, &d_result,
-					      result);
+	qdata_apply_interpolation_function_coercion (f_value, result_dom,
+						     &d_result, result,
+						     function);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -13042,10 +13227,10 @@ qdata_get_median_function_result (THREAD_ENTRY * thread_p,
 	}
 
       error =
-	qdata_interpolate_median_function_values (f_value, c_value, row_num_d,
-						  f_row_num_d, c_row_num_d,
-						  result_dom, &d_result,
-						  result);
+	qdata_interpolation_function_values (f_value, c_value, row_num_d,
+					     f_row_num_d, c_row_num_d,
+					     result_dom, &d_result, result,
+					     function);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -13086,7 +13271,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
   assert (agg_p != NULL && agg_p->sort_list != NULL);
 
   regu_var_list = agg_p->operand.value.regu_var_list;
-  info_p = &agg_p->agg_info;
+  info_p = &agg_p->info.dist_percent;
   assert (regu_var_list != NULL && info_p != NULL);
 
   sort_p = agg_p->sort_list;
@@ -13132,7 +13317,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
 	}
 
       /* now we have found the start of the const list,
-       *  fetch DB_VALUE from the list into agg_info
+       *  fetch DB_VALUE from the list into info.dist_percent
        */
       regu_tmp_node = regu_var_list;
       for (i = 0; i < nloops; i++)
@@ -13261,9 +13446,10 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
 
 exit_on_error:
   /* error! free const_array */
-  if (agg_p->agg_info.const_array != NULL)
+  if (agg_p->info.dist_percent.const_array != NULL)
     {
-      db_private_free_and_init (thread_p, agg_p->agg_info.const_array);
+      db_private_free_and_init (thread_p,
+				agg_p->info.dist_percent.const_array);
     }
   return ER_FAILED;
 }
@@ -14036,22 +14222,22 @@ qdata_save_agg_htable_to_list (THREAD_ENTRY * thread_p,
 }
 
 /*
- * qdata_update_agg_interpolate_func_value_and_domain () -
+ * qdata_update_agg_interpolation_func_value_and_domain () -
  *   return: NO_ERROR, or error code
  *   agg_p(in): aggregate type
  *   val(in):
  *
  */
 static int
-qdata_update_agg_interpolate_func_value_and_domain (AGGREGATE_TYPE * agg_p,
-						    DB_VALUE * dbval)
+qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p,
+						      DB_VALUE * dbval)
 {
   int error = NO_ERROR;
   DB_TYPE dbval_type;
 
   assert (dbval != NULL
 	  && agg_p != NULL
-	  && agg_p->function == PT_MEDIAN
+	  && QPROC_IS_INTERPOLATION_FUNC (agg_p)
 	  && agg_p->sort_list != NULL
 	  && agg_p->list_id != NULL
 	  && agg_p->list_id->type_list.type_cnt == 1);
@@ -14072,15 +14258,16 @@ qdata_update_agg_interpolate_func_value_and_domain (AGGREGATE_TYPE * agg_p,
   if (dbval_type != DB_TYPE_DOUBLE && !TP_IS_DATE_OR_TIME_TYPE (dbval_type))
     {
       error =
-	qdata_update_interpolate_func_value_and_domain (dbval,
-							dbval,
-							&agg_p->domain);
+	qdata_update_interpolation_func_value_and_domain (dbval,
+							  dbval,
+							  &agg_p->domain);
       if (error != NO_ERROR)
 	{
 	  assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-		  "MEDIAN", "DOUBLE, DATETIME, TIME");
+		  qdump_function_type_string (agg_p->function),
+		  "DOUBLE, DATETIME, TIME");
 	  goto end;
 	}
     }
@@ -14112,7 +14299,7 @@ end:
 }
 
 /*
- * qdata_update_interpolate_func_value_and_domain () -
+ * qdata_update_interpolation_func_value_and_domain () -
  *   return: NO_ERROR or ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN
  *   src_val(in):
  *   dest_val(out):
@@ -14120,9 +14307,9 @@ end:
  *
  */
 int
-qdata_update_interpolate_func_value_and_domain (DB_VALUE * src_val,
-						DB_VALUE * dest_val,
-						TP_DOMAIN ** domain)
+qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val,
+						  DB_VALUE * dest_val,
+						  TP_DOMAIN ** domain)
 {
   int error = NO_ERROR;
   DB_DOMAIN *tmp_domain = NULL;

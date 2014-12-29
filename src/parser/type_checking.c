@@ -13876,6 +13876,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_MEDIAN:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
       if (arg_type != PT_TYPE_NULL
 	  && arg_type != PT_TYPE_NA
 	  && !PT_IS_NUMERIC_TYPE (arg_type)
@@ -14012,6 +14014,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 
 	case PT_MEDIAN:
+	case PT_PERCENTILE_CONT:
+	case PT_PERCENTILE_DISC:
 	  /* let calculation decide the type */
 	  node->type_enum = PT_TYPE_MAYBE;
 	  node->data_type = NULL;

@@ -335,32 +335,37 @@ extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p,
 					QFILE_TUPLE_DESCRIPTOR * tuple,
 					DB_VALUE ** values);
 extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
-extern int qdata_apply_median_function_coercion (DB_VALUE * f_value,
-						 TP_DOMAIN ** result_dom,
-						 double *d_result,
-						 DB_VALUE * result);
-extern int qdata_interpolate_median_function_values (DB_VALUE * f_value,
-						     DB_VALUE * c_value,
-						     double row_num_d,
-						     double f_row_num_d,
-						     double c_row_num_d,
-						     TP_DOMAIN ** result_dom,
-						     double *d_result,
-						     DB_VALUE * result);
-extern int qdata_get_median_function_result (THREAD_ENTRY * thread_p,
-					     QFILE_LIST_SCAN_ID * scan_id,
-					     TP_DOMAIN * domain,
-					     int pos,
-					     double row_num_d,
-					     double f_row_num_d,
-					     double c_row_num_d,
-					     DB_VALUE * result,
-					     TP_DOMAIN ** result_dom);
-extern int qdata_update_interpolate_func_value_and_domain (DB_VALUE * src_val,
-							   DB_VALUE *
-							   dest_val,
-							   TP_DOMAIN **
-							   domain);
+extern int qdata_apply_interpolation_function_coercion (DB_VALUE * f_value,
+							TP_DOMAIN **
+							result_dom,
+							double *d_result,
+							DB_VALUE * result,
+							FUNC_TYPE function);
+extern int qdata_interpolation_function_values (DB_VALUE * f_value,
+						DB_VALUE * c_value,
+						double row_num_d,
+						double f_row_num_d,
+						double c_row_num_d,
+						TP_DOMAIN ** result_dom,
+						double *d_result,
+						DB_VALUE * result,
+						FUNC_TYPE function);
+extern int qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p,
+						    QFILE_LIST_SCAN_ID *
+						    scan_id,
+						    TP_DOMAIN * domain,
+						    int pos, double row_num_d,
+						    double f_row_num_d,
+						    double c_row_num_d,
+						    DB_VALUE * result,
+						    TP_DOMAIN ** result_dom,
+						    FUNC_TYPE function);
+extern int qdata_update_interpolation_func_value_and_domain (DB_VALUE *
+							     src_val,
+							     DB_VALUE *
+							     dest_val,
+							     TP_DOMAIN **
+							     domain);
 
 /* hash aggregate evaluation routines */
 extern AGGREGATE_HASH_KEY *qdata_alloc_agg_hkey (THREAD_ENTRY * thread_p,

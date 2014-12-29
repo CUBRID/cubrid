@@ -2302,6 +2302,7 @@ struct pt_function_info
   char hidden_column;		/* used for updates and deletes for
 				 * the class OID column */
   PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
+  PT_NODE *percentile;		/* percentile for PERCENTILE_CONT, PERCENTILE_DISC */
   bool is_order_dependent;	/* true if function is order dependent */
   int coll_modifier;		/* collation modifier = collation + 1 */
   struct

@@ -325,6 +325,8 @@ static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p,
 static char *stx_build_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr,
 					   REGU_VARIABLE_LIST *
 					   regu_var_list);
+static void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE *
+							analytic);
 
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -718,6 +720,8 @@ stx_restore_analytic_type (THREAD_ENTRY * thread_p, char *ptr)
     {
       return NULL;
     }
+
+  stx_init_analytic_type_unserialized_fields (analytic);
 
   return analytic;
 }
@@ -6254,8 +6258,12 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
+  assert (ptr != NULL && aggregate != NULL);
+
+  /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
 
+  /* accumulator */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6290,6 +6298,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, &aggregate->accumulator.curr_cnt);
 
+  /* next */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6306,21 +6315,26 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  /* function */
   ptr = or_unpack_int (ptr, &tmp);
   aggregate->function = (FUNC_TYPE) tmp;
 
+  /* option */
   ptr = or_unpack_int (ptr, &tmp);
   aggregate->option = (QUERY_OPTIONS) tmp;
 
+  /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp);
   aggregate->opr_dbtype = (DB_TYPE) tmp;
 
+  /* operand */
   ptr = stx_build_regu_variable (thread_p, ptr, &aggregate->operand);
   if (ptr == NULL)
     {
       return NULL;
     }
 
+  /* list_id */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6337,9 +6351,13 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  /* flag_agg_optimize */
   ptr = or_unpack_int (ptr, (int *) &aggregate->flag_agg_optimize);
+
+  /* btid */
   ptr = or_unpack_btid (ptr, &aggregate->btid);
 
+  /* sort_list */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6355,6 +6373,37 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 	  goto error;
 	}
     }
+
+  /* info */
+  if (aggregate->function == PT_PERCENTILE_CONT
+      || aggregate->function == PT_PERCENTILE_DISC)
+    {
+      ptr = or_unpack_int (ptr, &offset);
+      if (offset > 0)
+	{
+	  aggregate->info.percentile.percentile_reguvar =
+	    stx_restore_regu_variable (thread_p,
+				       &xasl_unpack_info->
+				       packed_xasl[offset]);
+	  if (aggregate->info.percentile.percentile_reguvar == NULL)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      /* Other functions need specific variables if any in the future */
+      ;
+    }
+
+  /* accumulator_domain */
+  aggregate->accumulator_domain.value_dom = NULL;
+  aggregate->accumulator_domain.value2_dom = NULL;
 
   return ptr;
 
@@ -6420,8 +6469,12 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
+  assert (ptr != NULL && analytic != NULL);
+
+  /* domain */
   ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
 
+  /* value */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6438,6 +6491,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  /* value2 */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6454,6 +6508,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  /* out_value */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6470,10 +6525,13 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  /* offset_idx */
   ptr = or_unpack_int (ptr, &analytic->offset_idx);
 
+  /* default_idx */
   ptr = or_unpack_int (ptr, &analytic->default_idx);
 
+  /* next */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6490,21 +6548,26 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  /* function */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->function = (FUNC_TYPE) tmp_i;
 
+  /* option */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->option = (QUERY_OPTIONS) tmp_i;
 
+  /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->opr_dbtype = (DB_TYPE) tmp_i;
 
+  /* operand */
   ptr = stx_build_regu_variable (thread_p, ptr, &analytic->operand);
   if (ptr == NULL)
     {
       return NULL;
     }
 
+  /* list_id */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -6521,20 +6584,53 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  /* sort_prefix_size */
   ptr = or_unpack_int (ptr, &analytic->sort_prefix_size);
 
+  /* sort_list_size */
   ptr = or_unpack_int (ptr, &analytic->sort_list_size);
 
+  /* flag */
   ptr = or_unpack_int (ptr, &analytic->flag);
 
+  /* from_last */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->from_last = (bool) tmp_i;
 
+  /* ignore_nulls */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->ignore_nulls = (bool) tmp_i;
 
+  /* is_const_operand */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->is_const_operand = (bool) tmp_i;
+
+  if (analytic->function == PT_PERCENTILE_CONT
+      || analytic->function == PT_PERCENTILE_DISC)
+    {
+      ptr = or_unpack_int (ptr, &offset);
+
+      if (offset > 0)
+	{
+	  analytic->info.percentile.percentile_reguvar =
+	    stx_restore_regu_variable (thread_p,
+				       &xasl_unpack_info->
+				       packed_xasl[offset]);
+	  if (analytic->info.percentile.percentile_reguvar == NULL)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      /* Other functions need specific variables if any in the future */
+      ;
+    }
 
   return ptr;
 
@@ -7467,3 +7563,23 @@ stx_unpack_long (char *tmp, long *ptr)
   return tmp;
 }
 #endif
+
+/*
+ * stx_init_analytic_type () - make other fields initialized
+ *   return:
+ *   analytic(in/out)    :
+ */
+static void
+stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
+{
+  assert (analytic != NULL);
+
+  /* is_first_exec_time */
+  analytic->is_first_exec_time = true;
+
+  /* part_value */
+  DB_MAKE_NULL (&analytic->part_value);
+
+  /* curr_cnt */
+  analytic->curr_cnt = 0;
+}

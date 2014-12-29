@@ -371,9 +371,9 @@ static DB_VALUE
   * qfile_get_list_cache_entry_param_values (QFILE_LIST_CACHE_ENTRY * ent);
 static int qfile_compare_with_null_value (int o0, int o1,
 					  SUBKEY_INFO key_info);
-static int qfile_compare_with_interpolate_domain (char *fp0, char *fp1,
-						  SUBKEY_INFO * subkey,
-						  SORTKEY_INFO * key_info);
+static int qfile_compare_with_interpolation_domain (char *fp0, char *fp1,
+						    SUBKEY_INFO * subkey,
+						    SORTKEY_INFO * key_info);
 
 /* qfile_modify_type_list () -
  *   return:
@@ -4298,9 +4298,9 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1,
 	  if (key_info_p->key[i].use_cmp_dom)
 	    {
 	      order =
-		qfile_compare_with_interpolate_domain (fp0, fp1,
-						       &key_info_p->key[i],
-						       key_info_p);
+		qfile_compare_with_interpolation_domain (fp0, fp1,
+							 &key_info_p->key[i],
+							 key_info_p);
 	    }
 	  else
 	    {
@@ -7727,7 +7727,7 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p,
 }
 
 /*
- * qfile_compare_with_interpolate_domain () -
+ * qfile_compare_with_interpolation_domain () -
  *  return: compare result
  *  fp0(in):
  *  fp1(in):
@@ -7736,9 +7736,9 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p,
  *  NOTE: median analytic function sort string in different domain
  */
 static int
-qfile_compare_with_interpolate_domain (char *fp0, char *fp1,
-				       SUBKEY_INFO * subkey,
-				       SORTKEY_INFO * key_info)
+qfile_compare_with_interpolation_domain (char *fp0, char *fp1,
+					 SUBKEY_INFO * subkey,
+					 SORTKEY_INFO * key_info)
 {
   int order = 0;
   DB_VALUE val0, val1;
@@ -7775,8 +7775,9 @@ qfile_compare_with_interpolate_domain (char *fp0, char *fp1,
 	}
 
       error =
-	qdata_update_interpolate_func_value_and_domain (&val0,
-							&val0, &cast_domain);
+	qdata_update_interpolation_func_value_and_domain (&val0,
+							  &val0,
+							  &cast_domain);
       if (error != NO_ERROR)
 	{
 	  subkey->cmp_dom = NULL;

@@ -348,6 +348,9 @@ static int parser_select_level = -1;
 /* handle inner increment exprs in select list */
 static PT_NODE *parser_hidden_incr_list = NULL;
 
+/* for opt_over_analytic_partition_by */
+static bool is_analytic_function = false;
+
 #define PT_EMPTY INT_MAX
 
 #if defined(WINDOWS)
@@ -665,6 +668,7 @@ int g_original_buffer_len;
 %type <number> of_analytic_first_last
 %type <number> of_analytic_nth_value
 %type <number> of_analytic_lead_lag
+%type <number> of_percentile
 %type <number> of_analytic_no_args
 %type <number> of_cume_dist_percent_rank_function
 %type <number> negative_prec_cast_type
@@ -961,6 +965,7 @@ int g_original_buffer_len;
 %type <node> opt_analytic_from_last
 %type <node> opt_analytic_ignore_nulls
 %type <node> opt_analytic_partition_by
+%type <node> opt_over_analytic_partition_by
 %type <node> opt_analytic_order_by
 %type <node> opt_table_spec_index_hint
 %type <node> opt_table_spec_index_hint_list
@@ -1403,7 +1408,6 @@ int g_original_buffer_len;
 %token WHERE
 %token WHILE
 %token WITH
-%token WITHIN
 %token WITHOUT
 %token WORK
 %token WRITE
@@ -1530,6 +1534,8 @@ int g_original_buffer_len;
 %token <cptr> PARTITIONS
 %token <cptr> PASSWORD
 %token <cptr> PERCENT_RANK
+%token <cptr> PERCENTILE_CONT
+%token <cptr> PERCENTILE_DISC
 %token <cptr> PRINT
 %token <cptr> PRIORITY
 %token <cptr> QUARTER
@@ -1575,6 +1581,7 @@ int g_original_buffer_len;
 %token <cptr> VARIANCE
 %token <cptr> VOLUME
 %token <cptr> WEEK
+%token <cptr> WITHIN
 %token <cptr> WORKSPACE
 %token <cptr> TIMEZONES
 
@@ -14776,6 +14783,58 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| of_percentile '(' expression_ ')' WITHIN GROUP_ '(' ORDER BY sort_spec ')' opt_over_analytic_partition_by
+		{{
+		
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node != NULL)
+			  {
+			    node->info.function.function_type = $1;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    
+			    if ($3 != NULL)
+			      {
+			        node->info.function.percentile = 
+			          pt_wrap_with_cast_op (this_parser, $3, 
+			                                PT_TYPE_DOUBLE, 0, 0, NULL);
+			      }
+			    
+			    if ($10 != NULL)
+			      {
+			      	if (pt_is_const ($10->info.sort_spec.expr))
+			      	  {
+			      	    node->info.function.arg_list = 
+			      	    					$10->info.sort_spec.expr;
+			      	  }
+			      	else
+			      	  {
+			      	    if (is_analytic_function)
+			      	      {
+			      	        node->info.function.analytic.order_by = $10;
+			      	      }
+			      	    else
+			      	      {
+			      	        node->info.function.order_by = $10;
+			      	      }
+			      	      
+				        node->info.function.arg_list = 
+						          parser_copy_tree (this_parser, 
+						          					$10->info.sort_spec.expr);
+			          }
+			      }
+			    
+			    if (is_analytic_function)
+			      {
+			        node->info.function.analytic.is_analytic = is_analytic_function;
+			        node->info.function.analytic.partition_by = $12;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
+
+		DBG_PRINT}}
 	| INSERT
 	  { push_msg(MSGCAT_SYNTAX_INVALID_INSERT_SUBSTRING); }
 	  '(' expression_list ')'
@@ -15905,6 +15964,21 @@ of_analytic_lead_lag
 	/* functions that use other row values */
 	;
 
+of_percentile
+	: PERCENTILE_CONT
+		{{
+		
+			$$ = PT_PERCENTILE_CONT;
+		
+		DBG_PRINT}}
+	| PERCENTILE_DISC
+		{{
+		
+			$$ = PT_PERCENTILE_DISC;
+		
+		DBG_PRINT}}
+	;
+
 of_analytic_no_args
 	: ROW_NUMBER
 		{{
@@ -16046,6 +16120,23 @@ opt_analytic_partition_by
 
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+	;
+
+opt_over_analytic_partition_by
+	: /* empty */
+		{{
+		
+			is_analytic_function = false;
+			$$ = NULL;
+			
+		DBG_PRINT}}
+	| OVER '(' opt_analytic_partition_by ')'
+		{{
+		
+			is_analytic_function = true;
+			$$= $3;
+		
 		DBG_PRINT}}
 	;
 
@@ -21090,6 +21181,45 @@ identifier
 
 		DBG_PRINT}}
 	| MEDIAN
+		{{
+		
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		
+		DBG_PRINT}}
+	| PERCENTILE_CONT
+		{{
+		
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		
+		DBG_PRINT}}
+	| PERCENTILE_DISC
+		{{
+		
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		
+		DBG_PRINT}}
+	| WITHIN
 		{{
 		
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

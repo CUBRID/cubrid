@@ -757,9 +757,10 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      || function_type == PT_AGG_BIT_XOR
 	      || function_type == PT_GROUP_CONCAT
 	      || function_type == PT_MEDIAN
+	      || function_type == PT_PERCENTILE_CONT
+	      || function_type == PT_PERCENTILE_DISC
 	      || function_type == PT_CUME_DIST
 	      || function_type == PT_PERCENT_RANK))
-
 	{
 	  return true;
 	}
@@ -4680,6 +4681,7 @@ regu_agg_init (AGGREGATE_TYPE * ptr)
   regu_var_init (&ptr->operand);
   ptr->list_id = NULL;
   ptr->sort_list = NULL;
+  memset (&ptr->info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
 }
 
 /*

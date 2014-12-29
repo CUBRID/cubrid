@@ -4116,6 +4116,10 @@ pt_show_function (FUNC_TYPE c)
       return "nth_value";
     case PT_MEDIAN:
       return "median";
+    case PT_PERCENTILE_CONT:
+      return "percentile_cont";
+    case PT_PERCENTILE_DISC:
+      return "percentile_disc";
 
     case F_SEQUENCE:
       return "sequence";
@@ -12565,6 +12569,7 @@ pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p,
 {
   p->info.function.arg_list = g (parser, p->info.function.arg_list, arg);
   p->info.function.order_by = g (parser, p->info.function.order_by, arg);
+  p->info.function.percentile = g (parser, p->info.function.percentile, arg);
   if (p->info.function.analytic.is_analytic)
     {
       p->info.function.analytic.partition_by =
@@ -12592,6 +12597,7 @@ pt_init_function (PT_NODE * p)
   p->info.function.all_or_distinct = (PT_MISC_TYPE) 0;
   p->info.function.generic_name = 0;
   p->info.function.order_by = NULL;
+  p->info.function.percentile = NULL;
   p->info.function.analytic.is_analytic = false;
   p->info.function.analytic.partition_by = NULL;
   p->info.function.analytic.order_by = NULL;
@@ -12616,6 +12622,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   FUNC_TYPE code;
   PARSER_VARCHAR *q = 0, *r1;
+  PT_NODE *order_by = NULL;
 
   code = p->info.function.function_type;
   if (code == PT_GENERIC)
@@ -12722,6 +12729,47 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	}
     }
+  else if (code == PT_PERCENTILE_CONT || code == PT_PERCENTILE_DISC)
+    {
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, "(");
+
+      r1 = pt_print_bytes (parser, p->info.function.percentile);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ") within group (order by ");
+
+      r1 = pt_print_bytes (parser, p->info.function.arg_list);
+      q = pt_append_varchar (parser, q, r1);
+
+      if (p->info.function.analytic.is_analytic)
+	{
+	  order_by = p->info.function.analytic.order_by;
+	}
+      else
+	{
+	  order_by = p->info.function.order_by;
+	}
+
+      if (order_by != NULL)
+	{
+	  if (order_by->info.sort_spec.asc_or_desc == PT_DESC)
+	    {
+	      q = pt_append_nulstring (parser, q, " desc");
+	    }
+
+	  if (order_by->info.sort_spec.nulls_first_or_last == PT_NULLS_FIRST)
+	    {
+	      q = pt_append_nulstring (parser, q, " nulls first");
+	    }
+	  else if (order_by->info.sort_spec.nulls_first_or_last ==
+		   PT_NULLS_LAST)
+	    {
+	      q = pt_append_nulstring (parser, q, " nulls last");
+	    }
+	}
+
+      q = pt_append_nulstring (parser, q, ")");
+    }
   else if (code == F_SET || code == F_MULTISET || code == F_SEQUENCE)
     {
       if (p->spec_ident)
@@ -12779,7 +12827,9 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "partition by ");
 	  q = pt_append_varchar (parser, q, r1);
 	}
-      if (p->info.function.analytic.order_by)
+      if (p->info.function.analytic.order_by
+	  && p->info.function.function_type != PT_PERCENTILE_CONT
+	  && p->info.function.function_type != PT_PERCENTILE_DISC)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.function.analytic.order_by);
 	  if (p->info.function.analytic.partition_by)

@@ -1498,7 +1498,10 @@
 
 #define ER_NOT_A_EMPTY_VOLUME                       -1171
 
-#define ER_LAST_ERROR                               -1172
+#define ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE     -1172
+#define ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP  -1173
+
+#define ER_LAST_ERROR                               -1174
 /*
  * CAUTION!
  *

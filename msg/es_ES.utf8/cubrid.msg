@@ -1238,7 +1238,9 @@ $ LOADDB
 1169 Partition key attributes must be present in the index key.
 1170 Failed to flush replication items (error code : %1$d).
 1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Ultimo error
+1172 Invalid percentile value %1$f, should be between 0 and 1.
+1173 Percentile value changed in the same group.
+1174 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

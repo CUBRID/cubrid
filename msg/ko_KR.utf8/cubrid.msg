@@ -1238,7 +1238,9 @@ $ LOADDB
 1169 Partition key attributes must be present in the index key.
 1170 Failed to flush replication items (error code : %1$d).
 1171 The volume %1$d is not empty, so it cannot be removed.
-1172 마지막 에러
+1172 Invalid percentile value %1$f, should be between 0 and 1.
+1173 Percentile value changed in the same group.
+1174 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

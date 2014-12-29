@@ -96,7 +96,6 @@ static const char *qdump_regu_type_string (REGU_DATATYPE type);
 static bool qdump_print_regu_type (REGU_VARIABLE * value);
 static const char *qdump_data_type_string (DB_TYPE type);
 static bool qdump_print_value (REGU_VARIABLE * value);
-static const char *qdump_function_type_string (FUNC_TYPE ftype);
 static bool qdump_print_function_value (REGU_VARIABLE * regu);
 static bool qdump_print_value_type_addr (REGU_VARIABLE * value);
 static bool qdump_print_oid (OID * oidptr);
@@ -1308,7 +1307,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
     }
 }
 
-static const char *
+const char *
 qdump_function_type_string (FUNC_TYPE ftype)
 {
   switch (ftype)
@@ -1374,7 +1373,11 @@ qdump_function_type_string (FUNC_TYPE ftype)
     case PT_NTH_VALUE:
       return "NTH_VALUE";
     case PT_MEDIAN:
-      return "PT_MEDIAN";
+      return "MEDIAN";
+    case PT_PERCENTILE_CONT:
+      return "PERCENTILE_CONT";
+    case PT_PERCENTILE_DISC:
+      return "PERCENTILE_DISC";
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:

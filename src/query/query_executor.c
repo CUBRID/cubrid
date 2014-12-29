@@ -871,9 +871,10 @@ static int qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 						    func_state,
 						    ANALYTIC_STATE *
 						    analytic_state);
-static int qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
-						    ANALYTIC_FUNCTION_STATE *
-						    func_state);
+static int qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY *
+							   thread_p,
+							   ANALYTIC_FUNCTION_STATE
+							   * func_state);
 static int qexec_analytic_group_header_load (ANALYTIC_FUNCTION_STATE *
 					     func_state);
 static int qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE *
@@ -7395,8 +7396,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 		 VAL_LIST * val_list, VAL_DESCR * vd,
 		 bool force_select_lock, int fixed, int grouped,
 		 bool iscan_oid_order, SCAN_ID * s_id, QUERY_ID query_id,
-		 SCAN_OPERATION_TYPE scan_op_type,
-		 bool scan_immediately_stop)
+		 SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
@@ -22417,8 +22417,8 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 		  || TP_DOMAIN_COLLATION_FLAG (group_agg->domain)
 		  != TP_DOMAIN_COLL_NORMAL)
 		{
-		  /* set domain at run-time for MEDIAN */
-		  if (group_agg->function == PT_MEDIAN)
+		  /* set domain at run-time for MEDIAN, PERCENTILE funcs */
+		  if (QPROC_IS_INTERPOLATION_FUNC (group_agg))
 		    {
 		      continue;
 		    }
@@ -22763,6 +22763,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 	      break;
 
 	    case PT_MEDIAN:
+	    case PT_PERCENTILE_CONT:
+	    case PT_PERCENTILE_DISC:
 	      switch (agg_p->opr_dbtype)
 		{
 		case DB_TYPE_SHORT:
@@ -22809,7 +22811,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 		    {
 		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-			      "MEDIAN", "DOUBLE, DATETIME or TIME");
+			      qdump_function_type_string (agg_p->function),
+			      "DOUBLE, DATETIME or TIME");
 
 		      pr_clear_value (dbval);
 		      return error;
@@ -23547,7 +23550,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
-		  "MEDIAN", "DOUBLE, DATETIME, TIME");
+		  qdump_function_type_string (analytic_eval->head->function),
+		  "DOUBLE, DATETIME or TIME");
 	}
 
       GOTO_EXIT_ON_ERROR;
@@ -23852,8 +23856,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p,
   /* initialize runtime structure */
   for (func_p = a_func_list; func_p != NULL; func_p = func_p->next)
     {
-      memset (&func_p->info, 0, sizeof (ANALYTIC_FUNCTION_INFO));
-      if (func_p->function == PT_MEDIAN)
+      if (QPROC_IS_INTERPOLATION_FUNC (func_p))
 	{
 	  has_interpolation_func = true;
 
@@ -24928,7 +24931,7 @@ qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
 }
 
 /*
- * qexec_analytic_evaluate_median_function () -
+ * qexec_analytic_evaluate_interpolation_function () -
  *
  *   returns: error code or NO_ERROR
  *   thread_p(in): current thread
@@ -24937,17 +24940,19 @@ qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
  *   tuple_idx(in): current position of main scan in group
  */
 static int
-qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
-					 ANALYTIC_FUNCTION_STATE * func_state)
+qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
+						ANALYTIC_FUNCTION_STATE *
+						func_state)
 {
   ANALYTIC_TYPE *func_p = NULL;
-  double f_row_num_d, c_row_num_d, row_num_d;
+  double f_row_num_d, c_row_num_d, row_num_d, percentile_d;
   double d_result;		/* decoy, don't need it here */
   int error = NO_ERROR;
+  DB_VALUE *peek_value_p = NULL;
 
   assert (func_state != NULL && func_state->func_p != NULL);
   func_p = func_state->func_p;
-  assert (func_p->function == PT_MEDIAN);
+  assert (QPROC_IS_INTERPOLATION_FUNC (func_p));
 
   /* MEDIAN function is evaluated at the start of the group */
   if (func_state->group_tuple_position_nn > 0)
@@ -24970,9 +24975,46 @@ qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
     }
 
   /* get target row */
-  row_num_d = ((double) (func_state->curr_group_tuple_count_nn - 1)) / 2;
+  if (func_p->function == PT_MEDIAN)
+    {
+      percentile_d = 0.5;
+    }
+  else
+    {
+      error = fetch_peek_dbval (thread_p,
+				func_p->info.percentile.percentile_reguvar,
+				NULL, NULL, NULL, NULL, &peek_value_p);
+      if (error != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+
+	  return error;
+	}
+
+      assert (DB_VALUE_TYPE (peek_value_p) == DB_TYPE_DOUBLE);
+
+      percentile_d = DB_GET_DOUBLE (peek_value_p);
+
+      if (func_p->function == PT_PERCENTILE_DISC)
+	{
+	  percentile_d =
+	    ceil (percentile_d * func_state->curr_group_tuple_count_nn)
+	    / func_state->curr_group_tuple_count_nn;
+	}
+    }
+
+  row_num_d =
+    ((double) (func_state->curr_group_tuple_count_nn - 1)) * percentile_d;
   f_row_num_d = floor (row_num_d);
-  c_row_num_d = ceil (row_num_d);
+
+  if (func_p->function == PT_PERCENTILE_DISC)
+    {
+      c_row_num_d = f_row_num_d;
+    }
+  else
+    {
+      c_row_num_d = ceil (row_num_d);
+    }
 
   /* compute value */
   if (f_row_num_d == c_row_num_d)
@@ -24986,9 +25028,11 @@ qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
 	}
 
       /* coerce accordingly */
-      error = qdata_apply_median_function_coercion (func_p->value,
-						    &func_p->domain,
-						    &d_result, func_p->value);
+      error = qdata_apply_interpolation_function_coercion (func_p->value,
+							   &func_p->domain,
+							   &d_result,
+							   func_p->value,
+							   func_p->function);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -25022,11 +25066,11 @@ qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
 
       pr_clear_value (func_p->value);
       error =
-	qdata_interpolate_median_function_values (&f_value, &c_value,
-						  row_num_d, f_row_num_d,
-						  c_row_num_d,
-						  &func_p->domain, &d_result,
-						  func_p->value);
+	qdata_interpolation_function_values (&f_value, &c_value,
+					     row_num_d, f_row_num_d,
+					     c_row_num_d, &func_p->domain,
+					     &d_result, func_p->value,
+					     func_p->function);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -25105,7 +25149,7 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state,
   tuple_p += DB_ALIGN (tp_Integer.disksize, MAX_ALIGNMENT);
 
   if (!load_value && !func_state->func_p->ignore_nulls
-      && func_state->func_p->function != PT_MEDIAN)
+      && !QPROC_IS_INTERPOLATION_FUNC (func_state->func_p))
     {
       /* we're not counting NULLs and we're not using the value */
       return NO_ERROR;
@@ -25560,7 +25604,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 		  func_state->group_consumed_tuples = 0;
 		}
 	    }
-	  else if (func_state->func_p->function == PT_MEDIAN)
+	  else if (QPROC_IS_INTERPOLATION_FUNC (func_state->func_p))
 	    {
 	      /* MEDIAN, check for group end */
 	      if (func_state->group_consumed_tuples >=
@@ -25643,9 +25687,11 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 	      break;
 
 	    case PT_MEDIAN:
+	    case PT_PERCENTILE_CONT:
+	    case PT_PERCENTILE_DISC:
 	      rc =
-		qexec_analytic_evaluate_median_function (thread_p,
-							 func_state);
+		qexec_analytic_evaluate_interpolation_function (thread_p,
+								func_state);
 	      if (rc != NO_ERROR)
 		{
 		  goto cleanup;
@@ -30458,10 +30504,11 @@ qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       if ((agg_p->function == PT_CUME_DIST
 	   || agg_p->function == PT_PERCENT_RANK)
-	  && agg_p->agg_info.const_array != NULL)
+	  && agg_p->info.dist_percent.const_array != NULL)
 	{
-	  db_private_free_and_init (thread_p, agg_p->agg_info.const_array);
-	  agg_p->agg_info.list_len = 0;
+	  db_private_free_and_init (thread_p,
+				    agg_p->info.dist_percent.const_array);
+	  agg_p->info.dist_percent.list_len = 0;
 	}
     }
 }

@@ -96,9 +96,10 @@ typedef enum
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
   /* aggregate and analytic functions */
   PT_MEDIAN,
-  /* for CUME_DIST and PERCENT_RANK analytic functions */
   PT_CUME_DIST,
-  PT_PERCENT_RANK
+  PT_PERCENT_RANK,
+  PT_PERCENTILE_CONT,
+  PT_PERCENTILE_DISC
 } FUNC_TYPE;
 
 typedef enum
@@ -127,6 +128,11 @@ typedef enum
 
   SHOWSTMT_END
 } SHOWSTMT_TYPE;
+
+#define QPROC_IS_INTERPOLATION_FUNC(func_p) \
+  (((func_p)->function == PT_MEDIAN) \
+   || ((func_p)->function == PT_PERCENTILE_CONT) \
+   || ((func_p)->function == PT_PERCENTILE_DISC))
 
 typedef enum
 {
@@ -505,6 +511,21 @@ struct aggregate_dist_percent_info
   int nlargers;
 };
 
+typedef struct aggregate_percentile_info AGGREGATE_PERCENTILE_INFO;
+struct aggregate_percentile_info
+{
+  double cur_group_percentile;	/* current percentile value */
+  REGU_VARIABLE *percentile_reguvar;
+};
+
+typedef union aggregate_specific_function_info
+  AGGREGATE_SPECIFIC_FUNCTION_INFO;
+union aggregate_specific_function_info
+{
+  AGGREGATE_DIST_PERCENT_INFO dist_percent;	/* CUME_DIST and PERCENT_RANK */
+  AGGREGATE_PERCENTILE_INFO percentile;	/* PERCENTILE_CONT and PERCENTILE_DISC */
+};
+
 typedef struct aggregate_list_node AGGREGATE_TYPE;
 struct aggregate_list_node
 {
@@ -519,7 +540,7 @@ struct aggregate_list_node
   BTID btid;
   SORT_LIST *sort_list;		/* for sorting elements before aggregation;
 				 * used by GROUP_CONCAT */
-  AGGREGATE_DIST_PERCENT_INFO agg_info;	/* for CUME_DIST and PERCENT_RANK calculation; */
+  AGGREGATE_SPECIFIC_FUNCTION_INFO info;	/* variables for specific functions */
   AGGREGATE_ACCUMULATOR accumulator;	/* holds runtime values, only for
 					   evaluation */
   AGGREGATE_ACCUMULATOR_DOMAIN accumulator_domain;	/* holds domain info on
@@ -553,10 +574,33 @@ struct analytic_ntile_function_info
   int bucket_count;		/* number of required buckets */
 };
 
+typedef struct analytic_cume_percent_function_info
+  ANALYTIC_CUME_PERCENT_FUNCTION_INFO;
+struct analytic_cume_percent_function_info
+{
+  int last_pos;			/* record the current position of the 
+				 * rows that are no larger than the current row 
+				 */
+  double last_res;		/* record the last result */
+};
+
+typedef struct analytic_percentile_function_info
+  ANALYTIC_PERCENTILE_FUNCTION_INFO;
+struct analytic_percentile_function_info
+{
+  double cur_group_percentile;	/* current percentile value */
+  REGU_VARIABLE *percentile_reguvar;	/* percentile value of the new tuple
+					 * if this is not the same as cur_gourp_percentile,
+					 * an error is raised.
+					 */
+};
+
 typedef union analytic_function_info ANALYTIC_FUNCTION_INFO;
 union analytic_function_info
 {
   ANALYTIC_NTILE_FUNCTION_INFO ntile;
+  ANALYTIC_PERCENTILE_FUNCTION_INFO percentile;
+  ANALYTIC_CUME_PERCENT_FUNCTION_INFO cume_percent;
 };
 
 typedef struct analytic_list_node ANALYTIC_TYPE;
@@ -593,6 +637,7 @@ struct analytic_list_node
   DB_VALUE *out_value;		/* DB_VALUE used for output */
   DB_VALUE part_value;		/* partition temporary accumulator */
   int curr_cnt;			/* current number of items */
+  bool is_first_exec_time;	/* the fist time to be executed */
 };
 
 #define ANALYTIC_ADVANCE_RANK 1	/* advance rank */

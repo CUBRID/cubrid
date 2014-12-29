@@ -10382,6 +10382,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
   STATEMENT_SET_FOLD fold_as;
   PT_NODE *arg1, *arg2;
   PT_NODE *union_orderby, *union_orderby_for, *union_limit;
+  PT_FUNCTION_INFO *func_info_p = NULL;
 
   assert (parser != NULL);
 
@@ -10548,24 +10549,27 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
 
     case PT_FUNCTION:
-      if (node->info.function.function_type == PT_GENERIC
-	  && (pt_length_of_list (node->info.function.arg_list) >
-	      NUM_F_GENERIC_ARGS))
+      func_info_p = &node->info.function;
+
+      if (func_info_p->function_type == PT_GENERIC
+	  && (pt_length_of_list (func_info_p->arg_list) > NUM_F_GENERIC_ARGS))
 	{
 	  PT_ERRORmf2 (parser, node,
 		       MSGCAT_SET_PARSER_SEMANTIC,
 		       MSGCAT_SEMANTIC_GEN_FUNC_TOO_MANY_ARGS,
-		       node->info.function.generic_name, NUM_F_GENERIC_ARGS);
+		       func_info_p->generic_name, NUM_F_GENERIC_ARGS);
 	}
-      if (node->info.function.function_type == PT_GROUP_CONCAT)
+
+      /* check order by for aggregate function */
+      if (func_info_p->function_type == PT_GROUP_CONCAT)
 	{
 	  if (pt_check_group_concat_order_by (parser, node) != NO_ERROR)
 	    {
 	      break;
 	    }
 	}
-      else if (node->info.function.function_type == PT_CUME_DIST
-	       || node->info.function.function_type == PT_PERCENT_RANK)
+      else if (func_info_p->function_type == PT_CUME_DIST
+	       || func_info_p->function_type == PT_PERCENT_RANK)
 	{
 	  /* for CUME_DIST and PERCENT_RANK aggregate function */
 	  if (pt_check_cume_dist_percent_rank_order_by (parser, node) !=
@@ -10575,41 +10579,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	}
 
-
-      if (node->info.function.function_type == PT_MEDIAN
-	  && !node->info.function.analytic.is_analytic
-	  && node->info.function.arg_list != NULL
-	  && !PT_IS_CONST (node->info.function.arg_list)
-	  && node->info.function.order_by == NULL)
-	{
-	  /* generate the sort spec for median */
-	  sort_spec = parser_new_node (parser, PT_SORT_SPEC);
-	  if (sort_spec == NULL)
-	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      break;
-	    }
-
-	  sort_spec->info.sort_spec.asc_or_desc = PT_ASC;
-	  sort_spec->info.sort_spec.nulls_first_or_last = PT_NULLS_DEFAULT;
-	  sort_spec->info.sort_spec.expr = parser_copy_tree (parser,
-							     node->info.
-							     function.
-							     arg_list);
-	  if (sort_spec->info.sort_spec.expr == NULL)
-	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      break;
-	    }
-
-	  sort_spec->info.sort_spec.pos_descr.pos_no = 1;
-	  sort_spec->info.sort_spec.pos_descr.dom =
-	    pt_xasl_node_to_domain (parser, node->info.function.arg_list);
-
-	  node->info.function.order_by = sort_spec;
-	}
       break;
 
     case PT_UNION:

@@ -347,6 +347,27 @@ static int pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser,
 					      PT_RESERVED_NAME_ID
 					      reserved_id);
 
+static void update_value_list_out_list_regu_list (AGGREGATE_INFO * info,
+						  VAL_LIST * value_list,
+						  REGU_VARIABLE_LIST out_list,
+						  REGU_VARIABLE_LIST
+						  regu_list,
+						  REGU_VARIABLE * regu);
+
+static PT_NODE *pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT *
+							parser,
+							PT_NODE * node,
+							VAL_LIST **
+							value_list,
+							REGU_VARIABLE_LIST *
+							out_list,
+							REGU_VARIABLE_LIST *
+							regu_list);
+
+static PT_NODE
+  * pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser,
+						      PT_NODE * node);
+
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
     if (xasl_head) {                                                    \
         /* append xasl_tail to end of linked list denoted by list */    \
@@ -4136,7 +4157,9 @@ pt_is_hash_agg_eligible (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 	  || tree->info.function.function_type == PT_MEDIAN
 	  || tree->info.function.function_type == PT_CUME_DIST
 	  || tree->info.function.function_type == PT_PERCENT_RANK
-	  || tree->info.function.all_or_distinct == PT_DISTINCT)
+	  || tree->info.function.all_or_distinct == PT_DISTINCT
+	  || tree->info.function.function_type == PT_PERCENTILE_CONT
+	  || tree->info.function.function_type == PT_PERCENTILE_DISC)
 	{
 	  *eligible = 0;
 	  *continue_walk = PT_STOP_WALK;
@@ -4161,6 +4184,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 {
   bool is_agg = 0;
   REGU_VARIABLE *regu = NULL, *scan_regu = NULL;
+  REGU_VARIABLE *percentile_regu = NULL;
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
   REGU_VARIABLE_LIST scan_regu_list;
@@ -4168,9 +4192,12 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
   REGU_VARIABLE_LIST regu_list;
   REGU_VARIABLE_LIST regu_temp;
   VAL_LIST *value_list;
-  QPROC_DB_VALUE_LIST value_temp;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
+  int *attr_offsets = NULL;
+  PT_NODE *pointer = NULL;
+  PT_NODE *pt_val = NULL;
+  PT_NODE *percentile = NULL;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -4382,9 +4409,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  if (info->out_list && info->value_list && info->regu_list)
 	    {
-	      int *attr_offsets;
-	      PT_NODE *pt_val;
-
 	      /* handle the buildlist case.
 	       * append regu to the out_list, and create a new value
 	       * to append to the value_list  */
@@ -4400,17 +4424,14 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      pt_val->info.value.data_value.i = 0;
 	      parser_append_node (pt_val, info->out_names);
 
-	      attr_offsets =
-		pt_make_identity_offsets (tree->info.function.arg_list);
-	      value_list = pt_make_val_list (parser,
-					     tree->info.function.arg_list);
-	      regu_list = pt_to_position_regu_variable_list
-		(parser, tree->info.function.arg_list,
-		 value_list, attr_offsets);
-	      free_and_init (attr_offsets);
-
-	      out_list = regu_varlist_alloc ();
-	      if (!value_list || !regu_list || !out_list)
+	      pointer = pt_alloc_value_list_out_list_regu_list (parser,
+								tree->info.
+								function.
+								arg_list,
+								&value_list,
+								&out_list,
+								&regu_list);
+	      if (pointer == NULL)
 		{
 		  PT_ERROR (parser, tree,
 			    msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -4427,33 +4448,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      regu_list->value.value.pos_descr.pos_no =
 		info->out_list->valptr_cnt;
 
-	      /* append value holder to value_list */
-	      info->value_list->val_cnt++;
-	      value_temp = info->value_list->valp;
-	      while (value_temp->next)
-		{
-		  value_temp = value_temp->next;
-		}
-	      value_temp->next = value_list->valp;
-
-	      /* append out_list to info->out_list */
-	      info->out_list->valptr_cnt++;
-	      out_list->next = NULL;
-	      out_list->value = *regu;
-	      regu_temp = info->out_list->valptrp;
-	      while (regu_temp->next)
-		{
-		  regu_temp = regu_temp->next;
-		}
-	      regu_temp->next = out_list;
-
-	      /* append regu to info->regu_list */
-	      regu_temp = info->regu_list;
-	      while (regu_temp->next)
-		{
-		  regu_temp = regu_temp->next;
-		}
-	      regu_temp->next = regu_list;
+	      update_value_list_out_list_regu_list (info, value_list,
+						    out_list, regu_list,
+						    regu);
 
 	      /* append regu to info->scan_regu_list */
 	      scan_regu_list = regu_varlist_alloc ();
@@ -4516,10 +4513,88 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 
       *continue_walk = PT_LIST_WALK;
 
+      /* set percentile value for PT_PERCENTILE_CONT, PT_PERCENTILE_DISC */
+      if (aggregate_list->function == PT_PERCENTILE_CONT
+	  || aggregate_list->function == PT_PERCENTILE_DISC)
+	{
+	  percentile = tree->info.function.percentile;
+
+	  assert (percentile != NULL);
+
+	  regu = pt_to_regu_variable (parser, percentile, UNBOX_AS_VALUE);
+	  if (regu == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  /* build list */
+	  if (!PT_IS_CONST (percentile) && info->out_list != NULL
+	      && info->value_list != NULL && info->regu_list != NULL)
+	    {
+	      pointer = pt_point (parser, percentile);
+	      if (pointer == NULL)
+		{
+		  PT_ERROR (parser, pointer,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID,
+					    MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
+		}
+
+	      /* append the name on the out list */
+	      info->out_names = parser_append_node (pointer, info->out_names);
+
+	      /* put percentile in value_list, out_list and regu_list */
+	      pointer = pt_alloc_value_list_out_list_regu_list (parser,
+								pointer,
+								&value_list,
+								&out_list,
+								&regu_list);
+	      if (pointer == NULL)
+		{
+		  PT_ERROR (parser, percentile,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID,
+					    MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
+		}
+
+	      /* set aggregate_list->info.percentile.percentile_reguvar */
+	      percentile_regu = regu_var_alloc ();
+	      if (percentile_regu == NULL)
+		{
+		  return NULL;
+		}
+
+	      percentile_regu->type = TYPE_CONSTANT;
+	      percentile_regu->domain =
+		pt_xasl_node_to_domain (parser, pointer);
+	      percentile_regu->value.dbvalptr = value_list->valp->val;
+
+	      aggregate_list->info.percentile.percentile_reguvar =
+		percentile_regu;
+
+	      /* fix count for list position */
+	      regu_list->value.value.pos_descr.pos_no =
+		info->out_list->valptr_cnt;
+
+	      update_value_list_out_list_regu_list (info, value_list,
+						    out_list, regu_list,
+						    regu);
+	    }
+	  else
+	    {
+	      aggregate_list->info.percentile.percentile_reguvar = regu;
+	    }
+	}
+
       /* GROUP_CONCAT : process ORDER BY and restore SEPARATOR node (just to
        * keep original tree)*/
       if (aggregate_list->function == PT_GROUP_CONCAT
-	  || aggregate_list->function == PT_MEDIAN)
+	  || aggregate_list->function == PT_CUME_DIST
+	  || aggregate_list->function == PT_PERCENT_RANK
+	  || (QPROC_IS_INTERPOLATION_FUNC (aggregate_list)
+	      && !PT_IS_CONST (tree->info.function.arg_list)))
 	{
 	  /* Separator of GROUP_CONCAT is not a 'real' argument of
 	   * GROUP_CONCAT, but for convenience it is kept in 'arg_list' of
@@ -4527,6 +4602,16 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	   * It is not involved in sorting process, so conversion of ORDER BY
 	   * to SORT_LIST must be performed before restoring separator
 	   * argument into the arg_list*/
+	  tree = pt_fix_interpolation_aggregate_function_order_by (parser,
+								   tree);
+	  if (tree == NULL)
+	    {
+	      /* error must be set */
+	      assert (pt_has_error (parser));
+
+	      return NULL;
+	    }
+
 	  if (tree->info.function.order_by != NULL)
 	    {
 	      /* convert to SORT_LIST */
@@ -4543,27 +4628,16 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  /* restore group concat separator node */
 	  tree->info.function.arg_list->next = group_concat_sep_node_save;
 	}
-      else if (aggregate_list->function == PT_CUME_DIST
-	       || aggregate_list->function == PT_PERCENT_RANK)
-	{
-	  if (tree->info.function.order_by != NULL)
-	    {
-	      /* convert to SORT_LIST */
-	      aggregate_list->sort_list =
-		pt_agg_orderby_to_sort_list (parser,
-					     tree->info.function.order_by,
-					     tree->info.function.arg_list);
-	    }
-	  else
-	    {
-	      aggregate_list->sort_list = NULL;
-	    }
-	}
       else
 	{
-	  /* only GROUP_CONCAT, CUME_DIST and PERCENT_RANK agg
-	     supports ORDER BY */
-	  assert (tree->info.function.order_by == NULL);
+	  /* GROUP_CONCAT, MEDIAN, PERCENTILE_CONT
+	   * and PERCENTILE_DISC aggs support ORDER BY.
+	   * We ignore ORDER BY for MEDIAN/PERCENTILE_CONT/PERCENTILE_DISC,
+	   * when arg_list is a constant.
+	   */
+	  assert (QPROC_IS_INTERPOLATION_FUNC (aggregate_list)
+		  || tree->info.function.order_by == NULL);
+
 	  assert (group_concat_sep_node_save == NULL);
 	}
     }
@@ -4606,24 +4680,27 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       if (!pt_find_name (parser, tree, info->out_names)
 	  && (info->out_list && info->value_list && info->regu_list))
 	{
-	  int *attr_offsets;
-	  PT_NODE *pointer;
-
 	  pointer = pt_point (parser, tree);
+	  if (pointer == NULL)
+	    {
+	      PT_ERROR (parser, pointer,
+			msgcat_message (MSGCAT_CATALOG_CUBRID,
+					MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	      return NULL;
+	    }
 
 	  /* append the name on the out list */
 	  info->out_names = parser_append_node (pointer, info->out_names);
 
-	  attr_offsets = pt_make_identity_offsets (pointer);
-	  value_list = pt_make_val_list (parser, pointer);
-	  regu_list = pt_to_position_regu_variable_list
-	    (parser, pointer, value_list, attr_offsets);
-	  free_and_init (attr_offsets);
-
-	  out_list = regu_varlist_alloc ();
-	  if (!value_list || !regu_list || !out_list)
+	  pointer = pt_alloc_value_list_out_list_regu_list (parser,
+							    pointer,
+							    &value_list,
+							    &out_list,
+							    &regu_list);
+	  if (pointer == NULL)
 	    {
-	      PT_ERROR (parser, pointer,
+	      PT_ERROR (parser, tree,
 			msgcat_message (MSGCAT_CATALOG_CUBRID,
 					MSGCAT_SET_PARSER_SEMANTIC,
 					MSGCAT_SEMANTIC_OUT_OF_MEMORY));
@@ -4634,40 +4711,14 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  regu_list->value.value.pos_descr.pos_no =
 	    info->out_list->valptr_cnt;
 
-	  /* append value holder to value_list */
-	  info->value_list->val_cnt++;
-	  value_temp = info->value_list->valp;
-	  while (value_temp->next)
-	    {
-	      value_temp = value_temp->next;
-	    }
-	  value_temp->next = value_list->valp;
-
 	  regu = pt_to_regu_variable (parser, tree, UNBOX_AS_VALUE);
-
-	  if (!regu)
+	  if (regu == NULL)
 	    {
 	      return NULL;
 	    }
 
-	  /* append out_list to info->out_list */
-	  info->out_list->valptr_cnt++;
-	  out_list->next = NULL;
-	  out_list->value = *regu;
-	  regu_temp = info->out_list->valptrp;
-	  while (regu_temp->next)
-	    {
-	      regu_temp = regu_temp->next;
-	    }
-	  regu_temp->next = out_list;
-
-	  /* append regu to info->regu_list */
-	  regu_temp = info->regu_list;
-	  while (regu_temp->next)
-	    {
-	      regu_temp = regu_temp->next;
-	    }
-	  regu_temp->next = regu_list;
+	  update_value_list_out_list_regu_list (info, value_list,
+						out_list, regu_list, regu);
 	}
       *continue_walk = PT_LIST_WALK;
     }
@@ -15729,7 +15780,7 @@ pt_metadomains_compatible (ANALYTIC_KEY_METADOMAIN * f1,
       return false;
     }
 
-  /* interpolate function with string arg type is not compatible with other functions */
+  /* interpolation function with string arg type is not compatible with other functions */
   if (analytic1 != NULL && analytic2 != NULL)
     {
       if (analytic1->function == PT_MEDIAN
@@ -24283,6 +24334,7 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
   PT_NODE *list = NULL, *order_list = NULL, *link = NULL;
   PT_NODE *sort_list, *list_entry;
   PT_NODE *arg_list = NULL;
+  PT_NODE *percentile = NULL;
 
   if (parser == NULL || analytic_info == NULL)
     {
@@ -24352,12 +24404,27 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
     {
       /* we have PARTITION BY clause */
       order_list = func_info->analytic.partition_by;
-      link->next = func_info->analytic.order_by;
+
+      /* When arg_list is constant,
+       * ignore order by for MEDIAN, PERCENTILE_CONT and PERCENTILE_DISC
+       */
+      if (!QPROC_IS_INTERPOLATION_FUNC (analytic)
+	  || !PT_IS_CONST (func_info->arg_list))
+	{
+	  link->next = func_info->analytic.order_by;
+	}
     }
   else
     {
-      /* no PARTITION BY, only ORDER BY */
-      order_list = func_info->analytic.order_by;
+      /* no PARTITION BY, only ORDER BY
+       * When arg_list is constant,
+       * ignore order by for MEDIAN, PERCENTILE_CONT and PERCENTILE_DISC
+       */
+      if (!QPROC_IS_INTERPOLATION_FUNC (analytic)
+	  || !PT_IS_CONST (func_info->arg_list))
+	{
+	  order_list = func_info->analytic.order_by;
+	}
     }
 
   /* copy sort list for later use */
@@ -24440,6 +24507,38 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	}
     }
 
+  /* percentile of PERCENTILE_CONT and PERCENTILE_DISC */
+  if (func_info->function_type == PT_PERCENTILE_CONT
+      || func_info->function_type == PT_PERCENTILE_DISC)
+    {
+      percentile = func_info->percentile;
+
+      if (!PT_IS_CONST (percentile))
+	{
+	  CAST_POINTER_TO_NODE (percentile);
+
+	  percentile = pt_resolve_analytic_references (parser,
+						       percentile,
+						       analytic_info->
+						       select_list,
+						       analytic_info->
+						       val_list);
+	  if (percentile == NULL)
+	    {
+	      /* the error is set in pt_resolve_analytic_references */
+	      goto exit_on_error;
+	    }
+	}
+
+      analytic->info.percentile.percentile_reguvar =
+	pt_to_regu_variable (parser, func_info->percentile, UNBOX_AS_VALUE);
+      if (analytic->info.percentile.percentile_reguvar == NULL)
+	{
+	  /* error is set in pt_to_regu_variable */
+	  goto exit_on_error;
+	}
+    }
+
   /* process operand (argument) */
   if (func_info->arg_list == NULL)
     {
@@ -24457,8 +24556,8 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       analytic->opr_dbtype =
 	pt_node_to_db_type (func_info->arg_list->info.pointer.node);
 
-      /* for MEDIAN */
-      if (func_info->function_type == PT_MEDIAN)
+      /* for MEDIAN and PERCENTILE functions */
+      if (QPROC_IS_INTERPOLATION_FUNC (analytic))
 	{
 	  arg_list = func_info->arg_list->info.pointer.node;
 	  CAST_POINTER_TO_NODE (arg_list);
@@ -24803,6 +24902,36 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
       (void) parser_append_node (node->info.function.analytic.default_value,
 				 select_list);
       node->info.function.analytic.default_value = ptr;
+    }
+
+  /* percentile for PERCENTILE_CONT and PERCENTILE_DISC */
+  if ((node->info.function.function_type == PT_PERCENTILE_CONT
+       || node->info.function.function_type == PT_PERCENTILE_DISC)
+      && !pt_is_const (node->info.function.percentile))
+    {
+      ptr = pt_find_name (parser,
+			  node->info.function.percentile, select_list);
+      /* add percentile expression to select list */
+      if (ptr == NULL)
+	{
+	  ptr = pt_point_ref (parser, node->info.function.percentile);
+	  parser_append_node (node->info.function.percentile, select_list);
+	}
+      else
+	{
+	  ptr = pt_point_ref (parser, ptr);
+	}
+
+      if (ptr == NULL)
+	{
+	  PT_ERROR (parser, node,
+		    msgcat_message (MSGCAT_CATALOG_CUBRID,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	  return NULL;
+	}
+
+      node->info.function.percentile = ptr;
     }
 
   /* walk order list and resolve nodes that were not found in select list */
@@ -27370,8 +27499,8 @@ pt_add_constant_object_regu_variable (PARSER_CONTEXT * parser,
   DB_TYPE type;
   DB_VALUE *val;
   PT_NODE *nodes[3] = { node1, node2, node3 }, *node;
-  REGU_VARIABLE *regu_vars[3] =
-    { regu_var1, regu_var2, regu_var3 }, *regu_var, *cnst_regu_var;
+  REGU_VARIABLE *regu_vars[3] = { regu_var1, regu_var2, regu_var3 };
+  REGU_VARIABLE *regu_var, *cnst_regu_var;
   REGU_VARIABLE_LIST regu_var_node;
   int i;
 
@@ -27409,9 +27538,10 @@ pt_add_constant_object_regu_variable (PARSER_CONTEXT * parser,
 	  cnst_regu_var = regu_var_alloc ();
 	  if (cnst_regu_var == NULL)
 	    {
-	      PT_ERROR (parser, node, msgcat_message (MSGCAT_CATALOG_CUBRID,
-						      MSGCAT_SET_PARSER_SEMANTIC,
-						      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	      PT_ERROR (parser, node,
+			msgcat_message (MSGCAT_CATALOG_CUBRID,
+					MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 	      return MSGCAT_SEMANTIC_OUT_OF_MEMORY;
 	    }
 	  cnst_regu_var->domain = pt_xasl_node_to_domain (parser, node);
@@ -27440,4 +27570,200 @@ pt_add_constant_object_regu_variable (PARSER_CONTEXT * parser,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * update_value_list_out_list_regu_list () - 
+ *                   update the related lists for pt_to_aggregate_node
+ *
+ * return :
+ * info (in/out)  :
+ * value_list (in) :
+ * out_list (in)    :
+ * regu_list (in)    :
+ * regu (in)    :
+ */
+static void
+update_value_list_out_list_regu_list (AGGREGATE_INFO * info,
+				      VAL_LIST * value_list,
+				      REGU_VARIABLE_LIST out_list,
+				      REGU_VARIABLE_LIST regu_list,
+				      REGU_VARIABLE * regu)
+{
+  QPROC_DB_VALUE_LIST value_temp = NULL;
+  REGU_VARIABLE_LIST regu_temp = NULL;
+
+  assert (info != NULL && info->value_list != NULL && info->out_list != NULL
+	  && info->regu_list != NULL && value_list != NULL
+	  && out_list != NULL && regu_list != NULL && regu != NULL);
+
+  /* append value holder to value_list */
+  info->value_list->val_cnt++;
+
+  value_temp = info->value_list->valp;
+  while (value_temp->next)
+    {
+      value_temp = value_temp->next;
+    }
+  value_temp->next = value_list->valp;
+
+  /* append out_list to info->out_list */
+  info->out_list->valptr_cnt++;
+  out_list->next = NULL;
+  out_list->value = *regu;
+
+  regu_temp = info->out_list->valptrp;
+  while (regu_temp->next)
+    {
+      regu_temp = regu_temp->next;
+    }
+  regu_temp->next = out_list;
+
+  /* append regu to info->regu_list */
+  regu_temp = info->regu_list;
+  while (regu_temp->next)
+    {
+      regu_temp = regu_temp->next;
+    }
+  regu_temp->next = regu_list;
+}
+
+/*
+ * pt_alloc_value_list_out_list_regu_list () -
+ * parser (in)  :
+ * node (in) :
+ * value_list (in/out)    :
+ * out_list (in/out)    :
+ * regu_list (in/out)    :
+ */
+static PT_NODE *
+pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT * parser,
+					PT_NODE * node,
+					VAL_LIST ** value_list,
+					REGU_VARIABLE_LIST * out_list,
+					REGU_VARIABLE_LIST * regu_list)
+{
+  int *attr_offsets = NULL;
+  bool out_of_memory = false;
+
+  assert (node != NULL && value_list != NULL
+	  && out_list != NULL && regu_list != NULL);
+
+  /* begin alloc */
+  attr_offsets = pt_make_identity_offsets (node);
+  if (attr_offsets == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
+
+  *value_list = pt_make_val_list (parser, node);
+  if (*value_list == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
+
+  *regu_list = pt_to_position_regu_variable_list (parser, node,
+						  *value_list, attr_offsets);
+  if (*regu_list == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
+
+  *out_list = regu_varlist_alloc ();
+  if (*out_list == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
+
+end:
+
+  if (attr_offsets != NULL)
+    {
+      free_and_init (attr_offsets);
+    }
+
+  if (out_of_memory)
+    {
+      /* on error, return NULL
+       * The error should be reported by the caller
+       */
+      node = NULL;
+    }
+
+  return node;
+}
+
+/*
+ * pt_fix_interpolation_aggregate_function_order_by () -
+ *
+ * return :
+ * parser (in)  :
+ * node (in) :
+ */
+static PT_NODE *
+pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser,
+						  PT_NODE * node)
+{
+  PT_FUNCTION_INFO *func_info_p = NULL;
+  PT_NODE *sort_spec = NULL;
+
+  assert (parser != NULL && node != NULL && node->node_type == PT_FUNCTION);
+
+  func_info_p = &node->info.function;
+  assert (!func_info_p->analytic.is_analytic);
+
+  if (func_info_p->function_type == PT_GROUP_CONCAT
+      || func_info_p->function_type == PT_CUME_DIST
+      || func_info_p->function_type == PT_PERCENT_RANK)
+    {
+      /* nothing to be done for these cases */
+      return node;
+    }
+  else if ((func_info_p->function_type == PT_PERCENTILE_CONT
+	    || func_info_p->function_type == PT_PERCENTILE_DISC)
+	   && func_info_p->order_by != NULL
+	   && func_info_p->order_by->info.sort_spec.pos_descr.pos_no == 0)
+    {
+      func_info_p->order_by->info.sort_spec.pos_descr.pos_no = 1;
+      func_info_p->order_by->info.sort_spec.pos_descr.dom =
+	pt_xasl_node_to_domain (parser, func_info_p->arg_list);
+    }
+  else if (func_info_p->function_type == PT_MEDIAN
+	   && func_info_p->arg_list != NULL
+	   && !PT_IS_CONST (func_info_p->arg_list)
+	   && func_info_p->order_by == NULL)
+    {
+      /* generate the sort spec for median */
+      sort_spec = parser_new_node (parser, PT_SORT_SPEC);
+      if (sort_spec == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
+
+      sort_spec->info.sort_spec.asc_or_desc = PT_ASC;
+      sort_spec->info.sort_spec.nulls_first_or_last = PT_NULLS_DEFAULT;
+      sort_spec->info.sort_spec.expr = parser_copy_tree (parser,
+							 node->info.function.
+							 arg_list);
+      if (sort_spec->info.sort_spec.expr == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
+
+      sort_spec->info.sort_spec.pos_descr.pos_no = 1;
+      sort_spec->info.sort_spec.pos_descr.dom =
+	pt_xasl_node_to_domain (parser, func_info_p->arg_list);
+
+      func_info_p->order_by = sort_spec;
+    }
+
+  return node;
 }
