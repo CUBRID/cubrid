@@ -3022,6 +3022,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
   char *logdata;
   VPID *table_vpids = NULL;
   VPID *vpid_ptr;
+  VPID tmp_vpid;
   int i, ftb_page_index;	/* Index into the allocated file
 				   table pages */
   int length;
@@ -3032,6 +3033,16 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
   if (exp_numpages <= 0)
     {
       exp_numpages = 1;
+    }
+
+  if (*file_type == FILE_BTREE || *file_type == FILE_HEAP)
+    {
+      if (prealloc_npages == 0)
+	{
+	  assert (false);
+	  prealloc_npages = 1;
+	  first_prealloc_vpid = &tmp_vpid;
+	}
     }
 
   /*
@@ -3513,6 +3524,37 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 	      return NULL;
 	    }
 	}
+
+      assert (!VPID_ISNULL (first_prealloc_vpid));
+
+      vpid.volid = vfid->volid;
+      vpid.pageid = vfid->fileid;
+      fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			      PGBUF_UNCONDITIONAL_LATCH);
+      if (fhdr_pgptr == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+      fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
+
+      assert (VPID_ISNULL (&fhdr->first_alloc_vpid));
+
+      VPID_COPY (&fhdr->first_alloc_vpid, first_prealloc_vpid);
+
+      addr.vfid = vfid;
+      addr.pgptr = fhdr_pgptr;
+      addr.offset = FILE_HEADER_OFFSET;
+
+      /* DON'T NEED to log before image (undo) since this is a newly created
+         file and pages of the file would be deallocated during undo(abort). */
+
+      log_append_redo_data (thread_p, RVFL_FHDR, &addr,
+			    FILE_SIZEOF_FHDR_WITH_DES_COMMENTS (fhdr), fhdr);
+
+      pgbuf_set_dirty (thread_p, fhdr_pgptr, FREE);
+      addr.pgptr = NULL;
     }
 
   /* The responsability of the creation of the file is given to the outer
@@ -7081,11 +7123,6 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       first_new_vpid->volid = allocset->volid;
       first_new_vpid->pageid = alloc_pageid;
       answer = FILE_ALLOCSET_ALLOC_NPAGES;
-
-      if (VPID_ISNULL (&fhdr->first_alloc_vpid))
-	{
-	  VPID_COPY (&fhdr->first_alloc_vpid, first_new_vpid);
-	}
     }
   else
     {

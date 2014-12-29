@@ -6721,7 +6721,15 @@ exit_on_error:
 VPID *
 btree_get_root_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid)
 {
-  return file_get_first_alloc_vpid (thread_p, &btid->vfid, root_vpid);
+  VPID *vpid;
+
+  assert (!VFID_ISNULL (&btid->vfid));
+
+  vpid = file_get_first_alloc_vpid (thread_p, &btid->vfid, root_vpid);
+
+  assert (!VPID_ISNULL (root_vpid));
+
+  return vpid;
 }
 
 /*
