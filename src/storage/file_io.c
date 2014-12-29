@@ -6525,7 +6525,6 @@ fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
     {
       return false;
     }
-  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);	/* use this function after mount */
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
 
@@ -6535,6 +6534,7 @@ fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
 				      &arg);
   if (vol_info_p)
     {
+      assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
       return true;
     }
 
@@ -6551,7 +6551,6 @@ fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
     {
       return NULL_VOLID;
     }
-  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);	/* use this function after mount */
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
 
@@ -6560,6 +6559,7 @@ fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
     fileio_traverse_permanent_volume (thread_p, fileio_is_volume_id_gt, &arg);
   if (vol_info_p)
     {
+      assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
       return vol_info_p->volid;
     }
 
@@ -6576,7 +6576,6 @@ fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
     {
       return NULL_VOLID;
     }
-  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);	/* use this function after mount */
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
 
@@ -6586,6 +6585,7 @@ fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 					      fileio_is_volume_id_lt, &arg);
   if (vol_info_p)
     {
+      assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
       return vol_info_p->volid;
     }
 
@@ -6602,7 +6602,6 @@ fileio_find_previous_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
     {
       return NULL_VOLID;
     }
-  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);	/* use this function after mount */
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
 
@@ -6612,6 +6611,7 @@ fileio_find_previous_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
 					      fileio_is_volume_id_gt, &arg);
   if (vol_info_p)
     {
+      assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
       return vol_info_p->volid;
     }
 
