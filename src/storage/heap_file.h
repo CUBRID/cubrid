@@ -720,4 +720,6 @@ extern int heap_get_class_oid_from_page (THREAD_ENTRY * thread_p,
 extern bool heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p,
 					      HEAP_CACHE_ATTRINFO * attr_info,
 					      ATTR_ID * att_id, int n_att_id);
+extern VPID *heap_get_header_page (THREAD_ENTRY * thread_p, HFID * hfid, VPID
+				   * header_vpid);
 #endif /* _HEAP_FILE_H_ */

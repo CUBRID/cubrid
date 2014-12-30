@@ -4995,6 +4995,109 @@ file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID *
 }
 
 /*
+ * file_alloc_iterator_init () - 
+ *   return: iterator or NULL
+ *   vfid(in): Complete file identifier
+ *   iter(out):
+ */
+FILE_ALLOC_ITERATOR *
+file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid,
+			  FILE_ALLOC_ITERATOR * iter)
+{
+  INT32 npages = 0;
+  VPID vpid;
+
+  assert (vfid);
+  assert (iter);
+
+  npages = file_get_numpages (thread_p, vfid);
+
+  iter->vfid = vfid;
+  iter->current_index = -1;
+  iter->num_pages = npages;
+  VPID_SET_NULL (&iter->current_vpid);
+
+  if (npages > 0)
+    {
+      if (file_get_first_alloc_vpid (thread_p, vfid, &vpid) != NULL)
+	{
+	  VPID_COPY (&iter->current_vpid, &vpid);
+	  iter->current_index = 0;
+	}
+    }
+
+  return iter->current_index == 0 ? iter : NULL;
+}
+
+/*
+ * file_alloc_iterator_get_current_page () - 
+ *   return: pageid or NULL_PAGEID
+ *   iter(in):
+ *   vpid(out):
+ */
+VPID *
+file_alloc_iterator_get_current_page (THREAD_ENTRY * thread_p,
+				      FILE_ALLOC_ITERATOR * iter, VPID * vpid)
+{
+  assert (iter);
+  assert (vpid);
+
+  VPID_SET_NULL (vpid);
+
+  if (iter->current_index < 0 || VPID_ISNULL (&iter->current_vpid))
+    {
+      return NULL;
+    }
+  else
+    {
+      VPID_COPY (vpid, &iter->current_vpid);
+    }
+
+  return vpid;
+}
+
+/*
+ * file_alloc_iterator_next () - 
+ *   return: iterator or NULL
+ *   iter(in):
+ */
+FILE_ALLOC_ITERATOR *
+file_alloc_iterator_next (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter)
+{
+  VPID vpid;
+
+  assert (iter);
+
+  if (iter->current_index < 0 || iter->current_index >= iter->num_pages)
+    {
+      VPID_SET_NULL (&iter->current_vpid);
+      return NULL;
+    }
+  else
+    {
+      iter->current_index++;
+
+      if (iter->current_index == iter->num_pages)
+	{
+	  VPID_SET_NULL (&iter->current_vpid);
+	  return NULL;
+	}
+
+      if (file_find_nthpages
+	  (thread_p, iter->vfid, &vpid, iter->current_index, 1) == 1)
+	{
+	  VPID_COPY (&iter->current_vpid, &vpid);
+	}
+      else
+	{
+	  VPID_SET_NULL (&iter->current_vpid);
+	}
+    }
+
+  return iter;
+}
+
+/*
  * file_guess_numpages_overhead () - Guess the number of additonal overhead
  *                                     pages that are needed to store the given
  *                                     number of pages

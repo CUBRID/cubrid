@@ -5198,7 +5198,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
       if (file_type != FILE_HEAP_REUSE_SLOTS
 	  && file_reuse_deleted (thread_p, &hfid->vfid, file_type,
 				 &hfdes) != NULL
-	  && file_find_nthpages (thread_p, &hfid->vfid, &vpid, 0, 1) == 1)
+	  && heap_get_header_page (thread_p, hfid, &vpid) != NULL)
 	{
 	  hfid->hpgid = vpid.pageid;
 	  if (heap_reuse (thread_p, hfid, &hfdes.class_oid,
@@ -18909,72 +18909,70 @@ heap_check_all_pages_by_allocset (THREAD_ENTRY * thread_p, HFID * hfid,
 				  HEAP_CHKALL_RELOCOIDS * chk_objs,
 				  int *num_checked)
 {
-#define HEAP_SET_NUMVPIDS 10
-
   INT32 checked = 0;
-  INT32 npages = 0;
   PAGE_PTR pgptr;
-  VPID set_vpids[HEAP_SET_NUMVPIDS];
-  int num_found;
-  int i, j;
+  VPID vpid;
   DISK_ISVALID valid_pg = DISK_VALID;
+  FILE_ALLOC_ITERATOR iter;
+  FILE_ALLOC_ITERATOR *iter_p = &iter;
 
-  npages = file_get_numpages (thread_p, &hfid->vfid);
-
-  for (i = 0; i < npages; i += num_found)
+  /* create the iterator of heap pages */
+  if (file_alloc_iterator_init (thread_p, &hfid->vfid, iter_p) == NULL)
     {
-      num_found = file_find_nthpages (thread_p, &hfid->vfid, &set_vpids[0], i,
-				      ((npages - i <
-					HEAP_SET_NUMVPIDS) ? npages -
-				       i : HEAP_SET_NUMVPIDS));
+      /* heap header page should be exist */
+      return DISK_ERROR;
+    }
 
-      if (num_found == -1)
+  while (iter_p)
+    {
+      checked++;
+
+      if (file_alloc_iterator_get_current_page (thread_p, &iter, &vpid) ==
+	  NULL)
 	{
-	  /* error */
 	  valid_pg = DISK_ERROR;
 	  break;
 	}
 
-      for (j = 0; j < num_found; j++)
+      assert (!VPID_ISNULL (&vpid));
+
+      if (file_isvalid_page_partof (thread_p, &vpid, &hfid->vfid)
+	  != DISK_VALID)
 	{
-	  checked++;
+	  valid_pg = DISK_ERROR;
+	  iter_p = file_alloc_iterator_next (thread_p, iter_p);
+	  continue;
+	}
 
-	  if (file_isvalid_page_partof (thread_p, &set_vpids[j], &hfid->vfid)
-	      != DISK_VALID)
-	    {
-	      valid_pg = DISK_ERROR;
-	      continue;
-	    }
-
-	  pgptr =
-	    heap_scan_pb_lock_and_fetch (thread_p, &set_vpids[j], OLD_PAGE,
-					 S_LOCK, NULL);
-	  if (pgptr == NULL)
-	    {
-	      valid_pg = DISK_ERROR;
-	      continue;
-	    }
+      pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL);
+      if (pgptr == NULL)
+	{
+	  valid_pg = DISK_ERROR;
+	  iter_p = file_alloc_iterator_next (thread_p, iter_p);
+	  continue;
+	}
 
 #ifdef SPAGE_DEBUG
-	  if (spage_check (thread_p, pgptr) != NO_ERROR)
+      if (spage_check (thread_p, pgptr) != NO_ERROR)
+	{
+	  valid_pg = DISK_ERROR;
+	}
+#endif
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+
+      if (chk_objs != NULL)
+	{
+	  if (heap_chkreloc_next (thread_p, chk_objs, pgptr) != DISK_VALID)
 	    {
 	      valid_pg = DISK_ERROR;
 	    }
-#endif
-
-	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
-
-	  if (chk_objs != NULL)
-	    {
-	      if (heap_chkreloc_next (thread_p, chk_objs, pgptr) !=
-		  DISK_VALID)
-		{
-		  valid_pg = DISK_ERROR;
-		}
-	    }
-
-	  pgbuf_unfix_and_init (thread_p, pgptr);
 	}
+
+      pgbuf_unfix_and_init (thread_p, pgptr);
+
+      iter_p = file_alloc_iterator_next (thread_p, iter_p);
     }
 
   *num_checked = checked;
@@ -19177,7 +19175,7 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
       return DISK_ERROR;
     }
 
-  if (file_find_nthpages (thread_p, &hfid->vfid, &vpid, 0, 1) == 1)
+  if (heap_get_header_page (thread_p, hfid, &vpid) != NULL)
     {
       hfid->hpgid = vpid.pageid;
 
@@ -19607,7 +19605,7 @@ heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records)
 	  continue;
 	}
 
-      if (file_find_nthpages (thread_p, &hfid.vfid, &vpid, 0, 1) == 1)
+      if (heap_get_header_page (thread_p, &hfid, &vpid) != NULL)
 	{
 	  hfid.hpgid = vpid.pageid;
 	  heap_dump (thread_p, fp, &hfid, dump_records);
@@ -19663,7 +19661,7 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 	  continue;
 	}
 
-      if (file_find_nthpages (thread_p, &hfid.vfid, &vpid, 0, 1) == 1)
+      if (heap_get_header_page (thread_p, &hfid, &vpid) != NULL)
 	{
 	  hfid.hpgid = vpid.pageid;
 	  if (heap_get_capacity (thread_p, &hfid, &num_recs,
@@ -27711,4 +27709,27 @@ heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
     }
 
   return error_code;
+}
+
+/*
+ * heap_get_header_page () -
+ *   return: pageid or NULL_PAGEID
+ *   btid(in): Heap file identifier
+ *   header_vpid(out):
+ *
+ * Note: get the page identifier of the first allocated page of the given file.
+ */
+VPID *
+heap_get_header_page (THREAD_ENTRY * thread_p, HFID * hfid,
+		      VPID * header_vpid)
+{
+  VPID *vpid;
+
+  assert (!VFID_ISNULL (&hfid->vfid));
+
+  vpid = file_get_first_alloc_vpid (thread_p, &hfid->vfid, header_vpid);
+
+  assert (!VPID_ISNULL (header_vpid));
+
+  return vpid;
 }

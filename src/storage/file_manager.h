@@ -217,6 +217,15 @@ struct file_alloc_vpids
   int index;
 };
 
+typedef struct file_alloc_iterator FILE_ALLOC_ITERATOR;
+struct file_alloc_iterator
+{
+  VFID *vfid;
+  VPID current_vpid;
+  int current_index;
+  int num_pages;
+};
+
 extern int file_manager_initialize (THREAD_ENTRY * thread_p);
 extern int file_manager_finalize (THREAD_ENTRY * thread_p);
 
@@ -366,6 +375,17 @@ extern VFID *file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid);
 extern int file_tracker_compress (THREAD_ENTRY * thread_p);
 
 extern int file_typecache_clear (void);
+
+extern FILE_ALLOC_ITERATOR *file_alloc_iterator_init (THREAD_ENTRY * thread_p,
+						      VFID * vfid,
+						      FILE_ALLOC_ITERATOR *
+						      iter);
+extern VPID *file_alloc_iterator_get_current_page (THREAD_ENTRY * thread_p,
+						   FILE_ALLOC_ITERATOR * iter,
+						   VPID * vpid);
+extern FILE_ALLOC_ITERATOR *file_alloc_iterator_next (THREAD_ENTRY * thread_p,
+						      FILE_ALLOC_ITERATOR *
+						      iter);
 
 /* This are for debugging purposes */
 extern int file_dump (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
