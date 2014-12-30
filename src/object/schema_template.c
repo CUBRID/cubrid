@@ -2734,6 +2734,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
   const char *property_type = NULL;
   char *norm_new_name = NULL;
   MOP ref_clsop;
+  BTID *btid = NULL;
 
   assert (ctemplate != NULL);
   assert (sm_cons != NULL);
@@ -2745,6 +2746,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
       goto error_exit;
     }
+  btid = &sm_constraint->index_btid;
 
   switch (element_type)
     {
@@ -2810,8 +2812,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
 	   * The below rename FK ref in properties of this class.
 	   */
 	  error = classobj_rename_foreign_key_ref (&(ctemplate->properties),
-						   (char *) old_name,
-						   (char *) new_name);
+						   btid, old_name, new_name);
 	}
       else
 	{
@@ -2819,8 +2820,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
 	   * The below rename FK ref in owner class and update the owner class.
 	   */
 	  error =
-	    sm_rename_foreign_key_ref (ref_clsop, (char *) old_name,
-				       (char *) new_name);
+	    sm_rename_foreign_key_ref (ref_clsop, btid, old_name, new_name);
 	}
 
       if (error != NO_ERROR)

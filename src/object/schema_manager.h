@@ -333,8 +333,12 @@ extern bool classobj_is_exist_foreign_key_ref (MOP refop,
 extern int classobj_put_foreign_key_ref (DB_SEQ ** properties,
 					 SM_FOREIGN_KEY_INFO * fk_info);
 extern int classobj_rename_foreign_key_ref (DB_SEQ ** properties,
-					    char *old_name, char *new_name);
-extern int classobj_drop_foreign_key_ref (DB_SEQ ** properties, BTID * btid);
+					    const BTID * btid,
+					    const char *old_name,
+					    const char *new_name);
+extern int classobj_drop_foreign_key_ref (DB_SEQ ** properties,
+					  const BTID * btid,
+					  const char *name);
 
 /* currently this is a private function to be called only by AU_SET_USER */
 extern int sc_set_current_schema (MOP user);
@@ -349,8 +353,9 @@ extern int sm_is_global_only_constraint (MOP classmop,
 					 int *is_global,
 					 SM_TEMPLATE * template_);
 
-extern int sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name,
-				      char *new_name);
+extern int sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid,
+				      const char *old_name,
+				      const char *new_name);
 
 extern int sm_adjust_partitions_parent (MOP class_mop, bool flush);
 extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop,

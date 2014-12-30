@@ -535,8 +535,9 @@ static int filter_local_constraints (SM_TEMPLATE * template_,
 				     SM_CLASS * super_class);
 static int update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 					    SM_FOREIGN_KEY_INFO * fk_info,
-					    char *old_name, char *new_name,
-					    BTID * btid);
+					    const BTID * btid,
+					    const char *old_name,
+					    const char *new_name);
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -10663,11 +10664,13 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
  * sm_rename_foreign_key_ref() - Rename constraint name in PK referenced by FK
  *   return: NO_ERROR on success, non-zero for ERROR
  *   ref_clsop(in): referenced class by FK
+ *   btid(in): the BTID of the constraint which needs to rename
  *   old_name(in): old constraint name
  *   new_name(in): new constraint name
  */
 int
-sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name, char *new_name)
+sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid,
+			   const char *old_name, const char *new_name)
 {
   SM_TEMPLATE *template_;
   SM_CLASS *ref_class_;
@@ -10710,8 +10713,8 @@ sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name, char *new_name)
     }
 
   error =
-    update_fk_ref_partitioned_class (template_, NULL, old_name, new_name,
-				     NULL);
+    update_fk_ref_partitioned_class (template_, NULL, btid, old_name,
+				     new_name);
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
@@ -10720,7 +10723,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name, char *new_name)
     }
 
   error =
-    classobj_rename_foreign_key_ref (&(template_->properties), old_name,
+    classobj_rename_foreign_key_ref (&(template_->properties), btid, old_name,
 				     new_name);
   if (error != NO_ERROR)
     {
@@ -11286,15 +11289,15 @@ drop_foreign_key_ref (MOP classop,
 	}
 
       err =
-	update_fk_ref_partitioned_class (refcls_template, NULL, NULL, NULL,
-					 &cons->index_btid);
+	update_fk_ref_partitioned_class (refcls_template, NULL,
+					 &cons->index_btid, cons->name, NULL);
       if (err != NO_ERROR)
 	{
 	  goto error;
 	}
 
       err = classobj_drop_foreign_key_ref (&refcls_template->properties,
-					   &cons->index_btid);
+					   &cons->index_btid, cons->name);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -16395,14 +16398,15 @@ sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop, bool * found)
  *   return: NO_ERROR on success, non-zero for ERROR
  *   ctemplate(in): sm_template of the super class (partition class)
  *   fk_info(in): foreign key reference info of super class (partition class)
+ *   btid(in): btid of the foreign key reference
  *   old_name(in):
  *   new_name(in):
- *   btid(in): btid of the foreign key reference
  */
 static int
 update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 				 SM_FOREIGN_KEY_INFO * fk_info,
-				 char *old_name, char *new_name, BTID * btid)
+				 const BTID * btid, const char *old_name,
+				 const char *new_name)
 {
   int error = NO_ERROR;
   int i, is_partition = 0;
@@ -16494,7 +16498,7 @@ update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
       if (old_name != NULL && new_name != NULL)
 	{
 	  error = classobj_rename_foreign_key_ref (&sub_ctemplate->properties,
-						   old_name, new_name);
+						   btid, old_name, new_name);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -16516,7 +16520,7 @@ update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 	    {
 	      error =
 		classobj_drop_foreign_key_ref (&sub_ctemplate->properties,
-					       btid);
+					       btid, old_name);
 	      if (error != NO_ERROR)
 		{
 		  goto error_exit;
