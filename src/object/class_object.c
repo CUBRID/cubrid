@@ -2052,25 +2052,22 @@ end:
  *
  *   return: NO_ERROR on success, non-zero for ERROR
  *   properties(in/out):
- *   btid(in): The BTID of the constraint which needs rename.
  *   old_name(in): The old constraint name.
  *   new_name(in): The new constraint name.
  */
 int
-classobj_rename_foreign_key_ref (DB_SEQ ** properties, const BTID * btid,
-				 const char *old_name, const char *new_name)
+classobj_rename_foreign_key_ref (DB_SEQ ** properties, char *old_name,
+				 char *new_name)
 {
   DB_VALUE prop_val, pk_val, fk_container_val;
   DB_VALUE fk_val, new_fk_val;
   DB_VALUE name_val, new_name_val;
-  DB_VALUE btid_val;
   DB_SEQ *pk_property, *pk_seq, *fk_container, *fk_seq = NULL;
   int size;
   int fk_container_pos, pk_seq_pos;
   int err = NO_ERROR;
   int fk_container_len;
   int i;
-  int volid, pageid, fileid;
   char *name = NULL;
   int found = 0;
 
@@ -2124,23 +2121,7 @@ classobj_rename_foreign_key_ref (DB_SEQ ** properties, const BTID * btid,
 
 	  fk_seq = DB_GET_SEQUENCE (&fk_val);
 
-	  /* A shallow copy for btid_val is enough.
-	   * So, no need pr_clear_val(&btid_val). */
-	  err = set_get_element_nocopy (fk_seq, 1, &btid_val);
-	  if (err != NO_ERROR)
-	    {
-	      goto end;
-	    }
-
-	  if (classobj_decompose_property_oid
-	      (DB_GET_STRING (&btid_val), &volid, &fileid, &pageid) != 3)
-	    {
-	      err = ER_SM_INVALID_PROPERTY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	      goto end;
-	    }
-
-	  /* A shallow copy for name_val is enough.
+	  /* A shallow copy for name_val is enough. 
 	   * So, no need pr_clear_val(&name_val). */
 	  err = set_get_element_nocopy (fk_seq, 4, &name_val);
 	  if (err != NO_ERROR)
@@ -2148,20 +2129,9 @@ classobj_rename_foreign_key_ref (DB_SEQ ** properties, const BTID * btid,
 	      goto end;
 	    }
 
-	  if (DB_VALUE_TYPE (&name_val) != DB_TYPE_STRING)
-	    {
-	      err = ER_SM_INVALID_PROPERTY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	      goto end;
-	    }
-
 	  name = DB_GET_STRING (&name_val);
 
-	  if (btid->vfid.volid == volid
-	      && btid->vfid.fileid == fileid
-	      && btid->root_pageid == pageid
-	      && old_name != NULL && name != NULL
-	      && SM_COMPARE_NAMES (old_name, name) == 0)
+	  if (SM_COMPARE_NAMES (old_name, name) == 0)
 	    {
 	      fk_container_pos = i;
 
@@ -2235,19 +2205,15 @@ end:
  * classobj_drop_foreign_key_ref()
  *   return: NO_ERROR on success, non-zero for ERROR
  *   properties(in/out):
- *   btid(in): The BTID of the constraint which needs drop.
- *   name(in): The constraint name
+ *   fk_info(in):
  */
 
 int
-classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * btid,
-			       const char *name)
+classobj_drop_foreign_key_ref (DB_SEQ ** properties, BTID * btid)
 {
   int i, fk_container_pos, fk_count;
   DB_VALUE prop_val, pk_val, fk_container_val, fk_val, btid_val;
   DB_SEQ *pk_property, *pk_seq, *fk_container, *fk_seq;
-  DB_VALUE cons_name_val;
-  const char *cons_name = NULL;
   int volid, pageid, fileid;
   int err = NO_ERROR;
 
@@ -2306,6 +2272,7 @@ classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * btid,
 	  goto end;
 	}
 
+
       if (classobj_decompose_property_oid
 	  (DB_GET_STRING (&btid_val), &volid, &fileid, &pageid) != 3)
 	{
@@ -2314,31 +2281,11 @@ classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * btid,
 	  goto end;
 	}
 
-      /* A shallow copy for cons_name_val is enough.
-       * So, no need pr_clear_val(&cons_name_val). */
-      err = set_get_element_nocopy (fk_seq, 4, &cons_name_val);
-      if (err != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      if (DB_VALUE_TYPE (&cons_name_val) != DB_TYPE_STRING)
-	{
-	  err = ER_SM_INVALID_PROPERTY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	  goto end;
-	}
-
-      cons_name = DB_GET_STRING (&cons_name_val);
-
       pr_clear_value (&btid_val);
       pr_clear_value (&fk_val);
 
-      if (btid->vfid.volid == volid
-	  && btid->vfid.fileid == fileid
-	  && btid->root_pageid == pageid
-	  && name != NULL && cons_name != NULL
-	  && SM_COMPARE_NAMES (name, cons_name) == 0)
+      if (btid->vfid.volid == volid && btid->vfid.fileid == fileid
+	  && btid->root_pageid == pageid)
 	{
 	  err = set_drop_seq_element (fk_container, i);
 	  if (err != NO_ERROR)
