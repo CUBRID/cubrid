@@ -92,7 +92,7 @@ extern const char *boot_db_full_name (void);
 #if !defined(CS_MODE)
 extern const char *boot_get_lob_path (void);
 #endif /* !CS_MODE */
-extern HFID *boot_find_root_heap (void);
+int boot_find_root_heap (HFID * root_hfid_p);
 
 extern VOLID boot_find_next_permanent_volid (THREAD_ENTRY * thread_p);
 extern int boot_reset_db_parm (THREAD_ENTRY * thread_p);

@@ -642,14 +642,16 @@ extractobjects (const char *exec_name)
 
       for (cptr = prohibited_classes; *cptr; ++cptr)
 	{
-	  if (strcmp (*cptr, class_ptr->header.name) == 0)
-	    break;
+	  if (strcmp (*cptr, sm_ch_name ((MOBJ) class_ptr)) == 0)
+	    {
+	      break;
+	    }
 	}
       if (*cptr == NULL)
 	{
 #if defined(CUBRID_DEBUG)
 	  fprintf (stdout, "%s%s%s\n",
-		   PRINT_IDENTIFIER (class_ptr->header.name));
+		   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 #endif /* CUBRID_DEBUG */
 
 	  fh_put (cl_table, ws_oid (class_table->mops[i]), &i);
@@ -667,7 +669,8 @@ extractobjects (const char *exec_name)
 	      (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {
 	      if (text_print (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%',
-			      PRINT_IDENTIFIER (class_ptr->header.name),
+			      PRINT_IDENTIFIER (sm_ch_name
+						((MOBJ) class_ptr)),
 			      i) != NO_ERROR)
 		{
 		  status = 1;
@@ -762,7 +765,7 @@ extractobjects (const char *exec_name)
 	      num_unload_classes++;
 	    }
 
-	  hfid = sm_heap ((MOBJ) class_ptr);
+	  hfid = sm_ch_heap ((MOBJ) class_ptr);
 	  if (!HFID_IS_NULL (hfid))
 	    {
 	      if (get_estimated_objs (hfid, &est_objects) < 0)
@@ -860,7 +863,7 @@ extractobjects (const char *exec_name)
 		goto end;
 	      }
 	    fprintf (stdout, "%s%s%s\n",
-		     PRINT_IDENTIFIER (class_ptr->header.name));
+		     PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 	    total_ref_cls++;
 	  }
       }
@@ -950,7 +953,7 @@ extractobjects (const char *exec_name)
 
 		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s",
 			    output_dirname, output_prefix,
-			    class_ptr->header.name, OBJECT_SUFFIX);
+			    sm_ch_name ((MOBJ) class_ptr), OBJECT_SUFFIX);
 
 		  obj_out->fp = fopen_ex (outfile, "wb");
 		  if (obj_out->fp == NULL)
@@ -1167,8 +1170,9 @@ process_class (int cl_no)
 	  CHECK_PRINT_ERROR (text_print (obj_out,
 					 NULL, 0,
 					 "%cclass %s%s%s shared (%s%s%s", '%',
-					 PRINT_IDENTIFIER (class_ptr->header.
-							   name),
+					 PRINT_IDENTIFIER (sm_ch_name
+							   ((MOBJ)
+							    class_ptr)),
 					 PRINT_IDENTIFIER (attribute->header.
 							   name)));
 	}
@@ -1226,8 +1230,9 @@ process_class (int cl_no)
 	  CHECK_PRINT_ERROR (text_print (obj_out,
 					 NULL, 0,
 					 "%cclass %s%s%s class (%s%s%s", '%',
-					 PRINT_IDENTIFIER (class_ptr->header.
-							   name),
+					 PRINT_IDENTIFIER (sm_ch_name
+							   ((MOBJ)
+							    class_ptr)),
 					 PRINT_IDENTIFIER (attribute->header.
 							   name)));
 	}
@@ -1273,7 +1278,8 @@ process_class (int cl_no)
   CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s ("	/* new line */
 				 : "%cclass %s%s%s (",
 				 '%',
-				 PRINT_IDENTIFIER (class_ptr->header.name)));
+				 PRINT_IDENTIFIER (sm_ch_name
+						   ((MOBJ) class_ptr))));
 
   v = 0;
   attribute = class_ptr->ordered_attributes;
@@ -1292,7 +1298,7 @@ process_class (int cl_no)
   CHECK_PRINT_ERROR (text_print (obj_out, ")\n", 2, NULL));
 
   /* Find the heap where the instances are stored */
-  hfid = sm_heap ((MOBJ) class_ptr);
+  hfid = sm_ch_heap ((MOBJ) class_ptr);
   if (hfid->vfid.fileid == NULL_FILEID)
     {
       if (total_objects == total_approximate_class_objects)
@@ -1304,12 +1310,12 @@ process_class (int cl_no)
 	  total = 100 *
 	    ((float) total_objects / (float) total_approximate_class_objects);
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", class_ptr->header.name, 0,
-	       100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr),
+	       0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name, 0,
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0,
 		   100, total);
 	  fflush (stdout);
 	}
@@ -1329,12 +1335,12 @@ process_class (int cl_no)
 	  total = 100 *
 	    ((float) total_objects / (float) total_approximate_class_objects);
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", class_ptr->header.name, 0,
-	       100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr),
+	       0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name, 0,
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0,
 		   100, total);
 	  fflush (stdout);
 	}
@@ -1356,7 +1362,7 @@ process_class (int cl_no)
 
   if (verbose_flag)
     {
-      gauge_class_name = (char *) class_ptr->header.name;
+      gauge_class_name = (char *) sm_ch_name ((MOBJ) class_ptr);
 #if !defined (WINDOWS)
       prev_handler = os_set_signal_handler (SIGALRM, gauge_alarm_handler);
       prev_alarm = alarm (GAUGE_INTERVAL);
@@ -1471,11 +1477,11 @@ process_class (int cl_no)
       (void) os_set_signal_handler (SIGALRM, prev_handler);
 #endif
 
-      fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name,
+      fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr),
 	       class_objects, 100, total);
       fflush (stdout);
     }
-  fprintf (unloadlog_file, MSG_FORMAT "\n", class_ptr->header.name,
+  fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr),
 	   class_objects, 100, total);
 
 exit_on_end:
@@ -1667,7 +1673,8 @@ process_value (DB_VALUE * value)
 		    goto exit_on_error;
 		  }
 		CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "@%s",
-					       class_ptr->header.name));
+					       sm_ch_name ((MOBJ)
+							   class_ptr)));
 		break;
 	      }
 

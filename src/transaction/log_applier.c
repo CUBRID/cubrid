@@ -5027,7 +5027,8 @@ la_flush_repl_items (bool immediate)
 	      class_mop = ws_mop (&flush_err->class_oid, sm_Root_class_mop);
 	      if (class_mop != NULL && class_mop->object != NULL)
 		{
-		  class_name = ((SM_CLASS *) class_mop->object)->header.name;
+		  class_name = sm_ch_name ((MOBJ) (class_mop->object));
+		  assert (class_name != NULL);
 		}
 
 	      if (flush_err->error_msg != NULL)

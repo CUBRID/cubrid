@@ -534,6 +534,14 @@
   (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, (index) + 1, offset_size) - \
    OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, (index), offset_size))
 
+/* ATTRIBUTE LOCATION */
+
+#define OR_FIXED_ATTRIBUTES_OFFSET(ptr, nvars) \
+   (OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(ptr, nvars, BIG_VAR_OFFSET_SIZE))
+
+#define OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(ptr, nvars, offset_size) \
+   (OR_HEADER_SIZE (ptr) + OR_VAR_TABLE_SIZE_INTERNAL (nvars, offset_size))
+
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
@@ -876,10 +884,10 @@
 /* class */
 enum
 {
-  ORC_HFID_FILEID_OFFSET = 12,
-  ORC_HFID_VOLID_OFFSET = 16,
-  ORC_HFID_PAGEID_OFFSET = 20,
-  ORC_REPID_OFFSET = 24,
+  ORC_REP_DIR_OFFSET = 8,
+  ORC_HFID_FILEID_OFFSET = 16,
+  ORC_HFID_VOLID_OFFSET = 20,
+  ORC_HFID_PAGEID_OFFSET = 24,
   ORC_FIXED_COUNT_OFFSET = 28,
   ORC_VARIABLE_COUNT_OFFSET = 32,
   ORC_FIXED_LENGTH_OFFSET = 36,

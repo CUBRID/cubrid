@@ -1490,7 +1490,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop,
       return er_errid ();
     }
 
-  db_make_string (&class_name_val, sm_class_name (class_mop));
+  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
   db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val,
 				   AU_FETCH_READ);
   if (db_class_inst == NULL)
@@ -5670,7 +5670,7 @@ is_protected_class (MOP classmop, SM_CLASS * sm_class, DB_AUTH auth)
   int illegal = 0;
 
   if (classmop == Au_authorizations_class
-      || IS_CATALOG_CLASS (sm_class->header.name))
+      || IS_CATALOG_CLASS (sm_ch_name ((MOBJ) sm_class)))
     {
       illegal =
 	auth & (AU_ALTER | AU_DELETE | AU_INSERT | AU_UPDATE | AU_INDEX);
@@ -5705,7 +5705,9 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
    * Check it again to be safe, at this point, it isn't going to add anything.
    */
   if (Au_disable)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
 
   /* try to catch attempts by even the DBA to update a protected class */
   if ((sm_class->flags & SM_CLASSFLAG_SYSTEM)
@@ -5960,6 +5962,26 @@ au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr,
       /* looks like a basic read fetch, check authorization only */
       classmop = op;
       class_ = (SM_CLASS *) op->object;
+    }
+
+  /* check class representation directory */
+  if (OID_ISNULL (sm_ch_rep_dir ((MOBJ) class_)))
+    {
+      if (!locator_is_root (classmop))
+	{
+	  error = sm_check_catalog_rep_dir (classmop, class_);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+#if !defined(NDEBUG)
+	  if (!OID_ISTEMP (WS_OID (classmop)))
+	    {
+	      assert (!OID_ISNULL (sm_ch_rep_dir ((MOBJ) class_)));
+	    }
+#endif
+	}
     }
 
   if (Au_disable || !(error = check_authorization (classmop, class_, type)))
@@ -7370,7 +7392,7 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant,
       gtype = "???";
       break;
     }
-  classname = sm_class_name (auth->class_mop);
+  classname = sm_get_ch_name (auth->class_mop);
   username = au_get_user_name (grant->user->obj);
 
   fprintf (fp, "GRANT %s ON ", gtype);
@@ -7603,7 +7625,7 @@ au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp)
   fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 			       MSGCAT_SET_AUTHORIZATION,
 			       MSGCAT_AUTH_CLASS_NAME),
-	   sm_class_name (db_get_object (&value)));
+	   sm_get_ch_name (db_get_object (&value)));
   fprintf (fp, " ");
 
   set_get_element (grants, GRANT_ENTRY_SOURCE (grant_index), &value);

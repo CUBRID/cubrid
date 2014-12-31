@@ -734,10 +734,10 @@ net_server_init (void)
   req_p->name = "NET_SERVER_MNT_SERVER_COPY_STATS";
 
   /* catalog */
-  req_p = &net_Requests[NET_SERVER_CT_CAN_ACCEPT_NEW_REPR];
+  req_p = &net_Requests[NET_SERVER_CT_CHECK_REP_DIR];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = sct_can_accept_new_repr;
-  req_p->name = "NET_SERVER_CT_CAN_ACCEPT_NEW_REPR";
+  req_p->processing_function = sct_check_rep_dir;
+  req_p->name = "NET_SERVER_CT_CHECK_REP_DIR";
 
   /* thread */
   req_p = &net_Requests[NET_SERVER_CSS_KILL_TRANSACTION];

@@ -338,9 +338,8 @@ extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
 					   unsigned int rid, char *request,
 					   int reqlen);
-extern void sct_can_accept_new_repr (THREAD_ENTRY * thread_p,
-				     unsigned int rid, char *request,
-				     int reqlen);
+extern void sct_check_rep_dir (THREAD_ENTRY * thread_p,
+			       unsigned int rid, char *request, int reqlen);
 extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p,
 					       QFILE_LIST_ID * list_id,
 					       METHOD_SIG_LIST *

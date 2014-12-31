@@ -558,7 +558,6 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
   int num_classes_fully_compacted = 0;
   char *class_name = NULL;
   MOP *processed_class_mops = NULL;
-  MOBJ *obj_ptr = NULL;
 
   if (input_filename && input_class_names && input_class_length > 0)
     {
@@ -640,8 +639,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
   num_classes = 0;
   for (i = 0; i < num_class_mops; i++)
     {
-      obj_ptr = (void *) &class_ptr;
-      ws_find (class_mops[i], obj_ptr);
+      ws_find (class_mops[i], (MOBJ *) & class_ptr);
       if (class_ptr == NULL)
 	{
 	  continue;
@@ -1441,7 +1439,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
     }
 
   assert (*class_name == NULL);
-  *class_name = strdup (class_->header.name);
+  *class_name = strdup (sm_ch_name ((MOBJ) class_));
   if (*class_name == NULL)
     {
       error_code = ER_FAILED;
@@ -1486,7 +1484,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
     }
   else
     {
-      hfid = sm_heap ((MOBJ) class_);
+      hfid = sm_ch_heap ((MOBJ) class_);
       if (HFID_IS_NULL (hfid))
 	{
 	  can_reclaim_addresses = false;

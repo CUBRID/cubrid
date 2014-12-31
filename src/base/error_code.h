@@ -360,7 +360,7 @@
 #define ER_SM_POPULATE_NOT_FOUND                    -292
 #define ER_SM_INVALID_CLASS                         -293
 #define ER_SM_INVALID_METHOD_ENV                    -294
-#define ER_SM_CATALOG_SPACE                         -295
+#define ER_SM_CATALOG_SPACE                         -295	/* Unused */
 #define ER_SM_INVALID_PROPERTY                      -296
 #define ER_SM_MULTIPLE_ALIAS                        -297
 #define ER_SM_INVALID_RESOLUTION                    -298
@@ -484,12 +484,12 @@
 #define ER_BTREE_INVALID_RANGE                      -412
 
 #define ER_CT_UNKNOWN_ATTRID                        -413
-#define ER_CT_UNKNOWN_CLASSID                       -414
+#define ER_CT_UNKNOWN_CLASSID                       -414	/* Unused */
 #define ER_CT_INVALID_CLASSID                       -415
 #define ER_CT_UNKNOWN_REPRID                        -416
 #define ER_CT_INVALID_REPRID                        -417
 #define ER_CT_NOSPACE_FOR_ATTRDIR                   -418
-#define ER_CT_REPRCNT_OVERFLOW                      -419
+#define ER_CT_REPRCNT_OVERFLOW                      -419	/* Unused */
 #define ER_CT_CLASS_HAS_REPRESENTATIONS             -420
 #define ER_CT_MISSING_REPR_DIR                      -421
 #define ER_CT_MISSING_REPR_INFO                     -422

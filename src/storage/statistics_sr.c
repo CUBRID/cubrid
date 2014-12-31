@@ -39,6 +39,7 @@
 #include "btree.h"
 #include "extendible_hash.h"
 #include "heap_file.h"
+#include "boot_sr.h"
 #include "partition.h"
 #include "db.h"
 
@@ -70,9 +71,7 @@ struct partition_stats_acumulator
 				 */
 };
 
-static void stats_free_class_list (CLASS_ID_LIST * clsid_list);
-static int stats_get_class_list (THREAD_ENTRY * thread_p, void *key,
-				 void *val, void *args);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int stats_compare_data (DB_DATA * data1, DB_DATA * data2,
 			       DB_TYPE type);
 static int stats_compare_date (DB_DATE * date1, DB_DATE * date2);
@@ -81,6 +80,7 @@ static int stats_compare_utime (DB_UTIME * utime1, DB_UTIME * utime2);
 static int stats_compare_datetime (DB_DATETIME * datetime1_p,
 				   DB_DATETIME * datetime2_p);
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
+#endif
 static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 						OID * class_oid,
 						OID * partitions, int count,
@@ -181,8 +181,9 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       cls_info_p->tot_pages = 0;
       cls_info_p->tot_objects = 0;
 
-      if (catalog_add_class_info (thread_p, class_id_p, cls_info_p) !=
-	  NO_ERROR)
+      error_code = catalog_add_class_info (thread_p, class_id_p,
+					   cls_info_p, NULL);
+      if (error_code != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -277,9 +278,8 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   /* replace the current disk representation structure/information in the
      catalog with the newly computed statistics */
-
   error_code = catalog_add_representation (thread_p, class_id_p,
-					   repr_id, disk_repr_p);
+					   repr_id, disk_repr_p, NULL);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -287,7 +287,8 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   cls_info_p->time_stamp = stats_get_time_stamp ();
 
-  error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
+  error_code =
+    catalog_add_class_info (thread_p, class_id_p, cls_info_p, NULL);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -353,25 +354,54 @@ int
 xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 {
   int error = NO_ERROR;
-  OID class_id;
-  CLASS_ID_LIST *class_id_list_p = NULL, *class_id_item_p;
+  RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
+  HFID root_hfid;
+  OID class_oid;
+#if !defined(NDEBUG)
+  char *classname = NULL;
+#endif
+  HEAP_SCANCACHE scan_cache;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
-  error =
-    ehash_map (thread_p, &catalog_Id.xhid, stats_get_class_list,
-	       (void *) &class_id_list_p);
-  if (error != NO_ERROR || class_id_list_p == NULL)
+  if (mvcc_Enabled)
     {
-      goto end;
+      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (mvcc_snapshot == NULL)
+	{
+	  return DISK_ERROR;
+	}
     }
 
-  for (class_id_item_p = class_id_list_p;
-       class_id_item_p != NULL; class_id_item_p = class_id_item_p->next)
-    {
-      class_id.volid = class_id_item_p->class_id.volid;
-      class_id.pageid = class_id_item_p->class_id.pageid;
-      class_id.slotid = class_id_item_p->class_id.slotid;
+  /* Find every single class
+   */
 
-      error = xstats_update_statistics (thread_p, &class_id, with_fullscan);
+  if (boot_find_root_heap (&root_hfid) != NO_ERROR
+      || HFID_IS_NULL (&root_hfid))
+    {
+      goto exit_on_error;
+    }
+
+  if (heap_scancache_start (thread_p, &scan_cache, &root_hfid,
+			    oid_Root_class_oid, true, false,
+			    mvcc_snapshot) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  class_oid.volid = root_hfid.vfid.volid;
+  class_oid.pageid = NULL_PAGEID;
+  class_oid.slotid = NULL_SLOTID;
+
+  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid,
+		    &peek, &scan_cache, PEEK) == S_SUCCESS)
+    {
+#if !defined(NDEBUG)
+      classname = or_class_name (&peek);
+      assert (classname != NULL);
+      assert (strlen (classname) < 255);
+#endif
+
+      error = xstats_update_statistics (thread_p, &class_oid, with_fullscan);
       if (error == ER_UPDATE_STAT_CANNOT_GET_LOCK
 	  || error == ER_SP_UNKNOWN_SLOTID)
 	{
@@ -381,18 +411,21 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 	}
       else if (error != NO_ERROR)
 	{
-	  goto end;
+	  break;
 	}
-    }
+    }				/* while (...) */
 
-end:
-
-  if (class_id_list_p != NULL)
+  /* End the scan cursor */
+  if (heap_scancache_end (thread_p, &scan_cache) != NO_ERROR)
     {
-      stats_free_class_list (class_id_list_p);
+      goto exit_on_error;
     }
 
   return error;
+
+exit_on_error:
+
+  return DISK_ERROR;
 }
 
 /*
@@ -743,68 +776,9 @@ exit_on_error:
   return NULL;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
- * qst_get_class_list () - Build the list of OIDs of classes
- *   return: NO_ERROR or error code
- *   key(in): next class OID to be added to the list
- *   val(in): data value associated with the class id on the ext. hash entry
- *   args(in): class list being built
- *
- * Note: This function builds the next node of the class id list. It is passed
- *       to the ehash_map function to be called once on each item kept on the
- *       extendible hashing structure used by the catalog manager.
- */
-static int
-stats_get_class_list (THREAD_ENTRY * thread_p, void *key, void *val,
-		      void *args)
-{
-  CLASS_ID_LIST *class_id_item_p, **p;
-
-  p = (CLASS_ID_LIST **) args;
-  class_id_item_p = (CLASS_ID_LIST *) db_private_alloc (thread_p,
-							sizeof
-							(CLASS_ID_LIST));
-  if (class_id_item_p == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  class_id_item_p->class_id.volid = ((OID *) key)->volid;
-  class_id_item_p->class_id.pageid = ((OID *) key)->pageid;
-  class_id_item_p->class_id.slotid = ((OID *) key)->slotid;
-  class_id_item_p->next = *p;
-
-  *p = class_id_item_p;
-  return NO_ERROR;
-}
-
-/*
- * qst_free_class_list () - Frees the dynamic memory area used by the passed
- *                          linked list
- *   return: void
- *   class_id_list(in): list to be freed
- */
-static void
-stats_free_class_list (CLASS_ID_LIST * class_id_list_p)
-{
-  CLASS_ID_LIST *p, *next_p;
-
-  if (class_id_list_p == NULL)
-    {
-      return;
-    }
-
-  for (p = class_id_list_p; p; p = next_p)
-    {
-      next_p = p->next;
-      db_private_free_and_init (NULL, p);
-    }
-
-  class_id_list_p = NULL;
-}
-
-/*
- * qst_date_compar () -
+ * stats_compare_date () -
  *   return:
  *   date1(in): First date value
  *   date2(in): Second date value
@@ -820,7 +794,7 @@ stats_compare_date (DB_DATE * date1_p, DB_DATE * date2_p)
 }
 
 /*
- * qst_time_compar () -
+ * stats_compare_time () -
  *   return:
  *   time1(in): First time value
  *   time2(in): Second time value
@@ -836,7 +810,7 @@ stats_compare_time (DB_TIME * time1_p, DB_TIME * time2_p)
 }
 
 /*
- * qst_utime_compar () -
+ * stats_compare_utime () -
  *   return:
  *   utime1(in): First utime value
  *   utime2(in): Second utime value
@@ -887,7 +861,7 @@ stats_compare_datetime (DB_DATETIME * datetime1_p, DB_DATETIME * datetime2_p)
 }
 
 /*
- * qst_money_compar () -
+ * stats_compare_money () -
  *   return:
  *   mn1(in): First money value
  *   ,n2(in): Second money value
@@ -913,18 +887,6 @@ stats_compare_money (DB_MONETARY * money1_p, DB_MONETARY * money2_p)
     {
       return 1;
     }
-}
-
-/*
- * stats_get_time_stamp () - returns the current system time
- *   return: current system time
- */
-unsigned int
-stats_get_time_stamp (void)
-{
-  time_t tloc;
-
-  return (unsigned int) time (&tloc);
 }
 
 /*
@@ -1011,6 +973,19 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
       break;
     }
   return (status);
+}
+#endif
+
+/*
+ * stats_get_time_stamp () - returns the current system time
+ *   return: current system time
+ */
+unsigned int
+stats_get_time_stamp (void)
+{
+  time_t tloc;
+
+  return (unsigned int) time (&tloc);
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1742,7 +1717,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
   /* replace the current disk representation structure/information in the
      catalog with the newly computed statistics */
   error = catalog_add_representation (thread_p, class_id_p, repr_id,
-				      disk_repr_p);
+				      disk_repr_p, NULL);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -1750,7 +1725,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   cls_info_p->time_stamp = stats_get_time_stamp ();
 
-  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
+  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p, NULL);
 
 cleanup:
   if (cls_rep != NULL)

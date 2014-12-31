@@ -5000,7 +5000,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
       if (info->mop)
 	{
 	  info->oid = *WS_OID (info->mop);
-	  info->name = sm_class_name (info->mop);
+	  info->name = sm_get_ch_name (info->mop);
 	  info->smclass = sm_get_class_with_statistics (info->mop);
 	}
       else
@@ -5036,7 +5036,8 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
       else if (smclass->stats->heap_num_pages == 0)
 	{
 	  if (!info->normal_class
-	      || (((hfid = sm_get_heap (info->mop)) && !HFID_IS_NULL (hfid))))
+	      || ((hfid = sm_get_ch_heap (info->mop))
+		  && !HFID_IS_NULL (hfid)))
 	    {
 	      qo_estimate_statistics (info->mop, smclass->stats);
 	    }

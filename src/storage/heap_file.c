@@ -407,7 +407,7 @@ struct heap_classrepr_cache
   HEAP_CLASSREPR_LOCK *lock_table;
   HEAP_CLASSREPR_LRU_LIST LRU_list;
   HEAP_CLASSREPR_FREE_LIST free_list;
-  HFID *rootclass_hfid;
+  HFID rootclass_hfid;
 #ifdef DEBUG_CLASSREPR_CACHE
   int num_fix_entries;
   pthread_mutex_t num_fix_entries_mutex;
@@ -428,9 +428,9 @@ static HEAP_CLASSREPR_CACHE heap_Classrepr_cache = {
    PTHREAD_MUTEX_INITIALIZER,
    NULL,
    -1},
-  NULL
+  {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID}	/* rootclass_hfid */
 #ifdef DEBUG_CLASSREPR_CACHE
-    , 0, PTHREAD_MUTEX_INITIALIZER
+  , 0, PTHREAD_MUTEX_INITIALIZER
 #endif /* DEBUG_CLASSREPR_CACHE */
 };
 
@@ -443,9 +443,9 @@ static HEAP_CLASSREPR_CACHE heap_Classrepr_cache = {
     { \
       if (heap_Classrepr != NULL && (hfid) != NULL) \
 	{ \
-	  if (heap_Classrepr->rootclass_hfid == NULL) \
-	    heap_Classrepr->rootclass_hfid = boot_find_root_heap (); \
-	  if (HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid)) \
+	  if (HFID_IS_NULL (&(heap_Classrepr->rootclass_hfid))) \
+	    (void) boot_find_root_heap (&(heap_Classrepr->rootclass_hfid)); \
+	  if (HFID_EQ ((hfid), &(heap_Classrepr->rootclass_hfid))) \
 	    (void) heap_classrepr_decache_guessed_last (class_oid); \
 	} \
     } \
@@ -2481,7 +2481,7 @@ heap_classrepr_get_from_record (THREAD_ENTRY * thread_p,
   repr = or_get_classrep (recdes, reprid);
   if (last_reprid != NULL)
     {
-      *last_reprid = or_class_repid (recdes);
+      *last_reprid = or_rep_id (recdes);
     }
 
 end:
@@ -2858,9 +2858,10 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
       goto exit_on_error;
     }
 
+  fprintf (fp, "\n");
   fprintf (fp, " Class-OID = %d|%d|%d, Classname = %s, reprid = %d,\n"
 	   " Attrs: Tot = %d, Nfix = %d, Nvar = %d, Nshare = %d, Nclass = %d,\n"
-	   " Total_length_of_fixattrs = %d,\n",
+	   " Total_length_of_fixattrs = %d\n",
 	   (int) class_oid->volid, class_oid->pageid,
 	   (int) class_oid->slotid, classname, repr->id,
 	   repr->n_attributes, (repr->n_attributes - repr->n_variable -
@@ -2869,7 +2870,12 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
 	   repr->fixed_length);
   free_and_init (classname);
 
-  fprintf (fp, " Attribute Specifications:\n");
+  if (repr->n_attributes > 0)
+    {
+      fprintf (fp, "\n");
+      fprintf (fp, " Attribute Specifications:\n");
+    }
+
   for (i = 0, attrepr = repr->attributes;
        i < repr->n_attributes; i++, attrepr++)
     {
@@ -6526,8 +6532,9 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	}
     }
 
-  if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
-      && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
+  if (heap_Guesschn != NULL
+      && !HFID_IS_NULL (&(heap_Classrepr->rootclass_hfid))
+      && HFID_EQ ((hfid), &(heap_Classrepr->rootclass_hfid)))
     {
       char *classname;
 
@@ -7951,8 +7958,9 @@ try_again:
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
     }
 
-  if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
-      && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
+  if (heap_Guesschn != NULL
+      && !HFID_IS_NULL (&(heap_Classrepr->rootclass_hfid))
+      && HFID_EQ ((hfid), &(heap_Classrepr->rootclass_hfid)))
     {
       char *classname = NULL;
 
@@ -8074,8 +8082,9 @@ heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    }
 	}
     }
-  if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
-      && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
+  if (heap_Guesschn != NULL
+      && !HFID_IS_NULL (&(heap_Classrepr->rootclass_hfid))
+      && HFID_EQ ((hfid), &(heap_Classrepr->rootclass_hfid)))
     {
       char *classname = NULL;
 
@@ -22300,7 +22309,7 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
     {
       rep_all = or_get_all_representation (&peek_recdes, true, &count);
       fprintf (fp, "*** Dumping representations of class %s\n"
-	       "    Classname = %s, Class-OID = %d|%d|%d, #Repr = %d\n\n",
+	       "    Classname = %s, Class-OID = %d|%d|%d, #Repr = %d\n",
 	       classname, classname, (int) class_oid->volid,
 	       class_oid->pageid, (int) class_oid->slotid, count);
 

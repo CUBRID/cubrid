@@ -368,7 +368,7 @@ int
 locator_initialize (THREAD_ENTRY * thread_p)
 {
   RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
-  HFID *root_hfid;
+  HFID root_hfid;
   OID class_oid;
   char *classname = NULL;
   HEAP_SCANCACHE scan_cache;
@@ -412,13 +412,13 @@ locator_initialize (THREAD_ENTRY * thread_p)
   /* Find every single class
    */
 
-  root_hfid = boot_find_root_heap ();
-  if (root_hfid == NULL)
+  if (boot_find_root_heap (&root_hfid) != NO_ERROR
+      || HFID_IS_NULL (&root_hfid))
     {
       goto error;
     }
 
-  if (heap_scancache_start (thread_p, &scan_cache, root_hfid,
+  if (heap_scancache_start (thread_p, &scan_cache, &root_hfid,
 			    NULL, true, false, NULL) != NO_ERROR)
     {
       goto error;
@@ -426,7 +426,7 @@ locator_initialize (THREAD_ENTRY * thread_p)
 
   OID_SET_NULL (&class_oid);
 
-  while (heap_next (thread_p, root_hfid, NULL, &class_oid,
+  while (heap_next (thread_p, &root_hfid, NULL, &class_oid,
 		    &peek, &scan_cache, PEEK) == S_SUCCESS)
     {
       assert (!OID_ISNULL (&class_oid));
@@ -2048,7 +2048,7 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
 {
   DISK_ISVALID isvalid;
   RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
-  HFID *root_hfid;
+  HFID root_hfid;
   OID class_oid;
   char *classname = NULL;
   OID class_oid2;
@@ -2084,25 +2084,25 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
   /* Find every single class
    */
 
-  root_hfid = boot_find_root_heap ();
-  if (root_hfid == NULL)
+  if (boot_find_root_heap (&root_hfid) != NO_ERROR
+      || HFID_IS_NULL (&root_hfid))
     {
       goto error;
     }
 
-  if (heap_scancache_start (thread_p, &scan_cache, root_hfid,
+  if (heap_scancache_start (thread_p, &scan_cache, &root_hfid,
 			    oid_Root_class_oid, true, false,
 			    mvcc_snapshot) != NO_ERROR)
     {
       goto error;
     }
 
-  class_oid.volid = root_hfid->vfid.volid;
+  class_oid.volid = root_hfid.vfid.volid;
   class_oid.pageid = NULL_PAGEID;
   class_oid.slotid = NULL_SLOTID;
 
   isvalid = DISK_VALID;
-  while (heap_next (thread_p, root_hfid, oid_Root_class_oid, &class_oid,
+  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid,
 		    &peek, &scan_cache, PEEK) == S_SUCCESS)
     {
       classname = or_class_name (&peek);
@@ -5324,7 +5324,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		      int pruning_type, PRUNING_CONTEXT * pcontext,
 		      FUNC_PRED_UNPACK_INFO * func_preds)
 {
+#if 0				/* TODO - dead code; do not delete me */
+  OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+#endif
   char *classname;		/* Classname to update */
+  bool isold_object;		/* Make sure that this is an old object */
   RECDES new_recdes;
   bool is_cached = false;
   LC_COPYAREA *cache_attr_copyarea = NULL;
@@ -5333,11 +5337,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   HFID real_hfid;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
-  OID null_oid = {
-    NULL_PAGEID, NULL_SLOTID, NULL_VOLID
-  };
+  OID null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 
-  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+  assert (class_oid != NULL);
+  assert (!OID_ISNULL (class_oid));
+  assert (!OID_IS_ROOTOID (class_oid));
 
   HFID_COPY (&real_hfid, hfid);
   COPY_OID (&real_class_oid, class_oid);
@@ -5430,6 +5434,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
   /* insert object and lock it */
 
+  assert (!OID_IS_ROOTOID (&real_class_oid));
+
   if (heap_insert (thread_p, &real_hfid, &real_class_oid, oid, recdes,
 		   local_scan_cache) == NULL)
     {
@@ -5446,8 +5452,11 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
       goto error2;
     }
 
+#if 0				/* TODO - dead code; do not delete me */
   if (OID_IS_ROOTOID (&real_class_oid))
     {
+      assert (false);		/* is impossible */
+
       /*
        * A CLASS: Add the classname to class_OID entry and add the class
        *          to the catalog.
@@ -5466,20 +5475,62 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  goto error1;
 	}
 
-      if (!OID_IS_ROOTOID (oid) && catalog_insert (thread_p, recdes, oid) < 0)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  /*
-	   * There is an error inserting the hash entry or catalog
-	   * information. Maybe, the transaction should be aborted by
-	   * the caller...Quit
-	   */
-	  assert (er_errid () != NO_ERROR);
-	  error_code = er_errid ();
-	  if (error_code == NO_ERROR)
+	  char *rep_dir_offset;
+
+	  or_class_rep_dir (recdes, &rep_dir);
+	  assert (OID_ISNULL (&rep_dir));
+
+	  if (catalog_insert (thread_p, recdes, oid, &rep_dir) < 0)
 	    {
-	      error_code = ER_FAILED;
+	      /*
+	       * There is an error inserting the hash entry or catalog
+	       * information. Maybe, the transaction should be aborted by
+	       * the caller...Quit
+	       */
+	      assert (er_errid () != NO_ERROR);
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+	      goto error1;
 	    }
-	  goto error1;
+
+	  assert (!OID_ISNULL (&rep_dir));
+
+	  /* save oid of the representation directory
+	   */
+	  rep_dir_offset = (char *) recdes->data +
+	    OR_FIXED_ATTRIBUTES_OFFSET (recdes->data,
+					ORC_CLASS_VAR_ATT_COUNT) +
+	    ORC_REP_DIR_OFFSET;
+
+	  OR_PUT_OID (rep_dir_offset, &rep_dir);
+
+	  if (heap_update (thread_p, &real_hfid, &real_class_oid, oid,
+			   recdes, NULL, &isold_object, local_scan_cache,
+			   HEAP_UPDATE_IN_PLACE) == NULL)
+	    {
+	      /*
+	       * Problems updating the object...Maybe, the transaction should be
+	       * aborted by the caller...Quit..
+	       */
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+	      goto error1;
+	    }
+
+	  assert (isold_object == true);
+
+#if !defined(NDEBUG)
+	  or_class_rep_dir (recdes, &rep_dir);
+	  assert (!OID_ISNULL (&rep_dir));
+#endif
 	}
 
       if (catcls_Enable == true
@@ -5498,6 +5549,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
     }
   else
     {
+#endif
       /*
        * AN INSTANCE: Apply the necessary index insertions
        */
@@ -5532,8 +5584,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	  if (is_cached)
 	    {
-	      bool isold_object;
-
 	      recdes = &new_recdes;
 	      /* Cache object has been updated, we need update the value again */
 	      if (heap_update (thread_p, &real_hfid, &real_class_oid, oid,
@@ -5572,7 +5622,9 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    }
 	  qmgr_add_modified_class (thread_p, &real_class_oid);
 	}
+#if 0				/* TODO - dead code; do not delete me */
     }
+#endif
 
   /* Unlock the object according to isolation level */
   /* locked by heap_insert */
@@ -5643,6 +5695,9 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
   OID new_obj_oid;
   int ins_op_type = SINGLE_ROW_INSERT;
   int del_op_type = SINGLE_ROW_DELETE;
+
+  assert (!OID_IS_ROOTOID (old_class_oid));
+  assert (!OID_IS_ROOTOID (new_class_oid));
 
   if (BTREE_IS_MULTI_ROW_OP (op_type))
     {
@@ -5761,13 +5816,16 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		      PRUNING_CONTEXT * pcontext,
 		      MVCC_REEV_DATA * mvcc_reev_data, bool force_in_place)
 {
-  char *old_classname = NULL;	/* Classname that may have been renamed */
+  OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+  char *rep_dir_offset;
   char *classname = NULL;	/* Classname to update */
+  char *old_classname = NULL;	/* Classname that may have been renamed */
+
   bool isold_object;		/* Make sure that this is an old object */
   RECDES copy_recdes;
   SCAN_CODE scan = S_SUCCESS;
 
-  RECDES new_recdes;
+  RECDES new_record;
   bool is_cached = false;
   LC_COPYAREA *cache_attr_copyarea = NULL;
   int error_code = NO_ERROR;
@@ -5859,6 +5917,50 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    }
 	}
 
+      /* TODO - defence code to save oid of the representation directory
+       */
+      if (!OID_IS_ROOTOID (oid))
+	{
+	  or_class_rep_dir (recdes, &rep_dir);
+
+	  if (OID_ISNULL (&rep_dir))
+	    {
+	      OID old_rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+	      RECDES old_record, *old_recdes;
+
+	      old_record.data = NULL;
+	      old_recdes = &old_record;
+
+	      if (heap_get (thread_p, oid, old_recdes, scan_cache,
+			    PEEK, NULL_CHN) == S_SUCCESS)
+		{
+		  or_class_rep_dir (old_recdes, &old_rep_dir);
+
+		  /* save current oid of the representation directory
+		   */
+		  if (!OID_ISNULL (&old_rep_dir))
+		    {
+		      assert (false);	/* should avoid */
+
+		      rep_dir_offset = (char *) recdes->data +
+			OR_FIXED_ATTRIBUTES_OFFSET (recdes->data,
+						    ORC_CLASS_VAR_ATT_COUNT) +
+			ORC_REP_DIR_OFFSET;
+
+		      OR_PUT_OID (rep_dir_offset, &old_rep_dir);
+		    }
+		}
+	      else
+		{
+		  /* ignore if the class hasn't been flushed yet */
+		  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS)
+		    {
+		      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
+		    }
+		}
+	    }
+	}
+
       if (heap_update (thread_p, hfid, class_oid, oid, recdes, NULL,
 		       &isold_object, scan_cache,
 		       HEAP_UPDATE_IN_PLACE) == NULL)
@@ -5880,6 +5982,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  /* Update the catalog as long as it is not the root class */
 	  if (!OID_IS_ROOTOID (oid))
 	    {
+#if !defined(NDEBUG)
+	      or_class_rep_dir (recdes, &rep_dir);
+	      assert (!OID_ISNULL (&rep_dir));
+#endif
 	      error_code = catalog_update (thread_p, recdes, oid);
 	      if (error_code < 0)
 		{
@@ -5895,15 +6001,52 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  /*
 	   * NEW CLASS
 	   */
-	  if (!OID_IS_ROOTOID (oid)
-	      && catalog_insert (thread_p, recdes, oid) < 0)
+	  if (!OID_IS_ROOTOID (oid))
 	    {
-	      /*
-	       * There is an error inserting the hash entry or catalog
-	       * information. The transaction must be aborted by the caller
+	      or_class_rep_dir (recdes, &rep_dir);
+	      assert (OID_ISNULL (&rep_dir));
+
+	      if (catalog_insert (thread_p, recdes, oid, &rep_dir) < 0)
+		{
+		  /*
+		   * There is an error inserting the hash entry or catalog
+		   * information. The transaction must be aborted by the caller
+		   */
+		  error_code = ER_FAILED;
+		  goto error;
+		}
+
+	      assert (!OID_ISNULL (&rep_dir));
+
+	      /* save oid of the representation directory
 	       */
-	      error_code = ER_FAILED;
-	      goto error;
+	      rep_dir_offset = (char *) recdes->data +
+		OR_FIXED_ATTRIBUTES_OFFSET (recdes->data,
+					    ORC_CLASS_VAR_ATT_COUNT) +
+		ORC_REP_DIR_OFFSET;
+
+	      OR_PUT_OID (rep_dir_offset, &rep_dir);
+
+	      if (heap_update (thread_p, hfid, class_oid, oid, recdes, NULL,
+			       &isold_object, scan_cache,
+			       HEAP_UPDATE_IN_PLACE) == NULL)
+		{
+		  /*
+		   * Problems updating the object...Maybe, the transaction should be
+		   * aborted by the caller...Quit..
+		   */
+		  error_code = er_errid ();
+		  if (error_code == NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		    }
+		  goto error;
+		}
+
+#if !defined(NDEBUG)
+	      or_class_rep_dir (recdes, &rep_dir);
+	      assert (!OID_ISNULL (&rep_dir));
+#endif
 	    }
 
 	  if (catcls_Enable == true)
@@ -6023,7 +6166,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		       * no_data_new_address 
 		       */
 		      no_data_new_address = true;
-		      er_clear ();
+		      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 		    }
 		  else
 		    {
@@ -6115,7 +6258,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		}
 	      else if (er_errid () == ER_HEAP_NODATA_NEWADDRESS)
 		{
-		  er_clear ();
+		  er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 
 		  /* The object is a new instance, that is only the address (no
 		   * content) is known by the heap manager. This is a normal
@@ -6317,7 +6460,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		locator_check_foreign_key (thread_p, hfid,
 					   class_oid, oid,
 					   recdes,
-					   &new_recdes,
+					   &new_record,
 					   &is_cached, &cache_attr_copyarea);
 	      if (error_code != NO_ERROR)
 		{
@@ -6326,7 +6469,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	      if (is_cached)
 		{
-		  recdes = &new_recdes;
+		  recdes = &new_record;
 		}
 	    }
 	}
@@ -6532,9 +6675,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 {
   bool isold_object;		/* Make sure that this is an old object
 				 * during the deletion */
-  OID class_oid = {
-    NULL_PAGEID, NULL_SLOTID, NULL_VOLID
-  };
+  OID class_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   /* Class identifier */
   char *classname;		/* Classname to update */
   RECDES copy_recdes;
@@ -8079,7 +8220,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  if (err_id == ER_HEAP_NODATA_NEWADDRESS)
 	    {
 	      /* it is an immature record. go ahead to update */
-	      er_clear ();
+	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 	    }
 	  else if (err_id == ER_HEAP_UNKNOWN_OBJECT)
 	    {
@@ -11580,7 +11721,7 @@ DISK_ISVALID
 locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 {
   RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
-  HFID *root_hfid;
+  HFID root_hfid;
   HFID hfid;
   OID oid;
   HEAP_SCANCACHE scan;
@@ -11605,20 +11746,25 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 
   /* Find the heap for the root classes */
 
-  root_hfid = boot_find_root_heap ();
-  if (heap_scancache_start (thread_p, &scan, root_hfid, oid_Root_class_oid,
+  if (boot_find_root_heap (&root_hfid) != NO_ERROR
+      || HFID_IS_NULL (&root_hfid))
+    {
+      return DISK_ERROR;
+    }
+
+  if (heap_scancache_start (thread_p, &scan, &root_hfid, oid_Root_class_oid,
 			    true, false, mvcc_snapshot) != NO_ERROR)
     {
       return DISK_ERROR;
     }
 
-  oid.volid = root_hfid->vfid.volid;
+  oid.volid = root_hfid.vfid.volid;
   oid.pageid = NULL_PAGEID;
   oid.slotid = NULL_SLOTID;
 
   while (isallvalid != DISK_ERROR)
     {
-      code = heap_next (thread_p, root_hfid, oid_Root_class_oid, &oid, &peek,
+      code = heap_next (thread_p, &root_hfid, oid_Root_class_oid, &oid, &peek,
 			&scan, PEEK);
       if (code != S_SUCCESS)
 	{

@@ -403,10 +403,8 @@ extern void xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
 					   MNT_SERVER_EXEC_STATS * to_stats);
 /* catalog manager interface */
 
-extern int xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
-						      OID * class_id,
-						      HFID * hfid,
-						      int *can_accept);
+extern int xcatalog_check_rep_dir (THREAD_ENTRY * thread_p,
+				   OID * class_id, OID * rep_dir_p);
 
 extern int xacl_reload (THREAD_ENTRY * thread_p);
 extern void xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp);

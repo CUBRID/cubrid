@@ -2565,16 +2565,13 @@ void
 ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name)
 {
   MOP current;
-  SM_CLASS *class_;
 
-  class_ = (SM_CLASS *) classobj;
-
-  if (class_ == NULL || classmop == NULL)
+  if (classobj == NULL || classmop == NULL)
     {
       return;
     }
 
-  current = (MOP) mht_get (Classname_cache, class_->header.name);
+  current = (MOP) mht_get (Classname_cache, sm_ch_name (classobj));
 
   if (current == NULL)
     {
@@ -2584,7 +2581,7 @@ ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name)
     {
       if (current != classmop)
 	{
-	  mht_rem (Classname_cache, class_->header.name, NULL, NULL);
+	  mht_rem (Classname_cache, sm_ch_name (classobj), NULL, NULL);
 	  mht_put (Classname_cache, cl_name, classmop);
 	}
     }
@@ -2602,12 +2599,9 @@ ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name)
 void
 ws_drop_classname (MOBJ classobj)
 {
-  SM_CLASS *class_;
-
-  class_ = (SM_CLASS *) classobj;
-  if (class_ != NULL)
+  if (classobj != NULL)
     {
-      mht_rem (Classname_cache, class_->header.name, NULL, NULL);
+      mht_rem (Classname_cache, sm_ch_name (classobj), NULL, NULL);
     }
 }
 
@@ -3027,7 +3021,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 	    }
 
 	  /* add to the classname cache */
-	  ws_add_classname (obj, mop, ((SM_CLASS *) obj)->header.name);
+	  ws_add_classname (obj, mop, sm_ch_name (obj));
 	}
     }
   else
@@ -3964,7 +3958,7 @@ ws_describe_mop (MOP mop, void *args)
 		}
 	      else
 		{
-		  fprintf (stdout, "%s ", sm_class_name (mop));
+		  fprintf (stdout, "%s ", sm_get_ch_name (mop));
 		}
 	    }
 	  else
@@ -3976,7 +3970,7 @@ ws_describe_mop (MOP mop, void *args)
 		}
 	      else
 		{
-		  fprintf (stdout, "%s ", sm_class_name (mop->class_mop));
+		  fprintf (stdout, "%s ", sm_get_ch_name (mop->class_mop));
 		}
 	    }
 	}
@@ -4218,7 +4212,7 @@ ws_dump (FILE * fpp)
 		}
 	      fprintf (fpp,
 		       "  %-20s : %d instances, %d decached, %d bytes used\n",
-		       sm_classobj_name ((MOBJ) mop->object), icount,
+		       sm_ch_name ((MOBJ) (mop->object)), icount,
 		       decached, isize);
 	      insttotal += isize;
 	    }

@@ -255,7 +255,7 @@ MOP sm_Root_class_mop = NULL;
 const char *sm_Root_class_name = ROOTCLASS_NAME;
 
 /* Heap file identifier for the root class */
-HFID *sm_Root_class_hfid = &sm_Root_class.header.heap;
+HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
 
 static unsigned int local_schema_version = 0;
 static unsigned int global_schema_version = 0;
@@ -461,7 +461,6 @@ static int lock_subclasses_internal (SM_TEMPLATE * def, MOP op,
 				     DB_OBJLIST ** newsubs);
 static int lock_subclasses (SM_TEMPLATE * def, DB_OBJLIST * newsupers,
 			    DB_OBJLIST * cursubs, DB_OBJLIST ** newsubs);
-static int check_catalog_space (MOP classmop, SM_CLASS * class_);
 static int flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class);
 static void abort_subclasses (DB_OBJLIST * subclasses);
 static int update_subclasses (DB_OBJLIST * subclasses);
@@ -2146,11 +2145,13 @@ sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
   sm_Root_class_mop = ws_mop (rootclass_oid, NULL);
   oid_Root_class_oid = ws_oid (sm_Root_class_mop);
 
-  sm_Root_class.header.heap.vfid.volid = rootclass_hfid->vfid.volid;
-  sm_Root_class.header.heap.vfid.fileid = rootclass_hfid->vfid.fileid;
-  sm_Root_class.header.heap.hpgid = rootclass_hfid->hpgid;
+  OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 
-  sm_Root_class_hfid = &sm_Root_class.header.heap;
+  sm_Root_class.header.ch_heap.vfid.volid = rootclass_hfid->vfid.volid;
+  sm_Root_class.header.ch_heap.vfid.fileid = rootclass_hfid->vfid.fileid;
+  sm_Root_class.header.ch_heap.hpgid = rootclass_hfid->hpgid;
+
+  sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
 
   sm_Descriptors = NULL;
 }
@@ -2167,14 +2168,16 @@ sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
 void
 sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
 {
-  sm_Root_class.header.obj_header.chn = 0;
-  sm_Root_class.header.type = Meta_root;
-  sm_Root_class.header.name = (char *) sm_Root_class_name;
+  sm_Root_class.header.ch_obj_header.chn = 0;
+  sm_Root_class.header.ch_type = SM_META_ROOT;
+  sm_Root_class.header.ch_name = (char *) sm_Root_class_name;
 
-  sm_Root_class.header.heap.vfid.volid = rootclass_hfid->vfid.volid;
-  sm_Root_class.header.heap.vfid.fileid = rootclass_hfid->vfid.fileid;
-  sm_Root_class.header.heap.hpgid = rootclass_hfid->hpgid;
-  sm_Root_class_hfid = &sm_Root_class.header.heap;
+  OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
+
+  sm_Root_class.header.ch_heap.vfid.volid = rootclass_hfid->vfid.volid;
+  sm_Root_class.header.ch_heap.vfid.fileid = rootclass_hfid->vfid.fileid;
+  sm_Root_class.header.ch_heap.hpgid = rootclass_hfid->hpgid;
+  sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
 
   /* Sets up sm_Root_class_mop and Rootclass_oid */
   locator_add_root (rootclass_oid, (MOBJ) (&sm_Root_class));
@@ -2748,7 +2751,7 @@ sm_rename_class (MOP op, const char *new_name)
       /*  We need to go ahead and copy the string since prepare_rename uses
        *  the address of the string in the hash table.
        */
-      current = class_->header.name;
+      current = sm_ch_name ((MOBJ) class_);
       newname = ws_copy_string (realname);
       if (newname == NULL)
 	{
@@ -2764,7 +2767,7 @@ sm_rename_class (MOP op, const char *new_name)
 	}
       else
 	{
-	  class_->header.name = newname;
+	  class_->header.ch_name = newname;
 	  error = sm_flush_objects (op);
 
 	  if (error == NO_ERROR)
@@ -4572,7 +4575,7 @@ sm_drop_trigger (DB_OBJECT * classop,
 
 /* MISC INFORMATION FUNCTIONS */
 /*
- * sm_class_name() - Returns the name of a class associated with an object.
+ * sm_get_ch_name() - Returns the name of a class associated with an object.
  *    If the object is a class, its own class name is returned.
  *    If the object is an instance, the name of the instance's class
  *    is returned.
@@ -4582,7 +4585,7 @@ sm_drop_trigger (DB_OBJECT * classop,
  */
 
 const char *
-sm_class_name (MOP op)
+sm_get_ch_name (MOP op)
 {
   SM_CLASS *class_;
   const char *name = NULL;
@@ -4591,7 +4594,7 @@ sm_class_name (MOP op)
     {
       if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
 	{
-	  name = class_->header.name;
+	  name = sm_ch_name ((MOBJ) class_);
 	}
     }
 
@@ -4607,7 +4610,7 @@ sm_class_name (MOP op)
  *    If the object is an instance, the name of the instance's class
  *    is returned.
  *    Authorization is ignored for this one case.
- *    This function is lighter than sm_class_name(), and returns not null.
+ *    This function is lighter than sm_get_ch_name(), and returns not null.
  *   return: class name
  *   op(in): class or instance object
  *   return_null(in):
@@ -4873,29 +4876,38 @@ sm_print (MOP classmop)
 
 /* LOCATOR SUPPORT FUNCTIONS */
 /*
- * sm_classobj_name() - Given a pointer to a class object in memory,
+ * sm_ch_name() - Given a pointer to a class object in memory,
  *    return the name. Used by the transaction locator.
  *   return: class name
  *   classobj(in): class structure
  */
 
 const char *
-sm_classobj_name (MOBJ classobj)
+sm_ch_name (MOBJ clobj)
 {
-  SM_CLASS_HEADER *class_;
-  const char *name = NULL;
+  SM_CLASS_HEADER *header;
+  const char *ch_name = NULL;
 
-  if (classobj != NULL)
+  if (clobj != NULL)
     {
-      class_ = (SM_CLASS_HEADER *) classobj;
-      name = class_->name;
+      header = (SM_CLASS_HEADER *) clobj;
+      ch_name = header->ch_name;
+
+      assert (header->ch_type == SM_META_ROOT
+	      || header->ch_type == SM_META_CLASS);
+#if !defined(NDEBUG)
+      if (header->ch_type == SM_META_CLASS)
+	{
+	  assert (ch_name != NULL);
+	}
+#endif
     }
 
-  return name;
+  return ch_name;
 }
 
 /*
- * sm_heap() - Support function for the transaction locator.
+ * sm_ch_heap() - Support function for the transaction locator.
  *    This returns a pointer to the heap file identifier in a class.
  *    This will work for either classes or the root class.
  *   return: HFID of class
@@ -4903,43 +4915,96 @@ sm_classobj_name (MOBJ classobj)
  */
 
 HFID *
-sm_heap (MOBJ clobj)
+sm_ch_heap (MOBJ clobj)
 {
   SM_CLASS_HEADER *header;
-  HFID *heap;
+  HFID *ch_heap = NULL;
 
-  header = (SM_CLASS_HEADER *) clobj;
+  if (clobj != NULL)
+    {
+      header = (SM_CLASS_HEADER *) clobj;
+      ch_heap = &(header->ch_heap);
+    }
 
-  heap = &header->heap;
-
-  return heap;
+  return ch_heap;
 }
 
 /*
- * sm_get_heap() - Return the HFID of a class given a MOP.
- *    Like sm_heap but takes a MOP.
+ * sm_ch_rep_dir () - Support function for the transaction locator.
+ *    This returns a pointer to the oid of representation directory in a class.
+ *    This will work for either classes or the root class.
+ *   return: oid of representation directory
+ *   clobj(in): pointer to class structure in memory
+ */
+
+OID *
+sm_ch_rep_dir (MOBJ clobj)
+{
+  SM_CLASS_HEADER *header;
+  OID *ch_rep_dir_p = NULL;
+
+  if (clobj != NULL)
+    {
+      header = (SM_CLASS_HEADER *) clobj;
+      ch_rep_dir_p = &(header->ch_rep_dir);
+    }
+
+  return ch_rep_dir_p;
+}
+
+/*
+ * sm_get_ch_heap() - Return the HFID of a class given a MOP.
+ *    Like sm_ch_heap but takes a MOP.
  *   return: hfid of class
  *   classmop(in): class object
  */
 
 HFID *
-sm_get_heap (MOP classmop)
+sm_get_ch_heap (MOP classmop)
 {
   SM_CLASS *class_ = NULL;
-  HFID *heap;
+  HFID *ch_heap;
 
-  heap = NULL;
+  ch_heap = NULL;
   if (locator_is_class (classmop, DB_FETCH_READ))
     {
       if (au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT) ==
 	  NO_ERROR)
 	{
-	  heap = &class_->header.heap;
+	  ch_heap = sm_ch_heap ((MOBJ) class_);
 	}
     }
 
-  return heap;
+  return ch_heap;
 }
+
+#if 0				/* TODO - do not use */
+/*
+ * sm_get_ch_rep_dir () - Return the OID of representation directory
+                           of a class given a MOP.
+ *   return: oid of representation directory
+ *   classmop(in): class object
+ */
+
+OID *
+sm_get_ch_rep_dir (MOP classmop)
+{
+  SM_CLASS *class_ = NULL;
+  OID *ch_rep_dir_p = NULL;
+
+  ch_rep_dir_p = NULL;
+  if (locator_is_class (classmop, DB_FETCH_READ))
+    {
+      if (au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT) ==
+	  NO_ERROR)
+	{
+	  ch_rep_dir_p = sm_ch_rep_dir ((MOBJ) class_);
+	}
+    }
+
+  return ch_rep_dir_p;
+}
+#endif
 
 /*
  * sm_has_indexes() - This is used to determine if there are any indexes
@@ -6806,7 +6871,7 @@ template_classname (SM_TEMPLATE * template_)
   name = template_->name;
   if (name == NULL && template_->op != NULL)
     {
-      name = sm_class_name (template_->op);
+      name = sm_get_ch_name (template_->op);
     }
 
   return name;
@@ -6827,7 +6892,7 @@ candidate_source_name (SM_TEMPLATE * template_, SM_CANDIDATE * candidate)
 
   if (candidate->source != NULL)
     {
-      name = sm_class_name (candidate->source);
+      name = sm_get_ch_name (candidate->source);
     }
   else
     {
@@ -6837,7 +6902,7 @@ candidate_source_name (SM_TEMPLATE * template_, SM_CANDIDATE * candidate)
 	}
       else if (template_->op != NULL)
 	{
-	  name = sm_class_name (template_->op);
+	  name = sm_get_ch_name (template_->op);
 	}
     }
 
@@ -8580,7 +8645,7 @@ check_invalid_resolutions (SM_TEMPLATE * template_,
 		  /* a new resolution that is not valid, signal an error */
 		  ERROR3 (error, ER_SM_INVALID_RESOLUTION,
 			  template_classname (template_),
-			  res->name, sm_class_name (res->class_mop));
+			  res->name, sm_get_ch_name (res->class_mop));
 		}
 	    }
 	}
@@ -10179,7 +10244,7 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
 		      attr_ptr[i] = found->attributes[i]->id;
 		    }
 
-		  HFID_COPY (&hfids[*n_classes], &class_->header.heap);
+		  HFID_COPY (&hfids[*n_classes], sm_ch_heap ((MOBJ) class_));
 		  (*n_classes)++;
 		}
 
@@ -10356,7 +10421,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	    {
 	      attr_ids[i] = attrs[i]->id;
 	    }
-	  HFID_COPY (&hfids[n_classes], &class_->header.heap);
+	  HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
 	  n_classes++;
 
 	  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to
@@ -10539,7 +10604,7 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
   HFID *hfid;
 
   cls_oid = ws_oid (classop);
-  hfid = &class_->header.heap;
+  hfid = sm_ch_heap ((MOBJ) class_);
 
   if (!HFID_IS_NULL (hfid) && heap_has_instance (hfid, cls_oid, 0))
     {
@@ -10609,7 +10674,8 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
 	{
 	  AU_ENABLE (save);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_FK_REF_CLASS_HAS_NOT_PK, 1, ref_class_->header.name);
+		  ER_FK_REF_CLASS_HAS_NOT_PK, 1,
+		  sm_ch_name ((MOBJ) ref_class_));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
       owner_clsop = pk->attributes[0]->class_mop;
@@ -10692,7 +10758,8 @@ sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name, char *new_name)
 	{
 	  AU_ENABLE (save);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_FK_REF_CLASS_HAS_NOT_PK, 1, ref_class_->header.name);
+		  ER_FK_REF_CLASS_HAS_NOT_PK, 1,
+		  sm_ch_name ((MOBJ) ref_class_));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
       owner_clsop = pk->attributes[0]->class_mop;
@@ -10944,7 +11011,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
       if (pk == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_FK_REF_CLASS_HAS_NOT_PK, 1, class_->header.name);
+		  ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) class_));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
       con->fk_info->ref_class_pk_btid = pk->index_btid;
@@ -11266,7 +11333,8 @@ drop_foreign_key_ref (MOP classop,
 	    {
 	      AU_ENABLE (save);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_FK_REF_CLASS_HAS_NOT_PK, 1, ref_class_->header.name);
+		      ER_FK_REF_CLASS_HAS_NOT_PK, 1,
+		      sm_ch_name ((MOBJ) ref_class_));
 	      return ER_FK_REF_CLASS_HAS_NOT_PK;
 	    }
 	  owner_clsop = pk->attributes[0]->class_mop;
@@ -11551,7 +11619,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		       */
 		      error = rem_class_from_index (WS_OID (classop),
 						    &con->index_btid,
-						    &class_->header.heap);
+						    sm_ch_heap ((MOBJ)
+								class_));
 		      if (error != NO_ERROR)
 			{
 			  goto end;
@@ -11612,8 +11681,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       next = con->next;
       if (con->attributes[0] != NULL
 	  && sm_filter_index_pred_have_invalid_attrs (con,
-						      (char *) class_->
-						      header.name,
+						      (char *)
+						      sm_ch_name ((MOBJ)
+								  class_),
 						      class_->attributes,
 						      flat->
 						      instance_attributes) ==
@@ -11704,7 +11774,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		    {
 		      error = ER_SM_PRIMARY_KEY_EXISTS;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      error, 2, class_->header.name, con->name);
+			      error, 2, sm_ch_name ((MOBJ) class_),
+			      con->name);
 		      break;
 		    }
 		  ++num_pk;
@@ -12315,7 +12386,7 @@ lock_subclasses_internal (SM_TEMPLATE * def, MOP op,
 
   if (ml_find (newsupers, op))
     {
-      ERROR2 (error, ER_SM_CYCLE_DETECTED, sm_class_name (op), def->name);
+      ERROR2 (error, ER_SM_CYCLE_DETECTED, sm_get_ch_name (op), def->name);
     }
   else
     {
@@ -12385,26 +12456,19 @@ lock_subclasses (SM_TEMPLATE * def, DB_OBJLIST * newsupers,
 }
 
 /*
- * check_catalog_space() - Checks to see if the catalog manager is able to
- *    handle another representation for this class.  There is a fixed limit
- *    on the number of representations that can be stored in the catalog
- *    for each class.  If this limit is reached, the schema operation
- *    cannot be performed until the database is compacted.
- *    Note that this needs only be called when a schema operation
- *    will actually result in the generation of a new catalog entry.
- *    Since this won't be a problem very often, its also ok just to check
- *    it up front even if the operation may not result in the generation
- *    of a new representation.
+ * sm_check_catalog_rep_dir () - Checks class representations directory
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classmop(in): class pointer
- *   class(in): class structure
+ *   class_(in/out): class structure, set ch_rep_dir 
+ *   return: NO_ERROR on success, non-zero for ERROR
  */
 
-static int
-check_catalog_space (MOP classmop, SM_CLASS * class_)
+int
+sm_check_catalog_rep_dir (MOP classmop, SM_CLASS * class_)
 {
+  OID rep_dir;
   int error = NO_ERROR;
-  int status, can_accept;
+  int status;
 
   /* if the OID is temporary, then we haven't flushed the class yet
      and it isn't necessary to check since there will be no
@@ -12412,32 +12476,39 @@ check_catalog_space (MOP classmop, SM_CLASS * class_)
 
   if (!OID_ISTEMP (WS_OID (classmop)))
     {
-
       /* if the oid is permanent, we still may not have flushed the class
          because the OID could have been assigned during the transformation
          of another object that referenced this class.
-         In this case, the catalog manager will return ER_CT_UNKNOWN_CLASSID
+         In this case, the catalog manager will return ER_HEAP_NODATA_NEWADDRESS
          because it will have no entries for this class oid.
        */
 
-      status =
-	catalog_is_acceptable_new_representation (WS_OID (classmop),
-						  &class_->header.heap,
-						  &can_accept);
+      status = catalog_check_rep_dir (WS_OID (classmop), &rep_dir);
+
+      assert (er_errid () != ER_HEAP_NODATA_NEWADDRESS);	/* TODO - */
+
       if (status != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  /* ignore if if the class hasn't been flushed yet */
-	  if (error == ER_CT_UNKNOWN_CLASSID)
+	  /* ignore if the class hasn't been flushed yet */
+	  if (error == ER_HEAP_NODATA_NEWADDRESS)
 	    {
-	      /* if dirty bit isn't on in this MOP, its probably an internal error */
 	      error = NO_ERROR;
 	    }
 	}
-      else if (!can_accept)
+      else
 	{
-	  ERROR1 (error, ER_SM_CATALOG_SPACE, class_->header.name);
+	  assert (!OID_ISNULL (&rep_dir));
+	  assert (OID_ISNULL (&(class_->header.ch_rep_dir))
+		  || OID_EQ (&(class_->header.ch_rep_dir), &rep_dir));
+
+	  if (!OID_ISNULL (&rep_dir))
+	    {
+	      /* save server-side representation directory oid
+	       */
+	      COPY_OID (&(class_->header.ch_rep_dir), &rep_dir);
+	    }
 	}
     }
 
@@ -12467,38 +12538,33 @@ flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class)
       error = au_fetch_class_force (sub->op, &class_, AU_FETCH_UPDATE);
       if (error == NO_ERROR)
 	{
-	  /* make sure the catalog manager can handle another modification */
-	  error = check_catalog_space (sub->op, class_);
+	  /* make sure the run-time stuff is cached before editing, this
+	   * is particularly important for the method file source class
+	   * kludge
+	   */
+	  error = sm_clean_class (sub->op, class_);
 	  if (error == NO_ERROR)
 	    {
-	      /* make sure the run-time stuff is cached before editing, this
-	       * is particularly important for the method file source class
-	       * kludge
-	       */
-	      error = sm_clean_class (sub->op, class_);
-	      if (error == NO_ERROR)
+	      /* create a template */
+	      utemplate = classobj_make_template (sm_ch_name ((MOBJ) class_),
+						  sub->op, class_);
+	      if (utemplate == NULL)
 		{
-		  /* create a template */
-		  utemplate = classobj_make_template (class_->header.name,
-						      sub->op, class_);
-		  if (utemplate == NULL)
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  /* reflatten it without any local changes (will inherit changes) */
+		  error = flatten_template (utemplate, deleted_class,
+					    &flat, 1);
+		  if (error == NO_ERROR)
 		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
+		      class_->new_ = flat;
 		    }
-		  else
-		    {
-		      /* reflatten it without any local changes (will inherit changes) */
-		      error = flatten_template (utemplate, deleted_class,
-						&flat, 1);
-		      if (error == NO_ERROR)
-			{
-			  class_->new_ = flat;
-			}
 
-		      /* free the definition template */
-		      classobj_free_template (utemplate);
-		    }
+		  /* free the definition template */
+		  classobj_free_template (utemplate);
 		}
 	    }
 	}
@@ -12654,7 +12720,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
 
   if (class_ != NULL)
     {
-      names[0] = class_->header.name;
+      names[0] = sm_ch_name ((MOBJ) class_);
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
       flags[0] = LC_PREF_FLAG_LOCK;
@@ -12756,12 +12822,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
       /* existing class, fetch it */
       error = au_fetch_class (template_->op, &class_, AU_FETCH_UPDATE,
 			      AU_ALTER);
-
-      /* make sure the catalog manager can deal with another representation */
-      if (error == NO_ERROR)
-	{
-	  error = check_catalog_space (template_->op, class_);
-	}
     }
 
   if (error != NO_ERROR)
@@ -12905,7 +12965,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 	     the new class contents IS already a GC root.
 	   */
 	  template_->op = locator_add_class ((MOBJ) class_,
-					     (char *) class_->header.name);
+					     (char *) sm_ch_name ((MOBJ)
+								  class_));
 	  if (template_->op == NULL)
 	    {
 	      /* return locator error code */
@@ -12990,9 +13051,13 @@ end:
   return error;
 
 error_return:
+
+  assert (error != ER_HEAP_NODATA_NEWADDRESS);	/* TODO - */
+
   classobj_free_template (flat);
   abort_subclasses (newsubs);
-  if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID
+  if (error == ER_BTREE_UNIQUE_FAILED
+      || error == ER_FK_INVALID
       || error == ER_SM_PRIMARY_KEY_EXISTS
       || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE
       || error == ER_SM_INVALID_UNIQUE_IDX_PARTITION)
@@ -13278,7 +13343,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	    {
 	      class_name = DB_GET_STRING (&name_val);
 	      if (class_name != NULL
-		  && (strcmp (class_->header.name, class_name) == 0))
+		  && (strcmp (sm_ch_name ((MOBJ) class_), class_name) == 0))
 		{
 		  int save;
 		  OID *oidp, serial_obj_id;
@@ -13680,7 +13745,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	  if (sm_exist_index (sub_partitions[i], constraint_name, NULL) ==
 	      NO_ERROR)
 	    {
-	      class_name = sm_class_name (sub_partitions[i]);
+	      class_name = sm_get_ch_name (sub_partitions[i]);
 	      if (class_name)
 		{
 		  error = ER_SM_INDEX_EXISTS;
@@ -13702,9 +13767,9 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	      error =
 		do_recreate_func_index_constr (NULL, NULL,
 					       new_func_index_info, NULL,
-					       sm_class_name (classop),
-					       sm_class_name (sub_partitions
-							      [i]));
+					       sm_get_ch_name (classop),
+					       sm_get_ch_name (sub_partitions
+							       [i]));
 	      if (error != NO_ERROR)
 		{
 		  goto fail_end;
@@ -13725,8 +13790,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 		    do_recreate_filter_index_constr (NULL,
 						     new_filter_index_info,
 						     NULL,
-						     sm_class_name (classop),
-						     sm_class_name
+						     sm_get_ch_name (classop),
+						     sm_get_ch_name
 						     (sub_partitions[i]));
 		  if (error != NO_ERROR)
 		    {
@@ -13768,13 +13833,6 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
     }
 
   /* should be checked before if this index already exist */
-
-  /* make sure the catalog can handle another representation */
-  error = check_catalog_space (classop, class_);
-  if (error)
-    {
-      goto general_error;
-    }
 
   /* Count the number of attributes */
   n_attrs = 0;
@@ -14085,13 +14143,6 @@ sm_drop_index (MOP classop, const char *constraint_name)
     }
   else
     {
-      /* make sure the catalog can handle another representation */
-      error = check_catalog_space (classop, class_);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
       /*
        *  Remove the index from the class.  We do this is an awkward
        *  way.  First we remove it from the class constraint cache and
@@ -14488,8 +14539,8 @@ sm_default_constraint_name (const char *class_name,
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (name_length + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (name_length + 1));
 	}
     }
 
@@ -14545,8 +14596,8 @@ sm_produce_constraint_name (const char *class_name,
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, name_size + 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, name_size + 1);
 	}
     }
 
@@ -14570,8 +14621,9 @@ sm_produce_constraint_name_mop (MOP classop,
 				const char **att_names,
 				const int *asc_desc, const char *given_name)
 {
-  return sm_produce_constraint_name (sm_class_name (classop), constraint_type,
-				     att_names, asc_desc, given_name);
+  return sm_produce_constraint_name (sm_get_ch_name (classop),
+				     constraint_type, att_names, asc_desc,
+				     given_name);
 }
 
 /*
@@ -14633,9 +14685,10 @@ sm_check_index_exist (MOP classop,
 
   return classobj_check_index_exist (class_->constraints,
 				     out_shared_cons_name,
-				     class_->header.name, constraint_type,
-				     constraint_name, att_names, asc_desc,
-				     filter_index, func_info);
+				     sm_ch_name ((MOBJ) class_),
+				     constraint_type, constraint_name,
+				     att_names, asc_desc, filter_index,
+				     func_info);
 }
 
 /*
@@ -15188,12 +15241,12 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	}
       assert (ref_cls->constraints != NULL);
 
-      new_constraint->ref_cls_name = strdup (ref_cls->header.name);
+      new_constraint->ref_cls_name = strdup (sm_ch_name ((MOBJ) ref_cls));
       if (new_constraint->ref_cls_name == NULL)
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		  (size_t) (strlen (ref_cls->header.name) + 1));
+		  (size_t) (strlen (sm_ch_name ((MOBJ) ref_cls)) + 1));
 	  goto error_exit;
 	}
 
@@ -15203,7 +15256,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	  assert (false);
 	  error_code = ER_FK_REF_CLASS_HAS_NOT_PK;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code,
-		  1, ref_cls->header.name);
+		  1, sm_ch_name ((MOBJ) ref_cls));
 	  goto error_exit;
 	}
 
@@ -15522,7 +15575,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
       return er_errid ();
     }
 
-  insts_hfid = sm_heap ((MOBJ) class_);
+  insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
   /* Destroy the heap */
@@ -15742,9 +15795,10 @@ sm_truncate_class (MOP class_mop)
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
       error = sm_add_index (class_mop, saved->constraint_type, saved->name,
-			    (const char **) saved->att_names, saved->asc_desc,
-			    saved->prefix_length, saved->filter_predicate,
-			    saved->func_index_info, saved->comment);
+			    (const char **) saved->att_names,
+			    saved->asc_desc, saved->prefix_length,
+			    saved->filter_predicate, saved->func_index_info,
+			    saved->comment);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -16076,7 +16130,8 @@ sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info)
  *				    class
  */
 int
-sm_is_global_only_constraint (MOP classmop, SM_CLASS_CONSTRAINT * constraint,
+sm_is_global_only_constraint (MOP classmop,
+			      SM_CLASS_CONSTRAINT * constraint,
 			      int *is_global, SM_TEMPLATE * template_)
 {
   SM_ATTRIBUTE *attr = NULL;
@@ -16207,7 +16262,7 @@ sm_adjust_partitions_parent (MOP class_mop, bool flush)
     }
 
   /* search entry in catalog for our partitioned class using its name */
-  name = (char *) smclass->header.name;
+  name = (char *) sm_ch_name ((MOBJ) smclass);
   db_make_varchar (&val, PARTITION_VARCHAR_LEN, name, strlen (name),
 		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   class_entry = db_find_unique (class_cat, CLASS_ATT_NAME, &val);
@@ -16470,7 +16525,7 @@ update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 
 	      error = ER_FK_REF_CLASS_HAS_NOT_PK;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      sm_class_name (ctemplate->op));
+		      sm_get_ch_name (ctemplate->op));
 	      goto error_exit;
 	    }
 

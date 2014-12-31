@@ -4288,19 +4288,19 @@ classobj_cache_class_constraints (SM_CLASS * class_)
      the attributes and cache the NOT NULL constraints found. */
   if (error == NO_ERROR)
     {
-      error = classobj_cache_not_null_constraints (class_->header.name,
+      error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_),
 						   class_->attributes,
 						   &(class_->constraints));
     }
   if (error == NO_ERROR)
     {
-      error = classobj_cache_not_null_constraints (class_->header.name,
+      error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_),
 						   class_->shared,
 						   &(class_->constraints));
     }
   if (error == NO_ERROR)
     {
-      error = classobj_cache_not_null_constraints (class_->header.name,
+      error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_),
 						   class_->class_attributes,
 						   &(class_->constraints));
     }
@@ -6800,9 +6800,10 @@ classobj_make_template_like (const char *name, SM_CLASS * class_)
 
   assert (name != NULL);
   assert (class_ != NULL);
-  assert (class_->class_type == SM_CLASS_CT && class_->query_spec == NULL);
+  assert (class_->class_type == SM_CLASS_CT);
+  assert (class_->query_spec == NULL);
 
-  existing_name = class_->header.name;
+  existing_name = sm_ch_name ((MOBJ) class_);
 
   if (class_->partition_of != NULL)
     {
@@ -7132,12 +7133,12 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
 	  assert (false);
 	  error = ER_FK_REF_CLASS_HAS_NOT_PK;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
-		  1, ref_cls->header.name);
+		  1, sm_ch_name ((MOBJ) ref_cls));
 	  goto error_exit;
 	}
 
       error = dbt_add_foreign_key (ctemplate, new_cons_name, att_names,
-				   ref_cls->header.name, ref_attrs,
+				   sm_ch_name ((MOBJ) ref_cls), ref_attrs,
 				   constraint->fk_info->delete_action,
 				   constraint->fk_info->update_action,
 				   constraint->comment);
@@ -7212,12 +7213,13 @@ classobj_make_class (const char *name)
     }
 
   class_->class_type = SM_CLASS_CT;
-  class_->header.obj_header.chn = NULL_CHN;	/* start with NULL chn ? */
-  class_->header.type = Meta_class;
-  class_->header.name = NULL;
+  class_->header.ch_obj_header.chn = NULL_CHN;	/* start with NULL chn ? */
+  class_->header.ch_type = SM_META_CLASS;
+  class_->header.ch_name = NULL;
   /* shouldn't know how to initialize these, either need external init function */
-  HFID_SET_NULL (&class_->header.heap);
-  class_->header.heap.vfid.volid = boot_User_volid;
+  OID_SET_NULL (&(class_->header.ch_rep_dir));
+  HFID_SET_NULL (&(class_->header.ch_heap));
+  class_->header.ch_heap.vfid.volid = boot_User_volid;
 
   class_->repid = 0;		/* initial rep is zero */
   class_->users = NULL;
@@ -7271,8 +7273,8 @@ classobj_make_class (const char *name)
 
   if (name != NULL)
     {
-      class_->header.name = ws_copy_string (name);
-      if (class_->header.name == NULL)
+      class_->header.ch_name = ws_copy_string (name);
+      if (class_->header.ch_name == NULL)
 	{
 	  db_ws_free (class_);
 	  class_ = NULL;
@@ -7296,7 +7298,7 @@ classobj_free_class (SM_CLASS * class_)
       return;
     }
 
-  ws_free_string_and_init (class_->header.name);
+  ws_free_string_and_init (class_->header.ch_name);
   ws_free_string_and_init (class_->loader_commands);
   ws_free_string_and_init (class_->comment);
   ml_free_and_init (class_->users);
@@ -7377,7 +7379,7 @@ classobj_class_size (SM_CLASS * class_)
   int size;
 
   size = sizeof (SM_CLASS);
-  size += strlen (class_->header.name) + 1;
+  size += strlen (sm_ch_name ((MOBJ) class_)) + 1;
   size +=
     ws_list_total ((DB_LIST *) class_->representations,
 		   (LTOTALER) classobj_representation_size);
@@ -8085,10 +8087,9 @@ classobj_filter_components (SM_COMPONENT ** complist,
 }
 
 #if defined (CUBRID_DEBUG)
-/* DEBUGGING */
 /*
- * cl_dump() - This debug function is used for printing out things that aren't
- *    displayed by the help_ level utility functions.
+ * classobj_print () - This debug function is used for printing out things
+ *    that aren't displayed by the help_ level utility functions.
  *   return: none
  *   class(in): class structure
  */
@@ -8104,7 +8105,7 @@ classobj_print (SM_CLASS * class_)
       return;
     }
 
-  fprintf (stdout, "Class : %s\n", class_->header.name);
+  fprintf (stdout, "Class : %s\n", sm_ch_name ((MOBJ) class_));
 
   if (class_->properties != NULL)
     {

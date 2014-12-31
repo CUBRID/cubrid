@@ -351,9 +351,7 @@ extern int mnt_server_start_stats (bool for_all_trans);
 extern int mnt_server_stop_stats (void);
 extern void mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats);
 extern void mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats);
-extern int catalog_is_acceptable_new_representation (OID * class_id,
-						     HFID * hfid,
-						     int *can_accept);
+extern int catalog_check_rep_dir (OID * class_id, OID * rep_dir_p);
 extern int thread_kill_tran_index (int kill_tran_index, char *kill_user,
 				   char *kill_host, int kill_pid);
 extern int thread_kill_or_interrupt_tran (int *tran_index_list,

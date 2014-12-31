@@ -653,7 +653,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
          or has had any instances.
          Note that we should be checking for instances in the entire
          subhierarchy, not just the current class. */
-      if ((hfid = sm_get_heap (vclass)) && !HFID_IS_NULL (hfid)
+      if ((hfid = sm_get_ch_heap (vclass)) && !HFID_IS_NULL (hfid)
 	  && alter->info.alter.alter_clause.attr_mthd.attr_def_list)
 	{
 	  for (p = alter->info.alter.constraint_list; p != NULL; p = p->next)
@@ -2914,7 +2914,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 	}
     }
 
-  cname = sm_produce_constraint_name (sm_class_name (obj), ctype,
+  cname = sm_produce_constraint_name (sm_get_ch_name (obj), ctype,
 				      (const char **) attnames,
 				      asc_desc, constraint_name);
   if (cname == NULL)
@@ -4999,7 +4999,7 @@ do_rename_partition (MOP old_class, const char *newname)
       if ((au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT)
 	   == NO_ERROR) && subclass->partition_of)
 	{
-	  ptr = strstr ((char *) subclass->header.name,
+	  ptr = strstr ((char *) sm_ch_name ((MOBJ) subclass),
 			PARTITIONED_SUB_CLASS_TAG);
 	  if (ptr == NULL)
 	    {
@@ -5645,7 +5645,7 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
   for (names = name_list; names; names = names->next)
     {
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
-	       smclass->header.name, names->info.name.original);
+	       sm_ch_name ((MOBJ) smclass), names->info.name.original);
       classcata = sm_find_class (subclass_name);
       if (classcata == NULL)
 	{
@@ -5870,8 +5870,9 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	      error =
 		do_recreate_func_index_constr (NULL, NULL,
 					       new_func_index_info,
-					       NULL, root_class->header.name,
-					       subclass->header.name);
+					       NULL,
+					       sm_ch_name ((MOBJ) root_class),
+					       sm_ch_name ((MOBJ) subclass));
 	      if (error != NO_ERROR)
 		{
 		  goto cleanup;
@@ -5931,8 +5932,8 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	      error =
 		do_recreate_func_index_constr (NULL, NULL,
 					       new_func_index_info, NULL,
-					       root_class->header.name,
-					       subclass->header.name);
+					       sm_ch_name ((MOBJ) root_class),
+					       sm_ch_name ((MOBJ) subclass));
 	      if (error != NO_ERROR)
 		{
 		  goto cleanup;
@@ -6355,12 +6356,13 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  names = buf;
 	  allocated += 10;
 	}
-      names[names_count] = strdup (subclass->header.name);
+      names[names_count] = strdup (sm_ch_name ((MOBJ) subclass));
       if (names[names_count] == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  ((strlen (subclass->header.name) + 1) * sizeof (char)));
+		  ((strlen (sm_ch_name ((MOBJ) subclass)) +
+		    1) * sizeof (char)));
 	  error = ER_FAILED;
 	  goto error_return;
 	}
@@ -6539,7 +6541,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  goto error_return;
 	}
       sprintf (names[names_count], "%s" PARTITIONED_SUB_CLASS_TAG "p%d",
-	       class_->header.name, i);
+	       sm_ch_name ((MOBJ) class_), i);
       subclass_op = sm_find_class (names[names_count]);
       names_count++;
       if (subclass_op == NULL)
@@ -6997,14 +6999,15 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
   for (name = name_list; name != NULL; name = name->next)
     {
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
-	       smclass->header.name, name->info.name.original);
+	       sm_ch_name ((MOBJ) smclass), name->info.name.original);
 
       /* Before promoting, make sure to recreate filter and function indexes
        * because the expression used in these indexes depends on the
        * partitioned class name, not on the partition name
        */
       error =
-	do_recreate_renamed_class_indexes (parser, smclass->header.name,
+	do_recreate_renamed_class_indexes (parser,
+					   sm_ch_name ((MOBJ) smclass),
 					   subclass_name);
       if (error != NO_ERROR)
 	{
@@ -7131,7 +7134,7 @@ do_promote_partition (SM_CLASS * class_)
       return ER_PARTITION_NOT_EXIST;
     }
 
-  subclass_mop = sm_find_class (class_->header.name);
+  subclass_mop = sm_find_class (sm_ch_name ((MOBJ) class_));
   if (subclass_mop == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -9674,7 +9677,8 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
 		    do_recreate_func_index_constr ((PARSER_CONTEXT *) parser,
 						   saved, NULL, NULL,
 						   old_class_name,
-						   class_->header.name);
+						   sm_ch_name ((MOBJ)
+							       class_));
 		  if (error != NO_ERROR)
 		    {
 		      goto error_exit;
@@ -9688,7 +9692,8 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
 						     parser,
 						     saved->filter_predicate,
 						     NULL, old_class_name,
-						     class_->header.name);
+						     sm_ch_name ((MOBJ)
+								 class_));
 		  if (error != NO_ERROR)
 		    {
 		      goto error_exit;
@@ -9827,8 +9832,9 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 		  error =
 		    do_recreate_func_index_constr (parser, index_save_info,
 						   NULL, NULL,
-						   src_class->header.name,
-						   sm_class_name (classmop));
+						   sm_ch_name ((MOBJ)
+							       src_class),
+						   sm_get_ch_name (classmop));
 		}
 	      else
 		{
@@ -9837,8 +9843,9 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 		    do_recreate_filter_index_constr (parser, index_save_info->
 						     filter_predicate,
 						     NULL,
-						     src_class->header.name,
-						     sm_class_name
+						     sm_ch_name ((MOBJ)
+								 src_class),
+						     sm_get_ch_name
 						     (classmop));
 		}
 	    }

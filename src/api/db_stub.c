@@ -1205,7 +1205,7 @@ api_rmeta_get_info (API_RESULTSET_META * impl, int index,
 
 	if (query_type->domain && query_type->domain->class_mop)
 	  {
-	    class_name = sm_class_name (query_type->domain->class_mop);
+	    class_name = sm_get_ch_name (query_type->domain->class_mop);
 	    if (class_name)
 	      {
 		data_size = strlen (class_name);

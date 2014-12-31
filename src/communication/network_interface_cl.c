@@ -9007,25 +9007,23 @@ mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats)
 }
 
 /*
- * catalog_is_acceptable_new_representation -
+ * catalog_check_rep_dir -
  *
  * return:
  *
  *   class_id(in):
- *   hfid(in):
- *   can_accept(in):
+ *   rep_dir_p(out):
  *
  * NOTE:
  */
 int
-catalog_is_acceptable_new_representation (OID * class_id, HFID * hfid,
-					  int *can_accept)
+catalog_check_rep_dir (OID * class_id, OID * rep_dir_p)
 {
 #if defined(CS_MODE)
-  int req_error, status, accept;
-  OR_ALIGNED_BUF (OR_OID_SIZE + OR_HFID_SIZE) a_request;
+  int req_error, status;
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE) a_reply;
   char *reply;
   char *ptr;
 
@@ -9033,9 +9031,8 @@ catalog_is_acceptable_new_representation (OID * class_id, HFID * hfid,
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_oid (request, class_id);
-  ptr = or_pack_hfid (ptr, hfid);
 
-  req_error = net_client_request (NET_SERVER_CT_CAN_ACCEPT_NEW_REPR,
+  req_error = net_client_request (NET_SERVER_CT_CHECK_REP_DIR,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
 				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				  NULL, 0, NULL, 0);
@@ -9047,8 +9044,7 @@ catalog_is_acceptable_new_representation (OID * class_id, HFID * hfid,
   else
     {
       ptr = or_unpack_int (reply, &status);
-      ptr = or_unpack_int (ptr, &accept);
-      *can_accept = accept;
+      ptr = or_unpack_oid (ptr, rep_dir_p);
     }
 
   return status;
@@ -9057,9 +9053,7 @@ catalog_is_acceptable_new_representation (OID * class_id, HFID * hfid,
 
   ENTER_SERVER ();
 
-  success =
-    xcatalog_is_acceptable_new_representation (NULL, class_id, hfid,
-					       can_accept);
+  success = xcatalog_check_rep_dir (NULL, class_id, rep_dir_p);
 
   EXIT_SERVER ();
 

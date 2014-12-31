@@ -7411,7 +7411,7 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * sct_can_accept_new_repr -
+ * sct_check_rep_dir -
  *
  * return:
  *
@@ -7422,28 +7422,29 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sct_can_accept_new_repr (THREAD_ENTRY * thread_p, unsigned int rid,
-			 char *request, int reqlen)
+sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid,
+		   char *request, int reqlen)
 {
   OID classoid;
-  HFID hfid;
-  int success, can_accept;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  OID rep_dir;
+  int success;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
   ptr = or_unpack_oid (request, &classoid);
-  ptr = or_unpack_hfid (ptr, &hfid);
+  OID_SET_NULL (&rep_dir);	/* init */
 
-  success = xcatalog_is_acceptable_new_representation (thread_p, &classoid,
-						       &hfid, &can_accept);
+  success = xcatalog_check_rep_dir (thread_p, &classoid, &rep_dir);
   if (success != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
     }
 
+  assert (!OID_ISNULL (&rep_dir));
+
   ptr = or_pack_int (reply, (int) success);
-  ptr = or_pack_int (ptr, (int) can_accept);
+  ptr = or_pack_oid (ptr, &rep_dir);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));

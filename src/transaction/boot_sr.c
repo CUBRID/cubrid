@@ -366,14 +366,19 @@ boot_get_db_parm (THREAD_ENTRY * thread_p, const BOOT_DB_PARM * dbparm,
 /*
  * boot_find_root_heap () - find the root heap
  *
- * return: root_hfid or NULL
+ * return: NO_ERROR
  *
  * Note: Find the heap where the classes are stored.
  */
-HFID *
-boot_find_root_heap (void)
+int
+boot_find_root_heap (HFID * root_hfid_p)
 {
-  return &boot_Db_parm->rootclass_hfid;
+  assert (root_hfid_p != NULL);
+  assert (!HFID_IS_NULL (&boot_Db_parm->rootclass_hfid));
+
+  HFID_COPY (root_hfid_p, &boot_Db_parm->rootclass_hfid);
+
+  return NO_ERROR;
 }
 
 /*
@@ -3194,9 +3199,11 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   rootclass_oid->volid = boot_Db_parm->rootclass_oid.volid;
   rootclass_oid->pageid = boot_Db_parm->rootclass_oid.pageid;
   rootclass_oid->slotid = boot_Db_parm->rootclass_oid.slotid;
-  rootclass_hfid->vfid.volid = boot_Db_parm->rootclass_hfid.vfid.volid;
-  rootclass_hfid->vfid.fileid = boot_Db_parm->rootclass_hfid.vfid.fileid;
-  rootclass_hfid->hpgid = boot_Db_parm->rootclass_hfid.hpgid;
+  if (boot_find_root_heap (rootclass_hfid) != NO_ERROR
+      || HFID_IS_NULL (rootclass_hfid))
+    {
+      goto exit_on_error;
+    }
 
   /* print_version string */
 #if defined (NDEBUG)
@@ -3862,7 +3869,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
   logtb_set_to_system_tran_index (thread_p);
 
-  if (!tf_Metaclass_class.n_variable)
+  if (!tf_Metaclass_class.mc_n_variable)
     {
       tf_compile_meta_classes ();
     }
@@ -4289,8 +4296,13 @@ xboot_register_client (THREAD_ENTRY * thread_p,
       server_credential->process_id = getpid ();
       COPY_OID (&server_credential->root_class_oid,
 		&boot_Db_parm->rootclass_oid);
-      HFID_COPY (&server_credential->root_class_hfid,
-		 &boot_Db_parm->rootclass_hfid);
+      if (boot_find_root_heap (&(server_credential->root_class_hfid)) !=
+	  NO_ERROR || HFID_IS_NULL (&(server_credential->root_class_hfid)))
+	{
+	  *tran_state = TRAN_UNACTIVE_UNKNOWN;
+	  return NULL_TRAN_INDEX;
+	}
+
       server_credential->page_size = IO_PAGESIZE;
       server_credential->log_page_size = LOG_PAGESIZE;
       server_credential->disk_compatibility = rel_disk_compatible ();
@@ -6045,7 +6057,9 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   boot_Db_parm->classname_table.vfid.volid = LOG_DBFIRST_VOLID;
 #endif
   boot_Db_parm->ctid.vfid.volid = LOG_DBFIRST_VOLID;
+#if 1				/* TODO */
   boot_Db_parm->ctid.xhid.vfid.volid = LOG_DBFIRST_VOLID;
+#endif
 
   (void) strncpy (boot_Db_parm->rootclass_name, ROOTCLASS_NAME,
 		  DB_SIZEOF (boot_Db_parm->rootclass_name));

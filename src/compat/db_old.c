@@ -477,7 +477,7 @@ db_get_superclass_names (MOP obj)
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
       for (el = class_->inheritance; el != NULL; el = el->next)
-	if (nlist_append (&names, sm_class_name (el->op), NULL, NULL))
+	if (nlist_append (&names, sm_get_ch_name (el->op), NULL, NULL))
 	  {
 	    goto memory_error;
 	  }
@@ -510,7 +510,7 @@ db_get_subclass_names (MOP obj)
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
       for (el = class_->users; el != NULL; el = el->next)
-	if (nlist_append (&names, sm_class_name (el->op), NULL, NULL))
+	if (nlist_append (&names, sm_get_ch_name (el->op), NULL, NULL))
 	  {
 	    goto memory_error;
 	  }

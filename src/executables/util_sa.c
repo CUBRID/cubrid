@@ -661,7 +661,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
     {
       au_dump_to_file (output_file);
     }
-  if (!tf_Metaclass_class.n_variable)
+  if (!tf_Metaclass_class.mc_n_variable)
     {
       tf_compile_meta_classes ();
     }

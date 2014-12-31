@@ -37,39 +37,39 @@
 
 typedef struct tf_meta_attribute
 {
-  const char *name;
-  DB_TYPE type;
-  int visible;
-  const char *domain_string;
-  int substructure;
-  int id;
-  void *extended_domain;	/* filled in on the client side */
+  const char *ma_name;
+  DB_TYPE ma_type;
+  int ma_visible;		/* unused */
+  const char *ma_domain_string;	/* unused */
+  int ma_substructure;		/* unused */
+  int ma_id;
+  void *ma_extended_domain;	/* unused; filled in on the client side */
 } META_ATTRIBUTE;
 
 typedef struct tf_meta_class
 {
-  const char *name;
-  OID classoid;
-  int repid;
-  int n_variable;
-  int fixed_size;
-  META_ATTRIBUTE *atts;
+  const char *mc_name;		/* unused */
+  OID mc_classoid;
+  int mc_repid;
+  int mc_n_variable;
+  int mc_fixed_size;
+  META_ATTRIBUTE *mc_atts;
 } META_CLASS;
 
 #if !defined(CS_MODE)
 typedef struct tf_ct_attribute
 {
-  const char *name;
-  int id;
-  DB_TYPE type;
+  const char *ca_name;
+  int ca_id;
+  DB_TYPE ca_type;
 } CT_ATTR;
 
 typedef struct tf_ct_class
 {
-  const char *name;
-  OID classoid;
-  int n_atts;
-  CT_ATTR *atts;
+  const char *cc_name;
+  OID cc_classoid;
+  int cc_n_atts;
+  CT_ATTR *cc_atts;
 } CT_CLASS;
 #endif /* !CS_MODE */
 

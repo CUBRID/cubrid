@@ -740,8 +740,8 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_MNT_SERVER_COPY_STATS].name =
     "NET_SERVER_MNT_SERVER_COPY_STATS";
 
-  net_Req_buffer[NET_SERVER_CT_CAN_ACCEPT_NEW_REPR].name =
-    "NET_SERVER_CT_CAN_ACCEPT_NEW_REPR";
+  net_Req_buffer[NET_SERVER_CT_CHECK_REP_DIR].name =
+    "NET_SERVER_CT_CHECK_REP_DIR";
 
   net_Req_buffer[NET_SERVER_CSS_KILL_TRANSACTION].name =
     "NET_SERVER_CSS_KILL_TRANSACTION";

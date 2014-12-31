@@ -380,7 +380,8 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 				inst_tp->nassigns);
 
   buffer = pt_append_nulstring (parser, buffer, "INSERT INTO [");
-  buffer = pt_append_nulstring (parser, buffer, inst_tp->class_->header.name);
+  buffer = pt_append_nulstring (parser, buffer,
+				sm_ch_name ((MOBJ) (inst_tp->class_)));
   buffer = pt_append_nulstring (parser, buffer, "](");
   buffer = pt_append_varchar (parser, buffer, att_names);
   buffer = pt_append_nulstring (parser, buffer, ") VALUES (");
@@ -394,7 +395,8 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       return ER_FAILED;
     }
 
-  select = sl_print_select (parser, inst_tp->class_->header.name, pkey);
+  select =
+    sl_print_select (parser, sm_ch_name ((MOBJ) (inst_tp->class_)), pkey);
 
   if (sl_write_sql (buffer, select) != NO_ERROR)
     {
@@ -418,7 +420,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 
   parser = parser_create_parser ();
 
-  if (strcmp (inst_tp->class_->header.name, "db_serial"))
+  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial"))
     {
       att_set =
 	sl_print_update_att_set (parser, inst_tp->assignments,
@@ -432,14 +434,16 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 
       buffer = pt_append_nulstring (parser, buffer, "UPDATE [");
       buffer =
-	pt_append_nulstring (parser, buffer, inst_tp->class_->header.name);
+	pt_append_nulstring (parser, buffer,
+			     sm_ch_name ((MOBJ) (inst_tp->class_)));
       buffer = pt_append_nulstring (parser, buffer, "] SET ");
       buffer = pt_append_varchar (parser, buffer, att_set);
       buffer = pt_append_nulstring (parser, buffer, " WHERE ");
       buffer = pt_append_varchar (parser, buffer, pkey);
       buffer = pt_append_nulstring (parser, buffer, ";");
 
-      select = sl_print_select (parser, inst_tp->class_->header.name, pkey);
+      select =
+	sl_print_select (parser, sm_ch_name ((MOBJ) (inst_tp->class_)), pkey);
 
       result = sl_write_sql (buffer, select);
     }

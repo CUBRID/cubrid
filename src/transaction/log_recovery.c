@@ -38,6 +38,7 @@
 #include "log_comm.h"
 #include "recovery.h"
 #include "boot_sr.h"
+#include "locator_sr.h"
 #include "disk_manager.h"
 #include "page_buffer.h"
 #include "file_io.h"

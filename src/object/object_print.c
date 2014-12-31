@@ -480,7 +480,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	    {
 	      buffer =
 		obj_print_identifier (parser, buffer,
-				      sm_class_name (temp_domain->class_mop),
+				      sm_get_ch_name (temp_domain->class_mop),
 				      prt_type);
 	    }
 	  else
@@ -756,7 +756,7 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
       buffer = pt_append_nulstring (parser, buffer, " /* from ");
       buffer =
 	obj_print_identifier (parser, buffer,
-			      sm_class_name (attribute_p->class_mop),
+			      sm_get_ch_name (attribute_p->class_mop),
 			      prt_type);
       buffer = pt_append_nulstring (parser, buffer, " */");
     }
@@ -1017,7 +1017,8 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 
       buffer = pt_append_nulstring (parser, buffer, constraint_p->name);
       buffer = pt_append_nulstring (parser, buffer, " ON ");
-      buffer = pt_append_nulstring (parser, buffer, class_p->header.name);
+      buffer =
+	pt_append_nulstring (parser, buffer, sm_ch_name ((MOBJ) class_p));
       buffer = pt_append_nulstring (parser, buffer, " (");
 
       asc_desc = NULL;		/* init */
@@ -1166,8 +1167,8 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	}
 
       buffer = pt_append_nulstring (parser, buffer, " REFERENCES ");
-      buffer =
-	obj_print_identifier (parser, buffer, ref_cls->header.name, prt_type);
+      buffer = obj_print_identifier (parser, buffer,
+				     sm_ch_name ((MOBJ) ref_cls), prt_type);
 
       if (prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
 	{
@@ -1376,7 +1377,7 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
       buffer = pt_append_nulstring (parser, buffer, "(from ");
       buffer =
 	obj_print_identifier (parser, buffer,
-			      sm_class_name (method_p->class_mop), prt_type);
+			      sm_get_ch_name (method_p->class_mop), prt_type);
       buffer = pt_append_nulstring (parser, buffer, ")");
     }
 
@@ -1419,7 +1420,7 @@ obj_print_describe_resolution (PARSER_CONTEXT * parser,
       buffer = pt_append_nulstring (parser, buffer, " of ");
       buffer =
 	obj_print_identifier (parser, buffer,
-			      sm_class_name (resolution_p->class_mop),
+			      sm_get_ch_name (resolution_p->class_mop),
 			      prt_type);
 
       if (resolution_p->alias != NULL)
@@ -1453,7 +1454,7 @@ obj_print_describe_method_file (PARSER_CONTEXT * parser, MOP class_p,
 	{
 	  pt_append_nulstring (parser, fbuffer, " (from ");
 	  pt_append_nulstring (parser, fbuffer,
-			       sm_class_name (file_p->class_mop));
+			       sm_get_ch_name (file_p->class_mop));
 	  pt_append_nulstring (parser, fbuffer, ")");
 	}
     }
@@ -1784,12 +1785,13 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		{
 		  snprintf (name_buf, max_name_size,
 			    "%-20s COMMENT '%s'",
-			    (char *) class_->header.name, class_->comment);
+			    (char *) sm_ch_name ((MOBJ) class_),
+			    class_->comment);
 		}
 	      else
 		{
 		  snprintf (name_buf, max_name_size,
-			    "%s", (char *) class_->header.name);
+			    "%s", (char *) sm_ch_name ((MOBJ) class_));
 		}
 	    }
 	  else
@@ -1798,7 +1800,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		{
 		  snprintf (name_buf, max_name_size,
 			    "%-20s COLLATE %s COMMENT '%s'",
-			    class_->header.name,
+			    sm_ch_name ((MOBJ) class_),
 			    lang_get_collation_name (class_->collation_id),
 			    class_->comment);
 		}
@@ -1806,7 +1808,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		{
 		  snprintf (name_buf, max_name_size,
 			    "%-20s COLLATE %s",
-			    class_->header.name,
+			    sm_ch_name ((MOBJ) class_),
 			    lang_get_collation_name (class_->collation_id));
 		}
 	    }
@@ -1819,7 +1821,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	   * info->name is set to the exact class name
 	   */
 	  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]",
-		    class_->header.name);
+		    sm_ch_name ((MOBJ) class_));
 	  info->name = obj_print_copy_string (name_buf);
 	}
 
@@ -1882,7 +1884,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	       super = super->next)
 	    {
 	      /* kludge for const vs. non-const warnings */
-	      kludge = sm_class_name (super->op);
+	      kludge = sm_get_ch_name (super->op);
 	      if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 		{
 		  strs[i] = obj_print_copy_string ((char *) kludge);
@@ -1914,7 +1916,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	  for (user = class_->users; user != NULL; user = user->next)
 	    {
 	      /* kludge for const vs. non-const warnings */
-	      kludge = sm_class_name (user->op);
+	      kludge = sm_get_ch_name (user->op);
 	      if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 		{
 		  strs[i] = obj_print_copy_string ((char *) kludge);
@@ -2323,7 +2325,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
       info->partition = NULL;	/* initialize */
       if (class_->partition_of != NULL
-	  && !do_is_partitioned_subclass (NULL, class_->header.name, NULL))
+	  && !do_is_partitioned_subclass (NULL, sm_ch_name ((MOBJ) class_),
+					  NULL))
 	{
 	  bool is_print_partition = true;
 
@@ -2573,7 +2576,7 @@ help_trigger (DB_OBJECT * trobj)
 
   if (trigger->class_mop != NULL)
     {
-      classname = (char *) sm_class_name (trigger->class_mop);
+      classname = (char *) sm_get_ch_name (trigger->class_mop);
       if (classname != NULL)
 	{
 	  help->class_name = obj_print_copy_string ((char *) classname);
@@ -2864,7 +2867,7 @@ help_obj (MOP op)
 		  goto error_exit;
 		}
 	      info->classname =
-		obj_print_copy_string ((char *) class_->header.name);
+		obj_print_copy_string ((char *) sm_ch_name ((MOBJ) class_));
 
 	      DB_MAKE_OBJECT (&value, op);
 	      buffer =
@@ -3423,19 +3426,22 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 		   (DB_C_LONG) WS_OID (obj)->pageid,
 		   (DB_C_LONG) WS_OID (obj)->slotid);
 
-	  required = strlen (oidbuffer) + strlen (class_->header.name) + 2;
+	  required =
+	    strlen (oidbuffer) + strlen (sm_ch_name ((MOBJ) class_)) + 2;
 	  if (locator_is_class (obj, DB_FETCH_READ))
 	    {
 	      required++;
 	      if (maxlen >= required)
 		{
-		  sprintf (buffer, "*%s:%s", class_->header.name, oidbuffer);
+		  sprintf (buffer, "*%s:%s", sm_ch_name ((MOBJ) class_),
+			   oidbuffer);
 		  total = required;
 		}
 	    }
 	  else if (maxlen >= required)
 	    {
-	      sprintf (buffer, "%s:%s", class_->header.name, oidbuffer);
+	      sprintf (buffer, "%s:%s", sm_ch_name ((MOBJ) class_),
+		       oidbuffer);
 	      total = required;
 	    }
 	}

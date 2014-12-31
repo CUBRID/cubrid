@@ -625,9 +625,9 @@ catcls_expand_or_value_by_def (OR_VALUE * value_p, CT_CLASS * def_p)
   if (value_p != NULL)
     {
       /* index_of */
-      COPY_OID (&value_p->id.classoid, &def_p->classoid);
+      COPY_OID (&value_p->id.classoid, &def_p->cc_classoid);
 
-      n_attrs = def_p->n_atts;
+      n_attrs = def_p->cc_n_atts;
       attrs_p = catcls_allocate_or_value (n_attrs);
       if (attrs_p == NULL)
 	{
@@ -637,11 +637,12 @@ catcls_expand_or_value_by_def (OR_VALUE * value_p, CT_CLASS * def_p)
       value_p->sub.value = attrs_p;
       value_p->sub.count = n_attrs;
 
-      att_def_p = def_p->atts;
+      att_def_p = def_p->cc_atts;
       for (i = 0; i < n_attrs; i++)
 	{
-	  attrs_p[i].id.attrid = att_def_p[i].id;
-	  error = db_value_domain_init (&attrs_p[i].value, att_def_p[i].type,
+	  attrs_p[i].id.attrid = att_def_p[i].ca_id;
+	  error = db_value_domain_init (&attrs_p[i].value,
+					att_def_p[i].ca_type,
 					DB_DEFAULT_PRECISION,
 					DB_DEFAULT_SCALE);
 	  if (error != NO_ERROR)
@@ -739,8 +740,8 @@ catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid_p)
   ATTR_ID index_key;
   int error = NO_ERROR;
 
-  index_class_p = &ct_Class.classoid;
-  index_key = (ct_Class.atts)[CATCLS_INDEX_KEY].id;
+  index_class_p = &ct_Class.cc_classoid;
+  index_key = (ct_Class.cc_atts)[CATCLS_INDEX_KEY].ca_id;
 
   error =
     catalog_get_last_representation_id (thread_p, index_class_p, &repr_id);
@@ -814,7 +815,7 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p,
 
   error =
     xbtree_find_unique (thread_p, &catcls_Btid, S_SELECT, &key_val,
-			&ct_Class.classoid, oid_p, false);
+			&ct_Class.cc_classoid, oid_p, false);
   if (error == BTREE_ERROR_OCCURRED)
     {
       pr_clear_value (&key_val);
@@ -940,7 +941,7 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p,
 
   or_advance (buf_p, OR_NON_MVCC_HEADER_SIZE);
 
-  size = tf_Metaclass_class.n_variable;
+  size = tf_Metaclass_class.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -1123,7 +1124,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attrs = value_p->sub.value;
 
   /** variable offset **/
-  size = tf_Metaclass_class.n_variable;
+  size = tf_Metaclass_class.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -1386,7 +1387,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attrs = value_p->sub.value;
 
   /** variable offset **/
-  size = tf_Metaclass_attribute.n_variable;
+  size = tf_Metaclass_attribute.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -1625,7 +1626,7 @@ catcls_get_or_value_from_attrid (THREAD_ENTRY * thread_p, OR_BUF * buf,
   /* variable offset */
   start_ptr = buf->ptr;
 
-  size = tf_Metaclass_attribute.n_variable;
+  size = tf_Metaclass_attribute.mc_n_variable;
   vars = or_get_var_table (buf, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -1696,7 +1697,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attrs = value_p->sub.value;
 
   /** variable offset **/
-  size = tf_Metaclass_domain.n_variable;
+  size = tf_Metaclass_domain.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -1824,7 +1825,7 @@ catcls_get_or_value_from_method (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attrs = value_p->sub.value;
 
   /** variable offset **/
-  size = tf_Metaclass_method.n_variable;
+  size = tf_Metaclass_method.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -1909,7 +1910,7 @@ catcls_get_or_value_from_method_signiture (THREAD_ENTRY * thread_p,
   attrs = value_p->sub.value;
 
   /* variable offset */
-  size = tf_Metaclass_methsig.n_variable;
+  size = tf_Metaclass_methsig.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -1995,7 +1996,7 @@ catcls_get_or_value_from_method_argument (THREAD_ENTRY * thread_p,
   attrs = value_p->sub.value;
 
   /** variable offset **/
-  size = tf_Metaclass_metharg.n_variable;
+  size = tf_Metaclass_metharg.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -2065,7 +2066,7 @@ catcls_get_or_value_from_method_file (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attrs = value_p->sub.value;
 
   /** variable offset **/
-  size = tf_Metaclass_methfile.n_variable;
+  size = tf_Metaclass_methfile.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -2137,7 +2138,7 @@ catcls_get_or_value_from_resolution (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attrs = value_p->sub.value;
 
   /** variable offset **/
-  size = tf_Metaclass_resolution.n_variable;
+  size = tf_Metaclass_resolution.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -2217,7 +2218,7 @@ catcls_get_or_value_from_query_spec (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attrs = value_p->sub.value;
 
   /** variable offset **/
-  size = tf_Metaclass_query_spec.n_variable;
+  size = tf_Metaclass_query_spec.mc_n_variable;
   vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
   if (vars == NULL)
     {
@@ -3117,7 +3118,7 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 		   */
 		  er_clear ();
 		}
-	      if (!OID_EQ (&class_oid, &ct_Class.classoid)
+	      if (!OID_EQ (&class_oid, &ct_Class.cc_classoid)
 		  && !OID_ISNULL (&class_oid))
 		{
 		  subset_p = catcls_allocate_or_value (size);
@@ -4044,7 +4045,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 	      attr_p = subset_p[j].sub.value;
 	      db_push_oid (&attr_p[0].value, oid_p);
 
-	      if (OID_EQ (class_oid_p, &ct_Class.classoid))
+	      if (OID_EQ (class_oid_p, &ct_Class.cc_classoid))
 		{
 		  /* if root node, eliminate self references */
 		  for (k = 1; k < subset_p[j].sub.count; k++)
@@ -4332,7 +4333,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 	      attr_p = subset_p[j].sub.value;
 	      db_push_oid (&attr_p[0].value, oid_p);
 
-	      if (OID_EQ (class_oid_p, &ct_Class.classoid))
+	      if (OID_EQ (class_oid_p, &ct_Class.cc_classoid))
 		{
 		  /* if root node, eliminate self references */
 		  for (k = 1; k < subset_p[j].sub.count; k++)
@@ -4463,7 +4464,7 @@ catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record_p)
       goto error;
     }
 
-  class_oid_p = &ct_Class.classoid;
+  class_oid_p = &ct_Class.cc_classoid;
   cls_info_p = catalog_get_class_info (thread_p, class_oid_p);
   if (cls_info_p == NULL)
     {
@@ -4539,7 +4540,7 @@ catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
       goto error;
     }
 
-  ct_class_oid_p = &ct_Class.classoid;
+  ct_class_oid_p = &ct_Class.cc_classoid;
   cls_info_p = catalog_get_class_info (thread_p, ct_class_oid_p);
   if (cls_info_p == NULL)
     {
@@ -4741,7 +4742,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
       goto error;
     }
 
-  catalog_class_oid_p = &ct_Class.classoid;
+  catalog_class_oid_p = &ct_Class.cc_classoid;
   cls_info_p = catalog_get_class_info (thread_p, catalog_class_oid_p);
   if (cls_info_p == NULL)
     {
@@ -4867,8 +4868,8 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   /* fill classoid and attribute ids for each meta catalog classes */
   for (c = 0; ct_Classes[c] != NULL; c++)
     {
-      class_name_p = ct_Classes[c]->name;
-      class_oid_p = &ct_Classes[c]->classoid;
+      class_name_p = ct_Classes[c]->cc_name;
+      class_oid_p = &ct_Classes[c]->cc_classoid;
 
       if (catcls_find_class_oid_by_class_name (thread_p, class_name_p,
 					       class_oid_p) != NO_ERROR)
@@ -4876,8 +4877,8 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	  return ER_FAILED;
 	}
 
-      atts = ct_Classes[c]->atts;
-      n_atts = ct_Classes[c]->n_atts;
+      atts = ct_Classes[c]->cc_atts;
+      n_atts = ct_Classes[c]->cc_n_atts;
 
       if (heap_scancache_quick_start (&scan) != NO_ERROR)
 	{
@@ -4901,9 +4902,9 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
 	  for (a = 0; a < n_atts; a++)
 	    {
-	      if (strcmp (atts[a].name, attr_name_p) == 0)
+	      if (strcmp (atts[a].ca_name, attr_name_p) == 0)
 		{
-		  atts[a].id = i;
+		  atts[a].ca_id = i;
 		  break;
 		}
 	    }
@@ -5397,7 +5398,7 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 	      attr_p = subset_p[j].sub.value;
 	      db_push_oid (&attr_p[0].value, new_oid);
 
-	      if (OID_EQ (class_oid_p, &ct_Class.classoid))
+	      if (OID_EQ (class_oid_p, &ct_Class.cc_classoid))
 		{
 		  /* if root node, eliminate self references */
 		  for (k = 1; k < subset_p[j].sub.count; k++)

@@ -8328,7 +8328,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	  obj_trigger_target = trigger->class_mop;
 	  assert (obj_trigger_target != NULL);
 
-	  name_trigger_target = sm_class_name (obj_trigger_target);
+	  name_trigger_target = sm_get_ch_name (obj_trigger_target);
 	  if (name_trigger_target == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);

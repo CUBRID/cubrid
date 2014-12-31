@@ -6500,7 +6500,7 @@ ldr_update_statistics (void)
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					       MSGCAT_UTIL_SET_LOADDB,
 					       LOADDB_MSG_CLASS_TITLE),
-		       sm_class_name (table->class_));
+		       sm_get_ch_name (table->class_));
 	      fflush (stdout);
 	    }
 	  err = sm_update_statistics (table->class_, STATS_WITH_SAMPLING);

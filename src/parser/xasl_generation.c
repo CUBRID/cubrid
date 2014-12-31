@@ -5271,7 +5271,7 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
       return NULL;
     }
 
-  hfid = sm_get_heap (class_);
+  hfid = sm_get_ch_heap (class_);
   if (hfid == NULL)
     {
       return NULL;
@@ -14161,7 +14161,7 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser,
   int is_partition = 0;
 
   oid_ptr = ws_identifier (target_class);
-  hfid_ptr = sm_get_heap (target_class);
+  hfid_ptr = sm_get_ch_heap (target_class);
 
   if (oid_ptr == NULL || hfid_ptr == NULL)
     {
@@ -19211,7 +19211,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  hfid = sm_heap (class_);
+  hfid = sm_ch_heap (class_);
   if (hfid == NULL)
     {
       return NULL;
@@ -20067,7 +20067,7 @@ pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * predicate,
       return NULL;
     }
 
-  hfid = sm_heap (class_);
+  hfid = sm_ch_heap (class_);
   if (hfid == NULL)
     {
       return NULL;
@@ -21238,7 +21238,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
 		  goto error_return;
 		}
-	      hfid = sm_get_heap (class_obj);
+	      hfid = sm_get_ch_heap (class_obj);
 	      if (hfid == NULL)
 		{
 		  goto error_return;
@@ -21992,7 +21992,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 
 	  /* get hfid */
-	  hfid = sm_get_heap (class_obj);
+	  hfid = sm_get_ch_heap (class_obj);
 	  if (hfid == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -25541,7 +25541,7 @@ pt_to_func_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * expr)
       return NULL;
     }
 
-  hfid = sm_heap (class_);
+  hfid = sm_ch_heap (class_);
   if (hfid == NULL)
     {
       return NULL;
@@ -26356,7 +26356,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
 
       /* get hfid */
-      hfid = sm_get_heap (class_obj);
+      hfid = sm_get_ch_heap (class_obj);
       if (hfid == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -26684,7 +26684,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       goto cleanup;
     }
 
-  hfid = sm_heap (class_);
+  hfid = sm_ch_heap (class_);
   if (hfid == NULL)
     {
       assert (er_errid () != NO_ERROR);

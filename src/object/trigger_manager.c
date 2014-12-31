@@ -3712,7 +3712,7 @@ check_target (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop,
       if (class_mop != NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_BAD_TARGET_CLASS,
-		  1, sm_class_name (class_mop));
+		  1, sm_get_ch_name (class_mop));
 	}
       else if (attribute != NULL)
 	{

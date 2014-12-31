@@ -190,11 +190,10 @@ META_CLASS tf_Metaclass_representation =
 static META_ATTRIBUTE class_atts[] = {
   {"attid_counter", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"methid_counter", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
-  {"unused", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
+  {"representation_directory", DB_TYPE_OBJECT, 0, "object", 0, 0, NULL},
   {"heap_fileid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"heap_volid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"heap_pageid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
-  {"current_repid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"fixed_count", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"variable_count", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"fixed_size", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
@@ -247,7 +246,6 @@ static META_ATTRIBUTE root_atts[] = {
   {"heap_volid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"heap_pageid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"name", DB_TYPE_STRING, 0, NULL, 0, 0, NULL},
-  {"sub_classes", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 META_CLASS tf_Metaclass_root =
@@ -504,7 +502,7 @@ tf_is_catalog_class (OID * class_oid)
 
   for (c = 0; ct_Classes[c] != NULL; c++)
     {
-      if (OID_EQ (&ct_Classes[c]->classoid, class_oid))
+      if (OID_EQ (&ct_Classes[c]->cc_classoid, class_oid))
 	{
 	  return true;
 	}
@@ -536,18 +534,18 @@ tf_compile_meta_classes ()
     {
       class_ = Meta_classes[c];
 
-      class_->n_variable = class_->fixed_size = 0;
+      class_->mc_n_variable = class_->mc_fixed_size = 0;
 
-      for (i = 0; class_->atts[i].name != NULL; i++)
+      for (i = 0; class_->mc_atts[i].ma_name != NULL; i++)
 	{
-	  att = &class_->atts[i];
-	  att->id = i;
+	  att = &class_->mc_atts[i];
+	  att->ma_id = i;
 
-	  if (pr_is_variable_type (att->type))
+	  if (pr_is_variable_type (att->ma_type))
 	    {
-	      class_->n_variable++;
+	      class_->mc_n_variable++;
 	    }
-	  else if (class_->n_variable)
+	  else if (class_->mc_n_variable)
 	    {
 	      /*
 	       * can't have fixed width attributes AFTER variable width
@@ -563,8 +561,8 @@ tf_compile_meta_classes ()
 	       * any parameterized types this isn't necessary but we still must
 	       * have it to call tp_domain_isk_size().
 	       */
-	      domain = tp_domain_resolve_default (att->type);
-	      class_->fixed_size += tp_domain_disk_size (domain);
+	      domain = tp_domain_resolve_default (att->ma_type);
+	      class_->mc_fixed_size += tp_domain_disk_size (domain);
 	    }
 	}
     }

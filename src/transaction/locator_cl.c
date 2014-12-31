@@ -2834,7 +2834,7 @@ locator_fun_get_all_mops (MOP class_mop,
   keep_mops.list = NULL;
 
   /* Find the heap where the instances are stored */
-  hfid = sm_heap (class_obj);
+  hfid = sm_ch_heap (class_obj);
   if (hfid->vfid.fileid == NULL_FILEID)
     {
       return NULL;
@@ -4351,8 +4351,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 		      /* Make sure that we have the new class in workspace */
 		      if (new_class_mop->object == NULL)
 			{
-			  int error = NO_ERROR;
 			  SM_CLASS *smclass = NULL;
+
 			  /* No need to check authorization here */
 			  error_code =
 			    au_fetch_class_force (new_class_mop,
@@ -4887,7 +4887,7 @@ locator_mflush (MOP mop, void *mf)
 
 	      /* Cache this information for future flushes */
 	      mflush->class_mop = class_mop;
-	      mflush->hfid = sm_heap (mflush->class_obj);
+	      mflush->hfid = sm_ch_heap (mflush->class_obj);
 	    }
 	  hfid = mflush->hfid;
 	  has_index = sm_has_indexes (mflush->class_obj);
@@ -4968,7 +4968,7 @@ locator_mflush (MOP mop, void *mf)
 		}
 	      /* Cache this information for future flushes */
 	      mflush->class_mop = class_mop;
-	      mflush->hfid = sm_heap (mflush->class_obj);
+	      mflush->hfid = sm_ch_heap (mflush->class_obj);
 	    }
 
 	  if (locator_mem_to_disk (mflush, object, &has_index, &round_length,
@@ -5568,7 +5568,7 @@ locator_flush_all_instances (MOP class_mop, bool decache)
     }
   else
     {
-      hfid = sm_heap (class_obj);
+      hfid = sm_ch_heap (class_obj);
       error_code = locator_mflush_initialize (&mflush, class_mop, class_obj,
 					      hfid, decache, MANY_MFLUSHES);
       if (error_code != NO_ERROR)
@@ -5660,7 +5660,7 @@ locator_flush_for_multi_update (MOP class_mop)
       goto error;
     }
 
-  hfid = sm_heap (class_obj);
+  hfid = sm_ch_heap (class_obj);
   /* The fifth argument, decache, is false. */
   locator_mflush_initialize (&mflush, class_mop, class_obj, hfid, false,
 			     MANY_MFLUSHES);
@@ -5990,7 +5990,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
    * the creation of the heap since the class must be updated
    */
 
-  hfid = sm_heap (class_obj);
+  hfid = sm_ch_heap (class_obj);
   if (HFID_IS_NULL (hfid))
     {
       OID *oid;
@@ -6012,6 +6012,8 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	  oid = ws_oid (class_mop);
 	}
 
+      assert (!OID_ISNULL (sm_ch_rep_dir (class_obj)));
+
       if (heap_create (hfid, oid, reuse_oid) != NO_ERROR)
 	{
 	  return NULL;
@@ -6019,6 +6021,8 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 
       ws_dirty (class_mop);
     }
+
+  assert (!OID_ISNULL (sm_ch_rep_dir (class_obj)));
 
   return class_obj;
 }
@@ -6153,10 +6157,10 @@ locator_remove_class (MOP class_mop)
   /* Decache all the instances of the class */
   (void) ws_map_class (class_mop, locator_instance_decache, NULL);
 
-  classname = sm_classobj_name (class_obj);
+  classname = sm_ch_name (class_obj);
 
   /* What should happen to the heap */
-  insts_hfid = sm_heap (class_obj);
+  insts_hfid = sm_ch_heap (class_obj);
   if (insts_hfid->vfid.fileid != NULL_FILEID)
     {
       error_code = heap_destroy_newly_created (insts_hfid);
@@ -6429,12 +6433,12 @@ locator_assign_permanent_oid (MOP mop)
       hfid = sm_Root_class_hfid;
       if (object != NULL)
 	{
-	  name = sm_classobj_name (object);
+	  name = sm_ch_name (object);
 	}
     }
   else
     {
-      hfid = sm_heap (class_obj);
+      hfid = sm_ch_heap (class_obj);
     }
 
   /* Assign an address */
@@ -6963,7 +6967,8 @@ locator_add_oidset_object (LC_OIDSET * oidset, MOP obj_mop)
     }
 
   oid_map_p =
-    locator_add_oid_set (NULL, oidset, sm_heap ((MOBJ) class_mop->object),
+    locator_add_oid_set (NULL, oidset,
+			 sm_ch_heap ((MOBJ) (class_mop->object)),
 			 WS_OID (class_mop), WS_OID (obj_mop));
   if (oid_map_p == NULL)
     {

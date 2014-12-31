@@ -46,6 +46,7 @@
 #include "object_primitive.h"
 #include "set_object.h"
 #include "db.h"
+#include "schema_manager.h"
 #include "large_object.h"
 #include "server_interface.h"
 #include "load_object.h"
@@ -809,7 +810,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
   if (oldrep == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION,
-	      1, class_->header.name);
+	      1, sm_ch_name ((MOBJ) class_));
     }
   else
     {

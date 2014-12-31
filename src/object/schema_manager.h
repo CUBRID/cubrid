@@ -182,6 +182,7 @@ extern void sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info);
 
 /* Utility functions */
 extern int sm_check_name (const char *name);
+extern int sm_check_catalog_rep_dir (MOP classmop, SM_CLASS * class_);
 extern SM_NAME_SPACE sm_resolution_space (SM_NAME_SPACE name_space);
 
 /* Class location functions */
@@ -213,7 +214,11 @@ extern int sm_update_statistics (MOP classop, bool with_fullscan);
 extern int sm_update_all_statistics (bool with_fullscan);
 
 /* Misc information functions */
-extern const char *sm_class_name (MOP op);
+extern const char *sm_get_ch_name (MOP op);
+extern HFID *sm_get_ch_heap (MOP classmop);
+#if 0				/* TODO - do not use */
+extern OID *sm_get_ch_rep_dir (MOP classmop);
+#endif
 
 extern int sm_is_subclass (MOP classmop, MOP supermop);
 extern int sm_is_partition (MOP classmop, MOP supermop);
@@ -224,9 +229,10 @@ extern int sm_object_size_quick (SM_CLASS * class_, MOBJ obj);
 extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 
 /* Locator support functions */
-extern const char *sm_classobj_name (MOBJ classobj);
-extern HFID *sm_heap (MOBJ clobj);
-extern HFID *sm_get_heap (MOP classmop);
+extern const char *sm_ch_name (MOBJ clobj);
+extern HFID *sm_ch_heap (MOBJ clobj);
+extern OID *sm_ch_rep_dir (MOBJ clobj);
+
 extern bool sm_has_indexes (MOBJ class_);
 
 /* Interpreter support functions */

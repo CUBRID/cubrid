@@ -63,15 +63,6 @@
             OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, 		\
                                                  BIG_VAR_OFFSET_SIZE)
 
-/* ATTRIBUTE LOCATION */
-
-#define OR_FIXED_ATTRIBUTES_OFFSET(ptr, nvars) \
-   (OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(ptr, nvars, BIG_VAR_OFFSET_SIZE))
-
-#define OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(ptr, nvars, offset_size) \
-   (OR_HEADER_SIZE (ptr) + OR_VAR_TABLE_SIZE_INTERNAL (nvars, offset_size))
-
-
 typedef struct or_btree_property OR_BTREE_PROPERTY;
 struct or_btree_property
 {
@@ -122,33 +113,33 @@ static const char *or_find_diskattr (RECDES * record, int attr_id);
 static const char *or_get_attr_string (RECDES * record, int attr_id,
 				       int attr_index);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
- * orc_class_repid () - Extracts the current representation id from a record
- *                      containing the disk representation of a class
- *   return: repid of the class object
- *   record(in): disk record
+ * orc_class_rep_dir () - Extracts the OID of representation
+ *                             directory record of a class
+ *   return: void
+ *   record(in): packed disk record containing class
+ *   rep_dir_p(out): OID of representation directory record to be filled in
  */
-int
-orc_class_repid (RECDES * record)
+void
+orc_class_rep_dir (RECDES * record, OID * rep_dir_p)
 {
   char *ptr;
-  int id;
 
   ptr = (char *) record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (record->data,
-				ORC_CLASS_VAR_ATT_COUNT) + ORC_REPID_OFFSET;
+    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) +
+    ORC_REP_DIR_OFFSET;
 
-  id = OR_GET_INT (ptr);
-
-  return (id);
+  OR_GET_OID (ptr, rep_dir_p);
 }
+#endif
 
 /*
  * orc_class_hfid_from_record () - Extracts just the HFID from the disk
  *                                 representation of a class
  *   return: void
  *   record(in): packed disk record containing class
- *   hfid(in): pointer to HFID structure to be filled in
+ *   hfid(out): pointer to HFID structure to be filled in
  *
  * Note: It is used by the catalog manager to update the class information
  *       structure when the HFID is assigned.  Since HFID's are assigned only
@@ -773,26 +764,24 @@ orc_superclasses_from_record (RECDES * record, int *array_size,
 }
 
 /*
- * or_class_repid () - extracts the current representation id from a record
- *                     containing the disk representation of a class
- *   return: disk record
- *   record(in): repid of the class object
+ * or_class_rep_dir () - Extracts the OID of representation
+ *                            directory record of a class
+ *   return: void
+ *   record(in): packed disk record containing class
+ *   rep_dir_p(out): OID of representation directory record to be filled in
  */
-int
-or_class_repid (RECDES * record)
+void
+or_class_rep_dir (RECDES * record, OID * rep_dir_p)
 {
   char *ptr;
-  int id;
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
   ptr = (char *) record->data +
     OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) +
-    ORC_REPID_OFFSET;
+    ORC_REP_DIR_OFFSET;
 
-  id = OR_GET_INT (ptr);
-
-  return (id);
+  OR_GET_OID (ptr, rep_dir_p);
 }
 
 /*
@@ -2518,7 +2507,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
   ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
 					    ORC_CLASS_VAR_ATT_COUNT);
 
-  rep->id = OR_GET_INT (ptr + ORC_REPID_OFFSET);
+  rep->id = or_rep_id (record);
   rep->fixed_length = OR_GET_INT (ptr + ORC_FIXED_LENGTH_OFFSET);
   rep->attributes = NULL;
   rep->shared_attrs = NULL;
@@ -3405,7 +3394,6 @@ OR_CLASSREP *
 or_get_classrep (RECDES * record, int repid)
 {
   OR_CLASSREP *rep;
-  char *fixed;
   int current;
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
@@ -3417,10 +3405,7 @@ or_get_classrep (RECDES * record, int repid)
   else
     {
       /* find out what the most recent representation is */
-      fixed =
-	record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
-						   ORC_CLASS_VAR_ATT_COUNT);
-      current = OR_GET_INT (fixed + ORC_REPID_OFFSET);
+      current = or_rep_id (record);
 
       if (current == repid)
 	{
@@ -3445,7 +3430,6 @@ OR_CLASSREP *
 or_get_classrep_noindex (RECDES * record, int repid)
 {
   OR_CLASSREP *rep;
-  char *fixed;
   int current;
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
@@ -3457,10 +3441,7 @@ or_get_classrep_noindex (RECDES * record, int repid)
   else
     {
       /* find out what the most recent representation is */
-      fixed =
-	record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
-						   ORC_CLASS_VAR_ATT_COUNT);
-      current = OR_GET_INT (fixed + ORC_REPID_OFFSET);
+      current = or_rep_id (record);
 
       if (current == repid)
 	{
@@ -3532,7 +3513,7 @@ or_class_get_partition_info (RECDES * record, OID * partition_info,
 
   if (repr_id != NULL)
     {
-      *repr_id = or_class_repid (record);
+      *repr_id = or_rep_id (record);
     }
 
   OID_SET_NULL (partition_info);

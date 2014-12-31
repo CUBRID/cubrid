@@ -5778,7 +5778,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
 	    {
 	      for (idx = 0; partitions[idx] != NULL && !has_rows; idx++)
 		{
-		  hfid = sm_get_heap (partitions[idx]);
+		  hfid = sm_get_ch_heap (partitions[idx]);
 		  if (hfid == NULL)
 		    {
 		      free_and_init (partitions);
@@ -5799,7 +5799,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
 	    }
 	  else
 	    {
-	      hfid = sm_get_heap (flat->info.name.db_object);
+	      hfid = sm_get_ch_heap (flat->info.name.db_object);
 	      if (hfid == NULL)
 		{
 		  goto cleanup;

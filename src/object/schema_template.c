@@ -233,7 +233,7 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name,
 	      else
 		{
 		  ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name,
-			  sm_class_name (att->class_mop));
+			  sm_get_ch_name (att->class_mop));
 		}
 	    }
 	}
@@ -304,7 +304,7 @@ find_method (SM_TEMPLATE * template_, const char *name,
 		{
 		  /* inherited, indicate the source class */
 		  ERROR2 (error, ER_SM_INHERITED_METHOD, name,
-			  sm_class_name (method->class_mop));
+			  sm_get_ch_name (method->class_mop));
 		}
 	    }
 	}
@@ -426,7 +426,7 @@ find_any (SM_TEMPLATE * template_, const char *name, int class_stuff,
 		{
 		  /* inherited, indicate the source class */
 		  ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name,
-			  sm_class_name (att->class_mop));
+			  sm_get_ch_name (att->class_mop));
 		}
 	      else
 		{
@@ -437,7 +437,7 @@ find_any (SM_TEMPLATE * template_, const char *name, int class_stuff,
 		    {
 		      /* inherited, indicate the source class */
 		      ERROR2 (error, ER_SM_INHERITED_METHOD, name,
-			      sm_class_name (method->class_mop));
+			      sm_get_ch_name (method->class_mop));
 		    }
 		  else
 		    {
@@ -800,7 +800,7 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 	  && template_->class_type != class_->class_type)
 	{
 	  ERROR1 (error, ER_SM_INCOMPATIBLE_DOMAIN_CLASS_TYPE,
-		  class_->header.name);
+		  sm_ch_name ((MOBJ) class_));
 	}
     }
 
@@ -896,7 +896,8 @@ smt_edit_class_mop (MOP op, DB_AUTH db_auth_type)
 	     editing */
 	  sm_clean_class (op, class_);
 
-	  template_ = classobj_make_template (sm_class_name (op), op, class_);
+	  template_ =
+	    classobj_make_template (sm_get_ch_name (op), op, class_);
 	}
     }
 
@@ -1752,7 +1753,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 
       fk_info->ref_class_oid = *(ws_oid (ref_clsop));
       fk_info->ref_class_pk_btid = pk->index_btid;
-      ref_cls_name = ref_cls->header.name;
+      ref_cls_name = sm_ch_name ((MOBJ) ref_cls);
     }
 
   /* check pk'size and fk's size */
@@ -2387,7 +2388,7 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name,
 	    }
 	  else if (template_->op != NULL)
 	    {
-	      sprintf (iname, "%s_%s", sm_class_name (template_->op), name);
+	      sprintf (iname, "%s_%s", sm_get_ch_name (template_->op), name);
 	    }
 	  else
 	    {

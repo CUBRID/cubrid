@@ -1631,6 +1631,9 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   assert (err_id != ER_QPROC_OVERFLOW_COERCION);
   assert (err_id != ER_FK_CANT_ASSIGN_CACHE_ATTR);
   assert (err_id != ER_FK_CANT_DROP_CACHE_ATTR);
+  assert (err_id != ER_SM_CATALOG_SPACE);
+  assert (err_id != ER_CT_UNKNOWN_CLASSID);
+  assert (err_id != ER_CT_REPRCNT_OVERFLOW);
 
   if (er_hasalready_initiated == false)
     {

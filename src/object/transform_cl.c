@@ -1154,7 +1154,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
   if (oldrep == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION,
-	      1, class_->header.name);
+	      1, sm_ch_name ((MOBJ) class_));
     }
   else
     {
@@ -1241,7 +1241,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_TF_INVALID_REPRESENTATION, 1,
-			  class_->header.name);
+			  sm_ch_name ((MOBJ) class_));
 
 		  db_ws_free (attmap);
 		  if (vars != NULL)
@@ -1312,7 +1312,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_TF_INVALID_REPRESENTATION, 1,
-			      class_->header.name);
+			      sm_ch_name ((MOBJ) class_));
 
 		      db_ws_free (attmap);
 		      db_ws_free (vars);
@@ -2079,8 +2079,8 @@ domain_size (TP_DOMAIN * domain)
   int size;
 
   size =
-    tf_Metaclass_domain.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_domain.n_variable);
+    tf_Metaclass_domain.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_domain.mc_n_variable);
 
   size += enumeration_size (&DOM_GET_ENUMERATION (domain));
 
@@ -2116,8 +2116,8 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   /* VARIABLE OFFSET TABLE */
   start = buf->ptr;
   offset =
-    tf_Metaclass_domain.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_domain.n_variable);
+    tf_Metaclass_domain.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_domain.mc_n_variable);
   or_put_offset (buf, offset);
   offset +=
     substructure_set_size ((DB_LIST *) domain->setdomain,
@@ -2139,8 +2139,8 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 
   put_substructure_set (buf, (DB_LIST *) domain->setdomain,
 			(LWRITER) domain_to_disk,
-			&tf_Metaclass_domain.classoid,
-			tf_Metaclass_domain.repid);
+			&tf_Metaclass_domain.mc_classoid,
+			tf_Metaclass_domain.mc_repid);
 
   put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
 
@@ -2171,7 +2171,7 @@ disk_to_domain2 (OR_BUF * buf)
   OID oid;
   int rc = NO_ERROR;
 
-  vars = read_var_table (buf, tf_Metaclass_domain.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_domain.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -2282,8 +2282,8 @@ metharg_to_disk (OR_BUF * buf, SM_METHOD_ARGUMENT * arg)
   /* VARIABLE OFFSET TABLE */
   start = buf->ptr;
   offset =
-    tf_Metaclass_metharg.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_metharg.n_variable);
+    tf_Metaclass_metharg.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_metharg.mc_n_variable);
   or_put_offset (buf, offset);
   offset +=
     substructure_set_size ((DB_LIST *) arg->domain, (LSIZER) domain_size);
@@ -2305,8 +2305,8 @@ metharg_to_disk (OR_BUF * buf, SM_METHOD_ARGUMENT * arg)
 
   put_substructure_set (buf, (DB_LIST *) arg->domain,
 			(LWRITER) domain_to_disk,
-			&tf_Metaclass_domain.classoid,
-			tf_Metaclass_domain.repid);
+			&tf_Metaclass_domain.mc_classoid,
+			tf_Metaclass_domain.mc_repid);
 
   if (start + offset != buf->ptr)
     {
@@ -2327,8 +2327,8 @@ metharg_size (SM_METHOD_ARGUMENT * arg)
   int size;
 
   size =
-    tf_Metaclass_metharg.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_metharg.n_variable);
+    tf_Metaclass_metharg.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_metharg.mc_n_variable);
   size +=
     substructure_set_size ((DB_LIST *) arg->domain, (LSIZER) domain_size);
 
@@ -2350,7 +2350,7 @@ disk_to_metharg (OR_BUF * buf)
   DB_TYPE argtype;
   int rc = NO_ERROR;
 
-  vars = read_var_table (buf, tf_Metaclass_metharg.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_metharg.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -2403,8 +2403,8 @@ methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig)
   start = buf->ptr;
   /* VARIABLE OFFSET TABLE */
   offset =
-    tf_Metaclass_methsig.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_methsig.n_variable);
+    tf_Metaclass_methsig.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_methsig.mc_n_variable);
 
   or_put_offset (buf, offset);
   offset += string_disk_size (sig->function_name);
@@ -2431,13 +2431,13 @@ methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig)
 
   put_substructure_set (buf, (DB_LIST *) sig->value,
 			(LWRITER) metharg_to_disk,
-			&tf_Metaclass_metharg.classoid,
-			tf_Metaclass_metharg.repid);
+			&tf_Metaclass_metharg.mc_classoid,
+			tf_Metaclass_metharg.mc_repid);
 
   put_substructure_set (buf, (DB_LIST *) sig->args,
 			(LWRITER) metharg_to_disk,
-			&tf_Metaclass_metharg.classoid,
-			tf_Metaclass_metharg.repid);
+			&tf_Metaclass_metharg.mc_classoid,
+			tf_Metaclass_metharg.mc_repid);
 
   if (start + offset != buf->ptr)
     {
@@ -2459,8 +2459,8 @@ methsig_size (SM_METHOD_SIGNATURE * sig)
   int size;
 
   size =
-    tf_Metaclass_methsig.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_methsig.n_variable);
+    tf_Metaclass_methsig.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_methsig.mc_n_variable);
   size += string_disk_size (sig->function_name);
   size += string_disk_size (sig->sql_definition);
   size +=
@@ -2487,7 +2487,7 @@ disk_to_methsig (OR_BUF * buf)
   const char *fname, *fix;
 
   sig = NULL;
-  vars = read_var_table (buf, tf_Metaclass_methsig.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_methsig.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -2569,8 +2569,8 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
   /* VARIABLE OFFSET TABLE */
   /* name */
   offset =
-    tf_Metaclass_method.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_method.n_variable);
+    tf_Metaclass_method.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_method.mc_n_variable);
 
   or_put_offset (buf, offset);
   offset += string_disk_size (method->header.name);
@@ -2601,8 +2601,8 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
   /* signatures */
   put_substructure_set (buf, (DB_LIST *) method->signatures,
 			(LWRITER) methsig_to_disk,
-			&tf_Metaclass_methsig.classoid,
-			tf_Metaclass_methsig.repid);
+			&tf_Metaclass_methsig.mc_classoid,
+			tf_Metaclass_methsig.mc_repid);
 
   put_property_list (buf, method->properties);
 
@@ -2626,8 +2626,8 @@ method_size (SM_METHOD * method)
   int size;
 
   size =
-    tf_Metaclass_method.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_method.n_variable);
+    tf_Metaclass_method.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_method.mc_n_variable);
   size += string_disk_size (method->header.name);
   size +=
     substructure_set_size ((DB_LIST *) method->signatures,
@@ -2654,7 +2654,7 @@ disk_to_method (OR_BUF * buf, SM_METHOD * method)
   DB_VALUE value;
   int rc = NO_ERROR;
 
-  vars = read_var_table (buf, tf_Metaclass_method.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_method.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -2704,8 +2704,8 @@ methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file)
 
   start = buf->ptr;
   /* VARIABLE OFFSET TABLE */
-  offset = tf_Metaclass_methfile.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_methfile.n_variable);
+  offset = tf_Metaclass_methfile.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_methfile.mc_n_variable);
 
   /* name */
   or_put_offset (buf, offset);
@@ -2750,8 +2750,8 @@ methfile_size (SM_METHOD_FILE * file)
 {
   int size;
 
-  size = tf_Metaclass_methfile.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_methfile.n_variable);
+  size = tf_Metaclass_methfile.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_methfile.mc_n_variable);
   size += string_disk_size (file->name);
   size += property_list_size (NULL);
 
@@ -2776,7 +2776,7 @@ disk_to_methfile (OR_BUF * buf)
   DB_VALUE value;
 
   file = NULL;
-  vars = read_var_table (buf, tf_Metaclass_methfile.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_methfile.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -2829,8 +2829,8 @@ query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * statement)
 
   start = buf->ptr;
   /* VARIABLE OFFSET TABLE */
-  offset = tf_Metaclass_query_spec.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.n_variable);
+  offset = tf_Metaclass_query_spec.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable);
 
   or_put_offset (buf, offset);
   offset += string_disk_size (statement->specification);
@@ -2860,8 +2860,8 @@ query_spec_size (SM_QUERY_SPEC * statement)
 {
   int size;
 
-  size = tf_Metaclass_query_spec.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.n_variable);
+  size = tf_Metaclass_query_spec.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable);
   size += string_disk_size (statement->specification);
 
   return (size);
@@ -2881,7 +2881,7 @@ disk_to_query_spec (OR_BUF * buf)
   OR_VARINFO *vars;
 
   statement = NULL;
-  vars = read_var_table (buf, tf_Metaclass_query_spec.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_query_spec.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -2922,8 +2922,8 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   start = buf->ptr;
   /* VARIABLE OFFSET TABLE */
   /* name */
-  offset = tf_Metaclass_attribute.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_attribute.n_variable);
+  offset = tf_Metaclass_attribute.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_attribute.mc_n_variable);
   or_put_offset (buf, offset);
 
   offset += string_disk_size (att->header.name);
@@ -2992,8 +2992,8 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   /* domain */
   put_substructure_set (buf, (DB_LIST *) att->domain,
 			(LWRITER) domain_to_disk,
-			&tf_Metaclass_domain.classoid,
-			tf_Metaclass_domain.repid);
+			&tf_Metaclass_domain.mc_classoid,
+			tf_Metaclass_domain.mc_repid);
 
   /* triggers */
   put_object_set (buf, triggers);
@@ -3024,8 +3024,8 @@ attribute_size (SM_ATTRIBUTE * att)
   DB_OBJLIST *triggers;
   int size;
 
-  size = tf_Metaclass_attribute.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_attribute.n_variable);
+  size = tf_Metaclass_attribute.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_attribute.mc_n_variable);
 
   size += string_disk_size (att->header.name);
   size += or_packed_value_size (&att->default_value.value, 1, 1, 0);
@@ -3064,7 +3064,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
   int rc = NO_ERROR;
   DB_TYPE dbval_type;
 
-  vars = read_var_table (buf, tf_Metaclass_attribute.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_attribute.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -3182,8 +3182,8 @@ resolution_to_disk (OR_BUF * buf, SM_RESOLUTION * res)
   start = buf->ptr;
   /* VARIABLE OFFSET TABLE */
   /* name */
-  offset = tf_Metaclass_resolution.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.n_variable);
+  offset = tf_Metaclass_resolution.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.mc_n_variable);
   or_put_offset (buf, offset);
   offset += string_disk_size (res->name);
 
@@ -3221,8 +3221,8 @@ resolution_size (SM_RESOLUTION * res)
 {
   int size;
 
-  size = tf_Metaclass_resolution.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.n_variable);
+  size = tf_Metaclass_resolution.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.mc_n_variable);
   size += string_disk_size (res->name);
   size += string_disk_size (res->alias);
 
@@ -3260,7 +3260,7 @@ disk_to_resolution (OR_BUF * buf)
   int rc;
 
   res = NULL;
-  vars = read_var_table (buf, tf_Metaclass_resolution.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_resolution.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -3318,8 +3318,8 @@ repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat)
 
   start = buf->ptr;
   /* VARIABLE OFFSET TABLE */
-  offset = tf_Metaclass_repattribute.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.n_variable);
+  offset = tf_Metaclass_repattribute.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.mc_n_variable);
 
   /* domain list */
   or_put_offset (buf, offset);
@@ -3336,8 +3336,8 @@ repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat)
   /* domain */
   put_substructure_set (buf, (DB_LIST *) rat->domain,
 			(LWRITER) domain_to_disk,
-			&tf_Metaclass_domain.classoid,
-			tf_Metaclass_domain.repid);
+			&tf_Metaclass_domain.mc_classoid,
+			tf_Metaclass_domain.mc_repid);
 
   if (start + offset != buf->ptr)
     {
@@ -3358,8 +3358,8 @@ repattribute_size (SM_REPR_ATTRIBUTE * rat)
 {
   int size;
 
-  size = tf_Metaclass_repattribute.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.n_variable);
+  size = tf_Metaclass_repattribute.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.mc_n_variable);
 
   size +=
     substructure_set_size ((DB_LIST *) rat->domain, (LSIZER) domain_size);
@@ -3382,7 +3382,7 @@ disk_to_repattribute (OR_BUF * buf)
   int id, tid;
   int rc = NO_ERROR;
 
-  vars = read_var_table (buf, tf_Metaclass_repattribute.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_repattribute.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -3419,8 +3419,8 @@ representation_size (SM_REPRESENTATION * rep)
 {
   int size;
 
-  size = tf_Metaclass_representation.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_representation.n_variable);
+  size = tf_Metaclass_representation.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_representation.mc_n_variable);
 
   size += substructure_set_size ((DB_LIST *) rep->attributes,
 				 (LSIZER) repattribute_size);
@@ -3447,8 +3447,8 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
   int offset;
 
   start = buf->ptr;
-  offset = tf_Metaclass_representation.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_representation.n_variable);
+  offset = tf_Metaclass_representation.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_representation.mc_n_variable);
 
   or_put_offset (buf, offset);
   offset +=
@@ -3470,8 +3470,8 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
 
   put_substructure_set (buf, (DB_LIST *) rep->attributes,
 			(LWRITER) repattribute_to_disk,
-			&tf_Metaclass_repattribute.classoid,
-			tf_Metaclass_repattribute.repid);
+			&tf_Metaclass_repattribute.mc_classoid,
+			tf_Metaclass_repattribute.mc_repid);
 
   put_property_list (buf, NULL);
 
@@ -3498,7 +3498,7 @@ disk_to_representation (OR_BUF * buf)
   DB_SEQ *props;
   int rc = NO_ERROR;
 
-  vars = read_var_table (buf, tf_Metaclass_representation.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_representation.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -3587,12 +3587,12 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   /* compute the variable offsets relative to the end of the header (beginning
    * of variable table)
    */
-  offset = tf_Metaclass_class.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_class.n_variable);
+  offset = tf_Metaclass_class.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
   /* name */
   or_put_offset (buf, offset);
 
-  offset += string_disk_size (class_->header.name);
+  offset += string_disk_size (sm_ch_name ((MOBJ) class_));
   or_put_offset (buf, offset);
 
   offset += string_disk_size (class_->loader_commands);
@@ -3682,18 +3682,25 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 {
   DB_OBJLIST *triggers;
 
+#if !defined(NDEBUG)
+  if (!HFID_IS_NULL (sm_ch_heap ((MOBJ) class_)))
+    {
+      assert (!OID_ISNULL (sm_ch_rep_dir ((MOBJ) class_)));
+    }
+#endif
+
   /* attribute id counters */
 
   /* doesn't exist yet */
   or_put_int (buf, class_->att_ids);
   or_put_int (buf, class_->method_ids);
-  or_put_int (buf, 0);		/* unused, formerly rep_ids counter */
 
-  or_put_int (buf, class_->header.heap.vfid.fileid);
-  or_put_int (buf, class_->header.heap.vfid.volid);
-  or_put_int (buf, class_->header.heap.hpgid);
+  or_put_oid (buf, &(class_->header.ch_rep_dir));
 
-  or_put_int (buf, class_->repid);
+  or_put_int (buf, class_->header.ch_heap.vfid.fileid);
+  or_put_int (buf, class_->header.ch_heap.vfid.volid);
+  or_put_int (buf, class_->header.ch_heap.hpgid);
+
   or_put_int (buf, class_->fixed_count);
   or_put_int (buf, class_->variable_count);
   or_put_int (buf, class_->fixed_size);
@@ -3713,13 +3720,13 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
 
   /* 0: NAME */
-  put_string (buf, class_->header.name);
+  put_string (buf, sm_ch_name ((MOBJ) class_));
   put_string (buf, class_->loader_commands);
 
   put_substructure_set (buf, (DB_LIST *) class_->representations,
 			(LWRITER) representation_to_disk,
-			&tf_Metaclass_representation.classoid,
-			tf_Metaclass_representation.repid);
+			&tf_Metaclass_representation.mc_classoid,
+			tf_Metaclass_representation.mc_repid);
 
   put_object_set (buf, class_->users);
 
@@ -3727,43 +3734,43 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   put_substructure_set (buf, (DB_LIST *) class_->attributes,
 			(LWRITER) attribute_to_disk,
-			&tf_Metaclass_attribute.classoid,
-			tf_Metaclass_attribute.repid);
+			&tf_Metaclass_attribute.mc_classoid,
+			tf_Metaclass_attribute.mc_repid);
 
   put_substructure_set (buf, (DB_LIST *) class_->shared,
 			(LWRITER) attribute_to_disk,
-			&tf_Metaclass_attribute.classoid,
-			tf_Metaclass_attribute.repid);
+			&tf_Metaclass_attribute.mc_classoid,
+			tf_Metaclass_attribute.mc_repid);
 
   put_substructure_set (buf, (DB_LIST *) class_->class_attributes,
 			(LWRITER) attribute_to_disk,
-			&tf_Metaclass_attribute.classoid,
-			tf_Metaclass_attribute.repid);
+			&tf_Metaclass_attribute.mc_classoid,
+			tf_Metaclass_attribute.mc_repid);
 
   put_substructure_set (buf, (DB_LIST *) class_->methods,
 			(LWRITER) method_to_disk,
-			&tf_Metaclass_method.classoid,
-			tf_Metaclass_method.repid);
+			&tf_Metaclass_method.mc_classoid,
+			tf_Metaclass_method.mc_repid);
 
   put_substructure_set (buf, (DB_LIST *) class_->class_methods,
 			(LWRITER) method_to_disk,
-			&tf_Metaclass_method.classoid,
-			tf_Metaclass_method.repid);
+			&tf_Metaclass_method.mc_classoid,
+			tf_Metaclass_method.mc_repid);
 
   put_substructure_set (buf, (DB_LIST *) class_->method_files,
 			(LWRITER) methfile_to_disk,
-			&tf_Metaclass_methfile.classoid,
-			tf_Metaclass_methfile.repid);
+			&tf_Metaclass_methfile.mc_classoid,
+			tf_Metaclass_methfile.mc_repid);
 
   put_substructure_set (buf, (DB_LIST *) class_->resolutions,
 			(LWRITER) resolution_to_disk,
-			&tf_Metaclass_resolution.classoid,
-			tf_Metaclass_resolution.repid);
+			&tf_Metaclass_resolution.mc_classoid,
+			tf_Metaclass_resolution.mc_repid);
 
   put_substructure_set (buf, (DB_LIST *) class_->query_spec,
 			(LWRITER) query_spec_to_disk,
-			&tf_Metaclass_query_spec.classoid,
-			tf_Metaclass_query_spec.repid);
+			&tf_Metaclass_query_spec.mc_classoid,
+			tf_Metaclass_query_spec.mc_repid);
 
   /*
    * triggers - for simplicity, convert the cache into a flattened
@@ -3844,10 +3851,10 @@ tf_class_size (MOBJ classobj)
 
   size = OR_NON_MVCC_HEADER_SIZE;
 
-  size += tf_Metaclass_class.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_class.n_variable);
+  size += tf_Metaclass_class.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
 
-  size += string_disk_size (class_->header.name);
+  size += string_disk_size (sm_ch_name ((MOBJ) class_));
   size += string_disk_size (class_->loader_commands);
 
   size += substructure_set_size ((DB_LIST *) class_->representations,
@@ -3913,11 +3920,11 @@ tf_dump_class_size (MOBJ classobj)
     }
 
   size = OR_NON_MVCC_HEADER_SIZE;	/* ? */
-  size += tf_Metaclass_class.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_class.n_variable);
+  size += tf_Metaclass_class.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
   fprintf (stdout, "Fixed size %d\n", size);
 
-  s = string_disk_size (class_->header.name);
+  s = string_disk_size (sm_ch_name ((MOBJ) class_));
   fprintf (stdout, "Header name %d\n", s);
   size += s;
 
@@ -4048,7 +4055,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   /* get the variable length and offsets. The offsets are relative to the
    * end of the header (beginning of variable table).
    */
-  vars = read_var_table (buf, tf_Metaclass_class.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_class.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
@@ -4065,13 +4072,20 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 
   class_->att_ids = or_get_int (buf, &rc);
   class_->method_ids = or_get_int (buf, &rc);
-  (void) or_get_int (buf, &rc);	/* unused */
 
-  class_->header.heap.vfid.fileid = or_get_int (buf, &rc);
-  class_->header.heap.vfid.volid = or_get_int (buf, &rc);
-  class_->header.heap.hpgid = or_get_int (buf, &rc);
+  or_get_oid (buf, &(class_->header.ch_rep_dir));
 
-  class_->repid = or_get_int (buf, &rc);
+  class_->header.ch_heap.vfid.fileid = or_get_int (buf, &rc);
+  class_->header.ch_heap.vfid.volid = or_get_int (buf, &rc);
+  class_->header.ch_heap.hpgid = or_get_int (buf, &rc);
+
+#if !defined(NDEBUG)
+  if (!HFID_IS_NULL (sm_ch_heap ((MOBJ) class_)))
+    {
+      assert (!OID_ISNULL (sm_ch_rep_dir ((MOBJ) class_)));
+    }
+#endif
+
   class_->fixed_count = or_get_int (buf, &rc);
   class_->variable_count = or_get_int (buf, &rc);
   class_->fixed_size = or_get_int (buf, &rc);
@@ -4091,7 +4105,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->collation_id = or_get_int (buf, &rc);
 
   /* variable 0 */
-  class_->header.name = get_string (buf, vars[ORC_NAME_INDEX].length);
+  class_->header.ch_name = get_string (buf, vars[ORC_NAME_INDEX].length);
 
   /* variable 1 */
   class_->loader_commands =
@@ -4260,7 +4274,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	    }
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
-					  class_->header.name,
+					  sm_ch_name ((MOBJ) class_),
 					  att->header.name);
 	  serial_mop = do_get_serial_obj_id (&serial_obj_id,
 					     serial_class_mop,
@@ -4312,32 +4326,27 @@ root_to_disk (OR_BUF * buf, ROOT_CLASS * root)
   /* compute the variable offsets relative to the end of the header (beginning
    * of variable table)
    */
-  offset = tf_Metaclass_root.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_root.n_variable);
+  offset = tf_Metaclass_root.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_root.mc_n_variable);
 
   /* name */
   or_put_offset (buf, offset);
-  offset += string_disk_size (root->header.name);
-
-  /* subclass set - obsolete */
-  or_put_offset (buf, offset);
-  offset += object_set_size (NULL);	/* root->subclasses */
+  offset += string_disk_size (sm_ch_name ((MOBJ) root));
 
   /* end of object */
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
+  assert (OID_ISNULL (sm_ch_rep_dir ((MOBJ) root)));	/* is dummy */
+
   /* heap file id - see assumptions in comment above */
-  or_put_int (buf, (int) root->header.heap.vfid.fileid);
-  or_put_int (buf, (int) root->header.heap.vfid.volid);
-  or_put_int (buf, (int) root->header.heap.hpgid);
+  or_put_int (buf, (int) root->header.ch_heap.vfid.fileid);
+  or_put_int (buf, (int) root->header.ch_heap.vfid.volid);
+  or_put_int (buf, (int) root->header.ch_heap.hpgid);
 
-  put_string (buf, root->header.name);
+  put_string (buf, sm_ch_name ((MOBJ) root));
 
-  /* subclass set - obsolete */
-  put_object_set (buf, NULL);
-
-  if (start + offset + OR_NON_MVCC_HEADER_SIZE != buf->ptr)
+  if (start + OR_NON_MVCC_HEADER_SIZE + offset != buf->ptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
     }
@@ -4358,12 +4367,11 @@ root_size (MOBJ rootobj)
   root = (ROOT_CLASS *) rootobj;
 
   size = OR_NON_MVCC_HEADER_SIZE;
-  size += tf_Metaclass_root.fixed_size +
-    OR_VAR_TABLE_SIZE (tf_Metaclass_root.n_variable);
+  size += tf_Metaclass_root.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_root.mc_n_variable);
 
   /* name */
-  size += string_disk_size (root->header.name);
-  size += object_set_size (NULL);
+  size += string_disk_size (sm_ch_name ((MOBJ) root));
 
   return (size);
 }
@@ -4381,34 +4389,36 @@ root_size (MOBJ rootobj)
 static ROOT_CLASS *
 disk_to_root (OR_BUF * buf)
 {
+  char *start;
   OR_VARINFO *vars;
-  DB_OBJLIST *sublist;
   int rc = NO_ERROR;
+
+  start = buf->ptr - OR_NON_MVCC_HEADER_SIZE;	/* header already read */
 
   /* get the variable length and offsets. The offsets are relative to the
    * end of the header (beginning of variable table).
    */
-  vars = read_var_table (buf, tf_Metaclass_root.n_variable);
+  vars = read_var_table (buf, tf_Metaclass_root.mc_n_variable);
   if (vars == NULL)
     {
       or_abort (buf);
     }
   else
     {
-      sm_Root_class.header.heap.vfid.fileid = (FILEID) or_get_int (buf, &rc);
-      sm_Root_class.header.heap.vfid.volid = (VOLID) or_get_int (buf, &rc);
-      sm_Root_class.header.heap.hpgid = (PAGEID) or_get_int (buf, &rc);
+      assert (OID_ISNULL (sm_ch_rep_dir ((MOBJ) & sm_Root_class)));	/* is dummy */
+
+      sm_Root_class.header.ch_heap.vfid.fileid =
+	(FILEID) or_get_int (buf, &rc);
+      sm_Root_class.header.ch_heap.vfid.volid = (VOLID) or_get_int (buf, &rc);
+      sm_Root_class.header.ch_heap.hpgid = (PAGEID) or_get_int (buf, &rc);
 
       /* name - could make sure its the same as sm_Root_class_name */
       or_advance (buf, vars[0].length);
 
-      /* we don't use the immediate subclass list anymore but we
-         have to throw it away if this is an older database that
-         still has one.  eventually remove this field from the rootclass */
-      sublist = get_object_set (buf, vars[1].length);
-      if (sublist != NULL)
+      if (start + OR_NON_MVCC_HEADER_SIZE + vars[0].offset + vars[0].length !=
+	  buf->ptr)
 	{
-	  ml_free (sublist);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
 	}
 
       free_var_table (vars);
@@ -4447,7 +4457,7 @@ tf_disk_to_class (OID * oid, RECDES * record)
   assert (oid != NULL && !OID_ISNULL (oid));
 
   /* should we assume this ? */
-  if (!tf_Metaclass_class.n_variable)
+  if (!tf_Metaclass_class.mc_n_variable)
     {
       tf_compile_meta_classes ();
     }
@@ -4477,11 +4487,15 @@ tf_disk_to_class (OID * oid, RECDES * record)
       else
 	{
 	  class_ = (MOBJ) disk_to_class (buf, (SM_CLASS **) & class_);
+	  if (class_ != NULL)
+	    {
+	      ((SM_CLASS *) class_)->repid = repid;
+	    }
 	}
 
       if (class_ != NULL)
 	{
-	  ((SM_CLASS *) class_)->header.obj_header.chn = chn;
+	  ((SM_CLASS *) class_)->header.ch_obj_header.chn = chn;
 	}
       break;
 
@@ -4531,7 +4545,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
   unsigned int repid;
 
   /* should we assume this ? */
-  if (!tf_Metaclass_class.n_variable)
+  if (!tf_Metaclass_class.mc_n_variable)
     {
       tf_compile_meta_classes ();
     }
@@ -4547,7 +4561,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
   class_ = (SM_CLASS *) classobj;
 
   /* DISK save of partition information via properties */
-  if (((SM_CLASS_HEADER *) classobj)->type != Meta_root
+  if (((SM_CLASS_HEADER *) classobj)->ch_type != SM_META_ROOT
       && class_->partition_of)
     {
 
@@ -4563,7 +4577,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
     }
 
   header = (SM_CLASS_HEADER *) classobj;
-  if (header->type != Meta_root)
+  if (header->ch_type != SM_META_ROOT)
     {
       /* put all default_expr values in attribute properties */
       rc = tf_attribute_default_expr_to_property (class_->attributes);
@@ -4595,22 +4609,25 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       status = TF_SUCCESS;
 
       /* representation id, offset size */
-      repid = 0;
+      repid = class_->repid;
+      assert (((char) (repid >> OR_MVCC_FLAG_SHIFT_BITS)
+	       & OR_MVCC_FLAG_MASK) == 0);
       OR_SET_VAR_OFFSET_SIZE (repid, BIG_VAR_OFFSET_SIZE);	/* 4byte */
 
-      chn = class_->header.obj_header.chn + 1;
-      class_->header.obj_header.chn = chn;
+      chn = class_->header.ch_obj_header.chn + 1;
+      class_->header.ch_obj_header.chn = chn;
 
       /* The header size of a class record in the same like non-MVCC case. */
       or_put_int (buf, repid);
       or_put_int (buf, chn);
 
-      if (header->type == Meta_root)
+      if (header->ch_type == SM_META_ROOT)
 	{
 	  root_to_disk (buf, (ROOT_CLASS *) class_);
 	}
       else
 	{
+	  assert (class_->repid == (repid & ~OR_OFFSET_SIZE_FLAG));
 	  class_to_disk (buf, (SM_CLASS *) class_);
 	}
 
@@ -4644,7 +4661,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
     }
 
   /* restore properties */
-  if (((SM_CLASS_HEADER *) classobj)->type != Meta_root
+  if (((SM_CLASS_HEADER *) classobj)->ch_type != SM_META_ROOT
       && class_->partition_of)
     {
       classobj_drop_prop (class_->properties, SM_PROPERTY_PARTITION);

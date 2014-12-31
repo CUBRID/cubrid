@@ -216,7 +216,7 @@ get_class_heap (MOP classop, SM_CLASS * class_)
   HFID *hfid;
   OID *class_oid;
 
-  hfid = &class_->header.heap;
+  hfid = sm_ch_heap ((MOBJ) class_);
   if (HFID_IS_NULL (hfid))
     {
       /* could also accomplish this by creating a single instance */

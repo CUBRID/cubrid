@@ -1227,7 +1227,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 	    }
 
-	  class_name = sm_class_name (att->class_mop);
+	  class_name = sm_get_ch_name (att->class_mop);
 
 	  /* get original class's serial object */
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, class_name,
@@ -2277,7 +2277,7 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
 		  if (att->flags & SM_ATTFLAG_VID)
 		    {
 		      ERROR1 (error, ER_SM_OBJECT_ID_NOT_SET,
-			      template_ptr->class_->header.name);
+			      sm_ch_name ((MOBJ) (template_ptr->class_)));
 		    }
 		}
 	    }
@@ -2707,9 +2707,9 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 			  value_type == DB_TYPE_CLOB);
 		  elo_p = db_get_elo (a->variable);
 
-		  assert (class_->header.name != NULL);
+		  assert (sm_ch_name ((MOBJ) class_) != NULL);
 		  save_meta_data = elo_p->meta_data;
-		  elo_p->meta_data = (char *) class_->header.name;
+		  elo_p->meta_data = (char *) sm_ch_name ((MOBJ) class_);
 		  error = db_elo_copy (db_get_elo (a->variable), &dest_elo);
 		  elo_p->meta_data = save_meta_data;
 

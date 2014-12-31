@@ -478,8 +478,8 @@ typedef enum
  */
 typedef enum
 {
-  Meta_root,			/* the object is the root class */
-  Meta_class			/* the object is a normal class */
+  SM_META_ROOT,			/* the object is the root class */
+  SM_META_CLASS			/* the object is a normal class */
 } SM_METATYPE;
 
 /*
@@ -502,12 +502,13 @@ typedef struct sm_class_header SM_CLASS_HEADER;
 
 struct sm_class_header
 {
-  WS_OBJECT_HEADER obj_header;	/* always have the object header (chn ) */
+  WS_OBJECT_HEADER ch_obj_header;	/* always have the object header (chn) */
 
-  SM_METATYPE type;		/* doesn't need to be a full word */
-  const char *name;
+  SM_METATYPE ch_type;		/* doesn't need to be a full word */
+  const char *ch_name;
 
-  HFID heap;
+  OID ch_rep_dir;		/* representation directory record OID */
+  HFID ch_heap;			/* heap file id */
 };
 
 

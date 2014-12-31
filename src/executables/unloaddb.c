@@ -270,13 +270,13 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	  if (error != NO_ERROR)
 	    {
 	      /* A required class is not granted. */
-	      SM_CLASS *class_ptr;
+	      MOBJ object = NULL;
 
-	      ws_find (req_class_table[i], (MOBJ *) & class_ptr);
-	      if (class_ptr)
+	      ws_find (req_class_table[i], &object);
+	      if (object != NULL)
 		{
 		  PRINT_AND_LOG_ERR_MSG ("%s: %s\n",
-					 class_ptr->header.name,
+					 sm_ch_name (object),
 					 db_error_string (3));
 		}
 	      status = 1;

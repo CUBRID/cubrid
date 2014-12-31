@@ -44,7 +44,9 @@ typedef struct ctid CTID;
 struct ctid
 {
   VFID vfid;			/* catalog volume identifier */
+#if 1				/* TODO - not used */
   EHID xhid;			/* extendible hash index identifier */
+#endif
   PAGEID hpgid;			/* catalog header page identifier */
 };				/* catalog identifier */
 
@@ -119,9 +121,10 @@ extern int catalog_destroy (void);
 extern int catalog_reclaim_space (THREAD_ENTRY * thread_p);
 extern int catalog_add_representation (THREAD_ENTRY * thread_p,
 				       OID * class_id, REPR_ID repr_id,
-				       DISK_REPR * Disk_Repr);
-extern int catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id,
-				   CLS_INFO * Cls_Info);
+				       DISK_REPR * Disk_Repr,
+				       OID * rep_dir_p);
+extern int catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_oid_p,
+				   CLS_INFO * class_info_p, OID * rep_dir_p);
 extern CLS_INFO *catalog_update_class_info (THREAD_ENTRY * thread_p,
 					    OID * class_id,
 					    CLS_INFO * cls_info,
@@ -141,7 +144,7 @@ extern int catalog_get_last_representation_id (THREAD_ENTRY * thread_p,
 					       OID * cls_oid,
 					       REPR_ID * repr_id);
 extern int catalog_insert (THREAD_ENTRY * thread_p, RECDES * record,
-			   OID * classoid);
+			   OID * classoid, OID * rep_dir_p);
 extern int catalog_update (THREAD_ENTRY * thread_p, RECDES * record,
 			   OID * classoid);
 extern int catalog_delete (THREAD_ENTRY * thread_p, OID * classoid);

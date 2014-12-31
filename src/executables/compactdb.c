@@ -150,7 +150,7 @@ compactdb_start (bool verbose_flag)
 {
   LIST_MOPS *class_table = NULL;
   int i;
-  SM_CLASS *class_ptr;
+  MOBJ object = NULL;
   HFID *hfid;
   int status = 0;
 
@@ -232,8 +232,8 @@ phase2:
 
   for (i = 0; i < class_table->num; i++)
     {
-      ws_find (class_table->mops[i], (MOBJ *) (&class_ptr));
-      if (class_ptr == NULL)
+      ws_find (class_table->mops[i], &object);
+      if (object == NULL)
 	{
 	  continue;
 	}
@@ -242,10 +242,9 @@ phase2:
 	{
 	  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 				  MSGCAT_UTIL_SET_COMPACTDB,
-				  COMPACTDB_MSG_CLASS),
-		  class_ptr->header.name);
+				  COMPACTDB_MSG_CLASS), sm_ch_name (object));
 	}
-      hfid = sm_heap ((MOBJ) class_ptr);
+      hfid = sm_ch_heap (object);
       if (hfid->vfid.fileid == NULL_FILEID)
 	{
 	  continue;
@@ -310,7 +309,8 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMPACTDB,
-			      COMPACTDB_MSG_CLASS), class_ptr->header.name);
+			      COMPACTDB_MSG_CLASS),
+	      sm_ch_name ((MOBJ) class_ptr));
     }
 
 #if defined(CUBRID_DEBUG)
@@ -321,7 +321,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
 #endif
 
   /* Find the heap where the instances are stored */
-  hfid = sm_heap ((MOBJ) class_ptr);
+  hfid = sm_ch_heap ((MOBJ) class_ptr);
   if (hfid->vfid.fileid == NULL_FILEID)
     {
       if (verbose_flag)
@@ -626,7 +626,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	}
     }
 
-  hfid = &obj->class_->header.heap;
+  hfid = sm_ch_heap ((MOBJ) (obj->class_));
   if (HFID_IS_NULL (hfid))
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,

@@ -580,7 +580,7 @@ db_get_class_name (DB_OBJECT * class_)
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (class_);
 
-  retval = (sm_class_name (class_));
+  retval = sm_get_ch_name (class_);
 
   return (retval);
 }
@@ -676,7 +676,8 @@ db_class_has_instance (DB_OBJECT * classobj)
     }
   else
     {
-      return heap_has_instance (sm_get_heap (classobj), WS_OID (classobj), 0);
+      return heap_has_instance (sm_get_ch_heap (classobj), WS_OID (classobj),
+				0);
     }
 
   return 0;
@@ -2320,7 +2321,7 @@ db_get_class_num_objs_and_pages (DB_OBJECT * classmop, int approximation,
     {
       return ER_FAILED;
     }
-  hfid = sm_get_heap (classmop);
+  hfid = sm_get_ch_heap (classmop);
   if (hfid == NULL)
     {
       return ER_FAILED;

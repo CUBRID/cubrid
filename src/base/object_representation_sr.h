@@ -184,7 +184,7 @@ struct or_partition
   DB_SEQ *values;		/* values for range and list partition types */
 };
 
-extern int or_class_repid (RECDES * record);
+extern void or_class_rep_dir (RECDES * record, OID * rep_dir_p);
 extern void or_class_hfid (RECDES * record, HFID * hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void or_class_statistics (RECDES * record, OID * oid);
@@ -214,7 +214,9 @@ extern OR_CLASS *or_get_class (RECDES * record);
 extern void or_free_class (OR_CLASS * class_);
 
 /* OLD STYLE INTERFACE */
-extern int orc_class_repid (RECDES * record);
+#if defined (ENABLE_UNUSED_FUNCTION)
+extern void orc_class_rep_dir (RECDES * record, OID * rep_dir_p);
+#endif
 extern void orc_class_hfid_from_record (RECDES * record, HFID * hfid);
 extern bool orc_class_is_system_class (RECDES * record);
 extern DISK_REPR *orc_diskrep_from_record (THREAD_ENTRY * thread_p,
