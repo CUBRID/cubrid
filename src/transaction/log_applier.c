@@ -2558,7 +2558,9 @@ la_assign_recdes_from_pool (void)
       /* recdes->data was realloced by previous operation */
       free_and_init (recdes->data);
 
-      recdes->data = &la_recdes_pool.area[la_recdes_pool.next_idx];
+      recdes->data =
+	la_recdes_pool.area +
+	la_recdes_pool.db_page_size * la_recdes_pool.next_idx;
       recdes->area_size = la_recdes_pool.db_page_size;
     }
 
