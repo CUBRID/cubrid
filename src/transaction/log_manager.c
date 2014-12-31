@@ -852,7 +852,7 @@ log_get_num_pages_for_creation (int db_npages)
 /*
  * log_create - create the active portion of the log
  *
- * return: 
+ * return:
  *
  *   db_fullname(in): Full name of the database
  *   logpath(in): Directory where the log volumes reside
@@ -2522,7 +2522,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   /*
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
-   * 
+   *
    * NOTE: One exception for this case is the recovery of vacuum data buffer.
    *       Because the buffer may not have been empty during the crash, the
    *       data in the buffer cannot be recovered using log records. It is
@@ -4149,6 +4149,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	   */
 	  if (result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
 	    {
+	      assert (result != LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 	      result = LOG_RESULT_TOPOP_COMMIT;
 	    }
 	}
@@ -5958,7 +5959,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 	  /* This operation must be done before do_postpone because it stores
 	   * unique statistics for all B-trees and if an error occurs those
 	   * operations and all operations of current transaction must be rolled
-	   * back. 
+	   * back.
 	   */
 	  logtb_complete_mvcc (thread_p, tdes, true);
 	}
@@ -10995,7 +10996,7 @@ error:
 /*
  * log_recreate - RECREATE THE LOG WITHOUT REMOVING THE DATABASE
  *
- * return: 
+ * return:
  *
  *   db_fullname(in): Full name of the database
  *   logpath(in): Directory where the log volumes reside
@@ -11365,10 +11366,10 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 
 
 /*
- * log_active_log_header_start_scan () - 
+ * log_active_log_header_start_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -11469,10 +11470,10 @@ exit_on_error:
 }
 
 /*
- * log_active_log_header_next_scan () - 
+ * log_active_log_header_next_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   cursor(in):
  *   out_values(in):
  *   out_cnt(in):
@@ -11725,7 +11726,7 @@ exit_on_error:
  * log_active_log_header_end_scan () - free the context
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in): context pointer
  */
 int
@@ -11740,10 +11741,10 @@ log_active_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 }
 
 /*
- * log_archive_log_header_start_scan () - 
+ * log_archive_log_header_start_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -11823,10 +11824,10 @@ exit_on_error:
 }
 
 /*
- * log_archive_log_header_next_scan () - 
+ * log_archive_log_header_next_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   cursor(in):
  *   out_values(in):
  *   out_cnt(in):
@@ -11895,7 +11896,7 @@ exit_on_error:
  * log_archive_log_header_end_scan () - free the context
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in): context pointer
  */
 int

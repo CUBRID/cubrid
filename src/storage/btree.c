@@ -9417,6 +9417,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
   char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int key_cnt;
   BTREE_NODE_HEADER *header = NULL;
+  bool is_system_op_started = false;
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
 
@@ -9429,6 +9430,14 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   if (leafrec_pnt->key_len < 0 && logtb_is_current_active (thread_p) == true)
     {
+      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	{
+	  if (log_start_system_op (thread_p) == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  is_system_op_started = true;
+	}
       ret = btree_delete_overflow_key (thread_p, btid, leaf_pg, slot_id,
 				       BTREE_LEAF_NODE);
       if (ret != NO_ERROR)
@@ -9480,6 +9489,20 @@ end:
   btree_verify_node (thread_p, btid, leaf_pg);
 #endif
 
+#if !defined(NDEBUG)
+  if (is_system_op_started == true)
+    {
+      if (ret == NO_ERROR)
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	}
+      else
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
+    }
+#endif
+
   return ret;
 
 exit_on_error:
@@ -9523,6 +9546,8 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
   MVCC_REC_HEADER last_oid_mvcc_header, *p_last_oid_mvcc_header = NULL;
   int last_oid_mvcc_offset = 0, *p_last_oid_mvcc_offset = NULL;
   int oid_size = OR_OID_SIZE;
+  bool need_dealloc_overflow_page = false;
+  bool is_system_op_started = false;
 
   assert (btid != NULL && leaf_page != NULL && slot_id >= 0
 	  && leaf_rec != NULL);
@@ -9567,6 +9592,10 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
   oid_cnt = btree_leaf_get_num_oids (&ovfl_copy_rec, 0,
 				     BTREE_OVERFLOW_NODE, oid_size);
   assert (oid_cnt >= 1);
+  if (oid_cnt == 1)
+    {
+      need_dealloc_overflow_page = true;
+    }
 
   if (mvcc_Enabled)
     {
@@ -9577,13 +9606,24 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
   btree_leaf_get_last_oid (btid, &ovfl_copy_rec, BTREE_OVERFLOW_NODE, 0,
 			   &last_oid, &last_class_oid, p_last_oid_mvcc_header,
 			   p_last_oid_mvcc_offset);
+  if (need_dealloc_overflow_page == true
+      && VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+    {
+      if (log_start_system_op (thread_p) == NULL)
+	{
+	  goto exit_on_error;
+	}
+      is_system_op_started = true;
+    }
 
   log_append_undo_data2 (thread_p, RVBT_KEYVAL_DEL,
 			 &btid->sys_btid->vfid,
 			 ovfl_page, 1, rv_key_len, rv_key);
 
-  if (oid_cnt > 1)
+  if (need_dealloc_overflow_page == false)
     {
+      assert (oid_cnt > 1);
+
       btree_leaf_remove_last_oid (btid, &ovfl_copy_rec, BTREE_OVERFLOW_NODE,
 				  oid_size, last_oid_mvcc_offset);
       assert (ovfl_copy_rec.length % 4 == 0);
@@ -9661,6 +9701,18 @@ end:
   if (rv_key != NULL)
     {
       db_private_free_and_init (thread_p, rv_key);
+    }
+
+  if (is_system_op_started == true)
+    {
+      if (ret == NO_ERROR)
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	}
+      else
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
     }
 
   if (ovfl_page)
@@ -10556,12 +10608,22 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
       if (oid_cnt == 1)
 	{
 	  pgbuf_unfix_and_init (thread_p, ovfl_page);
-	  ret = file_dealloc_page (thread_p, &btid->sys_btid->vfid,
-				   &ovfl_vpid);
-	  if (ret != NO_ERROR)
+	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 	    {
-	      pgbuf_unfix_and_init (thread_p, prev_page);
-	      goto exit_on_error;
+	      if (log_start_system_op (thread_p) == NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, prev_page);
+		  goto exit_on_error;
+		}
+	      ret = file_dealloc_page (thread_p, &btid->sys_btid->vfid,
+				       &ovfl_vpid);
+	      if (ret != NO_ERROR)
+		{
+		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  pgbuf_unfix_and_init (thread_p, prev_page);
+
+		  goto exit_on_error;
+		}
 	    }
 
 	  /* notification */
@@ -10594,6 +10656,11 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
 		{
 		  *key_deleted = true;
 		}
+	    }
+
+	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	    {
+	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 	    }
 
 	  pgbuf_unfix_and_init (thread_p, prev_page);
