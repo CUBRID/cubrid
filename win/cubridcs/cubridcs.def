@@ -463,7 +463,7 @@ EXPORTS
     ml_ext_free
     ml_ext_add
     ml_size
-    sm_class_name
+    sm_get_ch_name
     tr_map_trigger
     tz_get_session_tz_region
     tz_id_to_str

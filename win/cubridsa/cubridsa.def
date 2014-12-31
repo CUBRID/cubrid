@@ -135,7 +135,7 @@ EXPORTS
     ml_ext_free
     ml_ext_add
     ml_size
-    sm_class_name
+    sm_get_ch_name
     tr_map_trigger
     er_init
     prm_get_name
