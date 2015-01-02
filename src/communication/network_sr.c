@@ -1447,13 +1447,15 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  if (er_init_internal (NULL, ER_NEVER_EXIT, true) != NO_ERROR)
+  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE),
+	       prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
       status = -1;
       goto end;
     }
 
+  er_init_access_log ();
   event_log_init (server_name);
 
   net_server_init ();

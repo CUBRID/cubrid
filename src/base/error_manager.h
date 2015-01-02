@@ -83,7 +83,10 @@
 
 enum er_exit_ask
 {
-  ER_NEVER_EXIT, ER_EXIT_ASK, ER_EXIT_DONT_ASK,
+  ER_NEVER_EXIT = 0,
+  ER_EXIT_ASK = 1,
+  ER_EXIT_DONT_ASK = 2,
+  ER_ABORT = 3,
   ER_EXIT_DEFAULT = ER_NEVER_EXIT
 };
 
@@ -193,8 +196,7 @@ struct er_msg
 
 extern const char *er_get_msglog_filename (void);
 extern int er_init (const char *msglog_filename, int exit_ask);
-extern int er_init_internal (const char *msglog_filename, int exit_ask,
-			     bool make_access);
+extern int er_init_access_log (void);
 extern void er_set_print_property (int print_console);
 
 #if defined (SERVER_MODE)

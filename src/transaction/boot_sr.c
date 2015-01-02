@@ -3502,13 +3502,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       error_code = ER_FAILED;
       goto error;
     }
-  if (er_init_internal
-      (prm_get_string_value (PRM_ID_ER_LOG_FILE),
-       prm_get_integer_value (PRM_ID_ER_EXIT_ASK), true) != NO_ERROR)
+  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE),
+	       prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       error_code = ER_FAILED;
       goto error;
     }
+  er_init_access_log ();
   er_clear ();
 
   /* initialize allocations areas for things we need, on the client, most
