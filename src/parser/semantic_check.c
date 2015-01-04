@@ -413,6 +413,15 @@ static void pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node);
 
 static PT_NODE *pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node);
 
+static int pt_check_range_partition_strict_increasing (PARSER_CONTEXT *
+						       parser, PT_NODE * stmt,
+						       PT_NODE * part,
+						       PT_NODE * part_next,
+						       PT_NODE * column_dt);
+static int pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser,
+						     PT_NODE * value,
+						     PT_NODE * data_type);
+
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
  *   cinfo1(in);
@@ -6274,8 +6283,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   SM_ATTRIBUTE *smatt;
   bool chkflag = false;
   DB_QUERY_TYPE *query_columns = NULL, *column = NULL;
-  DB_VALUE *value1 = NULL, *value2 = NULL;
-  DB_VALUE_COMPARE_RESULT compare_result;
+  int error = NO_ERROR;
 
   assert (parser != NULL);
 
@@ -6652,69 +6660,15 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  /* check value increasing for range partition */
 	  if (pinfo->info.partition.type == PT_PARTITION_RANGE)
 	    {
-	      fpart = parts->next;
-	      if (fpart != NULL)
+	      error = pt_check_range_partition_strict_increasing (parser,
+								  stmt, parts,
+								  parts->next,
+								  NULL);
+	      if (error != NO_ERROR)
 		{
-		  /* xxx.info.parts.values == NULL means maxvalue */
-		  if (parts->info.parts.values != NULL)
-		    {
-		      value1 =
-			pt_value_to_db (parser, parts->info.parts.values);
-		      if (value1 == NULL)
-			{
-			  if (!pt_has_error (parser))
-			    {
-			      PT_ERRORmf (parser, stmt,
-					  MSGCAT_SET_PARSER_SEMANTIC,
-					  MSGCAT_SEMANTIC_PARTITION_RANGE_INVALID,
-					  parts->info.parts.name->info.name.
-					  original);
-			    }
+		  assert (pt_has_error (parser));
 
-			  goto pvl_free_end;
-			}
-		    }
-		  else
-		    {
-		      /* this is an error */
-		      PT_ERRORmf (parser, pinfo, MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_PARTITION_RANGE_ERROR,
-				  parts);
-
-		      goto pvl_free_end;
-		    }
-
-		  /* xxx.info.parts.values == NULL means maxvalue */
-		  if (fpart->info.parts.values != NULL)
-		    {
-		      value2 =
-			pt_value_to_db (parser, fpart->info.parts.values);
-		      if (value2 == NULL)
-			{
-			  if (!pt_has_error (parser))
-			    {
-			      PT_ERRORmf (parser, stmt,
-					  MSGCAT_SET_PARSER_SEMANTIC,
-					  MSGCAT_SEMANTIC_PARTITION_RANGE_INVALID,
-					  fpart->info.parts.name->info.name.
-					  original);
-			    }
-
-			  goto pvl_free_end;
-			}
-
-		      compare_result = db_value_compare (value1, value2);
-		      if (compare_result != DB_LT)
-			{
-			  /* this is an error */
-			  PT_ERRORmf (parser, pinfo,
-				      MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_PARTITION_RANGE_ERROR,
-				      parts);
-
-			  goto pvl_free_end;
-			}
-		    }
+		  goto pvl_free_end;
 		}
 	    }
 
@@ -7005,6 +6959,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   PT_NODE **statements = NULL;
   DB_VALUE pexpr;
   const char *expr_sql = NULL;
+  int error = NO_ERROR;
 
   assert (parser != NULL);
 
@@ -7436,6 +7391,18 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	      goto check_end;
 	    }
 
+	  /* next part */
+	  next_parts = parts->next;
+	  if (next_parts != NULL
+	      && ptype.data.i != (int) next_parts->info.parts.type)
+	    {
+	      PT_ERRORmf (parser, stmt,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_PARTITION_TYPE_MISMATCH,
+			  next_parts->info.parts.name->info.name.original);
+	      goto check_end;
+	    }
+
 	  part_name = (char *) parts->info.parts.name->info.name.original;
 	  if (parts->info.parts.values)
 	    {
@@ -7456,25 +7423,36 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 	  if (ptype.data.i == PT_PARTITION_RANGE)
 	    {
+	      /* corece the partition value */
 	      val = parts->info.parts.values;
 
-	      if (val != NULL
-		  && (val->type_enum != column_dt->type_enum
-		      || (val->data_type != NULL
-			  && val->data_type->info.data_type.collation_id !=
-			  column_dt->info.data_type.collation_id)))
+	      if (val != NULL)
 		{
-		  if (pt_coerce_value (parser, parts->info.parts.values,
-				       parts->info.parts.values,
-				       column_dt->type_enum,
-				       column_dt) != NO_ERROR)
+		  error = pt_coerce_partition_value_with_data_type (parser,
+								    val,
+								    column_dt);
+		  if (error != NO_ERROR)
 		    {
+		      error = MSGCAT_SEMANTIC_CONSTANT_TYPE_MISMATCH;
+
 		      PT_ERRORmf (parser, stmt,
-				  MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_CONSTANT_TYPE_MISMATCH,
+				  MSGCAT_SET_PARSER_SEMANTIC, error,
 				  part_name);
+
 		      goto check_end;
 		    }
+		}
+
+	      /* check strict increasing rule */
+	      error = pt_check_range_partition_strict_increasing (parser,
+								  stmt, parts,
+								  next_parts,
+								  column_dt);
+	      if (error != NO_ERROR)
+		{
+		  assert (pt_has_error (parser));
+
+		  goto check_end;
 		}
 
 	      parts_val = pt_value_to_db (parser, parts->info.parts.values);
@@ -7515,21 +7493,17 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	      for (val = parts->info.parts.values;
 		   val && val->node_type == PT_VALUE; val = val->next)
 		{
-		  if (val->type_enum != column_dt->type_enum
-		      || (val->data_type != NULL
-			  && val->data_type->info.data_type.collation_id !=
-			  column_dt->info.data_type.collation_id))
-		    {		/* LIST-NULL */
-		      if (pt_coerce_value (parser, val, val,
-					   column_dt->type_enum,
-					   column_dt) != NO_ERROR)
-			{
-			  PT_ERRORmf (parser, stmt,
-				      MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_CONSTANT_TYPE_MISMATCH,
-				      part_name);
-			  goto check_end;
-			}
+		  error = pt_coerce_partition_value_with_data_type (parser,
+								    val,
+								    column_dt);
+		  if (error != NO_ERROR)
+		    {
+		      PT_ERRORmf (parser, stmt,
+				  MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_CONSTANT_TYPE_MISMATCH,
+				  part_name);
+
+		      goto check_end;
 		    }
 
 		  parts_val = pt_value_to_db (parser, val);
@@ -17291,4 +17265,164 @@ pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return node;
+}
+
+/*
+ * pt_check_range_partition_strict_increasing () -
+ *   return: NO_ERROR or error code
+ *   parser(in): the parser context
+ *   stmt(in): the top statement
+ *   part(in): current partition
+ *   part_next(in): the next partition
+ *   column_dt(in): data type
+ *
+ */
+static int
+pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser,
+					    PT_NODE * stmt, PT_NODE * part,
+					    PT_NODE * part_next,
+					    PT_NODE * column_dt)
+{
+  int error = NO_ERROR;
+  PT_NODE *pt_val1 = NULL, *pt_val2 = NULL;
+  DB_VALUE *db_val1 = NULL, *db_val2 = NULL;
+  DB_VALUE null_val;
+  DB_VALUE_COMPARE_RESULT compare_result;
+
+  assert (parser != NULL
+	  && stmt != NULL && part != NULL && part->node_type == PT_PARTS);
+  assert (part_next == NULL || part_next->node_type == PT_PARTS);
+  assert (column_dt == NULL || column_dt->node_type == PT_DATA_TYPE);
+
+  /* make sure value1 is the same type described by column_dt */
+  pt_val1 = part->info.parts.values;
+  assert (pt_val1 == NULL
+	  || column_dt == NULL
+	  || (pt_val1->type_enum == column_dt->type_enum
+	      && (!PT_IS_STRING_TYPE (pt_val1->type_enum)
+		  || (pt_val1->data_type == NULL
+		      || (pt_val1->data_type->info.data_type.collation_id
+			  == column_dt->info.data_type.collation_id)))));
+
+  DB_MAKE_NULL (&null_val);
+
+  /* next value */
+  if (part_next != NULL)
+    {
+      /* the first value */
+      db_val1 = pt_value_to_db (parser, pt_val1);
+      if (db_val1 == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      error = MSGCAT_SEMANTIC_PARTITION_RANGE_INVALID;
+
+	      PT_ERRORmf (parser, stmt,
+			  MSGCAT_SET_PARSER_SEMANTIC, error,
+			  part->info.parts.name->info.name.original);
+
+	      goto end;
+	    }
+
+	  db_val1 = &null_val;
+	}
+
+      pt_val2 = part_next->info.parts.values;
+
+      /* if column_dt is not null, do the cast if needed */
+      if (pt_val2 != NULL && column_dt != NULL)
+	{
+	  error = pt_coerce_partition_value_with_data_type (parser,
+							    pt_val2,
+							    column_dt);
+
+	  if (error != NO_ERROR)
+	    {
+	      error = MSGCAT_SEMANTIC_CONSTANT_TYPE_MISMATCH;
+
+	      PT_ERRORmf (parser, stmt,
+			  MSGCAT_SET_PARSER_SEMANTIC, error,
+			  part_next->info.parts.name->info.name.original);
+
+	      goto end;
+	    }
+	}
+
+      db_val2 = pt_value_to_db (parser, pt_val2);
+      if (db_val2 == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      error = MSGCAT_SEMANTIC_PARTITION_RANGE_INVALID;
+
+	      PT_ERRORmf (parser, stmt,
+			  MSGCAT_SET_PARSER_SEMANTIC, error,
+			  part_next->info.parts.name->info.name.original);
+
+	      goto end;
+	    }
+
+	  db_val2 = &null_val;
+	}
+
+      /* check the strict increasing */
+      if (DB_IS_NULL (db_val1))
+	{
+	  /* this is an error */
+	  error = MSGCAT_SEMANTIC_PARTITION_RANGE_ERROR;
+
+	  PT_ERRORmf (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, error, part);
+
+	  goto end;
+	}
+      else if (!DB_IS_NULL (db_val2))
+	{
+	  compare_result = db_value_compare (db_val1, db_val2);
+	  if (compare_result != DB_LT)
+	    {
+	      /* this is an error */
+	      error = MSGCAT_SEMANTIC_PARTITION_RANGE_ERROR;
+
+	      PT_ERRORmf (parser, stmt,
+			  MSGCAT_SET_PARSER_SEMANTIC, error, part_next);
+
+	      goto end;
+	    }
+	}
+    }
+
+end:
+
+  return error;
+}
+
+/*
+ * pt_coerce_partition_value_with_data_type () - do the cast
+ *   return: NO_ERROR or error code
+ *   parser(in):
+ *   value(in):
+ *   data_type(in):
+ *
+ */
+static int
+pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser,
+					  PT_NODE * value,
+					  PT_NODE * data_type)
+{
+  int error = NO_ERROR;
+
+  assert (value != NULL
+	  && data_type != NULL && data_type->node_type == PT_DATA_TYPE);
+
+  if (value->type_enum != data_type->type_enum
+      || (PT_IS_STRING_TYPE (value->type_enum)
+	  && value->data_type != NULL
+	  && value->data_type->info.data_type.collation_id !=
+	  data_type->info.data_type.collation_id))
+    {
+      error = pt_coerce_value (parser, value, value,
+			       data_type->type_enum, data_type);
+    }
+
+  return error;
 }
