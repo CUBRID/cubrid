@@ -1478,14 +1478,14 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
 					       classname);
   if (entry == NULL)
     {
+      /* table is dropped by myself; not exist */
       return NO_ERROR;		/* do nothing */
     }
-
 
   if (!(entry->e_tran_index == NULL_TRAN_INDEX
 	|| entry->e_tran_index == tran_index))
     {
-      assert (false);		/* is impossible */
+      /* table is dropped by myself and reserved by other tranx */
       return NO_ERROR;
     }
 
@@ -1817,14 +1817,15 @@ locator_savepoint_class_name_entry (const char *classname,
 					       classname);
   if (entry == NULL)
     {
+      /* table is dropped by myself; not exist */
       return NO_ERROR;		/* do nothing */
     }
 
   if (!(entry->e_tran_index == NULL_TRAN_INDEX
 	|| entry->e_tran_index == tran_index))
     {
-      assert (false);		/* is impossible */
-      return ER_FAILED;
+      /* table is dropped by myself and reserved by other tranx */
+      return NO_ERROR;		/* do nothing */
     }
 
   assert (entry->e_name != NULL);
