@@ -2127,8 +2127,6 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
 	}
       else
 	{
-	  assert (entry->e_current.action == LC_CLASSNAME_EXIST);
-
 	  /* Are OIDs the same ? */
 	  if (!OID_EQ (&class_oid, &entry->e_current.oid))
 	    {
