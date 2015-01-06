@@ -957,8 +957,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
     }
 
   /* Allocate a root page and save the page_id */
-  if (file_find_nthpages
-      (thread_p, &load_args->btid->sys_btid->vfid, &root_vpid, 0, 1) != 1)
+  if (btree_get_root_page (thread_p, load_args->btid->sys_btid, &root_vpid) ==
+      NULL)
     {
       goto error;
     }
@@ -1994,8 +1994,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
     }
 
   /* move current ROOT page content to the first page allocated */
-  if (file_find_nthpages (thread_p, &load_args->btid->sys_btid->vfid,
-			  &cur_nleafpgid, 0, 1) != 1)
+  if (btree_get_root_page
+      (thread_p, load_args->btid->sys_btid, &cur_nleafpgid) == NULL)
     {
       goto exit_on_error;
     }

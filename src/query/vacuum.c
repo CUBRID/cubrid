@@ -341,8 +341,6 @@ int vacuum_Prefetch_log_pages = -1;
  * Dropped files section.
  */
 
-#define VACUUM_DROPPED_FILES_EXTEND_FILE_NPAGES 5
-
 static bool vacuum_Dropped_files_loaded = false;
 
 /* Identifier for the file where dropped file list is kept */
@@ -573,6 +571,11 @@ static void vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p);
 static int vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p);
 static void vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY *
 							    thread_p);
+
+static VPID *vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p,
+						  VPID * first_page_vpid);
+static VPID *vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p,
+						VPID * first_page_vpid);
 
 #if defined (SERVER_MODE)
 static int vacuum_assign_worker (THREAD_ENTRY * thread_p);
@@ -3537,8 +3540,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
     }
 
   /* Get the first vacuum data page vpid */
-  if (file_find_nthpages (thread_p, &vacuum_Data_vfid, &vacuum_Data_vpid, 0,
-			  1) < 1)
+  if (vacuum_get_first_page_vacuum_data (thread_p, &vacuum_Data_vpid) == NULL)
     {
       assert (false);
       return ER_FAILED;
@@ -3608,8 +3610,8 @@ vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p)
     }
 
   /* Save first page vpid. */
-  if (file_find_nthpages (thread_p, &vacuum_Dropped_files_vfid,
-			  &vacuum_Dropped_files_vpid, 0, 1) < 1)
+  if (vacuum_get_first_page_dropped_files
+      (thread_p, &vacuum_Dropped_files_vpid) == NULL)
     {
       assert (false);
       return ER_FAILED;
@@ -5969,23 +5971,10 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
   /* Last page must be fixed */
   assert (page != NULL);
 
-  if (npages >= file_get_numpages (thread_p, &vacuum_Dropped_files_vfid))
+  /* Extend file */
+  if (file_alloc_pages (thread_p, &vacuum_Dropped_files_vfid, &vpid, 1,
+			&prev_vpid, NULL, NULL) == NULL)
     {
-      /* Extend file */
-      if (file_alloc_pages (thread_p, &vacuum_Dropped_files_vfid, &vpid,
-			    VACUUM_DROPPED_FILES_EXTEND_FILE_NPAGES,
-			    &prev_vpid, NULL, NULL) == NULL)
-	{
-	  assert (false);
-	  vacuum_unfix_dropped_entries_page (thread_p, page);
-	  return ER_FAILED;
-	}
-    }
-
-  if (file_find_nthpages (thread_p, &vacuum_Dropped_files_vfid, &vpid, npages,
-			  1) < 1)
-    {
-      /* Get next page in file */
       assert (false);
       vacuum_unfix_dropped_entries_page (thread_p, page);
       return ER_FAILED;
@@ -7286,3 +7275,36 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
   return error;
 }
 #endif /* SERVER_MODE */
+
+VPID *
+vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p,
+				     VPID * first_page_vpid)
+{
+  VPID *vpid;
+
+  assert (!VFID_ISNULL (&vacuum_Dropped_files_vfid));
+
+  vpid =
+    file_get_first_alloc_vpid (thread_p, &vacuum_Dropped_files_vfid,
+			       first_page_vpid);
+
+  assert (!VPID_ISNULL (first_page_vpid));
+
+  return vpid;
+}
+
+VPID *
+vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p,
+				   VPID * first_page_vpid)
+{
+  VPID *vpid;
+
+  assert (!VFID_ISNULL (&vacuum_Data_vfid));
+
+  vpid =
+    file_get_first_alloc_vpid (thread_p, &vacuum_Data_vfid, first_page_vpid);
+
+  assert (!VPID_ISNULL (first_page_vpid));
+
+  return vpid;
+}
