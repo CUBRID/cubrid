@@ -3610,8 +3610,9 @@ vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p)
     }
 
   /* Save first page vpid. */
-  if (vacuum_get_first_page_dropped_files
-      (thread_p, &vacuum_Dropped_files_vpid) == NULL)
+  if (vacuum_get_first_page_dropped_files (thread_p,
+					   &vacuum_Dropped_files_vpid)
+      == NULL)
     {
       assert (false);
       return ER_FAILED;
@@ -7276,7 +7277,16 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
 }
 #endif /* SERVER_MODE */
 
-VPID *
+/*
+ * vacuum_get_first_page_dropped_files () - Get the first allocated vpid of 
+ *			     vacuum_Dropped_files_vfid.
+ *
+ * return    : VPID *
+ * thread_p (in):
+ * first_page_vpid (out): 
+ *
+ */
+static VPID *
 vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p,
 				     VPID * first_page_vpid)
 {
@@ -7284,16 +7294,24 @@ vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p,
 
   assert (!VFID_ISNULL (&vacuum_Dropped_files_vfid));
 
-  vpid =
-    file_get_first_alloc_vpid (thread_p, &vacuum_Dropped_files_vfid,
-			       first_page_vpid);
+  vpid = file_get_first_alloc_vpid (thread_p, &vacuum_Dropped_files_vfid,
+				    first_page_vpid);
 
   assert (!VPID_ISNULL (first_page_vpid));
 
   return vpid;
 }
 
-VPID *
+/*
+ * vacuum_get_first_page_vacuum_data () - Get the first allocated vpid of
+ *			     vacuum_Data_vfid.
+ *
+ * return    : VPID *
+ * thread_p (in):
+ * first_page_vpid (out): 
+ *
+ */
+static VPID *
 vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p,
 				   VPID * first_page_vpid)
 {
@@ -7301,8 +7319,8 @@ vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p,
 
   assert (!VFID_ISNULL (&vacuum_Data_vfid));
 
-  vpid =
-    file_get_first_alloc_vpid (thread_p, &vacuum_Data_vfid, first_page_vpid);
+  vpid = file_get_first_alloc_vpid (thread_p, &vacuum_Data_vfid,
+				    first_page_vpid);
 
   assert (!VPID_ISNULL (first_page_vpid));
 
