@@ -163,6 +163,9 @@ static int change_constraints_comment_partitioned_class (MOP obj,
 							 *index_name,
 							 const char *comment);
 
+static MOP smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate,
+					 const char *constraint_name);
+
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
  * These are used to walk over the template structures and extract information
@@ -1896,6 +1899,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
   SM_ATTRIBUTE *not_null_attr[1], *pk_attr;
   SM_CLASS_CONSTRAINT *pk;
   int n_atts;
+  MOP owner;
 
   if (!(SM_IS_ATTFLAG_UNIQUE_FAMILY_OR_FOREIGN_KEY (constraint)
 	|| constraint == SM_ATTFLAG_NON_NULL))
@@ -1933,6 +1937,22 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
 	  ERROR0 (error, ER_SM_NOT_NULL_WRONG_NUM_ATTS);
 	  return error;
 	}
+    }
+
+  owner = smt_find_owner_of_constraint (template_, constraint_name);
+  if (owner == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      return error;
+    }
+
+  if (owner != template_->op)
+    {
+      /* it is inherited. */
+      ERROR2 (error, ER_SM_INHERITED, constraint_name,
+	      sm_get_ch_name (owner));
+      return error;
     }
 
   error = smt_drop_constraint_from_property (template_, constraint_name,
@@ -2979,8 +2999,24 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
   SM_CLASS_CONSTRAINT *sm_cons = NULL;
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
   int is_global = 0;
+  MOP owner;
 
   assert (ctemplate != NULL);
+
+  owner = smt_find_owner_of_constraint (ctemplate, old_name);
+  if (owner == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      return error;
+    }
+
+  if (owner != ctemplate->op)
+    {
+      /* it is inherited. */
+      ERROR2 (error, ER_SM_INHERITED, old_name, sm_get_ch_name (owner));
+      return error;
+    }
 
   error = classobj_make_class_constraints (ctemplate->properties,
 					   ctemplate->attributes, &sm_cons);
@@ -2998,7 +3034,6 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
 
   sm_constraint = classobj_find_constraint_by_name (sm_cons, old_name);
   if (sm_constraint == NULL)
-
     {
       error = ER_SM_CONSTRAINT_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
@@ -4739,4 +4774,67 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
   pr_free_ext_value (new_value);
 
   return error;
+}
+
+/*
+ * smt_find_owner_of_constraint() - Find the owner mop of the given constraint.
+ *
+ *   return: MOP on success, NULL for ERROR
+ *   ctemplate(in): class template
+ *   constrant_name(in): 
+ *
+ *   Note: This function requires that the given constraint must exist in the
+ *         class of ctemplate.
+ */
+static MOP
+smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate,
+			      const char *constraint_name)
+{
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *super_cons = NULL;
+  SM_CLASS_CONSTRAINT *cons = NULL;
+  DB_OBJLIST *super;
+  SM_CLASS *class_;
+
+  if (ctemplate->inheritance == NULL)
+    {
+      return ctemplate->op;
+    }
+
+  for (super = ctemplate->inheritance; super != NULL; super = super->next)
+    {
+      error = au_fetch_class_force (super->op, &class_, AU_FETCH_READ);
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+
+      error = classobj_make_class_constraints (class_->properties,
+					       class_->attributes,
+					       &super_cons);
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+
+      for (cons = super_cons; cons != NULL; cons = cons->next)
+	{
+	  if (constraint_name != NULL && cons->name != NULL
+	      && SM_COMPARE_NAMES (constraint_name, cons->name) == 0)
+	    {
+	      classobj_free_class_constraints (super_cons);
+	      super_cons = NULL;
+
+	      return super->op;
+	    }
+	}
+
+      if (super_cons != NULL)
+	{
+	  classobj_free_class_constraints (super_cons);
+	  super_cons = NULL;
+	}
+    }
+
+  return ctemplate->op;
 }

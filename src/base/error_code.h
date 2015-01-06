@@ -342,7 +342,7 @@
 #define ER_SM_INVALID_NAME                          -274
 #define ER_SM_INHERITED_ATTRIBUTE                   -275
 #define ER_SM_INHERITED_METHOD                      -276
-#define ER_SM_INHERITED_ATTMETH                     -277
+#define ER_SM_INHERITED                             -277
 #define ER_SM_INCOMPATIBLE_DOMAINS                  -278
 #define ER_SM_RESOLUTION_OVERRIDE                   -279
 #define ER_SM_INCOMPATIBLE_SHADOW                   -280
