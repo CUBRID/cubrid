@@ -318,4 +318,6 @@ extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
 					    LK_RES * res);
 extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid,
 				    int tran_index, LOCK lock);
+extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock,
+			       int cond_flag);
 #endif /* _LOCK_MANAGER_H_ */

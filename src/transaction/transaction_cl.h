@@ -41,6 +41,7 @@
 #define TM_TRAN_ASYNC_WS()   (tm_Tran_async_ws)
 #define TM_TRAN_WAIT_MSECS() (tm_Tran_wait_msecs)
 #define TM_TRAN_ID()         (tm_Tran_ID)
+#define TM_TRAN_REP_READ_LOCK() (tm_Tran_rep_read_lock)
 
 typedef enum savepoint_type
 {
@@ -54,6 +55,7 @@ extern bool tm_Tran_async_ws;
 extern int tm_Tran_wait_msecs;
 extern int tm_Tran_ID;
 extern bool tm_Use_OID_preflush;
+extern LOCK tm_Tran_rep_read_lock;
 
 extern void tran_cache_tran_settings (int tran_index, int lock_timeout,
 				      TRAN_ISOLATION tran_isolation);

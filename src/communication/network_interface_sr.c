@@ -3691,6 +3691,42 @@ stran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * stran_lock_rep_read -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+		     int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int lock_rr_tran;
+  int success;
+
+  ptr = request;
+  ptr = or_unpack_int (ptr, &lock_rr_tran);
+
+  success = xtran_lock_rep_read (thread_p, (LOCK) lock_rr_tran);
+
+  if (success != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sboot_initialize_server -
  *
  * return:
@@ -7708,7 +7744,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
   OID *guessed_class_oids = NULL;
   int *guessed_class_chns = NULL;
   LC_PREFETCH_FLAGS *many_flags = NULL;
-  int quit_on_errors;
+  int quit_on_errors, lock_rr_tran;
   LC_FIND_CLASSNAME allfind = LC_CLASSNAME_ERROR;
   LC_LOCKHINT *found_lockhint;
   LC_COPYAREA *copy_area;
@@ -7733,6 +7769,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
 
   ptr = or_unpack_int (request, &num_classes);
   ptr = or_unpack_int (ptr, &quit_on_errors);
+  ptr = or_unpack_int (ptr, &lock_rr_tran);
 
   malloc_size = ((sizeof (char *) + sizeof (LOCK) + sizeof (int) +
 		  sizeof (int) + sizeof (OID) + sizeof (int)) * num_classes);
@@ -7778,6 +7815,19 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
   if (allfind != LC_CLASSNAME_EXIST)
     {
       return_error_to_client (thread_p, rid);
+    }
+
+  if ((LOCK) lock_rr_tran != NULL_LOCK)
+    {
+      /* lock the object common for RR transactions. This is used in ALTER
+       * TABLE ADD COLUMN NOT NULL scenarios
+       */
+      if (xtran_lock_rep_read (thread_p, lock_rr_tran) != NO_ERROR)
+	{
+	  allfind = LC_CLASSNAME_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return_error_to_client (thread_p, rid);
+	}
     }
 
   if (found_lockhint != NULL && found_lockhint->length > 0)

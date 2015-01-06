@@ -159,5 +159,6 @@ extern int oid_compare_equals (const void *key_oid1, const void *key_oid2);
 extern bool oid_check_cached_class_oid (const int cache_id, const OID * oid);
 extern void oid_set_cached_class_oid (const int cache_id, const OID * oid);
 extern const char *oid_get_cached_class_name (const int cache_id);
+extern OID *oid_get_rep_read_tran_oid (void);
 
 #endif /* _OID_H_ */

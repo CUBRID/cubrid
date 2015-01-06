@@ -39,6 +39,7 @@ static OID oid_Root_class = { 0, 0, 0 };
 static OID oid_Serial_class = { 0, 0, 0 };
 static OID oid_Partition_class = { 0, 0, 0 };
 static OID oid_Collation_class = { 0, 0, 0 };
+static OID oid_Rep_Read_Tran = { 0, 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 PAGEID oid_Next_tempid = NULL_PAGEID;
@@ -278,4 +279,16 @@ const char *
 oid_get_cached_class_name (const int cache_id)
 {
   return oid_cache[cache_id].class_name;
+}
+
+/*
+ * oid_get_rep_read_tran_oid () - Get OID that is used for RR transactions
+ *				  locking. 
+ *
+ * return    : return the OID.
+ */
+OID *
+oid_get_rep_read_tran_oid (void)
+{
+  return &oid_Rep_Read_Tran;
 }

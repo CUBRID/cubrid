@@ -514,4 +514,6 @@ extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 extern void slogtb_invalidate_mvcc_snapshot (THREAD_ENTRY * thread_p,
 					     unsigned int rid, char *request,
 					     int reqlen);
+extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid,
+				 char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

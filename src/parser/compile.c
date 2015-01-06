@@ -39,6 +39,7 @@
 #include "server_interface.h"
 #include "network_interface_cl.h"
 #include "execute_statement.h"
+#include "transaction_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -471,6 +472,8 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_CLASS_LOCKS lcks;
   int error = NO_ERROR;
+  PT_NODE *node = NULL;
+  LOCK lock_rr_tran = NULL_LOCK;
 
   lcks.classes = NULL;
   lcks.only_all = NULL;
@@ -493,8 +496,39 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_MERGE:
+      if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ
+	  && TM_TRAN_REP_READ_LOCK () == NULL_LOCK)
+	{
+	  lock_rr_tran = S_LOCK;
+	}
       break;
     default:
+      if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
+	{
+	  if (TM_TRAN_REP_READ_LOCK () == NULL_LOCK)
+	    {
+	      lock_rr_tran = S_LOCK;
+	    }
+	  if (statement->node_type == PT_ALTER
+	      && statement->info.alter.code == PT_ADD_ATTR_MTHD)
+	    {
+	      for (node =
+		   statement->info.alter.alter_clause.attr_mthd.attr_def_list;
+		   node; node = node->next)
+		{
+		  if (node->info.attr_def.constrain_not_null)
+		    {
+		      lock_rr_tran = X_LOCK;
+		      break;
+		    }
+		}
+	    }
+	  if (tran_lock_rep_read (lock_rr_tran) != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	}
+
       return statement;
     }
 
@@ -562,7 +596,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       && locator_lockhint_classes (lcks.num_classes,
 				   (const char **) lcks.classes, lcks.locks,
 				   lcks.only_all, lcks.flags,
-				   true) != LC_CLASSNAME_EXIST)
+				   true, lock_rr_tran) != LC_CLASSNAME_EXIST)
     {
       PT_ERRORc (parser, statement, db_error_string (3));
     }

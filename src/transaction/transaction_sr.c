@@ -721,3 +721,19 @@ xtran_get_local_transaction_id (THREAD_ENTRY * thread_p, DB_VALUE * trid)
 
   return error_code;
 }
+
+/*
+ * xtran_lock_rep_read - lock RR transaction with specified lock
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   thread_p(in):
+ *   lock_rr_tran(in):
+ *
+ * NOTE:
+ */
+int
+xtran_lock_rep_read (THREAD_ENTRY * thread_p, LOCK lock_rr_tran)
+{
+  return lock_rep_read_tran (thread_p, lock_rr_tran, LK_UNCOND_LOCK);
+}

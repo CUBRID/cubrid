@@ -1863,6 +1863,7 @@ $set 14 MSGCAT_SET_LOCK
 42 , %1$d %2$s
 43 ロック対象: クラスのインデックスキー(%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 インデックス名: %1$s\n
+45 Object type: Generic object for Repeatable Read consistency.\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

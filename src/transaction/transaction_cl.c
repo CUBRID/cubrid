@@ -68,6 +68,9 @@ TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 bool tm_Tran_async_ws = false;
 int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 int tm_Tran_ID = -1;
+LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
+					 * lock twice.
+					 */
 
 /* Timeout(milli seconds) for queries.
  *
@@ -276,6 +279,7 @@ tran_commit_client_loose_ends (void)
 	}
     }
 
+  tm_Tran_rep_read_lock = NULL_LOCK;
   /* Indicate the recovery manager that all loose actions have been done */
   return log_has_finished_client_postpone ();
 }
@@ -337,6 +341,8 @@ tran_abort_client_loose_ends (bool isknown_state)
 	}
       log_area = log_client_get_next_undo (&next_lsa);
     }
+
+  tm_Tran_rep_read_lock = NULL_LOCK;
 
   /* Indicate the recovery manager that all loose actions have been done */
   return log_has_finished_client_undo ();
@@ -496,6 +502,8 @@ tran_commit (bool retain_lock)
       error_code = tr_check_commit_triggers (TR_TIME_AFTER);
     }
 
+  tm_Tran_rep_read_lock = NULL_LOCK;
+
   return error_code;
 }
 
@@ -601,6 +609,8 @@ tran_abort (void)
   /* can these do anything useful ? */
   tr_check_rollback_triggers (TR_TIME_AFTER);
 
+  tm_Tran_rep_read_lock = NULL_LOCK;
+
   return error_cod;
 }
 
@@ -679,6 +689,8 @@ tran_abort_only_client (bool is_server_down)
   ws_abort_mops (true);
   ws_filter_dirty ();
   db_clear_client_query_result (false, true);
+
+  tm_Tran_rep_read_lock = NULL_LOCK;
 
   if (is_server_down == false)
     {

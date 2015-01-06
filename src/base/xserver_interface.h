@@ -227,6 +227,7 @@ extern bool xtran_is_blocked (THREAD_ENTRY * thread_p, int tran_index);
 extern bool xtran_server_has_updated (THREAD_ENTRY * thread_p);
 extern int xtran_server_is_active_and_has_updated (THREAD_ENTRY * thread_p);
 extern int xtran_wait_server_active_trans (THREAD_ENTRY * thrd);
+extern int xtran_lock_rep_read (THREAD_ENTRY * thread_p, LOCK lock_rr_tran);
 
 
 extern LOID *xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid,

@@ -120,6 +120,7 @@ locator_find_lockhint_class_oids (int num_classes,
 				  OID * guessed_class_oids,
 				  int *guessed_class_chns,
 				  int quit_on_errors,
+				  LOCK lock_rr_tran,
 				  LC_LOCKHINT ** lockhint,
 				  LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint,
@@ -606,4 +607,5 @@ extern int csession_drop_session_variables (DB_VALUE * variables,
 
 extern int cvacuum (int num_classes, OID * class_oids);
 extern int log_invalidate_mvcc_snapshot (void);
+extern int tran_lock_rep_read (LOCK lock_rr_tran);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

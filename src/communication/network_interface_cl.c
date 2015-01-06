@@ -1433,6 +1433,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
  *   guessed_class_oids(in):
  *   guessed_class_chns(in):
  *   quit_on_errors(in):
+ *   lock_rr_tran(in):
  *   lockhint(in):
  *   fetch_copyarea(in):
  *
@@ -1446,6 +1447,7 @@ locator_find_lockhint_class_oids (int num_classes,
 				  LC_PREFETCH_FLAGS * many_flags,
 				  OID * guessed_class_oids,
 				  int *guessed_class_chns, int quit_on_errors,
+				  LOCK lock_rr_tran,
 				  LC_LOCKHINT ** lockhint,
 				  LC_COPYAREA ** fetch_copyarea)
 {
@@ -1467,7 +1469,7 @@ locator_find_lockhint_class_oids (int num_classes,
   *lockhint = NULL;
   *fetch_copyarea = NULL;
 
-  request_size = OR_INT_SIZE + OR_INT_SIZE;
+  request_size = OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
   for (i = 0; i < num_classes; i++)
     {
       request_size +=
@@ -1485,6 +1487,7 @@ locator_find_lockhint_class_oids (int num_classes,
 
   ptr = or_pack_int (request, num_classes);
   ptr = or_pack_int (ptr, quit_on_errors);
+  ptr = or_pack_int (ptr, (int) lock_rr_tran);
   for (i = 0; i < num_classes; i++)
     {
       ptr = pack_const_string (ptr, many_classnames[i]);
@@ -1533,6 +1536,8 @@ locator_find_lockhint_class_oids (int num_classes,
     {
       free_and_init (request);
     }
+
+  tm_Tran_rep_read_lock = lock_rr_tran;
 
   return allfind;
 #else /* CS_MODE */
@@ -11531,4 +11536,45 @@ error:
 #else
   return -1;
 #endif
+}
+
+/*
+ * tran_lock_rep_read () - Lock the object that is common to all RR transactions
+ * return : NO_ERROR if all OK, error status otherwise
+ * lock_rr_tran(in) : type of lock
+ *
+ * Note: This is used in ALTER TABLE ... ADD COLUMN ... NOT NULL scenarios
+ */
+int
+tran_lock_rep_read (LOCK lock_rr_tran)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request, *reply, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = request;
+  ptr = or_pack_int (ptr, (int) lock_rr_tran);
+
+  req_error = net_client_request (NET_SERVER_LOCK_RR,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+				  0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &req_error);
+    }
+
+  if (req_error == NO_ERROR)
+    {
+      tm_Tran_rep_read_lock = lock_rr_tran;
+    }
+  return req_error;
+#else /* CS_MODE */
+  return NO_ERROR;		/* No need to lock */
+#endif /* !CS_MODE */
 }

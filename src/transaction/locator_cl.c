@@ -6556,12 +6556,14 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
  *   quit_on_errors(in): Wheater to continue finding the classes in case of an
  *                     error, such as a class does not exist or locks on some
  *                     of the classes may not be granted.
+ *   lock_rr_tran(in): lock repeatable read transaction if not NULL_LOCK.
  *
  */
 LC_FIND_CLASSNAME
 locator_lockhint_classes (int num_classes, const char **many_classnames,
 			  LOCK * many_locks, int *need_subclasses,
-			  LC_PREFETCH_FLAGS * flags, int quit_on_errors)
+			  LC_PREFETCH_FLAGS * flags, int quit_on_errors,
+			  LOCK lock_rr_tran)
 {
   MOP class_mop = NULL;		/* The mop of a class                       */
   MOBJ class_obj = NULL;	/* The class object of above mop            */
@@ -6732,8 +6734,8 @@ locator_lockhint_classes (int num_classes, const char **many_classnames,
 						many_locks, need_subclasses,
 						flags, guessmany_class_oids,
 						guessmany_class_chns,
-						quit_on_errors, &lockhint,
-						&fetch_area);
+						quit_on_errors, lock_rr_tran,
+						&lockhint, &fetch_area);
 
   if (guessmany_class_oids != NULL)
     {

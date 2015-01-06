@@ -1130,7 +1130,8 @@ ldr_find_class (const char *classname)
   ldr_Hint_classnames[0] = realname;
 
   find = locator_lockhint_classes (1, ldr_Hint_classnames, ldr_Hint_locks,
-				   ldr_Hint_subclasses, ldr_Hint_flags, 1);
+				   ldr_Hint_subclasses, ldr_Hint_flags, 1,
+				   NULL_LOCK);
 
   if (find == LC_CLASSNAME_EXIST)
     {

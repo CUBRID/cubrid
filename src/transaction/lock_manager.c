@@ -260,7 +260,8 @@ typedef enum
 #define MSGCAT_LK_DEADLOCK_FUN                  42
 #define MSGCAT_LK_RES_INDEX_KEY_TYPE            43
 #define MSGCAT_LK_INDEXNAME                     44
-#define MSGCAT_LK_LASTONE                       45
+#define MSGCAT_LK_RES_RR_TYPE			45
+#define MSGCAT_LK_LASTONE                       46
 
 #if defined(SERVER_MODE)
 
@@ -6113,6 +6114,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   int num_holders, num_blocked_holders, num_waiters;
   char time_val[CTIME_MAX];
   int time_str_len;
+  OID *oid_rr = NULL;
 
   memset (time_val, 0, sizeof (time_val));
 
@@ -6131,7 +6133,15 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 				      MSGCAT_LK_RES_ROOT_CLASS_TYPE));
       break;
     case LOCK_RESOURCE_CLASS:
-      if (!OID_ISTEMP (&res_ptr->key.oid))
+      oid_rr = oid_get_rep_read_tran_oid ();
+      if (oid_rr != NULL && OID_EQ (&res_ptr->key.oid, oid_rr))
+	{
+	  /* This is the generic object for RR transactions */
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
+					  MSGCAT_SET_LOCK,
+					  MSGCAT_LK_RES_RR_TYPE));
+	}
+      else if (!OID_ISTEMP (&res_ptr->key.oid))
 	{
 	  /* Don't get class names for temporary class objects. */
 	  classname = heap_get_class_name (thread_p, &res_ptr->key.oid);
@@ -12924,3 +12934,49 @@ lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry)
     }
 }
 #endif /* SERVER_MODE */
+
+/*
+ * lock_rep_read_tran - lock the object used in RR transaction with ALTER TABLE
+ *			ADDCOLUMN NOT NULL scenario
+ *   return:
+ *   thread_p(in):
+ *   lock(in): type of lock
+ *   cond_flag
+ */
+int
+lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
+{
+#if !defined (SERVER_MODE)
+  LK_SET_STANDALONE_XLOCK (lock);
+  return NO_ERROR;
+#else /* !SERVER_MODE */
+  int tran_index;
+  int wait_msecs;
+  OID *rep_read_oid = oid_get_rep_read_tran_oid ();
+  LK_ENTRY *entry_addr = NULL;
+
+  if (lock == NULL_LOCK)
+    {
+      return NO_ERROR;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (cond_flag == LK_COND_LOCK)	/* conditional request */
+    {
+      wait_msecs = LK_FORCE_ZERO_WAIT;
+    }
+  else
+    {
+      wait_msecs = logtb_find_wait_msecs (tran_index);
+    }
+
+  if (lock_internal_perform_lock_object
+      (thread_p, tran_index, rep_read_oid, NULL, NULL, lock, wait_msecs,
+       &entry_addr, NULL) != LK_GRANTED)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+#endif
+}
