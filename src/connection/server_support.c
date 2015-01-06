@@ -1979,6 +1979,9 @@ shutdown:
   /* stop threads */
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
+  /* stop vacuum threads. */
+  thread_stop_vacuum_daemons ();
+
   /* we should flush all append pages before stop log writer */
   thread_p = thread_get_thread_entry_info ();
   assert_release (thread_p != NULL);
@@ -1996,11 +1999,10 @@ shutdown:
       node = log_Gl.prior_info.prior_list_header;
       while (node != NULL)
 	{
-	  /* All active transaction should have been stopped. Only system
-	   * transactions and vacuum workers are still running.
+	  /* All active transaction and vacuum workers should have been
+	   * stopped. Only system transactions are still running.
 	   */
-	  assert (node->log_header.trid == LOG_SYSTEM_TRANID
-		  || LOG_IS_VACUUM_WORKER_TRANID (node->log_header.trid));
+	  assert (node->log_header.trid == LOG_SYSTEM_TRANID);
 	  node = node->next;
 	}
     }

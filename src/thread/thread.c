@@ -1033,6 +1033,31 @@ thread_stop_active_daemons (void)
 }
 
 /*
+ * thread_stop_vacuum_daemons () - Stop all vacuum threads (master and
+ *				   workers). Vacuum threads are stopped
+ *				   earlier than other daemon threads to stop
+ *				   adding more logging data.
+ *
+ * return : NO_ERROR
+ */
+int
+thread_stop_vacuum_daemons (void)
+{
+  int i;
+
+  /* Stop vacuum master. */
+  thread_stop_daemon (&thread_Vacuum_master_thread);
+
+  /* Stop vacuum workers. */
+  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
+    {
+      thread_stop_daemon (&thread_Vacuum_worker_threads[i]);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * thread_kill_all_workers() - Signal all worker threads to exit.
  *   return: 0 if no error, or error code
  */
