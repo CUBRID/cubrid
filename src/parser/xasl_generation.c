@@ -26655,7 +26655,9 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   aptr_statement = mq_translate (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
+#if 0				/* TODO */
       assert (er_errid () != NO_ERROR);
+#endif
       error = er_errid ();
       if (error == NO_ERROR && !pt_has_error (parser))
 	{
