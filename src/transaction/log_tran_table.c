@@ -1997,14 +1997,21 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   do
     {
       trid = log_Gl.hdr.next_trid;
+
       next_trid = trid + 1;
       if (next_trid < 0)
 	{
 	  /* an overflow happened. starts with its base */
 	  next_trid = LOG_SYSTEM_TRANID + 1;
 	}
+
+      /* Need to check (trid < LOG_SYSTEM_TRANID + 1) for robustness.
+       * If log_Gl.hdr.next_trid was reset to 0 (see log_rv_analysis_log_end),
+       * this prevents us from correctly generating trids.
+       */
     }
-  while (!ATOMIC_CAS_32 (&log_Gl.hdr.next_trid, trid, next_trid));
+  while (!ATOMIC_CAS_32 (&log_Gl.hdr.next_trid, trid, next_trid)
+	 || (trid < LOG_SYSTEM_TRANID + 1));
 
   assert (LOG_SYSTEM_TRANID + 1 <= trid && trid <= DB_INT32_MAX);
 
