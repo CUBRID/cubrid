@@ -569,8 +569,9 @@ struct logwr_entry
   LOG_PAGEID fpageid;
   LOGWR_MODE mode;
   LOGWR_STATUS status;
-  LOG_LSA last_eof_lsa;
-  LOG_LSA tmp_last_eof_lsa;
+  LOG_LSA eof_lsa;
+  LOG_LSA last_sent_eof_lsa;
+  LOG_LSA tmp_last_sent_eof_lsa;
   INT64 start_copy_time;
   bool copy_from_first_phy_page;
   LOGWR_ENTRY *next;

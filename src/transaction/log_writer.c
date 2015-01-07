@@ -1728,8 +1728,9 @@ static void logwr_cs_exit (THREAD_ENTRY * thread_p, bool * check_cs_own);
 static void logwr_write_end (THREAD_ENTRY * thread_p,
 			     LOGWR_INFO * writer_info, LOGWR_ENTRY * entry,
 			     int status);
-static bool logwr_is_delayed (LOGWR_ENTRY * entry);
-static void logwr_update_last_eof_lsa (LOGWR_ENTRY * entry);
+static void logwr_set_eof_lsa (THREAD_ENTRY * thread_p, LOGWR_ENTRY * entry);
+static bool logwr_is_delayed (THREAD_ENTRY * thread_p, LOGWR_ENTRY * entry);
+static void logwr_update_last_sent_eof_lsa (LOGWR_ENTRY * entry);
 
 /*
  * logwr_register_writer_entry -
@@ -1784,8 +1785,9 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p,
       entry->copy_from_first_phy_page = copy_from_first_phy_page;
 
       entry->status = LOGWR_STATUS_DELAY;
-      LSA_SET_NULL (&entry->tmp_last_eof_lsa);
-      LSA_SET_NULL (&entry->last_eof_lsa);
+      LSA_SET_NULL (&entry->eof_lsa);
+      LSA_SET_NULL (&entry->last_sent_eof_lsa);
+      LSA_SET_NULL (&entry->tmp_last_sent_eof_lsa);
 
       entry->next = writer_info->writer_list;
       writer_info->writer_list = entry;
@@ -1903,6 +1905,8 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
   int nxarv_num;
   LOG_PAGEID nxarv_pageid, nxarv_phy_pageid;
 
+  LOG_LSA eof_lsa;
+
   fpageid = NULL_PAGEID;
   lpageid = NULL_PAGEID;
   ha_file_status = LOG_HA_FILESTAT_CLEAR;
@@ -1914,6 +1918,15 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
       assert_release (false);
       error_code = ER_FAILED;
       goto error;
+    }
+
+  if (LSA_ISNULL (&entry->eof_lsa))
+    {
+      LSA_COPY (&eof_lsa, &log_Gl.hdr.eof_lsa);
+    }
+  else
+    {
+      LSA_COPY (&eof_lsa, &entry->eof_lsa);
     }
 
   if (entry->copy_from_first_phy_page == true)
@@ -1974,7 +1987,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
       /* Find the last pageid which is bounded by several limitations */
       if (!logpb_is_page_in_archive (fpageid))
 	{
-	  lpageid = log_Gl.hdr.eof_lsa.pageid;
+	  lpageid = eof_lsa.pageid;
 	}
       else
 	{
@@ -2000,7 +2013,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
 	{
 	  lpageid = fpageid + (LOGWR_COPY_LOG_BUFFER_NPAGES - 1) - 1;
 	}
-      if (lpageid == log_Gl.hdr.eof_lsa.pageid)
+      if (lpageid == eof_lsa.pageid)
 	{
 	  ha_file_status = LOG_HA_FILESTAT_SYNCHRONIZED;
 	}
@@ -2023,13 +2036,14 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
   log_pgptr->hdr = log_Gl.loghdr_pgptr->hdr;
   memcpy (log_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr));
 
+  hdr_ptr = (struct log_header *) (log_pgptr->area);
   if (entry->copy_from_first_phy_page == true)
     {
-      hdr_ptr = (struct log_header *) (log_pgptr->area);
       hdr_ptr->nxarv_phy_pageid = nxarv_phy_pageid;
       hdr_ptr->nxarv_pageid = nxarv_pageid;
       hdr_ptr->nxarv_num = nxarv_num;
     }
+  LSA_COPY (&hdr_ptr->eof_lsa, &eof_lsa);
 
   p += LOG_PAGESIZE;
 
@@ -2066,16 +2080,16 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
   *logpg_used_size = (int) (p - logpg_area);
 
   /* In case that EOL exists at lpageid */
-  if (!is_hdr_page_only && (lpageid >= log_Gl.hdr.eof_lsa.pageid))
+  if (!is_hdr_page_only && (lpageid >= eof_lsa.pageid))
     {
       *status = LOGWR_STATUS_DONE;
-      LSA_COPY (&entry->tmp_last_eof_lsa, &log_Gl.hdr.eof_lsa);
+      LSA_COPY (&entry->tmp_last_sent_eof_lsa, &eof_lsa);
     }
   else
     {
       *status = LOGWR_STATUS_DELAY;
-      entry->tmp_last_eof_lsa.pageid = lpageid;
-      entry->tmp_last_eof_lsa.offset = NULL_OFFSET;
+      entry->tmp_last_sent_eof_lsa.pageid = lpageid;
+      entry->tmp_last_sent_eof_lsa.offset = NULL_OFFSET;
     }
 
   er_log_debug (ARG_FILE_LINE,
@@ -2138,24 +2152,39 @@ logwr_write_end (THREAD_ENTRY * thread_p, LOGWR_INFO * writer_info,
   return;
 }
 
-static bool
-logwr_is_delayed (LOGWR_ENTRY * entry)
+static void
+logwr_set_eof_lsa (THREAD_ENTRY * thread_p, LOGWR_ENTRY * entry)
 {
-  if (entry == NULL || LSA_ISNULL (&entry->last_eof_lsa)
-      || LSA_EQ (&entry->last_eof_lsa, &log_Gl.hdr.eof_lsa))
+  if (LSA_ISNULL (&entry->eof_lsa))
+    {
+      LOG_CS_ENTER (thread_p);
+      LSA_COPY (&entry->eof_lsa, &log_Gl.hdr.eof_lsa);
+      LOG_CS_EXIT (thread_p);
+    }
+
+  return;
+}
+
+static bool
+logwr_is_delayed (THREAD_ENTRY * thread_p, LOGWR_ENTRY * entry)
+{
+  logwr_set_eof_lsa (thread_p, entry);
+
+  if (entry == NULL
+      || LSA_ISNULL (&entry->last_sent_eof_lsa)
+      || LSA_GE (&entry->last_sent_eof_lsa, &entry->eof_lsa))
     {
       return false;
     }
   return true;
 }
 
-
 static void
-logwr_update_last_eof_lsa (LOGWR_ENTRY * entry)
+logwr_update_last_sent_eof_lsa (LOGWR_ENTRY * entry)
 {
   if (entry)
     {
-      LSA_COPY (&entry->last_eof_lsa, &entry->tmp_last_eof_lsa);
+      LSA_COPY (&entry->last_sent_eof_lsa, &entry->tmp_last_sent_eof_lsa);
     }
   return;
 }
@@ -2296,7 +2325,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	    }
 	  else if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	    {
-	      if (logwr_is_delayed (entry))
+	      if (logwr_is_delayed (thread_p, entry))
 		{
 		  is_interrupted = true;
 		  logwr_write_end (thread_p, writer_info, entry,
@@ -2325,6 +2354,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 
       if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	{
+	  logwr_set_eof_lsa (thread_p, entry);
 	  is_interrupted = true;
 	}
 
@@ -2402,7 +2432,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	  goto error;
 	}
 
-      logwr_update_last_eof_lsa (entry);
+      logwr_update_last_sent_eof_lsa (entry);
 
       /* In case of sync mode, unregister the writer and wakeup LFT to finish */
       if (need_cs_exit_after_send)
@@ -2431,7 +2461,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 
   db_private_free_and_init (thread_p, logpg_area);
 
-  return NO_ERROR;
+  assert_release (false);
+  return ER_FAILED;
 
 error:
 
