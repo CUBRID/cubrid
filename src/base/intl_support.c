@@ -2125,7 +2125,7 @@ intl_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
   assert (s != NULL);
   assert (d_size != NULL);
 
-  s_size = strlen ((char *) s);
+  intl_char_size (s, length_in_chars, INTL_CODESET_UTF8, &s_size);
   *d_size = 0;
 
   for (char_count = 0; char_count < length_in_chars; char_count++)
@@ -2166,7 +2166,7 @@ intl_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
   assert (s != NULL);
   assert (d_size != NULL);
 
-  s_size = strlen ((char *) s);
+  intl_char_size (s, length_in_chars, INTL_CODESET_UTF8, &s_size);
   *d_size = 0;
 
   for (char_count = 0; char_count < length_in_chars; char_count++)
