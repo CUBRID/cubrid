@@ -275,7 +275,8 @@ static const char *command_string (int command_type);
 static bool is_server_running (const char *type, const char *server_name,
 			       int pid);
 static int is_broker_running (void);
-static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
+static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int
+							sleep_time);
 
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
@@ -2335,13 +2336,14 @@ process_manager (int command_type, bool process_window_service)
   char cub_manager_path[PATH_MAX];
   UTIL_MANAGER_SERVER_STATUS_E manager_status;
   struct stat stbuf;
-  
+
   cub_manager_path[0] = '\0';
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		 PRINT_MANAGER_NAME, command_string (command_type));
 
-  (void) envvar_bindir_file (cub_manager_path, PATH_MAX, UTIL_CUB_MANAGER_NAME);
+  (void) envvar_bindir_file (cub_manager_path, PATH_MAX,
+			     UTIL_CUB_MANAGER_NAME);
   if (stat (cub_manager_path, &stbuf) == -1)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
@@ -2370,21 +2372,22 @@ process_manager (int command_type, bool process_window_service)
 		COMMAND_TYPE_START, NULL
 	      };
 
-	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, 
-				      true, false, false, NULL);
+	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
+				     true, false, false, NULL);
 #endif
 	    }
 	  else
 	    {
-		const char *args[] =
-		  { UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_START, NULL };
-		cub_manager =
-		  proc_execute (UTIL_CUB_MANAGER_NAME, args, false, false, false,
-				NULL);
+	      const char *args[] =
+		{ UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_START, NULL };
+	      cub_manager =
+		proc_execute (UTIL_CUB_MANAGER_NAME, args, false, false,
+			      false, NULL);
 	    }
 
 	  status =
-		(is_manager_running (1) == MANAGER_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
+	    (is_manager_running (1) ==
+	     MANAGER_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
       else
@@ -2408,19 +2411,20 @@ process_manager (int command_type, bool process_window_service)
 	      };
 
 	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
-				      true, false, false, NULL);
+				     true, false, false, NULL);
 #endif
 	    }
 	  else
 	    {
-		const char *args[] =
-		  { UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_STOP, NULL };
-		status =
-		  proc_execute (UTIL_CUB_MANAGER_NAME, args, true, false, false,
-				NULL);
+	      const char *args[] =
+		{ UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_STOP, NULL };
+	      status =
+		proc_execute (UTIL_CUB_MANAGER_NAME, args, true, false, false,
+			      NULL);
 	    }
 	  status =
-		(is_manager_running (1) == MANAGER_SERVER_STOPPED) ? NO_ERROR : ER_GENERIC_ERROR;
+	    (is_manager_running (1) ==
+	     MANAGER_SERVER_STOPPED) ? NO_ERROR : ER_GENERIC_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
       else
@@ -4525,6 +4529,12 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
 		     PRINT_MASTER_NAME);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			    PRINT_MASTER_NAME);
+    }
+
+  if (status == NO_ERROR)
+    {
+      /* wait for cub_master to clean up its internal resources */
+      sleep (HB_STOP_WAITING_TIME_IN_SECS);
     }
 
 ret:

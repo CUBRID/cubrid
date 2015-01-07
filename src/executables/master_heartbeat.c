@@ -4675,6 +4675,7 @@ hb_thread_check_disk_failure (void *arg)
 {
   int rv, error;
   int interval;
+  INT64 remaining_time_msecs = 0;
   char error_string[LINE_MAX];
 #if defined (HB_VERBOSE_DEBUG)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
@@ -4686,7 +4687,7 @@ hb_thread_check_disk_failure (void *arg)
     {
       interval =
 	prm_get_integer_value (PRM_ID_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS);
-      if (interval > 0)
+      if (interval > 0 && remaining_time_msecs <= 0)
 	{
 #if !defined(WINDOWS)
 	  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
@@ -4728,11 +4729,13 @@ hb_thread_check_disk_failure (void *arg)
 	  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif /* !WINDOWS */
 
-	  SLEEP_SEC (interval);
+	  remaining_time_msecs = interval * 1000;
 	}
-      else
+
+      SLEEP_MILISEC (0, HB_DISK_FAILURE_CHECK_TIMER_IN_MSECS);
+      if (interval > 0)
 	{
-	  SLEEP_SEC (15);
+	  remaining_time_msecs -= HB_DISK_FAILURE_CHECK_TIMER_IN_MSECS;
 	}
     }
 

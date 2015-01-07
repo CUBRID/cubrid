@@ -51,8 +51,10 @@
 
 #define HB_JOB_TIMER_IMMEDIATELY                        (0)
 #define HB_JOB_TIMER_WAIT_A_SECOND                      (1*1000)
+#define HB_DISK_FAILURE_CHECK_TIMER_IN_MSECS            (1*100)
 
 #define HB_START_WAITING_TIME_IN_SECS			(10)
+#define HB_STOP_WAITING_TIME_IN_SECS			(1)
 
 enum HA_READ_MODE
 {
