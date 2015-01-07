@@ -1554,6 +1554,12 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       return (ret_obj);
     }
 
+  for (type = DB_AUTH_SELECT, i = 0; type != auth_type;
+       type = (DB_AUTH) (type << 1), i++)
+    {
+      ;
+    }
+
   for (mop = list; mop != NULL; mop = mop->next)
     {
       au_obj = mop->op;
@@ -1572,15 +1578,9 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       if ((obj_get (au_obj, "class_of", &inst_value) != NO_ERROR)
 	  || ((db_class_inst = db_get_object (&inst_value)) == NULL)
 	  || (obj_get (db_class_inst, "class_of", &value) != NO_ERROR)
-	  || (db_get_object (&value) != class_mop))
+	  || (ws_mop_compare (db_get_object (&value), class_mop) != 0))
 	{
 	  continue;
-	}
-
-      for (type = DB_AUTH_SELECT, i = 0; type != auth_type;
-	   type = (DB_AUTH) (type << 1), i++)
-	{
-	  ;
 	}
 
       if (obj_get (au_obj, "auth_type", &value) != NO_ERROR)
