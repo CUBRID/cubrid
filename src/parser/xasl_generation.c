@@ -3128,12 +3128,14 @@ pt_make_identity_offsets (PT_NODE * attr_list)
   int *offsets;
   int num_attrs, i;
 
-  if ((num_attrs = pt_length_of_list (attr_list)) == 0)
+  num_attrs = pt_length_of_list (attr_list);
+  if (num_attrs == 0)
     {
       return NULL;
     }
 
-  if ((offsets = (int *) malloc ((num_attrs + 1) * sizeof (int))) == NULL)
+  offsets = (int *) malloc ((num_attrs + 1) * sizeof (int));
+  if (offsets == NULL)
     {
       return NULL;
     }
@@ -4028,34 +4030,34 @@ pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
   PT_NODE *attribute;
 
   value_list = regu_vallist_alloc ();
-
-  if (value_list)
+  if (value_list == NULL)
     {
-      value_list->val_cnt = 0;
-      value_list->valp = NULL;
-      dbval_list_tail = &value_list->valp;
+      return NULL;
+    }
 
-      for (attribute = attribute_list; attribute != NULL;
-	   attribute = attribute->next)
+  value_list->val_cnt = 0;
+  value_list->valp = NULL;
+  dbval_list_tail = &value_list->valp;
+
+  for (attribute = attribute_list; attribute != NULL;
+       attribute = attribute->next)
+    {
+      dbval_list = regu_dbvallist_alloc ();
+      if (dbval_list
+	  && regu_dbval_type_init (dbval_list->val,
+				   pt_node_to_db_type (attribute)))
 	{
-	  dbval_list = regu_dbvallist_alloc ();
-	  if (dbval_list
-	      && regu_dbval_type_init (dbval_list->val,
-				       pt_node_to_db_type (attribute)))
-	    {
-	      pt_init_precision_and_scale (dbval_list->val, attribute);
-	      dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
+	  pt_init_precision_and_scale (dbval_list->val, attribute);
+	  dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
 
-	      value_list->val_cnt++;
-	      (*dbval_list_tail) = dbval_list;
-	      dbval_list_tail = &dbval_list->next;
-	      dbval_list->next = NULL;
-	    }
-	  else
-	    {
-	      value_list = NULL;
-	      break;
-	    }
+	  value_list->val_cnt++;
+	  (*dbval_list_tail) = dbval_list;
+	  dbval_list_tail = &dbval_list->next;
+	  dbval_list->next = NULL;
+	}
+      else
+	{
+	  return NULL;
 	}
     }
 
@@ -4080,33 +4082,33 @@ pt_clone_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
   REGU_VARIABLE *regu = NULL;
 
   value_list = regu_vallist_alloc ();
-
-  if (value_list)
+  if (value_list == NULL)
     {
-      value_list->val_cnt = 0;
-      value_list->valp = NULL;
-      dbval_list_tail = &value_list->valp;
+      return NULL;
+    }
 
-      for (attribute = attribute_list; attribute != NULL;
-	   attribute = attribute->next)
+  value_list->val_cnt = 0;
+  value_list->valp = NULL;
+  dbval_list_tail = &value_list->valp;
+
+  for (attribute = attribute_list; attribute != NULL;
+       attribute = attribute->next)
+    {
+      dbval_list = regu_dbvlist_alloc ();
+      regu = pt_attribute_to_regu (parser, attribute);
+      if (dbval_list && regu)
 	{
-	  dbval_list = regu_dbvlist_alloc ();
-	  regu = pt_attribute_to_regu (parser, attribute);
-	  if (dbval_list && regu)
-	    {
-	      dbval_list->val = pt_regu_to_dbvalue (parser, regu);
-	      dbval_list->dom = regu->domain;
+	  dbval_list->val = pt_regu_to_dbvalue (parser, regu);
+	  dbval_list->dom = regu->domain;
 
-	      value_list->val_cnt++;
-	      (*dbval_list_tail) = dbval_list;
-	      dbval_list_tail = &dbval_list->next;
-	      dbval_list->next = NULL;
-	    }
-	  else
-	    {
-	      value_list = NULL;
-	      break;
-	    }
+	  value_list->val_cnt++;
+	  (*dbval_list_tail) = dbval_list;
+	  dbval_list_tail = &dbval_list->next;
+	  dbval_list->next = NULL;
+	}
+      else
+	{
+	  return NULL;
 	}
     }
 
