@@ -4980,6 +4980,13 @@ thread_rc_track_is_on (THREAD_ENTRY * thread_p)
       return false;
     }
 
+  /* If it reaches the threshold, cubrid stop tracking and clean thread_p->track.
+   * See thread_rc_track_meter.*/
+  if (thread_p->track == NULL)
+    {
+      return false;
+    }
+
   return true;
 }
 
