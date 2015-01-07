@@ -398,6 +398,12 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   stream->xasl_stream = xts_Stream_buffer;
   stream->xasl_stream_size = xts_Free_offset_in_stream;
 
+  if (stream->xasl_stream_size <= 0)
+    {
+      assert (false);
+      xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
+    }
+
 end:
   /* free all memories */
   xts_free_visited_ptrs ();

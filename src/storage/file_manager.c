@@ -575,7 +575,9 @@ static int file_tmpfile_cache_put (THREAD_ENTRY * thread_p, const VFID * vfid,
 static VFID *file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 				       FILE_TYPE * file_type,
 				       INT32 exp_numpages,
-				       const void *file_des);
+				       const void *file_des,
+				       VPID * first_prealloc_vpid,
+				       INT32 prealloc_npages);
 static DISK_ISVALID file_check_all_pages (THREAD_ENTRY * thread_p,
 					  const VFID * vfid,
 					  bool validate_vfid);
@@ -2796,7 +2798,8 @@ file_create (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 static VFID *
 file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 			  FILE_TYPE * file_type, INT32 exp_numpages,
-			  const void *file_des)
+			  const void *file_des, VPID * first_prealloc_vpid,
+			  INT32 prealloc_npages)
 {
   LOG_DATA_ADDR addr;		/* address of logging data */
   bool old_val, rv;
@@ -2813,7 +2816,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
   old_val = thread_set_check_interrupt (thread_p, false);
 
   if (file_xcreate (thread_p, vfid, exp_numpages, file_type, file_des,
-		    NULL, 0) != NULL)
+		    first_prealloc_vpid, prealloc_npages) != NULL)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
@@ -2881,7 +2884,7 @@ file_create_tmp (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
     }
 
   return file_create_tmp_internal (thread_p, vfid, &file_type, exp_numpages,
-				   file_des);
+				   file_des, NULL, 0);
 }
 
 /*
@@ -2901,7 +2904,7 @@ file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid,
   FILE_TYPE file_type = FILE_EITHER_TMP;
 
   return file_create_tmp_internal (thread_p, vfid, &file_type, exp_numpages,
-				   file_des);
+				   file_des, NULL, 0);
 }
 
 /*
@@ -2966,10 +2969,23 @@ file_create_queryarea (THREAD_ENTRY * thread_p, VFID * vfid,
 		       INT32 exp_numpages, const void *file_des)
 {
   FILE_TYPE file_type = FILE_QUERY_AREA;
+  VFID *tmpfile_vfid = NULL;
+  VPID first_page_vpid;
 
-  return file_tmpfile_cache_get (thread_p, vfid, file_type) ? vfid :
-    file_create_tmp_internal (thread_p, vfid, &file_type, exp_numpages,
-			      file_des);
+  tmpfile_vfid = file_tmpfile_cache_get (thread_p, vfid, file_type);
+
+  if (tmpfile_vfid == NULL)
+    {
+      VPID_SET_NULL (&first_page_vpid);
+
+      tmpfile_vfid = file_create_tmp_internal (thread_p, vfid, &file_type,
+					       exp_numpages, file_des,
+					       &first_page_vpid, 1);
+
+      assert (!VPID_ISNULL (&first_page_vpid));
+    }
+
+  return tmpfile_vfid;
 }
 
 /* TODO: list for file_ftab_chain */
@@ -3035,7 +3051,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
       exp_numpages = 1;
     }
 
-  if (*file_type == FILE_BTREE || *file_type == FILE_HEAP)
+  if (*file_type == FILE_BTREE || *file_type == FILE_HEAP
+      || *file_type == FILE_QUERY_AREA)
     {
       if (prealloc_npages == 0)
 	{
@@ -5065,10 +5082,14 @@ FILE_ALLOC_ITERATOR *
 file_alloc_iterator_next (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter)
 {
   VPID vpid;
+  int num_pages;
 
   assert (iter);
 
-  if (iter->current_index < 0 || iter->current_index >= iter->num_pages)
+  num_pages = file_get_numpages (thread_p, iter->vfid);
+
+  if (iter->current_index < 0 || iter->num_pages != num_pages
+      || iter->current_index >= iter->num_pages)
     {
       VPID_SET_NULL (&iter->current_vpid);
       return NULL;

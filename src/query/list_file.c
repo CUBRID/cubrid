@@ -75,7 +75,6 @@ static int rv;
 #define QFILE_CHECK_LIST_FILE_IS_CLOSED(list_id)
 
 #define QFILE_DEFAULT_PAGES 4
-#define QFILE_PAGE_EXTENDS  4
 
 #ifdef SERVER_MODE
 #define LS_PUT_NEXT_VPID_NULL_ASYNC(ptr) { \
@@ -1101,15 +1100,23 @@ qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p,
 int
 qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
 {
-  VPID *cur_vpid_p, prev_vpid, vpid_array[QFILE_PAGE_EXTENDS];
+  VPID *cur_vpid_p, prev_vpid, vpid;
   DKNPAGES nth_page, num_pages;
   PAGE_PTR cur_page_p, prev_page_p;
-  int xasl_page_size, total_pages, page_index, n;
+  int xasl_page_size, demand_pages;
   struct timeval time_stored;
+  FILE_ALLOC_ITERATOR iter;
+  FILE_ALLOC_ITERATOR *iter_p = &iter;
 
   XASL_ID *xasl_id = stream->xasl_id;
   int xasl_stream_size = stream->xasl_stream_size;
   char *xasl_stream = stream->xasl_stream;
+
+  if (xasl_stream_size <= 0)
+    {
+      assert (false);
+      return 0;
+    }
 
   XASL_ID_SET_NULL (xasl_id);
 
@@ -1119,45 +1126,49 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
       return 0;
     }
 
-  page_index = QFILE_PAGE_EXTENDS;
-  total_pages = nth_page = n = 0;
   num_pages = file_get_numpages (thread_p, &xasl_id->temp_vfid);
+  demand_pages = (xasl_stream_size / qfile_Xasl_page_size) + 1;
 
   VPID_SET_NULL (&prev_vpid);
   prev_page_p = NULL;
 
-  while (xasl_stream_size > 0)
+  if (num_pages < demand_pages)
     {
-      if (page_index >= QFILE_PAGE_EXTENDS || page_index >= n)
+      if (file_alloc_pages_as_noncontiguous (thread_p, &xasl_id->temp_vfid,
+					     &vpid, &nth_page,
+					     demand_pages - num_pages,
+					     NULL, NULL, NULL, NULL) == NULL)
 	{
-	  if (nth_page >= num_pages)
-	    {
-	      if (file_alloc_pages_as_noncontiguous (thread_p,
-						     &xasl_id->temp_vfid,
-						     vpid_array, &nth_page,
-						     QFILE_PAGE_EXTENDS, NULL,
-						     NULL, NULL,
-						     NULL) == NULL)
-		{
-		  goto error;
-		}
-
-	      num_pages = file_get_numpages (thread_p, &xasl_id->temp_vfid);
-	    }
-
-	  n = file_find_nthpages (thread_p, &xasl_id->temp_vfid, vpid_array,
-				  nth_page, QFILE_PAGE_EXTENDS);
-	  if (n < 0)
-	    {
-	      goto error;
-	    }
-
-	  total_pages += n;
-	  nth_page += n;
-	  page_index = 0;
+	  goto error;
 	}
 
-      cur_vpid_p = &vpid_array[page_index];
+      num_pages = file_get_numpages (thread_p, &xasl_id->temp_vfid);
+    }
+
+  assert (num_pages >= demand_pages);
+
+  /* create the iterator of temporary file pages */
+  if (file_alloc_iterator_init (thread_p, &xasl_id->temp_vfid, iter_p) ==
+      NULL)
+    {
+      assert (false);
+      goto error;
+    }
+
+  nth_page = 0;
+
+  while (iter_p)
+    {
+      if (file_alloc_iterator_get_current_page (thread_p, iter_p, &vpid) ==
+	  NULL)
+	{
+	  assert (false);
+	  goto error;
+	}
+
+      assert (!VPID_ISNULL (&vpid));
+
+      cur_vpid_p = &vpid;
       cur_page_p = pgbuf_fix (thread_p, cur_vpid_p, NEW_PAGE,
 			      PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (cur_page_p == NULL)
@@ -1197,7 +1208,9 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
       xasl_stream += xasl_page_size;
       prev_page_p = cur_page_p;
       prev_vpid = *cur_vpid_p;
-      page_index++;
+      nth_page++;
+
+      iter_p = file_alloc_iterator_next (thread_p, iter_p);
     }
 
   if (prev_page_p)
@@ -1210,7 +1223,7 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
   (void) gettimeofday (&time_stored, NULL);
   CACHE_TIME_MAKE (&xasl_id->time_stored, &time_stored);
 
-  return total_pages;
+  return (int) nth_page;
 
 error:
   if (prev_page_p)
