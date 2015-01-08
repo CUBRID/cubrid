@@ -2343,10 +2343,36 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	{
 	  if (log_pgptr->hdr.logical_pageid != pageid)
 	    {
-	      /* Clean the buffer... since it may be corrupted */
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_LOG_PAGE_CORRUPTED, 1, pageid);
-	      goto error;
+	      if (log_pgptr->hdr.logical_pageid
+		  == pageid + LOGPB_ACTIVE_NPAGES)
+		{
+		  /* The active part where this archive page belonged was
+		   * already, overwritten. Fetch the page from archive.
+		   */
+		  if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr,
+						NULL, NULL, true) == NULL)
+		    {
+#if defined (SERVER_MODE)
+		      if (thread_p != NULL
+			  && thread_p->type == TT_VACUUM_MASTER)
+			{
+			  vacuum_er_log (VACUUM_ER_LOG_ERROR
+					 | VACUUM_ER_LOG_MASTER
+					 | VACUUM_ER_LOG_ARCHIVES,
+					 "VACUUM ERROR: Failed to fetch page "
+					 "%lld from archives.", pageid);
+			}
+#endif /* SERVER_MODE */
+		      goto error;
+		    }
+		}
+	      else
+		{
+		  /* Clean the buffer... since it may be corrupted */
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_LOG_PAGE_CORRUPTED, 1, pageid);
+		  goto error;
+		}
 	    }
 	}
     }
