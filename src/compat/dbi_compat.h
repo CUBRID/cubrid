@@ -1500,8 +1500,9 @@
 
 #define ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE     -1172
 #define ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP  -1173
+#define ER_INHERIT_FROM_PARTITION_TABLE         -1174
 
-#define ER_LAST_ERROR                               -1174
+#define ER_LAST_ERROR                               -1175
 
 #define DB_TRUE 1
 #define DB_FALSE 0

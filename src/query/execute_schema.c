@@ -538,6 +538,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
   SM_CONSTRAINT_FAMILY constraint_family;
   unsigned int save_custom;
+  PT_NODE *super_node = NULL;
+  MOP super_class;
 
   entity_name = alter->info.alter.entity_name->info.name.original;
   if (entity_name == NULL)
@@ -1002,6 +1004,37 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       break;
 
     case PT_ADD_SUPCLASS:
+      /* here we need to check if the super classes are partitioned, as
+       * it is not allowed to inherit from partition tables.
+       */
+      assert (error == NO_ERROR);
+      super_node = alter->info.alter.super.sup_class_list;
+
+      while (super_node)
+	{
+	  super_class = db_find_class (super_node->info.name.original);
+
+	  if (super_class == NULL)
+	    {
+	      error = er_errid ();
+	      assert (error != NO_ERROR);
+	    }
+	  else if (sm_is_partitioned_class (super_class))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_INHERIT_FROM_PARTITION_TABLE, 0);
+	      error = er_errid ();
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      dbt_abort_class (ctemplate);
+	      return error;
+	    }
+
+	  super_node = super_node->next;
+	}
+
       error = do_add_supers (parser,
 			     ctemplate,
 			     alter->info.alter.super.sup_class_list);
@@ -9227,8 +9260,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   int collation_id = LANG_SYS_COLLATION;
   PARSER_VARCHAR *comment = NULL;
   PT_NODE *tbl_opt_charset, *tbl_opt_coll, *cs_node, *coll_node;
-  PT_NODE *tbl_opt_comment, *comment_node;
+  PT_NODE *tbl_opt_comment, *comment_node, *super_node;
   const char *comment_str = NULL;
+  MOP super_class = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -9262,6 +9296,32 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  && db_find_class (class_name))
 	{
 	  goto error_exit;
+	}
+
+      /* here we need to check if the super classes are partitioned, as
+       * it is not allowed to inherit from partition tables.
+       */
+      super_node = node->info.create_entity.supclass_list;
+
+      while (super_node)
+	{
+	  super_class = db_find_class (super_node->info.name.original);
+
+	  if (super_class == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	      goto error_exit;
+	    }
+	  else if (sm_is_partitioned_class (super_class))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_INHERIT_FROM_PARTITION_TABLE, 0);
+	      error = er_errid ();
+	      goto error_exit;
+	    }
+
+	  super_node = super_node->next;
 	}
 
       for (tbl_opt = node->info.create_entity.table_option_list;

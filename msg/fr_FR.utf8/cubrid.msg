@@ -1240,7 +1240,8 @@ $ LOADDB
 1171 The volume %1$d is not empty, so it cannot be removed.
 1172 Invalid percentile value %1$f, should be between 0 and 1.
 1173 Percentile value changed in the same group.
-1174 Dernière erreur
+1174 Inheriting from a partitioned table is not allowed.
+1175 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
