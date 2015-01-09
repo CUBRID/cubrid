@@ -2981,6 +2981,7 @@ intl_identifier_lower (const char *src, char *dst)
 {
   int d_size = 0;
   int length_in_bytes = 0;
+  int length_in_chars = 0;
   unsigned char *d, *s;
 
   if (src)
@@ -2994,9 +2995,11 @@ intl_identifier_lower (const char *src, char *dst)
       {
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
+	length_in_chars =
+	  intl_count_utf8_chars ((unsigned char *) src, length_in_bytes);
 	(void) intl_tolower_utf8 (alphabet, (unsigned char *) src,
 				  (unsigned char *) dst,
-				  length_in_bytes, &d_size);
+				  length_in_chars, &d_size);
 	d = (unsigned char *) dst + d_size;
       }
       break;
@@ -3115,6 +3118,7 @@ intl_identifier_upper (const char *src, char *dst)
 {
   int d_size = 0;
   int length_in_bytes = 0;
+  int length_in_chars = 0;
   unsigned char *d, *s;
 
   if (src)
@@ -3128,9 +3132,11 @@ intl_identifier_upper (const char *src, char *dst)
       {
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
+	length_in_chars =
+	  intl_count_utf8_chars ((unsigned char *) src, length_in_bytes);
 	(void) intl_toupper_utf8 (alphabet, (unsigned char *) src,
 				  (unsigned char *) dst,
-				  length_in_bytes, &d_size);
+				  length_in_chars, &d_size);
 	d = (unsigned char *) dst + d_size;
       }
       break;
