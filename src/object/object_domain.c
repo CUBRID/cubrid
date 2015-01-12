@@ -4859,7 +4859,7 @@ tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp)
   int status = NO_ERROR;
   bool dummy_has_zone;
 
-  if (db_string_to_timetz_ex (strp, str_len, temp, &dummy_has_zone)
+  if (db_string_to_timetz_ex (strp, str_len, false, temp, &dummy_has_zone)
       != NO_ERROR)
     {
       status = ER_FAILED;
@@ -6611,6 +6611,12 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    bool time_is_utc = (original_type == DB_TYPE_TIMELTZ)
 	      ? true : false;
 
+	    if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+
 	    time_tz.time = *time;
 	    if (tz_create_session_tzid_for_time (time, time_is_utc,
 						 &time_tz.tz_id) != NO_ERROR)
@@ -6628,6 +6634,11 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
       break;
 
     case DB_TYPE_TIMELTZ:
+      if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	{
+	  err = ER_FAILED;
+	  break;
+	}
       switch (original_type)
 	{
 	case DB_TYPE_CHAR:
@@ -9266,6 +9277,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
       break;
 
     case DB_TYPE_TIMELTZ:
+      if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	{
+	  status = DOMAIN_ERROR;
+	  break;
+	}
       switch (original_type)
 	{
 	case DB_TYPE_TIME:
@@ -9412,6 +9428,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 	case DB_TYPE_UTIME:
 	case DB_TYPE_TIMESTAMPLTZ:
+	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
 	  db_timestamp_decode_utc (DB_GET_UTIME (src), NULL, &v_time);
 	  if (tz_create_session_tzid_for_time (&v_time, true,
 					       &v_timetz.tz_id) != NO_ERROR)
@@ -9424,18 +9445,31 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 	case DB_TYPE_TIMESTAMPTZ:
 	  v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
+	  if (tz_check_geographic_tz (&v_timestamptz.tz_id) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
 	  db_timestamp_decode_utc (&v_timestamptz.timestamp, NULL, &v_time);
 	  v_timetz.time = v_time;
 	  v_timetz.tz_id = v_timestamptz.tz_id;
+
 	  db_make_timetz (target, &v_timetz);
 	  break;
 	case DB_TYPE_DATETIME:
+	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+
 	  if (tz_create_datetimetz_from_ses (DB_GET_DATETIME (src),
 					     &v_datetimetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
 	    }
+
 	  db_datetime_decode (&v_datetimetz.datetime, &month,
 			      &day, &year, &hour, &minute, &second,
 			      &millisecond);
@@ -9445,6 +9479,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  db_make_timetz (target, &v_timetz);
 	  break;
 	case DB_TYPE_DATETIMELTZ:
+	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+
 	  db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month,
 			      &day, &year, &hour, &minute, &second,
 			      &millisecond);
@@ -9460,6 +9500,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 	case DB_TYPE_DATETIMETZ:
 	  v_datetimetz = *DB_GET_DATETIMETZ (src);
+	  if (tz_check_geographic_tz (&v_datetimetz.tz_id) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
 	  db_datetime_decode (&v_datetimetz.datetime, &month,
 			      &day, &year, &hour, &minute, &second,
 			      &millisecond);

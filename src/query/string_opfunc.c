@@ -14008,8 +14008,8 @@ db_to_time (const DB_VALUE * src_str,
 	  bool has_zone;
 
 	  if (NO_ERROR == db_string_to_timetz_ex ((const char *) cs,
-						  last_src - cs, &timetz_tmp,
-						  &has_zone))
+						  last_src - cs, false,
+						  &timetz_tmp, &has_zone))
 	    {
 	      DB_MAKE_TIMETZ (result_time, &timetz_tmp);
 	      goto exit;
@@ -16453,7 +16453,7 @@ db_to_datetime (const DB_VALUE * src_str,
 	    tz_create_datetimetz_from_zoneid_and_tzd (&tmp_datetime,
 						      &session_tz_region,
 						      zone_id, dst, len_tzd,
-						      &db_datetimetz);
+						      false, &db_datetimetz);
 
 	  if (error_status != NO_ERROR)
 	    {
@@ -24471,6 +24471,7 @@ write_results:
 							  &session_tz_region,
 							  zone_id, dst,
 							  len_tzd,
+							  false,
 							  &db_datetimetz);
 	    }
 	  else
@@ -29147,14 +29148,14 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand,
 
 /*
  * db_new_time () - converts the time_val from the source_timezone into
- * the destination timezone
+ *		    the destination timezone
+ *
  * return error code or NO_ERROR
  * time_val (in) : time value (datetime or time)
  * tz_source (in) : source timezone string 
  * tz_dest (in)	: dest timezone string
  * result_time (out) : result
  */
-
 int
 db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest,
 	     DB_VALUE * result_time)

@@ -1241,7 +1241,8 @@ $ LOADDB
 1172 Invalid percentile value %1$f, should be between 0 and 1.
 1173 Percentile value changed in the same group.
 1174 Inheriting from a partitioned table is not allowed.
-1175 Ultimo errore
+1175 Geographic timezone is not allowed without date context.
+1176 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

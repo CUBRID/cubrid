@@ -244,6 +244,7 @@ extern "C"
 						       const int zone_id,
 						       const char *tzd,
 						       const int tzd_len,
+						       bool is_time_tz,
 						       DB_DATETIMETZ * dt_tz);
   extern int tz_create_timetz_from_zoneid_and_tzd (const DB_TIME * time,
 						   TZ_REGION *
@@ -279,6 +280,8 @@ extern "C"
 
   extern int tz_load_with_library_path (TZ_DATA * tzd,
 					const char *timezone_library_path);
+  extern int tz_check_geographic_tz (const TZ_ID * tz_id);
+  extern int tz_check_session_has_geographic_tz (void);
 
 #ifdef __cplusplus
 }

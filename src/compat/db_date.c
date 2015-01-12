@@ -3855,7 +3855,7 @@ db_string_to_time (const char *str, DB_TIME * time)
  */
 int
 db_string_to_timetz_ex (const char *str, int str_len,
-			DB_TIMETZ * time_tz, bool * has_zone)
+			bool is_timeltz, DB_TIMETZ * time_tz, bool * has_zone)
 {
   DB_TIME time;
   const char *p, *p_end, *str_zone;
@@ -3867,6 +3867,15 @@ db_string_to_timetz_ex (const char *str, int str_len,
   str_zone = NULL;
 
   tz_get_session_tz_region (&session_tz_region);
+
+  if (is_timeltz == true)
+    {
+      if (session_tz_region.type != TZ_REGION_OFFSET)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_GEOGRAPHIC_ZONE, 0);
+	  return ER_TZ_GEOGRAPHIC_ZONE;
+	}
+    }
 
   p = parse_time (str, str_len, &time);
   if (p == NULL)
@@ -3918,7 +3927,7 @@ db_string_to_timetz_ex (const char *str, int str_len,
 int
 db_string_to_timetz (const char *str, DB_TIMETZ * time_tz, bool * has_zone)
 {
-  return db_string_to_timetz_ex (str, strlen (str), time_tz, has_zone);
+  return db_string_to_timetz_ex (str, strlen (str), false, time_tz, has_zone);
 }
 
 /*
@@ -3946,7 +3955,8 @@ db_string_to_timeltz_ex (const char *str, int str_len, DB_TIME * time)
   DB_TIMETZ time_tz;
   bool dummy_has_zone;
 
-  error = db_string_to_timetz_ex (str, str_len, &time_tz, &dummy_has_zone);
+  error =
+    db_string_to_timetz_ex (str, str_len, true, &time_tz, &dummy_has_zone);
   if (error != NO_ERROR)
     {
       return error;
@@ -4176,7 +4186,7 @@ db_date_to_string (char *buf, int bufsize, DB_DATE * date)
 {
   int mon, day, year;
   const int len_out = 10;
-  int cnt = 0, i;
+  int cnt = 0;
 
   if (buf == NULL || bufsize == 0)
     {

@@ -153,6 +153,7 @@ extern int db_string_to_time_ex (const char *buf, int buf_len,
 extern int db_string_to_timetz (const char *buf, DB_TIMETZ * time_tz,
 				bool * has_zone);
 extern int db_string_to_timetz_ex (const char *buf, int buf_len,
+				   bool is_timeltz,
 				   DB_TIMETZ * time_tz, bool * has_zone);
 extern int db_string_to_timeltz (const char *buf, DB_TIME * time);
 extern int db_string_to_timeltz_ex (const char *buf, int buf_len,
