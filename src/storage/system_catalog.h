@@ -99,10 +99,11 @@ struct disk_attribute
 typedef struct cls_info CLS_INFO;
 struct cls_info
 {
-  HFID hfid;			/* heap file identifier for the class */
-  int tot_pages;		/* total number of pages in the heap file */
-  int tot_objects;		/* total number of objects for this class */
-  unsigned int time_stamp;	/* timestamp of last update */
+  HFID ci_hfid;			/* heap file identifier for the class */
+  int ci_tot_pages;		/* total number of pages in the heap file */
+  int ci_tot_objects;		/* total number of objects for this class */
+  unsigned int ci_time_stamp;	/* timestamp of last update */
+  OID ci_rep_dir;		/* representation directory record OID */
 };				/* class specific information */
 
 extern CTID catalog_Id;		/* global catalog identifier */
@@ -124,7 +125,7 @@ extern int catalog_add_representation (THREAD_ENTRY * thread_p,
 				       DISK_REPR * Disk_Repr,
 				       OID * rep_dir_p);
 extern int catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_oid_p,
-				   CLS_INFO * class_info_p, OID * rep_dir_p);
+				   CLS_INFO * class_info_p);
 extern CLS_INFO *catalog_update_class_info (THREAD_ENTRY * thread_p,
 					    OID * class_id,
 					    CLS_INFO * cls_info,
@@ -149,6 +150,15 @@ extern int catalog_update (THREAD_ENTRY * thread_p, RECDES * record,
 			   OID * classoid);
 extern int catalog_delete (THREAD_ENTRY * thread_p, OID * classoid);
 
+extern int catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
+				    DISK_REPR * rep, BTID * btid,
+				    const int key_pos, int *cardinality);
+extern int catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p,
+					    const char *class_name,
+					    const char *index_name,
+					    const int key_pos,
+					    int *cardinality);
+
 /* Checkdb consistency check routines */
 extern DISK_ISVALID catalog_check_consistency (THREAD_ENTRY * thread_p);
 
@@ -164,12 +174,4 @@ extern int catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p,
 						    LOG_RCV * recv);
-extern int catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
-				    DISK_REPR * rep, BTID * btid,
-				    const int key_pos, int *cardinality);
-extern int catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p,
-					    const char *class_name,
-					    const char *index_name,
-					    const int key_pos,
-					    int *cardinality);
 #endif /* _SYSTEM_CATALOG_H_ */

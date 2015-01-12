@@ -17970,10 +17970,10 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
       /* retrieve the class information */
       cls_info_p = catalog_get_class_info (thread_p, (OID *) oidp);
 
-      if (cls_info_p && !HFID_IS_NULL (&cls_info_p->hfid))
+      if (cls_info_p && !HFID_IS_NULL (&cls_info_p->ci_hfid))
 	{
-	  assert (!VFID_ISNULL (&cls_info_p->hfid.vfid));
-	  npages = file_get_numpages (thread_p, &cls_info_p->hfid.vfid);
+	  assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
+	  npages = file_get_numpages (thread_p, &cls_info_p->ci_hfid.vfid);
 
 	  if (npages <= DEFAULT_PLAN_RECOMP_THRESHOLD)
 	    {
@@ -17992,7 +17992,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	       * will be transmitted to the client
 	       * via stats_get_statistics ()
 	       */
-	      cls_info_p->time_stamp = stats_get_time_stamp ();
+	      cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
 	      if (catalog_update_class_info (thread_p, (OID *) oidp,
 					     cls_info_p, true) == NULL)

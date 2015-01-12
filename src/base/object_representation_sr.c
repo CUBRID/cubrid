@@ -132,7 +132,6 @@ orc_class_rep_dir (RECDES * record, OID * rep_dir_p)
 
   OR_GET_OID (ptr, rep_dir_p);
 }
-#endif
 
 /*
  * orc_class_hfid_from_record () - Extracts just the HFID from the disk
@@ -157,6 +156,7 @@ orc_class_hfid_from_record (RECDES * record, HFID * hfid)
   hfid->vfid.volid = OR_GET_INT (ptr + ORC_HFID_VOLID_OFFSET);
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
 }
+#endif
 
 /*
  * orc_class_is_system_class () - Get from record the class flag and check
@@ -539,31 +539,32 @@ orc_free_diskrep (DISK_REPR * rep)
 
 /*
  * orc_class_info_from_record () - Extract the information necessary to build
- *                                 a CLS_INFO
- *    structure for the catalog
+ *                                 a CLS_INFO structure for the catalog
  *   return: class info structure
  *   record(in): disk record with class
  */
 CLS_INFO *
 orc_class_info_from_record (RECDES * record)
 {
-  CLS_INFO *info;
+  CLS_INFO *class_info_p;
 
-  info = (CLS_INFO *) malloc (sizeof (CLS_INFO));
-  if (info == NULL)
+  class_info_p = (CLS_INFO *) malloc (sizeof (CLS_INFO));
+  if (class_info_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (CLS_INFO));
       return NULL;
     }
 
-  info->tot_pages = 0;
-  info->tot_objects = 0;
-  info->time_stamp = 0;
+  or_class_hfid (record, &(class_info_p->ci_hfid));
 
-  orc_class_hfid_from_record (record, &info->hfid);
+  class_info_p->ci_tot_pages = 0;
+  class_info_p->ci_tot_objects = 0;
+  class_info_p->ci_time_stamp = 0;
 
-  return (info);
+  or_class_rep_dir (record, &(class_info_p->ci_rep_dir));
+
+  return class_info_p;
 }
 
 /*

@@ -22153,7 +22153,7 @@ heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid,
       return ER_FAILED;
     }
 
-  orc_class_hfid_from_record (&recdes, hfid);
+  or_class_hfid (&recdes, hfid);
 
   error_code = heap_scancache_end (thread_p, &scan_cache);
   if (error_code != NO_ERROR)

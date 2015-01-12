@@ -216,8 +216,8 @@ extern void or_free_class (OR_CLASS * class_);
 /* OLD STYLE INTERFACE */
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void orc_class_rep_dir (RECDES * record, OID * rep_dir_p);
-#endif
 extern void orc_class_hfid_from_record (RECDES * record, HFID * hfid);
+#endif
 extern bool orc_class_is_system_class (RECDES * record);
 extern DISK_REPR *orc_diskrep_from_record (THREAD_ENTRY * thread_p,
 					   RECDES * record);

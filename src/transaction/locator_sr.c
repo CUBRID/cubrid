@@ -1535,6 +1535,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
 
 	      (void) locator_force_drop_class_name_entry (entry->e_name,
 							  entry, NULL);
+              entry = NULL; /* clear */
 	    }
 	}
       else
@@ -1581,6 +1582,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
 
 		  (void) locator_force_drop_class_name_entry (entry->e_name,
 							      entry, NULL);
+                  entry = NULL; /* clear */
 		}
 	    }
 	}			/* else */
@@ -4609,17 +4611,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	     but we rely on the schema manager to prevent inconsistency;
 	     see do_check_fk_constraints() for details */
 
-	  error_code = heap_scancache_quick_start (&scan_cache);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error3;
-	    }
-	  if (heap_get (thread_p, &fkref->self_oid, &recdes, &scan_cache,
-			PEEK, NULL_CHN) == S_SUCCESS)
-	    {
-	      orc_class_hfid_from_record (&recdes, &hfid);
-	    }
-	  error_code = heap_scancache_end (thread_p, &scan_cache);
+	  error_code =
+	    heap_get_hfid_from_class_oid (thread_p, &fkref->self_oid, &hfid);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error3;
@@ -5031,17 +5024,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	     but we rely on the schema manager to prevent inconsistency;
 	     see do_check_fk_constraints() for details */
 
-	  error_code = heap_scancache_quick_start (&scan_cache);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error3;
-	    }
-	  if (heap_get (thread_p, &fkref->self_oid, &recdes, &scan_cache,
-			PEEK, NULL_CHN) == S_SUCCESS)
-	    {
-	      orc_class_hfid_from_record (&recdes, &hfid);
-	    }
-	  error_code = heap_scancache_end (thread_p, &scan_cache);
+	  error_code =
+	    heap_get_hfid_from_class_oid (thread_p, &fkref->self_oid, &hfid);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error3;
@@ -11769,7 +11753,7 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 	  break;
 	}
 
-      orc_class_hfid_from_record (&peek, &hfid);
+      or_class_hfid (&peek, &hfid);
       if (HFID_IS_NULL (&hfid))
 	{
 	  continue;
@@ -12821,24 +12805,23 @@ locator_increase_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
 
   /* retrieve the class information */
   cls_infop = catalog_get_class_info (thread_p, cls_oid);
-
   if (cls_infop == NULL)
     {
       return;
     }
 
-  if (cls_infop->hfid.vfid.fileid < 0 || cls_infop->hfid.vfid.volid < 0)
+  if (cls_infop->ci_hfid.vfid.fileid < 0 || cls_infop->ci_hfid.vfid.volid < 0)
     {
       /* The class does not have a heap file (i.e. it has no instances);
          so no statistics can be obtained for this class; just set
          'tot_objects' field to 0. */
       /* Is it safe not to initialize the other fields of CLS_INFO? */
-      cls_infop->tot_objects = 0;
+      cls_infop->ci_tot_objects = 0;
     }
   else
     {
       /* increase the 'tot_objects' counter */
-      cls_infop->tot_objects++;
+      cls_infop->ci_tot_objects++;
     }
 
   /* update the class information to the catalog */
@@ -12865,25 +12848,24 @@ locator_decrease_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
 
   /* retrieve the class information */
   cls_infop = catalog_get_class_info (thread_p, cls_oid);
-
   if (cls_infop == NULL)
     {
       return;
     }
 
-  if (cls_infop->hfid.vfid.fileid < 0 || cls_infop->hfid.vfid.volid < 0)
+  if (cls_infop->ci_hfid.vfid.fileid < 0 || cls_infop->ci_hfid.vfid.volid < 0)
     {
       /* The class does not have a heap file (i.e. it has no instances);
          so no statistics can be obtained for this class; just set
          'tot_objects' field to 0. */
       /* Is it an error to delete an instance with no heap file? */
-      cls_infop->tot_objects = 0;
+      cls_infop->ci_tot_objects = 0;
     }
 
   /* decrease the 'tot_objects' counter */
-  if (cls_infop->tot_objects > 0)
+  if (cls_infop->ci_tot_objects > 0)
     {
-      cls_infop->tot_objects--;
+      cls_infop->ci_tot_objects--;
     }
 
   /* update the class information to the catalog */
@@ -13820,7 +13802,7 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
-  orc_class_hfid_from_record (classrec, &hfid);
+  or_class_hfid (classrec, &hfid);
   if (HFID_IS_NULL (&hfid))
     {
       return NO_ERROR;

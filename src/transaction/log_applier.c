@@ -3902,8 +3902,8 @@ la_make_room_for_mvcc_insid (RECDES * recdes)
     (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
 	    OR_MVCC_FLAG_MASK);
 
-  assert (mvcc_flag != 0 &&
-	  !(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID
+  assert (mvcc_flag != 0);
+  assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID
 			 | OR_MVCC_FLAG_VALID_LONG_CHN
 			 | OR_MVCC_FLAG_VALID_NEXT_VERSION)));
 

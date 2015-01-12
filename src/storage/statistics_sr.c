@@ -172,17 +172,17 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  class_id_p->volid, class_id_p->pageid, class_id_p->slotid);
 
   /* if class information was not obtained */
-  if (cls_info_p->hfid.vfid.fileid < 0 || cls_info_p->hfid.vfid.volid < 0)
+  if (cls_info_p->ci_hfid.vfid.fileid < 0
+      || cls_info_p->ci_hfid.vfid.volid < 0)
     {
       /* The class does not have a heap file (i.e. it has no instances);
          so no statistics can be obtained for this class;
          just set to 0 and return. */
 
-      cls_info_p->tot_pages = 0;
-      cls_info_p->tot_objects = 0;
+      cls_info_p->ci_tot_pages = 0;
+      cls_info_p->ci_tot_objects = 0;
 
-      error_code = catalog_add_class_info (thread_p, class_id_p,
-					   cls_info_p, NULL);
+      error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -232,18 +232,19 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   npages = estimated_nobjs = 0;
 
   /* do not use estimated npages, get correct info */
-  npages = file_get_numpages (thread_p, &(cls_info_p->hfid.vfid));
-  cls_info_p->tot_pages = MAX (npages, 0);
+  npages = file_get_numpages (thread_p, &(cls_info_p->ci_hfid.vfid));
+  cls_info_p->ci_tot_pages = MAX (npages, 0);
 
-  estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->hfid));
+  estimated_nobjs = heap_estimate_num_objects (thread_p,
+					       &(cls_info_p->ci_hfid));
   if (estimated_nobjs == -1)
     {
       /* cannot get estimates from the heap, use old info */
-      assert (cls_info_p->tot_objects >= 0);
+      assert (cls_info_p->ci_tot_objects >= 0);
     }
   else
     {
-      cls_info_p->tot_objects = estimated_nobjs;
+      cls_info_p->ci_tot_objects = estimated_nobjs;
     }
 
   /* update the index statistics for each attribute */
@@ -278,17 +279,18 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   /* replace the current disk representation structure/information in the
      catalog with the newly computed statistics */
+  assert (!OID_ISNULL (&(cls_info_p->ci_rep_dir)));
   error_code = catalog_add_representation (thread_p, class_id_p,
-					   repr_id, disk_repr_p, NULL);
+					   repr_id, disk_repr_p,
+					   &(cls_info_p->ci_rep_dir));
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  cls_info_p->time_stamp = stats_get_time_stamp ();
+  cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
-  error_code =
-    catalog_add_class_info (thread_p, class_id_p, cls_info_p, NULL);
+  error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -476,7 +478,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto exit_on_error;
     }
 
-  if (time_stamp > 0 && time_stamp >= cls_info_p->time_stamp)
+  if (time_stamp > 0 && time_stamp >= cls_info_p->ci_time_stamp)
     {
       *length_p = 0;
       goto exit_on_error;
@@ -548,23 +550,23 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
     }
   memset (start_p, 0, size);
 
-  OR_PUT_INT (buf_p, cls_info_p->time_stamp);
+  OR_PUT_INT (buf_p, cls_info_p->ci_time_stamp);
   buf_p += OR_INT_SIZE;
 
   npages = estimated_nobjs = max_unique_keys = -1;
 
-  assert (cls_info_p->tot_objects >= 0);
-  assert (cls_info_p->tot_pages >= 0);
+  assert (cls_info_p->ci_tot_objects >= 0);
+  assert (cls_info_p->ci_tot_pages >= 0);
 
-  if (HFID_IS_NULL (&cls_info_p->hfid))
+  if (HFID_IS_NULL (&cls_info_p->ci_hfid))
     {
       /* The class does not have a heap file (i.e. it has no instances);
        * so no statistics can be obtained for this class
        */
-      OR_PUT_INT (buf_p, cls_info_p->tot_objects);	/* #objects */
+      OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
       buf_p += OR_INT_SIZE;
 
-      OR_PUT_INT (buf_p, cls_info_p->tot_pages);	/* #pages */
+      OR_PUT_INT (buf_p, cls_info_p->ci_tot_pages);	/* #pages */
       buf_p += OR_INT_SIZE;
     }
   else
@@ -573,28 +575,28 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
        * are more accurate than the ones gathered at update statistics time
        */
       estimated_nobjs = heap_estimate_num_objects (thread_p,
-						   &(cls_info_p->hfid));
+						   &(cls_info_p->ci_hfid));
       if (estimated_nobjs < 0)
 	{
 	  /* cannot get estimates from the heap, use ones from the catalog */
-	  estimated_nobjs = cls_info_p->tot_objects;
+	  estimated_nobjs = cls_info_p->ci_tot_objects;
 	}
       else
 	{
 	  /* heuristic is that big nobjs is better than small */
-	  estimated_nobjs = MAX (estimated_nobjs, cls_info_p->tot_objects);
+	  estimated_nobjs = MAX (estimated_nobjs, cls_info_p->ci_tot_objects);
 	}
 
       OR_PUT_INT (buf_p, estimated_nobjs);	/* #objects */
       buf_p += OR_INT_SIZE;
 
       /* do not use estimated npages, get correct info */
-      assert (!VFID_ISNULL (&cls_info_p->hfid.vfid));
-      npages = file_get_numpages (thread_p, &cls_info_p->hfid.vfid);
+      assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
+      npages = file_get_numpages (thread_p, &cls_info_p->ci_hfid.vfid);
       if (npages < 0)
 	{
 	  /* cannot get #pages from the heap, use ones from the catalog */
-	  npages = cls_info_p->tot_pages;
+	  npages = cls_info_p->ci_tot_pages;
 	}
       assert (npages >= 0);
 
@@ -685,11 +687,11 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	       * the estimate when the statistics were gathered, assume that
 	       * the difference is in distinct keys.
 	       */
-	      if (cls_info_p->tot_objects > 0
-		  && estimated_nobjs > cls_info_p->tot_objects)
+	      if (cls_info_p->ci_tot_objects > 0
+		  && estimated_nobjs > cls_info_p->ci_tot_objects)
 		{
 		  btree_stats_p->keys +=
-		    (estimated_nobjs - cls_info_p->tot_objects);
+		    (estimated_nobjs - cls_info_p->ci_tot_objects);
 		}
 	    }
 
@@ -1263,8 +1265,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
       goto cleanup;
     }
 
-  cls_info_p->tot_pages = 0;
-  cls_info_p->tot_objects = 0;
+  cls_info_p->ci_tot_pages = 0;
+  cls_info_p->ci_tot_objects = 0;
 
   disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id);
   if (disk_repr_p == NULL)
@@ -1273,6 +1275,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
       error = er_errid ();
       goto cleanup;
     }
+
   /* partitions_count number of btree_stats we will need to use */
   n_btrees = 0;
   for (i = 0; i < disk_repr_p->n_fixed + disk_repr_p->n_variable; i++)
@@ -1369,6 +1372,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  btree_iter++;
 	}
     }
+
   /* Compute class statistics:
    * For each btree compute the mean, standard deviation and coefficient of
    * variation. The global statistics for each btree will be the
@@ -1414,8 +1418,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  error = er_errid ();
 	  goto cleanup;
 	}
-      cls_info_p->tot_pages += subcls_info->tot_pages;
-      cls_info_p->tot_objects += subcls_info->tot_objects;
+      cls_info_p->ci_tot_pages += subcls_info->ci_tot_pages;
+      cls_info_p->ci_tot_objects += subcls_info->ci_tot_objects;
 
       /* get disk repr for subclass */
       error = catalog_get_last_representation_id (thread_p, &partitions[i],
@@ -1716,16 +1720,18 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   /* replace the current disk representation structure/information in the
      catalog with the newly computed statistics */
-  error = catalog_add_representation (thread_p, class_id_p, repr_id,
-				      disk_repr_p, NULL);
+  assert (!OID_ISNULL (&(cls_info_p->ci_rep_dir)));
+  error = catalog_add_representation (thread_p, class_id_p,
+				      repr_id, disk_repr_p,
+				      &(cls_info_p->ci_rep_dir));
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  cls_info_p->time_stamp = stats_get_time_stamp ();
+  cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
-  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p, NULL);
+  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
 
 cleanup:
   if (cls_rep != NULL)

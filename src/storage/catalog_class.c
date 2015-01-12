@@ -3672,7 +3672,7 @@ catcls_insert_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
       goto error;
     }
 
-  hfid_p = &cls_info_p->hfid;
+  hfid_p = &cls_info_p->ci_hfid;
   /* need to update assigned oid of each instance */
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p,
 				   MULTI_ROW_UPDATE, NULL) != NO_ERROR)
@@ -3767,7 +3767,7 @@ catcls_delete_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
       goto error;
     }
 
-  hfid_p = &cls_info_p->hfid;
+  hfid_p = &cls_info_p->ci_hfid;
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p,
 				   MULTI_ROW_DELETE, NULL) != NO_ERROR)
     {
@@ -3876,7 +3876,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
       goto error;
     }
 
-  hfid_p = &cls_info_p->hfid;
+  hfid_p = &cls_info_p->ci_hfid;
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p,
 				   MULTI_ROW_UPDATE, NULL) != NO_ERROR)
     {
@@ -4471,7 +4471,7 @@ catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record_p)
       goto error;
     }
 
-  hfid_p = &cls_info_p->hfid;
+  hfid_p = &cls_info_p->ci_hfid;
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p,
 				   SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
     {
@@ -4547,7 +4547,7 @@ catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
       goto error;
     }
 
-  hfid_p = &cls_info_p->hfid;
+  hfid_p = &cls_info_p->ci_hfid;
   /* in MVCC, do not physically remove the row */
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p,
 				   ct_class_oid_p,
@@ -4749,7 +4749,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
       goto error;
     }
 
-  hfid_p = &cls_info_p->hfid;
+  hfid_p = &cls_info_p->ci_hfid;
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p,
 				   catalog_class_oid_p,
 				   SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
@@ -5191,7 +5191,7 @@ catcls_mvcc_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
       goto error;
     }
 
-  hfid_p = &cls_info_p->hfid;
+  hfid_p = &cls_info_p->ci_hfid;
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p,
 				   MULTI_ROW_UPDATE, NULL) != NO_ERROR)
     {

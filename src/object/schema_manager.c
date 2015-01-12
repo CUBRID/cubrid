@@ -9376,7 +9376,9 @@ flatten_template (SM_TEMPLATE * def, MOP deleted_class,
 
   /* copy the super class list filtering out the deleted class if any */
   if (deleted_class != NULL)
-    ml_remove (&def->inheritance, deleted_class);
+    {
+      ml_remove (&def->inheritance, deleted_class);
+    }
   if (def->inheritance != NULL)
     {
       flat->inheritance = ml_copy (def->inheritance);
