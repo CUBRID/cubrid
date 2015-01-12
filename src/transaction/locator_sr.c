@@ -777,7 +777,6 @@ start:
    */
   if (reserve == LC_CLASSNAME_RESERVED && entry != NULL)
     {
-      assert (locator_is_exist_class_name_entry (thread_p, entry) == false);
       assert (entry->e_tran_index == tran_index);
 
       if (lock_object (thread_p, class_oid, oid_Root_class_oid,
@@ -12330,15 +12329,17 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 	      assert (find == LC_CLASSNAME_EXIST);
 	    }
 
-	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-
 	  if (locator_is_exist_class_name_entry (thread_p, entry))
 	    {
+	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
 	      assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
 	    }
 	  else if (entry != NULL)
 	    {
 	      assert (entry->e_current.action != LC_CLASSNAME_EXIST);
+
+	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
 	      /*
 	       * We can only proceed if the entry belongs to the current
@@ -12400,6 +12401,8 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 	    }
 	  else
 	    {
+	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
 	      find = LC_CLASSNAME_DELETED;
 	    }
 	}			/* while (retry) */
@@ -13976,6 +13979,13 @@ static bool
 locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p,
 				   LOCATOR_CLASSNAME_ENTRY * entry)
 {
+#if !defined(NDEBUG)
+  int check_own;
+
+  check_own = csect_check_own (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  assert (check_own >= 1);
+#endif
+
   if (entry != NULL && entry->e_current.action == LC_CLASSNAME_EXIST)
     {
       assert (entry->e_name != NULL);
