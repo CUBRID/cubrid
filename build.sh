@@ -212,6 +212,18 @@ function build_autogen ()
     (cd $source_dir && sh ./autogen.sh)
     [ $? -eq 0 ] && print_result "OK" || print_fatal "Result failed"
   fi
+  
+  # run autogen of cubrid manager if needed
+  print_check "Checking manager server directory"
+  if [ -d "$source_dir/cubridmanager" -a -d "$source_dir/cubridmanager/server" ]; then 
+    print_result "OK"
+    
+    print_check "Running autogen.sh of cubrid manager" 
+    (cd $source_dir/cubridmanager/server && sh ./autogen.sh) 
+    [ $? -eq 0 ] && print_result "OK" || print_fatal "Result failed"
+  else
+    print_info "Manager server source path is not exist. It will not be built"
+  fi
 }
 
 
