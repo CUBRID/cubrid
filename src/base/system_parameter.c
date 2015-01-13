@@ -599,6 +599,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PB_NEIGHBOR_FLUSH_NONDIRTY "data_buffer_neighbor_flush_nondirty"
 #define PRM_NAME_PB_NEIGHBOR_FLUSH_PAGES "data_buffer_neighbor_flush_pages"
 
+#define PRM_VALUE_DEFAULT "DEFAULT"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -5148,6 +5150,7 @@ static void sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
 static SESSION_PARAM *sysprm_alloc_session_parameters (void);
 static SYSPRM_ERR sysprm_generate_new_value (SYSPRM_PARAM * prm,
 					     const char *value, bool check,
+					     bool set_default,
 					     SYSPRM_VALUE * new_value);
 static int sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value,
 			     bool set_flag, bool duplicate);
@@ -6440,6 +6443,7 @@ sysprm_validate_change_parameters (const char *data, bool check,
     {
       /* parse data */
       SYSPRM_ASSIGN_VALUE *assign = NULL;
+      bool set_default = false;
 
       /* get parameter name and value */
       err = prm_get_next_param_value (&p, &name, &value);
@@ -6467,7 +6471,13 @@ sysprm_validate_change_parameters (const char *data, bool check,
 	  break;
 	}
 
-      if (check)
+      if (strlen (value) == 7
+	  && intl_identifier_casecmp (value, PRM_VALUE_DEFAULT) == 0)
+	{
+	  set_default = true;
+	}
+
+      if (check && !set_default)
 	{
 	  if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0
 	      || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
@@ -6519,7 +6529,9 @@ sysprm_validate_change_parameters (const char *data, bool check,
 	  err = PRM_ERR_NO_MEM_FOR_PRM;
 	  break;
 	}
-      err = sysprm_generate_new_value (prm, value, check, &assign->value);
+      err =
+	sysprm_generate_new_value (prm, value, check, set_default,
+				   &assign->value);
       if (err != PRM_ERR_NO_ERROR)
 	{
 	  if (err == PRM_ERR_NOT_FOR_CLIENT
@@ -7926,11 +7938,12 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
  * value (in)	   : parameter value in char * format
  * check (in)	   : check if value can be changed. set to false if value
  *		     should be forced
+ * set_default(in) : whether set this sysprm to default value
  * new_value (out) : SYSPRM_VALUE converted from string
  */
 static SYSPRM_ERR
 sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
-			   SYSPRM_VALUE * new_value)
+			   bool set_default, SYSPRM_VALUE * new_value)
 {
   char *end = NULL;
   int error = NO_ERROR;
@@ -8006,6 +8019,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
       {
 	/* convert string to int */
 	int val;
+
+	if (set_default)
+	  {
+	    new_value->i = PRM_GET_INT (prm->default_value);
+	    break;
+	  }
 
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
@@ -8102,6 +8121,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	UINT64 val;
 	char *end_p;
 
+	if (set_default)
+	  {
+	    new_value->bi = PRM_GET_BIGINT (prm->default_value);
+	    break;
+	  }
+
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    if (util_size_string_to_byte (&val, value) != NO_ERROR)
@@ -8140,6 +8165,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
       {
 	/* convert string to float */
 	float val;
+
+	if (set_default)
+	  {
+	    new_value->f = PRM_GET_FLOAT (prm->default_value);
+	    break;
+	  }
 
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
@@ -8201,6 +8232,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
     case PRM_BOOLEAN:
       {
+	if (set_default)
+	  {
+	    new_value->b = PRM_GET_BOOL (prm->default_value);
+	    break;
+	  }
+
 	/* convert string to boolean */
 	const KEYVAL *keyvalp = NULL;
 
@@ -8218,6 +8255,46 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
       {
 	/* duplicate string */
 	char *val = NULL;
+
+	if (set_default)
+	  {
+	    val = PRM_GET_STRING (prm->default_value);
+	    if (val == NULL)
+	      {
+		switch (sysprm_get_id (prm))
+		  {
+		  case PRM_ID_INTL_COLLATION:
+		    val =
+		      lang_get_collation_name (LANG_GET_BINARY_COLLATION
+					       (LANG_SYS_CODESET));
+		    break;
+		  case PRM_ID_INTL_DATE_LANG:
+		  case PRM_ID_INTL_NUMBER_LANG:
+		    val = lang_get_Lang_name ();
+		    break;
+		  case PRM_ID_TIMEZONE:
+		    val = prm_get_string_value (PRM_ID_SERVER_TIMEZONE);
+		    break;
+		  }
+	      }
+
+	    if (val == NULL)
+	      {
+		new_value->str = NULL;
+	      }
+	    else
+	      {
+		new_value->str = strdup (val);
+		if (new_value->str == NULL)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			    (size_t) (strlen (val)));
+		    return PRM_ERR_NO_MEM_FOR_PRM;
+		  }
+	      }
+	    break;
+	  }
 
 	/* check if the value is represented as a null keyword */
 	if (prm_keyword (-1, value, null_words, DIM (null_words)) != NULL)
@@ -8243,6 +8320,32 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
       {
 	/* convert string into an array of integers */
 	int *val = NULL;
+
+	if (set_default && sysprm_get_id (prm) !=
+	    PRM_ID_CALL_STACK_DUMP_ACTIVATION)
+	  {
+	    val = PRM_GET_INTEGER_LIST (prm->default_value);
+	    if (val == NULL)
+	      {
+		new_value->integer_list = NULL;
+	      }
+	    else
+	      {
+		size_t size = (size_t) ((val[0] + 1) * sizeof (int));
+		new_value->integer_list = (int *) malloc (size);
+
+		if (new_value->integer_list == NULL)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		    return PRM_ERR_NO_MEM_FOR_PRM;
+		  }
+
+		memcpy (new_value->integer_list, val, size);
+	      }
+
+	    break;
+	  }
 
 	/* check if the value is represented as a null keyword */
 	if (prm_keyword (-1, value, null_words, DIM (null_words)) != NULL)
@@ -8323,6 +8426,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	/* check if string can be identified as a keyword */
 	int val;
 	const KEYVAL *keyvalp = NULL;
+
+	if (set_default)
+	  {
+	    new_value->i = PRM_GET_INT (prm->default_value);
+	    break;
+	  }
 
 	if (intl_mbs_casecmp (prm->name, PRM_NAME_ER_LOG_LEVEL) == 0)
 	  {
@@ -8431,7 +8540,7 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
   SYSPRM_ERR error = PRM_ERR_NO_ERROR;
   SYSPRM_VALUE new_value;
 
-  error = sysprm_generate_new_value (prm, value, false, &new_value);
+  error = sysprm_generate_new_value (prm, value, false, false, &new_value);
   if (error != PRM_ERR_NO_ERROR)
     {
       return error;
