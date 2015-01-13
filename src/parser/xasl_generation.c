@@ -20998,6 +20998,20 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  select_node->info.name.spec_id = node->info.spec.id;
 			  select_node->type_enum =
 			    pt_db_to_type_enum (attr->type->id);
+
+			  if (attr->header.name_space == ID_SHARED_ATTRIBUTE)
+			    {
+			      select_node->info.name.meta_class = PT_SHARED;
+			    }
+			  else if (attr->header.name_space == ID_ATTRIBUTE)
+			    {
+			      select_node->info.name.meta_class = PT_NORMAL;
+			    }
+			  else
+			    {
+			      assert (0);
+			    }
+
 			  select_list =
 			    parser_append_node (select_node, select_list);
 			}
