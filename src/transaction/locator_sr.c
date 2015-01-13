@@ -1535,7 +1535,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
 
 	      (void) locator_force_drop_class_name_entry (entry->e_name,
 							  entry, NULL);
-              entry = NULL; /* clear */
+	      entry = NULL;	/* clear */
 	    }
 	}
       else
@@ -1582,7 +1582,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p,
 
 		  (void) locator_force_drop_class_name_entry (entry->e_name,
 							      entry, NULL);
-                  entry = NULL; /* clear */
+		  entry = NULL;	/* clear */
 		}
 	    }
 	}			/* else */
@@ -12244,6 +12244,9 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
   int retry;
   int i, j;
   int n;
+#if !defined(NDEBUG)
+  int check_own;
+#endif
 
   *fetch_area = NULL;
 
@@ -12311,84 +12314,96 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 	    {
 	      COPY_OID (&(*hlock)->classes[n].oid, &entry->e_current.oid);
 	      assert (find == LC_CLASSNAME_EXIST);
-	    }
 
-	  if (locator_is_exist_class_name_entry (thread_p, entry))
-	    {
-	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-
-	      assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
-	    }
-	  else if (entry != NULL)
-	    {
-	      assert (entry->e_current.action != LC_CLASSNAME_EXIST);
-
-	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-
-	      /*
-	       * We can only proceed if the entry belongs to the current
-	       * transaction, otherwise, we must lock the class associated
-	       * with the classname and retry the operation once the lock
-	       * is granted.
-	       */
-	      assert (find == LC_CLASSNAME_EXIST);
-
-	      if (entry->e_tran_index == tran_index)
+	      if (locator_is_exist_class_name_entry (thread_p, entry))
 		{
-		  if (entry->e_current.action == LC_CLASSNAME_DELETED
-		      || entry->e_current.action ==
-		      LC_CLASSNAME_DELETED_RENAME)
-		    {
-		      find = LC_CLASSNAME_DELETED;
-		    }
-		  else
-		    {
-		      assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
-		    }
+		  assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
 		}
 	      else
 		{
-		  /*
-		   * Do not know the fate of this entry until the transaction is
-		   * committed or aborted. Get the lock and retry later on.
-		   */
-		  if ((*hlock)->classes[n].lock != NULL_LOCK)
-		    {
-		      tmp_lock = (*hlock)->classes[n].lock;
-		    }
-		  else
-		    {
-		      tmp_lock = IS_LOCK;
-		    }
+		  assert (entry->e_current.action != LC_CLASSNAME_EXIST);
 
-		  if (lock_object (thread_p, &(*hlock)->classes[n].oid,
-				   oid_Root_class_oid, tmp_lock,
-				   LK_UNCOND_LOCK) != LK_GRANTED)
+		  /*
+		   * We can only proceed if the entry belongs to the current
+		   * transaction, otherwise, we must lock the class associated
+		   * with the classname and retry the operation once the lock
+		   * is granted.
+		   */
+		  assert (find == LC_CLASSNAME_EXIST);
+
+		  if (entry->e_tran_index == tran_index)
 		    {
-		      /*
-		       * Unable to acquired the lock
-		       */
-		      find = LC_CLASSNAME_ERROR;
+		      if (entry->e_current.action == LC_CLASSNAME_DELETED
+			  || entry->e_current.action ==
+			  LC_CLASSNAME_DELETED_RENAME)
+			{
+			  find = LC_CLASSNAME_DELETED;
+			}
+		      else
+			{
+			  assert (find == LC_CLASSNAME_EXIST);	/* OK, go ahead */
+			}
 		    }
 		  else
 		    {
+		      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
 		      /*
-		       * Try again
-		       * Remove the lock.. since the above was a dirty read
+		       * Do not know the fate of this entry until the transaction is
+		       * committed or aborted. Get the lock and retry later on.
 		       */
-		      lock_unlock_object (thread_p, &(*hlock)->classes[n].oid,
-					  oid_Root_class_oid, tmp_lock, true);
-		      retry = 1;
+		      if ((*hlock)->classes[n].lock != NULL_LOCK)
+			{
+			  tmp_lock = (*hlock)->classes[n].lock;
+			}
+		      else
+			{
+			  tmp_lock = IS_LOCK;
+			}
+
+		      if (lock_object (thread_p, &(*hlock)->classes[n].oid,
+				       oid_Root_class_oid, tmp_lock,
+				       LK_UNCOND_LOCK) != LK_GRANTED)
+			{
+			  /*
+			   * Unable to acquired the lock; exit retry-loop
+			   */
+			  allfind = find = LC_CLASSNAME_ERROR;
+			  assert (allfind == LC_CLASSNAME_ERROR);
+			}
+		      else
+			{
+			  /*
+			   * Try again
+			   * Remove the lock.. since the above was a dirty read
+			   */
+			  lock_unlock_object (thread_p,
+					      &(*hlock)->classes[n].oid,
+					      oid_Root_class_oid, tmp_lock,
+					      true);
+			  retry = 1;
+			}
+
+		      /* already exit cset */
 		      continue;
 		    }
 		}
 	    }
 	  else
 	    {
-	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	      assert (entry == NULL);
 
 	      find = LC_CLASSNAME_DELETED;
 	    }
+
+#if !defined(NDEBUG)
+	  check_own =
+	    csect_check_own (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	  assert (check_own >= 1);
+#endif
+
+	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
 	}			/* while (retry) */
 
       if (find == LC_CLASSNAME_EXIST)
@@ -12490,8 +12505,9 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
       *hlock = NULL;
     }
 
-  if (logtb_mvcc_prepare_count_optim_classes
-      (thread_p, many_classnames, many_flags, num_classes) != NO_ERROR)
+  if (logtb_mvcc_prepare_count_optim_classes (thread_p, many_classnames,
+					      many_flags,
+					      num_classes) != NO_ERROR)
     {
       allfind = LC_CLASSNAME_ERROR;
     }
