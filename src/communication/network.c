@@ -246,10 +246,28 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->pb_page_allocate_time_ratio));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_page_promote_success));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_page_promote_failed));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pb_page_promote_total_time_10usec));
+  ptr += OR_INT64_SIZE;
 
   for (i = 0; i < PERF_PAGE_FIX_COUNTERS; i++)
     {
       OR_PUT_INT64 (ptr, &(stats->pbx_fix_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_PROMOTE_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->pbx_promote_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_PROMOTE_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->pbx_promote_time_counters[i]));
       ptr += OR_INT64_SIZE;
     }
 
@@ -495,10 +513,28 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->pb_page_allocate_time_ratio));
   ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_page_promote_success));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_page_promote_failed));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pb_page_promote_total_time_10usec));
+  ptr += OR_INT64_SIZE;
 
   for (i = 0; i < PERF_PAGE_FIX_COUNTERS; i++)
     {
       OR_GET_INT64 (ptr, &(stats->pbx_fix_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_PROMOTE_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->pbx_promote_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_PAGE_PROMOTE_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->pbx_promote_time_counters[i]));
       ptr += OR_INT64_SIZE;
     }
 

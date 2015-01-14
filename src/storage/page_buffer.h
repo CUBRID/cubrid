@@ -118,6 +118,12 @@ typedef enum
 
 typedef enum
 {
+  PGBUF_PROMOTE_SINGLE_READER,
+  PGBUF_PROMOTE_SHARED_READER
+} PGBUF_PROMOTE_CONDITION;
+
+typedef enum
+{
   PGBUF_DEBUG_NO_PAGE_VALIDATION,
   PGBUF_DEBUG_PAGE_VALIDATION_FETCH,
   PGBUF_DEBUG_PAGE_VALIDATION_FREE,
@@ -149,6 +155,15 @@ extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
 				 PGBUF_LATCH_MODE requestmode,
 				 PGBUF_LATCH_CONDITION condition,
 				 const char *caller_file, int caller_line);
+
+#define pgbuf_promote_read_latch(thread_p, pgptr, condition) \
+	pgbuf_promote_read_latch_debug(thread_p, pgptr, condition, \
+				       __FILE__, __LINE__)
+extern int pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p,
+					   PAGE_PTR pgptr,
+					   PGBUF_PROMOTE_CONDITION condition,
+					   const char *caller_file,
+					   int caller_line);
 
 #define pgbuf_fix_without_validation(thread_p, vpid, fetch_mode, \
 				     requestmode, condition) \
@@ -200,6 +215,14 @@ extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
 				   PAGE_FETCH_MODE fetch_mode,
 				   PGBUF_LATCH_MODE requestmode,
 				   PGBUF_LATCH_CONDITION condition);
+
+#define pgbuf_promote_read_latch(thread_p, pgptr, condition) \
+  pgbuf_promote_read_latch_release(thread_p, pgptr, condition)
+extern int pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p,
+					     PAGE_PTR pgptr,
+					     PGBUF_PROMOTE_CONDITION
+					     condition);
+
 extern void pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);

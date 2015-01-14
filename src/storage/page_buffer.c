@@ -658,7 +658,8 @@ static int pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p,
 					 int caller_line);
 static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 			    int request_mode, int request_fcnt,
-			    const char *caller_file, int caller_line);
+			    bool as_promote, const char *caller_file,
+			    int caller_line);
 #else /* NDEBUG */
 static int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p,
 				     PGBUF_BCB * bufptr,
@@ -670,7 +671,8 @@ static int pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p,
 					 PGBUF_BCB * bufptr,
 					 int holder_status);
 static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-			    int request_mode, int request_fcnt);
+			    int request_mode, int request_fcnt,
+			    bool as_promote);
 #endif /* NDEBUG */
 static PGBUF_BCB *pgbuf_search_hash_chain (PGBUF_BUFFER_HASH *
 					   hash_anchor, const VPID * vpid);
@@ -1744,6 +1746,252 @@ try_again:
 #endif /* PAGE_STATISTICS */
 
   return pgptr;
+}
+
+/*
+ * pgbuf_promote_read_latch () - Promote read latch to write latch
+ *   return: same page pointer as pgptr, or NULL on failure
+ *   pgptr(in): error code or NO_ERROR
+ */
+#if !defined (NDEBUG)
+int
+pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+				PGBUF_PROMOTE_CONDITION condition,
+				const char *caller_file, int caller_line)
+#else /* NDEBUG */
+int
+pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+				  PGBUF_PROMOTE_CONDITION condition)
+#endif				/* NDEBUG */
+{
+  PGBUF_BCB *bufptr;
+  PGBUF_HOLDER *holder;
+  VPID vpid;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 promote_wait_time;
+  bool is_perf_tracking;
+  int stat_page_type, stat_cond_type, stat_holder_latch, stat_success;
+#if defined(SERVER_MODE)
+  int rv = NO_ERROR;
+#endif /* SERVER_MODE */
+
+#if !defined (NDEBUG)
+  assert (pgptr != NULL);
+
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_FREE))
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return;
+	}
+    }
+#else /* !NDEBUG */
+  if (pgptr == NULL)
+    {
+      return;
+    }
+#endif /* !NDEBUG */
+
+  /* fetch BCB from page pointer */
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (!VPID_ISNULL (&bufptr->vpid));
+
+  /* check latch mode - no need for BCB mutex, page is already latched */
+  if (bufptr->latch_mode == PGBUF_LATCH_WRITE)
+    {
+      /* this is a redundant call */
+      return NO_ERROR;
+    }
+  else if (bufptr->latch_mode != PGBUF_LATCH_READ)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  /* check condition */
+  if (condition != PGBUF_PROMOTE_SINGLE_READER
+      && condition != PGBUF_PROMOTE_SHARED_READER)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+#if defined(SERVER_MODE)	/* SERVER_MODE */
+  /* performance tracking - get start counter */
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+
+  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+
+  /* save info for performance tracking */
+  vpid = bufptr->vpid;
+  if (is_perf_tracking)
+    {
+      FILEIO_PAGE *io_pgptr;
+
+      /* page type */
+      CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
+      stat_page_type = io_pgptr->prv.ptype;
+
+      /* promote condition */
+      if (condition == PGBUF_PROMOTE_SINGLE_READER)
+	{
+	  stat_cond_type = PERF_PROMOTE_SINGLE_READER;
+	}
+      else
+	{
+	  stat_cond_type = PERF_PROMOTE_SHARED_READER;
+	}
+
+      /* latch mode - NOTE: MIX will be always zero */
+      if (bufptr->latch_mode == PGBUF_LATCH_READ)
+	{
+	  stat_holder_latch = PERF_HOLDER_LATCH_READ;
+	}
+      else
+	{
+	  stat_holder_latch = PERF_HOLDER_LATCH_WRITE;
+	}
+    }
+
+  /* check if we're the single read latch holder */
+  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+  assert_release (holder != NULL);
+  if (holder->fix_count == bufptr->fcnt)
+    {
+      /* check for waiters for promotion */
+      if (bufptr->next_wait_thrd != NULL
+	  && bufptr->next_wait_thrd->wait_for_latch_promote)
+	{
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  rv = ER_PAGE_LATCH_PROMOTE_FAIL;
+#if !defined(NDEBUG)
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
+#endif
+	  goto end;
+	}
+
+      /* we're the single holder of the read latch, do an in-place promotion */
+      bufptr->latch_mode = PGBUF_LATCH_WRITE;
+      /* NOTE: no need to set the promoted flag as long as we don't wait */
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+    }
+  else
+    {
+      if ((condition == PGBUF_PROMOTE_SINGLE_READER)
+	  || (bufptr->next_wait_thrd != NULL
+	      && bufptr->next_wait_thrd->wait_for_latch_promote))
+	{
+	  /*
+	   * CASE #1: first waiter is from a latch promotion - we can't
+	   * guarantee both will see the same page they initially fixed so
+	   * we'll abort the current promotion
+	   * CASE #2: PGBUF_PROMOTE_SINGLE_READER condition, we're only allowed
+	   * to promote if we're the only reader; this is not the case
+	   */
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  rv = ER_PAGE_LATCH_PROMOTE_FAIL;
+#if !defined(NDEBUG)
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
+#endif
+	  goto end;
+	}
+      else
+	{
+	  int fix_count = holder->fix_count;
+
+	  bufptr->fcnt -= fix_count;
+	  holder->fix_count = 0;
+	  if (pgbuf_remove_thrd_holder (thread_p, holder) != NO_ERROR)
+	    {
+	      /* shouldn't happen */
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+	  holder = NULL;
+
+	  /* flag this thread as promoter */
+	  thread_p->wait_for_latch_promote = true;
+
+	  /* register as first blocker */
+#if !defined(NDEBUG)
+	  if (pgbuf_block_bcb
+	      (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count, true,
+	       caller_file, caller_line) != NO_ERROR)
+#else /* NDEBUG */
+	  if (pgbuf_block_bcb
+	      (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count,
+	       true) != NO_ERROR)
+#endif /* NDEBUG */
+	    {
+	      thread_p->wait_for_latch_promote = false;
+	      return ER_FAILED;
+	    }
+
+	  /* NOTE: BCB mutex is no longer held at this point */
+
+	  /* remove promote flag */
+	  thread_p->wait_for_latch_promote = false;
+
+	  /* new holder entry */
+	  assert (pgbuf_find_thrd_holder (thread_p, bufptr) == NULL);
+	  holder = pgbuf_allocate_thrd_holder_entry (thread_p);
+	  if (holder == NULL)
+	    {
+	      /* This situation must not be occurred. */
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+	  holder->fix_count = fix_count;
+	  holder->bufptr = bufptr;
+#if !defined(NDEBUG)
+	  sprintf (holder->fixed_at, "%s:%d ", caller_file, caller_line);
+	  holder->fixed_at_size = strlen (holder->fixed_at);
+#endif /* NDEBUG */
+	}
+    }
+
+end:
+  assert (rv == NO_ERROR || rv == ER_PAGE_LATCH_PROMOTE_FAIL);
+
+  /* performance tracking */
+  if (is_perf_tracking)
+    {
+      /* compute time */
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      promote_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+
+      /* determine success or fail */
+      if (rv == NO_ERROR)
+	{
+	  stat_success = 1;
+	}
+      else if (rv == ER_PAGE_LATCH_PROMOTE_FAIL)
+	{
+	  stat_success = 0;
+	}
+
+      /* aggregate success/fail */
+      mnt_pbx_promote (thread_p, stat_page_type, stat_cond_type,
+		       stat_holder_latch, stat_success, promote_wait_time);
+    }
+
+  /* all successful */
+  return rv;
+
+#else /* SERVER_MODE */
+  bufptr->latch_mode = PGBUF_LATCH_WRITE;
+  return NO_ERROR;
+#endif
 }
 
 /*
@@ -5354,11 +5602,12 @@ do_block:
 #endif /* SERVER_MODE */
 
 #if !defined(NDEBUG)
-      if (pgbuf_block_bcb (thread_p, bufptr, request_mode, request_fcnt,
-			   caller_file, caller_line) != NO_ERROR)
+      if (pgbuf_block_bcb
+	  (thread_p, bufptr, request_mode, request_fcnt, false, caller_file,
+	   caller_line) != NO_ERROR)
 #else /* NDEBUG */
-      if (pgbuf_block_bcb (thread_p, bufptr, request_mode, request_fcnt) !=
-	  NO_ERROR)
+      if (pgbuf_block_bcb
+	  (thread_p, bufptr, request_mode, request_fcnt, false) != NO_ERROR)
 #endif /* NDEBUG */
 	{
 	  return ER_FAILED;
@@ -5616,6 +5865,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
  *   bufptr(in):
  *   request_mode(in):
  *   request_fcnt(in):
+ *   as_promote(in): if true, will wait as first promoter
  *
  * Note: If latch_mode == BT_LT_FLUSH, then put the thread to the top of
  *       the BCB queue else append it to the BCB queue. Before return, it
@@ -5624,12 +5874,12 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #if !defined(NDEBUG)
 static int
 pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-		 int request_mode, int request_fcnt,
+		 int request_mode, int request_fcnt, bool as_promote,
 		 const char *caller_file, int caller_line)
 #else /* NDEBUG */
 static int
 pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-		 int request_mode, int request_fcnt)
+		 int request_mode, int request_fcnt, bool as_promote)
 #endif				/* NDEBUG */
 {
 #if defined(SERVER_MODE)
@@ -5660,20 +5910,29 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
     }
   else
     {
-      /* append cur_thrd_entry to the BCB waiting queue */
-      cur_thrd_entry->next_wait_thrd = NULL;
-      thrd_entry = bufptr->next_wait_thrd;
-      if (thrd_entry == NULL)
+      if (as_promote)
 	{
+	  /* place cur_thrd_entry as first in BCB waiting queue */
+	  cur_thrd_entry->next_wait_thrd = bufptr->next_wait_thrd;
 	  bufptr->next_wait_thrd = cur_thrd_entry;
 	}
       else
 	{
-	  while (thrd_entry->next_wait_thrd != NULL)
+	  /* append cur_thrd_entry to the BCB waiting queue */
+	  cur_thrd_entry->next_wait_thrd = NULL;
+	  thrd_entry = bufptr->next_wait_thrd;
+	  if (thrd_entry == NULL)
 	    {
-	      thrd_entry = thrd_entry->next_wait_thrd;
+	      bufptr->next_wait_thrd = cur_thrd_entry;
 	    }
-	  thrd_entry->next_wait_thrd = cur_thrd_entry;
+	  else
+	    {
+	      while (thrd_entry->next_wait_thrd != NULL)
+		{
+		  thrd_entry = thrd_entry->next_wait_thrd;
+		}
+	      thrd_entry->next_wait_thrd = cur_thrd_entry;
+	    }
 	}
     }
 
@@ -7003,11 +7262,11 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 	{
 	  /* After releasing bufptr->BCB_mutex, the caller sleeps. */
 #if !defined(NDEBUG)
-	  if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0,
+	  if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false,
 			       caller_file, caller_line) != NO_ERROR)
 #else /* NDEBUG */
-	  if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0) !=
-	      NO_ERROR)
+	  if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false)
+	      != NO_ERROR)
 #endif /* NDEBUG */
 	    {
 	      return ER_FAILED;

@@ -1504,7 +1504,9 @@
 
 #define ER_TZ_GEOGRAPHIC_ZONE			    -1175
 
-#define ER_LAST_ERROR                               -1176
+#define ER_PAGE_LATCH_PROMOTE_FAIL		    -1176
+
+#define ER_LAST_ERROR                               -1177
 
 
 #define DB_TRUE 1

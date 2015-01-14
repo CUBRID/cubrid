@@ -249,6 +249,10 @@ static int rv;
 									\
     DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_fix_counters,		\
 			 PERF_PAGE_FIX_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_promote_counters,		\
+			 PERF_PAGE_PROMOTE_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_promote_time_counters,	\
+			 PERF_PAGE_PROMOTE_COUNTERS);			\
     DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_unfix_counters,		\
 			 PERF_PAGE_UNFIX_COUNTERS);			\
     DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_lock_time_counters,		\
@@ -271,11 +275,17 @@ static const char *perf_stat_page_type_name (const int page_type);
 static const char *perf_stat_page_mode_name (const int page_mode);
 static const char *perf_stat_holder_latch_name (const int holder_latch);
 static const char *perf_stat_cond_type_name (const int cond_type);
+static const char *perf_stat_promote_cond_name (const int cond_type);
 static void perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
 						char *s,
 						int *remaining_size,
 						FILE * stream,
 						bool print_zero_counters);
+static void perf_stat_dump_promote_page_array_stat (const UINT64 * stats_ptr,
+						    char *s,
+						    int *remaining_size,
+						    FILE * stream,
+						    bool print_zero_counters);
 static void perf_stat_dump_unfix_page_array_stat (const UINT64 * stats_ptr,
 						  char *s,
 						  int *remaining_size,
@@ -1743,9 +1753,14 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Data_page_fix_hold_acquire_time_msec",
   "Data_page_fix_acquire_time_msec",
   "Data_page_allocate_time_ratio",
+  "Data_page_total_promote_success",
+  "Data_page_total_promote_fail",
+  "Data_page_total_promote_time_msec",
 
   /* Array type statistics */
   "Num_data_page_fix_ext",
+  "Num_data_page_promote_ext",
+  "Num_data_page_promote_time_ext",
   "Num_data_page_unfix_ext",
   "Time_data_page_lock_acquire_time",
   "Time_data_page_hold_acquire_time",
@@ -3671,7 +3686,43 @@ mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode,
 }
 
 /*
- *   mnt_x_pbx_fix - 
+ *   mnt_x_pbx_promote - 
+ *   return: none
+ */
+void
+mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type,
+		   int promote_cond, int holder_latch, int success,
+		   UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (promote_cond >= PERF_PROMOTE_SINGLE_READER
+	      && promote_cond < PERF_PROMOTE_CONDITION_CNT);
+      assert (holder_latch >= PERF_HOLDER_LATCH_READ
+	      && holder_latch < PERF_HOLDER_LATCH_CNT);
+      assert (success == 0 || success == 1);
+
+      offset =
+	PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond,
+				       holder_latch, success);
+      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
+
+      ADD_STATS_IN_ARRAY (stats, pbx_promote_counters, offset, 1);
+      ADD_STATS_IN_ARRAY (stats, pbx_promote_time_counters, offset, amount);
+    }
+}
+
+/*
+ *   mnt_x_pbx_unfix - 
  *   return: none
  */
 void
@@ -3972,6 +4023,17 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
 	  perf_stat_dump_page_fix_time_array_stat
 	    (stats->pbx_fix_time_counters, p, &remained_size, NULL, false);
 	  break;
+	case MNT_SERVER_PROMOTE_STAT_POSITION:
+	  perf_stat_dump_promote_page_array_stat (stats->pbx_promote_counters,
+						  p, &remained_size, NULL,
+						  false);
+	  break;
+	case MNT_SERVER_PROMOTE_TIME_STAT_POSITION:
+	  perf_stat_dump_promote_page_array_stat (stats->
+						  pbx_promote_time_counters,
+						  p, &remained_size, NULL,
+						  false);
+	  break;
 	default:
 	  break;
 	}
@@ -4078,6 +4140,15 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream,
 	  perf_stat_dump_page_fix_time_array_stat
 	    (stats->pbx_fix_time_counters, NULL, NULL, stream, false);
 	  break;
+	case MNT_SERVER_PROMOTE_STAT_POSITION:
+	  perf_stat_dump_promote_page_array_stat (stats->pbx_promote_counters,
+						  NULL, NULL, stream, false);
+	  break;
+	case MNT_SERVER_PROMOTE_TIME_STAT_POSITION:
+	  perf_stat_dump_promote_page_array_stat (stats->
+						  pbx_promote_time_counters,
+						  NULL, NULL, stream, false);
+	  break;
 	default:
 	  break;
 	}
@@ -4136,6 +4207,8 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
   int holder_latch;
   int page_found_mode;
   int cond_type;
+  int promote_cond;
+  int success;
   UINT64 *counter;
   UINT64 total_unfix_vacuum = 0;
   UINT64 total_unfix_vacuum_dirty = 0;
@@ -4145,6 +4218,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
   UINT64 fix_time_usec = 0;
   UINT64 lock_time_usec = 0;
   UINT64 hold_time_usec = 0;
+  UINT64 total_promote_time = 0;
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
@@ -4287,6 +4361,52 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
       - stats->pb_page_hold_acquire_time_10usec
       - stats->pb_page_lock_acquire_time_10usec) * 100 * 100
      / stats->pb_page_fix_acquire_time_10usec);
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+	{
+	  for (promote_cond = PERF_PROMOTE_SINGLE_READER;
+	       promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
+	    {
+	      for (holder_latch = PERF_HOLDER_LATCH_READ;
+		   holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
+		{
+		  for (success = 0; success < 2; success++)
+		    {
+		      offset =
+			PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type,
+						       promote_cond,
+						       holder_latch, success);
+		      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
+
+		      counter = stats->pbx_promote_time_counters + offset;
+		      if (*counter)
+			{
+			  total_promote_time += *counter;
+			}
+
+		      counter = stats->pbx_promote_counters + offset;
+		      if (*counter)
+			{
+			  if (success)
+			    {
+			      stats->pb_page_promote_success += *counter;
+			    }
+			  else
+			    {
+			      stats->pb_page_promote_failed += *counter;
+			    }
+			}
+		    }
+		}
+	    }
+	}
+    }
+
+  stats->pb_page_promote_total_time_10usec = 100 * total_promote_time / 1000;
+  stats->pb_page_promote_success *= 100;
+  stats->pb_page_promote_failed *= 100;
 }
 
 
@@ -4461,6 +4581,24 @@ perf_stat_cond_type_name (const int cond_type)
 }
 
 /*
+ * perf_stat_cond_type_name () -
+ */
+static const char *
+perf_stat_promote_cond_name (const int cond_type)
+{
+  switch (cond_type)
+    {
+    case PERF_PROMOTE_SINGLE_READER:
+      return "SINGLE_READER";
+    case PERF_PROMOTE_SHARED_READER:
+      return "SHARED_READER";
+    default:
+      break;
+    }
+  return "ERROR";
+}
+
+/*
  * perf_stat_dump_fix_page_array_stat () -
  *
  * stats_ptr(in): start of array values
@@ -4540,6 +4678,96 @@ perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
 				   perf_stat_page_mode_name (page_mode),
 				   perf_stat_holder_latch_name (latch_mode),
 				   perf_stat_cond_type_name (cond_type),
+				   (long long unsigned int) *counter);
+			}
+		    }
+		}
+	    }
+	}
+    }
+}
+
+/*
+ * perf_stat_dump_promote_page_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
+static void
+perf_stat_dump_promote_page_array_stat (const UINT64 * stats_ptr,
+					char *s, int *remaining_size,
+					FILE * stream,
+					bool print_zero_counters)
+{
+  int module;
+  int page_type;
+  int promote_cond;
+  int holder_latch;
+  int success;
+  int offset;
+  const UINT64 *counter;
+  int ret;
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+	{
+	  for (promote_cond = PERF_PROMOTE_SINGLE_READER;
+	       promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
+	    {
+	      for (holder_latch = PERF_HOLDER_LATCH_READ;
+		   holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
+		{
+		  for (success = 0; success < 2; success++)
+		    {
+		      offset =
+			PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type,
+						       promote_cond,
+						       holder_latch, success);
+
+		      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
+		      counter = stats_ptr + offset;
+		      if (*counter == 0 && print_zero_counters == false)
+			{
+			  continue;
+			}
+
+		      if (s != NULL)
+			{
+			  assert (remaining_size != NULL);
+
+			  ret =
+			    snprintf (s, *remaining_size,
+				      "%-6s,%-14s,%-13s,%-5s,%-7s = %10llu\n",
+				      perf_stat_module_name (module),
+				      perf_stat_page_type_name (page_type),
+				      perf_stat_promote_cond_name
+				      (promote_cond),
+				      perf_stat_holder_latch_name
+				      (holder_latch),
+				      (success ? "SUCCESS" : "FAILED"),
+				      (long long unsigned int) *counter);
+			  *remaining_size -= ret;
+			  if (*remaining_size <= 0)
+			    {
+			      return;
+			    }
+			}
+		      else
+			{
+			  assert (stream != NULL);
+
+			  fprintf (stream,
+				   "%-6s,%-14s,%-13s,%-5s,%-7s = %10llu\n",
+				   perf_stat_module_name (module),
+				   perf_stat_page_type_name (page_type),
+				   perf_stat_promote_cond_name (promote_cond),
+				   perf_stat_holder_latch_name (holder_latch),
+				   (success ? "SUCCESS" : "FAILED"),
 				   (long long unsigned int) *counter);
 			}
 		    }

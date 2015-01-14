@@ -1220,6 +1220,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->er_Msg = NULL;
   entry_p->victim_request_fail = false;
   entry_p->next_wait_thrd = NULL;
+  entry_p->wait_for_latch_promote = false;
 
   entry_p->lockwait = NULL;
   entry_p->lockwait_state = -1;
@@ -4432,6 +4433,7 @@ thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
   thread_p->tran_index = tran_index;
   thread_p->victim_request_fail = false;
   thread_p->next_wait_thrd = NULL;
+  thread_p->wait_for_latch_promote = false;
   thread_p->lockwait = NULL;
   thread_p->lockwait_state = -1;
   thread_p->query_entry = NULL;

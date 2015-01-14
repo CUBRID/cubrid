@@ -309,6 +309,7 @@ struct thread_entry
 				   btree_handle_prev_leaf_after_locking()
 				   or btree_handle_curr_leaf_after_locking()
 				   function call. */
+  bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
   struct thread_entry *next_wait_thrd;
 
   void *lockwait;

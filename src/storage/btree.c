@@ -12120,6 +12120,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   int Q_used, R_used;
   bool merged, key_deleted, *pkey_deleted = NULL;
   BTREE_MERGE_STATUS merge_status;
+  PGBUF_LATCH_MODE P_latch;
 
   assert (key != NULL);
   assert (oid != NULL);
@@ -12142,8 +12143,10 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
+  P_latch = PGBUF_LATCH_READ;
 
-  P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+fix_root:
+  P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, P_latch,
 		 PGBUF_UNCONDITIONAL_LATCH);
   if (P == NULL)
     {
@@ -12186,6 +12189,23 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   root_level = root_header->node.node_level;
   node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
+  if (node_type == BTREE_LEAF_NODE)
+    {
+      /* promote latch */
+      ret_val = pgbuf_promote_read_latch (thread_p, P,
+					  PGBUF_PROMOTE_SHARED_READER);
+      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	{
+	  pgbuf_unfix_and_init (thread_p, P);
+	  P_latch = PGBUF_LATCH_WRITE;
+	  goto fix_root;
+	}
+      else if (ret_val != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   if (key == NULL || DB_IS_NULL (key) || btree_multicol_key_is_null (key))
     {
       /* update root header statistics if it's a Btree for uniques.
@@ -12214,6 +12234,21 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 		}
 	      else
 		{
+		  /* promote latch */
+		  ret_val =
+		    pgbuf_promote_read_latch (thread_p, P,
+					      PGBUF_PROMOTE_SHARED_READER);
+		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		    {
+		      pgbuf_unfix_and_init (thread_p, P);
+		      P_latch = PGBUF_LATCH_WRITE;
+		      goto fix_root;
+		    }
+		  else if (ret_val != NO_ERROR)
+		    {
+		      goto error;
+		    }
+
 		  /* update the root header */
 		  ret_val =
 		    btree_change_root_header_delta (thread_p, &btid->vfid, P,
@@ -12286,6 +12321,21 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	    }
 	  else
 	    {
+	      /* promote latch */
+	      ret_val =
+		pgbuf_promote_read_latch (thread_p, P,
+					  PGBUF_PROMOTE_SHARED_READER);
+	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		{
+		  pgbuf_unfix_and_init (thread_p, P);
+		  P_latch = PGBUF_LATCH_WRITE;
+		  goto fix_root;
+		}
+	      else if (ret_val != NO_ERROR)
+		{
+		  goto error;
+		}
+
 	      /* update the root header
 	       * guess existing key delete
 	       */
@@ -12426,7 +12476,7 @@ start_point:
     {
       P_vpid.volid = btid->vfid.volid;	/* read the root page */
       P_vpid.pageid = btid->root_pageid;
-      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		     PGBUF_UNCONDITIONAL_LATCH);
       if (P == NULL)
 	{
@@ -12457,8 +12507,7 @@ start_point:
       btree_read_fixed_portion_of_non_leaf_record (&peek_recdes1, &nleaf_pnt);
 
       Q_vpid = nleaf_pnt.pnt;
-
-      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		     PGBUF_UNCONDITIONAL_LATCH);
       if (Q == NULL)
 	{
@@ -12494,7 +12543,7 @@ start_point:
 	}
 
       R_vpid = nleaf_pnt.pnt;
-      R = pgbuf_fix (thread_p, &R_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+      R = pgbuf_fix (thread_p, &R_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		     PGBUF_UNCONDITIONAL_LATCH);
       if (R == NULL)
 	{
@@ -12514,6 +12563,57 @@ start_point:
 	  DB_PAGESIZE)
 	{
 	  /* root merge possible */
+
+	  /* promote P latch */
+	  ret_val =
+	    pgbuf_promote_read_latch (thread_p, P,
+				      PGBUF_PROMOTE_SHARED_READER);
+	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	    {
+	      /* skip merge */
+	      header = NULL;
+	      pgbuf_unfix_and_init (thread_p, Q);
+	      pgbuf_unfix_and_init (thread_p, R);
+	      goto skip_root_merge;
+	    }
+	  else if (ret_val != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  /* promote Q latch */
+	  ret_val =
+	    pgbuf_promote_read_latch (thread_p, Q,
+				      PGBUF_PROMOTE_SHARED_READER);
+	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	    {
+	      /* skip merge */
+	      header = NULL;
+	      pgbuf_unfix_and_init (thread_p, Q);
+	      pgbuf_unfix_and_init (thread_p, R);
+	      goto skip_root_merge;
+	    }
+	  else if (ret_val != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  /* promote R latch */
+	  ret_val =
+	    pgbuf_promote_read_latch (thread_p, R,
+				      PGBUF_PROMOTE_SHARED_READER);
+	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	    {
+	      /* skip merge */
+	      header = NULL;
+	      pgbuf_unfix_and_init (thread_p, Q);
+	      pgbuf_unfix_and_init (thread_p, R);
+	      goto skip_root_merge;
+	    }
+	  else if (ret_val != NO_ERROR)
+	    {
+	      goto error;
+	    }
 
 	  /* Start system permanent operation */
 	  log_start_system_op (thread_p);
@@ -12584,8 +12684,13 @@ start_point:
       btree_clear_key_value (&clear_key, &mid_key);
     }
 
+skip_root_merge:
+
   while (node_type == BTREE_NON_LEAF_NODE)
     {
+      PGBUF_LATCH_MODE level_latch;
+      PGBUF_PROMOTE_CONDITION level_promote_cond;
+
       /* find and get the child page to be followed */
       if (btree_search_nonleaf_page (thread_p, &btid_int, P, key,
 				     &p_slot_id, &Q_vpid) != NO_ERROR)
@@ -12593,7 +12698,23 @@ start_point:
 	  goto error;
 	}
 
-      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+      /* determine latch type */
+      if ((header != NULL && header->node_level == 2)
+	  || (header == NULL && root_level == 2))
+	{
+	  /* next page is leaf page - fix with write latch */
+	  level_latch = PGBUF_LATCH_WRITE;
+	  level_promote_cond = PGBUF_PROMOTE_SINGLE_READER;
+	}
+      else
+	{
+	  /* next page is non-leaf page - no need for write latch */
+	  level_latch = PGBUF_LATCH_READ;
+	  level_promote_cond = PGBUF_PROMOTE_SHARED_READER;
+	}
+
+      /* fix child page */
+      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, level_latch,
 		     PGBUF_UNCONDITIONAL_LATCH);
       if (Q == NULL)
 	{
@@ -12628,7 +12749,7 @@ start_point:
 						       &nleaf_pnt);
 	  Right_vpid = nleaf_pnt.pnt;
 	  Right = pgbuf_fix (thread_p, &Right_vpid, OLD_PAGE,
-			     PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+			     level_latch, PGBUF_UNCONDITIONAL_LATCH);
 	  if (Right == NULL)
 	    {
 	      goto error;
@@ -12637,6 +12758,56 @@ start_point:
 	  (void) pgbuf_check_page_ptype (thread_p, Right, PAGE_BTREE);
 
 	  merge_status = btree_node_mergeable (thread_p, &btid_int, Q, Right);
+
+	  /* if we can merge, promote all latches to write latches */
+	  if (merge_status != BTREE_MERGE_NO)
+	    {
+	      /* promote read latches */
+	      ret_val =
+		pgbuf_promote_read_latch (thread_p, P, level_promote_cond);
+	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		{
+		  /* skip merge for this btree walk */
+		  merge_status = BTREE_MERGE_NO;
+		}
+	      else if (ret_val != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      if (merge_status != BTREE_MERGE_NO)
+		{
+		  ret_val =
+		    pgbuf_promote_read_latch (thread_p, Q,
+					      level_promote_cond);
+		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		    {
+		      /* skip merge for this btree walk */
+		      merge_status = BTREE_MERGE_NO;
+		    }
+		  else if (ret_val != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+
+	      if (merge_status != BTREE_MERGE_NO)
+		{
+		  ret_val =
+		    pgbuf_promote_read_latch (thread_p, Right,
+					      level_promote_cond);
+		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		    {
+		      /* skip merge for this btree walk */
+		      merge_status = BTREE_MERGE_NO;
+		    }
+		  else if (ret_val != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	    }
+
 	  if (merge_status != BTREE_MERGE_NO)
 	    {			/* right merge possible */
 
@@ -12736,7 +12907,7 @@ start_point:
 	  Left_vpid = nleaf_pnt.pnt;
 
 	  /* try to fix sibling page conditionally */
-	  Left = pgbuf_fix (thread_p, &Left_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+	  Left = pgbuf_fix (thread_p, &Left_vpid, OLD_PAGE, level_latch,
 			    PGBUF_CONDITIONAL_LATCH);
 	  if (Left == NULL)
 	    {
@@ -12744,13 +12915,13 @@ start_point:
 	      pgbuf_unfix_and_init (thread_p, Q);
 
 	      Left = pgbuf_fix (thread_p, &Left_vpid, OLD_PAGE,
-				PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+				level_latch, PGBUF_UNCONDITIONAL_LATCH);
 	      if (Left == NULL)
 		{
 		  goto error;
 		}
 
-	      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+	      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, level_latch,
 			     PGBUF_UNCONDITIONAL_LATCH);
 	      if (Q == NULL)
 		{
@@ -12765,6 +12936,57 @@ start_point:
 	  (void) pgbuf_check_page_ptype (thread_p, Left, PAGE_BTREE);
 
 	  merge_status = btree_node_mergeable (thread_p, &btid_int, Left, Q);
+
+	  /* if we can merge, promote all latches to write latches */
+	  if (merge_status != BTREE_MERGE_NO)
+	    {
+	      /* promote read latches */
+	      ret_val =
+		pgbuf_promote_read_latch (thread_p, P, level_promote_cond);
+	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		{
+		  /* skip merge for this btree walk */
+		  merge_status = BTREE_MERGE_NO;
+		}
+	      else if (ret_val != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      if (merge_status != BTREE_MERGE_NO)
+		{
+		  ret_val =
+		    pgbuf_promote_read_latch (thread_p, Left,
+					      level_promote_cond);
+		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		    {
+		      /* skip merge for this btree walk */
+		      merge_status = BTREE_MERGE_NO;
+		    }
+		  else if (ret_val != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+
+	      if (merge_status != BTREE_MERGE_NO)
+		{
+		  ret_val =
+		    pgbuf_promote_read_latch (thread_p, Q,
+					      level_promote_cond);
+		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		    {
+		      /* skip merge for this btree walk */
+		      merge_status = BTREE_MERGE_NO;
+		    }
+		  else if (ret_val != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	    }
+
+	  /* merge */
 	  if (merge_status != BTREE_MERGE_NO)
 	    {			/* left merge possible */
 
@@ -18502,6 +18724,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   BTREE_SEARCH result;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;	/* used in RR or SERIALIZABLE */
   MVCC_REC_HEADER mvcc_local_rec_header;
+  PGBUF_LATCH_MODE latch_mode;
 
   assert (key != NULL);
   assert (file_is_new_file (thread_p, &btid->vfid) == FILE_OLD_FILE);
@@ -18519,9 +18742,11 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
     }
 #endif
 
+  latch_mode = PGBUF_LATCH_READ;
+restart_walk:
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
-  P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+  P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, latch_mode,
 		 PGBUF_UNCONDITIONAL_LATCH);
   if (P == NULL)
     {
@@ -18595,6 +18820,21 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 		}
 	      else
 		{
+		  /* promote latch */
+		  ret_val =
+		    pgbuf_promote_read_latch (thread_p, P,
+					      PGBUF_PROMOTE_SHARED_READER);
+		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		    {
+		      pgbuf_unfix_and_init (thread_p, P);
+		      latch_mode = PGBUF_LATCH_WRITE;
+		      goto restart_walk;
+		    }
+		  else if (ret_val != NO_ERROR)
+		    {
+		      goto error;
+		    }
+
 		  ret_val =
 		    btree_change_root_header_delta (thread_p, &btid->vfid, P,
 						    1, 1, 0);
@@ -18653,6 +18893,21 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   if (key_len >= BTREE_MAX_KEYLEN_INPAGE && VFID_ISNULL (&btid_int.ovfid))
     {
+      /* promote latch */
+      ret_val = pgbuf_promote_read_latch (thread_p, P,
+					  PGBUF_PROMOTE_SHARED_READER);
+      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	{
+	  /* retry fix with write latch */
+	  pgbuf_unfix_and_init (thread_p, P);
+	  latch_mode = PGBUF_LATCH_WRITE;
+	  goto restart_walk;
+	}
+      else if (ret_val != NO_ERROR)
+	{
+	  goto error;
+	}
+
       if (log_start_system_op (thread_p) == NULL)
 	{
 	  goto error;
@@ -18692,6 +18947,20 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
     {
       root_header->node.max_key_len = key_len_in_page;
       max_key_len = key_len_in_page;
+
+      /* promote latch */
+      ret_val =
+	pgbuf_promote_read_latch (thread_p, P, PGBUF_PROMOTE_SHARED_READER);
+      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	{
+	  pgbuf_unfix_and_init (thread_p, P);
+	  latch_mode = PGBUF_LATCH_WRITE;
+	  goto restart_walk;
+	}
+      else if (ret_val != NO_ERROR)
+	{
+	  goto error;
+	}
 
       ret_val =
 	btree_change_root_header_delta (thread_p, &btid->vfid, P, 0, 0, 0);
@@ -18753,6 +19022,21 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	    }
 	  else
 	    {
+	      /* promote latch */
+	      ret_val = pgbuf_promote_read_latch (thread_p, P,
+						  PGBUF_PROMOTE_SHARED_READER);
+	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+		{
+		  /* retry fix with write latch */
+		  pgbuf_unfix_and_init (thread_p, P);
+		  latch_mode = PGBUF_LATCH_WRITE;
+		  goto restart_walk;
+		}
+	      else if (ret_val != NO_ERROR)
+		{
+		  goto error;
+		}
+
 	      /* update the root header */
 	      ret_val =
 		btree_change_root_header_delta (thread_p, &btid->vfid, P, 0,
@@ -18834,7 +19118,7 @@ start_point:
     {
       P_vpid.volid = btid->vfid.volid;	/* read the root page */
       P_vpid.pageid = btid->root_pageid;
-      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, latch_mode,
 		     PGBUF_UNCONDITIONAL_LATCH);
       if (P == NULL)
 	{
@@ -18885,6 +19169,21 @@ start_point:
    */
   if (max_entry > max_free)
     {
+      /* promote latch */
+      ret_val = pgbuf_promote_read_latch (thread_p, P,
+					  PGBUF_PROMOTE_SHARED_READER);
+      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	{
+	  /* retry fix with write latch */
+	  pgbuf_unfix_and_init (thread_p, P);
+	  latch_mode = PGBUF_LATCH_WRITE;
+	  goto restart_walk;
+	}
+      else if (ret_val != NO_ERROR)
+	{
+	  goto error;
+	}
+
       /* consider BTREE_MAX_KEYLEN_INPAGE + BTREE_MAX_OIDLEN_INPAGE */
       assert_release (key_cnt >= 3);
 
@@ -18974,7 +19273,7 @@ start_point:
 	  top_op_active = 0;
 
 	  P_vpid = child_vpid;
-	  P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+	  P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, latch_mode,
 			 PGBUF_UNCONDITIONAL_LATCH);
 	  if (P == NULL)
 	    {
@@ -19002,13 +19301,29 @@ start_point:
 
   while (node_type == BTREE_NON_LEAF_NODE)
     {
+      PGBUF_PROMOTE_CONDITION level_promote_cond;
+
       /* find and get the child page to be followed */
       if (btree_search_nonleaf_page
 	  (thread_p, &btid_int, P, key, &p_slot_id, &Q_vpid) != NO_ERROR)
 	{
 	  goto error;
 	}
-      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+
+      /* determine latch type */
+      if ((header != NULL && header->node_level == 2)
+	  || (header == NULL && root_level == 2))
+	{
+	  /* next page is leaf page */
+	  level_promote_cond = PGBUF_PROMOTE_SINGLE_READER;
+	}
+      else
+	{
+	  /* next page is non-leaf page */
+	  level_promote_cond = PGBUF_PROMOTE_SHARED_READER;
+	}
+
+      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, latch_mode,
 		     PGBUF_UNCONDITIONAL_LATCH);
       if (Q == NULL)
 	{
@@ -19038,6 +19353,36 @@ start_point:
       /* is new key longer than all in the subtree of child page Q ? */
       if (key_cnt > 0 && key_len_in_page > header->max_key_len)
 	{
+	  /* promote latches */
+	  ret_val =
+	    pgbuf_promote_read_latch (thread_p, P, level_promote_cond);
+	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	    {
+	      /* retry fix with write latch */
+	      pgbuf_unfix_and_init (thread_p, Q);
+	      pgbuf_unfix_and_init (thread_p, P);
+	      latch_mode = PGBUF_LATCH_WRITE;
+	      goto restart_walk;
+	    }
+	  else if (ret_val != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  ret_val =
+	    pgbuf_promote_read_latch (thread_p, Q, level_promote_cond);
+	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	    {
+	      /* retry fix with write latch */
+	      pgbuf_unfix_and_init (thread_p, Q);
+	      pgbuf_unfix_and_init (thread_p, P);
+	      latch_mode = PGBUF_LATCH_WRITE;
+	      goto restart_walk;
+	    }
+	  else if (ret_val != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
 	  header->max_key_len = key_len_in_page;
 	  if (btree_node_header_redo_log (thread_p, &btid->vfid, Q) !=
 	      NO_ERROR)
@@ -19076,6 +19421,36 @@ start_point:
 	{
 	  /* consider BTREE_MAX_KEYLEN_INPAGE + BTREE_MAX_OIDLEN_INPAGE */
 	  assert_release (key_cnt >= 3);
+
+	  /* promote latches */
+	  ret_val =
+	    pgbuf_promote_read_latch (thread_p, P, level_promote_cond);
+	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	    {
+	      /* retry fix with write latch */
+	      pgbuf_unfix_and_init (thread_p, Q);
+	      pgbuf_unfix_and_init (thread_p, P);
+	      latch_mode = PGBUF_LATCH_WRITE;
+	      goto restart_walk;
+	    }
+	  else if (ret_val != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  ret_val =
+	    pgbuf_promote_read_latch (thread_p, Q, level_promote_cond);
+	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+	    {
+	      /* retry fix with write latch */
+	      pgbuf_unfix_and_init (thread_p, Q);
+	      pgbuf_unfix_and_init (thread_p, P);
+	      latch_mode = PGBUF_LATCH_WRITE;
+	      goto restart_walk;
+	    }
+	  else if (ret_val != NO_ERROR)
+	    {
+	      goto error;
+	    }
 
 	  /* start system top operation */
 	  if (log_start_system_op (thread_p) == NULL)
@@ -19166,7 +19541,7 @@ start_point:
 	      top_op_active = 0;
 
 	      Q_vpid = child_vpid;
-	      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+	      Q = pgbuf_fix (thread_p, &Q_vpid, OLD_PAGE, latch_mode,
 			     PGBUF_UNCONDITIONAL_LATCH);
 	      if (Q == NULL)
 		{
@@ -19205,6 +19580,20 @@ start_point:
       pnt_max_key_len = header->max_key_len;
       pnt_node_level = header->node_level;
     }				/* while */
+
+  /* assure write latch */
+  ret_val =
+    pgbuf_promote_read_latch (thread_p, P, PGBUF_PROMOTE_SHARED_READER);
+  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
+    {
+      pgbuf_unfix_and_init (thread_p, P);
+      latch_mode = PGBUF_LATCH_WRITE;
+      goto restart_walk;
+    }
+  else if (ret_val != NO_ERROR)
+    {
+      goto error;
+    }
 
   p_slot_id = NULL_SLOTID;
 

@@ -56,6 +56,10 @@
   ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) \
    * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
 
+#define PERF_PAGE_PROMOTE_COUNTERS \
+  ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * (PERF_PROMOTE_CONDITION_CNT) \
+  * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
+
 /* PERF_MODULE_TYPE x PAGE_TYPE x DIRTY_OR_CLEAN x DIRTY_OR_CLEAN x READ_OR_WRITE_OR_MIX */
 #define PERF_PAGE_UNFIX_COUNTERS \
   ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * 2 * 2 * (PERF_HOLDER_LATCH_CNT))
@@ -76,6 +80,16 @@
        * (PERF_CONDITIONAL_FIX_CNT) \
     + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
     + (latch_mode) * (PERF_CONDITIONAL_FIX_CNT) + (cond_type))
+
+#define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond, \
+				      holder_latch,success) \
+  ((module) * (PAGE_LAST + 1) * (PERF_PROMOTE_CONDITION_CNT) \
+    * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
+    + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) \
+    * 2 /* success */ \
+    + (promote_cond) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
+    + (holder_latch) * 2 /* success */ \
+    + success)
 
 #define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,\
 				    dirtied_by_holder,holder_latch) \
@@ -126,6 +140,14 @@ typedef enum
 
   PERF_CONDITIONAL_FIX_CNT
 } PERF_CONDITIONAL_FIX_TYPE;
+
+typedef enum
+{
+  PERF_PROMOTE_SINGLE_READER,
+  PERF_PROMOTE_SHARED_READER,
+
+  PERF_PROMOTE_CONDITION_CNT
+} PERF_PROMOTE_CONDITION;
 
 typedef enum
 {
@@ -376,11 +398,19 @@ struct mnt_server_exec_stats
   /* ratio of time required to allocate a buffer for a page :
    * (100 x (fix_time - lock_time - hold_time) / fix_time) x 100 */
   UINT64 pb_page_allocate_time_ratio;
+  /* total successful promotions */
+  UINT64 pb_page_promote_success;
+  /* total failed promotions */
+  UINT64 pb_page_promote_failed;
+  /* total promotion time */
+  UINT64 pb_page_promote_total_time_10usec;
 
   /* array counters : do not include in MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS */
   /* change MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS
    * and MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS */
   UINT64 pbx_fix_counters[PERF_PAGE_FIX_COUNTERS];
+  UINT64 pbx_promote_counters[PERF_PAGE_PROMOTE_COUNTERS];
+  UINT64 pbx_promote_time_counters[PERF_PAGE_PROMOTE_COUNTERS];
   UINT64 pbx_unfix_counters[PERF_PAGE_UNFIX_COUNTERS];
   UINT64 pbx_lock_time_counters[PERF_PAGE_LOCK_TIME_COUNTERS];
   UINT64 pbx_hold_time_counters[PERF_PAGE_HOLD_TIME_COUNTERS];
@@ -392,11 +422,11 @@ struct mnt_server_exec_stats
 };
 
 /* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 96
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 99
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 5
+#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 7
 /* number of computed stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 9
+#define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 12
 
 #define MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
   MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
@@ -406,7 +436,8 @@ struct mnt_server_exec_stats
    + MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS)
 
 #define MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS \
-(PERF_PAGE_FIX_COUNTERS + PERF_PAGE_UNFIX_COUNTERS \
+(PERF_PAGE_FIX_COUNTERS + PERF_PAGE_PROMOTE_COUNTERS \
+ + PERF_PAGE_PROMOTE_COUNTERS + PERF_PAGE_UNFIX_COUNTERS \
  + PERF_PAGE_LOCK_TIME_COUNTERS + PERF_PAGE_HOLD_TIME_COUNTERS \
  + PERF_PAGE_FIX_TIME_COUNTERS)
 
@@ -420,14 +451,18 @@ struct mnt_server_exec_stats
 
 #define MNT_SERVER_PBX_FIX_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 0)
-#define MNT_SERVER_PBX_UNFIX_STAT_POSITION \
+#define MNT_SERVER_PROMOTE_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 1)
-#define MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION \
+#define MNT_SERVER_PROMOTE_TIME_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 2)
-#define MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION \
+#define MNT_SERVER_PBX_UNFIX_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 3)
-#define MNT_SERVER_PBX_FIX_TIME_STAT_POSITION \
+#define MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 4)
+#define MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 5)
+#define MNT_SERVER_PBX_FIX_TIME_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 6)
 
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
@@ -822,6 +857,11 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix(thread_p, page_type, \
 						 page_found_mode,latch_mode, \
 						 cond_type)
+#define mnt_pbx_promote(thread_p,page_type,promote_cond,holder_latch,success, amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_promote(thread_p, page_type, \
+						     promote_cond, \
+						     holder_latch, \
+						     success, amount)
 #define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_unfix(thread_p, page_type, \
 						   buf_dirty, \
@@ -966,6 +1006,9 @@ extern void mnt_x_vac_prefetch_log_hits_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type,
 			   int page_found_mode, int latch_mode,
 			   int cond_type);
+extern void mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type,
+			       int promote_cond, int holder_latch,
+			       int success, UINT64 amount);
 extern void mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type,
 			     int buf_dirty, int dirtied_by_holder,
 			     int holder_latch);
@@ -1080,6 +1123,7 @@ extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p,
 #define mnt_vac_prefetch_log_hits_pages(thread_p)
 
 #define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type)
+#define mnt_pbx_promote(thread_p,page_type,promote_cond,holder_latch,success,amount)
 #define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch)
 #define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount)
 #define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
