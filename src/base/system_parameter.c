@@ -8232,6 +8232,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
     case PRM_BOOLEAN:
       {
+	const KEYVAL *keyvalp = NULL;
+
 	if (set_default)
 	  {
 	    new_value->b = PRM_GET_BOOL (prm->default_value);
@@ -8239,7 +8241,6 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  }
 
 	/* convert string to boolean */
-	const KEYVAL *keyvalp = NULL;
 
 	keyvalp = prm_keyword (-1, value, boolean_words, DIM (boolean_words));
 	if (keyvalp == NULL)
