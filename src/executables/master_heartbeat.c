@@ -3044,6 +3044,7 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
     {
       sock_entq =
 	css_return_entry_by_conn (proc->conn, &css_Master_socket_anchor);
+      assert_release (sock_entq == NULL || sock_entq->name != NULL);
       if (sock_entq == NULL || sock_entq->name == NULL)
 	{
 	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
@@ -3131,7 +3132,7 @@ hb_resource_demote_start_shutdown_server_proc (void)
 
       sock_entq = css_return_entry_by_conn (proc->conn,
 					    &css_Master_socket_anchor);
-
+      assert_release (sock_entq == NULL || sock_entq->name != NULL);
       if (sock_entq != NULL && sock_entq->name != NULL)
 	{
 	  memset (buffer, 0, sizeof (buffer));
@@ -3962,6 +3963,14 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unexpected process's state. "
 			   "(fd:%d, pid:%d, state:%d, args:{%s}). \n", sfd,
 			   proc->pid, proc->state, proc->args);
+
+      proc->sfd = INVALID_SOCKET;
+      proc->conn = NULL;
+      /* 
+       * Do not delete process entry. 
+       * process entry will be removed by resource job.
+       */
+
       pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
@@ -5256,7 +5265,7 @@ hb_resource_shutdown_all_ha_procs (void)
 	      sock_ent =
 		css_return_entry_by_conn (proc->conn,
 					  &css_Master_socket_anchor);
-
+	      assert_release (sock_ent == NULL || sock_ent->name != NULL);
 	      if (sock_ent != NULL && sock_ent->name != NULL)
 		{
 		  memset (buffer, 0, sizeof (buffer));
@@ -6180,6 +6189,7 @@ hb_get_process_info_string (char **str, bool verbose_yn)
     {
       sock_entq =
 	css_return_entry_by_conn (proc->conn, &css_Master_socket_anchor);
+      assert_release (sock_entq == NULL || sock_entq->name != NULL);
       if (sock_entq == NULL || sock_entq->name == NULL)
 	{
 	  continue;
