@@ -1224,7 +1224,7 @@ $ LOADDB
 1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
 1156 MVCC can't get snapshot
 1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurent updates
+1158 Serializable conflict due to concurrent updates
 1159 Timezone compile error: %s
 1160 Timezone library loader error: %s
 1161 Timezone conversion error.
