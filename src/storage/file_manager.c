@@ -7994,6 +7994,7 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   if (allocstate == FILE_ALLOCSET_ALLOC_ZERO)
     {
+      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME, 2,
 	      fileio_get_volume_label (desired_volid, PEEK), npages);
