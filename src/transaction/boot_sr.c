@@ -146,9 +146,11 @@ extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY *
 							thread_p);
-extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
-					   int *charset_id_p, char *lang_buf,
-					   const int lang_buf_size);
+extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p,
+					  int *charset_id_p,
+					  char *lang_buf,
+					  const int lang_buf_size,
+					  char *timezone_checksum);
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
 				    LANG_COLL_COMPAT ** db_collations,
 				    int *coll_cnt);
@@ -2725,7 +2727,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
     }
 
   /* initialize time zone data, optional module */
-  if (tz_load (true) != NO_ERROR)
+  if (tz_load () != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
 	{
@@ -3311,6 +3313,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   int db_charset_db_header = INTL_CODESET_NONE;
   int db_charset_db_root = INTL_CODESET_NONE;
   char db_lang[LANG_MAX_LANGNAME + 1];
+  char timezone_checksum[32 + 1];
+  const TZ_DATA *tzd;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -3325,7 +3329,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     }
 
   /* initialize time zone data, optional module */
-  if (tz_load (true) != NO_ERROR)
+  if (tz_load () != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
 	{
@@ -3725,8 +3729,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	}
     }
 
-  error_code = catcls_get_server_lang_charset (thread_p, &db_charset_db_root,
-					       db_lang, sizeof (db_lang) - 1);
+  error_code = catcls_get_server_compat_info (thread_p, &db_charset_db_root,
+					      db_lang, sizeof (db_lang) - 1,
+					      timezone_checksum);
+
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -3740,6 +3746,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     }
 
   error_code = lang_set_language (db_lang);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* Check server timezone checksum versus database checksum */
+
+  tzd = tz_get_data ();
+  assert (tzd != NULL);
+
+  error_code = check_timezone_compat (tzd->checksum,
+				      timezone_checksum,
+				      "server", "database");
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -4062,7 +4081,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
     }
 
   /* initialize time zone data, optional module */
-  if (tz_load (true) != NO_ERROR)
+  if (tz_load () != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
 	{
@@ -6439,6 +6458,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
   char dbtxt_label[PATH_MAX];
   int error_code = NO_ERROR;
   int db_charset_db_header = INTL_CODESET_ERROR;
+  char dummy_timezone_checksum[32 + 1];
 
   (void) msgcat_init ();
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
@@ -6656,8 +6676,9 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
       tsc_init ();
 
       error_code =
-	catcls_get_server_lang_charset (thread_p, &db_charset_db_root,
-					db_lang, sizeof (db_lang) - 1);
+	catcls_get_server_compat_info (thread_p, &db_charset_db_root, db_lang,
+				       sizeof (db_lang) - 1,
+				       dummy_timezone_checksum);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;

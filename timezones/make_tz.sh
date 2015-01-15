@@ -27,6 +27,7 @@ show_usage ()
   echo "                 a new C file containing all timezone names is generated,"
   echo "                 and it must be included in CUBRID src before the new"
   echo "                 timezone library can be used."
+  echo "	-d arg  Set the database name used when in extend mode"
   echo "    -? | -h Show this help message and exit"
   echo ""
   echo " EXAMPLES"
@@ -37,34 +38,80 @@ show_usage ()
   echo ""
 }
 
+error_target()
+{
+	show_usage
+	echo ""
+	echo "Target already set to $BUILD_TARGET"
+	exit 1
+}
+
+error_build_mode()
+{
+	show_usage
+	echo ""
+	echo "Build mode already set to $BUILD_MODE"
+	exit 1
+}
+
+error_tz_gen_mode()
+{
+	show_usage
+	echo ""
+	echo "Generation mode already set to $TZ_GEN_MODE"
+	exit 1
+}
+
+error_database_name()
+{
+	show_usage
+	echo ""
+	echo "When using extend we must have a database"
+	exit 1
+}
+
+error_param()
+{
+	show_usage
+	echo "Invalid parameter "
+	exit 1
+}
+
 BUILD_TARGET=32bit
 BUILD_MODE=debug
 TZ_GEN_MODE=new
+DATABASE_NAME=""
 
-  while getopts ":t:m:g:h" opt; do
+  while getopts ":t:m:g:d:h" opt; do
     case $opt in
       t ) if [ "$BUILD_TARGET" = "32bit" ]; then
 			BUILD_TARGET="$OPTARG"
 		  else
-		    GOTO error_target
+		    error_target
 		  fi			
 	  ;;
       m ) if [ "$BUILD_MODE" = "debug" ]; then
 			BUILD_MODE="$OPTARG"
 		  else
-		    GOTO error_build_mode
+		    error_build_mode
 		  fi
 	   ;;
 	  g ) if [ "$TZ_GEN_MODE" = "new" ]; then
 			TZ_GEN_MODE="$OPTARG"
 		  else
-		    GOTO error_tz_gen_mode
+		    error_tz_gen_mode
 		  fi
+	   ;;
+	  d ) DATABASE_NAME="$OPTARG"
 	   ;;
       h|\?|* ) show_usage; exit 1;;
     esac
   done
   shift $(($OPTIND - 1))
+
+if [[ "$DATABASE_NAME" = "" && "$TZ_GEN_MODE" = "extend" ]]; then
+error_database_name
+fi
 
 if [ $# -gt 0 ]; then
 show_usage
@@ -107,12 +154,14 @@ echo " Running $APP_NAME with parameters:"
 echo "         BUILD_TARGET = $BUILD_TARGET"
 echo "         BUILD_MODE   = $BUILD_MODE"
 echo "         TZ_GEN_MODE  = $TZ_GEN_MODE"
+if [ "$TZ_GEN_MODE" = "extend" ]; then
+echo "         DATABASE_NAME  = $DATABASE_NAME"
+fi
 echo ""
-
 
 echo "Generating timezone C file in mode $TZ_GEN_MODE"
 
-PS=$(cubrid gen_tz -g $TZ_GEN_MODE 2>&1)
+PS=$(cubrid gen_tz -g $TZ_GEN_MODE $DATABASE_NAME 2>&1)
 if ! [ "$?" -eq 0 ] ; then
 	echo $PS
 	echo "Error: Command cubrid gen_tz -g $TZ_GEN_MODE failed!"
@@ -145,28 +194,3 @@ echo "Done."
 
 echo "The timezone library has been created at $CUBRID/lib/libcubrid_timezones.so"
 exit 0
-
-:error_target
-show_usage
-echo ""
-echo "Target already set to $BUILD_TARGET"
-exit 1
-
-:error_build_mode
-show_usage
-echo ""
-echo "Build mode already set to $BUILD_MODE"
-exit 1
-
-:error_tz_gen_mode
-show_usage
-echo ""
-echo "Generation mode already set to $TZ_GEN_MODE"
-exit 1
-
-
-:error_param
-show_usage
-echo "Invalid parameter "
-exit 1
-

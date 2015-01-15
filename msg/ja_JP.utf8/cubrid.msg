@@ -1243,7 +1243,8 @@ $ LOADDB
 1174 Inheriting from a partitioned table is not allowed.
 1175 Geographic timezone is not allowed without date context.
 1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 ラストエラー
+1177 Incompatible timezone data: %1$s has different checksum from %2$s.
+1178 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

@@ -8161,6 +8161,7 @@ au_install (void)
 		     (DB_DOMAIN *) 0);
   smt_add_attribute (def, "charset", "integer", NULL);
   smt_add_attribute (def, "lang", "string", NULL);
+  smt_add_attribute (def, "timezone_checksum", "string", NULL);
 
 
   /* need signatures for these ! */

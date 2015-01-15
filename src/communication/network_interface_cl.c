@@ -11578,3 +11578,67 @@ tran_lock_rep_read (LOCK lock_rr_tran)
   return NO_ERROR;		/* No need to lock */
 #endif /* !CS_MODE */
 }
+
+/*
+ * boot_get_server_timezone_checksum () - get the timezone checksum from the 
+ *					  server
+ *
+ * return : error code or no error
+ */
+int
+boot_get_server_timezone_checksum (char *timezone_checksum)
+{
+#define CHECKSUM_SIZE 32
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = NULL;
+  char *reply_data = NULL;
+  char *ptr = NULL;
+  int reply_size = 0, dummy;
+  char *temp_str;
+
+  req_error = net_client_request2 (NET_SERVER_TZ_GET_CHECKSUM,
+				   NULL, 0,
+				   OR_ALIGNED_BUF_START (a_reply),
+				   OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &reply_data, &reply_size);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  /* unpack data size */
+  ptr = or_unpack_int (reply, &dummy);
+  /* unpack error code */
+  ptr = or_unpack_int (ptr, &req_error);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  assert (reply_data != NULL);
+
+  ptr = or_unpack_string_nocopy (reply_data, &(temp_str));
+  strncpy (timezone_checksum, temp_str, CHECKSUM_SIZE);
+  timezone_checksum[CHECKSUM_SIZE] = '\0';
+
+  if (reply_data != NULL)
+    {
+      free_and_init (reply_data);
+    }
+  return req_error;
+
+error:
+  if (reply_data != NULL)
+    {
+      free_and_init (reply_data);
+    }
+
+  return req_error;
+#else
+  return -1;
+#endif
+#undef CHECKSUM_SIZE
+}

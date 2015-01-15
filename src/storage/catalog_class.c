@@ -129,9 +129,11 @@ extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p,
 extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY *
 							thread_p);
 extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
-extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
-					   int *charset_id_p, char *lang_buf,
-					   const int lang_buf_size);
+extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p,
+					  int *charset_id_p,
+					  char *lang_buf,
+					  const int lang_buf_size,
+					  char *timezone_checksum);
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
 				    LANG_COLL_COMPAT ** db_collations,
 				    int *coll_cnt);
@@ -4933,21 +4935,24 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 }
 
 /*
- * catcls_get_server_lang_charset () - get the language id and the charset id
- *				       stored in the "db_root" system table
+ * catcls_get_server_compat_info () - get the language id, charset id and
+ *				      timezone checksum stored in the 
+ *				      "db_root" system table
  *   return: NO_ERROR, or error code
  *   thread_p(in)  : thread context
  *   charset_id_p(out):
  *   lang_buf(in/out): buffer language string
  *   lang_buf_size(in): size of buffer language string
- *
+ *   timezone_checksum(out): timezone_checksum
  *  Note : This function is called during server initialization, for this
  *	   reason, no locks are required on the class.
  */
 int
-catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
-				char *lang_buf, const int lang_buf_size)
+catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p,
+			       char *lang_buf, const int lang_buf_size,
+			       char *timezone_checksum)
 {
+#define CHECKSUM_SIZE 32
   OID class_oid;
   OID inst_oid;
   HFID hfid;
@@ -4956,6 +4961,7 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
   RECDES recdes;
   const char *class_name = "db_root";
   int charset_att_id = -1, lang_att_id = -1;
+  int timezone_id = -1;
   int i;
   int error = NO_ERROR;
   bool scan_cache_inited = false;
@@ -4963,6 +4969,7 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
 
   assert (charset_id_p != NULL);
   assert (lang_buf != NULL);
+  assert (timezone_checksum != NULL);
 
   OID_SET_NULL (&class_oid);
   OID_SET_NULL (&inst_oid);
@@ -5025,9 +5032,14 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
 	      break;
 	    }
 	}
+
+      if (strcmp ("timezone_checksum", rec_attr_name_p) == 0)
+	{
+	  timezone_id = i;
+	}
     }
 
-  if (charset_att_id == -1 || lang_att_id == -1)
+  if (charset_att_id == -1 || lang_att_id == -1 || timezone_id == -1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_FAILED;
@@ -5090,6 +5102,21 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
 	      strncpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
 	      lang_buf[MIN (lang_str_len, lang_buf_size)] = '\0';
 	    }
+	  else if (heap_value->attrid == timezone_id)
+	    {
+	      char *checksum = NULL;
+	      int checksum_len;
+
+	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
+		      == DB_TYPE_STRING);
+
+	      checksum = DB_GET_STRING (&heap_value->dbvalue);
+	      checksum_len = (checksum != NULL) ? strlen (checksum) : 0;
+
+	      assert (checksum_len <= CHECKSUM_SIZE);
+	      strncpy (timezone_checksum, checksum, checksum_len);
+	      timezone_checksum[checksum_len] = '\0';
+	    }
 	}
     }
 
@@ -5106,6 +5133,7 @@ exit:
     }
 
   return error;
+#undef CHECKSUM_SIZE
 }
 
 /*

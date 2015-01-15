@@ -753,6 +753,7 @@ static GETOPT_LONG ua_SyncCollDB_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_GenTz_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
   {GEN_TZ_INPUT_FOLDER_S, {ARG_STRING}, {0}},
   {GEN_TZ_MODE_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}

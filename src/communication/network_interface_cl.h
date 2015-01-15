@@ -572,6 +572,7 @@ extern int boot_get_server_locales (LANG_COLL_COMPAT ** server_collations,
 				    LANG_LOCALE_COMPAT ** server_locales,
 				    int *server_coll_cnt,
 				    int *server_locales_cnt);
+extern int boot_get_server_timezone_checksum (char *timezone_checksum);
 
 /* session state API */
 extern int csession_find_or_create_session (SESSION_ID * session_id,

@@ -44,6 +44,8 @@
 #if !defined (CS_MODE)
 #include "session.h"
 #endif
+#include "authenticate.h"
+#include "db.h"
 
 typedef struct tz_decode_info TZ_DECODE_INFO;
 struct tz_decode_info
@@ -82,8 +84,7 @@ typedef DB_BIGINT full_date_t;
 
 static int tz_initialized = 0;
 
-static int tz_load_library (const char *lib_file, void **handle,
-			    bool is_optional);
+static int tz_load_library (const char *lib_file, void **handle);
 static int tz_load_data_from_lib (TZ_DATA * tzd, void *lib_handle);
 static bool tz_get_leapsec_support (void);
 static int tz_create_tzid_for_utc_datetime (DB_DATETIME * dt,
@@ -194,7 +195,7 @@ static const int days_up_to_month[] =
  * handle(out)   : handle to the loaded library
  */
 static int
-tz_load_library (const char *lib_file, void **handle, bool is_optional)
+tz_load_library (const char *lib_file, void **handle)
 {
   int err_status = NO_ERROR;
   char err_msg[512];
@@ -223,7 +224,7 @@ tz_load_library (const char *lib_file, void **handle, bool is_optional)
       err_status = ER_TZ_LOAD_ERROR;
     }
 
-  if (err_status == ER_TZ_LOAD_ERROR && is_optional == false)
+  if (err_status == ER_TZ_LOAD_ERROR)
     {
 #if defined(WINDOWS)
       FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER
@@ -261,6 +262,7 @@ tz_load_data_from_lib (TZ_DATA * tzd, void *lib_handle)
 {
   char sym_name[TZLIB_SYMBOL_NAME_SIZE + 1];
   char err_msg[512 + PATH_MAX];
+  char *checksum;
 
   assert (lib_handle != NULL);
   assert (tzd != NULL);
@@ -300,6 +302,10 @@ tz_load_data_from_lib (TZ_DATA * tzd, void *lib_handle)
 		  TZ_WINDOWS_IANA_MAP *, lib_handle);
 #endif
 
+  TZLIB_GET_ADDR (checksum, "tz_timezone_checksum", char *, lib_handle);
+  strncpy (tzd->checksum, checksum, 32);
+  tzd->checksum[32] = '\0';
+
   return NO_ERROR;
 
 error_loading_symbol:
@@ -314,11 +320,10 @@ error_loading_symbol:
 /*
  * tz_load() - opens the timezone library and loads the data into the tzd
  *	       parameter
- * is_optional(in): true if module loading is optional
  * Returns: 0 (NO_ERROR) if success, -1 otherwise
  */
 int
-tz_load (bool is_optional)
+tz_load (void)
 {
   int err_status = NO_ERROR;
   char lib_file[PATH_MAX] = { 0 };
@@ -333,15 +338,10 @@ tz_load (bool is_optional)
 	    "libcubrid_timezones.%s", SHLIB_FILE_EXT);
 
   envvar_libdir_file (lib_file, PATH_MAX, lib_short_file);
+  err_status = tz_load_library (lib_file, &tz_lib_handle);
 
-  err_status = tz_load_library (lib_file, &tz_lib_handle, is_optional);
   if (err_status != NO_ERROR)
     {
-      if (is_optional)
-	{
-	  tz_initialized = 1;
-	  err_status = NO_ERROR;
-	}
       goto exit;
     }
 
@@ -4621,7 +4621,7 @@ tz_load_with_library_path (TZ_DATA * tzd, const char *timezone_library_path)
   int err_status = NO_ERROR;
   void *tz_lib_handle = NULL;
 
-  err_status = tz_load_library (timezone_library_path, &tz_lib_handle, false);
+  err_status = tz_load_library (timezone_library_path, &tz_lib_handle);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -4681,5 +4681,63 @@ tz_check_session_has_geographic_tz (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_GEOGRAPHIC_ZONE, 0);
       return ER_TZ_GEOGRAPHIC_ZONE;
     }
+  return NO_ERROR;
+}
+
+#if !defined(SERVER_MODE)
+/*
+ * put_timezone_checksum - Saves the timezone checksum into DB
+ * return: error code
+ *
+ * Note: This is called during database creation;
+ *	 
+ */
+int
+put_timezone_checksum (char *checksum)
+{
+  DB_VALUE value;
+  int au_save;
+  int err_status = NO_ERROR;
+
+  db_make_string (&value, checksum);
+
+  AU_DISABLE (au_save);
+  err_status = db_put_internal (Au_root, "timezone_checksum", &value);
+  AU_ENABLE (au_save);
+
+  return err_status;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * check_timezone_compat - checks compatibility between a client timezone
+ *			   checksum and a server timezone checksum
+ *			    
+ * Returns : error code
+ * client_checksum(in): client checksum
+ * server_checksum(in): server checksum
+ * client_text(in): text to display in message error for client (this can be
+ *		    "server" when checking server vs database)
+ * server_text(in): text to display in message error for server (this can be
+ *		    "database" when checking server vs database)
+ */
+int
+check_timezone_compat (const char *client_checksum,
+		       const char *server_checksum,
+		       const char *client_text, const char *server_text)
+{
+  assert (client_checksum != NULL);
+  assert (server_checksum != NULL);
+  assert (client_text != NULL);
+  assert (server_text != NULL);
+
+  if (strcmp (client_checksum, server_checksum) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_TZ_INCOMPATIBLE_TIMEZONE_LIBRARIES, 2, client_text,
+	      server_text);
+      return ER_TZ_INCOMPATIBLE_TIMEZONE_LIBRARIES;
+    }
+
   return NO_ERROR;
 }

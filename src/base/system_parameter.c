@@ -5814,7 +5814,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 		{
 		  /* we may have geographic region name, make sure timezone lib
 		   * is loaded */
-		  if (tz_load (false) != NO_ERROR)
+		  if (tz_load () != NO_ERROR)
 		    {
 		      return PRM_ERR_BAD_VALUE;
 		    }

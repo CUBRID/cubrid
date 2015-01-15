@@ -32,7 +32,6 @@
 #define TZ_MAX_FORMAT_SIZE	  10
 #define TZ_WINDOWS_ZONE_NAME_SIZE 70
 
-
 /*
  * The defines below are types of the data representation for the "ON" column
  * from the daylight saving rules. The "ON" column can be either a number
@@ -205,11 +204,11 @@ typedef struct tz_data TZ_DATA;
 struct tz_data
 {
   int country_count;
-  TZ_COUNTRY *countries;	/* export in tz list file, not in shared library */
+  TZ_COUNTRY *countries;
 
   int timezone_count;
   TZ_TIMEZONE *timezones;
-  char **timezone_names;	/* export in tz list file, not in shared library */
+  char **timezone_names;
 
   int offset_rule_count;
   TZ_OFFSET_RULE *offset_rules;
@@ -229,6 +228,10 @@ struct tz_data
   int windows_iana_map_count;
   TZ_WINDOWS_IANA_MAP *windows_iana_map;
 #endif
+  /*
+   * 32 digits for the md5 checksum
+   */
+  char checksum[32 + 1];
 };
 
 #endif /* _TIMEZONE_LIB_COMMON_H_ */

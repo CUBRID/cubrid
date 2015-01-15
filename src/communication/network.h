@@ -270,6 +270,7 @@ enum net_server_request
 
   NET_SERVER_LC_REPL_FORCE,
   NET_SERVER_LOCK_RR,
+  NET_SERVER_TZ_GET_CHECKSUM,
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

@@ -119,7 +119,7 @@ struct tz_region
 extern "C"
 {
 #endif
-  extern int tz_load (bool is_optional);
+  extern int tz_load (void);
   extern void tz_unload (void);
   extern DB_BIGINT tz_timestamp_encode_leap_sec_adj (const int year_century,
 						     const int year,
@@ -282,6 +282,14 @@ extern "C"
 					const char *timezone_library_path);
   extern int tz_check_geographic_tz (const TZ_ID * tz_id);
   extern int tz_check_session_has_geographic_tz (void);
+#if !defined(SERVER_MODE)
+  extern int put_timezone_checksum (char *checksum);
+#endif /* SERVER_MODE */
+
+  extern int check_timezone_compat (const char *client_checksum,
+				    const char *server_checksum,
+				    const char *client_text,
+				    const char *server_text);
 
 #ifdef __cplusplus
 }

@@ -11104,3 +11104,58 @@ slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
 end:
   css_dec_prefetcher_thread_count (thread_p);
 }
+
+/*
+ * sboot_get_timezone_checksum () - get the timezone library checksum
+ * return : void
+ * thread_p (in) :
+ * rid (in) :
+ * request (in) :
+ * reqlen (in) :
+ */
+void
+sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid,
+			     char *request, int reqlen)
+{
+  int err = NO_ERROR;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = NULL, *ptr = NULL, *data_reply = NULL;
+  int size = 0;
+  int len_str;
+  const TZ_DATA *tzd;
+
+  tzd = tz_get_data ();
+
+  assert (tzd != NULL);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  size += or_packed_string_length (tzd->checksum, &len_str);
+
+  data_reply = (char *) malloc (size);
+
+  if (data_reply != NULL)
+    {
+      len_str = strlen (tzd->checksum);
+      ptr = or_pack_string_with_length (data_reply, tzd->checksum, len_str);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      size);
+      return_error_to_client (thread_p, rid);
+      size = 0;
+      err = ER_FAILED;
+    }
+
+  ptr = or_pack_int (reply, size);
+  ptr = or_pack_int (ptr, err);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
+				     OR_ALIGNED_BUF_SIZE (a_reply),
+				     data_reply, size);
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+}

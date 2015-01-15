@@ -12,7 +12,7 @@ set VS100_VC_FOLDER=
 set VCVARS=bin\amd64\vcvarsamd64.bat
 
 :CHECK_OPTION
-if "%1." == "." (GOTO :CHECK_ENV)
+if "%1" == "" (GOTO :CHECK_ENV)
 
 if "%1" == "/debug" (
 if "%BUILD_MODE%" == "." (
@@ -53,7 +53,18 @@ GOTO :ERROR
 
 :DO_SHIFT
 shift
+GOTO :GET_DATABASE_NAME
+
+:GET_DATABASE_NAME
+if not "%1" == "" (
+set DATABASE=%1
+shift
 GOTO :CHECK_OPTION
+) else ( 
+if "%TZ_MODE%" == "extend" ( 
+GOTO :ERROR
+) else (GOTO :CHECK_OPTION)
+)
 
 :CHECK_ENV
 
@@ -101,10 +112,13 @@ goto :ENV_ERROR
 @echo.         BUILD_TARGET = %BUILD_TARGET%
 @echo.         BUILD_MODE = %BUILD_MODE%
 @echo.         TZ_MODE = %TZ_MODE%
+if "%TZ_MODE%" == "extend" ( 
+echo          DATABASE_NAME = %DATABASE%
+)
 @echo. 
 
 @echo. Generating timezone C file with mode %TZ_MODE% ...
-%CUBRID%\bin\cubrid gen_tz -g %TZ_MODE%
+%CUBRID%\bin\cubrid gen_tz -g %TZ_MODE% %DATABASE%
 
 if %ERRORLEVEL% NEQ 0 goto :ERROR_GENTZ
 
@@ -171,7 +185,7 @@ goto :GENERIC_ERROR
 
 :SHOW_USAGE
 @echo.
-@echo.USAGE: %APP_NAME% [/release^|/debug] [/new^|/update^|/extend]
+@echo.USAGE: %APP_NAME% [/release^|/debug] [/new^|/update^|/extend] [database_name] (only for extend mode)
 @echo.Build timezone shared 32bit DLL for CUBRID
 @echo. OPTIONS
 @echo.  /release or /debug    Build with release or debug mode (default: release)
@@ -193,6 +207,10 @@ goto :GENERIC_ERROR
 @echo.                   a new C file containing all timezone names is generated,
 @echo.                   and it must be included in CUBRID src before the new
 @echo.                   timezone library can be used.
+@echo.        database_name = this is necessary only when using extend mode;
+@echo.                        the computed timezone checksum is written in
+@echo.                        the timezone_checksum column of the db_root
+@echo.                        system table
 @echo.  /help /h /?      Display this help message and exit
 @echo.
 @echo. Examples:

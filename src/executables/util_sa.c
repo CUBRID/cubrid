@@ -340,6 +340,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   char *db_page_str;
   char *log_volume_str;
   char *log_page_str;
+  TZ_DATA *tzd;
 
   char required_size[16];
 
@@ -656,6 +657,18 @@ createdb (UTIL_FUNCTION_ARG * arg)
   sm_mark_system_classes ();
 
   (void) lang_db_put_charset ();
+
+  /* initialize time zone data, optional module */
+  if (tz_load () != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  tzd = tz_get_data ();
+  if (put_timezone_checksum (tzd->checksum) != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   if (verbose)
     {
@@ -4119,7 +4132,6 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-
 /*
  * gen_tz() - generate time zone data as a C source file, to be compiled into
  *	      a shared library (DLL/so) using included makefile/build script
@@ -4128,11 +4140,16 @@ error_exit:
 int
 gen_tz (UTIL_FUNCTION_ARG * arg)
 {
+#define CHECKSUM_SIZE 32
   UTIL_ARG_MAP *arg_map = NULL;
   char *input_path = NULL;
   char *tz_gen_mode = NULL;
   TZ_GEN_TYPE tz_gen_type = TZ_GEN_TYPE_NEW;
   int exit_status = EXIT_SUCCESS;
+  const char *db_name = NULL;
+  bool write_checksum = false;
+  char checksum[CHECKSUM_SIZE + 1];
+  char er_msg_file[PATH_MAX];
 
   assert (arg != NULL);
   arg_map = arg->arg_map;
@@ -4147,6 +4164,13 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   else if (strcasecmp (tz_gen_mode, "extend") == 0)
     {
       tz_gen_type = TZ_GEN_TYPE_EXTEND;
+      db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE,
+						 0);
+      if (db_name == NULL || check_database_name (db_name) != NO_ERROR)
+	{
+	  exit_status = EXIT_FAILURE;
+	  goto exit;
+	}
     }
   else if (strcasecmp (tz_gen_mode, "update") == 0)
     {
@@ -4171,13 +4195,48 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       input_path = inputpath_local;
     }
 
-  if (timezone_compile_data (input_path, tz_gen_type) != NO_ERROR)
+  if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
+    {
+      /* error message log file */
+      snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+		"%s_%s.err", db_name, arg->command_name);
+      er_init (er_msg_file, ER_NEVER_EXIT);
+      AU_DISABLE_PASSWORDS ();
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+      db_login ("DBA", NULL);
+      if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+	{
+	  exit_status = EXIT_FAILURE;
+	  goto exit;
+	}
+    }
+
+  memset (checksum, 0, sizeof (checksum));
+  if (timezone_compile_data (input_path, tz_gen_type, checksum) != NO_ERROR)
     {
       exit_status = EXIT_FAILURE;
       goto exit;
     }
+  if (checksum[0] != '\0')
+    {
+      if (put_timezone_checksum (checksum) != NO_ERROR)
+	{
+	  exit_status = EXIT_FAILURE;
+	  db_abort_transaction ();
+	  goto exit;
+	}
+      else
+	{
+	  /* write the new checksum in the database */
+	  db_commit_transaction ();
+	}
+    }
 
 exit:
+  if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
+    {
+      db_shutdown ();
+    }
   if (exit_status != EXIT_SUCCESS)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
@@ -4190,6 +4249,7 @@ print_gen_tz_usage:
 				   MSGCAT_UTIL_SET_GEN_TZ,
 				   GEN_TZ_MSG_USAGE), basename (arg->argv0));
   return EXIT_FAILURE;
+#undef CHECKSUM_SIZE
 }
 
 /*
@@ -4253,7 +4313,7 @@ dump_tz (UTIL_FUNCTION_ARG * arg)
       is_dump_zone = true;
     }
 
-  if (tz_load (false) != NO_ERROR)
+  if (tz_load () != NO_ERROR)
     {
       err_status = EXIT_FAILURE;
       goto exit;

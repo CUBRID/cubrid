@@ -203,6 +203,10 @@ net_server_init (void)
   req_p->processing_function = sboot_get_locales_info;
   req_p->name = "NET_SERVER_BO_GET_LOCALES_INFO";
 
+  req_p = &net_Requests[NET_SERVER_TZ_GET_CHECKSUM];
+  req_p->processing_function = sboot_get_timezone_checksum;
+  req_p->name = "NET_SERVER_TZ_GET_CHECKSUM";
+
   /* transaction */
   req_p = &net_Requests[NET_SERVER_TM_SERVER_COMMIT];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO
@@ -1429,7 +1433,7 @@ net_server_start (const char *server_name)
     }
 
   /* initialize time zone data, optional module */
-  if (tz_load (true) != NO_ERROR)
+  if (tz_load () != NO_ERROR)
     {
       status = -1;
       goto end;

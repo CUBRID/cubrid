@@ -213,6 +213,10 @@ static int catcls_vclass_install (void);
 #if defined(CS_MODE)
 static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
 #endif /* CS_MODE */
+#if defined(CS_MODE)
+static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL *
+					 client_credential);
+#endif
 /*
  * boot_client () -
  *
@@ -818,7 +822,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   /* initialize time zone data - optional module */
-  if (tz_load (true) != NO_ERROR)
+  if (tz_load () != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
 	{
@@ -1320,6 +1324,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 #if defined(CS_MODE)
   error_code = boot_check_locales (client_credential);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error_code = boot_check_timezone_checksum (client_credential);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -6032,3 +6042,43 @@ boot_set_server_session_key (const char *key)
   memcpy (boot_Server_credential.server_session_key, key,
 	  SERVER_SESSION_KEY_SIZE);
 }
+
+
+#if defined(CS_MODE)
+/*
+ * boot_check_timezone_checksum () - checks that client timezone library is 
+ *	                             compatible with server timezone library
+ *
+ *  return : error code
+ *
+ */
+static int
+boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
+{
+#define CHECKSUM_SIZE 32
+  int error_code = NO_ERROR;
+  char timezone_checksum[CHECKSUM_SIZE + 1];
+  const TZ_DATA *tzd;
+  char cli_text[PATH_MAX];
+  char srv_text[DB_MAX_IDENTIFIER_LENGTH + 10];
+
+  error_code = boot_get_server_timezone_checksum (timezone_checksum);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  (void) basename_r (client_credential->program_name, cli_text,
+		     sizeof (cli_text));
+  snprintf (srv_text, sizeof (srv_text) - 1, "server '%s'",
+	    client_credential->db_name);
+
+  tzd = tz_get_data ();
+  assert (tzd != NULL);
+  error_code = check_timezone_compat (tzd->checksum,
+				      timezone_checksum, cli_text, srv_text);
+exit:
+  return error_code;
+#undef CHECKSUM_SIZE
+}
+#endif /* CS_MODE */

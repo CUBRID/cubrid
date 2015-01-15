@@ -36,6 +36,7 @@
 #include "tz_compile.h"
 #include "tz_support.h"
 #include "xml_parser.h"
+#include "md5.h"
 
 #define TZ_FILENAME_MAX_LEN	    17
 #define TZ_MAX_LINE_LEN		    512
@@ -340,6 +341,45 @@ extern const TZ_COUNTRY tz_countries[];
     strcpy ((dst)->full_name, (src)->full_name); \
   } while (0)
 
+#define PRINT_STRING_TO_C_FILE(fp, val, len)                          \
+  do {                                                                \
+    int istr;                                                         \
+    fprintf (fp, "\"");                                               \
+    for (istr = 0; istr < len; istr++)                                \
+      {                                                               \
+	fprintf (fp, "\\x%02X", (unsigned char) val[istr]);           \
+      }                                                               \
+    fprintf (fp, "\"");						      \
+  } while (0)
+
+#define PRINT_STRING_VAR_TO_C_FILE(fp, valname, val)			  \
+  do {                                                                    \
+      fprintf (fp, "\n"SHLIB_EXPORT_PREFIX"const char "valname"[] = ");   \
+      PRINT_STRING_TO_C_FILE (fp, val, strlen (val));			  \
+      fprintf (fp, ";\n");                                                \
+  } while (0);
+
+#define BUF_PUT_INT32(buf,v)				       \
+  do {							       \
+      unsigned int nv = htonl(v);			       \
+      *((unsigned char *) (buf)) = ((unsigned char *) &nv)[3]; \
+      buf = (char *) (buf) + 1;				       \
+      *((unsigned char *) (buf)) = ((unsigned char *) &nv)[2]; \
+      buf = (char *) (buf) + 1;				       \
+      *((unsigned char *) (buf)) = ((unsigned char *) &nv)[1]; \
+      buf = (char *) (buf) + 1;				       \
+      *((unsigned char *) (buf)) = ((unsigned char *) &nv)[0]; \
+      buf = (char *) (buf) + 1;				       \
+  } while (0)
+
+#define BUF_PUT_INT16(buf,v)				      \
+  do {							      \
+      unsigned short nv = htons(v);			      \
+      *((unsigned char *) (buf)) = ((unsigned char *) &nv)[1];\
+      buf = (char *) (buf) + 1;				      \
+      *((unsigned char *) (buf)) = ((unsigned char *) &nv)[0];\
+      buf = (char *) (buf) + 1;				      \
+  } while (0)
 
 static int tzc_check_new_package_validity (const char *input_folder);
 static int tzc_load_countries (TZ_RAW_DATA * tzd_raw,
@@ -452,7 +492,8 @@ static int tz_data_partial_clone (char **timezone_names,
 				  TZ_TIMEZONE * timezones, TZ_NAME * names,
 				  const TZ_DATA * tzd);
 static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
-static int tzc_extend (TZ_DATA * tzd);
+static int tzc_extend (TZ_DATA * tzd, bool * write_checksum);
+static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
@@ -590,19 +631,20 @@ exit:
 
 /*
  * timezone_compile_data() - loads data from all relevant tz files into
- *			  temporary structures, reorganizes & optimizes data
- *			  and generates TZ specific files
+ *			     temporary structures, reorganizes & optimizes data
+ *			     and generates TZ specific files
  * Returns: NO_ERROR if successful, internal error code otherwise
  * input_folder(in): path to the input folder containing timezone data
  * tz_gen_type(in): control flag (type of TZ build/gen to perform)
  */
 int
 timezone_compile_data (const char *input_folder,
-		       const TZ_GEN_TYPE tz_gen_type)
+		       const TZ_GEN_TYPE tz_gen_type, char *checksum)
 {
   int err_status = NO_ERROR;
   TZ_RAW_DATA tzd_raw;
   TZ_DATA tzd;
+  bool write_checksum = false;
 
   memset (&tzd, 0, sizeof (tzd));
   memset (&tzd_raw, 0, sizeof (tzd_raw));
@@ -659,7 +701,7 @@ timezone_compile_data (const char *input_folder,
 
   if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
     {
-      err_status = tzc_extend (&tzd);
+      err_status = tzc_extend (&tzd, &write_checksum);
       if (err_status != NO_ERROR)
 	{
 	  /* failed to load file */
@@ -667,10 +709,21 @@ timezone_compile_data (const char *input_folder,
 	}
     }
 
+  err_status = tzc_compute_timezone_checksum (&tzd, tz_gen_type);
+  if (err_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
   err_status = tzc_export_timezone_C_file (&tzd);
   if (err_status != NO_ERROR)
     {
       goto exit;
+    }
+
+  if (write_checksum == true)
+    {
+      strcpy (checksum, tzd.checksum);
     }
 
   tzc_summary (&tzd_raw, &tzd);
@@ -4424,6 +4477,8 @@ tzc_export_timezone_C_file (const TZ_DATA * tzd)
   fprintf (fp, "};\n\n");
 #endif
 
+  PRINT_STRING_VAR_TO_C_FILE (fp, "tz_timezone_checksum", tzd->checksum);
+
   if (fp)
     {
       fclose (fp);
@@ -5547,9 +5602,12 @@ exit:
  * Returns: error or no error
  * tzd (in/out): new timezone library data that needs to be merged with
  *               the old timezone library data
+ * write_checksum(out): flag that tells if the new checksum of the new
+ *                      library created with extend should be written in
+ *                      the database
  */
 static int
-tzc_extend (TZ_DATA * tzd)
+tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 {
   int err_status = NO_ERROR;
   TZ_DATA old_tzd;
@@ -6380,10 +6438,263 @@ exit:
   tzd->ds_rules = all_ds_rules;
   tzd->ds_rule_count = all_ds_rule_count;
 
-  if (err_status == NO_ERROR && is_compat == false)
+  if (err_status == NO_ERROR)
     {
-      printf ("Could not make all the data backward compatible!\n");
+      if (is_compat == false)
+	{
+	  printf ("Could not make all the data backward compatible!\n");
+	  *write_checksum = false;
+	}
+      else
+	{
+	  *write_checksum = true;
+	}
     }
 
   return err_status;
+}
+
+/*
+ * tzc_compute_timezone_checksum() - Computes an MD5 for the timezone data
+ *                                   structures                
+ * Returns:
+ * tzd (in/out): timezone library
+ * type(in): tells which make_tz mode was used
+ */
+static int
+tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
+{
+  char *input_buf;
+  int size = 0;
+  int i;
+  int error = NO_ERROR;
+  char *buf;
+
+  for (i = 0; i < tzd->country_count; i++)
+    {
+      size += sizeof (tzd->countries[i].code);
+      size += sizeof (tzd->countries[i].full_name);
+    }
+
+  for (i = 0; i < tzd->timezone_count; i++)
+    {
+      size += sizeof (tzd->timezones[i].country_id);
+      size += sizeof (tzd->timezones[i].gmt_off_rule_count);
+      size += sizeof (tzd->timezones[i].gmt_off_rule_start);
+      size += sizeof (tzd->timezones[i].zone_id);
+    }
+
+  for (i = 0; i < tzd->timezone_count; i++)
+    {
+      size += strlen (tzd->timezone_names[i]);
+    }
+
+  for (i = 0; i < tzd->offset_rule_count; i++)
+    {
+      size += sizeof (tzd->offset_rules[i].gmt_off);
+      size += sizeof (tzd->offset_rules[i].ds_ruleset);
+      size += sizeof (tzd->offset_rules[i].until_year);
+      size += sizeof (tzd->offset_rules[i].until_mon);
+      size += sizeof (tzd->offset_rules[i].until_day);
+      size += sizeof (tzd->offset_rules[i].until_hour);
+      size += sizeof (tzd->offset_rules[i].until_min);
+      size += sizeof (tzd->offset_rules[i].until_sec);
+      size += sizeof (tzd->offset_rules[i].until_time_type);
+      size += sizeof (tzd->offset_rules[i].until_flag);
+      size += sizeof (tzd->offset_rules[i].ds_type);
+      size += sizeof (tzd->offset_rules[i].julian_date);
+      if (tzd->offset_rules[i].std_format != NULL)
+	{
+	  size += strlen (tzd->offset_rules[i].std_format);
+	}
+      if (tzd->offset_rules[i].save_format != NULL)
+	{
+	  size += strlen (tzd->offset_rules[i].save_format);
+	}
+      if (tzd->offset_rules[i].var_format != NULL)
+	{
+	  size += strlen (tzd->offset_rules[i].var_format);
+	}
+    }
+
+  for (i = 0; i < tzd->name_count; i++)
+    {
+      size += sizeof (tzd->names[i].is_alias);
+      size += sizeof (tzd->names[i].zone_id);
+      size += strlen (tzd->names[i].name);
+    }
+
+  for (i = 0; i < tzd->ds_ruleset_count; i++)
+    {
+      size += sizeof (tzd->ds_rulesets[i].count);
+      size += sizeof (tzd->ds_rulesets[i].index_start);
+      size += strlen (tzd->ds_rulesets[i].ruleset_name);
+    }
+
+  for (i = 0; i < tzd->ds_rule_count; i++)
+    {
+      size += sizeof (tzd->ds_rules[i].from_year);
+      size += sizeof (tzd->ds_rules[i].to_year);
+      size += sizeof (tzd->ds_rules[i].in_month);
+      size += sizeof (tzd->ds_rules[i].change_on);
+      size += sizeof (tzd->ds_rules[i].at_time);
+      size += sizeof (tzd->ds_rules[i].at_time_type);
+      size += sizeof (tzd->ds_rules[i].save_time);
+      if (tzd->ds_rules[i].letter_abbrev != NULL)
+	{
+	  size += strlen (tzd->ds_rules[i].letter_abbrev);
+	}
+    }
+
+  for (i = 0; i < tzd->ds_leap_sec_count; i++)
+    {
+      size += sizeof (tzd->ds_leap_sec[i].corr_negative);
+      size += sizeof (tzd->ds_leap_sec[i].day);
+      size += sizeof (tzd->ds_leap_sec[i].is_rolling);
+      size += sizeof (tzd->ds_leap_sec[i].month);
+      size += sizeof (tzd->ds_leap_sec[i].year);
+    }
+
+  input_buf = (char *) calloc (size, sizeof (char));
+  if (input_buf == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  buf = input_buf;
+
+  for (i = 0; i < tzd->country_count; i++)
+    {
+      memcpy (buf, tzd->countries[i].code, sizeof (tzd->countries[i].code));
+      buf += sizeof (tzd->countries[i].code);
+      memcpy (buf, tzd->countries[i].full_name,
+	      sizeof (tzd->countries[i].full_name));
+      buf += sizeof (tzd->countries[i].full_name);
+    }
+
+  for (i = 0; i < tzd->timezone_count; i++)
+    {
+      BUF_PUT_INT32 (buf, tzd->timezones[i].country_id);
+      BUF_PUT_INT32 (buf, tzd->timezones[i].gmt_off_rule_count);
+      BUF_PUT_INT32 (buf, tzd->timezones[i].gmt_off_rule_start);
+      BUF_PUT_INT32 (buf, tzd->timezones[i].zone_id);
+    }
+
+  for (i = 0; i < tzd->timezone_count; i++)
+    {
+      memcpy (buf, tzd->timezone_names[i], strlen (tzd->timezone_names[i]));
+      buf += strlen (tzd->timezone_names[i]);
+    }
+
+  for (i = 0; i < tzd->offset_rule_count; i++)
+    {
+      BUF_PUT_INT32 (buf, tzd->offset_rules[i].gmt_off);
+      BUF_PUT_INT32 (buf, tzd->offset_rules[i].ds_ruleset);
+      BUF_PUT_INT16 (buf, tzd->offset_rules[i].until_year);
+      memcpy (buf, &tzd->offset_rules[i].until_mon,
+	      sizeof (tzd->offset_rules[i].until_mon));
+      buf += sizeof (tzd->offset_rules[i].until_mon);
+      memcpy (buf, &tzd->offset_rules[i].until_day,
+	      sizeof (tzd->offset_rules[i].until_day));
+      buf += sizeof (tzd->offset_rules[i].until_day);
+      memcpy (buf, &tzd->offset_rules[i].until_hour,
+	      sizeof (tzd->offset_rules[i].until_hour));
+      buf += sizeof (tzd->offset_rules[i].until_hour);
+      memcpy (buf, &tzd->offset_rules[i].until_min,
+	      sizeof (tzd->offset_rules[i].until_min));
+      buf += sizeof (tzd->offset_rules[i].until_min);
+      memcpy (buf, &tzd->offset_rules[i].until_sec,
+	      sizeof (tzd->offset_rules[i].until_sec));
+      buf += sizeof (tzd->offset_rules[i].until_sec);
+      BUF_PUT_INT32 (buf, tzd->offset_rules[i].until_time_type);
+      BUF_PUT_INT32 (buf, tzd->offset_rules[i].until_flag);
+      BUF_PUT_INT32 (buf, tzd->offset_rules[i].ds_type);
+      BUF_PUT_INT32 (buf, tzd->offset_rules[i].julian_date);
+      if (tzd->offset_rules[i].std_format != NULL)
+	{
+	  memcpy (buf, tzd->offset_rules[i].std_format,
+		  strlen (tzd->offset_rules[i].std_format));
+	  buf += strlen (tzd->offset_rules[i].std_format);
+	}
+      if (tzd->offset_rules[i].save_format != NULL)
+	{
+	  memcpy (buf, tzd->offset_rules[i].save_format,
+		  strlen (tzd->offset_rules[i].save_format));
+	  buf += strlen (tzd->offset_rules[i].save_format);
+	}
+      if (tzd->offset_rules[i].var_format != NULL)
+	{
+	  memcpy (buf, tzd->offset_rules[i].var_format,
+		  strlen (tzd->offset_rules[i].var_format));
+	  buf += strlen (tzd->offset_rules[i].var_format);
+	}
+    }
+
+  for (i = 0; i < tzd->name_count; i++)
+    {
+      memcpy (buf, &tzd->names[i].is_alias, sizeof (tzd->names[i].is_alias));
+      buf += sizeof (tzd->names[i].is_alias);
+      BUF_PUT_INT32 (buf, tzd->names[i].zone_id);
+      memcpy (buf, tzd->names[i].name, strlen (tzd->names[i].name));
+      buf += strlen (tzd->names[i].name);
+    }
+
+  for (i = 0; i < tzd->ds_ruleset_count; i++)
+    {
+      BUF_PUT_INT32 (buf, tzd->ds_rulesets[i].count);
+      BUF_PUT_INT32 (buf, tzd->ds_rulesets[i].index_start);
+      memcpy (buf, tzd->ds_rulesets[i].ruleset_name,
+	      strlen (tzd->ds_rulesets[i].ruleset_name));
+      buf += strlen (tzd->ds_rulesets[i].ruleset_name);
+    }
+
+  for (i = 0; i < tzd->ds_rule_count; i++)
+    {
+      BUF_PUT_INT16 (buf, tzd->ds_rules[i].from_year);
+      BUF_PUT_INT16 (buf, tzd->ds_rules[i].to_year);
+      memcpy (buf, &tzd->ds_rules[i].in_month,
+	      sizeof (tzd->ds_rules[i].in_month));
+      buf += sizeof (tzd->ds_rules[i].in_month);
+      BUF_PUT_INT32 (buf, tzd->ds_rules[i].change_on.type);
+      memcpy (buf, &tzd->ds_rules[i].change_on.day_of_month,
+	      sizeof (tzd->ds_rules[i].change_on.day_of_month));
+      buf += sizeof (tzd->ds_rules[i].change_on.day_of_month);
+      memcpy (buf, &tzd->ds_rules[i].change_on.day_of_week,
+	      sizeof (tzd->ds_rules[i].change_on.day_of_week));
+      buf += sizeof (tzd->ds_rules[i].change_on.day_of_week);
+      BUF_PUT_INT32 (buf, tzd->ds_rules[i].at_time);
+      BUF_PUT_INT32 (buf, tzd->ds_rules[i].at_time_type);
+      BUF_PUT_INT32 (buf, tzd->ds_rules[i].save_time);
+      if (tzd->ds_rules[i].letter_abbrev != NULL)
+	{
+	  memcpy (buf, tzd->ds_rules[i].letter_abbrev,
+		  strlen (tzd->ds_rules[i].letter_abbrev));
+	  buf += strlen (tzd->ds_rules[i].letter_abbrev);
+	}
+    }
+
+  for (i = 0; i < tzd->ds_leap_sec_count; i++)
+    {
+      memcpy (buf, &tzd->ds_leap_sec[i].corr_negative,
+	      sizeof (tzd->ds_leap_sec[i].corr_negative));
+      buf += sizeof (tzd->ds_leap_sec[i].corr_negative);
+      memcpy (buf, &tzd->ds_leap_sec[i].day,
+	      sizeof (tzd->ds_leap_sec[i].day));
+      buf += sizeof (tzd->ds_leap_sec[i].day);
+      memcpy (buf, &tzd->ds_leap_sec[i].is_rolling,
+	      sizeof (tzd->ds_leap_sec[i].is_rolling));
+      buf += sizeof (tzd->ds_leap_sec[i].is_rolling);
+      memcpy (buf, &tzd->ds_leap_sec[i].month,
+	      sizeof (tzd->ds_leap_sec[i].month));
+      BUF_PUT_INT16 (buf, tzd->ds_leap_sec[i].year);
+    }
+
+  memset (tzd->checksum, 0, sizeof (tzd->checksum));
+  md5_buffer (input_buf, size, tzd->checksum);
+  free (input_buf);
+  md5_hash_to_hex (tzd->checksum, tzd->checksum);
+
+  return error;
 }

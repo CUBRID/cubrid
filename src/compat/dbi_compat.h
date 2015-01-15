@@ -1506,7 +1506,9 @@
 
 #define ER_PAGE_LATCH_PROMOTE_FAIL		    -1176
 
-#define ER_LAST_ERROR                               -1177
+#define ER_TZ_INCOMPATIBLE_TIMEZONE_LIBRARIES       -1177
+
+#define ER_LAST_ERROR                               -1178
 
 
 #define DB_TRUE 1
