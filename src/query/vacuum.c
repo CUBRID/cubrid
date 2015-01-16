@@ -1654,10 +1654,9 @@ end:
       pgbuf_unfix_and_init (thread_p, page);
     }
 
-#if !defined (NDEBUG)
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
-#endif
+
   return error_code;
 }
 

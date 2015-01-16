@@ -1197,11 +1197,10 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 	{
 	  assert_release (false);
 	}
-
-      /* defence code: let other threads continue.
-       */
-      pgbuf_unfix_all (thread_p);
 #endif
+
+      /* defence code: let other threads continue. */
+      pgbuf_unfix_all (thread_p);
     }
 
   /* check the defined action attribute */
