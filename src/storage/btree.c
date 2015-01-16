@@ -12472,7 +12472,7 @@ start_point:
        */
     }
 
-  if (next_lock_flag == true || curr_lock_flag == true)
+  if ((next_lock_flag == true || curr_lock_flag == true) && (P == NULL))
     {
       P_vpid.volid = btid->vfid.volid;	/* read the root page */
       P_vpid.pageid = btid->root_pageid;
@@ -18712,6 +18712,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   OID saved_N_class_oid, saved_C_class_oid;
   int alignment;
   bool is_active;
+  bool stats_updated = false;
   bool key_found = false;
   LOCK next_key_granted_mode = NULL_LOCK;
   LOCK current_lock = NULL_LOCK, prev_tot_hold_mode = NULL_LOCK;
@@ -18945,9 +18946,6 @@ restart_walk:
 
   if (key_len_in_page > max_key_len)
     {
-      root_header->node.max_key_len = key_len_in_page;
-      max_key_len = key_len_in_page;
-
       /* promote latch */
       ret_val =
 	pgbuf_promote_read_latch (thread_p, P, PGBUF_PROMOTE_SHARED_READER);
@@ -18961,6 +18959,9 @@ restart_walk:
 	{
 	  goto error;
 	}
+
+      root_header->node.max_key_len = key_len_in_page;
+      max_key_len = key_len_in_page;
 
       ret_val =
 	btree_change_root_header_delta (thread_p, &btid->vfid, P, 0, 0, 0);
@@ -18983,7 +18984,7 @@ restart_walk:
    * Also NOTE that users to see the header statistics may have the transient
    * values.
    */
-  if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk))
+  if (!stats_updated && is_active && BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       if (BTREE_INSERT_IS_LOGICAL_DELETE (p_mvcc_rec_header))
 	{
@@ -19059,6 +19060,7 @@ restart_walk:
 	  unique_stat_info->num_oids++;
 	  unique_stat_info->num_keys++;	/* guess new key insert */
 	}
+      stats_updated = true;
     }
 
   /* decide whether key range locking must be performed.
@@ -19113,8 +19115,8 @@ start_point:
 
   next_page_flag = false;
 
-  if (next_lock_flag == true || curr_lock_flag == true
-      || retry_btree_no_space > 0)
+  if ((next_lock_flag == true || curr_lock_flag == true
+       || retry_btree_no_space > 0) && (P == NULL))
     {
       P_vpid.volid = btid->vfid.volid;	/* read the root page */
       P_vpid.pageid = btid->root_pageid;
