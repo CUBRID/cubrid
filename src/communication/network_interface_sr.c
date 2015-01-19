@@ -10735,7 +10735,8 @@ svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
   /* Unpack class_oids */
   if (num_classes > 0)
     {
-      class_oids = (OID *) malloc (num_classes * OR_OID_SIZE);
+      class_oids = (OID *) db_private_alloc (thread_p,
+					     num_classes * OR_OID_SIZE);
 
       ptr = or_unpack_oid_array (ptr, num_classes, &class_oids);
       if (ptr == NULL)
@@ -10752,7 +10753,7 @@ svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 cleanup:
   if (class_oids != NULL)
     {
-      db_private_free_and_init (NULL, class_oids);
+      db_private_free_and_init (thread_p, class_oids);
     }
 
   if (err != NO_ERROR)
