@@ -699,12 +699,7 @@ tp_init (void)
     }
 
   /* create our allocation area */
-#if defined (SERVER_MODE)
-  tp_Domain_area = area_create ("Domains", sizeof (TP_DOMAIN), 32);
-#else /* !SERVER_MODE */
   tp_Domain_area = area_create ("Domains", sizeof (TP_DOMAIN), 1024);
-#endif /* SERVER_MODE */
-
   if (tp_Domain_area == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1054,7 +1049,7 @@ tp_domain_free (TP_DOMAIN * dom)
 	  tp_domain_clear_enumeration (&DOM_GET_ENUMERATION (dom));
 	}
 
-      area_free (tp_Domain_area, dom);
+      (void) area_free (tp_Domain_area, dom);
     }
 }
 

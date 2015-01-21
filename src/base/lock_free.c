@@ -33,6 +33,7 @@
 #include "lock_free.h"
 #include "error_manager.h"
 #include "error_code.h"
+#include "memory_alloc.h"
 
 /*
  * Global lock free transaction systems systems
@@ -63,6 +64,7 @@ unsigned int
 lf_callback_vpid_hash (void *vpid, int htsize)
 {
   VPID *lvpid = (VPID *) vpid;
+
   return ((lvpid->pageid | ((unsigned int) lvpid->volid) << 24) % htsize);
 }
 
@@ -77,6 +79,7 @@ lf_callback_vpid_compare (void *vpid_1, void *vpid_2)
 {
   VPID *lvpid_1 = (VPID *) vpid_1;
   VPID *lvpid_2 = (VPID *) vpid_2;
+
   return !((lvpid_1->pageid == lvpid_2->pageid)
 	   && (lvpid_1->volid == lvpid_2->volid));
 }
@@ -110,7 +113,10 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
 
   assert (sys != NULL);
 
-  error = lf_bitmap_init (&sys->lf_bitmap, max_threads, &sys->entry_count);
+  sys->entry_count = LF_BITMAP_COUNT_ALIGN (max_threads);
+  error =
+    lf_bitmap_init (&sys->lf_bitmap, LF_BITMAP_ONE_CHUNK, sys->entry_count,
+		    LF_BITMAP_FULL_USAGE_RATIO);
   if (error != NO_ERROR)
     {
       return error;
@@ -121,14 +127,15 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
     (LF_TRAN_ENTRY *) malloc (sizeof (LF_TRAN_ENTRY) * sys->entry_count);
   if (sys->entries == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (LF_TRAN_ENTRY) * sys->entry_count);
+
       sys->entry_count = 0;
       lf_bitmap_destroy (&sys->lf_bitmap);
       return ER_FAILED;
     }
-  else
-    {
-      memset (sys->entries, 0, sys->entry_count * sizeof (LF_TRAN_ENTRY));
-    }
+
+  memset (sys->entries, 0, sys->entry_count * sizeof (LF_TRAN_ENTRY));
 
   for (i = 0; i < sys->entry_count; i++)
     {
@@ -174,8 +181,7 @@ lf_tran_system_destroy (LF_TRAN_SYSTEM * sys)
 
   if (sys->entries != NULL)
     {
-      free (sys->entries);
-      sys->entries = NULL;
+      free_and_init (sys->entries);
     }
 
   lf_bitmap_destroy (&sys->lf_bitmap);
@@ -296,13 +302,13 @@ lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys)
   int i, j;
 
   /* determine minimum value of all min_cdi fields in system entries */
-  for (i = 0; i < sys->entry_count / LF_TRAN_BITFIELD_WORD_SIZE; i++)
+  for (i = 0; i < sys->entry_count / LF_BITFIELD_WORD_SIZE; i++)
     {
       if (sys->lf_bitmap.bitfield[i])
 	{
-	  for (j = 0; j < LF_TRAN_BITFIELD_WORD_SIZE; j++)
+	  for (j = 0; j < LF_BITFIELD_WORD_SIZE; j++)
 	    {
-	      int pos = i * LF_TRAN_BITFIELD_WORD_SIZE + j;
+	      int pos = i * LF_BITFIELD_WORD_SIZE + j;
 	      UINT64 fetch = sys->entries[pos].transaction_id;
 
 	      if (minvalue > fetch)
@@ -386,37 +392,35 @@ lf_initialize_transaction_systems (int max_threads)
 
   if (lf_tran_system_init (&spage_saving_Ts, max_threads) != NO_ERROR)
     {
-      lf_destroy_transaction_systems ();
-      return ER_FAILED;
+      goto error;
     }
   if (lf_tran_system_init (&obj_lock_res_Ts, max_threads) != NO_ERROR)
     {
-      lf_destroy_transaction_systems ();
-      return ER_FAILED;
+      goto error;
     }
   if (lf_tran_system_init (&obj_lock_ent_Ts, max_threads) != NO_ERROR)
     {
-      lf_destroy_transaction_systems ();
-      return ER_FAILED;
+      goto error;
     }
   if (lf_tran_system_init (&catalog_Ts, max_threads) != NO_ERROR)
     {
-      lf_destroy_transaction_systems ();
-      return ER_FAILED;
+      goto error;
     }
   if (lf_tran_system_init (&sessions_Ts, max_threads) != NO_ERROR)
     {
-      lf_destroy_transaction_systems ();
-      return ER_FAILED;
+      goto error;
     }
   if (lf_tran_system_init (&free_sort_list_Ts, max_threads) != NO_ERROR)
     {
-      lf_destroy_transaction_systems ();
-      return ER_FAILED;
+      goto error;
     }
 
   tran_systems_initialized = true;
   return NO_ERROR;
+
+error:
+  lf_destroy_transaction_systems ();
+  return ER_FAILED;
 }
 
 /*
@@ -617,6 +621,7 @@ lf_freelist_destroy (LF_FREELIST * freelist)
   void *entry, *next;
 
   assert (freelist != NULL);
+
   if (freelist->available == NULL)
     {
       return;
@@ -2442,12 +2447,15 @@ lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue,
 				    void *data)
 {
   int index;
+
   assert (data != NULL);
+
   if (LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (queue))
     {
       /* Cannot push data */
       return false;
     }
+
   /* Push data before consume_cursor and decrement cursor. */
   if (queue->consume_cursor == 0)
     {
@@ -2457,10 +2465,13 @@ lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue,
       queue->consume_cursor += queue->capacity;
       queue->produce_cursor += queue->capacity;
     }
+
   index = (int) (--queue->consume_cursor % queue->capacity);
   memcpy (queue->data + index * queue->data_size, data, queue->data_size);
+
   /* Set pushed data READY_FOR_CONSUME. */
   queue->entry_state[index] = READY_FOR_CONSUME;
+
   return true;
 }
 
@@ -2476,7 +2487,9 @@ LOCK_FREE_CIRCULAR_QUEUE *
 lf_circular_queue_create (INT32 capacity, int data_size)
 {
   /* Allocate queue */
-  LOCK_FREE_CIRCULAR_QUEUE *queue =
+  LOCK_FREE_CIRCULAR_QUEUE *queue;
+
+  queue =
     (LOCK_FREE_CIRCULAR_QUEUE *) malloc (sizeof (LOCK_FREE_CIRCULAR_QUEUE));
   if (queue == NULL)
     {
@@ -2505,6 +2518,7 @@ lf_circular_queue_create (INT32 capacity, int data_size)
 	      capacity * sizeof (INT32));
       return NULL;
     }
+
   /* Initialize all entries as READY_TO_PRODUCE */
   memset (queue->entry_state, 0, capacity * sizeof (INT32));
 
@@ -2554,43 +2568,58 @@ lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue)
 /*
  * lf_bitmap_init () - initialize lock free bitmap
  *   returns: error code or NO_ERROR
- *   bitmap(in): bitmap to initialize
+ *   bitmap(out): bitmap to initialize
+ *   style(in): bitmap style to be initialized
  *   entries_cnt(in): maximum number of entries
- *   adjusted_entries_cnt(in): maximum number of entries rounded to 32
+ *   usage_threshold(in): the usage threshold for this bitmap
  */
 int
-lf_bitmap_init (LF_BITMAP * bitmap, int entries_cnt,
-		int *adjusted_entries_cnt)
+lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt,
+		float usage_threshold)
 {
+  size_t bitfield_size;
+  int chunk_count;
+  unsigned int mask, chunk;
+  int i;
+
   assert (bitmap != NULL);
 
+  bitmap->style = style;
   bitmap->entry_count = entries_cnt;
-  if (entries_cnt % LF_TRAN_BITFIELD_WORD_SIZE != 0)
+  bitmap->entry_count_in_use = 0;
+  bitmap->usage_threshold = usage_threshold;
+  if (usage_threshold < 0.0f || usage_threshold > 1.0f)
     {
-      bitmap->entry_count += LF_TRAN_BITFIELD_WORD_SIZE;
-      bitmap->entry_count -= entries_cnt % LF_TRAN_BITFIELD_WORD_SIZE;
+      bitmap->usage_threshold = 1.0f;
     }
+  bitmap->start_idx = 0;
 
   /* initialize bitfield */
-  bitmap->bitfield =
-    (unsigned int *)
-    malloc ((bitmap->entry_count / LF_TRAN_BITFIELD_WORD_SIZE) *
-	    sizeof (unsigned int));
+  chunk_count = CEIL_PTVDIV (entries_cnt, LF_BITFIELD_WORD_SIZE);
+  bitfield_size = (chunk_count * sizeof (unsigned int));
+  bitmap->bitfield = (unsigned int *) malloc (bitfield_size);
   if (bitmap->bitfield == NULL)
     {
       bitmap->entry_count = 0;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      bitfield_size);
       return ER_FAILED;
     }
-  else
-    {
-      memset (bitmap->bitfield, 0,
-	      (bitmap->entry_count / LF_TRAN_BITFIELD_WORD_SIZE) *
-	      sizeof (unsigned int));
-    }
 
-  if (adjusted_entries_cnt != NULL)
+  memset (bitmap->bitfield, 0, bitfield_size);
+
+  /* pad out the rest bits with 1, It will simplify the code in
+   * lf_bitmap_get_entry() */
+  if (entries_cnt % LF_BITFIELD_WORD_SIZE != 0)
     {
-      *adjusted_entries_cnt = bitmap->entry_count;
+      chunk = 0;
+      mask = 1;
+      for (i = entries_cnt % LF_BITFIELD_WORD_SIZE, mask <<= i;
+	   i < LF_BITFIELD_WORD_SIZE; i++, mask <<= 1)
+	{
+	  chunk |= mask;
+	}
+      bitmap->bitfield[chunk_count - 1] = chunk;
     }
 
   return NO_ERROR;
@@ -2608,10 +2637,13 @@ lf_bitmap_destroy (LF_BITMAP * bitmap)
 
   if (bitmap->bitfield != NULL)
     {
-      free (bitmap->bitfield);
-      bitmap->bitfield = NULL;
+      free_and_init (bitmap->bitfield);
     }
   bitmap->entry_count = 0;
+  bitmap->entry_count_in_use = 0;
+  bitmap->style = 0;
+  bitmap->usage_threshold = 1.0f;
+  bitmap->start_idx = 0;
 }
 
 
@@ -2623,19 +2655,40 @@ lf_bitmap_destroy (LF_BITMAP * bitmap)
 int
 lf_bitmap_get_entry (LF_BITMAP * bitmap)
 {
-  unsigned int mask, chunk;
+  int chunk_count;
+  unsigned int mask, chunk, start_idx;
   int i, chunk_idx, slot_idx;
 
   assert (bitmap != NULL);
   assert (bitmap->entry_count > 0);
   assert (bitmap->bitfield != NULL);
 
+  chunk_count = CEIL_PTVDIV (bitmap->entry_count, LF_BITFIELD_WORD_SIZE);
+
 restart:			/* wait-free process */
   chunk_idx = -1;
   slot_idx = -1;
 
-  /* find first chunk with an empty slot */
-  for (i = 0; i < bitmap->entry_count / LF_TRAN_BITFIELD_WORD_SIZE; i++)
+  /* when reaches the predefined threshold */
+  if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS
+      && ((float) bitmap->entry_count_in_use) / bitmap->entry_count >
+      bitmap->usage_threshold)
+    {
+      return -1;
+    }
+
+#if defined (SERVER_MODE)
+  /* round-robin to get start chunk index */
+  start_idx = ATOMIC_INC_32 (&bitmap->start_idx, 1);
+  start_idx = (start_idx - 1) % ((unsigned int) chunk_count);
+#else
+  /* iterate from the last allocated chunk */
+  start_idx = bitmap->start_idx;
+#endif
+
+  /* find a chunk with an empty slot */
+  i = start_idx;
+  do
     {
       chunk = VOLATILE_ACCESS (bitmap->bitfield[i], unsigned int);
       if (~chunk)
@@ -2643,17 +2696,27 @@ restart:			/* wait-free process */
 	  chunk_idx = i;
 	  break;
 	}
+
+      i++;
+      if (i >= chunk_count)
+	{
+	  i = 0;
+	}
     }
+  while (i != (int) start_idx);
 
   if (chunk_idx == -1)
     {
       /* full? */
-      assert (false);
+      if (bitmap->style == LF_BITMAP_ONE_CHUNK)
+	{
+	  assert (false);
+	}
       return -1;
     }
 
   /* find first empty slot in chunk */
-  for (i = 0, mask = 1; i < LF_TRAN_BITFIELD_WORD_SIZE; i++, mask <<= 1)
+  for (i = 0, mask = 1; i < LF_BITFIELD_WORD_SIZE; i++, mask <<= 1)
     {
       if ((~chunk) & mask)
 	{
@@ -2668,6 +2731,8 @@ restart:			/* wait-free process */
       goto restart;
     }
 
+  assert ((chunk_idx * LF_BITFIELD_WORD_SIZE + slot_idx) <
+	  bitmap->entry_count);
   do
     {
       chunk = VOLATILE_ACCESS (bitmap->bitfield[chunk_idx], unsigned int);
@@ -2679,7 +2744,16 @@ restart:			/* wait-free process */
     }
   while (!ATOMIC_CAS_32 (&bitmap->bitfield[chunk_idx], chunk, chunk | mask));
 
-  return chunk_idx * LF_TRAN_BITFIELD_WORD_SIZE + slot_idx;
+  if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS)
+    {
+      ATOMIC_INC_32 (&bitmap->entry_count_in_use, 1);
+    }
+
+#if !defined (SERVER_MODE)
+  bitmap->start_idx = chunk_idx;
+#endif
+
+  return chunk_idx * LF_BITFIELD_WORD_SIZE + slot_idx;
 }
 
 
@@ -2694,7 +2768,7 @@ restart:			/* wait-free process */
 int
 lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx)
 {
-  unsigned int mask, curr;
+  unsigned int mask, inverse_mask, curr;
   int pos, bit;
 
   assert (bitmap != NULL);
@@ -2702,17 +2776,35 @@ lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx)
   assert (entry_idx < bitmap->entry_count);
 
   /* clear bitfield so slot may be reused */
-  pos = entry_idx / LF_TRAN_BITFIELD_WORD_SIZE;
-  bit = entry_idx % LF_TRAN_BITFIELD_WORD_SIZE;
-  mask = (unsigned int) (1 << bit);
-  mask = ~mask;
+  pos = entry_idx / LF_BITFIELD_WORD_SIZE;
+  bit = entry_idx % LF_BITFIELD_WORD_SIZE;
+  inverse_mask = (unsigned int) (1 << bit);
+  mask = ~inverse_mask;
 
   do
     {
       /* clear slot */
       curr = VOLATILE_ACCESS (bitmap->bitfield[pos], unsigned int);
+
+      if (!(curr & inverse_mask))
+	{
+	  /* free unused memory or double free */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LF_BITMAP_INVALID_FREE,
+		  0);
+	  assert (false);
+	  return ER_LF_BITMAP_INVALID_FREE;
+	}
     }
   while (!ATOMIC_CAS_32 (&bitmap->bitfield[pos], curr, curr & mask));
+
+  if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS)
+    {
+      ATOMIC_INC_32 (&bitmap->entry_count_in_use, -1);
+    }
+
+#if !defined (SERVER_MODE)
+  bitmap->start_idx = pos;	/* hint for a free slot */
+#endif
 
   return NO_ERROR;
 }

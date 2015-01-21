@@ -87,11 +87,7 @@ extern unsigned int db_on_server;
 #define MR_OID_SIZE 0
 #endif
 
-#if defined (SERVER_MODE)
-#define VALUE_AREA_COUNT 32
-#else
 #define VALUE_AREA_COUNT 1024
-#endif
 
 /*
  * PR_OID_PROMOTION_DEFAULT
@@ -2527,7 +2523,7 @@ pr_free_ext_value (DB_VALUE * value)
     {
       /* some redundant checking but I want the semantics isolated */
       error = pr_clear_value (value);
-      area_free (Value_area, (void *) value);
+      (void) area_free (Value_area, (void *) value);
     }
   return error;
 }

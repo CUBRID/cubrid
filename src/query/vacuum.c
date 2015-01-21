@@ -720,12 +720,14 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
 
   error_code =
     lf_bitmap_init (&vacuum_Prefetch_free_buffers_bitmap,
-		    VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT, NULL);
+		    LF_BITMAP_ONE_CHUNK,
+		    VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT,
+		    LF_BITMAP_FULL_USAGE_RATIO);
   if (error_code != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, VACUUM_JOB_QUEUE_CAPACITY * sizeof (unsigned int)
-	      / LF_TRAN_BITFIELD_WORD_SIZE);
+	      / LF_BITFIELD_WORD_SIZE);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }

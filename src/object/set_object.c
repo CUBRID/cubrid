@@ -95,11 +95,7 @@ extern unsigned int db_on_server;
 
 #define COL_ARRAY_SIZE(size) ((size + (COL_BLOCK_SIZE - 1)) / COL_BLOCK_SIZE)
 
-#if defined(SERVER_MODE)
-#define SET_AREA_COUNT (32)
-#else
-#define SET_AREA_COUNT (4096)
-#endif
+#define SET_AREA_COUNT (1024)
 
 typedef struct collect_block
 {
@@ -2174,7 +2170,7 @@ free_set_reference (DB_COLLECTION * ref)
 
   /* NULL this field so it doesn't serve as a GC root */
   ref->owner = NULL;
-  area_free (Set_Ref_Area, ref);
+  (void) area_free (Set_Ref_Area, ref);
 }
 
 #if !defined(SERVER_MODE)
@@ -4549,7 +4545,7 @@ setobj_free (COL * col)
       while (r != start);
     }
 
-  area_free (Set_Obj_Area, col);
+  (void) area_free (Set_Obj_Area, col);
 }
 
 /*

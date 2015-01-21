@@ -2752,7 +2752,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
-  area_init (false);
+  area_init ();
   error_code = set_area_init ();
   if (error_code != NO_ERROR)
     {
@@ -3518,7 +3518,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   /* initialize allocations areas for things we need, on the client, most
    * of this is done inside ws_init().
    */
-  area_init (false);
+  area_init ();
   error_code = set_area_init ();
   if (error_code != NO_ERROR)
     {
@@ -4117,7 +4117,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
    *  Initialize the type/doain module (also sets up an area)
    */
 
-  area_init (false);
+  area_init ();
 
   if (tp_init () != NO_ERROR)
     {

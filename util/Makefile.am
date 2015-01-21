@@ -208,7 +208,7 @@ cubrid_esql_SOURCES = \
 cubrid_esql_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY 
 cubrid_esql_LDADD = @CS_LIB@
 
-noinst_PROGRAMS = gencat unittests_lf
+noinst_PROGRAMS = gencat unittests_lf unittests_area
 gencat_SOURCES = \
 	$(BASE_DIR)/porting.c \
 	$(EXECUTABLE_DIR)/gencat.c
@@ -219,3 +219,8 @@ unittests_lf_SOURCES = \
 	$(EXECUTABLE_DIR)/unittests_lf.c
 unittests_lf_LDADD = @SYS_LIBS@ @CS_LIB@
 unittests_lf_CPPFLAGS = @SERVER_DEFS@ $(AM_CPPFLAGS)
+
+unittests_area_SOURCES = \
+	$(EXECUTABLE_DIR)/unittests_area.c
+unittests_area_LDADD = @SYS_LIBS@ @CUBRID_LIB@
+unittests_area_CPPFLAGS = @SERVER_DEFS@ $(AM_CPPFLAGS)

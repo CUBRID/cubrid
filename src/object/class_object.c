@@ -6661,7 +6661,7 @@ classobj_free_template (SM_TEMPLATE * template_ptr)
       tr_free_schema_cache (template_ptr->triggers);
     }
 
-  area_free (Template_area, template_ptr);
+  (void) area_free (Template_area, template_ptr);
 
 }
 

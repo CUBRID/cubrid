@@ -156,7 +156,8 @@ BASE_SOURCES = \
 	$(BASE_DIR)/getopt_long.c \
 	$(BASE_DIR)/tsc_timer.c \
 	$(BASE_DIR)/perf.c \
-	$(BASE_DIR)/tz_support.c
+	$(BASE_DIR)/tz_support.c \
+	$(BASE_DIR)/lock_free.c
 
 
 HEAPLAYER_SOURCES = \

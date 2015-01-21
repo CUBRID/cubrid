@@ -1123,7 +1123,7 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 	    }
 	}
 
-      area_free (Assignment_area, assign);
+      (void) area_free (Assignment_area, assign);
     }
 }
 
@@ -1171,7 +1171,7 @@ obt_free_template (OBJ_TEMPLATE * template_ptr)
 	  free_and_init (template_ptr->assignments);
 	}
 
-      area_free (Template_area, template_ptr);
+      (void) area_free (Template_area, template_ptr);
     }
 }
 

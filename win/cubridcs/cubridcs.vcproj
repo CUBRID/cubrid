@@ -413,6 +413,10 @@
 					>
 				</File>				
 				<File
+					RelativePath="..\..\src\base\lock_free.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\md5.c"
 					>
 				</File>

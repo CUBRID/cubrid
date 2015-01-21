@@ -114,7 +114,7 @@ struct lf_entry_descriptor
  * Lock free transaction based memory garbage collector
  */
 #define LF_NULL_TRANSACTION_ID	      ULONG_MAX
-#define LF_TRAN_BITFIELD_WORD_SIZE    (int) (sizeof (unsigned int) * 8)
+#define LF_BITFIELD_WORD_SIZE    (int) (sizeof (unsigned int) * 8)
 
 typedef struct lf_tran_system LF_TRAN_SYSTEM;
 typedef struct lf_tran_entry LF_TRAN_ENTRY;
@@ -142,16 +142,47 @@ struct lf_tran_entry
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1 }
 
+typedef enum lf_bitmap_style LF_BITMAP_STYLE;
+enum lf_bitmap_style
+{
+  LF_BITMAP_ONE_CHUNK = 0,
+  LF_BITMAP_LIST_OF_CHUNKS
+};
+
 typedef struct lf_bitmap LF_BITMAP;
 struct lf_bitmap
 {
   /* bitfield for entries array */
   unsigned int *bitfield;
 
-  /* capacity */
+  /* capacity count */
   int entry_count;
+
+  /* current used count */
+  int entry_count_in_use;
+
+  /* style */
+  LF_BITMAP_STYLE style;
+
+  /* threshold for usage */
+  float usage_threshold;
+
+  /* the start chunk index for round-robin */
+  unsigned int start_idx;
 };
 
+#define LF_BITMAP_FULL_USAGE_RATIO (1.0f)
+#define LF_BITMAP_95PERCENTILE_USAGE_RATIO (0.95f)
+
+#if defined (SERVER_MODE)
+#define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_95PERCENTILE_USAGE_RATIO
+#else
+#define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_FULL_USAGE_RATIO
+#endif
+
+
+#define LF_BITMAP_COUNT_ALIGN(count) \
+    (((count) + (LF_BITFIELD_WORD_SIZE) - 1) & ~((LF_BITFIELD_WORD_SIZE) - 1))
 
 struct lf_tran_system
 {
@@ -181,7 +212,7 @@ struct lf_tran_system
 };
 
 #define LF_TRAN_SYSTEM_INITIALIZER \
-  { NULL, 0, {NULL, 0}, 0, 0, 100, 0, NULL }
+  { NULL, 0, {NULL, 0, 0, 0, 1.0f, 0}, 0, 0, 100, 0, NULL }
 
 #define LF_TRAN_CLEANUP_NECESSARY(e) ((e)->tran_system->min_active_transaction_id > (e)->last_cleanup_id)
 
@@ -426,8 +457,8 @@ extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (INT32 capacity,
 extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
 
 /* lock free bitmap */
-extern int lf_bitmap_init (LF_BITMAP * bitmap, int entries_cnt,
-			   int *adjusted_entries_cnt);
+extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style,
+			   int entries_cnt, float usage_threshold);
 extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
 extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
 extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);

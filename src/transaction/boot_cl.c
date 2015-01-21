@@ -378,7 +378,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
     }
 
   /* initialize the "areas" memory manager */
-  area_init (false);
+  area_init ();
   locator_initialize_areas ();
 
   (void) db_set_page_size (db_desired_pagesize, db_desired_log_page_size);
@@ -860,7 +860,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   /* initialize the "areas" memory manager, requires prm_ */
-  area_init (false);
+  area_init ();
   locator_initialize_areas ();
 
   ptr = (char *) strstr (client_credential->db_name, "@");

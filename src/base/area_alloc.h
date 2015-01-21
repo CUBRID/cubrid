@@ -34,18 +34,7 @@
 #include "connection_defs.h"
 #include "thread.h"
 #endif /* SERVER_MODE */
-
-
-/*
- * AREA_FREE_LIST - Structure used in the implementation of workspace areas.
- *   This structure should not be used by external modules but is needed
- *   for the definition of ws_area.
- */
-typedef struct area_free_list AREA_FREE_LIST;
-struct area_free_list
-{
-  AREA_FREE_LIST *next;
-};
+#include "lock_free.h"
 
 /*
  * AREA_BLOCK - Structure used in the implementation of workspace areas.
@@ -57,30 +46,8 @@ typedef struct area_block AREA_BLOCK;
 struct area_block
 {
   AREA_BLOCK *next;
+  LF_BITMAP bitmap;
   char *data;
-  char *pointer;
-  char *max;
-};
-
-
-/*
- * AREA_ENTRY - Structure for a thread entry.
- *   These are usually initialized in static space by a higher module
- *   and passed to the ws_area functions.  The "blocks" and "free" fields
- *   must be initialized to NULL by the higher module as these will
- *   be allocated by the area functions.
- */
-typedef struct area_entry AREA_ENTRY;
-struct area_entry
-{
-  AREA_BLOCK *blocks;
-  AREA_FREE_LIST *free;
-
-  size_t n_allocs;
-  size_t n_frees;
-  size_t b_cnt;
-  size_t a_cnt;
-  size_t f_cnt;
 };
 
 /*
@@ -92,18 +59,23 @@ struct area
   AREA *next;
 
   char *name;
-  size_t element_size;
+  size_t element_size;		/* the element size, including
+				 * prefix */
   size_t alloc_count;
+  size_t block_size;
 
-  size_t n_threads;
-  AREA_ENTRY *area_entries;
+  AREA_BLOCK *blocks;		/* the allocated block list */
+
+  /* for dumping */
+  size_t n_allocs;		/* total alloc element count */
+  size_t n_frees;		/* total free element count */
 
   void (*failure_function) (void);
 };
 
 
 /* system startup, shutdown */
-extern void area_init (bool enable_check);
+extern void area_init (void);
 extern void area_final (void);
 
 /* area definition */
@@ -113,8 +85,8 @@ extern void area_destroy (AREA * area);
 
 /* allocation functions */
 extern void *area_alloc (AREA * area);
-extern int area_validate (AREA * area, int thrd_index, const void *address);
-extern void area_free (AREA * area, void *ptr);
+extern int area_validate (AREA * area, const void *address);
+extern int area_free (AREA * area, void *ptr);
 extern void area_flush (AREA * area);
 
 /* debug functions */

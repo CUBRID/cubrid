@@ -1244,7 +1244,8 @@ $ LOADDB
 1175 Geographic timezone is not allowed without date context.
 1176 Latch promotion for page %1$d of volume %2$d failed.
 1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 마지막 에러
+1178 Attempt to free an unallocated entry or double free in lock free bitmap.
+1179 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

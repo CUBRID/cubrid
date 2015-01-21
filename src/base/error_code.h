@@ -400,13 +400,13 @@
 #define ER_WS_OBJLIST_NOT_ALLOCATED                 -329
 #define ER_WS_PIN_VIOLATION                         -330
 
-#define ER_QF_NOSPACE                               -331
-#define ER_QF_EXTENDING                             -332
-#define ER_QF_ABORT                                 -333
-#define ER_QF_OUTRAGEOUS                            -334
-#define ER_QF_ILLEGAL_POINTER                       -335
-#define ER_QF_FREE_TWICE                            -336
-#define ER_QF_NEGATIVE_SIZE                         -337
+#define ER_AREA_NOSPACE                             -331
+#define ER_AREA_EXTENDING                           -332
+#define ER_AREA_ABORT                               -333
+#define ER_AREA_OUTRAGEOUS                          -334
+#define ER_AREA_ILLEGAL_POINTER                     -335
+#define ER_AREA_FREE_TWICE                          -336
+#define ER_AREA_NEGATIVE_SIZE                       -337
 
 #define ERR_CSS_ENTRY_OVERRUN                       -338
 #define ERR_CS_WRONG_OWNER                          -339
@@ -1509,7 +1509,9 @@
 
 #define ER_TZ_INCOMPATIBLE_TIMEZONE_LIBRARIES       -1177
 
-#define ER_LAST_ERROR                               -1178
+#define ER_LF_BITMAP_INVALID_FREE                   -1178
+
+#define ER_LAST_ERROR                               -1179
 
 
 /*

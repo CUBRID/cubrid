@@ -5450,7 +5450,7 @@ ml_ext_free_link (DB_OBJLIST * link)
   if (link != NULL)
     {
       link->op = NULL;		/* this is important */
-      area_free (Objlist_area, (void *) link);
+      (void) area_free (Objlist_area, (void *) link);
     }
 }
 
@@ -5471,7 +5471,7 @@ ml_ext_free (DB_OBJLIST * list)
       return;
     }
 
-  if (area_validate (Objlist_area, 0, (void *) list) == NO_ERROR)
+  if (area_validate (Objlist_area, (void *) list) == NO_ERROR)
     {
       for (l = list, next = NULL; l != NULL; l = next)
 	{
