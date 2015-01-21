@@ -22516,7 +22516,7 @@ bad_tokens_for_error_message_only_dont_mind_this_rule
 	;
 
 vacuum_stmt
-	: VACUUM opt_table_type class_spec_list
+	: VACUUM
 		{{
 			PT_NODE *node =
 			  parser_new_node (this_parser, PT_VACUUM);
@@ -22526,7 +22526,6 @@ vacuum_stmt
 				    ER_OUT_OF_VIRTUAL_MEMORY, 1,
 				    sizeof (PT_NODE));
 			  }
-			node->info.vacuum.spec = $3;
 			$$ = node;
 		DBG_PRINT}}
 	;

@@ -84,7 +84,8 @@ typedef enum
   MSGCAT_UTIL_SET_GEN_TZ = 51,
   MSGCAT_UTIL_SET_DUMP_TZ = 52,
   MSGCAT_UTIL_SET_RESTORESLAVE = 53,
-  MSGCAT_UTIL_SET_DELVOLDB = 54
+  MSGCAT_UTIL_SET_DELVOLDB = 54,
+  MSGCAT_UTIL_SET_VACUUMDB = 55
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -671,6 +672,14 @@ typedef enum
   DELVOLDB_MSG_USAGE = 60
 } MSGCAT_DELVOLDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_VACUUMDB */
+typedef enum
+{
+  VACUUMDB_MSG_CLIENT_SERVER_NOT_AVAILABLE = 20,
+  VACUUMDB_MSG_FAILED = 21,
+  VACUUMDB_MSG_USAGE = 60
+} MSGCAT_VACUUMDB_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -713,7 +722,8 @@ typedef enum
   GEN_TZ,
   DUMP_TZ,
   RESTORESLAVE,
-  LOGFILEDUMP
+  VACUUMDB,
+  LOGFILEDUMP,
 } UTIL_INDEX;
 
 typedef enum
@@ -914,6 +924,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_GEN_TZ			"gen_tz"
 #define UTIL_OPTION_DUMP_TZ			"dump_tz"
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
+#define UTIL_OPTION_VACUUMDB			"vacuumdb"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1497,6 +1508,12 @@ typedef struct _ha_config
 #define RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S    'u'
 #define RESTORESLAVE_USE_DATABASE_LOCATION_PATH_L    "use-database-location-path"
 
+/* vacuumdb option list */
+#define VACUUM_SA_MODE_S                         'S'
+#define VACUUM_SA_MODE_L                         "SA-mode"
+#define VACUUM_CS_MODE_S                         'C'
+#define VACUUM_CS_MODE_L                         "CS-mode"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1620,6 +1637,7 @@ extern int dump_tz (UTIL_FUNCTION_ARG * arg_map);
 extern int synccoll_force (void);
 extern int prefetchlogdb (UTIL_FUNCTION_ARG * arg_map);
 extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
+extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

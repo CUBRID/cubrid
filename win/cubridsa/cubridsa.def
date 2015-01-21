@@ -167,6 +167,7 @@ EXPORTS
 	synccolldb
 	synccoll_force
 	restoreslave
+	vacuumdb
 
 ;
 ;	enable below two functions when

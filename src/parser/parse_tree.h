@@ -1702,8 +1702,6 @@ typedef struct pt_tuple_value_info PT_TUPLE_VALUE_INFO;
 
 typedef struct pt_insert_value_info PT_INSERT_VALUE_INFO;
 
-typedef struct pt_vacuum_info PT_VACUUM_INFO;
-
 typedef struct pt_set_timezone_info PT_SET_TIMEZONE_INFO;
 
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
@@ -3311,12 +3309,6 @@ struct pt_insert_value_info
 				 */
 };
 
-/* info structure used for VACUUM statement nodes */
-struct pt_vacuum_info
-{
-  PT_NODE *spec;		/* classes */
-};
-
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3412,7 +3404,6 @@ union pt_statement_info
 #if defined (ENABLE_UNUSED_FUNCTION)
   PT_USE_INFO use;
 #endif
-  PT_VACUUM_INFO vacuum;
   PT_VALUE_INFO value;
   PT_POINTER_INFO pointer;
   PT_TRACE_INFO trace;

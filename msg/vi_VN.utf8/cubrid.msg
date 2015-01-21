@@ -1245,7 +1245,10 @@ $ LOADDB
 1176 Latch promotion for page %1$d of volume %2$d failed.
 1177 Incompatible timezone data: %1$s has different checksum from %2$s.
 1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Last Error
+1179 Found not vacuumed entries in heap.
+1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
+1181 Manual vacuum is disabled for client-server mode.
+1182 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1869,6 +1872,7 @@ $set 14 MSGCAT_SET_LOCK
 43 Object type: Index key of class (%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 Index name: %1$s\n
 45 Object type: Generic object for Repeatable Read consistency.\n
+46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

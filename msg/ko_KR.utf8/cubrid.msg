@@ -1245,7 +1245,10 @@ $ LOADDB
 1176 Latch promotion for page %1$d of volume %2$d failed.
 1177 Incompatible timezone data: %1$s has different checksum from %2$s.
 1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 마지막 에러
+1179 Found not vacuumed entries in heap.
+1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
+1181 Manual vacuum is disabled for client-server mode.
+1182 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1869,6 +1872,7 @@ $set 14 MSGCAT_SET_LOCK
 43 락 대상: 클래스의 인덱스 키(%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 인덱스 이름: %1$s\n
 45 Object type: Generic object for Repeatable Read consistency.\n
+46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

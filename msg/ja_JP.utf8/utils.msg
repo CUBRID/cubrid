@@ -124,6 +124,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     gen_tz\n\
     dump_tz\n\
     restoreslave\n\
+    vacuumdb\n\
 \n\
 %4$sはDBMS管理道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -180,6 +181,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     synccolldb\n\
     gen_tz\n\
     dump_tz\n\
+    vacuumdb\n\
 \n\
 %4$sはDBMS道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -1177,3 +1179,13 @@ valid options:\n\
   -S, --SA-mode                    stand-alone mode execution\n\
   -C, --CS-mode                    client-server mode execution\n
 
+$set 55 MSGCAT_UTIL_SET_VACUUMDB
+20 Vacuumdb is temporary not available for client-server mode\n
+21 The vacuum operation failed\n
+60 \
+vacuumdb: Vacuums dead records from database.\n\
+usage: %1$s vacuumdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n

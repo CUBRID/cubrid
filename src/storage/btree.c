@@ -30904,10 +30904,42 @@ btree_handle_current_oid (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
   *which_action = BTREE_CONTINUE;
 
-  if (mvcc_Enabled == true && p_mvcc_header != NULL)
+  if (p_mvcc_header != NULL)
     {
       MVCC_SNAPSHOT *mvcc_snapshot =
 	index_scan_id_p->scan_cache.mvcc_snapshot;
+
+      if (index_scan_id_p->check_not_vacuumed)
+	{
+	  OID *class_oid = NULL;
+	  DISK_ISVALID disk_res = DISK_VALID;
+
+	  if (!OID_ISNULL (&btrs_helper->class_oid))
+	    {
+	      class_oid = &btrs_helper->class_oid;
+	    }
+	  else if (!OID_ISNULL (&bts->cls_oid))
+	    {
+	      class_oid = &bts->cls_oid;
+	    }
+	  else if (!OID_ISNULL (&index_scan_id_p->cls_oid))
+	    {
+	      class_oid = &index_scan_id_p->cls_oid;
+	    }
+
+	  disk_res =
+	    vacuum_check_not_vacuumed_rec_header (thread_p, inst_oid,
+						  class_oid, p_mvcc_header,
+						  btrs_helper->node_type);
+	  if (disk_res != DISK_VALID)
+	    {
+	      index_scan_id_p->not_vacuumed_res = disk_res;
+	      if (disk_res == DISK_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	}
 
       if (mvcc_snapshot != NULL && mvcc_snapshot->snapshot_fnc != NULL)
 	{

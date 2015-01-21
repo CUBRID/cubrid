@@ -803,6 +803,19 @@ static GETOPT_LONG ua_RestoreSlave_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Vacuum_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {VACUUM_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {VACUUM_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Vacuum_Option[] = {
+  {VACUUM_SA_MODE_L, 0, 0, VACUUM_SA_MODE_S},
+  {VACUUM_CS_MODE_L, 0, 0, VACUUM_CS_MODE_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb",
    ua_Create_Option, ua_Create_Option_Map},
@@ -880,6 +893,8 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_DumpTz_Option, ua_DumpTz_Map},
   {RESTORESLAVE, SA_ONLY, 1, UTIL_OPTION_RESTORESLAVE, "restoreslave",
    ua_RestoreSlave_Option, ua_RestoreSlave_Option_Map},
+  {VACUUMDB, SA_CS, 1, UTIL_OPTION_VACUUMDB, "vacuumdb",
+   ua_Vacuum_Option, ua_Vacuum_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 
@@ -1076,7 +1091,14 @@ util_get_library_name (int utility_index)
 	  }
       }
     }
-  return LIB_UTIL_CS_NAME;
+  if (utility_index == VACUUMDB)
+    {
+      return LIB_UTIL_SA_NAME;
+    }
+  else
+    {
+      return LIB_UTIL_CS_NAME;
+    }
 }
 
 /*

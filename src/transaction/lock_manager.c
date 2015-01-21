@@ -261,7 +261,8 @@ typedef enum
 #define MSGCAT_LK_RES_INDEX_KEY_TYPE            43
 #define MSGCAT_LK_INDEXNAME                     44
 #define MSGCAT_LK_RES_RR_TYPE			45
-#define MSGCAT_LK_LASTONE                       46
+#define MSGCAT_LK_MVCC_INFO			46
+#define MSGCAT_LK_LASTONE                       47
 
 #if defined(SERVER_MODE)
 
@@ -6109,12 +6110,14 @@ lock_wait_msecs_to_secs (int msecs)
 static void
 lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 {
+#define TEMP_BUFFER_SIZE  128
   LK_ENTRY *entry_ptr;
   char *classname;		/* Name of the class */
   int num_holders, num_blocked_holders, num_waiters;
   char time_val[CTIME_MAX];
   int time_str_len;
   OID *oid_rr = NULL;
+  HEAP_SCANCACHE scan_cache;
 
   memset (time_val, 0, sizeof (time_val));
 
@@ -6213,6 +6216,52 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		       res_ptr->key.class_oid.pageid,
 		       res_ptr->key.class_oid.slotid, classname);
 	      free_and_init (classname);
+	    }
+
+	  /* Dump MVCC info */
+	  if (heap_scancache_quick_start (&scan_cache) == NO_ERROR)
+	    {
+	      RECDES recdes;
+
+	      recdes.data = NULL;
+
+	      if (heap_get
+		  (thread_p, &res_ptr->key.oid, &recdes, &scan_cache, PEEK,
+		   NULL_CHN) == S_SUCCESS)
+		{
+		  MVCC_REC_HEADER mvcc_rec_header;
+		  if (or_mvcc_get_header (&recdes, &mvcc_rec_header) ==
+		      NO_ERROR)
+		    {
+		      char str_insid[128], str_delid[128];
+		      if (MVCC_IS_FLAG_SET
+			  (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
+			{
+			  sprintf (str_insid, "%lld",
+				   MVCC_GET_INSID (&mvcc_rec_header));
+			}
+		      else
+			{
+			  strcpy (str_insid, "missing");
+			}
+		      if (MVCC_IS_FLAG_SET
+			  (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID))
+			{
+			  sprintf (str_delid, "%lld",
+				   MVCC_GET_DELID (&mvcc_rec_header));
+			}
+		      else
+			{
+			  strcpy (str_delid, "missing");
+			}
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID,
+					       MSGCAT_SET_LOCK,
+					       MSGCAT_LK_MVCC_INFO),
+			       str_insid, str_delid);
+		    }
+		}
+	      heap_scancache_end (thread_p, &scan_cache);
 	    }
 	}
       break;

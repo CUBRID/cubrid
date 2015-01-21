@@ -232,6 +232,13 @@ struct indx_scan_id
   bool mvcc_need_locks;		/* true, if need locking in MVCC during
 				 * index scan
 				 */
+  bool check_not_vacuumed;	/* if true then during index scan, the entries
+				 * will be checked if they should've been
+				 * vacuumed. Used in checkdb.
+				 */
+  DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking
+					 * operation
+					 */
 };
 
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;

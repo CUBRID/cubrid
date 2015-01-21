@@ -1511,7 +1511,11 @@
 
 #define ER_LF_BITMAP_INVALID_FREE                   -1178
 
-#define ER_LAST_ERROR                               -1179
+#define ER_HEAP_FOUND_NOT_VACUUMED		    -1179
+#define ER_INDEX_FOUND_NOT_VACUUMED		    -1180
+#define ER_VACUUM_CS_NOT_AVAILABLE		    -1181
+
+#define ER_LAST_ERROR                               -1182
 
 
 /*

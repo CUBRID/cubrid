@@ -349,6 +349,8 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
   scan_init_iss (isidp);
   isidp->scan_cache.mvcc_snapshot = mvcc_snapshot;
   isidp->mvcc_need_locks = false;
+  isidp->check_not_vacuumed = false;
+  isidp->not_vacuumed_res = DISK_VALID;
 }
 
 /*

@@ -594,7 +594,7 @@
 
 
 /* Copy the first part of user declarations.  */
-#line 26 "../src/parser/csql_grammar.y"
+#line 26 "../../src/parser/csql_grammar.y"
 /*%CODE_REQUIRES_START%*/
 #include "parser.h"
 
@@ -655,7 +655,7 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
-/*%CODE_END%*/#line 88 "../src/parser/csql_grammar.y"
+/*%CODE_END%*/#line 88 "../../src/parser/csql_grammar.y"
 
 #define YYMAXDEPTH	1000000
 
@@ -1162,7 +1162,7 @@ int g_original_buffer_len;
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 599 "../src/parser/csql_grammar.y"
+#line 599 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1173,8 +1173,8 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2616 of glr.c.  */
-#line 1178 "../src/parser/csql_grammar.h"
+/* Line 2604 of glr.c.  */
+#line 1178 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

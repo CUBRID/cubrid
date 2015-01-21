@@ -124,6 +124,7 @@ Nume de utilitare de administrare disponibile:\n\
     gen_tz\n\
     dump_tz\n\
     restoreslave\n\
+    vacuumdb\n\
 \n\
 %4$s este un utilitar pentru SGDB.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -180,6 +181,7 @@ Utilitare de administrare disponibile:\n\
     synccolldb\n\
     gen_tz\n\
     dump_tz\n\
+    vacuumdb\n\
 \n\
 %4$s este un utilitar pentru SGBD.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -1202,3 +1204,13 @@ valid options:\n\
   -S, --SA-mode                    stand-alone mode execution\n\
   -C, --CS-mode                    client-server mode execution\n
 
+$set 55 MSGCAT_UTIL_SET_VACUUMDB
+20 Vacuumdb is temporary not available for client-server mode\n
+21 The vacuum operation failed\n
+60 \
+vacuumdb: Vacuums dead records from database.\n\
+usage: %1$s vacuumdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n

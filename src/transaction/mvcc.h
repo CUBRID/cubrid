@@ -260,6 +260,9 @@ extern MVCC_SATISFIES_VACUUM_RESULT mvcc_satisfies_vacuum (THREAD_ENTRY *
 							   rec_header,
 							   MVCCID
 							   oldest_mvccid);
+extern bool mvcc_satisfies_not_vacuumed (THREAD_ENTRY * thread_p,
+					 MVCC_REC_HEADER * rec_header,
+					 MVCC_SNAPSHOT * snapshot);
 extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY *
 							   thread_p,
 							   MVCC_REC_HEADER *

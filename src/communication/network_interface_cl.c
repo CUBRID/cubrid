@@ -11252,52 +11252,26 @@ es_posix_get_file_size (const char *path)
 }
 
 /*
- * cvacuum () - Client side function for vacuuming classes.
+ * cvacuum () - Client side function for vacuuming.
  *
  * return	    : Error code.
- * num_classes (in) : Number of classes in class_oids array.
- * class_oids (in)  : Class OID's array.
  */
 int
-cvacuum (int num_classes, OID * class_oids)
+cvacuum (void)
 {
 #if defined(CS_MODE)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *request = NULL, *ptr = NULL, *reply = NULL;
-  int err = NO_ERROR, request_size = 0;
+  char *reply = NULL;
+  int err = NO_ERROR;
 
   /* Reply should include error code */
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* Request data size */
-  request_size += OR_INT_SIZE +	/* num_classes */
-    num_classes * OR_OID_SIZE;	/* class_oids */
-
-  request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      err = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1,
-	      (size_t) request_size);
-      return err;
-    }
-
-  /* Pack num_classes */
-  ptr = or_pack_int (request, num_classes);
-  /* Pack class_oids */
-  ptr = or_pack_oid_array (ptr, num_classes, class_oids);
-
   /* Send request to server */
   err =
-    net_client_request (NET_SERVER_VACUUM, request, request_size,
+    net_client_request (NET_SERVER_VACUUM, NULL, 0,
 			reply, OR_ALIGNED_BUF_SIZE (a_reply),
 			NULL, 0, NULL, 0);
-
-  /* Clean up */
-  if (request != NULL)
-    {
-      free_and_init (request);
-    }
 
   if (err == NO_ERROR)
     {
@@ -11310,8 +11284,8 @@ cvacuum (int num_classes, OID * class_oids)
 
   ENTER_SERVER ();
 
-  /* Call server function for vacuuming classes */
-  err = xvacuum (NULL, num_classes, class_oids);
+  /* Call server function for vacuuming */
+  err = xvacuum (NULL);
 
   EXIT_SERVER ();
 

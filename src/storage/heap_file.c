@@ -327,6 +327,13 @@ struct heap_chkall_relocoids
 				 * is the real OID
 				 */
   bool verify;
+  bool verify_not_vacuumed;	/* if true then each record will be checked if
+				 * it wasn't vacuumed although it must've be
+				 * vacuumed
+				 */
+  DISK_ISVALID not_vacuumed_res;	/* The validation result of the "not vacuumed"
+					 * objects
+					 */
   int max_unfound_reloc;
   int num_unfound_reloc;
   OID *unfound_reloc_oids;	/* The relocation OIDs that have not been
@@ -18973,10 +18980,7 @@ heap_check_all_pages_by_allocset (THREAD_ENTRY * thread_p, HFID * hfid,
 
       if (chk_objs != NULL)
 	{
-	  if (heap_chkreloc_next (thread_p, chk_objs, pgptr) != DISK_VALID)
-	    {
-	      valid_pg = DISK_ERROR;
-	    }
+	  valid_pg = heap_chkreloc_next (thread_p, chk_objs, pgptr);
 	}
 
       pgbuf_unfix_and_init (thread_p, pgptr);
@@ -19018,6 +19022,10 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
   if (valid_pg != DISK_VALID)
     {
       chk_objs = NULL;
+    }
+  else
+    {
+      chk_objs->verify_not_vacuumed = true;
     }
 
   /* Scan every page of the heap to find out if they are valid */
@@ -19853,6 +19861,8 @@ heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
   chk->max_unfound_reloc = HEAP_CHK_ADD_UNFOUND_RELOCOIDS;
   chk->num_unfound_reloc = 0;
   chk->verify = true;
+  chk->verify_not_vacuumed = false;
+  chk->not_vacuumed_res = DISK_VALID;
 
   return DISK_VALID;
 }
@@ -19923,6 +19933,13 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 	      valid_reloc = DISK_INVALID;
 	    }
 	}
+    }
+
+  if (chk->not_vacuumed_res != DISK_VALID)
+    {
+      valid_reloc = chk->not_vacuumed_res;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HEAP_FOUND_NOT_VACUUMED, 0);
     }
 
   /*
@@ -20016,7 +20033,7 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk,
   HEAP_CHK_RELOCOID *forward;
   INT16 type = REC_UNKNOWN;
   RECDES recdes;
-  OID oid;
+  OID oid, class_oid;
   OID *peek_oid;
   void *ptr;
   bool found;
@@ -20025,6 +20042,14 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk,
   if (chk->verify != true)
     {
       return DISK_VALID;
+    }
+
+  if (chk->verify_not_vacuumed
+      && heap_get_class_oid_from_page (thread_p, pgptr,
+				       &class_oid) != NO_ERROR)
+    {
+      chk->not_vacuumed_res = DISK_ERROR;
+      return DISK_ERROR;
     }
 
   oid.volid = pgbuf_get_volume_id (pgptr);
@@ -20108,9 +20133,48 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk,
 
 	case REC_BIGONE:
 	case REC_HOME:
+	  if (chk->verify_not_vacuumed)
+	    {
+	      DISK_ISVALID tmp_valid =
+		vacuum_check_not_vacuumed_recdes (thread_p, &oid, &class_oid,
+						  &recdes, -1);
+	      switch (tmp_valid)
+		{
+		case DISK_VALID:
+		  break;
+		case DISK_INVALID:
+		  chk->not_vacuumed_res = DISK_INVALID;
+		  break;
+		case DISK_ERROR:
+		default:
+		  chk->not_vacuumed_res = DISK_ERROR;
+		  return DISK_ERROR;
+		  break;
+		}
+	    }
 	  break;
 
 	case REC_NEWHOME:
+	  if (chk->verify_not_vacuumed)
+	    {
+	      DISK_ISVALID tmp_valid =
+		vacuum_check_not_vacuumed_recdes (thread_p, &oid, &class_oid,
+						  &recdes, -1);
+	      switch (tmp_valid)
+		{
+		case DISK_VALID:
+		  break;
+		case DISK_INVALID:
+		  chk->not_vacuumed_res = DISK_INVALID;
+		  break;
+		case DISK_ERROR:
+		default:
+		  chk->not_vacuumed_res = DISK_ERROR;
+		  return DISK_ERROR;
+		  break;
+		}
+	    }
+
 	  /*
 	   * Remove the object from hash table or insert the object in unfound
 	   * reloc check list.

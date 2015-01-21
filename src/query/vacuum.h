@@ -30,6 +30,7 @@
 #include "recovery.h"
 #include "system_parameter.h"
 #include "log_impl.h"
+#include "disk_manager.h"
 
 /* Vacuum logging function (can only be used when SERVER_MODE is defined).
  */
@@ -84,7 +85,6 @@ extern bool vacuum_Master_is_process_log_phase;
 #define VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE true
 #define VACUUM_LOG_ADD_DROPPED_FILE_UNDO false
 
-#define VACUUM_MAX_WORKER_COUNT	  50
 /* number of log pages in each vacuum block */
 #define VACUUM_LOG_BLOCK_PAGES_DEFAULT 31
 
@@ -128,6 +128,8 @@ struct vacuum_worker
 };
 
 #if defined (SERVER_MODE)
+#define VACUUM_MAX_WORKER_COUNT	  50
+
 /* Get vacuum worker from thread entry */
 #define VACUUM_GET_VACUUM_WORKER(thread_p) \
   ((thread_p) != NULL && (thread_p)->type == TT_VACUUM_WORKER ? \
@@ -180,6 +182,8 @@ struct vacuum_worker
       VACUUM_SET_VACUUM_WORKER (thread_p, NULL); \
     } while (0)
 #else /* SA_MODE */
+#define VACUUM_MAX_WORKER_COUNT	  1
+
 /* Get SA_MODE vacuum worker */
 #define VACUUM_GET_VACUUM_WORKER(thread_p) \
   (vacuum_get_worker_sa_mode ())
@@ -189,7 +193,8 @@ struct vacuum_worker
 
 /* Is SA_MODE running a vacuum worker's job */
 #define VACUUM_IS_THREAD_VACUUM_WORKER(thread_p) \
-  (VACUUM_GET_VACUUM_WORKER (thread_p) != NULL)
+  (VACUUM_GET_VACUUM_WORKER (thread_p) != NULL \
+  && VACUUM_GET_WORKER_STATE(thread_p) != VACUUM_WORKER_STATE_INACTIVE)
 /* Is SA_MODE running a vacuum worker's job and undo logging can be skipped */
 #define VACUUM_IS_SKIP_UNDO_ALLOWED(thread_p) \
   (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) \
@@ -326,8 +331,7 @@ extern int vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p,
 extern int vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p,
 						  LOG_RCV * rcv);
 
-extern int xvacuum (THREAD_ENTRY * thread_p, int num_classes,
-		    OID * class_oids);
+extern int xvacuum (THREAD_ENTRY * thread_p);
 
 extern int vacuum_compare_dropped_files_version (INT32 version_a,
 						 INT32 version_b);
@@ -343,5 +347,18 @@ extern bool vacuum_is_page_of_vacuum_data (VPID * vpid);
 extern void vacuum_master_start (void);
 extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
+
+extern DISK_ISVALID vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p,
+						      OID * oid,
+						      OID * class_oid,
+						      RECDES * recdes,
+						      int btree_node_type);
+extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY *
+							  thread_p, OID * oid,
+							  OID * class_oid,
+							  MVCC_REC_HEADER *
+							  rec_header,
+							  int
+							  btree_node_type);
 
 #endif /* _VACUUM_H_ */

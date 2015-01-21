@@ -10720,41 +10720,12 @@ svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int err = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = NULL, *ptr = NULL;
-  int num_classes;
-  OID *class_oids = NULL;
+  char *reply = NULL;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  assert (request != NULL && reqlen > 0);
-
-  /* Unpack request data */
-
-  /* Unpack num_classes */
-  ptr = or_unpack_int (request, &num_classes);
-  /* Unpack class_oids */
-  if (num_classes > 0)
-    {
-      class_oids = (OID *) db_private_alloc (thread_p,
-					     num_classes * OR_OID_SIZE);
-
-      ptr = or_unpack_oid_array (ptr, num_classes, &class_oids);
-      if (ptr == NULL)
-	{
-	  err = er_errid ();
-	  err = (err != NO_ERROR) ? err : ER_FAILED;
-	  goto cleanup;
-	}
-
-      /* Call vacuum */
-      err = xvacuum (thread_p, num_classes, class_oids);
-    }
-
-cleanup:
-  if (class_oids != NULL)
-    {
-      db_private_free_and_init (thread_p, class_oids);
-    }
+  /* Call vacuum */
+  err = xvacuum (thread_p);
 
   if (err != NO_ERROR)
     {

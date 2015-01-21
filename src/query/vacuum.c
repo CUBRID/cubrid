@@ -577,9 +577,7 @@ static VPID *vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p,
 static VPID *vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p,
 						VPID * first_page_vpid);
 
-#if defined (SERVER_MODE)
 static int vacuum_assign_worker (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
 static void vacuum_finalize_worker (THREAD_ENTRY * thread_p,
 				    VACUUM_WORKER * worker_info);
 static INT32 vacuum_get_worker_min_dropped_files_version (void);
@@ -597,25 +595,54 @@ static int vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
 					     VACUUM_DATA_ENTRY * entry,
 					     BLOCK_LOG_BUFFER
 					     * block_log_buffer);
+#endif /* SERVER_MODE */
 static int vacuum_copy_log_page (THREAD_ENTRY * thread_p,
 				 LOG_PAGEID log_pageid,
 				 BLOCK_LOG_BUFFER * block_log_buffer,
 				 LOG_PAGE * log_page);
-#endif /* SERVER_MODE */
+
+static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p,
+				      MVCC_REC_HEADER * rec_header);
+static void print_not_vacuumed_to_log (OID * oid, OID * class_oid,
+				       MVCC_REC_HEADER * rec_header,
+				       int btree_node_type);
 
 /*
- * xvacuum () - Server function for vacuuming classes
+ * xvacuum () - Vacuumes database
  *
  * return	    : Error code.
- * thread_p (in)    : Thread entry.
- * num_classes (in) : Number of classes in class_oids array.
- * class_oids (in)  : Class OID array.
+ * thread_p(in)	    :
+ *
+ * NOTE: CS mode temporary disabled.
  */
 int
-xvacuum (THREAD_ENTRY * thread_p, int num_classes, OID * class_oids)
+xvacuum (THREAD_ENTRY * thread_p)
 {
-  /* TODO: Vacuum statement */
-  return NO_ERROR;
+  int error_code = NO_ERROR;
+
+#if defined(SERVER_MODE)
+  error_code = ER_VACUUM_CS_NOT_AVAILABLE;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_CS_NOT_AVAILABLE, 0);
+  return error_code;
+#elif defined (SA_MODE)
+  if (vacuum_Assigned_workers_count == 0)
+    {
+      error_code = vacuum_assign_worker (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  do
+    {
+      vacuum_process_vacuum_data (thread_p);
+    }
+  while (vacuum_Data->n_table_entries > 0);
+
+  return error_code;
+#else
+  return error_code;
+#endif
 }
 
 /*
@@ -731,7 +758,6 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
-#endif /* SERVER_MODE */
 
   /* Initialize job queue */
   vacuum_Job_queue =
@@ -741,6 +767,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
     {
       goto error;
     }
+#endif /* SERVER_MODE */
 
   /* Initialize worker counters */
   vacuum_Assigned_workers_count = 0;
@@ -772,6 +799,10 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
       logtb_initialize_vacuum_worker_tdes (vacuum_Workers[i].tdes,
 					   VACUUM_WORKER_INDEX_TO_TRANID (i));
     }
+
+#if defined (SA_MODE)
+  VACUUM_SET_VACUUM_WORKER (NULL, &vacuum_Workers[0]);
+#endif /* SA_MODE */
 
   return NO_ERROR;
 
@@ -2378,12 +2409,14 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 {
   int i;
   VACUUM_DATA_ENTRY *entry = NULL;
-  VACUUM_JOB_ENTRY vacuum_job_entry;
   int vacuum_entries;
 #if defined (SERVER_MODE)
+  VACUUM_JOB_ENTRY vacuum_job_entry;
   int n_wakeup_workers;
   int n_available_workers;
   int n_jobs;
+#else
+  VACUUM_DATA_ENTRY vacuum_data_entry;
 #endif
 
   vacuum_Global_oldest_active_mvccid =
@@ -2428,9 +2461,13 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
    * vacuum data array;
    * For job queue, we use a copy of entry data, since after compacting vacuum
    * data array, pointers would be invalidated */
+#if defined(SERVER_MODE)
   for (i = 0;
        i < vacuum_entries
        && !LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (vacuum_Job_queue); i++)
+#else
+  for (i = 0; i < vacuum_entries; i++)
+#endif
     {
       int error_code;
       entry = VACUUM_DATA_GET_ENTRY (i);
@@ -2445,8 +2482,8 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
        * on next iteration.
        */
       VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry);
-      vacuum_job_entry.vacuum_data_entry = *entry;
 #if defined (SERVER_MODE)
+      vacuum_job_entry.vacuum_data_entry = *entry;
       error_code =
 	vacuum_log_prefetch_vacuum_block (thread_p, entry,
 					  &vacuum_job_entry.block_log_buffer);
@@ -2477,9 +2514,15 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 	  /* Wakeup more workers */
 	  thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
 	}
-#endif /* SERVER_MODE */
-
-      /* TODO: Add stand-alone mode */
+#else
+      vacuum_data_entry = *entry;
+      error_code =
+	vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return;
+	}
+#endif
     }
 }
 
@@ -2528,14 +2571,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
       return NO_ERROR;
     }
 
-#if !defined (SERVER_MODE)
-  /* TODO: Currently, the code can only handle SERVER_MODE. If this must be
-   *       called in SA_MODE, the code must be also adapted.
-   */
-  assert (false);
-
-  return NO_ERROR;
-#else
   assert (worker != NULL);
 
   /* Initialize log_vacuum */
@@ -2813,7 +2848,6 @@ end:
   pgbuf_unfix_all (thread_p);
 
   return error_code;
-#endif
 }
 
 /*
@@ -2867,7 +2901,6 @@ vacuum_get_mvcc_delete_undo_vpid (THREAD_ENTRY * thread_p,
   assert (!VPID_ISNULL (vpid));
 }
 
-#if defined (SERVER_MODE)
 /*
  * vacuum_assign_worker () - Assign a vacuum worker to current thread.
  *
@@ -2882,9 +2915,11 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   /* Get first unassigned worker */
   VACUUM_WORKER *worker = &vacuum_Workers[vacuum_Assigned_workers_count];
 
+#if defined (SERVER_MODE)
   assert (thread_p->vacuum_worker == NULL);
   assert (thread_p->type == TT_VACUUM_WORKER);
   assert (vacuum_Assigned_workers_count < VACUUM_MAX_WORKER_COUNT);
+#endif /* SERVER_MODE */
 
   /* Initialize worker state */
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
@@ -2925,8 +2960,10 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
     }
   worker->undo_data_buffer_capacity = IO_PAGESIZE;
 
+#if defined (SERVER_MODE)
   /* Save worker to thread entry */
   thread_p->vacuum_worker = worker;
+#endif
 
   /* Safe guard - it is assumed that transaction descriptor is already
    * initialized.
@@ -2942,7 +2979,6 @@ error:
   vacuum_finalize_worker (thread_p, worker);
   return ER_FAILED;
 }
-#endif /* SERVER_MODE */
 
 /*
  * vacuum_finalize_worker () - Free resources allocated for vacuum worker.
@@ -7224,6 +7260,7 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
 end:
   return error;
 }
+#endif /* SERVER_MODE */
 
 /*
  * vacuum_copy_log_page () - Loads a log page to be processed by vacuum from
@@ -7247,6 +7284,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
 
   assert (log_page_p != NULL);
 
+#if defined (SERVER_MODE)
   if (block_log_buffer != NULL
       && log_pageid >= block_log_buffer->start_page
       && log_pageid <= block_log_buffer->last_page)
@@ -7263,6 +7301,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
       mnt_vac_prefetch_log_hits_pages (thread_p);
     }
   else
+#endif /* SERVER_MODE */
     {
       if (logpb_fetch_page (thread_p, log_pageid, log_page_p) == NULL)
 	{
@@ -7276,7 +7315,185 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
 
   return error;
 }
-#endif /* SERVER_MODE */
+
+/*
+ * print_not_vacuumed_to_log () - prints to log info related to a not vacuumed
+ *				  OID (either from HEAP or BTREE)
+ *
+ * rerturn: void.
+ * oid (in): The not vacuumed instance OID
+ * class_oid (in): The class to which belongs the oid
+ * rec_header (in): The record header of the not vacuumed record
+ * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
+ *			 the type node. If <0 then the OID comes from heap. 
+ *
+ */
+static void
+print_not_vacuumed_to_log (OID * oid, OID * class_oid,
+			   MVCC_REC_HEADER * rec_header, int btree_node_type)
+{
+#define TEMP_BUFFER_SIZE 1024
+  char mess[TEMP_BUFFER_SIZE], *p = mess;
+  bool is_btree = (btree_node_type >= 0 ? true : false);
+
+  if (is_btree)
+    {
+      p += sprintf (p, "Found not vacuumed BTREE record");
+    }
+  else
+    {
+      p += sprintf (p, "Found not vacuumed HEAP record");
+    }
+  p +=
+    sprintf (p, " with oid=%d|%d|%d, class_oid=%d|%d|%d", (int) oid->volid,
+	     oid->pageid, (int) oid->slotid, (int) class_oid->volid,
+	     class_oid->pageid, (int) class_oid->slotid);
+  if (MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
+    {
+      p += sprintf (p, ", insert_id=%lld", MVCC_GET_INSID (rec_header));
+    }
+  else
+    {
+      p += sprintf (p, ", insert_id=missing");
+    }
+  if (MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+    {
+      p += sprintf (p, ", delete_id=%lld", MVCC_GET_DELID (rec_header));
+    }
+  else
+    {
+      p += sprintf (p, ", delete_id=missing");
+    }
+  p += sprintf (p, ", oldest_mvcc_id=%lld", vacuum_Data->oldest_mvccid);
+  if (is_btree)
+    {
+      char *type_str = NULL;
+
+      switch (btree_node_type)
+	{
+	case BTREE_LEAF_NODE:
+	  type_str = "LEAF";
+	  break;
+	case BTREE_NON_LEAF_NODE:
+	  type_str = "NON_LEAF";
+	  break;
+	case BTREE_OVERFLOW_NODE:
+	  type_str = "OVERFLOW";
+	  break;
+	default:
+	  type_str = "UNKNOWN";
+	  break;
+	}
+      p += sprintf (p, ", node_type=%s", type_str);
+    }
+  p += sprintf (p, "\n");
+
+  er_log_debug (ARG_FILE_LINE, mess);
+}
+
+/*
+ * vacuum_check_not_vacuumed_recdes () - checks if an OID should've been
+ *					 vacuumed (using a record descriptor)
+ *
+ * return: DISK_INVALID if the OID was not vacuumed, DISK_VALID if it was
+ *	   and DISK_ERROR in case of an error.
+ * thread_p (in):
+ * oid (in): The not vacuumed instance OID
+ * class_oid (in): The class to which belongs the oid
+ * recdes (in): The not vacuumed record
+ * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
+ *			 the type node. If <0 then the OID comes from heap. 
+ *
+ */
+DISK_ISVALID
+vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid,
+				  OID * class_oid, RECDES * recdes,
+				  int btree_node_type)
+{
+  MVCC_REC_HEADER rec_header;
+
+  if (or_mvcc_get_header (recdes, &rec_header) != NO_ERROR)
+    {
+      return DISK_ERROR;
+    }
+
+  return vacuum_check_not_vacuumed_rec_header (thread_p, oid, class_oid,
+					       &rec_header, btree_node_type);
+}
+
+/*
+ * is_not_vacuumed_and_lost () - checks if a record should've been vacuumed
+ *				 (using a record header)
+ *
+ * return: true if the record was not vacuumed and is completely lost.
+ * thread_p (in):
+ * recdes (in): The header of the record to be checked
+ *
+ */
+static bool
+is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p,
+			  MVCC_REC_HEADER * rec_header)
+{
+  MVCC_SATISFIES_VACUUM_RESULT res;
+  bool not_vacuumed = false;
+
+  res =
+    mvcc_satisfies_vacuum (thread_p, rec_header, vacuum_Data->oldest_mvccid);
+  switch (res)
+    {
+    case VACUUM_RECORD_REMOVE:
+      return true;
+
+    case VACUUM_RECORD_DELETE_INSID:
+      return MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID);
+
+    case VACUUM_RECORD_CANNOT_VACUUM:
+      return false;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * vacuum_check_not_vacuumed_rec_header () - checks if an OID should've been
+ *					     vacuumed (using a record header)
+ *
+ * return: DISK_INVALID if the OID was not vacuumed, DISK_VALID if it was
+ *	   and DISK_ERROR in case of an error.
+ * thread_p (in):
+ * oid (in): The not vacuumed instance OID
+ * class_oid (in): The class to which belongs the oid
+ * recdes (in): The not vacuumed record header
+ * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
+ *			 the type node. If <0 then the OID comes from heap. 
+ *
+ */
+DISK_ISVALID
+vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid,
+				      OID * class_oid,
+				      MVCC_REC_HEADER * rec_header,
+				      int btree_node_type)
+{
+  if (is_not_vacuumed_and_lost (thread_p, rec_header))
+    {
+      OID cls_oid;
+      if (class_oid == NULL)
+	{
+	  if (heap_get_class_oid (thread_p, &cls_oid, oid, SNAPSHOT_TYPE_NONE)
+	      == NULL)
+	    {
+	      return DISK_ERROR;
+	    }
+	  class_oid = &cls_oid;
+	}
+      print_not_vacuumed_to_log (oid, class_oid, rec_header, btree_node_type);
+
+      return DISK_INVALID;
+    }
+
+  return DISK_VALID;
+}
 
 /*
  * vacuum_get_first_page_dropped_files () - Get the first allocated vpid of 

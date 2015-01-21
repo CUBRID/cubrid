@@ -5204,6 +5204,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_QUERY_TRACE] = pt_apply_query_trace;
   pt_apply_func_array[PT_INSERT_VALUE] = pt_apply_insert_value;
   pt_apply_func_array[PT_KILL_STMT] = pt_apply_kill;
+  pt_apply_func_array[PT_VACUUM] = pt_apply_vacuum;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5319,6 +5320,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_QUERY_TRACE] = pt_init_query_trace;
   pt_init_func_array[PT_INSERT_VALUE] = pt_init_insert_value;
   pt_init_func_array[PT_KILL_STMT] = pt_init_kill;
+  pt_init_func_array[PT_VACUUM] = pt_init_vacuum;
 
   pt_init_f = pt_init_func_array;
 }
@@ -19276,7 +19278,7 @@ static PT_NODE *
 pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 		 void *arg)
 {
-  p->info.vacuum.spec = g (parser, p->info.vacuum.spec, arg);
+  assert (PT_IS_VACUUM_NODE (p));
 
   return p;
 }
@@ -19292,7 +19294,6 @@ pt_init_vacuum (PT_NODE * p)
 {
   assert (PT_IS_VACUUM_NODE (p));
 
-  p->info.vacuum.spec = NULL;
   return p;
 }
 
@@ -19310,16 +19311,8 @@ pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p)
 
   assert (PT_IS_VACUUM_NODE (p));
 
-  if (p->info.vacuum.spec == NULL)
-    {
-      q = pt_append_nulstring (parser, q, "VACUUM");
-    }
-  else
-    {
-      r1 = pt_print_bytes_l (parser, p->info.vacuum.spec);
-      q = pt_append_nulstring (parser, q, "VACUUM ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+  q = pt_append_nulstring (parser, q, "VACUUM");
+
   return q;
 }
 

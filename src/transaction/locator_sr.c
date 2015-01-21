@@ -10754,6 +10754,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       goto error;
     }
 
+  isid.check_not_vacuumed = true;
   db_make_null (&key_val_range.key1);
   db_make_null (&key_val_range.key2);
   key_val_range.range = INF_INF;
@@ -10852,6 +10853,16 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	}
 
       isallvalid = DISK_INVALID;
+    }
+
+  if (isid.check_not_vacuumed && isid.not_vacuumed_res != DISK_VALID)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_INDEX_FOUND_NOT_VACUUMED, 5,
+	      (btname) ? btname : "*UNKNOWN-INDEX*",
+	      (classname) ? classname : "*UNKNOWN-CLASS*", class_oid->volid,
+	      class_oid->pageid, class_oid->slotid);
+      isallvalid = isid.not_vacuumed_res;
     }
 
 end:
@@ -11207,6 +11218,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       goto error;
     }
 
+  isid.check_not_vacuumed = true;
   db_make_null (&key_val_range.key1);
   db_make_null (&key_val_range.key2);
   key_val_range.range = INF_INF;
@@ -11450,6 +11462,16 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	}
 
       isallvalid = DISK_INVALID;
+    }
+
+  if (isid.check_not_vacuumed && isid.not_vacuumed_res != DISK_VALID)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_INDEX_FOUND_NOT_VACUUMED, 5,
+	      (btname) ? btname : "*UNKNOWN-INDEX*",
+	      (classname) ? classname : "*UNKNOWN-CLASS*", class_oid->volid,
+	      class_oid->pageid, class_oid->slotid);
+      isallvalid = isid.not_vacuumed_res;
     }
 
 end:

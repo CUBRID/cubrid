@@ -606,7 +606,7 @@ extern int csession_get_variable (DB_VALUE * name, DB_VALUE * value);
 extern int csession_drop_session_variables (DB_VALUE * variables,
 					    const int count);
 
-extern int cvacuum (int num_classes, OID * class_oids);
+extern int cvacuum (void);
 extern int log_invalidate_mvcc_snapshot (void);
 extern int tran_lock_rep_read (LOCK lock_rr_tran);
 #endif /* _NETWORK_INTERFACE_CL_H_ */
