@@ -575,9 +575,7 @@ static int file_tmpfile_cache_put (THREAD_ENTRY * thread_p, const VFID * vfid,
 static VFID *file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 				       FILE_TYPE * file_type,
 				       INT32 exp_numpages,
-				       const void *file_des,
-				       VPID * first_prealloc_vpid,
-				       INT32 prealloc_npages);
+				       const void *file_des);
 static DISK_ISVALID file_check_all_pages (THREAD_ENTRY * thread_p,
 					  const VFID * vfid,
 					  bool validate_vfid);
@@ -2798,8 +2796,7 @@ file_create (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 static VFID *
 file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 			  FILE_TYPE * file_type, INT32 exp_numpages,
-			  const void *file_des, VPID * first_prealloc_vpid,
-			  INT32 prealloc_npages)
+			  const void *file_des)
 {
   LOG_DATA_ADDR addr;		/* address of logging data */
   bool old_val, rv;
@@ -2816,10 +2813,11 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
   old_val = thread_set_check_interrupt (thread_p, false);
 
   if (file_xcreate (thread_p, vfid, exp_numpages, file_type, file_des,
-		    first_prealloc_vpid, prealloc_npages) != NULL)
+		    NULL, 0) != NULL)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
+      assert (file_get_numpages (thread_p, vfid) == 0);
 
       if (*file_type != FILE_TMP_TMP && *file_type != FILE_QUERY_AREA)
 	{
@@ -2884,7 +2882,7 @@ file_create_tmp (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
     }
 
   return file_create_tmp_internal (thread_p, vfid, &file_type, exp_numpages,
-				   file_des, NULL, 0);
+				   file_des);
 }
 
 /*
@@ -2904,7 +2902,7 @@ file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid,
   FILE_TYPE file_type = FILE_EITHER_TMP;
 
   return file_create_tmp_internal (thread_p, vfid, &file_type, exp_numpages,
-				   file_des, NULL, 0);
+				   file_des);
 }
 
 /*
@@ -2970,7 +2968,9 @@ file_create_queryarea (THREAD_ENTRY * thread_p, VFID * vfid,
 {
   FILE_TYPE file_type = FILE_QUERY_AREA;
   VFID *tmpfile_vfid = NULL;
-  VPID first_page_vpid;
+  VPID first_page_vpid, vpid;
+  PAGE_PTR fhdr_pgptr = NULL;
+  FILE_HEADER *fhdr;
 
   tmpfile_vfid = file_tmpfile_cache_get (thread_p, vfid, file_type);
 
@@ -2979,13 +2979,51 @@ file_create_queryarea (THREAD_ENTRY * thread_p, VFID * vfid,
       VPID_SET_NULL (&first_page_vpid);
 
       tmpfile_vfid = file_create_tmp_internal (thread_p, vfid, &file_type,
-					       exp_numpages, file_des,
-					       &first_page_vpid, 1);
+					       exp_numpages, file_des);
+      if (tmpfile_vfid != NULL)
+	{
+	  if (file_alloc_pages (thread_p, tmpfile_vfid, &first_page_vpid, 1,
+				NULL, NULL, NULL) == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  goto exit_on_error;
+	}
 
       assert (!VPID_ISNULL (&first_page_vpid));
+
+      vpid.volid = tmpfile_vfid->volid;
+      vpid.pageid = tmpfile_vfid->fileid;
+      fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			      PGBUF_UNCONDITIONAL_LATCH);
+      if (fhdr_pgptr == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+      fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
+
+      assert (VPID_ISNULL (&fhdr->first_alloc_vpid));
+
+      VPID_COPY (&fhdr->first_alloc_vpid, &first_page_vpid);
+
+      pgbuf_set_dirty (thread_p, fhdr_pgptr, FREE);
     }
 
   return tmpfile_vfid;
+
+exit_on_error:
+
+  if (tmpfile_vfid != NULL)
+    {
+      (void) file_destroy (thread_p, tmpfile_vfid);
+    }
+
+  return NULL;
 }
 
 /* TODO: list for file_ftab_chain */
@@ -3051,8 +3089,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
       exp_numpages = 1;
     }
 
-  if (*file_type == FILE_BTREE || *file_type == FILE_HEAP
-      || *file_type == FILE_QUERY_AREA)
+  if (*file_type == FILE_BTREE || *file_type == FILE_HEAP)
     {
       if (prealloc_npages == 0)
 	{
@@ -7994,7 +8031,6 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   if (allocstate == FILE_ALLOCSET_ALLOC_ZERO)
     {
-      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME, 2,
 	      fileio_get_volume_label (desired_volid, PEEK), npages);
