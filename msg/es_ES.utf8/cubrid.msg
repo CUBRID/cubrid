@@ -1248,7 +1248,11 @@ $ LOADDB
 1179 Found not vacuumed entries in heap.
 1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
 1181 Manual vacuum is disabled for client-server mode.
-1182 Ultimo error
+1182 Could not refix page %1$d,%2$d, previous error was %3$d.
+1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
+1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
+1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
+1186 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

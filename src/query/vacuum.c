@@ -926,6 +926,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VPID page_vpid,
   bool reusable = false;
   SPAGE_HEADER *page_header_p = NULL;
   VFID overflow_vfid;
+  PGBUF_LATCH_CONDITION fwd_condition;
 
   reusable = file_get_type (thread_p, &vfid) == FILE_HEAP_REUSE_SLOTS;
 
@@ -1031,11 +1032,23 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VPID page_vpid,
 
 	  VPID_GET_FROM_OID (&forward_vpid, &forward_oid);
 	  assert (forward_page == NULL);
+
+	  fwd_condition =
+	    pgbuf_get_condition_for_ordered_fix (&forward_vpid, &page_vpid,
+						 &hfid);
 	  forward_page =
 	    pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		       PGBUF_CONDITIONAL_LATCH);
+		       fwd_condition);
 	  if (forward_page == NULL)
 	    {
+	      if (fwd_condition == PGBUF_UNCONDITIONAL_LATCH)
+		{
+		  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
+				 "VACUUM ERROR: Failed to fix page (%d, %d).",
+				 forward_vpid.volid, forward_vpid.pageid);
+		  break;
+		}
+
 	      /* Couldn't obtain conditional latch, free original page and
 	       * retry.
 	       */
@@ -1119,9 +1132,10 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VPID page_vpid,
 		  /* Fix page */
 		  error_code =
 		    pgbuf_fix_when_other_is_fixed (thread_p, &page_vpid,
+						   &forward_vpid,
 						   OLD_PAGE,
 						   PGBUF_LATCH_WRITE, &page,
-						   &forward_page);
+						   &forward_page, &hfid);
 		  if (error_code != NO_ERROR)
 		    {
 		      /* Failed fix */
@@ -1164,11 +1178,25 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VPID page_vpid,
 	      /* Clean new home slot */
 	      if (forward_page == NULL)
 		{
+		  fwd_condition =
+		    pgbuf_get_condition_for_ordered_fix (&forward_vpid,
+							 &page_vpid, &hfid);
 		  forward_page =
 		    pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE,
-			       PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+			       PGBUF_LATCH_WRITE, fwd_condition);
 		  if (forward_page == NULL)
 		    {
+		      if (fwd_condition == PGBUF_UNCONDITIONAL_LATCH)
+			{
+			  vacuum_er_log (VACUUM_ER_LOG_ERROR
+					 | VACUUM_ER_LOG_HEAP,
+					 "VACUUM ERROR: "
+					 "Failed to fix page (%d, %d).",
+					 forward_vpid.volid,
+					 forward_vpid.pageid);
+			  break;
+			}
+
 		      vacuum_heap_page_log_and_reset (thread_p, &page, &hfid,
 						      &n_vacuumed_slots,
 						      vacuumed_slots,

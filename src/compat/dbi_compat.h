@@ -1514,7 +1514,12 @@
 #define ER_INDEX_FOUND_NOT_VACUUMED		    -1180
 #define ER_VACUUM_CS_NOT_AVAILABLE		    -1181
 
-#define ER_LAST_ERROR                               -1182
+#define ER_PB_ORDERED_REFIX_FAILED                  -1182
+#define ER_PB_ORDERED_INCONSISTENCY		    -1183
+#define ER_PB_ORDERED_TOO_MANY_RETRIES		    -1184
+#define ER_PB_UNEXPECTED_PAGE_REFIX		    -1185
+
+#define ER_LAST_ERROR                               -1186
 
 
 #define DB_TRUE 1

@@ -116,7 +116,7 @@ struct heap_scancache
   int cache_last_fix_page;	/* Indicates if page buffers and memory
 				 * are cached (left fixed)
 				 */
-  PAGE_PTR pgptr;		/* Page pointer to last left fixed page */
+  PGBUF_WATCHER page_watcher;
   char *area;			/* Pointer to last left fixed memory
 				 * allocated
 				 */
@@ -686,8 +686,8 @@ extern SCAN_CODE heap_prepare_get_record (THREAD_ENTRY * thread_p,
 					  const OID * oid,
 					  OID * class_oid,
 					  OID * forward_oid,
-					  PAGE_PTR * home_page,
-					  PAGE_PTR * forward_page,
+					  PGBUF_WATCHER * home_page_watcher,
+					  PGBUF_WATCHER * fwd_page_watcher,
 					  INT16 * record_type);
 extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p,
 				       const OID * oid,

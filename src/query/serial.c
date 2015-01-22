@@ -560,8 +560,9 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
-  ret = serial_update_serial_object (thread_p, scan_cache.pgptr, &recdesc,
-				     attr_info_p, oid_Serial_class_oid,
+  ret = serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr,
+				     &recdesc, attr_info_p,
+				     oid_Serial_class_oid,
 				     &entry->oid, &key_val);
   if (ret != NO_ERROR)
     {
@@ -768,8 +769,9 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
-  ret = serial_update_serial_object (thread_p, scan_cache.pgptr, &recdesc,
-				     attr_info_p, oid_Serial_class_oid,
+  ret = serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr,
+				     &recdesc, attr_info_p,
+				     oid_Serial_class_oid,
 				     serial_oidp, &key_val);
   if (ret != NO_ERROR)
     {

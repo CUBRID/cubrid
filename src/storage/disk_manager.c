@@ -5406,7 +5406,8 @@ disk_id_isvalid (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
   vpid.volid = volid;
   vpid.pageid = (allid / DISK_PAGE_BIT) + at_pg1;
 
-  at_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, false);
+  at_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			PGBUF_UNCONDITIONAL_LATCH);
   if (at_pgptr != NULL)
     {
       (void) pgbuf_check_page_ptype (thread_p, at_pgptr, PAGE_VOLBITMAP);
@@ -5450,7 +5451,8 @@ disk_get_overhead_numpages (THREAD_ENTRY * thread_p, INT16 volid)
    * The overhead for a volume does not change. Therefore, we do need to
    * lock the header page since the field does not change.
    */
-  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, false);
+  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			 PGBUF_UNCONDITIONAL_LATCH);
   if (hdr_pgptr == NULL)
     {
       return -1;

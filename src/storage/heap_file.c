@@ -65,6 +65,7 @@
 #include "query_executor.h"
 #include "fetch.h"
 #include "server_interface.h"
+#include "page_buffer.h"
 
 /* For getting and dumping attributes */
 #include "language_support.h"
@@ -189,6 +190,8 @@ static int rv;
     } \
   while (0)
 
+#define HEAP_SCAN_ORDERED_HFID(scan) \
+  (((scan) != NULL) ? (&(scan)->hfid) : (PGBUG_ORDERED_NULL_HFID))
 
 typedef enum
 {
@@ -563,7 +566,8 @@ static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
 					     const VPID * vpid_ptr,
 					     PAGE_FETCH_MODE fetch_mode,
 					     LOCK lock,
-					     HEAP_SCANCACHE * scan_cache);
+					     HEAP_SCANCACHE * scan_cache,
+					     PGBUF_WATCHER * pg_watcher);
 #else /* !NDEBUG */
 #define heap_scan_pb_lock_and_fetch(...) \
   heap_scan_pb_lock_and_fetch_debug (__VA_ARGS__, ARG_FILE_LINE)
@@ -574,6 +578,7 @@ static PAGE_PTR heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p,
 						   LOCK lock,
 						   HEAP_SCANCACHE *
 						   scan_cache,
+						   PGBUF_WATCHER * pg_watcher,
 						   const char *caller_file,
 						   const int caller_line);
 #endif /* !NDEBUG */
@@ -635,12 +640,14 @@ static HEAP_FINDSPACE heap_stats_find_page_in_bestspace (THREAD_ENTRY *
 							 int needed_space,
 							 HEAP_SCANCACHE *
 							 scan_cache,
-							 PAGE_PTR * pgptr);
+							 PGBUF_WATCHER *
+							 pg_watcher);
 static PAGE_PTR heap_stats_find_best_page (THREAD_ENTRY * thread_p,
 					   const HFID * hfid,
 					   int needed_space, bool isnew_rec,
 					   int newrec_size,
-					   HEAP_SCANCACHE * space_cache);
+					   HEAP_SCANCACHE * space_cache,
+					   PGBUF_WATCHER * pg_watcher);
 static int heap_stats_sync_bestspace (THREAD_ENTRY * thread_p,
 				      const HFID * hfid,
 				      HEAP_HDR_STATS * heap_hdr,
@@ -651,7 +658,8 @@ static PAGE_PTR heap_get_last_page (THREAD_ENTRY * thread_p,
 				    const HFID * hfid,
 				    HEAP_HDR_STATS * heap_hdr,
 				    HEAP_SCANCACHE * scan_cache,
-				    VPID * last_vpid);
+				    VPID * last_vpid,
+				    PGBUF_WATCHER * pg_watcher);
 static bool heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid,
 			      const VPID * new_vpid,
 			      HEAP_CHAIN_TOLAST * link);
@@ -662,7 +670,8 @@ static bool heap_vpid_init_new (THREAD_ENTRY * thread_p, const VFID * vfid,
 static PAGE_PTR heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 PAGE_PTR hdr_pgptr,
 				 HEAP_HDR_STATS * heap_hdr, int needed_space,
-				 HEAP_SCANCACHE * scan_cache);
+				 HEAP_SCANCACHE * scan_cache,
+				 PGBUF_WATCHER * new_pg_watcher);
 static VPID *heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid);
 
@@ -701,7 +710,9 @@ static PAGE_PTR heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
 						     HEAP_SCANCACHE *
 						     scan_cache, OID * oid,
 						     RECDES * recdes,
-						     OID * class_oid);
+						     OID * class_oid,
+						     PGBUF_WATCHER *
+						     pg_watcher);
 static int heap_insert_with_lock_internal (THREAD_ENTRY * thread_p,
 					   const HFID * hfid, OID * oid,
 					   OID * class_oid, RECDES * recdes,
@@ -721,8 +732,7 @@ static int heap_mvcc_delete_internal (THREAD_ENTRY * thread_p,
 				      const OID * home_oid,
 				      RECDES * home_recdes,
 				      PAGE_PTR fwd_pgptr, OID * fwd_oid,
-				      RECDES * fwd_recdes,
-				      PAGE_PTR hdr_pgptr,
+				      RECDES * fwd_recdes, PAGE_PTR hdr_pgptr,
 				      INT16 old_recdes_type,
 				      MVCC_REC_HEADER * old_rec_header,
 				      HEAP_SCANCACHE * scan_cache,
@@ -934,14 +944,14 @@ static int heap_get_record (THREAD_ENTRY * thread_p,
 			    const OID oid,
 			    RECDES * recdes,
 			    RECDES forward_recdes,
-			    PAGE_PTR * pgptr,
+			    PGBUF_WATCHER * page_watcher,
 			    HEAP_SCANCACHE * scan_cache,
 			    int ispeeking, int type, bool check_snapshot);
 static int heap_get_record_info (THREAD_ENTRY * thread_p,
 				 const OID oid,
 				 RECDES * recdes,
 				 RECDES forward_recdes,
-				 PAGE_PTR * pgptr,
+				 PGBUF_WATCHER * page_watcher,
 				 HEAP_SCANCACHE * scan_cache,
 				 int ispeeking, DB_VALUE ** record_info);
 static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p,
@@ -970,8 +980,10 @@ static int heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p,
 						LOCK lock,
 						MVCC_REC_HEADER *
 						recdes_header,
-						PAGE_PTR * pgptr,
-						PAGE_PTR * forward_pgptr,
+						PGBUF_WATCHER *
+						home_page_watcher,
+						PGBUF_WATCHER *
+						fwd_page_watcher,
 						OID * forward_oid,
 						INT16 * record_type,
 						HEAP_MVCC_DELETE_INFO *
@@ -1041,9 +1053,9 @@ static int heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 					      const OID * class_oid,
 					      const OID * oid,
 					      const HFID * hfid,
-					      PAGE_PTR * page_p,
+					      PGBUF_WATCHER * home_pg_watcher,
 					      RECDES * home_recdes_p,
-					      PAGE_PTR * forward_page_p,
+					      PGBUF_WATCHER * fwd_pg_watcher,
 					      OID * forward_oid_p,
 					      RECDES * forward_recdes_p,
 					      MVCC_REC_HEADER * rec_header_p,
@@ -1079,6 +1091,7 @@ heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p,
 				 MVCC_SNAPSHOT * mvcc_snapshot_p,
 				 PAGE_PTR ovf_first_pgptr);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static INLINE int
 heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 			    const VPID * home_vpid_p, const OID * oid_p,
@@ -1109,6 +1122,7 @@ heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
 					 int *again_count,
 					 int again_max)
 __attribute__ ((ALWAYS_INLINE));
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -1481,13 +1495,15 @@ end:
 static PAGE_PTR
 heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr,
 			     PAGE_FETCH_MODE fetch_mode, LOCK lock,
-			     HEAP_SCANCACHE * scan_cache)
+			     HEAP_SCANCACHE * scan_cache,
+			     PGBUF_WATCHER * pg_watcher)
 #else /* !NDEBUG */
 static PAGE_PTR
 heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p,
 				   const VPID * vpid_ptr,
 				   PAGE_FETCH_MODE fetch_mode,
 				   LOCK lock, HEAP_SCANCACHE * scan_cache,
+				   PGBUF_WATCHER * pg_watcher,
 				   const char *caller_file,
 				   const int caller_line)
 #endif				/* !NDEBUG */
@@ -1524,15 +1540,33 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p,
       page_latch_mode = PGBUF_LATCH_WRITE;
     }
 
+  if (pg_watcher != NULL)
+    {
 #if defined (NDEBUG)
-  pgptr =
-    pgbuf_fix_release (thread_p, vpid_ptr, fetch_mode, page_latch_mode,
-		       PGBUF_UNCONDITIONAL_LATCH);
+      if (pgbuf_ordered_fix_release (thread_p, vpid_ptr, fetch_mode,
+				     page_latch_mode, pg_watcher) != NO_ERROR)
 #else /* !NDEBUG */
-  pgptr =
-    pgbuf_fix_debug (thread_p, vpid_ptr, fetch_mode, page_latch_mode,
-		     PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
+      if (pgbuf_ordered_fix_debug (thread_p, vpid_ptr, fetch_mode,
+				   page_latch_mode, pg_watcher,
+				   caller_file, caller_line) != NO_ERROR)
 #endif /* !NDEBUG */
+	{
+	  return NULL;
+	}
+      pgptr = pg_watcher->pgptr;
+    }
+  else
+    {
+#if defined (NDEBUG)
+      pgptr =
+	pgbuf_fix_release (thread_p, vpid_ptr, fetch_mode, page_latch_mode,
+			   PGBUF_UNCONDITIONAL_LATCH);
+#else /* !NDEBUG */
+      pgptr =
+	pgbuf_fix_debug (thread_p, vpid_ptr, fetch_mode, page_latch_mode,
+			 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
+#endif /* !NDEBUG */
+    }
 
   if (pgptr != NULL)
     {
@@ -3458,7 +3492,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 				   int record_length,
 				   int needed_space,
 				   HEAP_SCANCACHE * scan_cache,
-				   PAGE_PTR * pgptr)
+				   PGBUF_WATCHER * pg_watcher)
 {
 #define BEST_PAGE_SEARCH_MAX_COUNT 100
 
@@ -3473,7 +3507,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
   bool hash_is_available;
   bool best_hint_is_used;
 
-  *pgptr = NULL;
+  assert (PGBUF_IS_CLEAN_WATCHER (pg_watcher));
 
   /*
    * If a page is busy, don't wait continue looking for other pages in our
@@ -3558,9 +3592,10 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	  break;		/* not found, exit loop */
 	}
 
-      *pgptr = heap_scan_pb_lock_and_fetch (thread_p, &best.vpid,
-					    OLD_PAGE, X_LOCK, scan_cache);
-      if (*pgptr == NULL)
+      pg_watcher->pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &best.vpid, OLD_PAGE, X_LOCK,
+				     scan_cache, pg_watcher);
+      if (pg_watcher->pgptr == NULL)
 	{
 	  /*
 	   * Either we timeout and we want to continue in this case, or
@@ -3601,9 +3636,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  (void) pgbuf_check_page_ptype (thread_p, *pgptr, PAGE_HEAP);
-
-	  best.freespace = spage_max_space_for_new_record (thread_p, *pgptr);
+	  best.freespace = spage_max_space_for_new_record (thread_p,
+							   pg_watcher->pgptr);
 	  if (best.freespace >= needed_space)
 	    {
 	      /*
@@ -3632,7 +3666,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 
 	  if (found != HEAP_FINDSPACE_FOUND)
 	    {
-	      pgbuf_unfix_and_init (thread_p, *pgptr);
+	      pgbuf_ordered_unfix (thread_p, pg_watcher);
 	    }
 	}
 
@@ -3700,10 +3734,10 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 static PAGE_PTR
 heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 			   int needed_space, bool isnew_rec, int newrec_size,
-			   HEAP_SCANCACHE * scan_cache)
+			   HEAP_SCANCACHE * scan_cache,
+			   PGBUF_WATCHER * pg_watcher)
 {
   VPID vpid;			/* Volume and page identifiers */
-  PAGE_PTR pgptr = NULL;	/* The page with the best space */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
   RECDES hdr_recdes;		/* Record descriptor to point to
 				 * space statistics
@@ -3715,6 +3749,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
   int num_pages_found;
   FILE_IS_NEW_FILE is_new_file = FILE_ERROR;
   float other_high_best_ratio;
+  PGBUF_WATCHER hdr_page_watcher;
 
   /*
    * Try to use the space cache for as much information as possible to avoid
@@ -3723,7 +3758,8 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   assert (scan_cache == NULL
 	  || scan_cache->cache_last_fix_page == false
-	  || scan_cache->pgptr == NULL);
+	  || scan_cache->page_watcher.pgptr == NULL);
+  PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
 
   /*
    * Get the heap header in exclusive mode since it is going to be changed.
@@ -3740,20 +3776,19 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			      PGBUF_UNCONDITIONAL_LATCH);
-  if (addr_hdr.pgptr == NULL)
+  if (pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			 &hdr_page_watcher) != NO_ERROR)
     {
       /* something went wrong. Unable to fetch header page */
       return NULL;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, addr_hdr.pgptr, PAGE_HEAP);
+  (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr, PAGE_HEAP);
 
-  if (spage_get_record (addr_hdr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+  if (spage_get_record (hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
 			&hdr_recdes, PEEK) != S_SUCCESS)
     {
-      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
       return NULL;
     }
 
@@ -3782,23 +3817,25 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
   while (true)
     {
       try_find++;
-      pgptr = NULL;
+      assert (pg_watcher->pgptr == NULL);
       if (heap_stats_find_page_in_bestspace (thread_p, hfid,
 					     heap_hdr->estimates.best,
 					     &(heap_hdr->estimates.head),
 					     needed_space, total_space,
-					     scan_cache,
-					     &pgptr) == HEAP_FINDSPACE_ERROR)
+					     scan_cache, pg_watcher)
+	  == HEAP_FINDSPACE_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+	  assert (pg_watcher->pgptr == NULL);
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	  return NULL;
 	}
-
-      if (pgptr != NULL)
+      if (pg_watcher->pgptr != NULL)
 	{
 	  /* found the page */
 	  break;
 	}
+
+      assert (hdr_page_watcher.page_was_unfixed == false);
 
       if (heap_hdr->estimates.num_other_high_best <= 0
 	  || heap_hdr->estimates.num_pages <= 0)
@@ -3849,11 +3886,12 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
       if (is_new_file == FILE_NEW_FILE
 	  && log_is_tran_in_system_op (thread_p) == true)
 	{
+	  addr_hdr.pgptr = hdr_page_watcher.pgptr;
 	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
 				sizeof (*heap_hdr), heap_hdr);
 	}
 
-      hdr_vpidp = pgbuf_get_vpid_ptr (addr_hdr.pgptr);
+      hdr_vpidp = pgbuf_get_vpid_ptr (hdr_page_watcher.pgptr);
 
       try_sync = 0;
       do
@@ -3872,7 +3910,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 				       hdr_vpidp, false, true);
 	  if (num_pages_found < 0)
 	    {
-	      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+	      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	      return NULL;
 	    }
 	}
@@ -3885,7 +3923,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
     }
 
-  if (pgptr == NULL)
+  if (pg_watcher->pgptr == NULL)
     {
       /*
        * None of the best pages has the needed space, allocate a new page.
@@ -3905,29 +3943,30 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
       if (is_new_file == FILE_ERROR)
 	{
 	  assert_release (false);
-	  pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	  return NULL;
 	}
 
       if (is_new_file == FILE_NEW_FILE
 	  && log_is_tran_in_system_op (thread_p) == true)
 	{
+	  addr_hdr.pgptr = hdr_page_watcher.pgptr;
 	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
 				sizeof (*heap_hdr), heap_hdr);
 	}
 
-      pgptr = heap_vpid_alloc (thread_p, hfid, addr_hdr.pgptr, heap_hdr,
-			       total_space, scan_cache);
-      assert (pgptr != NULL
-	      || er_errid () == ER_INTERRUPTED
+      pg_watcher->pgptr =
+	heap_vpid_alloc (thread_p, hfid, hdr_page_watcher.pgptr, heap_hdr,
+			 total_space, scan_cache, pg_watcher);
+      assert (pg_watcher->pgptr != NULL || er_errid () == ER_INTERRUPTED
 	      || er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE);
     }
 
+  addr_hdr.pgptr = hdr_page_watcher.pgptr;
   log_skip_logging (thread_p, &addr_hdr);
-  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, FREE);
-  addr_hdr.pgptr = NULL;
+  pgbuf_ordered_set_dirty_and_free (thread_p, &hdr_page_watcher);
 
-  return pgptr;
+  return pg_watcher->pgptr;
 }
 
 /*
@@ -3956,7 +3995,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 			   bool scan_all, bool can_cycle)
 {
   int i, best, num_high_best, num_other_best, start_pos;
-  PAGE_PTR pgptr = NULL;
   VPID vpid = { NULL_PAGEID, NULL_VOLID };
   VPID start_vpid = { NULL_PAGEID, NULL_VOLID };
   VPID next_vpid = { NULL_PAGEID, NULL_VOLID };
@@ -3972,6 +4010,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   HEAP_BESTSPACE *best_pages_hint_p;
   bool iterate_all = false;
   bool search_all = false;
+  PGBUF_WATCHER pg_watcher;
 #if defined (CUBRID_DEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -3982,6 +4021,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 #endif /* CUBRID_DEBUG */
 
   mnt_heap_stats_sync_bestspace (thread_p);
+  PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
@@ -4123,20 +4163,21 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    }
 
 	  vpid = next_vpid;
-	  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
-			     PGBUF_UNCONDITIONAL_LATCH);
-	  if (pgptr == NULL)
+	  ret =
+	    pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			       &pg_watcher);
+	  if (ret != NO_ERROR)
 	    {
 	      break;
 	    }
+	  (void) pgbuf_check_page_ptype (thread_p, pg_watcher.pgptr,
+					 PAGE_HEAP);
 
-	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
-
-	  ret = heap_vpid_next (hfid, pgptr, &next_vpid);
+	  ret = heap_vpid_next (hfid, pg_watcher.pgptr, &next_vpid);
 	  if (ret != NO_ERROR)
 	    {
 	      assert (false);
-	      pgbuf_unfix_and_init (thread_p, pgptr);
+	      pgbuf_ordered_unfix (thread_p, &pg_watcher);
 	      break;
 	    }
 	  if (search_all)
@@ -4145,13 +4186,15 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      heap_hdr->estimates.full_search_vpid = next_vpid;
 	    }
 
-	  spage_collect_statistics (pgptr, &npages, &nrecords, &rec_length);
+	  spage_collect_statistics (pg_watcher.pgptr, &npages, &nrecords,
+				    &rec_length);
 
 	  num_pages += npages;
 	  num_recs += nrecords;
 	  recs_sumlen += rec_length;
 
-	  free_space = spage_max_space_for_new_record (thread_p, pgptr);
+	  free_space = spage_max_space_for_new_record (thread_p,
+						       pg_watcher.pgptr);
 
 	  if (free_space >= min_freespace
 	      && free_space > HEAP_DROP_FREE_SPACE)
@@ -4176,7 +4219,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 		}
 	    }
 
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &pg_watcher);
 	}
 
       if (scan_all == false
@@ -4288,28 +4331,27 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 static PAGE_PTR
 heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 		    HEAP_HDR_STATS * heap_hdr, HEAP_SCANCACHE * scan_cache,
-		    VPID * last_vpid)
+		    VPID * last_vpid, PGBUF_WATCHER * pg_watcher)
 {
-  PAGE_PTR pgptr = NULL;
   RECDES recdes;
   HEAP_CHAIN *chain;
 
+  assert (pg_watcher != NULL);
   assert (last_vpid != NULL);
   assert (!VPID_ISNULL (&heap_hdr->estimates.last_vpid));
 
   *last_vpid = heap_hdr->estimates.last_vpid;
 
-  pgptr = heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, X_LOCK,
-				       scan_cache);
-  if (pgptr == NULL)
+  pg_watcher->pgptr =
+    heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, X_LOCK,
+				 scan_cache, pg_watcher);
+  if (pg_watcher->pgptr == NULL)
     {
       goto exit_on_error;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
-
-  if (spage_get_record (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) !=
-      S_SUCCESS)
+  if (spage_get_record (pg_watcher->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			&recdes, PEEK) != S_SUCCESS)
     {
       assert (false);
       goto exit_on_error;
@@ -4321,7 +4363,7 @@ heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid,
       /*
        * Hint is wrong! We should update last_vpid on heap header.
        */
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      pgbuf_ordered_unfix (thread_p, pg_watcher);
 
       if (file_find_last_page (thread_p, &hfid->vfid, last_vpid) == NULL)
 	{
@@ -4339,26 +4381,25 @@ heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid,
       /*
        * Fix a real last page.
        */
-      pgptr = heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE,
-					   X_LOCK, scan_cache);
-      if (pgptr == NULL)
+      pg_watcher->pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, X_LOCK,
+				     scan_cache, pg_watcher);
+      if (pg_watcher->pgptr == NULL)
 	{
 	  goto exit_on_error;
 	}
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
     }
 
   assert (!VPID_ISNULL (last_vpid));
-  assert (pgptr != NULL);
+  assert (pg_watcher->pgptr != NULL);
 
-  return pgptr;
+  return pg_watcher->pgptr;
 
 exit_on_error:
 
-  if (pgptr != NULL)
+  if (pg_watcher->pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      pgbuf_ordered_unfix (thread_p, pg_watcher);
     }
 
   VPID_SET_NULL (last_vpid);
@@ -4588,16 +4629,19 @@ heap_vpid_init_new (THREAD_ENTRY * thread_p, const VFID * vfid,
 static PAGE_PTR
 heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 		 PAGE_PTR hdr_pgptr, HEAP_HDR_STATS * heap_hdr,
-		 int needed_space, HEAP_SCANCACHE * scan_cache)
+		 int needed_space, HEAP_SCANCACHE * scan_cache,
+		 PGBUF_WATCHER * new_pg_watcher)
 {
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data */
-  PAGE_PTR new_pgptr = NULL;
-  PAGE_PTR last_pgptr = NULL;
   int best;
   HEAP_CHAIN_TOLAST tolast;
   VPID last_vpid;
+  PGBUF_WATCHER last_pg_watcher;
 
+  assert (PGBUF_IS_CLEAN_WATCHER (new_pg_watcher));
+
+  PGBUF_INIT_WATCHER (&last_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
@@ -4606,9 +4650,10 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
       return NULL;
     }
 
-  last_pgptr = heap_get_last_page (thread_p, hfid, heap_hdr, scan_cache,
-				   &last_vpid);
-  if (last_pgptr == NULL)
+  last_pg_watcher.pgptr =
+    heap_get_last_page (thread_p, hfid, heap_hdr, scan_cache, &last_vpid,
+			&last_pg_watcher);
+  if (last_pg_watcher.pgptr == NULL)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
@@ -4629,7 +4674,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
    */
 
   tolast.hdr_pgptr = hdr_pgptr;
-  tolast.last_pgptr = last_pgptr;
+  tolast.last_pgptr = last_pg_watcher.pgptr;
   tolast.heap_hdr = heap_hdr;
 
   if (file_alloc_pages_with_outer_sys_op (thread_p, &hfid->vfid, &vpid, 1,
@@ -4637,9 +4682,9 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 					  &tolast) == NULL)
     {
       /* Unable to allocate a new page */
-      if (last_pgptr != NULL)
+      if (last_pg_watcher.pgptr != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, last_pgptr);
+	  pgbuf_ordered_unfix (thread_p, &last_pg_watcher);
 	}
 
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
@@ -4647,9 +4692,9 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
       return NULL;
     }
 
-  if (last_pgptr != NULL)
+  if (last_pg_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, last_pgptr);
+      pgbuf_ordered_unfix (thread_p, &last_pg_watcher);
     }
 
   /*
@@ -4697,13 +4742,9 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
    * allocation by heap_vpid_init_new, therefore, we care about the current
    * content of the page.
    */
-  new_pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
-					   scan_cache);
-  if (new_pgptr != NULL)
-    {
-      (void) pgbuf_check_page_ptype (thread_p, new_pgptr, PAGE_HEAP);
-    }
-
+  new_pg_watcher->pgptr =
+    heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
+				 scan_cache, new_pg_watcher);
   /*
    * Even though an error is returned from heap_scan_pb_lock_and_fetch,
    * we will just return new_pgptr (maybe NULL)
@@ -4714,7 +4755,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
-  return new_pgptr;		/* new_pgptr is lock and fetch */
+  return new_pg_watcher->pgptr;	/* new_pgptr is lock and fetch */
 }
 
 /*
@@ -4732,7 +4773,6 @@ static VPID *
 heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 		  HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid)
 {
-  PAGE_PTR rm_pgptr = NULL;	/* Pointer to page to be removed    */
   RECDES rm_recdes;		/* Record descriptor which holds the
 				 * chain of the page to be removed
 				 */
@@ -4745,13 +4785,17 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
   HEAP_CHAIN chain;		/* Chain to next and prev page      */
   int sp_success;
   int i;
+  PGBUF_WATCHER rm_pg_watcher;
+  PGBUF_WATCHER prev_pg_watcher;
+
+  PGBUF_INIT_WATCHER (&rm_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&prev_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   /*
    * Make sure that this is not the header page since the header page cannot
    * be removed. If the header page is removed.. the heap is gone
    */
 
-  addr.pgptr = NULL;
   if (rm_vpid->pageid == hfid->hpgid && rm_vpid->volid == hfid->vfid.volid)
     {
       er_log_debug (ARG_FILE_LINE, "heap_vpid_remove: Trying to remove header"
@@ -4763,18 +4807,17 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   /* Get the chain record */
-  rm_pgptr = heap_scan_pb_lock_and_fetch (thread_p, rm_vpid, OLD_PAGE, X_LOCK,
-					  NULL);
-  if (rm_pgptr == NULL)
+  rm_pg_watcher.pgptr =
+    heap_scan_pb_lock_and_fetch (thread_p, rm_vpid, OLD_PAGE, X_LOCK, NULL,
+				 &rm_pg_watcher);
+  if (rm_pg_watcher.pgptr == NULL)
     {
       /* Look like a system error. Unable to obtain chain header record */
       goto error;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, rm_pgptr, PAGE_HEAP);
-
-  if (spage_get_record (rm_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &rm_recdes,
-			PEEK) != S_SUCCESS)
+  if (spage_get_record (rm_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			&rm_recdes, PEEK) != S_SUCCESS)
     {
       /* Look like a system error. Unable to obtain chain header record */
       goto error;
@@ -4794,15 +4837,24 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-  addr.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
-					    NULL);
-  if (addr.pgptr == NULL)
+  prev_pg_watcher.pgptr =
+    heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK, NULL,
+				 &prev_pg_watcher);
+  if (prev_pg_watcher.pgptr == NULL)
     {
       /* something went wrong, return */
       goto error;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+  if (rm_pg_watcher.page_was_unfixed)
+    {
+      /* TODO : unexpected: need to reconsider the algorithm, if this is an
+       * ordinary case */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_PB_UNEXPECTED_PAGE_REFIX, 4, rm_vpid->volid, rm_vpid->pageid,
+	      vpid.volid, vpid.pageid);
+      goto error;
+    }
 
   /*
    * Make sure that the page to be removed is not referenced on the heap
@@ -4853,8 +4905,9 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 
       /* NOW check the PREVIOUS page */
 
-      if (spage_get_record (addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
-			    &recdes, PEEK) != S_SUCCESS)
+      if (spage_get_record
+	  (prev_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes,
+	   PEEK) != S_SUCCESS)
 	{
 	  /* Look like a system error. Unable to obtain header record */
 	  goto error;
@@ -4872,12 +4925,13 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
       recdes.data = (char *) &chain;
 
       /* Log the desired changes.. and then change the header */
+      addr.pgptr = prev_pg_watcher.pgptr;
       log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (chain),
 				sizeof (chain), recdes.data, &chain);
 
       /* Now change the record */
 
-      sp_success = spage_update (thread_p, addr.pgptr,
+      sp_success = spage_update (thread_p, prev_pg_watcher.pgptr,
 				 HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
       if (sp_success != SP_SUCCESS)
 	{
@@ -4896,8 +4950,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   /* Now set dirty, free and unlock the previous page */
-  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
-  addr.pgptr = NULL;
+  pgbuf_ordered_set_dirty_and_free (thread_p, &prev_pg_watcher);
 
   /*
    * UPDATE NEXT PAGE
@@ -4910,19 +4963,19 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
       vpid = rm_chain->next_vpid;
       addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-      addr.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
-						X_LOCK, NULL);
-      if (addr.pgptr == NULL)
+      prev_pg_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK, NULL,
+				     &prev_pg_watcher);
+      if (prev_pg_watcher.pgptr == NULL)
 	{
 	  /* something went wrong, return */
 	  goto error;
 	}
 
-      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
-
       /* Get the chain record */
-      if (spage_get_record (addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
-			    &recdes, PEEK) != S_SUCCESS)
+      if (spage_get_record
+	  (prev_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes,
+	   PEEK) != S_SUCCESS)
 	{
 	  /* Look like a system error. Unable to obtain header record */
 	  goto error;
@@ -4935,6 +4988,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
       chain.prev_vpid = rm_chain->prev_vpid;
 
       /* Log the desired changes.. and then change the header */
+      addr.pgptr = prev_pg_watcher.pgptr;
       log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (chain),
 				sizeof (chain), recdes.data, &chain);
 
@@ -4943,7 +4997,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
       recdes.type = REC_HOME;
       recdes.data = (char *) &chain;
 
-      sp_success = spage_update (thread_p, addr.pgptr,
+      sp_success = spage_update (thread_p, prev_pg_watcher.pgptr,
 				 HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
       if (sp_success != SP_SUCCESS)
 	{
@@ -4961,12 +5015,11 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 
       /* Now set dirty, free and unlock the next page */
 
-      pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
-      addr.pgptr = NULL;
+      pgbuf_ordered_set_dirty_and_free (thread_p, &prev_pg_watcher);
     }
 
   /* Free the page to be deallocated and deallocate the page */
-  pgbuf_unfix_and_init (thread_p, rm_pgptr);
+  pgbuf_ordered_unfix (thread_p, &rm_pg_watcher);
 
   if (file_dealloc_page (thread_p, &hfid->vfid, rm_vpid) != NO_ERROR)
     {
@@ -4978,13 +5031,13 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
   return rm_vpid;
 
 error:
-  if (rm_pgptr != NULL)
+  if (rm_pg_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, rm_pgptr);
+      pgbuf_ordered_unfix (thread_p, &rm_pg_watcher);
     }
   if (addr.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &prev_pg_watcher);
     }
 
   return NULL;
@@ -5997,6 +6050,9 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
   LOG_DATA_ADDR addr;		/* Address of logging data */
   int sp_success;
   bool isnew_rec;
+  PGBUF_WATCHER page_watcher;
+
+  PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   addr.vfid = &hfid->vfid;
 
@@ -6025,10 +6081,10 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 #endif
 
-  addr.pgptr = heap_stats_find_best_page (thread_p, hfid, recdes->length,
-					  isnew_rec, guess_sumlen,
-					  scan_cache);
-  if (addr.pgptr == NULL)
+  page_watcher.pgptr =
+    heap_stats_find_best_page (thread_p, hfid, recdes->length, isnew_rec,
+			       guess_sumlen, scan_cache, &page_watcher);
+  if (page_watcher.pgptr == NULL)
     {
       /* something went wrong. Unable to fetch hinted page. Return */
       return ER_FAILED;
@@ -6039,27 +6095,29 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     {
       OID heap_class_oid;
 
-      assert (heap_get_class_oid_from_page (thread_p, addr.pgptr,
+      assert (heap_get_class_oid_from_page (thread_p, page_watcher.pgptr,
 					    &heap_class_oid) == NO_ERROR);
 
       assert (OID_EQ (&heap_class_oid, &scan_cache->class_oid));
     }
 #endif
 
-  (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+  (void) pgbuf_check_page_ptype (thread_p, page_watcher.pgptr, PAGE_HEAP);
 
   /* Insert the object */
-  sp_success = spage_insert (thread_p, addr.pgptr, recdes, &oid->slotid);
+  sp_success = spage_insert (thread_p, page_watcher.pgptr, recdes,
+			     &oid->slotid);
   if (sp_success == SP_SUCCESS)
     {
 
       RECDES tmp_recdes;
       INT16 bytes_reserved;
 
-      oid->volid = pgbuf_get_volume_id (addr.pgptr);
-      oid->pageid = pgbuf_get_page_id (addr.pgptr);
+      oid->volid = pgbuf_get_volume_id (page_watcher.pgptr);
+      oid->pageid = pgbuf_get_page_id (page_watcher.pgptr);
 
       addr.offset = oid->slotid;
+      addr.pgptr = page_watcher.pgptr;
       if (mvcc_relocate_delete != NULL)
 	{
 	  /* The insertion is caused by MVCC deletion. */
@@ -6092,7 +6150,7 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    }
 	}
 
-      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, page_watcher.pgptr, DONT_FREE);
     }
   else
     {
@@ -6107,15 +6165,16 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
   /*
    * Cache the page for any future scan modifications
    */
-
   if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
       && ishome_insert == true)
     {
-      scan_cache->pgptr = addr.pgptr;
+      assert (page_watcher.pgptr != NULL);
+      pgbuf_replace_watcher (thread_p, &page_watcher,
+			     &scan_cache->page_watcher);
     }
   else
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &page_watcher);
     }
 
   return NO_ERROR;
@@ -6126,28 +6185,29 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
 				     const HFID * hfid,
 				     HEAP_SCANCACHE * scan_cache,
 				     OID * oid,
-				     RECDES * recdes, OID * class_oid)
+				     RECDES * recdes, OID * class_oid,
+				     PGBUF_WATCHER * pg_watcher)
 {
   int slot_id = 0;
   int lk_result;
   int slot_num;
-  PAGE_PTR pgptr;
   LOCK lock = X_LOCK;
 
-  pgptr = heap_stats_find_best_page (thread_p, hfid, recdes->length,
-				     (recdes->type != REC_NEWHOME),
-				     recdes->length, scan_cache);
-  if (pgptr == NULL)
+  assert (PGBUF_IS_CLEAN_WATCHER (pg_watcher));
+
+  pg_watcher->pgptr =
+    heap_stats_find_best_page (thread_p, hfid, recdes->length,
+			       (recdes->type != REC_NEWHOME), recdes->length,
+			       scan_cache, pg_watcher);
+  if (pg_watcher->pgptr == NULL)
     {
       return NULL;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+  slot_num = spage_number_of_slots (pg_watcher->pgptr);
 
-  slot_num = spage_number_of_slots (pgptr);
-
-  oid->volid = pgbuf_get_volume_id (pgptr);
-  oid->pageid = pgbuf_get_page_id (pgptr);
+  oid->volid = pgbuf_get_volume_id (pg_watcher->pgptr);
+  oid->pageid = pgbuf_get_page_id (pg_watcher->pgptr);
 
   if (OID_IS_ROOTOID (class_oid))
     {
@@ -6158,14 +6218,14 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
   /* slot_id == slot_num means add new slot */
   for (slot_id = 0; slot_id <= slot_num; slot_id++)
     {
-      slot_id = spage_find_free_slot (pgptr, NULL, slot_id);
+      slot_id = spage_find_free_slot (pg_watcher->pgptr, NULL, slot_id);
       oid->slotid = slot_id;
 
       /* lock the object to be inserted conditionally */
       lk_result = lock_object (thread_p, oid, class_oid, lock, LK_COND_LOCK);
       if (lk_result == LK_GRANTED)
 	{
-	  return pgptr;		/* OK */
+	  return pg_watcher->pgptr;	/* OK */
 	}
       else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
 	{
@@ -6182,7 +6242,7 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
 	    }
 #endif
 	  OID_SET_NULL (oid);
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, pg_watcher);
 	  return NULL;
 	}
     }
@@ -6192,7 +6252,7 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
   assert (false);
   OID_SET_NULL (oid);
 
-  pgbuf_unfix_and_init (thread_p, pgptr);
+  pgbuf_ordered_unfix (thread_p, pg_watcher);
   return NULL;
 }
 
@@ -6218,6 +6278,9 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
   bool isnew_rec;
   RECDES tmp_recdes, *undo_recdes;
   INT16 bytes_reserved;
+  PGBUF_WATCHER page_watcher;
+
+  PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   addr.vfid = &hfid->vfid;
 
@@ -6273,10 +6336,10 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
     }
 
-  addr.pgptr = heap_find_slot_for_insert_with_lock (thread_p, hfid,
-						    scan_cache, oid, recdes,
-						    class_oid);
-  if (addr.pgptr == NULL)
+  page_watcher.pgptr =
+    heap_find_slot_for_insert_with_lock (thread_p, hfid, scan_cache, oid,
+					 recdes, class_oid, &page_watcher);
+  if (page_watcher.pgptr == NULL)
     {
       return ER_FAILED;
     }
@@ -6286,14 +6349,14 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     {
       OID heap_class_oid;
 
-      assert (heap_get_class_oid_from_page (thread_p, addr.pgptr,
+      assert (heap_get_class_oid_from_page (thread_p, page_watcher.pgptr,
 					    &heap_class_oid) == NO_ERROR);
       assert (OID_EQ (&heap_class_oid, class_oid));
     }
 #endif
 
   /* insert a original record */
-  if (spage_insert_at (thread_p, addr.pgptr, oid->slotid, recdes)
+  if (spage_insert_at (thread_p, page_watcher.pgptr, oid->slotid, recdes)
       != SP_SUCCESS)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6317,10 +6380,11 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   /* Log the insertion, set the page dirty, free, and unlock */
   addr.offset = oid->slotid;
+  addr.pgptr = page_watcher.pgptr;
   /* non MVCC insert logging */
   log_append_undoredo_recdes (thread_p, RVHF_INSERT, &addr, NULL,
 			      undo_recdes);
-  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+  pgbuf_set_dirty (thread_p, page_watcher.pgptr, DONT_FREE);
 
 unfix_end:
   /*
@@ -6329,11 +6393,13 @@ unfix_end:
   if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
       && ishome_insert == true)
     {
-      scan_cache->pgptr = addr.pgptr;
+      assert (page_watcher.pgptr != NULL);
+      pgbuf_replace_watcher (thread_p, &page_watcher,
+			     &scan_cache->page_watcher);
     }
   else				/* unfix the page */
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &page_watcher);
     }
 
   return (oid != NULL) ? NO_ERROR : ER_FAILED;
@@ -6601,6 +6667,12 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
  *                       between heap changes.
  *   update_in_place(in): if HEAP_UPDATE_IN_PLACE then enforce an update in-place.
  *                        Otherwise, update using MVCC style.
+ *
+ *  Note : We use COPY mode when reading home record, to avoid latch restart on
+ *	   all pages (home, fwd, hdr) after page unfix have occurred during
+ *	   ordered fix; in update, there is a lock on OID which guarantees that
+ *	   VPIDs of pages are not changed (however, the contents could change,
+ *	   hence the COPY mode for record).
  */
 const OID *
 heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
@@ -6613,7 +6685,6 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
   VPID *vpidptr_incache;
   LOG_DATA_ADDR addr;		/* Address of logging data     */
   LOG_DATA_ADDR forward_addr;	/* Address of forward data     */
-  PAGE_PTR hdr_pgptr = NULL;	/* Page pointer to header page */
   INT16 type;
   OID new_forward_oid;
   RECDES new_forward_recdes, home_recdes;
@@ -6622,14 +6693,21 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
   int sp_success;
   DISK_ISVALID oid_valid;
   bool is_big_length = false;
-  int again_count = 0, again_max = 20, error_code = NO_ERROR;
+  int error_code = NO_ERROR;
   VPID home_vpid;
   VPID newhome_vpid;
   MVCCID mvcc_id;
   PGSLOTID slotid;
+  PGBUF_WATCHER fwd_page_watcher;
+  PGBUF_WATCHER hdr_page_watcher;
+  PGBUF_WATCHER home_page_watcher;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
+
+  PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+  PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_UPDATE_START (class_oid);
@@ -6739,14 +6817,8 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   *old = true;
 
-try_again:
-
   addr.vfid = &hfid->vfid;
   forward_addr.vfid = &hfid->vfid;
-
-  addr.pgptr = NULL;
-  forward_addr.pgptr = NULL;
-  hdr_pgptr = NULL;
 
   /*
    * Lock and fetch the page where the object is stored.
@@ -6790,26 +6862,25 @@ try_again:
        */
       if (scan_cache != NULL
 	  && scan_cache->cache_last_fix_page == true
-	  && scan_cache->pgptr != NULL)
+	  && scan_cache->page_watcher.pgptr != NULL)
 	{
-	  vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
+	  vpidptr_incache =
+	    pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr);
 	  if (VPID_EQ (&vpid, vpidptr_incache))
 	    {
-	      /* We can skip the fetch operation */
-	      addr.pgptr = scan_cache->pgptr;
+	      /* Skip fetch, just switch to stack allocated page watcher;
+	       * switch back to scan cache at the end of function */
+	      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher,
+				     &home_page_watcher);
 	    }
 	  else
 	    {
 	      /*
 	       * Free the cached page
 	       */
-	      pgbuf_unfix_and_init (thread_p, scan_cache->pgptr);
+	      pgbuf_ordered_unfix (thread_p, &(scan_cache->page_watcher));
 	    }
-	  /*
-	   * Now remove the page from the scan cache. At the end this page or
-	   * another one will be cached again.
-	   */
-	  scan_cache->pgptr = NULL;
+	  assert (scan_cache->page_watcher.pgptr == NULL);
 	}
     }
 
@@ -6817,11 +6888,12 @@ try_again:
    * If we do not have the home page already fetched, fetch it at this moment
    */
 
-  if (addr.pgptr == NULL)
+  if (home_page_watcher.pgptr == NULL)
     {
-      addr.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
-						X_LOCK, scan_cache);
-      if (addr.pgptr == NULL)
+      home_page_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
+				     scan_cache, &home_page_watcher);
+      if (home_page_watcher.pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
 	    {
@@ -6833,15 +6905,13 @@ try_again:
 	  /* something went wrong, return */
 	  goto error;
 	}
-
-      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
     }
 
 #if !defined(NDEBUG)
   {
     OID heap_class_oid;
 
-    assert (heap_get_class_oid_from_page (thread_p, addr.pgptr,
+    assert (heap_get_class_oid_from_page (thread_p, home_page_watcher.pgptr,
 					  &heap_class_oid) == NO_ERROR);
     assert (OID_EQ (&heap_class_oid, class_oid));
 
@@ -6852,7 +6922,7 @@ try_again:
   }
 #endif
 
-  type = spage_get_record_type (addr.pgptr, oid->slotid);
+  type = spage_get_record_type (home_page_watcher.pgptr, oid->slotid);
   if (type == REC_UNKNOWN)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
@@ -6885,8 +6955,9 @@ try_again:
       home_recdes.length = sizeof (forward_oid);
       home_recdes.area_size = sizeof (forward_oid);
 
-      if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes, COPY)
-	  != S_SUCCESS)
+      if (spage_get_record
+	  (home_page_watcher.pgptr, oid->slotid, &home_recdes,
+	   COPY) != S_SUCCESS)
 	{
 	  /* Unable to get relocation record of the object */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -6913,25 +6984,21 @@ try_again:
        */
 
       error_code =
-	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
-				     &forward_addr.pgptr, &vpid, &forward_oid,
-				     scan_cache, &again_count, again_max);
+	pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   &fwd_page_watcher);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
 	}
-      else if (addr.pgptr == NULL)
-	{
-	  assert (forward_addr.pgptr == NULL);
-	  goto try_again;
-	}
 
-      (void) pgbuf_check_page_ptype (thread_p, forward_addr.pgptr, PAGE_HEAP);
-      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+      assert (home_page_watcher.pgptr != NULL
+	      && fwd_page_watcher.pgptr != NULL);
+      (void) pgbuf_check_page_ptype (thread_p, fwd_page_watcher.pgptr,
+				     PAGE_HEAP);
 
 #if defined(CUBRID_DEBUG)
-      if (spage_get_record_type (forward_addr.pgptr, forward_oid.slotid) !=
-	  REC_NEWHOME)
+      if (spage_get_record_type (fwd_page_watcher.pgptr, forward_oid.slotid)
+	  != REC_NEWHOME)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE,
 		  3, forward_oid.volid, forward_oid.pageid,
@@ -6940,7 +7007,7 @@ try_again:
 	}
 #endif
 
-      if (spage_get_record (forward_addr.pgptr, forward_oid.slotid,
+      if (spage_get_record (fwd_page_watcher.pgptr, forward_oid.slotid,
 			    &forward_recdes, PEEK) != S_SUCCESS)
 	{
 	  goto error;
@@ -6951,15 +7018,14 @@ try_again:
 	  MVCC_REC_HEADER rec_header;
 	  or_mvcc_get_header (&forward_recdes, &rec_header);
 
-
 	  /* Do an MVCC update by creating a new version and marking
 	   * the old version as deleted.
 	   */
 	  error_code =
 	    heap_mvcc_update_relocated_record (thread_p, class_oid, oid,
-					       hfid, &addr.pgptr,
+					       hfid, &home_page_watcher,
 					       &home_recdes,
-					       &forward_addr.pgptr,
+					       &fwd_page_watcher,
 					       &forward_oid,
 					       &forward_recdes,
 					       &rec_header, recdes,
@@ -6975,7 +7041,7 @@ try_again:
        * Can we move the object back to its home (OID) page ?
        */
       if (is_big_length
-	  || spage_update (thread_p, addr.pgptr, oid->slotid,
+	  || spage_update (thread_p, home_page_watcher.pgptr, oid->slotid,
 			   recdes) != SP_SUCCESS)
 	{
 	  /*
@@ -6983,38 +7049,23 @@ try_again:
 	   * Try to update the object at relocated home page (content page)
 	   */
 	  if (is_big_length
-	      || spage_is_updatable (thread_p, forward_addr.pgptr,
+	      || spage_is_updatable (thread_p, fwd_page_watcher.pgptr,
 				     forward_oid.slotid,
 				     recdes->length) == false)
 	    {
 	      /* Header of heap */
 	      vpid.volid = hfid->vfid.volid;
 	      vpid.pageid = hfid->hpgid;
+
 	      error_code =
-		heap_try_fetch_header_with_forward_page (thread_p,
-							 &addr.pgptr,
-							 &home_vpid, oid,
-							 &hdr_pgptr, &vpid,
-							 &forward_addr.pgptr,
-							 &newhome_vpid,
-							 &forward_oid,
-							 scan_cache,
-							 &again_count,
-							 again_max);
+		pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE,
+				   PGBUF_LATCH_WRITE, &hdr_page_watcher);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
 		}
-	      else if (addr.pgptr == NULL)
-		{
-		  assert (hdr_pgptr == NULL);
-		  assert (forward_addr.pgptr == NULL);
-		  goto try_again;
-		}
 
-	      (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
-	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
-	      (void) pgbuf_check_page_ptype (thread_p, forward_addr.pgptr,
+	      (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr,
 					     PAGE_HEAP);
 
 	      /* non MVCC update */
@@ -7043,7 +7094,7 @@ try_again:
 		      (thread_p, hfid, &new_forward_oid, class_oid, recdes,
 		       scan_cache, false,
 		       (recdes->length -
-			spage_get_record_length (forward_addr.pgptr,
+			spage_get_record_length (fwd_page_watcher.pgptr,
 						 forward_oid.slotid)),
 		       NULL) != NO_ERROR)
 		    {
@@ -7064,8 +7115,8 @@ try_again:
 	      new_forward_recdes.length = sizeof (new_forward_oid);
 	      new_forward_recdes.area_size = sizeof (new_forward_oid);
 
-	      sp_success = spage_update (thread_p, addr.pgptr, oid->slotid,
-					 &new_forward_recdes);
+	      sp_success = spage_update (thread_p, home_page_watcher.pgptr,
+					 oid->slotid, &new_forward_recdes);
 	      if (sp_success != SP_SUCCESS)
 		{
 		  /*
@@ -7101,12 +7152,13 @@ try_again:
 		}
 	      if (new_forward_recdes.type == REC_BIGONE)
 		{
-		  spage_update_record_type (thread_p, addr.pgptr,
+		  spage_update_record_type (thread_p, home_page_watcher.pgptr,
 					    oid->slotid, REC_BIGONE);
 		}
 
 	      /* Log the changes and then set the page dirty */
 	      addr.offset = oid->slotid;
+	      addr.pgptr = home_page_watcher.pgptr;
 	      log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
 					  &home_recdes, &new_forward_recdes);
 
@@ -7114,10 +7166,9 @@ try_again:
 	      (void) heap_delete_internal (thread_p, hfid, class_oid,
 					   &forward_oid, scan_cache, false,
 					   true);
-	      pgbuf_set_dirty (thread_p, forward_addr.pgptr, FREE);
-	      forward_addr.pgptr = NULL;
-	      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-	      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	      pgbuf_ordered_set_dirty_and_free (thread_p, &fwd_page_watcher);
+	      pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
+	      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	    }
 	  else
 	    {
@@ -7130,8 +7181,9 @@ try_again:
 	       * space to insert the object
 	       */
 
-	      if (spage_get_record (forward_addr.pgptr, forward_oid.slotid,
-				    &forward_recdes, PEEK) != S_SUCCESS)
+	      if (spage_get_record
+		  (fwd_page_watcher.pgptr, forward_oid.slotid,
+		   &forward_recdes, PEEK) != S_SUCCESS)
 		{
 		  /* Unable to keep forward image of object for logging */
 		  goto error;
@@ -7139,11 +7191,12 @@ try_again:
 
 	      recdes->type = REC_NEWHOME;
 	      forward_addr.offset = forward_oid.slotid;
+	      forward_addr.pgptr = fwd_page_watcher.pgptr;
 	      log_append_undoredo_recdes (thread_p, RVHF_UPDATE,
 					  &forward_addr, &forward_recdes,
 					  recdes);
 	      sp_success =
-		spage_update (thread_p, forward_addr.pgptr,
+		spage_update (thread_p, fwd_page_watcher.pgptr,
 			      forward_oid.slotid, recdes);
 	      if (sp_success != SP_SUCCESS)
 		{
@@ -7167,8 +7220,7 @@ try_again:
 		}
 
 	      /* set dirty the only modified page */
-	      pgbuf_set_dirty (thread_p, forward_addr.pgptr, FREE);
-	      forward_addr.pgptr = NULL;
+	      pgbuf_ordered_set_dirty_and_free (thread_p, &fwd_page_watcher);
 	    }
 	}
       else
@@ -7180,19 +7232,19 @@ try_again:
 
 	  /* Indicate that this is home record */
 	  recdes->type = REC_HOME;
-	  spage_update_record_type (thread_p, addr.pgptr, oid->slotid,
-				    recdes->type);
+	  spage_update_record_type (thread_p, home_page_watcher.pgptr,
+				    oid->slotid, recdes->type);
 
 	  addr.offset = oid->slotid;
+	  addr.pgptr = home_page_watcher.pgptr;
 	  log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
 				      &home_recdes, recdes);
 
 	  /* Physical delete the relocated record (old home) */
 	  (void) heap_delete_internal (thread_p, hfid, class_oid,
 				       &forward_oid, scan_cache, false, true);
-	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-	  pgbuf_set_dirty (thread_p, forward_addr.pgptr, FREE);
-	  forward_addr.pgptr = NULL;
+	  pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
+	  pgbuf_ordered_set_dirty_and_free (thread_p, &fwd_page_watcher);
 	}
       break;
 
@@ -7205,8 +7257,9 @@ try_again:
       home_recdes.length = sizeof (forward_oid);
       home_recdes.area_size = sizeof (forward_oid);
 
-      if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
-			    COPY) != S_SUCCESS)
+      if (spage_get_record
+	  (home_page_watcher.pgptr, oid->slotid, &home_recdes,
+	   COPY) != S_SUCCESS)
 	{
 	  /* Unable to peek overflow address of multipage object */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -7226,18 +7279,15 @@ try_again:
       newhome_vpid.volid = forward_oid.volid;
       newhome_vpid.pageid = forward_oid.pageid;
 
+      PGBUF_WATCHER_RESET_RANK (&fwd_page_watcher,
+				PGBUF_ORDERED_HEAP_OVERFLOW);
       error_code =
-	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
-				     &forward_addr.pgptr, &vpid, &forward_oid,
-				     scan_cache, &again_count, again_max);
+	pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   &fwd_page_watcher);
+
       if (error_code != NO_ERROR)
 	{
 	  goto error;
-	}
-      else if (addr.pgptr == NULL)
-	{
-	  assert (forward_addr.pgptr == NULL);
-	  goto try_again;
 	}
 
       {
@@ -7247,7 +7297,7 @@ try_again:
 	bool is_home_insert;
 
 	error_code =
-	  heap_get_mvcc_rec_header_from_overflow (forward_addr.pgptr,
+	  heap_get_mvcc_rec_header_from_overflow (fwd_page_watcher.pgptr,
 						  &rec_header, NULL);
 	if (error_code != NO_ERROR)
 	  {
@@ -7260,37 +7310,23 @@ try_again:
 	new_recdes = recdes;
 	is_home_insert = true;
 	if (heap_is_big_length (recdes->length)
-	    || spage_insert (thread_p, addr.pgptr, recdes,
+	    || spage_insert (thread_p, home_page_watcher.pgptr, recdes,
 			     &slotid) != SP_SUCCESS)
 	  {
 	    is_home_insert = false;
 	    vpid.volid = hfid->vfid.volid;
 	    vpid.pageid = hfid->hpgid;
+
 	    error_code =
-	      heap_try_fetch_header_with_forward_page (thread_p, &addr.pgptr,
-						       &home_vpid, oid,
-						       &hdr_pgptr, &vpid,
-						       &forward_addr.pgptr,
-						       &newhome_vpid,
-						       &forward_oid,
-						       scan_cache,
-						       &again_count,
-						       again_max);
+	      pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+				 &hdr_page_watcher);
 	    if (error_code != NO_ERROR)
 	      {
 		goto error;
 	      }
-	    else if (addr.pgptr == NULL)
-	      {
-		assert (hdr_pgptr == NULL);
-		assert (forward_addr.pgptr == NULL);
-		goto try_again;
-	      }
 
-	    (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
-	    (void) pgbuf_check_page_ptype (thread_p, forward_addr.pgptr,
-					   PAGE_OVERFLOW);
-	    (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+	    (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr,
+					   PAGE_HEAP);
 
 	    if (heap_is_big_length (recdes->length))
 	      {
@@ -7304,7 +7340,7 @@ try_again:
 				 sizeof (new_forward_oid), REC_BIGONE,
 				 &new_forward_oid);
 		if (spage_insert
-		    (thread_p, addr.pgptr, &new_forward_recdes,
+		    (thread_p, home_page_watcher.pgptr, &new_forward_recdes,
 		     &slotid) == SP_SUCCESS)
 		  {
 		    /* new_forward_recdes inserted into home page */
@@ -7321,15 +7357,16 @@ try_again:
 	    SET_OID (&mvcc_next_oid, home_vpid.volid, home_vpid.pageid,
 		     slotid);
 	    addr.offset = slotid;
+	    addr.pgptr = home_page_watcher.pgptr;
 	    /* MVCC insert logging */
 	    heap_mvcc_log_insert (thread_p, new_recdes, &addr);
 
-	    pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+	    pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
 	  }
 	else
 	  {
 	    /* need to insert recdes or new_forward_recdes into another page */
-	    assert (hdr_pgptr != NULL);
+	    assert (hdr_page_watcher.pgptr != NULL);
 	    assert (new_recdes != NULL);
 	    if (heap_insert_internal
 		(thread_p, hfid, &mvcc_next_oid, class_oid, new_recdes,
@@ -7345,8 +7382,9 @@ try_again:
 	  }
 
 	if (heap_mvcc_delete_internal
-	    (thread_p, hfid, class_oid, addr.pgptr, oid, &home_recdes,
-	     forward_addr.pgptr, &forward_oid, NULL, hdr_pgptr, REC_BIGONE,
+	    (thread_p, hfid, class_oid, home_page_watcher.pgptr, oid,
+	     &home_recdes, fwd_page_watcher.pgptr, &forward_oid, NULL,
+	     hdr_page_watcher.pgptr, REC_BIGONE,
 	     &rec_header, scan_cache, &mvcc_id, &mvcc_next_oid) != NO_ERROR)
 	  {
 	    /* Physically delete the previously inserted record */
@@ -7367,13 +7405,13 @@ try_again:
 	    COPY_OID (new_oid, &mvcc_next_oid);
 	  }
 
-	if (forward_addr.pgptr != NULL)
+	if (fwd_page_watcher.pgptr != NULL)
 	  {
-	    pgbuf_unfix_and_init (thread_p, forward_addr.pgptr);
+	    pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
 	  }
-	if (hdr_pgptr != NULL)
+	if (hdr_page_watcher.pgptr != NULL)
 	  {
-	    pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	    pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	  }
       }
       break;
@@ -7387,21 +7425,16 @@ try_again:
       vpid.pageid = hfid->hpgid;
 
       error_code =
-	heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid, oid,
-				    &hdr_pgptr, &vpid, scan_cache,
-				    &again_count, again_max);
+	pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   &hdr_page_watcher);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
 	}
-      else if (addr.pgptr == NULL)
-	{
-	  assert (hdr_pgptr == NULL);
-	  goto try_again;
-	}
 
-      (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
-      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+      (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr,
+				     PAGE_HEAP);
+
       /* Is the object still a multipage one ? */
       if (is_big_length)
 	{
@@ -7420,8 +7453,8 @@ try_again:
 
 	  /* Can we return the object to its home ? */
 
-	  if (spage_update (thread_p, addr.pgptr, oid->slotid, recdes) !=
-	      SP_SUCCESS)
+	  if (spage_update (thread_p, home_page_watcher.pgptr, oid->slotid,
+			    recdes) != SP_SUCCESS)
 	    {
 	      /*
 	       * The object cannot be returned to its home page, relocate the
@@ -7448,8 +7481,8 @@ try_again:
 	      new_forward_recdes.length = sizeof (new_forward_oid);
 	      new_forward_recdes.area_size = sizeof (new_forward_oid);
 
-	      sp_success = spage_update (thread_p, addr.pgptr, oid->slotid,
-					 &new_forward_recdes);
+	      sp_success = spage_update (thread_p, home_page_watcher.pgptr,
+					 oid->slotid, &new_forward_recdes);
 	      if (sp_success != SP_SUCCESS)
 		{
 		  /*
@@ -7474,9 +7507,10 @@ try_again:
 					       false, true);
 		  goto error;
 		}
-	      spage_update_record_type (thread_p, addr.pgptr, oid->slotid,
-					new_forward_recdes.type);
+	      spage_update_record_type (thread_p, home_page_watcher.pgptr,
+					oid->slotid, new_forward_recdes.type);
 	      addr.offset = oid->slotid;
+	      addr.pgptr = home_page_watcher.pgptr;
 	      log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
 					  &home_recdes, &new_forward_recdes);
 	    }
@@ -7486,18 +7520,19 @@ try_again:
 	       * The record has been returned to its home
 	       */
 	      recdes->type = REC_HOME;
-	      spage_update_record_type (thread_p, addr.pgptr, oid->slotid,
-					recdes->type);
+	      spage_update_record_type (thread_p, home_page_watcher.pgptr,
+					oid->slotid, recdes->type);
 	      addr.offset = oid->slotid;
+	      addr.pgptr = home_page_watcher.pgptr;
 	      log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
 					  &home_recdes, recdes);
 	    }
 
 	  (void) heap_ovf_delete (thread_p, hfid, &forward_oid, NULL);
-	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+	  pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
 	}
 
-      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
       break;
 
     case REC_ASSIGN_ADDRESS:
@@ -7518,8 +7553,9 @@ try_again:
 	  goto update_non_mvcc_home;
 	}
 
-      if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
-			    PEEK) != S_SUCCESS)
+      if (spage_get_record
+	  (home_page_watcher.pgptr, oid->slotid, &home_recdes,
+	   PEEK) != S_SUCCESS)
 	{
 	  goto error;
 	}
@@ -7555,7 +7591,8 @@ try_again:
 	is_home_insert = true;
 	can_return_home_delete_record = true;
 	if (heap_is_big_length (size)
-	    || !spage_is_updatable (thread_p, addr.pgptr, oid->slotid, size))
+	    || !spage_is_updatable (thread_p, home_page_watcher.pgptr,
+				    oid->slotid, size))
 	  {
 	    can_return_home_delete_record = false;
 	  }
@@ -7573,30 +7610,24 @@ try_again:
 	    vpid.volid = hfid->vfid.volid;
 	    vpid.pageid = hfid->hpgid;
 
-	    assert (hdr_pgptr == NULL);
 	    error_code =
-	      heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
-					  oid, &hdr_pgptr, &vpid, scan_cache,
-					  &again_count, again_max);
+	      pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+				 &hdr_page_watcher);
 	    if (error_code != NO_ERROR)
 	      {
 		goto error;
 	      }
-	    else if (addr.pgptr == NULL)
-	      {
-		goto try_again;
-	      }
 
 	    /* the page may have been unfixed (and changed by another worker),
 	     * so we need to re-peek the record again */
-	    if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
-				  PEEK) != S_SUCCESS)
+	    if (spage_get_record (home_page_watcher.pgptr, oid->slotid,
+				  &home_recdes, PEEK) != S_SUCCESS)
 	      {
 		goto error;
 	      }
 
-	    (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
-	    (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+	    (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr,
+					   PAGE_HEAP);
 	  }
 
 	if (is_home_insert == true)
@@ -7604,13 +7635,14 @@ try_again:
 	    if (can_return_home_delete_record == true)
 	      {
 		if ((heap_is_big_length (recdes->length)
-		     || !spage_is_mvcc_updatable (thread_p, addr.pgptr,
+		     || !spage_is_mvcc_updatable (thread_p,
+						  home_page_watcher.pgptr,
 						  oid->slotid, size,
 						  recdes->length)
-		     || spage_insert (thread_p, addr.pgptr, recdes,
-				      &slotid) != SP_SUCCESS))
+		     || spage_insert (thread_p, home_page_watcher.pgptr,
+				      recdes, &slotid) != SP_SUCCESS))
 		  {
-		    assert (hdr_pgptr == NULL);
+		    assert (hdr_page_watcher.pgptr == NULL);
 		    is_home_insert = false;
 		    goto update_mvcc_home_fetch_header_page;
 		  }
@@ -7618,7 +7650,7 @@ try_again:
 		  {
 		    /* get home recdes again */
 		    if (spage_get_record
-			(addr.pgptr, oid->slotid, &home_recdes,
+			(home_page_watcher.pgptr, oid->slotid, &home_recdes,
 			 PEEK) != S_SUCCESS)
 		      {
 			goto error;
@@ -7628,17 +7660,17 @@ try_again:
 	    else
 	      {
 		if (heap_is_big_length (recdes->length)
-		    || spage_insert (thread_p, addr.pgptr, recdes,
-				     &slotid) != SP_SUCCESS)
+		    || spage_insert (thread_p, home_page_watcher.pgptr,
+				     recdes, &slotid) != SP_SUCCESS)
 		  {
-		    assert (hdr_pgptr != NULL);
+		    assert (hdr_page_watcher.pgptr != NULL);
 		    is_home_insert = false;
 		  }
 		else
 		  {
 		    /* get home recdes again */
 		    if (spage_get_record
-			(addr.pgptr, oid->slotid, &home_recdes,
+			(home_page_watcher.pgptr, oid->slotid, &home_recdes,
 			 PEEK) != S_SUCCESS)
 		      {
 			goto error;
@@ -7665,10 +7697,11 @@ try_again:
 
 		/* Add a record to point to the record in overflow */
 		if (((can_return_home_delete_record == false)
-		     || spage_is_mvcc_updatable (thread_p, addr.pgptr,
+		     || spage_is_mvcc_updatable (thread_p,
+						 home_page_watcher.pgptr,
 						 oid->slotid, size,
 						 new_forward_recdes.length))
-		    && spage_insert (thread_p, addr.pgptr,
+		    && spage_insert (thread_p, home_page_watcher.pgptr,
 				     &new_forward_recdes,
 				     &slotid) == SP_SUCCESS)
 		  {
@@ -7678,7 +7711,7 @@ try_again:
 		  {
 		    /* get home recdes again */
 		    if (spage_get_record
-			(addr.pgptr, oid->slotid, &home_recdes,
+			(home_page_watcher.pgptr, oid->slotid, &home_recdes,
 			 PEEK) != S_SUCCESS)
 		      {
 			goto error;
@@ -7693,10 +7726,11 @@ try_again:
 	  {
 	    SET_OID (&mvcc_next_oid, oid->volid, oid->pageid, slotid);
 	    addr.offset = slotid;
+	    addr.pgptr = home_page_watcher.pgptr;
 
 	    /* MVCC insert logging */
 	    heap_mvcc_log_insert (thread_p, new_recdes, &addr);
-	    pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+	    pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
 	  }
 	else if (heap_insert_internal
 		 (thread_p, hfid, &mvcc_next_oid, class_oid, new_recdes,
@@ -7712,10 +7746,10 @@ try_again:
 	  }
 
 	if (heap_mvcc_delete_internal
-	    (thread_p, hfid, class_oid, addr.pgptr, oid, &home_recdes,
-	     forward_addr.pgptr, &forward_oid, &forward_recdes, hdr_pgptr,
-	     REC_HOME, &rec_header, scan_cache, &mvcc_id,
-	     &mvcc_next_oid) != NO_ERROR)
+	    (thread_p, hfid, class_oid, home_page_watcher.pgptr, oid,
+	     &home_recdes, fwd_page_watcher.pgptr, &forward_oid,
+	     &forward_recdes, hdr_page_watcher.pgptr, REC_HOME, &rec_header,
+	     scan_cache, &mvcc_id, &mvcc_next_oid) != NO_ERROR)
 	  {
 	    /* Physically delete the previously inserted record */
 	    (void) heap_delete_internal (thread_p, hfid, class_oid,
@@ -7735,9 +7769,9 @@ try_again:
 	    COPY_OID (new_oid, &mvcc_next_oid);
 	  }
 
-	if (hdr_pgptr != NULL)
+	if (hdr_page_watcher.pgptr != NULL)
 	  {
-	    pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	    pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	  }
       }
 
@@ -7746,8 +7780,8 @@ try_again:
       /* update non MVCC home object */
     update_non_mvcc_home:
       if (is_big_length
-	  || spage_is_updatable (thread_p, addr.pgptr, oid->slotid,
-				 recdes->length) != true)
+	  || spage_is_updatable (thread_p, home_page_watcher.pgptr,
+				 oid->slotid, recdes->length) != true)
 	{
 	  /*
 	   * DOES NOT FIT ON HOME PAGE (OID page) ANY LONGER,
@@ -7759,20 +7793,15 @@ try_again:
 	  vpid.pageid = hfid->hpgid;
 
 	  error_code =
-	    heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
-					oid, &hdr_pgptr, &vpid, scan_cache,
-					&again_count, again_max);
+	    pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			       &hdr_page_watcher);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  else if (addr.pgptr == NULL)
-	    {
-	      goto try_again;
-	    }
 
-	  (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
-	  (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+	  (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr,
+					 PAGE_HEAP);
 
 	  if (is_big_length)
 	    {
@@ -7795,8 +7824,9 @@ try_again:
 	       */
 	      int len;
 
-	      len = recdes->length - spage_get_record_length (addr.pgptr,
-							      oid->slotid);
+	      len = recdes->length
+		- spage_get_record_length (home_page_watcher.pgptr,
+					   oid->slotid);
 	      recdes->type = REC_NEWHOME;
 	      if (heap_insert_internal (thread_p, hfid, &new_forward_oid,
 					class_oid, recdes, scan_cache, false,
@@ -7828,8 +7858,8 @@ try_again:
 	   * Peek for the original content of the object. It is peeked using the
 	   * forward recdes.
 	   */
-	  if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
-				PEEK) != S_SUCCESS)
+	  if (spage_get_record (home_page_watcher.pgptr, oid->slotid,
+				&home_recdes, PEEK) != S_SUCCESS)
 	    {
 	      /* Unable to peek before image for logging purposes */
 	      if (new_forward_recdes.type == REC_BIGONE)
@@ -7848,11 +7878,12 @@ try_again:
 	    }
 
 	  addr.offset = oid->slotid;
+	  addr.pgptr = home_page_watcher.pgptr;
 	  log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
 				      &home_recdes, &new_forward_recdes);
 
-	  sp_success = spage_update (thread_p, addr.pgptr, oid->slotid,
-				     &new_forward_recdes);
+	  sp_success = spage_update (thread_p, home_page_watcher.pgptr,
+				     oid->slotid, &new_forward_recdes);
 	  if (sp_success != SP_SUCCESS)
 	    {
 	      /*
@@ -7885,16 +7916,16 @@ try_again:
 		}
 	      goto error;
 	    }
-	  spage_update_record_type (thread_p, addr.pgptr, oid->slotid,
-				    new_forward_recdes.type);
-	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-	  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	  spage_update_record_type (thread_p, home_page_watcher.pgptr,
+				    oid->slotid, new_forward_recdes.type);
+	  pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	}
       else
 	{
 	  /* For the logging or to set MVCC fields */
-	  if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
-				PEEK) != S_SUCCESS)
+	  if (spage_get_record (home_page_watcher.pgptr, oid->slotid,
+				&home_recdes, PEEK) != S_SUCCESS)
 	    {
 	      /* Unable to peek before image for logging purposes */
 	      goto error;
@@ -7910,13 +7941,14 @@ try_again:
 	   */
 
 	  addr.offset = oid->slotid;
+	  addr.pgptr = home_page_watcher.pgptr;
 	  recdes->type = REC_HOME;
 
 	  log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
 				      &home_recdes, recdes);
 
-	  sp_success = spage_update (thread_p, addr.pgptr, oid->slotid,
-				     recdes);
+	  sp_success = spage_update (thread_p, home_page_watcher.pgptr,
+				     oid->slotid, recdes);
 	  if (sp_success != SP_SUCCESS)
 	    {
 	      /*
@@ -7936,9 +7968,9 @@ try_again:
 #endif
 	      goto error;
 	    }
-	  spage_update_record_type (thread_p, addr.pgptr, oid->slotid,
-				    recdes->type);
-	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+	  spage_update_record_type (thread_p, home_page_watcher.pgptr,
+				    oid->slotid, recdes->type);
+	  pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
 	}
       break;
 
@@ -7955,15 +7987,19 @@ try_again:
   /*
    * Cache the page for any future scan modifications
    */
-  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
+  if (home_page_watcher.pgptr != NULL)
     {
-      scan_cache->pgptr = addr.pgptr;
-      addr.pgptr = NULL;
+      if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
+	{
+	  pgbuf_replace_watcher (thread_p, &home_page_watcher,
+				 &scan_cache->page_watcher);
+	}
+      else
+	{
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
+	}
     }
-  else
-    {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-    }
+  addr.pgptr = NULL;
 
   if (heap_Guesschn != NULL
       && !HFID_IS_NULL (&(heap_Classrepr->rootclass_hfid))
@@ -7999,29 +8035,29 @@ try_again:
   CUBRID_OBJ_UPDATE_END (class_oid, 0);
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (forward_addr.pgptr != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, forward_addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
     }
-  if (hdr_pgptr != NULL)
+  if (hdr_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
     }
 
   return oid;
 
 error:
-  if (hdr_pgptr != NULL)
+  if (hdr_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
     }
-  if (forward_addr.pgptr != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, forward_addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
     }
-  if (addr.pgptr != NULL)
+  if (home_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
     }
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -8177,7 +8213,6 @@ heap_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
   VPID *vpidptr_incache;
   LOG_DATA_ADDR addr;		/* Address of logging data     */
   LOG_DATA_ADDR forward_addr;
-  PAGE_PTR hdr_pgptr = NULL;
   INT16 type;
   int prev_freespace;
   OID forward_oid;
@@ -8193,6 +8228,13 @@ heap_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     mvcc_Enabled && !force_physical_deletion
     && !heap_is_mvcc_disabled_for_class (class_oid);
   MVCCID mvcc_id;
+  PGBUF_WATCHER home_page_watcher;
+  PGBUF_WATCHER hdr_page_watcher;
+  PGBUF_WATCHER fwd_page_watcher;
+
+  PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+  PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   if (use_mvcc)
     {
@@ -8231,14 +8273,11 @@ heap_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
   reuse_oid = heap_is_reusable_oid (file_type);
 
-try_again:
-
   addr.vfid = &hfid->vfid;
   forward_addr.vfid = &hfid->vfid;
 
   addr.pgptr = NULL;
   forward_addr.pgptr = NULL;
-  hdr_pgptr = NULL;
 
   /*
    * Lock and fetch the page where the object is stored.
@@ -8253,34 +8292,33 @@ try_again:
   if (scan_cache != NULL)
     {
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
-	  && scan_cache->pgptr != NULL)
+	  && scan_cache->page_watcher.pgptr != NULL)
 	{
-	  vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
+	  vpidptr_incache =
+	    pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr);
 	  if (VPID_EQ (&vpid, vpidptr_incache))
 	    {
-	      /* We can skip the fetch operation */
-	      addr.pgptr = scan_cache->pgptr;
+	      /* skip the fetch operation, just switch page watcher */
+	      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher,
+				     &home_page_watcher);
 	    }
 	  else
 	    {
 	      /*
 	       * Free the cached page
 	       */
-	      pgbuf_unfix_and_init (thread_p, scan_cache->pgptr);
+	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	    }
-	  /*
-	   * Now remove the page from the scan cache. At the end this page or
-	   * another one will be cached again.
-	   */
-	  scan_cache->pgptr = NULL;
+	  assert (scan_cache->page_watcher.pgptr == NULL);
 	}
     }
 
-  if (addr.pgptr == NULL)
+  if (home_page_watcher.pgptr == NULL)
     {
-      addr.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
-						X_LOCK, scan_cache);
-      if (addr.pgptr == NULL)
+      home_page_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
+				     scan_cache, &home_page_watcher);
+      if (home_page_watcher.pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
 	    {
@@ -8292,8 +8330,6 @@ try_again:
 	  /* something went wrong, return */
 	  goto error;
 	}
-
-      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
     }
 
 #if !defined(NDEBUG)
@@ -8301,14 +8337,14 @@ try_again:
     {
       OID heap_class_oid;
 
-      assert (heap_get_class_oid_from_page (thread_p, addr.pgptr,
+      assert (heap_get_class_oid_from_page (thread_p, home_page_watcher.pgptr,
 					    &heap_class_oid) == NO_ERROR);
 
       assert (OID_EQ (&heap_class_oid, &scan_cache->class_oid));
     }
 #endif
 
-  type = spage_get_record_type (addr.pgptr, oid->slotid);
+  type = spage_get_record_type (home_page_watcher.pgptr, oid->slotid);
   if (type == REC_UNKNOWN)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
@@ -8332,8 +8368,8 @@ try_again:
       forward_recdes.length = sizeof (forward_oid);
       forward_recdes.area_size = sizeof (forward_oid);
 
-      if (spage_get_record (addr.pgptr, oid->slotid, &forward_recdes,
-			    COPY) != S_SUCCESS)
+      if (spage_get_record (home_page_watcher.pgptr, oid->slotid,
+			    &forward_recdes, COPY) != S_SUCCESS)
 	{
 	  /* Unable to peek relocation record of the object */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -8360,24 +8396,19 @@ try_again:
        */
 
       error_code =
-	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
-				     &forward_addr.pgptr, &vpid, &forward_oid,
-				     scan_cache, &again_count, again_max);
+	pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   &fwd_page_watcher);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
 	}
-      else if (addr.pgptr == NULL)
-	{
-	  goto try_again;
-	}
 
-      (void) pgbuf_check_page_ptype (thread_p, forward_addr.pgptr, PAGE_HEAP);
-      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+      (void) pgbuf_check_page_ptype (thread_p, fwd_page_watcher.pgptr,
+				     PAGE_HEAP);
 
 #if defined(CUBRID_DEBUG)
-      if (spage_get_record_type (forward_addr.pgptr, forward_oid.slotid) !=
-	  REC_NEWHOME)
+      if (spage_get_record_type (fwd_page_watcher.pgptr, forward_oid.slotid)
+	  != REC_NEWHOME)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE,
 		  3, forward_oid.volid, forward_oid.pageid,
@@ -8398,7 +8429,7 @@ try_again:
 	   * modify the buffer.
 	   */
 
-	  if (spage_get_record (forward_addr.pgptr, forward_oid.slotid,
+	  if (spage_get_record (fwd_page_watcher.pgptr, forward_oid.slotid,
 				&new_home_recdes, PEEK) != S_SUCCESS)
 	    {
 	      goto error;
@@ -8421,60 +8452,52 @@ try_again:
 	    }
 
 	  if ((heap_is_big_length (size))
-	      || (!spage_is_updatable (thread_p, addr.pgptr, oid->slotid,
-				       size)
-		  && !spage_is_updatable (thread_p, forward_addr.pgptr,
+	      || (!spage_is_updatable (thread_p, home_page_watcher.pgptr,
+				       oid->slotid, size)
+		  && !spage_is_updatable (thread_p, fwd_page_watcher.pgptr,
 					  forward_oid.slotid, size)))
 	    {
 	      vpid.volid = hfid->vfid.volid;
 	      vpid.pageid = hfid->hpgid;
 
-	      error_code = heap_try_fetch_header_with_forward_page
-		(thread_p, &addr.pgptr, &home_vpid, oid, &hdr_pgptr, &vpid,
-		 &forward_addr.pgptr, &newhome_vpid, &forward_oid,
-		 scan_cache, &again_count, again_max);
+	      error_code =
+		pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE,
+				   PGBUF_LATCH_WRITE, &hdr_page_watcher);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
 		}
-	      else if (addr.pgptr == NULL)
-		{
-		  assert (hdr_pgptr == NULL);
-		  assert (forward_addr.pgptr == NULL);
-		  goto try_again;
-		}
 
 	      /* re-peek fwd record descriptor (fwd page may have been unfixed)
 	       * since previous peek */
-	      if (spage_get_record (forward_addr.pgptr, forward_oid.slotid,
-				    &new_home_recdes, PEEK) != S_SUCCESS)
+	      if (spage_get_record
+		  (fwd_page_watcher.pgptr, forward_oid.slotid,
+		   &new_home_recdes, PEEK) != S_SUCCESS)
 		{
 		  goto error;
 		}
 
-	      (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
-	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
-	      (void) pgbuf_check_page_ptype (thread_p, forward_addr.pgptr,
+	      (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr,
 					     PAGE_HEAP);
 	    }
 
 	  /* TO DO - rename forward recdes  to home recdes etc. */
 	  if (heap_mvcc_delete_internal
-	      (thread_p, hfid, class_oid, addr.pgptr, oid, &forward_recdes,
-	       forward_addr.pgptr, &forward_oid, &new_home_recdes, hdr_pgptr,
+	      (thread_p, hfid, class_oid, home_page_watcher.pgptr, oid,
+	       &forward_recdes, fwd_page_watcher.pgptr, &forward_oid,
+	       &new_home_recdes, hdr_page_watcher.pgptr,
 	       REC_RELOCATION, &recdes_header, scan_cache, &mvcc_id,
 	       NULL) != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  if (hdr_pgptr != NULL)
+	  if (hdr_page_watcher.pgptr != NULL)
 	    {
-	      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	    }
-	  pgbuf_set_dirty (thread_p, forward_addr.pgptr, FREE);
-	  forward_addr.pgptr = NULL;
-	  /* do not unfix addr.pgptr here */
+	  pgbuf_ordered_set_dirty_and_free (thread_p, &fwd_page_watcher);
+	  /* do not unfix home_page_watcher.pgptr here */
 	  break;
 	}
 
@@ -8482,7 +8505,7 @@ try_again:
       /* Remove home and forward (relocated) objects */
 
       /* Find the contents of the record for logging purposes */
-      if (spage_get_record (forward_addr.pgptr, forward_oid.slotid,
+      if (spage_get_record (fwd_page_watcher.pgptr, forward_oid.slotid,
 			    &undo_recdes, PEEK) != S_SUCCESS)
 	{
 	  goto error;
@@ -8492,14 +8515,16 @@ try_again:
 
       /* Remove the home object */
       addr.offset = oid->slotid;
+      addr.pgptr = home_page_watcher.pgptr;
       log_append_undoredo_recdes (thread_p, RVHF_DELETE, &addr,
 				  &forward_recdes, NULL);
 
       prev_freespace =
-	spage_get_free_space_without_saving (thread_p, addr.pgptr,
+	spage_get_free_space_without_saving (thread_p,
+					     home_page_watcher.pgptr,
 					     &need_update);
 
-      (void) spage_delete (thread_p, addr.pgptr, oid->slotid);
+      (void) spage_delete (thread_p, home_page_watcher.pgptr, oid->slotid);
 
       if (reuse_oid)
 	{
@@ -8507,9 +8532,10 @@ try_again:
 			       NULL);
 	}
 
-      heap_stats_update (thread_p, addr.pgptr, hfid, prev_freespace);
+      heap_stats_update (thread_p, home_page_watcher.pgptr, hfid,
+			 prev_freespace);
 
-      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
 
       /* Remove the new home object */
       /*
@@ -8517,14 +8543,16 @@ try_again:
        *      Document here why.
        */
       forward_addr.offset = forward_oid.slotid;
+      forward_addr.pgptr = fwd_page_watcher.pgptr;
       log_append_undoredo_recdes (thread_p, RVHF_DELETE, &forward_addr,
 				  &undo_recdes, NULL);
 
       prev_freespace =
-	spage_get_free_space_without_saving (thread_p, forward_addr.pgptr,
+	spage_get_free_space_without_saving (thread_p, fwd_page_watcher.pgptr,
 					     &need_update);
 
-      (void) spage_delete (thread_p, forward_addr.pgptr, forward_oid.slotid);
+      (void) spage_delete (thread_p, fwd_page_watcher.pgptr,
+			   forward_oid.slotid);
 
       /*
        * It should be safe to mark the new home slot as reusable regardless of
@@ -8534,10 +8562,10 @@ try_again:
       log_append_postpone (thread_p, RVHF_MARK_REUSABLE_SLOT, &forward_addr,
 			   0, NULL);
 
-      heap_stats_update (thread_p, forward_addr.pgptr, hfid, prev_freespace);
+      heap_stats_update (thread_p, fwd_page_watcher.pgptr, hfid,
+			 prev_freespace);
 
-      pgbuf_set_dirty (thread_p, forward_addr.pgptr, FREE);
-      forward_addr.pgptr = NULL;
+      pgbuf_ordered_set_dirty_and_free (thread_p, &fwd_page_watcher);
       break;
 
     case REC_BIGONE:
@@ -8554,8 +8582,8 @@ try_again:
       forward_recdes.length = sizeof (forward_oid);
       forward_recdes.area_size = sizeof (forward_oid);
 
-      if (spage_get_record (addr.pgptr, oid->slotid, &forward_recdes,
-			    COPY) != S_SUCCESS)
+      if (spage_get_record (home_page_watcher.pgptr, oid->slotid,
+			    &forward_recdes, COPY) != S_SUCCESS)
 	{
 	  /* Unable to peek overflow address of multipage object */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -8571,26 +8599,20 @@ try_again:
 	  vpid.volid = forward_oid.volid;
 	  vpid.pageid = forward_oid.pageid;
 
+	  PGBUF_WATCHER_RESET_RANK (&fwd_page_watcher,
+				    PGBUF_ORDERED_HEAP_OVERFLOW);
 	  error_code =
-	    heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid,
-					 oid, &forward_addr.pgptr, &vpid,
-					 &forward_oid, scan_cache,
-					 &again_count, again_max);
+	    pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			       &fwd_page_watcher);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  else if (addr.pgptr == NULL)
-	    {
-	      assert (forward_addr.pgptr == NULL);
-	      goto try_again;
-	    }
-	  (void) pgbuf_check_page_ptype (thread_p, forward_addr.pgptr,
+	  (void) pgbuf_check_page_ptype (thread_p, fwd_page_watcher.pgptr,
 					 PAGE_OVERFLOW);
-	  (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
 
 	  /* Find the contents of the record for MVCC delete purposes */
-	  if (heap_get_mvcc_rec_header_from_overflow (forward_addr.pgptr,
+	  if (heap_get_mvcc_rec_header_from_overflow (fwd_page_watcher.pgptr,
 						      &recdes_header, NULL)
 	      != NO_ERROR)
 	    {
@@ -8601,45 +8623,42 @@ try_again:
 		  == OR_MVCC_MAX_HEADER_SIZE);
 
 	  if (heap_mvcc_delete_internal
-	      (thread_p, hfid, class_oid, addr.pgptr, oid, &forward_recdes,
-	       forward_addr.pgptr, &forward_oid, NULL, NULL, REC_BIGONE,
-	       &recdes_header, scan_cache, &mvcc_id, NULL) != NO_ERROR)
+	      (thread_p, hfid, class_oid, home_page_watcher.pgptr, oid,
+	       &forward_recdes, fwd_page_watcher.pgptr, &forward_oid, NULL,
+	       NULL, REC_BIGONE, &recdes_header, scan_cache, &mvcc_id, NULL)
+	      != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  pgbuf_set_dirty (thread_p, forward_addr.pgptr, FREE);
-	  forward_addr.pgptr = NULL;
+	  pgbuf_ordered_set_dirty_and_free (thread_p, &fwd_page_watcher);
 
 	  break;
 	}
 
       error_code =
-	heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid, oid,
-				    &hdr_pgptr, &vpid, scan_cache,
-				    &again_count, again_max);
+	pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   &hdr_page_watcher);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
 	}
-      else if (addr.pgptr == NULL)
-	{
-	  goto try_again;
-	}
 
-      (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
-      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
+      (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr,
+				     PAGE_HEAP);
 
       /* Remove the home object */
       addr.offset = oid->slotid;
+      addr.pgptr = home_page_watcher.pgptr;
       log_append_undoredo_recdes (thread_p, RVHF_DELETE, &addr,
 				  &forward_recdes, NULL);
 
       prev_freespace =
-	spage_get_free_space_without_saving (thread_p, addr.pgptr,
+	spage_get_free_space_without_saving (thread_p,
+					     home_page_watcher.pgptr,
 					     &need_update);
 
-      (void) spage_delete (thread_p, addr.pgptr, oid->slotid);
+      (void) spage_delete (thread_p, home_page_watcher.pgptr, oid->slotid);
 
       if (reuse_oid)
 	{
@@ -8647,9 +8666,10 @@ try_again:
 			       NULL);
 	}
 
-      heap_stats_update (thread_p, addr.pgptr, hfid, prev_freespace);
+      heap_stats_update (thread_p, home_page_watcher.pgptr, hfid,
+			 prev_freespace);
 
-      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
 
       /* Now remove the forward (relocated/forward) object */
 
@@ -8658,7 +8678,7 @@ try_again:
 	  goto error;
 	}
 
-      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
       break;
 
     case REC_HOME:
@@ -8680,8 +8700,8 @@ try_again:
 
 	  /* Peek the original content of the object. It is peeked using the
 	   * forward recdes. */
-	  if (spage_get_record (addr.pgptr, oid->slotid, &forward_recdes,
-				PEEK) != S_SUCCESS)
+	  if (spage_get_record (home_page_watcher.pgptr, oid->slotid,
+				&forward_recdes, PEEK) != S_SUCCESS)
 	    {
 	      goto error;
 	    }
@@ -8702,8 +8722,8 @@ try_again:
 
 	  /* check whether fit at home page */
 	  if (heap_is_big_length (size)
-	      || !spage_is_updatable (thread_p, addr.pgptr, oid->slotid,
-				      size))
+	      || !spage_is_updatable (thread_p, home_page_watcher.pgptr,
+				      oid->slotid, size))
 	    {
 	      /* no need to use this code when CHN size = MVCCID size */
 	      /*
@@ -8716,41 +8736,36 @@ try_again:
 	      vpid.pageid = hfid->hpgid;
 
 	      error_code =
-		heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
-					    oid, &hdr_pgptr, &vpid,
-					    scan_cache, &again_count,
-					    again_max);
+		pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE,
+				   PGBUF_LATCH_WRITE, &hdr_page_watcher);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
 		}
-	      else if (addr.pgptr == NULL)
-		{
-		  assert (hdr_pgptr == NULL);
-		  goto try_again;
-		}
 	    }
 
 	  if (heap_mvcc_delete_internal
-	      (thread_p, hfid, class_oid, addr.pgptr, oid, &forward_recdes,
-	       NULL, NULL, NULL, hdr_pgptr, REC_HOME, &recdes_header,
-	       scan_cache, &mvcc_id, NULL) != NO_ERROR)
+	      (thread_p, hfid, class_oid, home_page_watcher.pgptr, oid,
+	       &forward_recdes, NULL, NULL, NULL, hdr_page_watcher.pgptr,
+	       REC_HOME, &recdes_header, scan_cache, &mvcc_id, NULL)
+	      != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  if (hdr_pgptr != NULL)
+	  if (hdr_page_watcher.pgptr != NULL)
 	    {
-	      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	    }
 
-	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+	  pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
 	  break;
 	}
 
       /* non-MVCC delete - physical deletion */
-      if (spage_get_record (addr.pgptr, oid->slotid, &undo_recdes,
-			    PEEK) != S_SUCCESS)
+      if (spage_get_record
+	  (home_page_watcher.pgptr, oid->slotid, &undo_recdes,
+	   PEEK) != S_SUCCESS)
 	{
 	  /* Unable to peek before image for logging purposes */
 	  goto error;
@@ -8758,13 +8773,15 @@ try_again:
 
       /* Log and remove the object */
       addr.offset = oid->slotid;
+      addr.pgptr = home_page_watcher.pgptr;
       log_append_undoredo_recdes (thread_p, RVHF_DELETE, &addr, &undo_recdes,
 				  NULL);
       prev_freespace =
-	spage_get_free_space_without_saving (thread_p, addr.pgptr,
+	spage_get_free_space_without_saving (thread_p,
+					     home_page_watcher.pgptr,
 					     &need_update);
 
-      (void) spage_delete (thread_p, addr.pgptr, oid->slotid);
+      (void) spage_delete (thread_p, home_page_watcher.pgptr, oid->slotid);
 
       if (reuse_oid)
 	{
@@ -8772,9 +8789,10 @@ try_again:
 			       NULL);
 	}
 
-      heap_stats_update (thread_p, addr.pgptr, hfid, prev_freespace);
+      heap_stats_update (thread_p, home_page_watcher.pgptr, hfid,
+			 prev_freespace);
 
-      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
       break;
 
     case REC_MARKDELETED:
@@ -8791,27 +8809,28 @@ try_again:
   if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
       && ishome_delete == true)
     {
-      scan_cache->pgptr = addr.pgptr;
+      pgbuf_replace_watcher (thread_p, &home_page_watcher,
+			     &scan_cache->page_watcher);
     }
   else
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
     }
 
   return oid;
 
 error:
-  if (addr.pgptr != NULL)
+  if (home_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
     }
-  if (forward_addr.pgptr != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, forward_addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
     }
-  if (hdr_pgptr != NULL)
+  if (hdr_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
     }
 
   return NULL;
@@ -8845,7 +8864,7 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
   vpid.volid = oid->volid;
   vpid.pageid = oid->pageid;
   pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-				       NULL);
+				       NULL, NULL);
   if (pgptr == NULL)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -8893,7 +8912,7 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
       vpid.pageid = forward_oid.pageid;
 
       pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-					   NULL);
+					   NULL, NULL);
       if (pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
@@ -8987,17 +9006,20 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   VPID vpid;
   VPID prv_vpid;
   int best, i;
-  PAGE_PTR hdr_pgptr = NULL;
   HEAP_HDR_STATS initial_heap_hdr;
   HEAP_HDR_STATS heap_hdr;
   RECDES hdr_recdes;
-  PAGE_PTR pgptr = NULL;
   LOG_DATA_ADDR addr;
   int ret = NO_ERROR;
   int free_space;
   int npages, nrecords, rec_length;
   FILE_IS_NEW_FILE is_new_file;
   bool need_update;
+  PGBUF_WATCHER hdr_page_watcher;
+  PGBUF_WATCHER curr_page_watcher;
+
+  PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+  PGBUF_INIT_WATCHER (&curr_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   is_new_file = file_is_new_file (thread_p, &hfid->vfid);
   if (is_new_file == FILE_ERROR)
@@ -9022,20 +9044,20 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
 
-  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			 PGBUF_UNCONDITIONAL_LATCH);
-  if (hdr_pgptr == NULL)
+  ret = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   &hdr_page_watcher);
+  if (ret != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
+  (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr, PAGE_HEAP);
 
   hdr_recdes.data = (char *) &heap_hdr;
   hdr_recdes.area_size = sizeof (heap_hdr);
 
-  if (spage_get_record (hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes,
-			COPY) != S_SUCCESS
+  if (spage_get_record (hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			&hdr_recdes, COPY) != S_SUCCESS
       || file_find_last_page (thread_p, &hfid->vfid, &prv_vpid) == NULL)
     {
       goto exit_on_error;
@@ -9080,18 +9102,21 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   while (!(VPID_ISNULL (&prv_vpid)))
     {
       vpid = prv_vpid;
-      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
-					   NULL);
-      if (pgptr == NULL)
+      curr_page_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
+				     NULL, &curr_page_watcher);
+      if (curr_page_watcher.pgptr == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+      (void) pgbuf_check_page_ptype (thread_p, curr_page_watcher.pgptr,
+				     PAGE_HEAP);
 
-      if (heap_vpid_prev (hfid, pgptr, &prv_vpid) != NO_ERROR)
+      if (heap_vpid_prev (hfid, curr_page_watcher.pgptr, &prv_vpid) !=
+	  NO_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
 
 	  goto exit_on_error;
 	}
@@ -9102,12 +9127,12 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
        * (heap header or chain).
        */
 
-      if (spage_number_of_records (pgptr) > 1
+      if (spage_number_of_records (curr_page_watcher.pgptr) > 1
 	  || (vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid))
 	{
-	  if (spage_reclaim (thread_p, pgptr) == true)
+	  if (spage_reclaim (thread_p, curr_page_watcher.pgptr) == true)
 	    {
-	      addr.pgptr = pgptr;
+	      addr.pgptr = curr_page_watcher.pgptr;
 	      /*
 	       * If this function is called correctly (see the notes in the
 	       * header comment about the preconditions) we can skip the
@@ -9121,7 +9146,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	       * logically unmodified, neither REDO nor UNDO are required.
 	       */
 	      log_skip_logging (thread_p, &addr);
-	      pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+	      pgbuf_set_dirty (thread_p, curr_page_watcher.pgptr, DONT_FREE);
 	    }
 	}
 
@@ -9131,12 +9156,12 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
        */
 
       if (!(vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid)
-	  && spage_number_of_records (pgptr) <= 1)
+	  && spage_number_of_records (curr_page_watcher.pgptr) <= 1)
 	{
 	  /*
 	   * This page can be thrown away
 	   */
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
 	  if (heap_vpid_remove (thread_p, hfid, &heap_hdr, &vpid) == NULL)
 	    {
 	      goto exit_on_error;
@@ -9144,14 +9169,17 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	}
       else
 	{
-	  spage_collect_statistics (pgptr, &npages, &nrecords, &rec_length);
+	  spage_collect_statistics (curr_page_watcher.pgptr, &npages,
+				    &nrecords, &rec_length);
 
 	  heap_hdr.estimates.num_pages += npages;
 	  heap_hdr.estimates.num_recs += nrecords;
 	  heap_hdr.estimates.recs_sumlen += rec_length;
 
-	  free_space = spage_get_free_space_without_saving (thread_p, pgptr,
-							    &need_update);
+	  free_space =
+	    spage_get_free_space_without_saving (thread_p,
+						 curr_page_watcher.pgptr,
+						 &need_update);
 
 	  if (free_space > HEAP_DROP_FREE_SPACE)
 	    {
@@ -9174,7 +9202,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 		}
 	    }
 
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
 	}
     }
 
@@ -9193,29 +9221,28 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
    * updated statistics and in order to avoid referencing deleted pages in the
    * statistics.
    */
-  addr.pgptr = hdr_pgptr;
+  addr.pgptr = hdr_page_watcher.pgptr;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
   log_append_undoredo_data (thread_p, RVHF_STATS, &addr,
 			    sizeof (HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS),
 			    &initial_heap_hdr, hdr_recdes.data);
 
   /* Now update the statistics */
-  if (spage_update (thread_p, hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
-		    &hdr_recdes) != SP_SUCCESS)
+  if (spage_update (thread_p, hdr_page_watcher.pgptr,
+		    HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes) != SP_SUCCESS)
     {
       goto exit_on_error;
     }
 
-  pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
-  hdr_pgptr = NULL;
+  pgbuf_ordered_set_dirty_and_free (thread_p, &hdr_page_watcher);
 
   return ret;
 
 exit_on_error:
 
-  if (hdr_pgptr)
+  if (hdr_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
     }
 
   return (ret == NO_ERROR
@@ -9678,7 +9705,8 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
   scan_cache->page_latch = S_LOCK;
 
   scan_cache->cache_last_fix_page = cache_last_fix_page;
-  scan_cache->pgptr = NULL;
+  PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL,
+		      hfid);
   scan_cache->area = NULL;
   scan_cache->area_size = -1;
   scan_cache->num_btids = 0;
@@ -9696,7 +9724,8 @@ exit_on_error:
   OID_SET_NULL (&scan_cache->class_oid);
   scan_cache->page_latch = NULL_LOCK;
   scan_cache->cache_last_fix_page = false;
-  scan_cache->pgptr = NULL;
+  PGBUF_INIT_WATCHER (&(scan_cache->page_watcher),
+		      PGBUF_ORDERED_RANK_UNDEFINED, PGBUG_ORDERED_NULL_HFID);
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
@@ -9871,9 +9900,9 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p,
     }
 
   /* Free fetched page */
-  if (scan_cache->pgptr != NULL)
+  if (scan_cache->page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, scan_cache->pgptr);
+      pgbuf_ordered_unfix (thread_p, &(scan_cache->page_watcher));
     }
 
   return NO_ERROR;
@@ -9999,7 +10028,8 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache)
   OID_SET_NULL (&scan_cache->class_oid);
   scan_cache->page_latch = S_LOCK;
   scan_cache->cache_last_fix_page = true;
-  scan_cache->pgptr = NULL;
+  PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL,
+		      PGBUG_ORDERED_NULL_HFID);
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
@@ -10046,9 +10076,9 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p,
       if (scan_cache->cache_last_fix_page == true)
 	{
 	  /* Free fetched page */
-	  if (scan_cache->pgptr != NULL)
+	  if (scan_cache->page_watcher.pgptr != NULL)
 	    {
-	      pgbuf_unfix_and_init (thread_p, scan_cache->pgptr);
+	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	    }
 	}
 
@@ -10063,7 +10093,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p,
   scan_cache->hfid.vfid.volid = NULL_VOLID;
   OID_SET_NULL (&scan_cache->class_oid);
   scan_cache->page_latch = NULL_LOCK;
-  scan_cache->pgptr = NULL;
+  assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
@@ -10396,8 +10426,6 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 {
   VPID home_vpid, forward_vpid;
   VPID *vpidptr_incache;
-  PAGE_PTR pgptr = NULL;
-  PAGE_PTR forward_pgptr = NULL;
   INT16 type;
   OID forward_oid;
   RECDES forward_recdes;
@@ -10410,6 +10438,14 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
   bool is_systemtap_started = false;
 #endif /* ENABLE_SYSTEMTAP */
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  PGBUF_WATCHER home_page_watcher;
+  PGBUF_WATCHER fwd_page_watcher;
+  int error_code = NO_ERROR;
+
+  PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      HEAP_SCAN_ORDERED_HFID (scan_cache));
+  PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      HEAP_SCAN_ORDERED_HFID (scan_cache));
 
 #if defined(CUBRID_DEBUG)
   if (scan_cache == NULL && ispeeking == PEEK)
@@ -10459,8 +10495,6 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
       return S_DOESNT_EXIST;
     }
 
-try_again:
-
   home_vpid.volid = oid->volid;
   home_vpid.pageid = oid->pageid;
 
@@ -10469,24 +10503,25 @@ try_again:
    * page
    */
 
-  assert (pgptr == NULL);
-
   if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
-      && scan_cache->pgptr != NULL)
+      && scan_cache->page_watcher.pgptr != NULL)
     {
-      vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
+      vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr);
       if (VPID_EQ (&home_vpid, vpidptr_incache))
 	{
-	  /* We can skip the fetch operation */
-	  pgptr = scan_cache->pgptr;
+	  /* We can skip the fetch operation, just switch page watcher */
+	  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher,
+				 &home_page_watcher);
 	}
       else
 	{
 	  /* Free the previous scan page and obtain a new page */
-	  pgbuf_unfix_and_init (thread_p, scan_cache->pgptr);
-	  pgptr = heap_scan_pb_lock_and_fetch (thread_p, &home_vpid, OLD_PAGE,
-					       S_LOCK, scan_cache);
-	  if (pgptr == NULL)
+	  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	  home_page_watcher.pgptr =
+	    heap_scan_pb_lock_and_fetch (thread_p, &home_vpid, OLD_PAGE,
+					 S_LOCK, scan_cache,
+					 &home_page_watcher);
+	  if (home_page_watcher.pgptr == NULL)
 	    {
 	      if (er_errid () == ER_PB_BAD_PAGEID)
 		{
@@ -10496,21 +10531,18 @@ try_again:
 		}
 
 	      /* something went wrong, return */
-	      scan_cache->pgptr = NULL;
 	      scan = S_ERROR;
 	      goto end;
 	    }
-
-	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
-
 	}
-      scan_cache->pgptr = NULL;
+      assert (PGBUF_IS_CLEAN_WATCHER (&scan_cache->page_watcher));
     }
   else
     {
-      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &home_vpid, OLD_PAGE,
-					   S_LOCK, scan_cache);
-      if (pgptr == NULL)
+      home_page_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &home_vpid, OLD_PAGE,
+				     S_LOCK, scan_cache, &home_page_watcher);
+      if (home_page_watcher.pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
 	    {
@@ -10523,16 +10555,14 @@ try_again:
 	  scan = S_ERROR;
 	  goto end;
 	}
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
     }
 
   if (class_oid != NULL)
     {
-      if (heap_get_class_oid_from_page (thread_p, pgptr,
+      if (heap_get_class_oid_from_page (thread_p, home_page_watcher.pgptr,
 					class_oid) != NO_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	  scan = S_ERROR;
 	  goto end;
 	}
@@ -10549,10 +10579,11 @@ try_again:
       RECDES chain_recdes;
       HEAP_CHAIN *chain;
 
-      if (spage_get_record (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+      if (spage_get_record (home_page_watcher.pgptr,
+			    HEAP_HEADER_AND_CHAIN_SLOTID,
 			    &chain_recdes, PEEK) != S_SUCCESS)
 	{
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	  scan = S_ERROR;
 	  goto end;
 	}
@@ -10572,12 +10603,12 @@ try_again:
 #endif /* ENABLE_SYSTEMTAP */
     }
 
-  type = spage_get_record_type (pgptr, oid->slotid);
+  type = spage_get_record_type (home_page_watcher.pgptr, oid->slotid);
   if (type == REC_UNKNOWN)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
 	      oid->volid, oid->pageid, oid->slotid);
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
       scan = S_DOESNT_EXIST;
       goto end;
     }
@@ -10593,13 +10624,14 @@ try_again:
       forward_recdes.length = sizeof (forward_oid);
       forward_recdes.area_size = sizeof (forward_oid);
 
-      scan = spage_get_record (pgptr, oid->slotid, &forward_recdes, COPY);
+      scan = spage_get_record (home_page_watcher.pgptr, oid->slotid,
+			       &forward_recdes, COPY);
       if (scan != S_SUCCESS)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HEAP_BAD_RELOCATION_RECORD, 3, oid->volid, oid->pageid,
 		  oid->slotid);
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	  scan = S_DOESNT_EXIST;
 	  goto end;
 	}
@@ -10609,65 +10641,22 @@ try_again:
       forward_vpid.pageid = forward_oid.pageid;
 
       /* try to fix forward page conditionally */
-      forward_pgptr = pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE,
-				 PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
-      if (forward_pgptr == NULL)
+      error_code = pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE,
+				      PGBUF_LATCH_READ, &fwd_page_watcher);
+      if (error_code != NO_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, pgptr);
-
-	  /* try to fix forward page unconditionally */
-	  forward_pgptr = heap_scan_pb_lock_and_fetch (thread_p,
-						       &forward_vpid,
-						       OLD_PAGE, S_LOCK,
-						       scan_cache);
-	  if (forward_pgptr == NULL)
-	    {
-	      if (er_errid () == ER_PB_BAD_PAGEID)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_HEAP_BAD_RELOCATION_RECORD, 3,
-			  forward_oid.volid, forward_oid.pageid,
-			  forward_oid.slotid);
-		}
-
-	      scan = S_DOESNT_EXIST;
-	      goto end;
-	    }
-
-	  pgptr = pgbuf_fix (thread_p, &home_vpid, OLD_PAGE,
-			     PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
-	  if (pgptr == NULL)
-	    {
-	      pgbuf_unfix_and_init (thread_p, forward_pgptr);
-
-	      if (again_count++ >= again_max)
-		{
-		  if (er_errid () == ER_PB_BAD_PAGEID)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
-			      oid->pageid, oid->slotid);
-		    }
-		  else if (er_errid () == NO_ERROR)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
-			      forward_vpid.pageid);
-		    }
-		  scan = S_ERROR;
-		  goto end;
-		}
-
-	      goto try_again;
-	    }
+	  scan = S_ERROR;
+	  goto end;
 	}
 
-      assert (pgptr != NULL);
-      assert (forward_pgptr != NULL);
+      assert (home_page_watcher.pgptr != NULL);
+      assert (fwd_page_watcher.pgptr != NULL);
 
-      (void) pgbuf_check_page_ptype (thread_p, forward_pgptr, PAGE_HEAP);
+      (void) pgbuf_check_page_ptype (thread_p, fwd_page_watcher.pgptr,
+				     PAGE_HEAP);
 
-      type = spage_get_record_type (forward_pgptr, forward_oid.slotid);
+      type =
+	spage_get_record_type (fwd_page_watcher.pgptr, forward_oid.slotid);
       if (mvcc_Enabled && type == REC_MVCC_NEXT_VERSION)
 	{
 	  scan = S_SNAPSHOT_NOT_SATISFIED;
@@ -10675,7 +10664,7 @@ try_again:
 	}
       if (type != REC_NEWHOME)
 	{
-	  assert (0);
+	  assert (false);
 	  scan = S_DOESNT_EXIST;
 	  goto end;
 	}
@@ -10695,8 +10684,8 @@ try_again:
 	      if (scan_cache->area == NULL)
 		{
 		  scan_cache->area_size = -1;
-		  pgbuf_unfix_and_init (thread_p, pgptr);
-		  pgbuf_unfix_and_init (thread_p, forward_pgptr);
+		  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
+		  pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
 		  scan = S_ERROR;
 		  goto end;
 		}
@@ -10706,27 +10695,28 @@ try_again:
 	  /* The allocated space is enough to save the instance. */
 	}
 
-      scan = heap_get_if_diff_chn (thread_p, forward_pgptr,
+      scan = heap_get_if_diff_chn (thread_p, fwd_page_watcher.pgptr,
 				   forward_oid.slotid, recdes,
 				   ispeeking, chn, mvcc_snapshot);
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
-	  /* Save the page for a future scan */
-	  scan_cache->pgptr = pgptr;
-	  pgptr = NULL;
+	  /* switch to scancache page watcher */
+	  pgbuf_replace_watcher (thread_p, &home_page_watcher,
+				 &scan_cache->page_watcher);
 	}
       else
 	{
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	}
 
-      pgbuf_unfix_and_init (thread_p, forward_pgptr);
+      pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
 
       break;
 
     case REC_ASSIGN_ADDRESS:
       /* Object without content.. only the address has been assigned */
-      if (spage_check_slot_owner (thread_p, pgptr, oid->slotid))
+      if (spage_check_slot_owner (thread_p, home_page_watcher.pgptr,
+				  oid->slotid) == true)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		  ER_HEAP_NODATA_NEWADDRESS, 3, oid->volid, oid->pageid,
@@ -10742,13 +10732,13 @@ try_again:
 
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
-	  /* Save the page for a future scan */
-	  scan_cache->pgptr = pgptr;
-	  pgptr = NULL;
+	  /* switch to scancache page watcher */
+	  pgbuf_replace_watcher (thread_p, &home_page_watcher,
+				 &scan_cache->page_watcher);
 	}
       else
 	{
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	}
 
       break;
@@ -10769,7 +10759,7 @@ try_again:
 	      if (scan_cache->area == NULL)
 		{
 		  scan_cache->area_size = -1;
-		  pgbuf_unfix_and_init (thread_p, pgptr);
+		  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 		  scan = S_ERROR;
 		  goto end;
 		}
@@ -10780,17 +10770,17 @@ try_again:
 	}
 
       scan =
-	heap_get_if_diff_chn (thread_p, pgptr, oid->slotid, recdes, ispeeking,
-			      chn, mvcc_snapshot);
+	heap_get_if_diff_chn (thread_p, home_page_watcher.pgptr, oid->slotid,
+			      recdes, ispeeking, chn, mvcc_snapshot);
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
-	  /* Save the page for a future scan */
-	  scan_cache->pgptr = pgptr;
-	  pgptr = NULL;
+	  /* switch to scancache page watcher */
+	  pgbuf_replace_watcher (thread_p, &home_page_watcher,
+				 &scan_cache->page_watcher);
 	}
       else
 	{
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	}
       break;
 
@@ -10800,18 +10790,19 @@ try_again:
       forward_recdes.length = sizeof (forward_oid);
       forward_recdes.area_size = sizeof (forward_oid);
 
-      scan = spage_get_record (pgptr, oid->slotid, &forward_recdes, COPY);
+      scan = spage_get_record (home_page_watcher.pgptr, oid->slotid,
+			       &forward_recdes, COPY);
       if (scan != S_SUCCESS)
 	{
 	  /* Unable to read overflow address of multipage object */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HEAP_BAD_RELOCATION_RECORD, 3, oid->volid, oid->pageid,
 		  oid->slotid);
-	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	  scan = S_ERROR;
 	  goto end;
 	}
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 
       /*
        * Now get the content of the multipage object.
@@ -10888,12 +10879,20 @@ try_again:
 	   */
 	  if (scan_cache != NULL && scan_cache->cache_last_fix_page)
 	    {
-	      scan_cache->pgptr = pgptr;
-	      pgptr = NULL;
+	      if (home_page_watcher.pgptr != NULL)
+		{
+		  /* switch page watcher to scan cache */
+		  pgbuf_replace_watcher (thread_p, &home_page_watcher,
+					 &scan_cache->page_watcher);
+		}
+	      else
+		{
+		  assert (PGBUF_IS_CLEAN_WATCHER (&scan_cache->page_watcher));
+		}
 	    }
-	  else if (pgptr != NULL)
+	  else if (home_page_watcher.pgptr != NULL)
 	    {
-	      pgbuf_unfix_and_init (thread_p, pgptr);
+	      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	    }
 	  scan = S_SNAPSHOT_NOT_SATISFIED;
 	  goto end;
@@ -10901,7 +10900,7 @@ try_again:
       else
 	{
 	  /* REC_MVCC_NEXT_VERSION type is only used in the context of MVCC */
-	  assert (0);
+	  assert (false);
 	  /* Fall through */
 	}
     case REC_MARKDELETED:
@@ -10909,20 +10908,20 @@ try_again:
     case REC_NEWHOME:
     default:
       scan = S_ERROR;
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3,
 	      oid->volid, oid->pageid, oid->slotid);
       break;
     }
 
 end:
-  if (forward_pgptr != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix (thread_p, forward_pgptr);
+      pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
     }
-  if (pgptr != NULL)
+  if (home_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix (thread_p, pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
     }
 #if defined(ENABLE_SYSTEMTAP)
   if (is_systemtap_started)
@@ -11060,12 +11059,12 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
 				 * REC_MVCC_NEXT_VERSION.
 				 */
   SPAGE_SLOT *slot_p = NULL;	/* Pointer to slot. */
-  PAGE_PTR home_page = NULL;	/* Page of REC_HOME, REC_BIGONE
-				 * REC_RELOCATION.
-				 */
-  PAGE_PTR forward_page = NULL;	/* Page of REC_NEWHOME and
-				 * first overflow page.
-				 */
+  PGBUF_WATCHER home_page_watcher;	/* Page of REC_HOME, REC_BIGONE
+					 * REC_RELOCATION.
+					 */
+  PGBUF_WATCHER fwd_page_watcher;	/* Page of REC_NEWHOME and
+					 * first overflow page.
+					 */
   OID class_oid_local;		/* Used to store class_oid if provided
 				 * argument is NULL.
 				 */
@@ -11100,6 +11099,11 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
   bool found_visible = false;	/* Set to true when visible
 				 * object is found.
 				 */
+
+  PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      HEAP_SCAN_ORDERED_HFID (scan_cache));
+  PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      HEAP_SCAN_ORDERED_HFID (scan_cache));
 
   /* Start by checking all arguments are correct. */
   if (scan_cache != NULL)
@@ -11184,11 +11188,11 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
     }
 
   if (scan_cache != NULL && scan_cache->cache_last_fix_page
-      && scan_cache->pgptr != NULL)
+      && scan_cache->page_watcher.pgptr != NULL)
     {
-      /* Move page pointer from scan_cache to home_page. */
-      home_page = scan_cache->pgptr;
-      scan_cache->pgptr = NULL;
+      /* switch to local page watcher */
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher,
+			     &home_page_watcher);
     }
 
   /* Always get class_oid to check MVCC is enabled for class. */
@@ -11204,10 +11208,10 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
   /* Advance to update chain until the purpose of the function is reached. */
 start_current_version:
 
-  if (forward_page != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
       /* This belong to a previous version. No longer required. */
-      pgbuf_unfix_and_init (thread_p, forward_page);
+      pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
     }
 
   /* For each object version repeat:
@@ -11247,7 +11251,7 @@ start_current_version:
    */
   scan_code =
     heap_prepare_get_record (thread_p, &current_oid, class_oid, &forward_oid,
-			     &home_page, &forward_page, &type);
+			     &home_page_watcher, &fwd_page_watcher, &type);
   if (scan_code != S_SUCCESS)
     {
       /* Stop here. */
@@ -11260,13 +11264,13 @@ start_current_version:
   assert (type == REC_HOME || type == REC_RELOCATION || type == REC_BIGONE
 	  || type == REC_MVCC_NEXT_VERSION);
   /* We should have required pages fixed. */
-  assert (HEAP_IS_PAGE_OF_OID (home_page, &current_oid));
+  assert (HEAP_IS_PAGE_OF_OID (home_page_watcher.pgptr, &current_oid));
   /* Check forward_page and forward_oid are set when type is REC_RELOCATION
    * or REC_BIGONE.
    */
   assert (type != REC_BIGONE || type != REC_RELOCATION
 	  || (!OID_ISNULL (&forward_oid)
-	      && HEAP_IS_PAGE_OF_OID (forward_page, &forward_oid)));
+	      && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr, &forward_oid)));
 
   if (heap_is_mvcc_disabled_for_class (class_oid))
     {
@@ -11315,8 +11319,9 @@ start_current_version:
 
   /* Get MVCC header. */
   scan_code =
-    heap_get_mvcc_header (thread_p, &current_oid, &forward_oid, home_page,
-			  forward_page, type, &mvcc_header);
+    heap_get_mvcc_header (thread_p, &current_oid, &forward_oid,
+			  home_page_watcher.pgptr, fwd_page_watcher.pgptr,
+			  type, &mvcc_header);
   if (scan_code != S_SUCCESS)
     {
       goto end;
@@ -11384,8 +11389,9 @@ start_current_version:
 	  temp_recdes.data = NULL;
 	  scan_code =
 	    heap_get_record_data_when_all_ready (thread_p, &current_oid,
-						 &forward_oid, home_page,
-						 forward_page, type,
+						 &forward_oid,
+						 home_page_watcher.pgptr,
+						 fwd_page_watcher.pgptr, type,
 						 &temp_recdes, scan_cache,
 						 ispeeking);
 	  ev_res =
@@ -11418,19 +11424,21 @@ start_current_version:
       /* Try to lock the object. */
       if (heap_mvcc_check_and_lock_for_delete (thread_p, &current_oid,
 					       class_oid, lock, &mvcc_header,
-					       &home_page, &forward_page,
+					       &home_page_watcher,
+					       &fwd_page_watcher,
 					       &forward_oid, &type,
 					       &mvcc_delete_info) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	  goto error;
 	}
-      assert (HEAP_IS_PAGE_OF_OID (home_page, &current_oid));
+      assert (HEAP_IS_PAGE_OF_OID (home_page_watcher.pgptr, &current_oid));
       assert (type == REC_HOME || type == REC_RELOCATION
 	      || type == REC_BIGONE);
       assert (type == REC_HOME
 	      || (!OID_ISNULL (&forward_oid)
-		  && HEAP_IS_PAGE_OF_OID (forward_page, &forward_oid)));
+		  && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr,
+					  &forward_oid)));
 
       switch (mvcc_delete_info.satisfies_delete_result)
 	{
@@ -11580,7 +11588,8 @@ start_current_version:
       /* Try to lock this version for update. */
       if (heap_mvcc_check_and_lock_for_delete (thread_p, &current_oid,
 					       class_oid, lock, &mvcc_header,
-					       &home_page, &forward_page,
+					       &home_page_watcher,
+					       &fwd_page_watcher,
 					       &forward_oid, &type,
 					       &mvcc_delete_info) != NO_ERROR)
 	{
@@ -11588,12 +11597,13 @@ start_current_version:
 	}
 
       /* Check that pages are fixed and updated information is valid. */
-      assert (HEAP_IS_PAGE_OF_OID (home_page, &current_oid));
+      assert (HEAP_IS_PAGE_OF_OID (home_page_watcher.pgptr, &current_oid));
       assert (type == REC_HOME || type == REC_RELOCATION
 	      || type == REC_BIGONE);
       assert (type == REC_HOME
 	      || (!OID_ISNULL (&forward_oid)
-		  && HEAP_IS_PAGE_OF_OID (forward_page, &forward_oid)));
+		  && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr,
+					  &forward_oid)));
 
       switch (mvcc_delete_info.satisfies_delete_result)
 	{
@@ -11620,10 +11630,11 @@ start_current_version:
 	      temp_recdes.data = NULL;
 	      scan_code =
 		heap_get_record_data_when_all_ready (thread_p, &current_oid,
-						     &forward_oid, home_page,
-						     forward_page, type,
-						     &temp_recdes, scan_cache,
-						     ispeeking);
+						     &forward_oid,
+						     home_page_watcher.pgptr,
+						     fwd_page_watcher.pgptr,
+						     type, &temp_recdes,
+						     scan_cache, ispeeking);
 	      if (scan_code != S_SUCCESS)
 		{
 		  goto end;
@@ -11733,9 +11744,10 @@ get_record:
        */
       scan_code =
 	heap_get_record_data_when_all_ready (thread_p, &current_oid,
-					     &forward_oid, home_page,
-					     forward_page, type, recdes,
-					     scan_cache, ispeeking);
+					     &forward_oid,
+					     home_page_watcher.pgptr,
+					     fwd_page_watcher.pgptr, type,
+					     recdes, scan_cache, ispeeking);
       if (scan_code != S_SUCCESS)
 	{
 	  goto end;
@@ -11748,23 +11760,24 @@ get_record:
     }
 
 end:
-  if (home_page != NULL)
+  if (home_page_watcher.pgptr != NULL)
     {
       if (scan_cache != NULL && scan_cache->cache_last_fix_page)
 	{
 	  /* Save the page to scan_cache. */
-	  scan_cache->pgptr = home_page;
+	  pgbuf_replace_watcher (thread_p, &home_page_watcher,
+				 &scan_cache->page_watcher);
 	}
       else
 	{
 	  /* Unfix the page. */
-	  pgbuf_unfix_and_init (thread_p, home_page);
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	}
     }
-  if (forward_page != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
       /* Unfix forward page. */
-      pgbuf_unfix_and_init (thread_p, forward_page);
+      pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
     }
 
   /* Check if we need to release lock. If scan is not successful or if the
@@ -11803,15 +11816,29 @@ error:
  *			   page header record.
  * forward_oid (in/out)  : Forward OID to keep link in case of REC_RELOCATION,
  *			   REC_BIGONE and REC_MVCC_NEXT_VERSION.
- * home_page (in/out)	 : Heap page of given object.
- * forward_page (in/out) : Heap page of REC_NEWHOME in case of REC_RELOCATION,
+ * home_page_watcher (in/out): Heap page of given object.
+ * fwd_page_watcher (in/out) : Heap page of REC_NEWHOME in case of REC_RELOCATION,
  *			   first overflow page in case of REC_BIGONE.
  * record_type (out)	 : Record type.
+ *
+ *  Note : the caller should manage the page unfix of both home and forward
+ *	   pages (even in case of error, there may be pages latched).
+ *	   The functions uses a multiple page latch; in some extreme cases,
+ *	   if the home page was unfixed during fwd page fix, we need to recheck
+ *	   the home page OID is still valid and re-PEEK the home record. We
+ *	   allow this to repeat once.
+ *	   For peformance:
+ *	   Make sure page unfix is performed in order fwd page, then home page.
+ *	   Normal fix sequence (first attempt) is home page, then fwd page; if
+ *	   the fwd page is unfixed before home, another thread will attempt to
+ *	   fix fwd page, after having home fix; first try (CONDITIONAL) will
+ *	   fail, and wil trigger an ordered fix + UNCONDITIONAL.
  */
 SCAN_CODE
 heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
 			 OID * class_oid, OID * forward_oid,
-			 PAGE_PTR * home_page, PAGE_PTR * forward_page,
+			 PGBUF_WATCHER * home_page_watcher,
+			 PGBUF_WATCHER * fwd_page_watcher,
 			 INT16 * record_type)
 {
   SPAGE_SLOT *slot_p = NULL;
@@ -11820,13 +11847,14 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
   RECDES peek_recdes;
   SCAN_CODE scan = S_SUCCESS;
   int try_count = 0;
-  int try_max = 20;
+  int try_max = 1;
   DISK_ISVALID oid_is_valid;
+  int ret;
 
   assert (oid != NULL);
   assert (forward_oid != NULL);
-  assert (home_page != NULL);
-  assert (forward_page != NULL);
+  assert (home_page_watcher != NULL);
+  assert (fwd_page_watcher != NULL);
 
   oid_is_valid = HEAP_ISVALID_OID (oid);
   if (oid_is_valid != DISK_VALID)
@@ -11844,25 +11872,25 @@ try_again:
 
   /* First make sure object home_page is fixed. */
   VPID_GET_FROM_OID (&home_vpid, oid);
-  if (*home_page != NULL
-      && !VPID_EQ (pgbuf_get_vpid_ptr (*home_page), &home_vpid))
+  if (home_page_watcher->pgptr != NULL
+      && !VPID_EQ (pgbuf_get_vpid_ptr (home_page_watcher->pgptr), &home_vpid))
     {
-      pgbuf_unfix_and_init (thread_p, *home_page);
+      pgbuf_ordered_unfix (thread_p, home_page_watcher);
     }
-  if (*home_page == NULL)
+  if (home_page_watcher->pgptr == NULL)
     {
-      *home_page =
-	pgbuf_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		   PGBUF_UNCONDITIONAL_LATCH);
-      if (*home_page == NULL)
+      ret =
+	pgbuf_ordered_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			   home_page_watcher);
+      if (ret != NO_ERROR)
 	{
-	  if (er_errid () == ER_PB_BAD_PAGEID)
+	  if (ret == ER_PB_BAD_PAGEID)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
 		      oid->slotid);
 	    }
-	  return S_ERROR;
+	  goto error;
 	}
     }
   /* Home page was fixed. */
@@ -11872,13 +11900,13 @@ try_again:
     {
       /* Get class OID from HEAP_CHAIN. */
       scan =
-	spage_get_record (*home_page, HEAP_HEADER_AND_CHAIN_SLOTID,
-			  &peek_recdes, PEEK);
+	spage_get_record (home_page_watcher->pgptr,
+			  HEAP_HEADER_AND_CHAIN_SLOTID, &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
 	  assert_release (false);
-	  return S_ERROR;
+	  goto error;
 	}
       COPY_OID (class_oid, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
       if (OID_ISNULL (class_oid))
@@ -11892,11 +11920,11 @@ try_again:
     }
 
   /* Get slot. */
-  slot_p = spage_get_slot (*home_page, oid->slotid);
+  slot_p = spage_get_slot (home_page_watcher->pgptr, oid->slotid);
   if (slot_p == NULL)
     {
       /* Slot doesn't exist. */
-      pgbuf_unfix_and_init (thread_p, *home_page);
+      pgbuf_ordered_unfix (thread_p, home_page_watcher);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
 	      oid->volid, oid->pageid, oid->slotid);
 
@@ -11918,150 +11946,137 @@ try_again:
   switch (slot_p->record_type)
     {
     case REC_RELOCATION:
-      /* Need to get forward_oid and fix forward page. Since we need to latch
-       * two pages and it may fail, try a number of times.
-       * TODO: Find a better way to fix multiple pages.
-       */
-      scan = spage_get_record (*home_page, oid->slotid, &peek_recdes, PEEK);
+      /* Need to get forward_oid and fix forward page */
+      scan = spage_get_record (home_page_watcher->pgptr, oid->slotid,
+			       &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
 	  assert_release (false);
-	  pgbuf_unfix_and_init (thread_p, *home_page);
-	  return ER_FAILED;
+	  goto error;
 	}
       /* Output forward_oid. */
       COPY_OID (forward_oid, (OID *) peek_recdes.data);
       /* Get forward_vpid. */
       VPID_GET_FROM_OID (&forward_vpid, forward_oid);
-      if (*forward_page != NULL)
+      if (fwd_page_watcher->pgptr != NULL)
 	{
-	  if (VPID_EQ (pgbuf_get_vpid_ptr (*forward_page), &forward_vpid))
+	  if (VPID_EQ (pgbuf_get_vpid_ptr (fwd_page_watcher->pgptr),
+		       &forward_vpid))
 	    {
 	      /* Already fixed. */
 	      return S_SUCCESS;
 	    }
 	  else
 	    {
-	      pgbuf_unfix_and_init (thread_p, *forward_page);
+	      pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
 	    }
 	}
 
-      /* Try to latch both home_page/forward_page. */
-      *forward_page =
-	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		   PGBUF_CONDITIONAL_LATCH);
-      if (*forward_page != NULL)
+      /* Try to latch forward_page. */
+      ret =
+	pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE,
+			   PGBUF_LATCH_READ, fwd_page_watcher);
+
+      if (ret == NO_ERROR)
 	{
 	  /* Pages successfully fixed. */
+	  if (home_page_watcher->page_was_unfixed)
+	    {
+	      /* Home_page/forward_page are both fixed. However, since home page
+	       * was unfixed, record may have changed (record type has changed
+	       * or just the relocation link).
+	       * Go back and repeat steps (if nothing was changed, pages are
+	       * already fixed).
+	       */
+	      if (try_count++ < try_max)
+		{
+		  goto try_again;
+		}
+
+	      goto error;
+	    }
 	  return S_SUCCESS;
 	}
 
-      /* Failed to fix both pages. Try to fix home/forward pages in reversed
-       * order.
-       */
-      pgbuf_unfix_and_init (thread_p, *home_page);
-      *forward_page =
-	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		   PGBUF_UNCONDITIONAL_LATCH);
-      if (*forward_page == NULL)
+      if (ret == ER_PB_BAD_PAGEID)
 	{
-	  if (er_errid () == ER_PB_BAD_PAGEID)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_HEAP_UNKNOWN_OBJECT, 3, forward_oid->volid,
-		      forward_oid->pageid, forward_oid->slotid);
-	    }
-	  return S_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HEAP_UNKNOWN_OBJECT, 3, forward_oid->volid,
+		  forward_oid->pageid, forward_oid->slotid);
 	}
-      *home_page =
-	pgbuf_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		   PGBUF_CONDITIONAL_LATCH);
-      if (*home_page == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, *forward_page);
-	  if (try_count++ >= try_max)
-	    {
-	      /* Maximum attempts of fixing pages has been reached.
-	       * Fail.
-	       */
-	      if (er_errid () == ER_PB_BAD_PAGEID)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
-			  oid->slotid);
-		}
-	      else if (er_errid () == NO_ERROR)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
-			  forward_vpid.pageid);
-		}
-	      return S_ERROR;
-	    }
-	  else
-	    {
-	      goto try_again;
-	    }
-	}
-      /* Home_page/forward_page are both fixed. However, since home page was
-       * unfixed, record may have changed (record type has changed or just the
-       * relocation link).
-       * Go back and repeat steps (if nothing was changed, pages are already
-       * fixed).
-       */
-      goto try_again;
+
+      goto error;
 
     case REC_BIGONE:
       /* Need to get forward_oid and forward_page (first overflow page). */
-      scan = spage_get_record (*home_page, oid->slotid, &peek_recdes, PEEK);
+      scan = spage_get_record (home_page_watcher->pgptr, oid->slotid,
+			       &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
 	  assert_release (false);
-	  pgbuf_unfix_and_init (thread_p, *home_page);
-	  return ER_FAILED;
+	  goto error;
 	}
       /* Output forward_oid. */
       COPY_OID (forward_oid, (OID *) peek_recdes.data);
       /* Get forward_vpid. */
       VPID_GET_FROM_OID (&forward_vpid, forward_oid);
-      if (*forward_page != NULL)
+      if (fwd_page_watcher->pgptr != NULL)
 	{
-	  if (VPID_EQ (pgbuf_get_vpid_ptr (*forward_page), &forward_vpid))
+	  if (VPID_EQ (pgbuf_get_vpid_ptr (fwd_page_watcher->pgptr),
+		       &forward_vpid))
 	    {
 	      /* Already fixed. */
 	      return S_SUCCESS;
 	    }
 	  else
 	    {
-	      pgbuf_unfix_and_init (thread_p, *forward_page);
+	      pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
 	    }
 	}
 
       /* Fix overflow page. Since overflow pages should be always accessed
-       * with their home pages latched, unconditional latch should work.
+       * with their home pages latched, unconditional latch should work;
+       * However, we need to use the same ordered_fix approach.
        */
-      *forward_page =
-	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		   PGBUF_UNCONDITIONAL_LATCH);
-      if (*forward_page == NULL)
+      PGBUF_WATCHER_RESET_RANK (fwd_page_watcher,
+				PGBUF_ORDERED_HEAP_OVERFLOW);
+      ret =
+	pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE,
+			   PGBUF_LATCH_READ, fwd_page_watcher);
+      if (ret == NO_ERROR)
 	{
-	  if (er_errid () == ER_PB_BAD_PAGEID)
+	  /* Pages successfully fixed. */
+	  if (home_page_watcher->page_was_unfixed)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
-		      oid->slotid);
+	      /* Home_page/forward_page are both fixed. However, since home page
+	       * was unfixed, record may have changed (record type has changed
+	       * or just the relocation link).
+	       * Go back and repeat steps (if nothing was changed, pages are
+	       * already fixed).
+	       */
+	      if (try_count++ < try_max)
+		{
+		  goto try_again;
+		}
+	      goto error;
 	    }
-	  pgbuf_unfix_and_init (thread_p, *home_page);
-	  return S_ERROR;
+	  return S_SUCCESS;
 	}
-      /* Pages successfully fixed. */
-      return S_SUCCESS;
+      if (ret == ER_PB_BAD_PAGEID)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
+		  oid->slotid);
+	}
+
+      goto error;
 
     case REC_ASSIGN_ADDRESS:
       /* Object without content.. only the address has been assigned */
-      if (spage_check_slot_owner (thread_p, *home_page, oid->slotid))
+      if (spage_check_slot_owner (thread_p, home_page_watcher->pgptr,
+				  oid->slotid))
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		  ER_HEAP_NODATA_NEWADDRESS, 3, oid->volid, oid->pageid,
@@ -12072,7 +12087,7 @@ try_again:
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,
 		  3, oid->volid, oid->pageid, oid->slotid);
-	  scan = S_ERROR;
+	  goto error;
 	}
       return scan;
 
@@ -12086,13 +12101,13 @@ try_again:
        */
       /* Output next_version to forward_oid in case caller wants to advance.
        */
-      scan = spage_get_record (*home_page, oid->slotid, &peek_recdes, PEEK);
+      scan = spage_get_record (home_page_watcher->pgptr, oid->slotid,
+			       &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
 	  assert_release (false);
-	  pgbuf_unfix_and_init (thread_p, *home_page);
-	  return ER_FAILED;
+	  goto error;
 	}
       COPY_OID (forward_oid, (OID *) peek_recdes.data);
       return S_SUCCESS;
@@ -12111,14 +12126,22 @@ try_again:
       /* Fall through to error. */
     default:
       /* Unexpected case. */
-      pgbuf_unfix_and_init (thread_p, *home_page);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3,
 	      oid->volid, oid->pageid, oid->slotid);
-      return S_ERROR;
+      goto error;
     }
 
   /* Impossible */
   assert_release (false);
+error:
+  if (fwd_page_watcher->pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
+    }
+  if (home_page_watcher->pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, home_page_watcher);
+    }
   return S_ERROR;
 }
 
@@ -12390,7 +12413,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 {
   VPID vpid;
   VPID *vpidptr_incache;
-  PAGE_PTR pgptr = NULL;
   INT16 type = REC_UNKNOWN;
   OID oid;
   RECDES forward_recdes;
@@ -12400,6 +12422,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
   MVCC_REC_HEADER mvcc_header;
   bool check_snapshot = false;
   bool is_null_recdata;
+  PGBUF_WATCHER curr_page_watcher;
 
   if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
       && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
@@ -12456,6 +12479,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
     }
 
+  PGBUF_INIT_WATCHER (&curr_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
   if (OID_ISNULL (next_oid))
     {
       if (reversed_direction)
@@ -12511,29 +12536,33 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 		      == file_is_new_file (thread_p,
 					   &(scan_cache->hfid.vfid)));
 
-	      pgptr = NULL;
 	      if (scan_cache->cache_last_fix_page == true
-		  && scan_cache->pgptr != NULL)
+		  && scan_cache->page_watcher.pgptr != NULL)
 		{
-		  vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
+		  vpidptr_incache =
+		    pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr);
 		  if (VPID_EQ (&vpid, vpidptr_incache))
 		    {
-		      /* We can skip the fetch operation */
-		      pgptr = scan_cache->pgptr;
-		      scan_cache->pgptr = NULL;
+		      /* replace with local watcher, scan cache watcher will be
+		       * changed by called functions */
+		      pgbuf_replace_watcher (thread_p,
+					     &scan_cache->page_watcher,
+					     &curr_page_watcher);
 		    }
 		  else
 		    {
 		      /* Free the previous scan page */
-		      pgbuf_unfix_and_init (thread_p, scan_cache->pgptr);
+		      pgbuf_ordered_unfix (thread_p,
+					   &scan_cache->page_watcher);
 		    }
 		}
-	      if (pgptr == NULL)
+	      if (curr_page_watcher.pgptr == NULL)
 		{
-		  pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid,
-						       OLD_PAGE, S_LOCK,
-						       scan_cache);
-		  if (pgptr == NULL)
+		  curr_page_watcher.pgptr =
+		    heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
+						 S_LOCK, scan_cache,
+						 &curr_page_watcher);
+		  if (curr_page_watcher.pgptr == NULL)
 		    {
 		      if (er_errid () == ER_PB_BAD_PAGEID)
 			{
@@ -12543,16 +12572,18 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 			}
 
 		      /* something went wrong, return */
-		      scan_cache->pgptr = NULL;
+		      assert (scan_cache->page_watcher.pgptr == NULL);
 		      return S_ERROR;
 		    }
 		}
 	    }
 	  else
 	    {
-	      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
-						   S_LOCK, NULL);
-	      if (pgptr == NULL)
+	      curr_page_watcher.pgptr =
+		heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
+					     S_LOCK, NULL,
+					     &curr_page_watcher);
+	      if (curr_page_watcher.pgptr == NULL)
 		{
 		  if (er_errid () == ER_PB_BAD_PAGEID)
 		    {
@@ -12574,21 +12605,24 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      if (reversed_direction)
 		{
 		  scan =
-		    spage_previous_record_dont_skip_empty (pgptr, &oid.slotid,
+		    spage_previous_record_dont_skip_empty (curr_page_watcher.
+							   pgptr, &oid.slotid,
 							   &forward_recdes,
 							   PEEK);
 		}
 	      else
 		{
 		  scan =
-		    spage_next_record_dont_skip_empty (pgptr, &oid.slotid,
+		    spage_next_record_dont_skip_empty (curr_page_watcher.
+						       pgptr, &oid.slotid,
 						       &forward_recdes, PEEK);
 		}
 	      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		{
 		  /* skip the header */
 		  scan =
-		    spage_next_record_dont_skip_empty (pgptr, &oid.slotid,
+		    spage_next_record_dont_skip_empty (curr_page_watcher.
+						       pgptr, &oid.slotid,
 						       &forward_recdes, PEEK);
 		}
 	    }
@@ -12604,14 +12638,16 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 		  if (reversed_direction)
 		    {
 		      scan =
-			spage_previous_record (pgptr, &oid.slotid,
-					       &forward_recdes, PEEK);
+			spage_previous_record (curr_page_watcher.pgptr,
+					       &oid.slotid, &forward_recdes,
+					       PEEK);
 		    }
 		  else
 		    {
 		      scan =
-			spage_next_record (pgptr, &oid.slotid,
-					   &forward_recdes, PEEK);
+			spage_next_record (curr_page_watcher.pgptr,
+					   &oid.slotid, &forward_recdes,
+					   PEEK);
 		    }
 		  if (scan != S_SUCCESS)
 		    {
@@ -12623,7 +12659,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 		      /* skip the header */
 		      continue;
 		    }
-		  type = spage_get_record_type (pgptr, oid.slotid);
+		  type = spage_get_record_type (curr_page_watcher.pgptr,
+						oid.slotid);
 		  if (type == REC_NEWHOME || type == REC_ASSIGN_ADDRESS
 		      || type == REC_UNKNOWN || type == REC_MVCC_NEXT_VERSION)
 		    {
@@ -12653,13 +12690,15 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 		  /* Find next page of heap and continue scanning */
 		  if (reversed_direction)
 		    {
-		      (void) heap_vpid_prev (hfid, pgptr, &vpid);
+		      (void) heap_vpid_prev (hfid, curr_page_watcher.pgptr,
+					     &vpid);
 		    }
 		  else
 		    {
-		      (void) heap_vpid_next (hfid, pgptr, &vpid);
+		      (void) heap_vpid_next (hfid, curr_page_watcher.pgptr,
+					     &vpid);
 		    }
-		  pgbuf_unfix_and_init (thread_p, pgptr);
+		  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
 		  oid.volid = vpid.volid;
 		  oid.pageid = vpid.pageid;
 		  oid.slotid = -1;
@@ -12673,7 +12712,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      else
 		{
 		  /* Error, stop scanning */
-		  pgbuf_unfix_and_init (thread_p, pgptr);
+		  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
 		  return scan;
 		}
 	    }
@@ -12689,7 +12728,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	{
 	  scan =
 	    heap_get_record_info (thread_p, oid, recdes, forward_recdes,
-				  &pgptr, scan_cache, ispeeking,
+				  &curr_page_watcher, scan_cache, ispeeking,
 				  cache_recordinfo);
 	}
       else
@@ -12704,8 +12743,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    }
 
 	  scan =
-	    heap_get_record (thread_p, oid, recdes, forward_recdes, &pgptr,
-			     scan_cache, ispeeking, type, check_snapshot);
+	    heap_get_record (thread_p, oid, recdes, forward_recdes,
+			     &curr_page_watcher, scan_cache, ispeeking, type,
+			     check_snapshot);
 	}
 
       if (scan == S_SUCCESS)
@@ -12747,10 +12787,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
       break;
     }
 
-  if (pgptr != NULL
+  if (curr_page_watcher.pgptr != NULL
       && (scan_cache == NULL || !scan_cache->cache_last_fix_page))
     {
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
     }
 
   return scan;
@@ -13093,20 +13133,21 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p,
 
 
   scan_range->last_oid = scan_range->first_oid;
-  if (scan_range->scan_cache.pgptr != NULL
-      && (vpid = pgbuf_get_vpid_ptr (scan_range->scan_cache.pgptr)) != NULL
+  if (scan_range->scan_cache.page_watcher.pgptr != NULL
+      && (vpid = pgbuf_get_vpid_ptr
+	  (scan_range->scan_cache.page_watcher.pgptr)) != NULL
       && (vpid->pageid == scan_range->last_oid.pageid)
       && (vpid->volid == scan_range->last_oid.volid)
-      && spage_get_record_type (scan_range->scan_cache.pgptr,
+      && spage_get_record_type (scan_range->scan_cache.page_watcher.pgptr,
 				scan_range->last_oid.slotid) == REC_HOME)
     {
       slotid = scan_range->last_oid.slotid;
       while (true)
 	{
-	  if (spage_next_record (scan_range->scan_cache.pgptr, &slotid,
-				 &recdes, PEEK) != S_SUCCESS
-	      || spage_get_record_type (scan_range->scan_cache.pgptr,
-					slotid) != REC_HOME)
+	  if (spage_next_record (scan_range->scan_cache.page_watcher.pgptr,
+				 &slotid, &recdes, PEEK) != S_SUCCESS
+	      || spage_get_record_type (scan_range->scan_cache.page_watcher.
+					pgptr, slotid) != REC_HOME)
 	    {
 	      break;
 	    }
@@ -13212,16 +13253,16 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range,
    */
 
   scan_range->first_oid = scan_range->last_oid;
-  if (scan_range->scan_cache.pgptr != NULL)
+  if (scan_range->scan_cache.page_watcher.pgptr != NULL)
     {
       slotid = scan_range->first_oid.slotid;
       while (true)
 	{
 	  if (spage_previous_record
-	      (scan_range->scan_cache.pgptr, &slotid, &recdes,
+	      (scan_range->scan_cache.page_watcher.pgptr, &slotid, &recdes,
 	       PEEK) != S_SUCCESS || slotid == HEAP_HEADER_AND_CHAIN_SLOTID
-	      || spage_get_record_type (scan_range->scan_cache.pgptr,
-					slotid) != REC_HOME)
+	      || spage_get_record_type (scan_range->scan_cache.page_watcher.
+					pgptr, slotid) != REC_HOME)
 	    {
 	      break;
 	    }
@@ -13489,10 +13530,13 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 {
   VPID vpid;
   OID tmp_oid;
-  PAGE_PTR pgptr = NULL;
+  PGBUF_WATCHER pg_watcher;
   bool doesexist = true;
   INT16 rectype;
   bool old_check_interrupt;
+
+  PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      PGBUG_ORDERED_NULL_HFID);
 
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
@@ -13528,9 +13572,10 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 
       /* Fetch the page where the record is stored */
 
-      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-					   NULL);
-      if (pgptr == NULL)
+      pg_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
+				     NULL, &pg_watcher);
+      if (pg_watcher.pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
 	    {
@@ -13544,9 +13589,9 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 	  goto exit_on_end;
 	}
 
-      doesexist = spage_is_slot_exist (pgptr, oid->slotid);
-      rectype = spage_get_record_type (pgptr, oid->slotid);
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      doesexist = spage_is_slot_exist (pg_watcher.pgptr, oid->slotid);
+      rectype = spage_get_record_type (pg_watcher.pgptr, oid->slotid);
+      pgbuf_ordered_unfix (thread_p, &pg_watcher);
 
       /*
        * Check the class
@@ -13626,6 +13671,7 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages,
   RECDES hdr_recdes;		/* Record descriptor to point to space
 				 * statistics */
   HEAP_HDR_STATS *heap_hdr;	/* Heap header                         */
+  PGBUF_WATCHER hdr_pg_watcher;
 
   /*
    * Get the heap header in exclusive mode and call the synchronization to
@@ -13633,35 +13679,35 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages,
    * updated.
    */
 
+  PGBUF_INIT_WATCHER (&hdr_pg_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
 
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			      PGBUF_UNCONDITIONAL_LATCH);
-  if (addr_hdr.pgptr == NULL)
+  if (pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			 &hdr_pg_watcher) != NO_ERROR)
     {
-      /* something went wrong. Unable to fetch header page */
       return ER_FAILED;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, addr_hdr.pgptr, PAGE_HEAP);
+  (void) pgbuf_check_page_ptype (thread_p, hdr_pg_watcher.pgptr, PAGE_HEAP);
 
-  if (spage_get_record (addr_hdr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+  if (spage_get_record (hdr_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
 			&hdr_recdes, PEEK) != S_SUCCESS)
     {
-      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_pg_watcher);
       return ER_FAILED;
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
   if (heap_stats_sync_bestspace (thread_p, hfid, heap_hdr,
-				 pgbuf_get_vpid_ptr (addr_hdr.pgptr), true,
-				 true) < 0)
+				 pgbuf_get_vpid_ptr (hdr_pg_watcher.pgptr),
+				 true, true) < 0)
     {
-      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_pg_watcher);
       return ER_FAILED;
     }
   *npages = heap_hdr->estimates.num_pages;
@@ -13676,9 +13722,9 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages,
       *avg_length = 0;
     }
 
+  addr_hdr.pgptr = hdr_pg_watcher.pgptr;
   log_skip_logging (thread_p, &addr_hdr);
-  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, FREE);
-  addr_hdr.pgptr = NULL;
+  pgbuf_ordered_set_dirty_and_free (thread_p, &hdr_pg_watcher);
 
   return *nobjs;
 }
@@ -13851,7 +13897,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid,
   while (!VPID_ISNULL (&vpid))
     {
       pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-					   NULL);
+					   NULL, NULL);
       if (pgptr == NULL)
 	{
 	  /* something went wrong, return error */
@@ -18740,7 +18786,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
   vpid.pageid = oid->pageid;
 
   pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-				       NULL);
+				       NULL, NULL);
   if (pgptr == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -18871,7 +18917,7 @@ heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid,
 	}
 
       pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-					   NULL);
+					   NULL, NULL);
       if (pgptr == NULL)
 	{
 	  /* something went wrong, return */
@@ -18961,7 +19007,8 @@ heap_check_all_pages_by_allocset (THREAD_ENTRY * thread_p, HFID * hfid,
 	}
 
       pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL);
+	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL,
+				     NULL);
       if (pgptr == NULL)
 	{
 	  valid_pg = DISK_ERROR;
@@ -19099,7 +19146,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
       vpid.pageid = hfid->hpgid;
 
       pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-					   NULL);
+					   NULL, NULL);
       if (pgptr == NULL)
 	{
 	  return DISK_ERROR;
@@ -19462,7 +19509,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
   pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-				       NULL);
+				       NULL, NULL);
   if (pgptr == NULL)
     {
       /* Unable to fetch heap header page */
@@ -19496,7 +19543,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   while (!VPID_ISNULL (&vpid))
     {
       pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-					   NULL);
+					   NULL, NULL);
       if (pgptr == NULL)
 	{
 	  /* something went wrong, return */
@@ -22292,11 +22339,15 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
       goto exit_on_error;
     }
 
+  /* TODO : compact heap without latch on header. */
+  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+  hdr_pgptr = NULL;
+
   while (!VPID_ISNULL (&next_vpid))
     {
       vpid = next_vpid;
       pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
-					   NULL);
+					   NULL, NULL);
       if (pgptr == NULL)
 	{
 	  ret = ER_FAILED;
@@ -22324,9 +22375,6 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
       pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
       pgbuf_unfix_and_init (thread_p, pgptr);
     }
-
-  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
-  hdr_pgptr = NULL;
 
   return ret;
 
@@ -23344,7 +23392,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
   vpid.pageid = hfid_p->hpgid;
 
   pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK,
-				       NULL);
+				       NULL, NULL);
   if (pgptr == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -23867,8 +23915,10 @@ heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid,
 		const HFID * hfid, VPID * next_vpid,
 		DB_VALUE ** cache_pageinfo)
 {
-  PAGE_PTR page_ptr = NULL;
+  PGBUF_WATCHER pg_watcher;
   SCAN_CODE scan = S_SUCCESS;
+
+  PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   /* get next page */
   if (VPID_ISNULL (next_vpid))
@@ -23879,16 +23929,16 @@ heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
   else
     {
-      page_ptr =
+      pg_watcher.pgptr =
 	heap_scan_pb_lock_and_fetch (thread_p, next_vpid, OLD_PAGE, S_LOCK,
-				     NULL);
-      if (page_ptr == NULL)
+				     NULL, &pg_watcher);
+      if (pg_watcher.pgptr == NULL)
 	{
 	  return S_ERROR;
 	}
       /* get next page */
-      heap_vpid_next (hfid, page_ptr, next_vpid);
-      pgbuf_unfix_and_init (thread_p, page_ptr);
+      heap_vpid_next (hfid, pg_watcher.pgptr, next_vpid);
+      pgbuf_ordered_unfix (thread_p, &pg_watcher);
       if (OID_ISNULL (next_vpid))
 	{
 	  /* no more pages to scan */
@@ -23897,19 +23947,20 @@ heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
 
   /* get page pointer to next page */
-  page_ptr =
-    heap_scan_pb_lock_and_fetch (thread_p, next_vpid, OLD_PAGE, S_LOCK, NULL);
-  if (page_ptr == NULL)
+  pg_watcher.pgptr =
+    heap_scan_pb_lock_and_fetch (thread_p, next_vpid, OLD_PAGE, S_LOCK, NULL,
+				 &pg_watcher);
+  if (pg_watcher.pgptr == NULL)
     {
       return S_ERROR;
     }
 
   /* read page information and return scan code */
   scan =
-    heap_get_page_info (thread_p, class_oid, hfid, next_vpid, page_ptr,
-			cache_pageinfo);
+    heap_get_page_info (thread_p, class_oid, hfid, next_vpid,
+			pg_watcher.pgptr, cache_pageinfo);
 
-  pgbuf_unfix_and_init (thread_p, page_ptr);
+  pgbuf_ordered_unfix (thread_p, &pg_watcher);
   return scan;
 }
 
@@ -23930,8 +23981,10 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid,
 		const HFID * hfid, VPID * prev_vpid,
 		DB_VALUE ** cache_pageinfo)
 {
-  PAGE_PTR page_ptr;
+  PGBUF_WATCHER pg_watcher;
   SCAN_CODE scan = S_SUCCESS;
+
+  PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   /* get next page */
   if (VPID_ISNULL (prev_vpid))
@@ -23944,26 +23997,26 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
   else
     {
-      page_ptr =
+      pg_watcher.pgptr =
 	heap_scan_pb_lock_and_fetch (thread_p, prev_vpid, OLD_PAGE, S_LOCK,
-				     NULL);
-      if (page_ptr == NULL)
+				     NULL, &pg_watcher);
+      if (pg_watcher.pgptr == NULL)
 	{
 	  return S_ERROR;
 	}
       /* get next page */
-      heap_vpid_prev (hfid, page_ptr, prev_vpid);
+      heap_vpid_prev (hfid, pg_watcher.pgptr, prev_vpid);
       if (OID_ISNULL (prev_vpid))
 	{
 	  /* no more pages to scan */
 	  return S_END;
 	}
       /* get next page */
-      pgbuf_unfix_and_init (thread_p, page_ptr);
-      page_ptr =
+      pgbuf_ordered_unfix (thread_p, &pg_watcher);
+      pg_watcher.pgptr =
 	heap_scan_pb_lock_and_fetch (thread_p, prev_vpid, OLD_PAGE, S_LOCK,
-				     NULL);
-      if (page_ptr == NULL)
+				     NULL, &pg_watcher);
+      if (pg_watcher.pgptr == NULL)
 	{
 	  return S_ERROR;
 	}
@@ -23971,10 +24024,10 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   /* read page information and return scan code */
   scan =
-    heap_get_page_info (thread_p, class_oid, hfid, prev_vpid, page_ptr,
-			cache_pageinfo);
+    heap_get_page_info (thread_p, class_oid, hfid, prev_vpid,
+			pg_watcher.pgptr, cache_pageinfo);
 
-  pgbuf_unfix_and_init (thread_p, page_ptr);
+  pgbuf_ordered_unfix (thread_p, &pg_watcher);
   return scan;
 }
 
@@ -23996,6 +24049,9 @@ heap_mvcc_insert_internal (THREAD_ENTRY * thread_p,
 			   HEAP_SCANCACHE * scan_cache, bool ishome_insert)
 {
   LOG_DATA_ADDR addr;		/* Address of logging data */
+  PGBUF_WATCHER pg_watcher;
+
+  PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   addr.vfid = &hfid->vfid;
 
@@ -24024,31 +24080,33 @@ heap_mvcc_insert_internal (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  addr.pgptr =
+  pg_watcher.pgptr =
     heap_stats_find_best_page (thread_p, hfid, recdes->length, true,
-			       recdes->length, scan_cache);
-  if (addr.pgptr == NULL)
+			       recdes->length, scan_cache, &pg_watcher);
+  if (pg_watcher.pgptr == NULL)
     {
       return ER_FAILED;
     }
 
   /* insert a original record */
-  if (spage_insert (thread_p, addr.pgptr, recdes, &oid->slotid) != SP_SUCCESS)
+  if (spage_insert (thread_p, pg_watcher.pgptr, recdes, &oid->slotid)
+      != SP_SUCCESS)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       oid = NULL;
       goto unfix_end;
     }
 
-  oid->volid = pgbuf_get_volume_id (addr.pgptr);
-  oid->pageid = pgbuf_get_page_id (addr.pgptr);
+  oid->volid = pgbuf_get_volume_id (pg_watcher.pgptr);
+  oid->pageid = pgbuf_get_page_id (pg_watcher.pgptr);
 
   /* Log the insertion, set the page dirty, free, and unlock */
   addr.offset = oid->slotid;
+  addr.pgptr = pg_watcher.pgptr;
   /* MVCC insert logging */
   heap_mvcc_log_insert (thread_p, recdes, &addr);
 
-  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+  pgbuf_set_dirty (thread_p, pg_watcher.pgptr, DONT_FREE);
 
 unfix_end:
   /*
@@ -24057,11 +24115,13 @@ unfix_end:
   if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
       && ishome_insert == true)
     {
-      scan_cache->pgptr = addr.pgptr;
+      assert (pg_watcher.pgptr != NULL);
+      pgbuf_replace_watcher (thread_p, &pg_watcher,
+			     &scan_cache->page_watcher);
     }
   else				/* unfix the page */
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &pg_watcher);
     }
 
   return (oid != NULL) ? NO_ERROR : ER_FAILED;
@@ -24085,8 +24145,9 @@ unfix_end:
 static int
 heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
 		      RECDES * recdes, RECDES forward_recdes,
-		      PAGE_PTR * pgptr, HEAP_SCANCACHE * scan_cache,
-		      int ispeeking, DB_VALUE ** record_info)
+		      PGBUF_WATCHER * page_watcher,
+		      HEAP_SCANCACHE * scan_cache, int ispeeking,
+		      DB_VALUE ** record_info)
 {
   SPAGE_SLOT *slot_p = NULL;
   SCAN_CODE scan = S_SUCCESS;
@@ -24094,6 +24155,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
   OID forward_oid;
   MVCC_REC_HEADER mvcc_header;
 
+  assert (page_watcher != NULL);
   assert (record_info != NULL);
   assert (recdes != NULL);
 
@@ -24103,7 +24165,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
   DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_SLOTID], oid.slotid);
 
   /* get slot info */
-  slot_p = spage_get_slot (*pgptr, oid.slotid);
+  slot_p = spage_get_slot (page_watcher->pgptr, oid.slotid);
   if (slot_p == NULL)
     {
       assert (0);
@@ -24132,7 +24194,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
 	      if (scan_cache->area == NULL)
 		{
 		  scan_cache->area_size = -1;
-		  pgbuf_unfix_and_init (thread_p, *pgptr);
+		  pgbuf_ordered_unfix (thread_p, page_watcher);
 		  return S_ERROR;
 		}
 	    }
@@ -24142,13 +24204,16 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
 	}
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
-	  scan = spage_get_record (*pgptr, oid.slotid, recdes, ispeeking);
-	  scan_cache->pgptr = *pgptr;
+	  scan = spage_get_record (page_watcher->pgptr, oid.slotid, recdes,
+				   ispeeking);
+	  pgbuf_replace_watcher (thread_p, page_watcher,
+				 &scan_cache->page_watcher);
 	}
       else
 	{
-	  scan = spage_get_record (*pgptr, oid.slotid, recdes, COPY);
-	  pgbuf_unfix_and_init (thread_p, *pgptr);
+	  scan = spage_get_record (page_watcher->pgptr, oid.slotid, recdes,
+				   COPY);
+	  pgbuf_ordered_unfix (thread_p, page_watcher);
 	}
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID],
 		   or_rep_id (recdes));
@@ -24181,7 +24246,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
       /* Get the address of the content of the multiple page object */
       peek_oid = (OID *) forward_recdes.data;
       forward_oid = *peek_oid;
-      pgbuf_unfix_and_init (thread_p, *pgptr);
+      pgbuf_ordered_unfix (thread_p, page_watcher);
 
       /* Now get the content of the multiple page object. */
       /* Try to reuse the previously allocated area */
@@ -24297,11 +24362,16 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
       recdes->data = NULL;
       if (scan_cache != NULL && scan_cache->cache_last_fix_page)
 	{
-	  scan_cache->pgptr = *pgptr;
+	  assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
+	  if (page_watcher->pgptr != NULL)
+	    {
+	      pgbuf_replace_watcher (thread_p, page_watcher,
+				     &scan_cache->page_watcher);
+	    }
 	}
-      else if (*pgptr != NULL)
+      else if (page_watcher->pgptr != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, *pgptr);
+	  pgbuf_ordered_unfix (thread_p, page_watcher);
 	}
       break;
     }
@@ -24328,7 +24398,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
  */
 static int
 heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
-		 RECDES forward_recdes, PAGE_PTR * pgptr,
+		 RECDES forward_recdes, PGBUF_WATCHER * home_pg_watcher,
 		 HEAP_SCANCACHE * scan_cache, int ispeeking, int type,
 		 bool check_snapshot)
 {
@@ -24338,13 +24408,19 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
   VPID vpid;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_REC_HEADER mvcc_header;
-  PAGE_PTR forward_page;
+  PGBUF_WATCHER fwd_pg_watcher;
+  int ret;
 
   assert (recdes != NULL);
   assert ((check_snapshot == false) ||
 	  (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
 	   && scan_cache->mvcc_snapshot->snapshot_fnc != NULL));
   assert (scan_cache != NULL || ispeeking == COPY);
+  assert (home_pg_watcher != NULL);
+  assert (home_pg_watcher->pgptr != NULL);
+
+  PGBUF_INIT_WATCHER (&fwd_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      HEAP_SCAN_ORDERED_HFID (scan_cache));
 
   if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
       && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
@@ -24364,46 +24440,40 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
       /* Fetch the page of relocated (forwarded/new home) record */
       vpid.volid = forward_oid.volid;
       vpid.pageid = forward_oid.pageid;
-      forward_page =
-	pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		   PGBUF_CONDITIONAL_LATCH);
-      if (forward_page == NULL)
+      ret = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			       &fwd_pg_watcher);
+      if (ret != NO_ERROR)
 	{
-	  /* Conditional latch failed. Unfix home page and try again with an
-	   * unconditional latch.
-	   */
-	  /* TODO: Is this always safe? What if object is relocated back to
-	   *       home or somewhere else?
-	   */
-	  pgbuf_unfix_and_init (thread_p, *pgptr);
-	  forward_page =
-	    pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		       PGBUF_UNCONDITIONAL_LATCH);
-	  if (forward_page == NULL)
+	  if (er_errid () == ER_PB_BAD_PAGEID)
 	    {
-	      /* something went wrong, return */
-	      if (er_errid () == ER_PB_BAD_PAGEID)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_HEAP_BAD_RELOCATION_RECORD, 3, oid.volid,
-			  oid.pageid, oid.slotid);
-		}
-	      return S_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_HEAP_BAD_RELOCATION_RECORD, 3, forward_oid.volid,
+		      forward_oid.pageid, forward_oid.slotid);
 	    }
-	  if (spage_get_record_type (forward_page, forward_oid.slotid)
-	      != REC_NEWHOME)
-	    {
-	      /* Record must have been vacuumed. */
-	      pgbuf_unfix_and_init (thread_p, forward_page);
-	      return S_SNAPSHOT_NOT_SATISFIED;
-	    }
+	  return S_ERROR;
 	}
-      /* Successfully fixed forward page and record is expected to be
-       * REC_NEWHOME.
-       */
-      assert (forward_page != NULL);
-      assert (spage_get_record_type (forward_page, forward_oid.slotid)
-	      == REC_NEWHOME);
+
+      assert (fwd_pg_watcher.pgptr != NULL);
+      assert (home_pg_watcher->pgptr != NULL);
+
+      if (home_pg_watcher->page_was_unfixed
+	  && spage_get_record_type (home_pg_watcher->pgptr, oid.slotid)
+	  != REC_RELOCATION)
+	{
+	  /* Home record has changed */
+	  pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
+	  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
+	  return S_SNAPSHOT_NOT_SATISFIED;
+	}
+
+      if (spage_get_record_type (fwd_pg_watcher.pgptr, forward_oid.slotid)
+	  != REC_NEWHOME)
+	{
+	  /* Record must have been vacuumed. */
+	  pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
+	  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
+	  return S_SNAPSHOT_NOT_SATISFIED;
+	}
 
       /* REC_NEWHOME cannot be PEEKED during scans. Even if it is a fixed scan
        * there is no point on holding the forward page since next record
@@ -24425,11 +24495,11 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 	      if (scan_cache->area == NULL)
 		{
 		  scan_cache->area_size = -1;
-		  if (*pgptr != NULL)
-		    {
-		      pgbuf_unfix_and_init (thread_p, *pgptr);
-		    }
-		  pgbuf_unfix_and_init (thread_p, forward_page);
+
+		  assert (fwd_pg_watcher.pgptr != NULL);
+		  assert (home_pg_watcher->pgptr != NULL);
+		  pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
+		  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
 		  return S_ERROR;
 		}
 	    }
@@ -24440,7 +24510,8 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 
       /* Get record. */
       scan =
-	spage_get_record (forward_page, forward_oid.slotid, recdes, COPY);
+	spage_get_record (fwd_pg_watcher.pgptr, forward_oid.slotid, recdes,
+			  COPY);
       if (scan == S_SUCCESS && check_snapshot)
 	{
 	  /* Check if record satisfies snapshot. */
@@ -24453,7 +24524,7 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 	}
 
       /* Forward page can be unfixed. */
-      pgbuf_unfix_and_init (thread_p, forward_page);
+      pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
 
       if (scan == S_SUCCESS && scan_cache != NULL
 	  && scan_cache->cache_last_fix_page)
@@ -24461,13 +24532,14 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 	  /* Record was successfully obtained and scan is fixed.
 	   * Save home page (or NULL if it had to be unfixed) to scan_cache.
 	   */
-	  scan_cache->pgptr = *pgptr;
-	  *pgptr = NULL;
+	  pgbuf_replace_watcher (thread_p, home_pg_watcher,
+				 &scan_cache->page_watcher);
+	  assert (home_pg_watcher->pgptr == NULL);
 	}
-      else if (*pgptr != NULL)
+      else if (home_pg_watcher->pgptr != NULL)
 	{
 	  /* Unfix home page. */
-	  pgbuf_unfix_and_init (thread_p, *pgptr);
+	  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
 	}
       break;
 
@@ -24497,7 +24569,7 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 		if (scan_cache->area == NULL)
 		  {
 		    scan_cache->area_size = -1;
-		    pgbuf_unfix_and_init (thread_p, *pgptr);
+		    pgbuf_ordered_unfix (thread_p, home_pg_watcher);
 		    return S_ERROR;
 		  }
 	      }
@@ -24511,13 +24583,20 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 		/* The object did not fit into such an area, reallocate a new
 		 * area
 		 */
+		if (home_pg_watcher->page_was_unfixed)
+		  {
+		    assert_release (false);
+		    pgbuf_ordered_unfix (thread_p, home_pg_watcher);
+		    return S_ERROR;
+		  }
+
 		recdes->area_size = -recdes->length;
 		recdes->data =
 		  (char *) db_private_realloc (thread_p, scan_cache->area,
 					       recdes->area_size);
 		if (recdes->data == NULL)
 		  {
-		    pgbuf_unfix_and_init (thread_p, *pgptr);
+		    pgbuf_ordered_unfix (thread_p, home_pg_watcher);
 		    return S_ERROR;
 		  }
 		scan_cache->area_size = recdes->area_size;
@@ -24533,12 +24612,19 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 	  {
 	    scan = heap_ovf_get (thread_p, &forward_oid, recdes, NULL_CHN,
 				 mvcc_snapshot);
+	    if (home_pg_watcher->page_was_unfixed)
+	      {
+		assert_release (false);
+		pgbuf_ordered_unfix (thread_p, home_pg_watcher);
+		return S_ERROR;
+	      }
+
 	  }
 
 	/* Unfix home page. Keep it while getting overflow data to stop others
 	 * from trying to change/remove it.
 	 */
-	pgbuf_unfix_and_init (thread_p, *pgptr);
+	pgbuf_ordered_unfix (thread_p, home_pg_watcher);
 
 	break;
       }
@@ -24560,7 +24646,7 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 	      if (scan_cache->area == NULL)
 		{
 		  scan_cache->area_size = -1;
-		  pgbuf_unfix_and_init (thread_p, *pgptr);
+		  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
 		  return S_ERROR;
 		}
 	    }
@@ -24571,7 +24657,8 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 
       if (ispeeking == true)
 	{
-	  scan = spage_get_record (*pgptr, oid.slotid, recdes, PEEK);
+	  scan = spage_get_record (home_pg_watcher->pgptr, oid.slotid, recdes,
+				   PEEK);
 	  if (scan == S_SUCCESS && check_snapshot)
 	    {
 	      or_mvcc_get_header (recdes, &mvcc_header);
@@ -24588,8 +24675,8 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 	  scan = S_SUCCESS;
 	  if (check_snapshot)
 	    {
-	      scan = spage_get_record (*pgptr, oid.slotid, &temp_recdes,
-				       PEEK);
+	      scan = spage_get_record (home_pg_watcher->pgptr, oid.slotid,
+				       &temp_recdes, PEEK);
 	      if (scan == S_SUCCESS)
 		{
 		  or_mvcc_get_header (&temp_recdes, &mvcc_header);
@@ -24603,17 +24690,19 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 
 	  if (scan == S_SUCCESS)
 	    {
-	      scan = spage_get_record (*pgptr, oid.slotid, recdes, COPY);
+	      scan = spage_get_record (home_pg_watcher->pgptr, oid.slotid,
+				       recdes, COPY);
 	    }
 	}
 
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
-	  scan_cache->pgptr = *pgptr;
+	  pgbuf_replace_watcher (thread_p, home_pg_watcher,
+				 &scan_cache->page_watcher);
 	}
       else
 	{
-	  pgbuf_unfix_and_init (thread_p, *pgptr);
+	  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
 	}
       break;
 
@@ -24624,7 +24713,7 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
     default:
       /* This should never happen */
       scan = S_ERROR;
-      pgbuf_unfix_and_init (thread_p, *pgptr);
+      pgbuf_ordered_unfix (thread_p, home_pg_watcher);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3,
 	      oid.volid, oid.pageid, oid.slotid);
       break;
@@ -24760,8 +24849,8 @@ heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p,
 				     OID * oid,
 				     OID * class_oid, LOCK lock,
 				     MVCC_REC_HEADER * recdes_header,
-				     PAGE_PTR * pgptr,
-				     PAGE_PTR * forward_pgptr,
+				     PGBUF_WATCHER * home_page_watcher,
+				     PGBUF_WATCHER * fwd_page_watcher,
 				     OID * forward_oid,
 				     INT16 * record_type,
 				     HEAP_MVCC_DELETE_INFO * mvcc_delete_info)
@@ -24774,8 +24863,8 @@ heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p,
   INT16 rec_type_local;
 
   assert (recdes_header != NULL);
-  assert (pgptr != NULL);
-  assert (*pgptr != NULL);
+  assert (home_page_watcher != NULL);
+  assert (home_page_watcher->pgptr != NULL);
   assert (mvcc_delete_info != NULL);
 
   if (record_type == NULL)
@@ -24844,10 +24933,10 @@ try_again:
 
       /* DELETE_RECORD_IN_PROGRESS or conditional lock failed. */
       /* Unfix the pages. */
-      pgbuf_unfix_and_init (thread_p, *pgptr);
-      if (forward_pgptr != NULL && *forward_pgptr != NULL)
+      pgbuf_ordered_unfix (thread_p, home_page_watcher);
+      if (fwd_page_watcher != NULL && fwd_page_watcher->pgptr != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, *forward_pgptr);
+	  pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
 	}
 
       /* Lock the object unconditionally. */
@@ -24863,8 +24952,8 @@ try_again:
        * others may have changed them (even our record).
        */
       if (heap_prepare_get_record (thread_p, oid, class_oid, forward_oid,
-				   pgptr, forward_pgptr, record_type)
-	  != S_SUCCESS)
+				   home_page_watcher, fwd_page_watcher,
+				   record_type) != S_SUCCESS)
 	{
 	  goto error;
 	}
@@ -24873,13 +24962,14 @@ try_again:
 	      || *record_type == REC_BIGONE
 	      || *record_type == REC_MVCC_NEXT_VERSION);
       /* Check page pointer and oid match. */
-      assert (HEAP_IS_PAGE_OF_OID (*pgptr, oid));
+      assert (HEAP_IS_PAGE_OF_OID (home_page_watcher->pgptr, oid));
       /* Make sure that forward_oid and forward page are obtained if rec_type
        * is REC_BIGONE or REC_RELOCATION.
        */
       assert (*record_type == REC_HOME
 	      || (!OID_ISNULL (forward_oid)
-		  && HEAP_IS_PAGE_OF_OID (*forward_pgptr, forward_oid)));
+		  && HEAP_IS_PAGE_OF_OID (fwd_page_watcher->pgptr,
+					  forward_oid)));
 
       if (*record_type == REC_MVCC_NEXT_VERSION)
 	{
@@ -24893,8 +24983,9 @@ try_again:
 	}
 
       /* Get MVCC header */
-      if (heap_get_mvcc_header (thread_p, oid, forward_oid, *pgptr,
-				*forward_pgptr, *record_type,
+      if (heap_get_mvcc_header (thread_p, oid, forward_oid,
+				home_page_watcher->pgptr,
+				fwd_page_watcher->pgptr, *record_type,
 				recdes_header) != S_SUCCESS)
 	{
 	  goto error;
@@ -24966,6 +25057,15 @@ end:
   return NO_ERROR;
 
 error:
+  if (home_page_watcher->pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, home_page_watcher);
+    }
+  if (fwd_page_watcher != NULL && fwd_page_watcher->pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
+    }
+
   if (record_locked == true)
     {
       lock_unlock_object (thread_p, oid, class_oid, lock, true);
@@ -25010,7 +25110,7 @@ heap_scancache_start_chain_update (THREAD_ENTRY * thread_p,
   new_scan_cache->area = old_scan_cache->area;
   new_scan_cache->area_size = old_scan_cache->area_size;
   /* set pgptr if is the case */
-  if (old_scan_cache->pgptr != NULL)
+  if (old_scan_cache->page_watcher.pgptr != NULL)
     {
       /* handle this case, just to be sure */
       VPID *vpidptr_incache;
@@ -25018,17 +25118,17 @@ heap_scancache_start_chain_update (THREAD_ENTRY * thread_p,
 
       vpid.volid = next_row_version->volid;
       vpid.pageid = next_row_version->pageid;
-      vpidptr_incache = pgbuf_get_vpid_ptr (old_scan_cache->pgptr);
+      vpidptr_incache =
+	pgbuf_get_vpid_ptr (old_scan_cache->page_watcher.pgptr);
       if (VPID_EQ (&vpid, vpidptr_incache))
 	{
-	  /* TODO - set current_scan_cache->pgptr at the end of this function */
-	  new_scan_cache->pgptr = old_scan_cache->pgptr;
-	  old_scan_cache->pgptr = NULL;
+	  pgbuf_replace_watcher (thread_p, &old_scan_cache->page_watcher,
+				 &new_scan_cache->page_watcher);
 	}
       else
 	{
 	  /* Free the previous scan page */
-	  pgbuf_unfix_and_init (thread_p, old_scan_cache->pgptr);
+	  pgbuf_ordered_unfix (thread_p, &old_scan_cache->page_watcher);
 	}
     }
 
@@ -25054,25 +25154,27 @@ heap_mvcc_update_to_row_version (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 const OID * class_oid, const OID * oid,
 				 OID * new_oid, HEAP_SCANCACHE * scan_cache)
 {
-  VPID vpid, newhome_vpid;	/* Volume and page identifiers */
+  VPID vpid, fixed_fwd_vpid;	/* Volume and page identifiers */
   VPID *vpidptr_incache;
-  LOG_DATA_ADDR addr;		/* Address of logging data     */
-  LOG_DATA_ADDR forward_addr;	/* Address of forward data     */
   INT16 type;
   OID forward_oid;
   RECDES forward_recdes, home_recdes;
   DISK_ISVALID oid_valid;
-  int again_count = 0, again_max = 20, size, error_code = NO_ERROR;
+  int again_count = 0, again_max = 3, size, error_code = NO_ERROR;
   VPID home_vpid;
   MVCCID mvcc_id;
   MVCC_REC_HEADER old_mvcc_rec_header;
-  PAGE_PTR hdr_pgptr = NULL;
+  PGBUF_WATCHER home_page_watcher;
+  PGBUF_WATCHER hdr_page_watcher;
+  PGBUF_WATCHER fwd_page_watcher;
 
   assert (mvcc_Enabled == true);
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
   assert (new_oid != NULL);
   assert (!OID_ISNULL (new_oid));
+
+  VPID_SET_NULL (&fixed_fwd_vpid);
 
   if (hfid == NULL)
     {
@@ -25090,6 +25192,10 @@ heap_mvcc_update_to_row_version (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
     }
 
+  PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+  PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
   oid_valid = HEAP_ISVALID_OID (oid);
   if (oid_valid != DISK_VALID)
     {
@@ -25104,12 +25210,6 @@ heap_mvcc_update_to_row_version (THREAD_ENTRY * thread_p, const HFID * hfid,
   mvcc_id = logtb_get_current_mvccid (thread_p);
 
 try_again:
-
-  addr.vfid = &hfid->vfid;
-  forward_addr.vfid = &hfid->vfid;
-
-  addr.pgptr = NULL;
-  forward_addr.pgptr = NULL;
 
   /*
    * Lock and fetch the page where the object is stored.
@@ -25153,38 +25253,36 @@ try_again:
        */
       if (scan_cache != NULL
 	  && scan_cache->cache_last_fix_page == true
-	  && scan_cache->pgptr != NULL)
+	  && scan_cache->page_watcher.pgptr != NULL)
 	{
-	  vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
+	  vpidptr_incache =
+	    pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr);
 	  if (VPID_EQ (&vpid, vpidptr_incache))
 	    {
-	      /* We can skip the fetch operation */
-	      addr.pgptr = scan_cache->pgptr;
+	      /* Switch to local page watcher */
+	      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher,
+				     &home_page_watcher);
 	    }
 	  else
 	    {
 	      /*
 	       * Free the cached page
 	       */
-	      pgbuf_unfix_and_init (thread_p, scan_cache->pgptr);
+	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	    }
-	  /*
-	   * Now remove the page from the scan cache. At the end this page or
-	   * another one will be cached again.
-	   */
-	  scan_cache->pgptr = NULL;
+	  assert (PGBUF_IS_CLEAN_WATCHER (&scan_cache->page_watcher));
 	}
     }
 
   /*
    * If we do not have the home page already fetched, fetch it at this moment
    */
-
-  if (addr.pgptr == NULL)
+  if (home_page_watcher.pgptr == NULL)
     {
-      addr.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE,
-						X_LOCK, scan_cache);
-      if (addr.pgptr == NULL)
+      home_page_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
+				     scan_cache, &home_page_watcher);
+      if (home_page_watcher.pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
 	    {
@@ -25198,7 +25296,7 @@ try_again:
 	}
     }
 
-  type = spage_get_record_type (addr.pgptr, oid->slotid);
+  type = spage_get_record_type (home_page_watcher.pgptr, oid->slotid);
   if (type == REC_UNKNOWN)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
@@ -25213,8 +25311,9 @@ try_again:
       home_recdes.length = sizeof (forward_oid);
       home_recdes.area_size = sizeof (forward_oid);
 
-      if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes, COPY)
-	  != S_SUCCESS)
+      if (spage_get_record
+	  (home_page_watcher.pgptr, oid->slotid, &home_recdes,
+	   COPY) != S_SUCCESS)
 	{
 	  /* Unable to get relocation record of the object */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -25227,26 +25326,44 @@ try_again:
       vpid.volid = forward_oid.volid;
       vpid.pageid = forward_oid.pageid;
 
-      newhome_vpid.volid = forward_oid.volid;
-      newhome_vpid.pageid = forward_oid.pageid;
-      error_code =
-	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
-				     &forward_addr.pgptr, &vpid, &forward_oid,
-				     scan_cache, &again_count, again_max);
-      if (error_code != NO_ERROR)
+      if (fwd_page_watcher.pgptr != NULL && !VPID_EQ (&vpid, &fixed_fwd_vpid))
 	{
-	  goto error;
-	}
-      else if (addr.pgptr == NULL)
-	{
-	  assert (forward_addr.pgptr == NULL);
-	  goto try_again;
+	  /* TODO : is this case possible ? */
+	  /* Fwd OID has changed, unfix previously fwd page */
+	  pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
 	}
 
-      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
-      (void) pgbuf_check_page_ptype (thread_p, forward_addr.pgptr, PAGE_HEAP);
+      if (fwd_page_watcher.pgptr == NULL)
+	{
+	  VPID_COPY (&fixed_fwd_vpid, &vpid);
 
-      if (spage_get_record (forward_addr.pgptr, forward_oid.slotid,
+	  error_code =
+	    pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			       &fwd_page_watcher);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  else if (home_page_watcher.page_was_unfixed)
+	    {
+	      if (again_count++ < again_max)
+		{
+		  goto try_again;
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PB_ORDERED_TOO_MANY_RETRIES, 3,
+			  oid->volid, oid->pageid, oid->slotid);
+		  goto error;
+		}
+	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, fwd_page_watcher.pgptr,
+					 PAGE_HEAP);
+	}
+
+      if (spage_get_record (fwd_page_watcher.pgptr, forward_oid.slotid,
 			    &forward_recdes, PEEK) != S_SUCCESS)
 	{
 	  /* Unable to keep forward record */
@@ -25266,36 +25383,56 @@ try_again:
 	  size += OR_OID_SIZE;
 	}
 
+      /* header page VPID does not change, no need to check VPID of previously
+       * fixed heap haeader page */
       if (heap_is_big_length (size)
-	  || !spage_is_updatable (thread_p, forward_addr.pgptr,
+	  || !spage_is_updatable (thread_p, fwd_page_watcher.pgptr,
 				  forward_oid.slotid, size))
 	{
-	  vpid.volid = hfid->vfid.volid;
-	  vpid.pageid = hfid->hpgid;
+	  if (hdr_page_watcher.pgptr == NULL)
+	    {
+	      vpid.volid = hfid->vfid.volid;
+	      vpid.pageid = hfid->hpgid;
 
-	  error_code =
-	    heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
-					oid, &hdr_pgptr, &vpid, scan_cache,
-					&again_count, again_max);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
+	      error_code =
+		pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE,
+				   PGBUF_LATCH_WRITE, &hdr_page_watcher);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+	      /* check only if home page was unfixed; if fwd page was unfixed */
+	      else if (home_page_watcher.page_was_unfixed)
+		{
+		  if (again_count++ < again_max)
+		    {
+		      goto try_again;
+		    }
+		  else
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_PB_ORDERED_TOO_MANY_RETRIES, 3,
+			      oid->volid, oid->pageid, oid->slotid);
+		      goto error;
+		    }
+		}
 	    }
-	  else if (addr.pgptr == NULL)
-	    {
-	      assert (hdr_pgptr == NULL);
-	      assert (forward_addr.pgptr == NULL);
-	      goto try_again;
-	    }
+	}
+      else if (hdr_page_watcher.pgptr != NULL)
+	{
+	  /* header page fixed by previous iteration, no longer needed */
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	}
 
       assert (forward_recdes.type == REC_NEWHOME);
 
       or_mvcc_get_header (&forward_recdes, &old_mvcc_rec_header);
 
-      if (heap_mvcc_delete_internal (thread_p, hfid, class_oid, addr.pgptr,
-				     oid, &home_recdes, forward_addr.pgptr,
-				     &forward_oid, &forward_recdes, hdr_pgptr,
+      if (heap_mvcc_delete_internal (thread_p, hfid, class_oid,
+				     home_page_watcher.pgptr,
+				     oid, &home_recdes,
+				     fwd_page_watcher.pgptr, &forward_oid,
+				     &forward_recdes, hdr_page_watcher.pgptr,
 				     REC_RELOCATION, &old_mvcc_rec_header,
 				     scan_cache, &mvcc_id,
 				     new_oid) != NO_ERROR)
@@ -25303,12 +25440,12 @@ try_again:
 	  goto error;
 	}
 
-      if (hdr_pgptr != NULL)
+      if (hdr_page_watcher.pgptr != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	}
-      pgbuf_set_dirty (thread_p, forward_addr.pgptr, FREE);
-      forward_addr.pgptr = NULL;
+
+      pgbuf_ordered_set_dirty_and_free (thread_p, &fwd_page_watcher);
       break;
 
     case REC_BIGONE:
@@ -25320,8 +25457,9 @@ try_again:
       home_recdes.length = sizeof (forward_oid);
       home_recdes.area_size = sizeof (forward_oid);
 
-      if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
-			    COPY) != S_SUCCESS)
+      if (spage_get_record
+	  (home_page_watcher.pgptr, oid->slotid, &home_recdes,
+	   COPY) != S_SUCCESS)
 	{
 	  /* Unable to peek overflow address of multipage object */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -25334,21 +25472,43 @@ try_again:
       vpid.volid = forward_oid.volid;
       vpid.pageid = forward_oid.pageid;
 
-      error_code =
-	heap_try_fetch_forward_page (thread_p, &addr.pgptr, &home_vpid, oid,
-				     &forward_addr.pgptr, &vpid, &forward_oid,
-				     scan_cache, &again_count, again_max);
-      if (error_code != NO_ERROR)
+      if (fwd_page_watcher.pgptr != NULL && !VPID_EQ (&vpid, &fixed_fwd_vpid))
 	{
-	  goto error;
-	}
-      else if (addr.pgptr == NULL)
-	{
-	  assert (forward_addr.pgptr == NULL);
-	  goto try_again;
+	  /* TODO : is this case possible ? */
+	  /* Fwd OID has changed, unfix previously fwd page */
+	  pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
 	}
 
-      if (heap_get_mvcc_rec_header_from_overflow (forward_addr.pgptr,
+      if (fwd_page_watcher.pgptr == NULL)
+	{
+	  VPID_COPY (&fixed_fwd_vpid, &vpid);
+
+	  PGBUF_WATCHER_RESET_RANK (&fwd_page_watcher,
+				    PGBUF_ORDERED_HEAP_OVERFLOW);
+	  error_code =
+	    pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			       &fwd_page_watcher);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  else if (home_page_watcher.page_was_unfixed)
+	    {
+	      if (again_count++ < again_max)
+		{
+		  goto try_again;
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PB_ORDERED_TOO_MANY_RETRIES, 3,
+			  oid->volid, oid->pageid, oid->slotid);
+		  goto error;
+		}
+	    }
+	}
+
+      if (heap_get_mvcc_rec_header_from_overflow (fwd_page_watcher.pgptr,
 						  &old_mvcc_rec_header, NULL)
 	  != NO_ERROR)
 	{
@@ -25357,24 +25517,25 @@ try_again:
       assert (or_mvcc_header_size_from_flags (old_mvcc_rec_header.mvcc_flag)
 	      == OR_MVCC_MAX_HEADER_SIZE);
 
-      if (heap_mvcc_delete_internal (thread_p, hfid, class_oid, addr.pgptr,
-				     oid, &home_recdes, forward_addr.pgptr,
-				     &forward_oid, NULL, hdr_pgptr,
-				     REC_BIGONE, &old_mvcc_rec_header,
-				     scan_cache, &mvcc_id,
-				     new_oid) != NO_ERROR)
+      if (heap_mvcc_delete_internal (thread_p, hfid, class_oid,
+				     home_page_watcher.pgptr,
+				     oid, &home_recdes,
+				     fwd_page_watcher.pgptr, &forward_oid,
+				     NULL, NULL, REC_BIGONE,
+				     &old_mvcc_rec_header, scan_cache,
+				     &mvcc_id, new_oid) != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      pgbuf_set_dirty (thread_p, forward_addr.pgptr, FREE);
-      forward_addr.pgptr = NULL;
+      pgbuf_ordered_set_dirty_and_free (thread_p, &fwd_page_watcher);
       break;
 
     case REC_HOME:
       /* For the logging or to set MVCC fields */
-      if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
-			    PEEK) != S_SUCCESS)
+      if (spage_get_record
+	  (home_page_watcher.pgptr, oid->slotid, &home_recdes,
+	   PEEK) != S_SUCCESS)
 	{
 	  /* Unable to peek before image for logging purposes */
 	  goto error;
@@ -25395,48 +25556,58 @@ try_again:
 	}
 
       if (heap_is_big_length (size)
-	  || !spage_is_updatable (thread_p, addr.pgptr, oid->slotid, size))
+	  || !spage_is_updatable (thread_p, home_page_watcher.pgptr,
+				  oid->slotid, size))
 	{
-	  vpid.volid = hfid->vfid.volid;
-	  vpid.pageid = hfid->hpgid;
+	  if (hdr_page_watcher.pgptr == NULL)
+	    {
+	      vpid.volid = hfid->vfid.volid;
+	      vpid.pageid = hfid->hpgid;
 
-	  error_code =
-	    heap_try_fetch_header_page (thread_p, &addr.pgptr, &home_vpid,
-					oid, &hdr_pgptr, &vpid, scan_cache,
-					&again_count, again_max);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  else if (addr.pgptr == NULL)
-	    {
-	      assert (hdr_pgptr == NULL);
-	      goto try_again;
-	    }
-
-	  /* re-peek home record (home page may have been unfixed) */
-	  if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
-				PEEK) != S_SUCCESS)
-	    {
-	      /* Unable to peek before image for logging purposes */
-	      goto error;
+	      error_code =
+		pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE,
+				   PGBUF_LATCH_WRITE, &hdr_page_watcher);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+	      else if (home_page_watcher.page_was_unfixed)
+		{
+		  if (again_count++ < again_max)
+		    {
+		      goto try_again;
+		    }
+		  else
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_PB_ORDERED_TOO_MANY_RETRIES, 3,
+			      oid->volid, oid->pageid, oid->slotid);
+		      goto error;
+		    }
+		}
 	    }
 	}
+      else if (hdr_page_watcher.pgptr != NULL)
+	{
+	  /* header page fixed by previous iteration, no longer needed */
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
+	}
 
-      if (heap_mvcc_delete_internal (thread_p, hfid, class_oid, addr.pgptr,
+      if (heap_mvcc_delete_internal (thread_p, hfid, class_oid,
+				     home_page_watcher.pgptr,
 				     oid, &home_recdes, NULL, NULL, NULL,
-				     hdr_pgptr, REC_HOME,
+				     hdr_page_watcher.pgptr, REC_HOME,
 				     &old_mvcc_rec_header, scan_cache,
 				     &mvcc_id, new_oid) != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      if (hdr_pgptr != NULL)
+      if (hdr_page_watcher.pgptr != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	}
-      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, home_page_watcher.pgptr, DONT_FREE);
       break;
 
     case REC_ASSIGN_ADDRESS:
@@ -25455,27 +25626,28 @@ try_again:
    */
   if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
     {
-      scan_cache->pgptr = addr.pgptr;
+      pgbuf_replace_watcher (thread_p, &home_page_watcher,
+			     &scan_cache->page_watcher);
     }
   else
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
     }
 
   return oid;
 
 error:
-  if (hdr_pgptr != NULL)
+  if (hdr_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
     }
-  if (addr.pgptr != NULL)
+  if (home_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
     }
-  if (forward_addr.pgptr != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, forward_addr.pgptr);
+      pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
     }
 
   return NULL;
@@ -26130,6 +26302,10 @@ heap_mvcc_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
     {
       LOG_SET_DATA_ADDR (&forward_addr, fwd_pgptr, &(hfid->vfid),
 			 fwd_oid->slotid);
+    }
+  else
+    {
+      LOG_SET_DATA_ADDR (&forward_addr, NULL, NULL, 0);
     }
 
   /* find new recdes type */
@@ -26860,9 +27036,10 @@ heap_rv_mvcc_redo_delete_relocation (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 static int
 heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 				   const OID * class_oid, const OID * oid,
-				   const HFID * hfid, PAGE_PTR * page_p,
+				   const HFID * hfid,
+				   PGBUF_WATCHER * home_pg_watcher,
 				   RECDES * home_recdes_p,
-				   PAGE_PTR * forward_page_p,
+				   PGBUF_WATCHER * fwd_pg_watcher,
 				   OID * forward_oid_p,
 				   RECDES * forward_recdes_p,
 				   MVCC_REC_HEADER * rec_header_p,
@@ -26872,9 +27049,7 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
   OID new_version_oid;
   OID new_version_ovfl_oid;
   RECDES new_version_ovfl_recdes;
-  PAGE_PTR home_page = *page_p;
-  PAGE_PTR forward_page = *forward_page_p;
-  PAGE_PTR header_page = NULL;
+  PGBUF_WATCHER header_pg_watcher;
   VPID home_vpid, forward_vpid, header_vpid;
   int error_code = NO_ERROR;
   int again_count = 0, again_max = 20;
@@ -26888,8 +27063,8 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
   PGSLOTID new_version_slotid = NULL_SLOTID;
   MVCCID mvccid = logtb_get_current_mvccid (thread_p);
 
-  assert (page_p != NULL);
-  assert (forward_page_p != NULL);
+  assert (home_pg_watcher != NULL && home_pg_watcher->pgptr != NULL);
+  assert (fwd_pg_watcher != NULL && fwd_pg_watcher->pgptr != NULL);
   assert (oid != NULL);
   assert (home_recdes_p != NULL);
   assert (forward_oid_p != NULL);
@@ -26897,7 +27072,10 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
   assert (hfid != NULL);
   assert (rec_header_p != NULL);
   assert (new_version_recdes != NULL);
-  assert (spage_get_record_type (*page_p, oid->slotid) == REC_RELOCATION);
+  assert (spage_get_record_type (home_pg_watcher->pgptr, oid->slotid)
+	  == REC_RELOCATION);
+
+  PGBUF_INIT_WATCHER (&header_pg_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
 
   VPID_GET_FROM_OID (&home_vpid, oid);
   VPID_GET_FROM_OID (&forward_vpid, forward_oid_p);
@@ -26981,7 +27159,7 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 
   /* Check if old version can be brought back to home page */
   if (!is_old_version_big
-      && spage_is_updatable (thread_p, home_page, oid->slotid,
+      && spage_is_updatable (thread_p, home_pg_watcher->pgptr, oid->slotid,
 			     old_version_new_size))
     {
       /* Old record can be returned to home page */
@@ -26990,24 +27168,25 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
       if (!is_new_version_big)
 	{
 	  /* Check if new record can also be added to home page */
-	  if (spage_is_mvcc_updatable (thread_p, home_page, oid->slotid,
+	  if (spage_is_mvcc_updatable (thread_p, home_pg_watcher->pgptr,
+				       oid->slotid,
 				       old_version_new_size,
 				       new_version_recdes->length)
 	      && (heap_mvcc_insert_into_page (thread_p, new_version_recdes,
-					      hfid, home_page,
+					      hfid, home_pg_watcher->pgptr,
 					      &new_version_slotid) ==
 		  NO_ERROR))
 	    {
 	      /* Successfully inserted new version into home page */
 	      is_new_version_in_home_page = true;
-	      assert (spage_is_updatable (thread_p, home_page, oid->slotid,
-					  old_version_new_size));
+	      assert (spage_is_updatable (thread_p, home_pg_watcher->pgptr,
+					  oid->slotid, old_version_new_size));
 	      SET_OID (&new_version_oid, home_vpid.volid, home_vpid.pageid,
 		       new_version_slotid);
 	    }
 	  /* Check if at least the record can be fitted in forward page */
 	  else if (heap_mvcc_insert_into_page (thread_p, new_version_recdes,
-					       hfid, forward_page,
+					       hfid, fwd_pg_watcher->pgptr,
 					       &new_version_slotid) ==
 		   NO_ERROR)
 	    {
@@ -27019,7 +27198,7 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 	}
     }
   else if (!is_old_version_big
-	   && spage_is_updatable (thread_p, forward_page,
+	   && spage_is_updatable (thread_p, fwd_pg_watcher->pgptr,
 				  forward_oid_p->slotid,
 				  old_version_new_size))
     {
@@ -27029,18 +27208,18 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
       if (!is_new_version_big)
 	{
 	  /* Check if new version can be fitted in the same page */
-	  if (spage_is_mvcc_updatable (thread_p, forward_page,
+	  if (spage_is_mvcc_updatable (thread_p, fwd_pg_watcher->pgptr,
 				       forward_oid_p->slotid,
 				       old_version_new_size,
 				       new_version_recdes->length)
 	      &&
 	      (heap_mvcc_insert_into_page
-	       (thread_p, new_version_recdes, hfid, forward_page,
+	       (thread_p, new_version_recdes, hfid, fwd_pg_watcher->pgptr,
 		&new_version_slotid) == NO_ERROR))
 	    {
 	      /* Successfully inserted new version into forward page */
 	      is_new_version_in_forward_page = true;
-	      assert (spage_is_updatable (thread_p, forward_page,
+	      assert (spage_is_updatable (thread_p, fwd_pg_watcher->pgptr,
 					  forward_oid_p->slotid,
 					  old_version_new_size));
 	      SET_OID (&new_version_oid, forward_vpid.volid,
@@ -27049,7 +27228,7 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 	  /* Check if at least the record can be fitted in home page */
 	  else
 	    if (heap_mvcc_insert_into_page
-		(thread_p, new_version_recdes, hfid, home_page,
+		(thread_p, new_version_recdes, hfid, home_pg_watcher->pgptr,
 		 &new_version_slotid) == NO_ERROR)
 	    {
 	      /* Successfully inserted new version into home page */
@@ -27071,60 +27250,17 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
       /* We will need to find a new page for at least one of the version so
        * we'll need to fix heap file header page.
        */
-      /* TODO: Use ordered page fix by OID */
       header_vpid.volid = hfid->vfid.volid;
       header_vpid.pageid = hfid->hpgid;
-      while (again_count < again_max)
+
+      error_code = pgbuf_ordered_fix (thread_p, &header_vpid, OLD_PAGE,
+				      PGBUF_LATCH_WRITE, &header_pg_watcher);
+      if (error_code != NO_ERROR)
 	{
-	  error_code =
-	    heap_try_fetch_header_with_forward_page (thread_p, &home_page,
-						     &home_vpid, oid,
-						     &header_page,
-						     &header_vpid,
-						     &forward_page,
-						     &forward_vpid,
-						     forward_oid_p,
-						     scan_cache, &again_count,
-						     again_max);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  if (home_page != NULL && forward_page != NULL
-	      && header_page != NULL)
-	    {
-	      break;
-	    }
-	  if (home_page == NULL)
-	    {
-	      home_page =
-		pgbuf_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			   PGBUF_UNCONDITIONAL_LATCH);
-	    }
-	  while (again_count < again_max)
-	    {
-	      error_code =
-		heap_try_fetch_forward_page (thread_p, &home_page, &home_vpid,
-					     oid, &forward_page,
-					     &forward_vpid, forward_oid_p,
-					     scan_cache, &again_count,
-					     again_max);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	      if (home_page != NULL && forward_page != NULL)
-		{
-		  break;
-		}
-	      if (home_page == NULL)
-		{
-		  home_page =
-		    pgbuf_fix (thread_p, &home_vpid, OLD_PAGE,
-			       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-		}
-	    }
+	  goto error;
 	}
+      /* TODO: home of fwd page may be unfixed-refixed, but we don't care since
+       * home record was COPYed and fwd record is PEEK later */
     }
 
   if (!is_new_version_in_home_page && !is_new_version_in_forward_page)
@@ -27173,8 +27309,8 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
    */
 
   /* Get forward record again in case the page was compacted before insert */
-  if (spage_get_record (forward_page, forward_oid_p->slotid, forward_recdes_p,
-			PEEK) != S_SUCCESS)
+  if (spage_get_record (fwd_pg_watcher->pgptr, forward_oid_p->slotid,
+			forward_recdes_p, PEEK) != S_SUCCESS)
     {
       assert (false);
       error_code = ER_HEAP_BAD_OBJECT_TYPE;
@@ -27187,9 +27323,11 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
    * update in-place cases.
    */
   error_code =
-    heap_mvcc_delete_internal (thread_p, hfid, class_oid, home_page, oid,
-			       home_recdes_p, forward_page, forward_oid_p,
-			       forward_recdes_p, header_page, REC_RELOCATION,
+    heap_mvcc_delete_internal (thread_p, hfid, class_oid,
+			       home_pg_watcher->pgptr, oid,
+			       home_recdes_p, fwd_pg_watcher->pgptr,
+			       forward_oid_p, forward_recdes_p,
+			       header_pg_watcher.pgptr, REC_RELOCATION,
 			       rec_header_p, scan_cache, &mvccid,
 			       &new_version_oid);
   if (error_code != NO_ERROR)
@@ -27210,12 +27348,10 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
   COPY_OID (new_oid, &new_version_oid);
 
 end:
-  if (header_page != NULL)
+  if (header_pg_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, header_page);
+      pgbuf_ordered_unfix (thread_p, &header_pg_watcher);
     }
-  *page_p = home_page;
-  *forward_page_p = forward_page;
 
   return error_code;
 
@@ -27412,7 +27548,7 @@ heap_get_from_page_no_snapshot (THREAD_ENTRY * thread_p,
   SCAN_CODE scan;
 
   assert (scan_cache != NULL);
-  assert (scan_cache->pgptr != NULL);
+  assert (scan_cache->page_watcher.pgptr != NULL);
   assert (curr_row_version_oid_p != NULL);
   assert (mvcc_header_p != NULL);
   assert (recdes != NULL);
@@ -27514,6 +27650,7 @@ heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p,
   return scan;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * heap_try_fetch_header_page () -
  *                  try to fetch header page, having home page already fetched
@@ -27548,7 +27685,7 @@ heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 
   pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
   *hdr_pgptr_p = heap_scan_pb_lock_and_fetch (thread_p, hdr_vpid_p, OLD_PAGE,
-					      X_LOCK, scan_cache);
+					      X_LOCK, scan_cache, NULL);
   if (*hdr_pgptr_p == NULL)
     {
       error_code = er_errid ();
@@ -27626,7 +27763,8 @@ heap_try_fetch_forward_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 
   pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
   *fwd_pgptr_p = heap_scan_pb_lock_and_fetch (thread_p, fwd_vpid_p,
-					      OLD_PAGE, X_LOCK, scan_cache);
+					      OLD_PAGE, X_LOCK, scan_cache,
+					      NULL);
   if (*fwd_pgptr_p == NULL)
     {
       error_code = er_errid ();
@@ -27713,7 +27851,7 @@ heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
   pgbuf_unfix_and_init (thread_p, *fwd_pgptr_p);
   *hdr_pgptr_p =
     heap_scan_pb_lock_and_fetch (thread_p, hdr_vpid_p, OLD_PAGE, X_LOCK,
-				 scan_cache);
+				 scan_cache, NULL);
   if (*hdr_pgptr_p == NULL)
     {
       error_code = er_errid ();
@@ -27783,6 +27921,7 @@ heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p,
 
   return error_code;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get_header_page () -

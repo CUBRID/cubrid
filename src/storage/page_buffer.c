@@ -47,6 +47,7 @@
 #include "list_file.h"
 #include "tsc_timer.h"
 #include "query_manager.h"
+#include "xserver_interface.h"
 
 #if defined(CUBRID_DEBUG)
 #include "disk_manager.h"
@@ -186,6 +187,11 @@ static int rv;
 #define PGBUF_NEIGHBOR_POS(idx) (PGBUF_NEIGHBOR_PAGES - 1 + (idx))
 
 
+/* maximum number of simultanesous fixes a thread may have on the same page */
+#define PGBUF_MAX_PAGE_WATCHERS 64
+/* maximum number of simultanesou fixed pages from a single thread */
+#define PGBUF_MAX_PAGE_FIXED_BY_TRAN 64
+
 #if defined(SERVER_MODE)
 
 #define MUTEX_LOCK_VIA_BUSY_WAIT(rv, m) \
@@ -219,6 +225,21 @@ static int rv;
 	    (perf_stat)->hold_has_read_latch = 0; \
 	  } \
 	while (0)
+
+#define PGBUF_ADD_FIXED_PAGE(th,page)                         \
+        do { \
+	  if ((th) != NULL) \
+	    { \
+	      assert ((th)->fixed_pages_cnt \
+		      < sizeof ((th)->fixed_pages) \
+			/ sizeof ((th)->fixed_pages[0])); \
+	      (th)->fixed_pages[(th)->fixed_pages_cnt] = (page); \
+	      (th)->fixed_pages_cnt += 1; \
+    	    } \
+        } while (0)
+
+/* use define PGBUF_ORDERED_DEBUG to enable extended debug for ordered fix */
+#undef PGBUF_ORDERED_DEBUG
 
 #if defined(PAGE_STATISTICS)
 #define PGBUF_LATCH_MODE_COUNT  (PGBUF_LATCH_VICTIM_INVALID-PGBUF_NO_LATCH+1)
@@ -273,6 +294,18 @@ typedef struct pgbuf_victim_candidate_list PGBUF_VICTIM_CANDIDATE_LIST;
 
 typedef struct pgbuf_buffer_pool PGBUF_BUFFER_POOL;
 
+typedef struct pgbuf_holder_info PGBUF_HOLDER_INFO;
+struct pgbuf_holder_info
+{
+  VPID vpid;			/* page to which holder refers */
+  PGBUF_ORDERED_GROUP group_id;	/* group (VPID of heap header ) of the page */
+  int rank;			/* rank of page (PGBUF_ORDERED_RANK) */
+  int watch_count;		/* number of watchers on this holder */
+  PGBUF_WATCHER *watcher[PGBUF_MAX_PAGE_WATCHERS];	/* pointers to all watchers to this holder */
+  int latch_mode;		/* aggregate latch mode of all watchers */
+  PAGE_TYPE ptype;		/* page type (should be HEAP or OVERFLOW) */
+};
+
 typedef struct pgbuf_holder_stat PGBUF_HOLDER_STAT;
 
 /* Holder flags used by perf module */
@@ -308,6 +341,10 @@ struct pgbuf_holder
   char fixed_at[64 * 1024];
   int fixed_at_size;
 #endif				/* NDEBUG */
+
+  int watch_count;
+  PGBUF_WATCHER *first_watcher;
+  PGBUF_WATCHER *last_watcher;
 };
 
 /* thread related BCB holder list (it is owned by each thread) */
@@ -604,6 +641,8 @@ struct pgbuf_ps_info
 static PGBUF_BUFFER_POOL pgbuf_Pool;	/* The buffer Pool */
 static PGBUF_BATCH_FLUSH_HELPER pgbuf_Flush_helper;
 
+HFID *pgbuf_ordered_null_hfid = NULL;
+
 #if defined(CUBRID_DEBUG)
 /* A buffer guard to detect over runs .. */
 static char pgbuf_Guard[8] =
@@ -829,6 +868,24 @@ static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
 					      PGBUF_BCB * bufptr,
 					      int *flushed_pages);
 static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
+
+#if !defined(NDEBUG)
+static void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
+					       PAGE_PTR pgptr,
+					       PGBUF_WATCHER * watcher,
+					       const int latch_mode,
+					       const char *caller_file,
+					       const int caller_line);
+#else
+static void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
+					       PAGE_PTR pgptr,
+					       PGBUF_WATCHER * watcher,
+					       const int latch_mode);
+#endif
+static PGBUF_HOLDER *pgbuf_get_holder (THREAD_ENTRY * thread_p,
+				       PAGE_PTR pgptr);
+static void pgbuf_remove_watcher (PGBUF_HOLDER * holder,
+				  PGBUF_WATCHER * watcher_object);
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -1750,8 +1807,9 @@ try_again:
 
 /*
  * pgbuf_promote_read_latch () - Promote read latch to write latch
- *   return: same page pointer as pgptr, or NULL on failure
- *   pgptr(in): error code or NO_ERROR
+ *   return: error code or NO_ERROR
+ *   pgptr(in): page pointer
+ *   condition(in):
  */
 #if !defined (NDEBUG)
 int
@@ -1784,13 +1842,13 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
-	  return;
+	  return ER_FAILED;
 	}
     }
 #else /* !NDEBUG */
   if (pgptr == NULL)
     {
-      return;
+      return ER_FAILED;
     }
 #endif /* !NDEBUG */
 
@@ -4899,6 +4957,11 @@ pgbuf_initialize_thrd_holder (void)
 	  pgbuf_Pool.thrd_reserved_holder[idx].thrd_link = NULL;
 	  INIT_HOLDER_STAT (&
 			    (pgbuf_Pool.thrd_reserved_holder[idx].perf_stat));
+	  pgbuf_Pool.thrd_reserved_holder[idx].first_watcher = NULL;
+	  pgbuf_Pool.thrd_reserved_holder[idx].last_watcher = NULL;
+	  pgbuf_Pool.thrd_reserved_holder[idx].watch_count = 0;
+
+
 	  if (j == (PGBUF_DEFAULT_FIX_COUNT - 1))
 	    {
 	      pgbuf_Pool.thrd_reserved_holder[idx].next_holder = NULL;
@@ -4997,6 +5060,10 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
   holder->thrd_link = thrd_holder_info->thrd_hold_list;
   thrd_holder_info->thrd_hold_list = holder;
   thrd_holder_info->num_hold_cnt += 1;
+
+  holder->first_watcher = NULL;
+  holder->last_watcher = NULL;
+  holder->watch_count = 0;
 
   return holder;
 }
@@ -5138,6 +5205,8 @@ pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
 
   assert (holder != NULL);
   assert (holder->fix_count == 0);
+
+  assert (holder->watch_count == 0);
 
   /* holder->fix_count is always set to some meaningful value
    * when the holder entry is allocated for use.
@@ -9669,14 +9738,19 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
  */
 int
 pgbuf_fix_when_other_is_fixed (THREAD_ENTRY * thread_p, VPID * vpid_to_fix,
-			       PAGE_FETCH_MODE fetch_mode,
+			       VPID * vpid_fixed, PAGE_FETCH_MODE fetch_mode,
 			       PGBUF_LATCH_MODE latch_mode,
-			       PAGE_PTR * page_to_fix, PAGE_PTR * page_fixed)
+			       PAGE_PTR * page_to_fix, PAGE_PTR * page_fixed,
+			       HFID * hfid)
 {
   assert ((vpid_to_fix != NULL) && (page_to_fix != NULL)
-	  && (*page_to_fix == NULL));
+	  && (*page_to_fix == NULL) && (vpid_to_fix != NULL)
+	  && (hfid != NULL));
 
-  if (page_fixed == NULL || *page_fixed == NULL)
+  if (page_fixed == NULL
+      || *page_fixed == NULL
+      || pgbuf_get_condition_for_ordered_fix (vpid_to_fix, vpid_fixed, hfid)
+      == PGBUF_UNCONDITIONAL_LATCH)
     {
       /* Fix page using an unconditional latch directly */
       *page_to_fix =
@@ -10137,3 +10211,1190 @@ pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx)
       helper->back_offset++;
     }
 }
+
+
+/*
+ * pgbuf_compare_hold_vpid_for_sort () - Compare the vpid for sort
+ *   return: p1 - p2
+ *   p1(in): victim candidate list 1
+ *   p2(in): victim candidate list 2
+ */
+static int
+pgbuf_compare_hold_vpid_for_sort (const void *p1, const void *p2)
+{
+  PGBUF_HOLDER_INFO *h1, *h2;
+  int diff;
+
+  h1 = (PGBUF_HOLDER_INFO *) p1;
+  h2 = (PGBUF_HOLDER_INFO *) p2;
+
+  if (h1 == h2)
+    {
+      return 0;
+    }
+
+  /* Pages with NULL GROUP sort last */
+  if (VPID_ISNULL (&h1->group_id) && !VPID_ISNULL (&h2->group_id))
+    {
+      return 1;
+    }
+  else if (!VPID_ISNULL (&h1->group_id) && VPID_ISNULL (&h2->group_id))
+    {
+      return -1;
+    }
+
+  diff = h1->group_id.volid - h2->group_id.volid;
+  if (diff != 0)
+    {
+      return diff;
+    }
+
+  diff = h1->group_id.pageid - h2->group_id.pageid;
+  if (diff != 0)
+    {
+      return diff;
+    }
+
+  diff = h1->rank - h2->rank;
+  if (diff != 0)
+    {
+      return diff;
+    }
+
+  diff = h1->vpid.volid - h2->vpid.volid;
+  if (diff != 0)
+    {
+      return diff;
+    }
+
+  diff = h1->vpid.pageid - h2->vpid.pageid;
+  if (diff != 0)
+    {
+      return diff;
+    }
+
+  return diff;
+}
+
+/*
+ * pgbuf_ordered_fix () - Fix page in VPID order; other previously fixed pages
+ *			  may be unfixed and re-fixed again.
+ *   return: error code
+ *   thread_p(in):
+ *   req_vpid(in):
+ *   fetch_mode(in): old or new page
+ *   request_mode(in): latch mode
+*   req_watcher(in/out): page watcher object, also holds output page pointer
+ *
+ *  Note: If fails to re-fix previously fixed pages (unfixed with this request),
+ *	  the requested page is unfixed (if fixed) and error is returned.
+ *	  In such case, older some pages may be re-fixed, other not : the caller
+ *	  should check page pointer of watchers before using them in case of
+ *	  error.
+ *
+ *  Note2:If any page re-fix occurs for previously fixed pages, their 'unfix'
+ *	  flag in their watcher is set (caller is resposible to check this flag)
+ *
+ */
+#if !defined(NDEBUG)
+int
+pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid,
+			 const PAGE_FETCH_MODE fetch_mode,
+			 const int request_mode,
+			 PGBUF_WATCHER * req_watcher,
+			 const char *caller_file, int caller_line)
+#else /* NDEBUG */
+int
+pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
+			   const PAGE_FETCH_MODE fetch_mode,
+			   const int request_mode,
+			   PGBUF_WATCHER * req_watcher)
+#endif				/* NDEBUG */
+{
+  int er_status = NO_ERROR;
+  PGBUF_HOLDER *holder, *next_holder;
+  PAGE_PTR pgptr, ret_pgptr;
+  int i, thrd_idx;
+  int saved_pages_cnt;
+  int curr_request_mode;
+  PAGE_FETCH_MODE curr_fetch_mode;
+  PGBUF_HOLDER_INFO ordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
+  PGBUF_HOLDER_INFO unordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
+  PGBUF_HOLDER_INFO req_page_holder_info;
+  bool req_page_has_watcher;
+#if defined(PGBUF_ORDERED_DEBUG)
+  static unsigned int global_ordered_fix_id = 0;
+  unsigned int ordered_fix_id;
+#endif
+
+  assert (req_watcher != NULL);
+
+#if defined(PGBUF_ORDERED_DEBUG)
+  ordered_fix_id = global_ordered_fix_id++;
+#endif
+
+#if !defined(NDEBUG)
+  assert (req_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+#endif
+
+  if (req_watcher->pgptr != NULL)
+    {
+      assert_release (false);
+      er_status = ER_FAILED_ASSERTION;
+      goto exit;
+    }
+
+  ret_pgptr = NULL;
+  req_page_has_watcher = true;
+
+  /* set or promote current page rank  */
+  if (VPID_EQ (&req_watcher->group_id, req_vpid))
+    {
+      req_watcher->curr_rank = PGBUF_ORDERED_HEAP_HDR;
+    }
+  else
+    {
+      req_watcher->curr_rank = req_watcher->initial_rank;
+    }
+
+  VPID_COPY (&req_page_holder_info.group_id, &req_watcher->group_id);
+  req_page_holder_info.rank = req_watcher->curr_rank;
+  VPID_COPY (&req_page_holder_info.vpid, req_vpid);
+  req_page_holder_info.watch_count = 1;
+  req_page_holder_info.watcher[0] = req_watcher;
+
+#if !defined(NDEBUG)
+  ret_pgptr = pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode,
+			       PGBUF_CONDITIONAL_LATCH, caller_file,
+			       caller_line);
+#else
+  ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode,
+				 PGBUF_CONDITIONAL_LATCH);
+#endif
+
+  thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+
+  if (ret_pgptr != NULL)
+    {
+      for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+	   holder != NULL; holder = holder->thrd_link)
+	{
+	  CAST_BFPTR_TO_PGPTR (ret_pgptr, holder->bufptr);
+
+	  if (VPID_EQ (req_vpid, &(holder->bufptr->vpid)))
+	    {
+	      assert (PGBUF_IS_ORDERED_PAGETYPE
+		      (holder->bufptr->iopage_buffer->iopage.prv.ptype));
+#if !defined(NDEBUG)
+	      pgbuf_add_watch_instance_internal (holder, ret_pgptr,
+						 req_watcher,
+						 request_mode,
+						 caller_file, caller_line);
+#else
+	      pgbuf_add_watch_instance_internal (holder, ret_pgptr,
+						 req_watcher, request_mode);
+#endif
+	      goto exit;
+	    }
+	}
+
+      assert_release (false);
+
+      er_status = ER_FAILED_ASSERTION;
+      req_page_has_watcher = false;
+      goto exit;
+    }
+  else
+    {
+      int wait_msecs;
+
+      assert (ret_pgptr == NULL);
+
+      er_status = er_errid ();
+
+      if (er_status == ER_PB_BAD_PAGEID || er_status == ER_INTERRUPTED)
+	{
+	  goto exit;
+	}
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
+
+      if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
+	{
+	  /* attempts to unfix-refix old page may fail since CONDITIONAL latch
+	   * will be enforced; just return page cannot be fixed */
+	  goto exit;
+	}
+    }
+
+  saved_pages_cnt = 0;
+
+  holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+  while (holder != NULL)
+    {
+      next_holder = holder->thrd_link;
+      if (holder->watch_count <= 0)
+	{
+	  /* cannot perform unfix-ordered fix without watcher; we assume that
+	   * this holder's page will not trigger a latch deadlock and ignore it
+	   */
+	  holder = next_holder;
+	  continue;
+	}
+
+      assert (PGBUF_IS_ORDERED_PAGETYPE
+	      (holder->bufptr->iopage_buffer->iopage.prv.ptype));
+
+      if (saved_pages_cnt >= PGBUF_MAX_PAGE_FIXED_BY_TRAN)
+	{
+	  assert_release (false);
+
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+      else if (VPID_EQ (req_vpid, &(holder->bufptr->vpid)))
+	{
+	  /* already have a fix on this page, should not be here */
+	  if (pgbuf_is_valid_page (thread_p, req_vpid, false,
+				   NULL, NULL) != DISK_VALID)
+	    {
+#if defined(PGBUF_ORDERED_DEBUG)
+	      _er_log_debug (__FILE__, __LINE__,
+			     "ORDERED_FIX(%u): page VPID:(%d,%d) "
+			     "(GROUP:%d,%d; rank:%d/%d) "
+			     "invalid, while having holder: %X ",
+			     ordered_fix_id,
+			     req_vpid->volid, req_vpid->pageid,
+			     req_watcher->group_id.volid,
+			     req_watcher->group_id.pageid,
+			     req_watcher->curr_rank,
+			     req_watcher->initial_rank, holder);
+#endif
+	      er_status = er_errid ();
+	    }
+	  else
+	    {
+	      er_status = ER_FAILED_ASSERTION;
+	    }
+	  assert_release (false);
+
+	  goto exit;
+	}
+      else
+	{
+	  int holder_fix_cnt;
+	  int j, diff;
+	  PAGE_PTR save_page_ptr = NULL;
+	  PGBUF_WATCHER *pg_watcher;
+	  int page_rank;
+	  PGBUF_ORDERED_GROUP group_id;
+
+	  page_rank = PGBUF_ORDERED_RANK_UNDEFINED;
+	  VPID_SET_NULL (&group_id);
+	  holder_fix_cnt = holder->fix_count;
+
+	  if (holder_fix_cnt != holder->watch_count)
+	    {
+	      /* this page was fixed without watcher, without being unfixed
+	       * before another page fix ; we do not allow this */
+	      assert_release (false);
+
+	      er_status = ER_FAILED_ASSERTION;
+	      goto exit;
+	    }
+
+	  assert (holder->watch_count < PGBUF_MAX_PAGE_WATCHERS);
+
+	  ordered_holders_info[saved_pages_cnt].latch_mode = PGBUF_LATCH_READ;
+	  pg_watcher = holder->first_watcher;
+	  j = 0;
+
+	  /* add all watchers */
+	  while (pg_watcher != NULL)
+	    {
+#if !defined(NDEBUG)
+	      CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
+
+	      assert (pg_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+	      assert (pg_watcher->pgptr == pgptr);
+	      assert (pg_watcher->curr_rank >= PGBUF_ORDERED_HEAP_HDR
+		      && pg_watcher->curr_rank <
+		      PGBUF_ORDERED_RANK_UNDEFINED);
+	      assert (!VPID_ISNULL (&pg_watcher->group_id));
+#endif
+	      if (page_rank == PGBUF_ORDERED_RANK_UNDEFINED)
+		{
+		  page_rank = pg_watcher->curr_rank;
+		}
+	      else if (page_rank != pg_watcher->curr_rank)
+		{
+		  /* all watchers on this page should have the same rank */
+		  char additional_msg[128];
+		  snprintf (additional_msg, sizeof (additional_msg) - 1,
+			    "different page ranks:%d,%d",
+			    page_rank, pg_watcher->curr_rank);
+
+		  er_status = ER_PB_ORDERED_INCONSISTENCY;
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, er_status,
+			  5, req_vpid->volid, req_vpid->pageid,
+			  holder->bufptr->vpid.volid,
+			  holder->bufptr->vpid.pageid, additional_msg);
+		  goto exit;
+		}
+
+	      if (VPID_ISNULL (&group_id))
+		{
+		  VPID_COPY (&group_id, &pg_watcher->group_id);
+		}
+	      else if (!VPID_EQ (&group_id, &pg_watcher->group_id))
+		{
+		  char additional_msg[128];
+		  snprintf (additional_msg, sizeof (additional_msg) - 1,
+			    "different GROUP_ID : (%d,%d) and (%d,%d)",
+			    group_id.volid, group_id.pageid,
+			    pg_watcher->group_id.volid,
+			    pg_watcher->group_id.pageid);
+
+		  /* all watchers on this page should have the same group id */
+		  er_status = ER_PB_ORDERED_INCONSISTENCY;
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, er_status,
+			  5, req_vpid->volid, req_vpid->pageid,
+			  holder->bufptr->vpid.volid,
+			  holder->bufptr->vpid.pageid, additional_msg);
+		  goto exit;
+		}
+
+	      if (save_page_ptr == NULL)
+		{
+		  save_page_ptr = pg_watcher->pgptr;
+		}
+	      else
+		{
+		  assert (save_page_ptr == pg_watcher->pgptr);
+		}
+
+	      ordered_holders_info[saved_pages_cnt].watcher[j] = pg_watcher;
+	      if (pg_watcher->latch_mode == PGBUF_LATCH_WRITE)
+		{
+		  ordered_holders_info[saved_pages_cnt].latch_mode =
+		    PGBUF_LATCH_WRITE;
+		}
+	      j++;
+
+#if defined(PGBUF_ORDERED_DEBUG)
+	      _er_log_debug (__FILE__, __LINE__,
+			     "ordered_fix(%u): check_watcher: pgptr:%X, "
+			     "VPID:(%d,%d), GROUP:%d,%d, rank:%d/%d, "
+			     "holder_fix_count:%d, holder_watch_count:%d, "
+			     "holder_fixed_at:%s",
+			     ordered_fix_id,
+			     pg_watcher->pgptr,
+			     holder->bufptr->vpid.volid,
+			     holder->bufptr->vpid.pageid,
+			     pg_watcher->group_id.volid,
+			     pg_watcher->group_id.pageid,
+			     pg_watcher->curr_rank,
+			     pg_watcher->initial_rank,
+			     holder->fix_count,
+			     holder->watch_count, holder->fixed_at);
+#endif
+	      pg_watcher = pg_watcher->next;
+	    }
+
+	  assert (j == holder->watch_count);
+
+	  VPID_COPY (&ordered_holders_info[saved_pages_cnt].group_id,
+		     &group_id);
+	  ordered_holders_info[saved_pages_cnt].rank = page_rank;
+	  VPID_COPY (&(ordered_holders_info[saved_pages_cnt].vpid),
+		     &(holder->bufptr->vpid));
+
+	  diff =
+	    pgbuf_compare_hold_vpid_for_sort (&req_page_holder_info,
+					      &ordered_holders_info
+					      [saved_pages_cnt]);
+
+	  if (diff < 0)
+	    {
+	      ordered_holders_info[saved_pages_cnt].watch_count =
+		holder->watch_count;
+	      ordered_holders_info[saved_pages_cnt].ptype =
+		holder->bufptr->iopage_buffer->iopage.prv.ptype;
+
+#if defined(PGBUF_ORDERED_DEBUG)
+	      _er_log_debug (__FILE__, __LINE__,
+			     "ordered_fix(%u):  save_watchers (%d): "
+			     "pgptr:%X, VPID:(%d,%d), "
+			     "GROUP:(%d,%d), rank:%d(page_rank:%d), "
+			     "holder_fix_count:%d, holder_watch_count:%d",
+			     ordered_fix_id,
+			     ordered_holders_info[saved_pages_cnt].
+			     watch_count, save_page_ptr,
+			     ordered_holders_info[saved_pages_cnt].vpid.volid,
+			     ordered_holders_info[saved_pages_cnt].vpid.
+			     pageid,
+			     ordered_holders_info[saved_pages_cnt].group_id.
+			     volid,
+			     ordered_holders_info[saved_pages_cnt].group_id.
+			     pageid,
+			     ordered_holders_info[saved_pages_cnt].rank,
+			     page_rank, holder_fix_cnt, holder->watch_count);
+#endif
+	      saved_pages_cnt++;
+	    }
+	  else if (diff == 0)
+	    {
+	      assert_release (false);
+
+	      er_status = ER_FAILED_ASSERTION;
+	      goto exit;
+	    }
+	  else
+	    {
+	      assert (diff > 0);
+	      /* this page is correctly fixed before new requested page,
+	       * the accumulated watchers are just ignored */
+#if defined(PGBUF_ORDERED_DEBUG)
+	      _er_log_debug (__FILE__, __LINE__,
+			     "ordered_fix(%u): ignore:    pgptr:%X, VPID:(%d,%d) "
+			     "GROUP:(%d,%d), rank:%d  --- ignored",
+			     ordered_fix_id,
+			     save_page_ptr,
+			     ordered_holders_info[saved_pages_cnt].vpid.volid,
+			     ordered_holders_info[saved_pages_cnt].vpid.
+			     pageid,
+			     ordered_holders_info[saved_pages_cnt].group_id.
+			     volid,
+			     ordered_holders_info[saved_pages_cnt].group_id.
+			     pageid,
+			     ordered_holders_info[saved_pages_cnt].rank);
+#endif
+	    }
+	}
+      holder = next_holder;
+    }
+
+  holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+  /* unfix pages which do not fulfill the VPID order */
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      int j, holder_fix_cnt;
+#if defined(PGBUF_ORDERED_DEBUG)
+      int holder_fix_cnt_save;
+#endif
+
+      while (holder != NULL
+	     && !VPID_EQ (&(ordered_holders_info[i].vpid),
+			  &(holder->bufptr->vpid)))
+	{
+	  holder = holder->thrd_link;
+	}
+
+      if (holder == NULL)
+	{
+	  assert_release (false);
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      next_holder = holder->thrd_link;
+      /* not necessary to remove each watcher since the holder
+       * will be removed completely */
+
+      holder->watch_count = 0;
+      holder->first_watcher = NULL;
+      holder->last_watcher = NULL;
+      holder_fix_cnt = holder->fix_count;
+#if defined(PGBUF_ORDERED_DEBUG)
+      holder_fix_cnt_save = holder_fix_cnt;
+#endif
+
+      CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
+      assert (holder_fix_cnt > 0);
+      while (holder_fix_cnt-- > 0)
+	{
+	  pgbuf_unfix (thread_p, pgptr);
+	}
+
+      for (j = 0; j < ordered_holders_info[i].watch_count; j++)
+	{
+	  PGBUF_WATCHER *pg_watcher;
+
+	  pg_watcher = ordered_holders_info[i].watcher[j];
+
+	  assert (pg_watcher->pgptr == pgptr);
+	  assert (pg_watcher->curr_rank >= PGBUF_ORDERED_HEAP_HDR
+		  && pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
+
+#if defined(PGBUF_ORDERED_DEBUG)
+	  _er_log_debug (__FILE__, __LINE__,
+			 "ordered_fix(%u):  unfix & clear_watcher(%d/%d): "
+			 "pgptr:%X, VPID:(%d,%d), GROUP:%d,%d, "
+			 "rank:%d/%d, latch_mode:%d, "
+			 "holder_fix_cnt:%d",
+			 ordered_fix_id,
+			 j + 1,
+			 ordered_holders_info[i].watch_count,
+			 pg_watcher->pgptr,
+			 ordered_holders_info[i].vpid.volid,
+			 ordered_holders_info[i].vpid.pageid,
+			 pg_watcher->group_id.volid,
+			 pg_watcher->group_id.pageid,
+			 pg_watcher->curr_rank,
+			 pg_watcher->initial_rank,
+			 pg_watcher->latch_mode, holder_fix_cnt_save);
+#endif
+	  PGBUF_CLEAR_WATCHER (pg_watcher);
+	  pg_watcher->page_was_unfixed = true;
+
+#if !defined(NDEBUG)
+	  pgbuf_watcher_init_debug (pg_watcher, caller_file, caller_line,
+				    true);
+#endif
+	}
+
+      holder = next_holder;
+    }
+
+#if defined(PGBUF_ORDERED_DEBUG)
+  _er_log_debug (__FILE__, __LINE__, "ordered_fix(%u) : restore_pages: %d, "
+		 "req_VPID(%d,%d), GROUP(%d,%d), rank:%d/%d",
+		 ordered_fix_id, saved_pages_cnt,
+		 req_vpid->volid, req_vpid->pageid,
+		 req_watcher->group_id.volid, req_watcher->group_id.pageid,
+		 req_watcher->curr_rank, req_watcher->initial_rank);
+#endif
+
+  /* add requested page, watch instance is added after page is fixed */
+  VPID_COPY (&(ordered_holders_info[saved_pages_cnt].group_id),
+	     &req_watcher->group_id);
+  ordered_holders_info[saved_pages_cnt].rank = req_watcher->curr_rank;
+  VPID_COPY (&(ordered_holders_info[saved_pages_cnt].vpid), req_vpid);
+
+  saved_pages_cnt++;
+
+  memcpy (unordered_holders_info, ordered_holders_info,
+	  saved_pages_cnt * sizeof (ordered_holders_info[0]));
+  if (saved_pages_cnt > 1)
+    {
+      qsort (ordered_holders_info, saved_pages_cnt,
+	     sizeof (ordered_holders_info[0]),
+	     pgbuf_compare_hold_vpid_for_sort);
+    }
+
+  /* restore fixes on previously unfixed pages and fix the requested page */
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
+	{
+	  curr_request_mode = request_mode;
+	  curr_fetch_mode = fetch_mode;
+	}
+      else
+	{
+	  curr_request_mode = ordered_holders_info[i].latch_mode;
+	  curr_fetch_mode = OLD_PAGE;
+	}
+
+#if !defined(NDEBUG)
+      pgptr = pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid),
+			       curr_fetch_mode, curr_request_mode,
+			       PGBUF_UNCONDITIONAL_LATCH,
+			       caller_file, caller_line);
+#else
+      pgptr = pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid),
+				 curr_fetch_mode, curr_request_mode,
+				 PGBUF_UNCONDITIONAL_LATCH);
+#endif
+
+      if (pgptr == NULL)
+	{
+	  DISK_ISVALID valid;
+
+	  valid =
+	    pgbuf_is_valid_page (thread_p, &(ordered_holders_info[i].vpid),
+				 VPID_EQ (req_vpid,
+					  &(ordered_holders_info[i].vpid)),
+				 NULL, NULL);
+#if defined(PGBUF_ORDERED_DEBUG)
+	  _er_log_debug (__FILE__, __LINE__,
+			 "ORDERED_FIX(%u): restore_pages_ERR: "
+			 "cannot fix VPID:(%d,%d), "
+			 "GROUP:%d,%d, rank:%d, page_fetch_mode:%d , "
+			 "latch_req: %d, valid:%d",
+			 ordered_fix_id,
+			 ordered_holders_info[i].vpid.volid,
+			 ordered_holders_info[i].vpid.pageid,
+			 ordered_holders_info[i].group_id.volid,
+			 ordered_holders_info[i].group_id.pageid,
+			 ordered_holders_info[i].rank,
+			 curr_fetch_mode, curr_request_mode, valid);
+#endif
+	  if (valid == DISK_INVALID)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PB_BAD_PAGEID, 2,
+		      ordered_holders_info[i].vpid.pageid,
+		      fileio_get_volume_label (ordered_holders_info[i].vpid.
+					       volid, PEEK));
+	    }
+
+	  er_status = er_errid ();
+
+	  if (!VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
+	    {
+	      int prev_er_status = er_status;
+	      er_status = ER_PB_ORDERED_REFIX_FAILED;
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3,
+		      ordered_holders_info[i].vpid.volid,
+		      ordered_holders_info[i].vpid.pageid, prev_er_status);
+	      goto exit;
+	    }
+	  /* try to restore fixes on all remaining pages */
+	  continue;
+	}
+
+      /* get holder of last fix: last fixed pages is in top of holder list,
+       * we use parse code just for safety */
+      for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+	   holder != NULL; holder = holder->thrd_link)
+	{
+	  if (VPID_EQ (&(holder->bufptr->vpid),
+		       &(ordered_holders_info[i].vpid)))
+	    {
+	      break;
+	    }
+	}
+
+      assert (holder != NULL);
+
+      if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
+	{
+	  ret_pgptr = pgptr;
+	  if (req_watcher != NULL)
+	    {
+#if !defined(NDEBUG)
+	      pgbuf_add_watch_instance_internal (holder, pgptr,
+						 req_watcher,
+						 request_mode,
+						 caller_file, caller_line);
+#else
+	      pgbuf_add_watch_instance_internal (holder, pgptr,
+						 req_watcher, request_mode);
+#endif
+
+#if defined(PGBUF_ORDERED_DEBUG)
+	      _er_log_debug (__FILE__, __LINE__,
+			     "ordered_fix(%u) : fixed req page, VPID:(%d,%d), "
+			     "GROUP:%d,%d, "
+			     "rank:%d, pgptr:%X, holder_fix_count:%d, "
+			     "holder_watch_count:%d, holder_fixed_at:%s, ",
+			     ordered_fix_id,
+			     ordered_holders_info[i].vpid.volid,
+			     ordered_holders_info[i].vpid.pageid,
+			     ordered_holders_info[i].group_id.volid,
+			     ordered_holders_info[i].group_id.pageid,
+			     ordered_holders_info[i].rank,
+			     pgptr, holder->fix_count,
+			     holder->watch_count, holder->fixed_at);
+#endif
+	    }
+	}
+      else
+	{
+	  int j;
+
+	  /* page after re-fix should have the same type as before unfix */
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr,
+					 ordered_holders_info[i].ptype);
+
+#if defined(PGBUF_ORDERED_DEBUG)
+	  _er_log_debug (__FILE__, __LINE__,
+			 "ordered_fix(%u) : restore_holder:%X, VPID:(%d,%d), "
+			 "pgptr:%X, holder_fix_count:%d, "
+			 "holder_watch_count:%d, holder_fixed_at:%s, "
+			 "saved_fix_cnt:%d, saved_watch_cnt:%d",
+			 ordered_fix_id,
+			 holder, ordered_holders_info[i].vpid.volid,
+			 ordered_holders_info[i].vpid.pageid,
+			 pgptr, holder->fix_count,
+			 holder->watch_count, holder->fixed_at,
+			 ordered_holders_info[i].fix_cnt,
+			 ordered_holders_info[i].watch_count);
+#endif
+
+	  /* restore number of fixes for previously fixed page:
+	   * just use pgbuf_fix since it is safer */
+	  for (j = 1; j < ordered_holders_info[i].watch_count; j++)
+	    {
+#if !defined(NDEBUG)
+	      pgptr = pgbuf_fix_debug (thread_p,
+				       &(ordered_holders_info[i].vpid),
+				       curr_fetch_mode, curr_request_mode,
+				       PGBUF_UNCONDITIONAL_LATCH,
+				       caller_file, caller_line);
+#else
+	      pgptr = pgbuf_fix_release (thread_p,
+					 &(ordered_holders_info[i].vpid),
+					 curr_fetch_mode, curr_request_mode,
+					 PGBUF_UNCONDITIONAL_LATCH);
+#endif
+	      if (pgptr == NULL)
+		{
+		  assert_release (false);
+		  er_status = ER_FAILED_ASSERTION;
+		  goto exit;
+		}
+	    }
+
+	  for (j = 0; j < ordered_holders_info[i].watch_count; j++)
+	    {
+#if !defined(NDEBUG)
+	      pgbuf_add_watch_instance_internal (holder, pgptr,
+						 ordered_holders_info[i].
+						 watcher[j],
+						 ordered_holders_info[i].
+						 watcher[j]->latch_mode,
+						 caller_file, caller_line);
+#else
+	      pgbuf_add_watch_instance_internal (holder, pgptr,
+						 ordered_holders_info[i].
+						 watcher[j],
+						 ordered_holders_info[i].
+						 watcher[j]->latch_mode);
+#endif
+#if defined(PGBUF_ORDERED_DEBUG)
+	      _er_log_debug (__FILE__, __LINE__,
+			     "ordered_fix(%u) : restore_watcher:%X, "
+			     "GROUP:%d,%d, rank:%d/%d,"
+			     " pgptr:%X, holder_fix_count:%d, "
+			     "holder_watch_count:%d, holder_fixed_at:%s",
+			     ordered_fix_id,
+			     ordered_holders_info[i].watcher[j],
+			     ordered_holders_info[i].watcher[j]->group_id.
+			     volid,
+			     ordered_holders_info[i].watcher[j]->group_id.
+			     pageid,
+			     ordered_holders_info[i].watcher[j]->curr_rank,
+			     ordered_holders_info[i].watcher[j]->initial_rank,
+			     ordered_holders_info[i].watcher[j]->pgptr,
+			     holder->fix_count, holder->watch_count,
+			     holder->fixed_at);
+#endif /* PGBUF_ORDERED_DEBUG */
+	    }
+	}
+    }
+
+exit:
+  if (ret_pgptr != NULL && er_status != NO_ERROR)
+    {
+      if (req_page_has_watcher)
+	{
+	  pgbuf_ordered_unfix_and_init (thread_p, ret_pgptr, req_watcher);
+	}
+      else
+	{
+	  pgbuf_unfix_and_init (thread_p, ret_pgptr);
+	}
+    }
+
+  return er_status;
+}
+
+/*
+ * pgbuf_ordered_unfix () - Unfix a page which was previously fixed with 
+ *			    ordered_fix (has a page watcher)
+ *   return: void
+ *   thread_p(in):
+ *   watcher_object(in/out): page watcher
+ *
+ */
+#if !defined (NDEBUG)
+void
+pgbuf_ordered_unfix_debug (THREAD_ENTRY * thread_p,
+			   PGBUF_WATCHER * watcher_object,
+			   const char *caller_file, int caller_line)
+#else /* NDEBUG */
+void
+pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
+#endif				/* NDEBUG */
+{
+  PGBUF_HOLDER *holder;
+  PAGE_PTR pgptr;
+  PGBUF_WATCHER *watcher;
+
+  assert (watcher_object != NULL);
+
+#if !defined(NDEBUG)
+  assert (watcher_object->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+#endif
+
+  if (watcher_object->pgptr == NULL)
+    {
+      assert_release (false);
+      return;
+    }
+
+  pgptr = watcher_object->pgptr;
+
+  assert (pgptr != NULL);
+
+  holder = pgbuf_get_holder (thread_p, pgptr);
+
+  assert_release (holder != NULL);
+
+  watcher = holder->last_watcher;
+  while (watcher != NULL)
+    {
+      if (watcher == watcher_object)
+	{
+	  /* found */
+	  break;
+	}
+      watcher = watcher->prev;
+    }
+
+  assert_release (watcher != NULL);
+
+  assert (holder->fix_count >= holder->watch_count);
+
+  pgbuf_remove_watcher (holder, watcher_object);
+
+#if !defined(NDEBUG)
+  pgbuf_watcher_init_debug (watcher_object, caller_file, caller_line, false);
+  pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line);
+#else
+  pgbuf_unfix (thread_p, pgptr);
+#endif
+}
+
+/*
+ * pgbuf_add_watch_instance_internal () - Adds a page watcher for a fixed page
+ *   holder(in): holder object
+ *   pgptr(in): holder object
+ *   watcher(in/out): page watcher
+ *   latch_mode(in): latch mode used for fixing the page
+ *
+ */
+#if !defined(NDEBUG)
+static void
+pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
+				   PAGE_PTR pgptr,
+				   PGBUF_WATCHER * watcher,
+				   const int latch_mode,
+				   const char *caller_file,
+				   const int caller_line)
+#else
+static void
+pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
+				   PAGE_PTR pgptr,
+				   PGBUF_WATCHER * watcher,
+				   const int latch_mode)
+#endif
+{
+#if !defined(NDEBUG)
+  char *p;
+#endif
+  assert (watcher != NULL);
+  assert (pgptr != NULL);
+  assert (holder != NULL);
+
+  assert (holder->watch_count < PGBUF_MAX_PAGE_WATCHERS);
+
+  assert (watcher->pgptr == NULL);
+  assert (watcher->next == NULL);
+  assert (watcher->prev == NULL);
+
+  if (holder->last_watcher == NULL)
+    {
+      assert (holder->first_watcher == NULL);
+      holder->first_watcher = watcher;
+      holder->last_watcher = watcher;
+    }
+  else
+    {
+      watcher->prev = holder->last_watcher;
+      (holder->last_watcher)->next = watcher;
+      holder->last_watcher = watcher;
+    }
+
+  watcher->pgptr = pgptr;
+  watcher->latch_mode = latch_mode;
+  watcher->page_was_unfixed = false;
+
+  holder->watch_count += 1;
+
+#if !defined(NDEBUG)
+  p = (char *) caller_file + strlen (caller_file);
+  while (p)
+    {
+      if (p == caller_file)
+	{
+	  break;
+	}
+
+      if (*p == '/' || *p == '\\')
+	{
+	  p++;
+	  break;
+	}
+
+      p--;
+    }
+
+  snprintf (watcher->watched_at, sizeof (watcher->watched_at) - 1,
+	    "%s:%d", p, caller_line);
+#endif
+}
+
+/*
+ * pgbuf_get_holder () - Searches holder of fixed page
+ *   Return : holder object or NULL if not found
+ *   thread_p(in):
+ *   pgptr(in): pgptr
+ */
+static PGBUF_HOLDER *
+pgbuf_get_holder (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
+{
+  int thrd_idx;
+  PGBUF_BCB *bufptr;
+  PGBUF_HOLDER *holder;
+
+  assert (pgptr != NULL);
+  thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+       holder != NULL; holder = holder->thrd_link)
+    {
+      if (bufptr == holder->bufptr)
+	{
+	  return holder;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * pgbuf_remove_watcher () - Removes a page watcher
+ *   holder(in): holder object
+ *   watcher_object(in): watcher object
+ */
+static void
+pgbuf_remove_watcher (PGBUF_HOLDER * holder, PGBUF_WATCHER * watcher_object)
+{
+  PAGE_PTR pgptr;
+
+  assert (watcher_object != NULL);
+  assert (holder != NULL);
+
+#if !defined(NDEBUG)
+  assert (watcher_object->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+#endif
+
+  pgptr = watcher_object->pgptr;
+
+  if (holder->first_watcher == watcher_object)
+    {
+      assert (watcher_object->prev == NULL);
+      holder->first_watcher = watcher_object->next;
+    }
+  else if (watcher_object->prev != NULL)
+    {
+      (watcher_object->prev)->next = watcher_object->next;
+    }
+
+  if (holder->last_watcher == watcher_object)
+    {
+      assert (watcher_object->next == NULL);
+      holder->last_watcher = watcher_object->prev;
+    }
+  else if (watcher_object->next != NULL)
+    {
+      (watcher_object->next)->prev = watcher_object->prev;
+    }
+  watcher_object->next = NULL;
+  watcher_object->prev = NULL;
+  watcher_object->pgptr = NULL;
+  watcher_object->curr_rank = PGBUF_ORDERED_RANK_UNDEFINED;
+  holder->watch_count -= 1;
+}
+
+/*
+ * pgbuf_replace_watcher () - Replaces a page watcher with another page watcher
+ *   thread_p(in):
+ *   old_watcher(in/out): current page watcher to replace
+ *   new_watcher(in/out): new page watcher to use
+ *
+ */
+#if !defined(NDEBUG)
+void
+pgbuf_replace_watcher_debug (THREAD_ENTRY * thread_p,
+			     PGBUF_WATCHER * old_watcher,
+			     PGBUF_WATCHER * new_watcher,
+			     const char *caller_file, const int caller_line)
+#else
+void
+pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_watcher,
+		       PGBUF_WATCHER * new_watcher)
+#endif
+{
+  PGBUF_HOLDER *holder;
+  PAGE_PTR page_ptr;
+  int latch_mode;
+
+  assert (old_watcher != NULL);
+  assert (PGBUF_IS_CLEAN_WATCHER (new_watcher));
+
+#if !defined(NDEBUG)
+  assert (old_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+  assert (new_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+#endif
+
+  assert (old_watcher->pgptr != NULL);
+
+  holder = pgbuf_get_holder (thread_p, old_watcher->pgptr);
+
+  assert_release (holder != NULL);
+
+  page_ptr = old_watcher->pgptr;
+  latch_mode = old_watcher->latch_mode;
+  new_watcher->initial_rank = old_watcher->initial_rank;
+  new_watcher->curr_rank = old_watcher->curr_rank;
+  VPID_COPY (&new_watcher->group_id, &old_watcher->group_id);
+
+  pgbuf_remove_watcher (holder, old_watcher);
+
+#if !defined(NDEBUG)
+  pgbuf_watcher_init_debug (old_watcher, caller_file, caller_line, false);
+  pgbuf_add_watch_instance_internal (holder, page_ptr, new_watcher,
+				     latch_mode, caller_file, caller_line);
+#else
+  pgbuf_add_watch_instance_internal (holder, page_ptr, new_watcher,
+				     latch_mode);
+#endif
+}
+
+/*
+ * pgbuf_ordered_set_dirty_and_free () - Mark as modified the buffer associated
+ *					 and unfixes the page (previously fixed
+ *					 with ordered fix)
+ *   return: void
+ *   thread_p(in):
+ *   pg_watcher(in): page watcher holding the page to dirty and unfix
+ */
+void
+pgbuf_ordered_set_dirty_and_free (THREAD_ENTRY * thread_p,
+				  PGBUF_WATCHER * pg_watcher)
+{
+  pgbuf_set_dirty (thread_p, pg_watcher->pgptr, DONT_FREE);
+  pgbuf_ordered_unfix (thread_p, pg_watcher);
+}
+
+/*
+ * pgbuf_get_condition_for_ordered_fix () - returns the condition which should
+ *  be used to latch (vpid_new_page) knowing that we already have a latch on
+ *  (vpid_fixed_page)
+ *
+ *   return: latch condition (PGBUF_LATCH_CONDITION)
+ *   vpid_new_page(in):
+ *   vpid_fixed_page(in):
+ *   hfid(in): HFID of both pages
+ *
+ *  Note: This is intended only for HEAP/HEAP_OVERFLOW pages.
+ *	  The user should make sure both pages belong to the same heap.
+ *	  To be used when pgbuf_ordered_fix is not possible:
+ *	  In vacuum context, unfixing a older page to prevent deadlatch,
+ *	  requires flushing of the old page first - this is not possible with
+ *	  pgbuf_ordered_fix.
+ */
+int
+pgbuf_get_condition_for_ordered_fix (const VPID * vpid_new_page,
+				     const VPID * vpid_fixed_page,
+				     const HFID * hfid)
+{
+  PGBUF_HOLDER_INFO new_page_holder_info;
+  PGBUF_HOLDER_INFO fixed_page_holder_info;
+
+  new_page_holder_info.group_id.volid = hfid->vfid.volid;
+  new_page_holder_info.group_id.pageid = hfid->hpgid;
+  fixed_page_holder_info.group_id.volid = hfid->vfid.volid;
+  fixed_page_holder_info.group_id.pageid = hfid->hpgid;
+
+  VPID_COPY (&new_page_holder_info.vpid, vpid_new_page);
+  VPID_COPY (&fixed_page_holder_info.vpid, vpid_fixed_page);
+
+  if (VPID_EQ (&new_page_holder_info.group_id, &new_page_holder_info.vpid))
+    {
+      new_page_holder_info.rank = PGBUF_ORDERED_HEAP_HDR;
+    }
+  else
+    {
+      new_page_holder_info.rank = PGBUF_ORDERED_HEAP_NORMAL;
+    }
+
+  if (VPID_EQ
+      (&fixed_page_holder_info.group_id, &fixed_page_holder_info.vpid))
+    {
+      fixed_page_holder_info.rank = PGBUF_ORDERED_HEAP_HDR;
+    }
+  else
+    {
+      fixed_page_holder_info.rank = PGBUF_ORDERED_HEAP_NORMAL;
+    }
+
+  if (pgbuf_compare_hold_vpid_for_sort (&new_page_holder_info,
+					&fixed_page_holder_info) < 0)
+    {
+      return PGBUF_CONDITIONAL_LATCH;
+    }
+
+  return PGBUF_UNCONDITIONAL_LATCH;
+}
+
+#if !defined(NDEBUG)
+/*
+ * pgbuf_watcher_init_debug () - 
+ *   return: void
+ *   watcher(in/out):
+ *   add(in): if add or reset the "init" field
+ */
+void
+pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file,
+			  const int caller_line, bool add)
+{
+  char *p;
+
+  p = (char *) caller_file + strlen (caller_file);
+  while (p)
+    {
+      if (p == caller_file)
+	{
+	  break;
+	}
+
+      if (*p == '/' || *p == '\\')
+	{
+	  p++;
+	  break;
+	}
+
+      p--;
+    }
+
+  if (add)
+    {
+      char prev_init[256];
+      strncpy (prev_init, watcher->init_at, sizeof (watcher->init_at) - 1);
+      prev_init[sizeof (prev_init) - 1] = '\0';
+      snprintf (watcher->init_at, sizeof (watcher->init_at) - 1,
+		"%s:%d %s", p, caller_line, prev_init);
+    }
+  else
+    {
+      snprintf (watcher->init_at, sizeof (watcher->init_at) - 1,
+		"%s:%d", p, caller_line);
+    }
+}
+#endif

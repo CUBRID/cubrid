@@ -76,6 +76,89 @@
     (pgptr) = NULL; \
   } while (0)
 
+#define pgbuf_ordered_unfix_and_init(thread_p, page, pg_watcher) \
+  do { \
+    if ((pg_watcher) != NULL) \
+      {	\
+	assert ((page) == (pg_watcher)->pgptr); \
+	pgbuf_ordered_unfix ((thread_p), (pg_watcher)); \
+	(pg_watcher)->pgptr = NULL; \
+      } \
+    else \
+      { \
+	pgbuf_unfix_and_init ((thread_p), (page)); \
+      } \
+    (page) = NULL; \
+  } while (0)
+
+#define PGBUF_WATCHER_MAGIC_NUMBER 0x12345678
+#define PGBUG_ORDERED_NULL_HFID (pgbuf_ordered_null_hfid)
+
+#define PGBUF_WATCHER_SET_GROUP(w,hfid) \
+  do { \
+    if ((hfid) == NULL || (hfid)->vfid.volid == NULL_VOLID \
+	|| (hfid)->hpgid == NULL_PAGEID || HFID_IS_NULL (hfid)) \
+      { \
+	VPID_SET_NULL (&((w)->group_id)); \
+      } \
+    else \
+      { \
+	(w)->group_id.volid = (hfid)->vfid.volid; \
+	(w)->group_id.pageid = (hfid)->hpgid; \
+      } \
+  } while (0)
+
+#define PGBUF_WATCHER_RESET_RANK(w,rank) \
+  do { \
+    (w)->initial_rank = (rank); \
+  } while (0)
+
+#if !defined(NDEBUG)
+#define PGBUF_CLEAR_WATCHER(w) \
+  do { \
+    (w)->next = NULL; \
+    (w)->prev = NULL; \
+    (w)->pgptr = NULL; \
+    pgbuf_watcher_init_debug ((w), __FILE__, __LINE__, false); \
+  } while (0)
+
+#define PGBUF_INIT_WATCHER(w,rank,hfid) \
+  do { \
+    PGBUF_CLEAR_WATCHER (w); \
+    (w)->latch_mode = PGBUF_NO_LATCH; \
+    (w)->page_was_unfixed = false; \
+    (w)->initial_rank = (rank); \
+    (w)->curr_rank = PGBUF_ORDERED_RANK_UNDEFINED; \
+    PGBUF_WATCHER_SET_GROUP ((w), (hfid)); \
+    (w)->watched_at[0] = '\0'; \
+    (w)->magic = PGBUF_WATCHER_MAGIC_NUMBER; \
+  } while (0)
+#else
+#define PGBUF_CLEAR_WATCHER(w) \
+  do { \
+    (w)->next = NULL; \
+    (w)->prev = NULL; \
+    (w)->pgptr = NULL; \
+  } while (0)
+
+#define PGBUF_INIT_WATCHER(w,rank,hfid) \
+  do { \
+    PGBUF_CLEAR_WATCHER (w); \
+    (w)->latch_mode = PGBUF_NO_LATCH; \
+    (w)->page_was_unfixed = false; \
+    (w)->initial_rank = (rank); \
+    (w)->curr_rank = PGBUF_ORDERED_RANK_UNDEFINED; \
+    PGBUF_WATCHER_SET_GROUP ((w), (hfid)); \
+  } while (0)
+#endif
+
+#define PGBUF_IS_CLEAN_WATCHER(w) (((w) != NULL && (w)->next == NULL \
+  && (w)->prev == NULL && (w)->pgptr == NULL) ? true : false)
+
+#define PGBUF_IS_ORDERED_PAGETYPE(ptype) \
+  ((ptype) == PAGE_HEAP || (ptype) == PAGE_OVERFLOW)
+
+
 typedef enum
 {
   OLD_PAGE = 0,			/* Fetch page that should be allocated and
@@ -130,6 +213,40 @@ typedef enum
   PGBUF_DEBUG_PAGE_VALIDATION_ALL
 } PGBUF_DEBUG_PAGE_VALIDATION_LEVEL;
 
+/* priority of ordered page fix:
+ * this allows us to keep pages with more priority fixed even when VPID order
+ * would require to make unfix, reorder and fix in VPID order */
+typedef enum
+{
+  PGBUF_ORDERED_HEAP_HDR = 0,
+  PGBUF_ORDERED_HEAP_NORMAL,
+  PGBUF_ORDERED_HEAP_OVERFLOW,
+
+  PGBUF_ORDERED_RANK_UNDEFINED,
+} PGBUF_ORDERED_RANK;
+
+typedef VPID PGBUF_ORDERED_GROUP;
+
+typedef struct pgbuf_watcher PGBUF_WATCHER;
+struct pgbuf_watcher
+{
+  PAGE_PTR pgptr;
+  PGBUF_WATCHER *next;
+  PGBUF_WATCHER *prev;
+  PGBUF_ORDERED_GROUP group_id;	/* VPID of group (HEAP header) */
+  unsigned latch_mode:7;
+  unsigned page_was_unfixed:1;	/* set true if any refix occurs in this page */
+  unsigned initial_rank:4;	/* rank of page at init (before fix) */
+  unsigned curr_rank:4;		/* current rank of page (after fix) */
+#if !defined (NDEBUG)
+  unsigned int magic;
+  char watched_at[128];
+  char init_at[256];
+#endif
+};
+
+extern HFID *pgbuf_ordered_null_hfid;
+
 extern unsigned int pgbuf_hash_vpid (const void *key_vpid,
 				     unsigned int htsize);
 extern int pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2);
@@ -155,6 +272,17 @@ extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
 				 PGBUF_LATCH_MODE requestmode,
 				 PGBUF_LATCH_CONDITION condition,
 				 const char *caller_file, int caller_line);
+#define pgbuf_ordered_fix(thread_p, req_vpid, fetch_mode, requestmode,\
+			  req_watcher) \
+        pgbuf_ordered_fix_debug(thread_p, req_vpid, fetch_mode, requestmode, \
+			        req_watcher, __FILE__, __LINE__)
+
+extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p,
+				    const VPID * req_vpid,
+				    const PAGE_FETCH_MODE fetch_mode,
+				    const int requestmode,
+				    PGBUF_WATCHER * req_watcher,
+				    const char *caller_file, int caller_line);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr, condition) \
 	pgbuf_promote_read_latch_debug(thread_p, pgptr, condition, \
@@ -184,6 +312,15 @@ extern PAGE_PTR pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
 	pgbuf_unfix_debug(thread_p, pgptr, __FILE__, __LINE__)
 extern void pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			       const char *caller_file, int caller_line);
+
+#define pgbuf_ordered_unfix(thread_p, watcher_object) \
+	pgbuf_ordered_unfix_debug(thread_p, watcher_object, \
+				  __FILE__, __LINE__)
+extern void pgbuf_ordered_unfix_debug (THREAD_ENTRY * thread_p,
+				       PGBUF_WATCHER * watcher_object,
+				       const char *caller_file,
+				       int caller_line);
+
 #define pgbuf_invalidate_all(thread_p, volid) \
 	pgbuf_invalidate_all_debug(thread_p, volid, __FILE__, __LINE__)
 extern int pgbuf_invalidate_all_debug (THREAD_ENTRY * thread_p, VOLID volid,
@@ -216,6 +353,17 @@ extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
 				   PGBUF_LATCH_MODE requestmode,
 				   PGBUF_LATCH_CONDITION condition);
 
+#define pgbuf_ordered_fix(thread_p, req_vpid, fetch_mode, requestmode, \
+			  req_watcher) \
+        pgbuf_ordered_fix_release(thread_p, req_vpid, fetch_mode, requestmode, \
+				  req_watcher)
+
+extern int pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p,
+				      const VPID * req_vpid,
+				      const PAGE_FETCH_MODE fetch_mode,
+				      const int requestmode,
+				      PGBUF_WATCHER * watcher_object);
+
 #define pgbuf_promote_read_latch(thread_p, pgptr, condition) \
   pgbuf_promote_read_latch_release(thread_p, pgptr, condition)
 extern int pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p,
@@ -224,6 +372,10 @@ extern int pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p,
 					     condition);
 
 extern void pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+
+extern void pgbuf_ordered_unfix (THREAD_ENTRY * thread_p,
+				 PGBUF_WATCHER * watcher_object);
+
 extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 #endif /* NDEBUG */
@@ -272,6 +424,15 @@ extern int pgbuf_flush_checkpoint_debug (THREAD_ENTRY * thread_p,
 					 int *flushed_page_cnt,
 					 const char *caller_file,
 					 int caller_line);
+
+#define pgbuf_replace_watcher(thread_p, old_watcher, new_watcher) \
+  pgbuf_replace_watcher_debug(thread_p, old_watcher, new_watcher, \
+			       __FILE__, __LINE__)
+extern void pgbuf_replace_watcher_debug (THREAD_ENTRY * thread_p,
+					 PGBUF_WATCHER * old_watcher,
+					 PGBUF_WATCHER * new_watcher,
+					 const char *caller_file,
+					 const int caller_line);
 #else /* NDEBUG */
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
@@ -285,6 +446,10 @@ extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 				   const LOG_LSA * prev_chkpt_redo_lsa,
 				   LOG_LSA * smallest_lsa,
 				   int *flushed_page_cnt);
+
+extern void pgbuf_replace_watcher (THREAD_ENTRY * thread_p,
+				   PGBUF_WATCHER * old_watcher,
+				   PGBUF_WATCHER * new_watcher);
 #endif /* NDEBUG */
 extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 				 int start_offset, int length, void *area,
@@ -338,10 +503,21 @@ extern void pgbuf_dump_if_any_fixed (void);
 
 extern int pgbuf_fix_when_other_is_fixed (THREAD_ENTRY * thread_p,
 					  VPID * vpid_to_fix,
+					  VPID * vpid_fixed,
 					  PAGE_FETCH_MODE fetch_mode,
 					  PGBUF_LATCH_MODE latch_mode,
 					  PAGE_PTR * page_to_fix,
-					  PAGE_PTR * page_fixed);
+					  PAGE_PTR * page_fixed, HFID * hfid);
 
 extern bool pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p);
+extern void pgbuf_ordered_set_dirty_and_free (THREAD_ENTRY * thread_p,
+					      PGBUF_WATCHER * pg_watcher);
+extern int pgbuf_get_condition_for_ordered_fix (const VPID * vpid_new_page,
+						const VPID * vpid_fixed_page,
+						const HFID * hfid);
+#if !defined(NDEBUG)
+extern void pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher,
+				      const char *caller_file,
+				      const int caller_line, bool add);
+#endif
 #endif /* _PAGE_BUFFER_H_ */

@@ -4610,21 +4610,28 @@ int
 catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
 			      bool * need_mvcc_update)
 {
-  PAGE_PTR pgptr = NULL, forward_pgptr = NULL;
   MVCC_REC_HEADER mvcc_rec_header;
   int error = NO_ERROR;
   OID forward_oid;
   INT16 record_type;
+  PGBUF_WATCHER home_page_watcher;
+  PGBUF_WATCHER fwd_page_watcher;
+
+  PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      PGBUG_ORDERED_NULL_HFID);
+  PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      PGBUG_ORDERED_NULL_HFID);
 
   assert (oid != NULL && need_mvcc_update != NULL);
   if (heap_prepare_get_record (thread_p, oid, NULL, &forward_oid,
-			       &pgptr, &forward_pgptr, &record_type)
-      != S_SUCCESS)
+			       &home_page_watcher, &fwd_page_watcher,
+			       &record_type) != S_SUCCESS)
     {
       goto error;
     }
 
-  if (heap_get_mvcc_header (thread_p, oid, &forward_oid, pgptr, forward_pgptr,
+  if (heap_get_mvcc_header (thread_p, oid, &forward_oid,
+			    home_page_watcher.pgptr, fwd_page_watcher.pgptr,
 			    record_type, &mvcc_rec_header) != S_SUCCESS)
     {
       goto error;
@@ -4643,27 +4650,31 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
       *need_mvcc_update = true;
     }
 
-  if (pgptr != NULL)
+  if (home_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      pgbuf_ordered_unfix_and_init (thread_p, home_page_watcher.pgptr,
+				    &home_page_watcher);
     }
 
-  if (forward_pgptr != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, forward_pgptr);
+      pgbuf_ordered_unfix_and_init (thread_p, fwd_page_watcher.pgptr,
+				    &fwd_page_watcher);
     }
 
   return NO_ERROR;
 
 error:
-  if (pgptr != NULL)
+  if (home_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix (thread_p, pgptr);
+      pgbuf_ordered_unfix_and_init (thread_p, home_page_watcher.pgptr,
+				    &home_page_watcher);
     }
 
-  if (forward_pgptr != NULL)
+  if (fwd_page_watcher.pgptr != NULL)
     {
-      pgbuf_unfix (thread_p, forward_pgptr);
+      pgbuf_ordered_unfix_and_init (thread_p, fwd_page_watcher.pgptr,
+				    &fwd_page_watcher);
     }
 
   error = er_errid ();
