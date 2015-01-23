@@ -31,10 +31,17 @@
 
 #if defined(_WIN32) || defined(WINDOWS) || defined(WIN64)
 #define SHLIB_EXPORT_PREFIX "__declspec(dllexport)"
-#define SHLIB_FILE_EXT "dll"
+#define LIB_TZ_NAME "libcubrid_timezones.dll"
+#elif defined(_AIX)
+#define makestring1(x) #x
+#define makestring(x) makestring1(x)
+
+#define SHLIB_EXPORT_PREFIX   ""
+#define LIB_TZ_NAME \
+  "libcubrid_timezones.a(libcubrid_timezones.so." makestring(MAJOR_VERSION) ")"
 #else
 #define SHLIB_EXPORT_PREFIX   ""
-#define SHLIB_FILE_EXT "so"
+#define LIB_TZ_NAME "libcubrid_timezones.so"
 #endif
 
 #define IS_LEAP_YEAR(y)	((((y) & 3) == 0) && ((((y) % 25) != 0) || (((y) & 15) == 0)))
@@ -284,7 +291,7 @@ extern "C"
   extern int tz_check_session_has_geographic_tz (void);
 #if !defined(SERVER_MODE)
   extern int put_timezone_checksum (char *checksum);
-#endif /* SERVER_MODE */
+#endif				/* SERVER_MODE */
 
   extern int check_timezone_compat (const char *client_checksum,
 				    const char *server_checksum,

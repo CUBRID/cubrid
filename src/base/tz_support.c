@@ -214,6 +214,9 @@ tz_load_library (const char *lib_file, void **handle)
   *handle = LoadLibrary (lib_file);
   SetErrorMode (error_mode);
   loading_err = GetLastError ();
+#elif defined(_AIX)
+  dlerror ();			/* Clear any existing error */
+  *handle = dlopen (lib_file, RTLD_NOW | RTLD_MEMBER);
 #else
   dlerror ();			/* Clear any existing error */
   *handle = dlopen (lib_file, RTLD_NOW);
@@ -327,17 +330,13 @@ tz_load (void)
 {
   int err_status = NO_ERROR;
   char lib_file[PATH_MAX] = { 0 };
-  char lib_short_file[PATH_MAX] = { 0 };
 
   if (tz_initialized)
     {
       return err_status;
     }
 
-  snprintf (lib_short_file, sizeof (lib_short_file) - 1,
-	    "libcubrid_timezones.%s", SHLIB_FILE_EXT);
-
-  envvar_libdir_file (lib_file, PATH_MAX, lib_short_file);
+  envvar_libdir_file (lib_file, PATH_MAX, LIB_TZ_NAME);
   err_status = tz_load_library (lib_file, &tz_lib_handle);
 
   if (err_status != NO_ERROR)

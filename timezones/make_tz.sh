@@ -110,13 +110,13 @@ DATABASE_NAME=""
   shift $(($OPTIND - 1))
 
 if [[ "$DATABASE_NAME" = "" && "$TZ_GEN_MODE" = "extend" ]]; then
-error_database_name
+	error_database_name
 fi
 
 if [ $# -gt 0 ]; then
-show_usage
-echo "Parameter count must be zero."
-exit 1
+	show_usage
+	echo "Parameter count must be zero."
+	exit 1
 fi
 
   case $BUILD_TARGET in
@@ -155,7 +155,7 @@ echo "         BUILD_TARGET = $BUILD_TARGET"
 echo "         BUILD_MODE   = $BUILD_MODE"
 echo "         TZ_GEN_MODE  = $TZ_GEN_MODE"
 if [ "$TZ_GEN_MODE" = "extend" ]; then
-echo "         DATABASE_NAME  = $DATABASE_NAME"
+	echo "         DATABASE_NAME  = $DATABASE_NAME"
 fi
 echo ""
 
@@ -174,23 +174,31 @@ current_dir=$CD
 cd $CUBRID/timezones/tzlib
 echo "Compiling timezone library"
 sh build_tz.sh $BUILD_TARGET $BUILD_MODE
-if [ ! -e $CUBRID/timezones/tzlib/libcubrid_timezones.so ]
-then 
-echo "Compile failed! Run \"$CUBRID/timezones/tzlib/build_tz.sh $BUILD_TARGET $BUILD_MODE\" for more details"
-cd $current_dir
-exit 1
+
+LIB_TZ_NAME=""
+SYS=`uname -s`
+if [ "x$SYS" = "xAIX" ]; then
+	LIB_TZ_NAME="libcubrid_timezones.a"
 else
-echo "Done."
-cd $current_dir
+	LIB_TZ_NAME="libcubrid_timezones.so"
 fi
 
-echo "Moving $CUBRID/timezones/tzlib/libcubrid_timezones.so to $CUBRID/lib"
-mv -f $CUBRID/timezones/tzlib/libcubrid_timezones.so $CUBRID/lib/libcubrid_timezones.so
+if [ ! -e $CUBRID/timezones/tzlib/$LIB_TZ_NAME ]; then 
+	echo "Compile failed! Run \"$CUBRID/timezones/tzlib/build_tz.sh $BUILD_TARGET $BUILD_MODE\" for more details"
+	cd $current_dir
+	exit 1
+else
+	echo "Done."
+	cd $current_dir
+fi
+
+echo "Moving $CUBRID/timezones/tzlib/$LIB_TZ_NAME to $CUBRID/lib"
+mv -f $CUBRID/timezones/tzlib/$LIB_TZ_NAME $CUBRID/lib/$LIB_TZ_NAME
 echo "Done."
 
 echo "Removing locale C source file $CUBRID/timezones/tzlib/timezones.c"
 rm -f $CUBRID/timezones/tzlib/timezones.c
 echo "Done."
 
-echo "The timezone library has been created at $CUBRID/lib/libcubrid_timezones.so"
+echo "The timezone library has been created at $CUBRID/lib/$LIB_TZ_NAME"
 exit 0

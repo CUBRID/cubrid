@@ -23,8 +23,12 @@ dist_tzlib_DATA = build_tz.sh $(top_srcdir)/src/base/timezone_lib_common.h
 
 BUILT_SOURCES = timezones.c
 
-timezones.c:
+.PHONY: .FORCE
+
+timezones.c: .FORCE
 	CUBRID=../.. LD_LIBRARY_PATH=../../sa/.libs ../../util/cub_admin gen_tz -i $(top_srcdir)/timezones/tzdata -g new
+
+.FORCE:
 
 lib_LTLIBRARIES = libcubrid_timezones.la
 libcubrid_timezones_la_SOURCES = timezones.c 

@@ -5649,15 +5649,12 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
   int old_tzd_map_count = 0, tzd_map_count = 0;
   int find_idx = -1;
   int cnt;
-  char lib_short_file[PATH_MAX] = { 0 };
   char timezone_library_path[PATH_MAX] = { 0 };
 
   /* First load the data structures from the old library and
    * after that do the update */
 
-  snprintf (lib_short_file, sizeof (lib_short_file) - 1,
-	    "libcubrid_timezones.%s", SHLIB_FILE_EXT);
-  envvar_libdir_file (timezone_library_path, PATH_MAX, lib_short_file);
+  envvar_libdir_file (timezone_library_path, PATH_MAX, LIB_TZ_NAME);
 
   err_status = tz_load_with_library_path (&old_tzd, timezone_library_path);
   if (err_status != NO_ERROR)
