@@ -42,6 +42,7 @@ SYSTEMTAP_DIR = $(top_builddir)/contrib/systemtap
 
 AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ \
 	@SYS_DEFS@ @SERVER_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+AM_LDFLAGS = -version-number @LT_VERSION@
 
 #BUILT_SOURCES = cnvlex.c
 #CLEANFILES = cnvlex.c
@@ -235,7 +236,6 @@ libcubrid_la_SOURCES = \
 	$(ES_SOURCES) \
 	$(EXECUTABLE_SOURCES) \
 	$(SESSION_SOURCES)
-libcubrid_la_LDFLAGS = -version-number @LT_VERSION@
 libcubrid_la_LIBADD = @EXT_LIBS@ @SYS_LIBS@ $(LIBADD_DL)
 libcubrid_la_LINK = $(LINK)
 

@@ -42,6 +42,7 @@ FLEX = flex
 
 AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ \
 	@SYS_DEFS@ @CS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+AM_LDFLAGS = -version-number @LT_VERSION@
 
 #BUILT_SOURCES = cnvlex.c
 #CLEANFILES = cnvlex.c
@@ -285,7 +286,6 @@ libcubridcs_la_SOURCES = \
 	$(ES_SOURCES)
 #	$(API_SOURCES)
 #dist_libcubridcs_la_SOURCES = $(PARSER_DIR)/csql_grammar.g $(EXECUTABLE_DIR)/loader_grammar.g
-libcubridcs_la_LDFLAGS = -version-number @LT_VERSION@
 libcubridcs_la_LIBADD = @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@ $(LIBADD_DL)
 libcubridcs_la_DEPENDENCIES = @CAS_LIB@ @EXT_LIBS@
 libcubridcs_la_LINK = $(LINK)

@@ -43,6 +43,7 @@ FLEX = flex
 
 AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ @JAVA_INC@ \
 	@SYS_DEFS@ @SA_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+AM_LDFLAGS = -version-number @LT_VERSION@
 
 #BUILT_SOURCES = cnvlex.c
 #CLEANFILES = cnvlex.c
@@ -332,7 +333,6 @@ libcubridsa_la_SOURCES = \
 	$(ES_SOURCES) \
 	$(SESSION_SOURCES)
 #	$(API_SOURCES)
-libcubridsa_la_LDFLAGS = -version-number @LT_VERSION@
 libcubridsa_la_LIBADD = @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@ $(LIBADD_DL)
 libcubridsa_la_DEPENDENCIES = @CAS_LIB@ @EXT_LIBS@
 libcubridsa_la_LINK = $(LINK)

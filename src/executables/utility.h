@@ -1518,8 +1518,13 @@ typedef struct _ha_config
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
 #elif defined(_AIX)
-#define LIB_UTIL_CS_NAME                "libcubridcs.a(libcubridcs.so.0)"
-#define LIB_UTIL_SA_NAME                "libcubridsa.a(libcubridsa.so.0)"
+#define makestring1(x) #x
+#define makestring(x) makestring1(x)
+
+#define LIB_UTIL_CS_NAME                \
+  "libcubridcs.a(libcubridcs.so." makestring(MAJOR_VERSION) ")"
+#define LIB_UTIL_SA_NAME                \
+  "libcubridsa.a(libcubridsa.so." makestring(MAJOR_VERSION) ")"
 #else
 #define LIB_UTIL_CS_NAME                "libcubridcs.so"
 #define LIB_UTIL_SA_NAME                "libcubridsa.so"
