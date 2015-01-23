@@ -905,6 +905,13 @@ struct rvfun RV_fun[] = {
    es_rv_nop,
    NULL, NULL},
 
+  {RVHF_UPDATE_NOTIFY_VACUUM,
+   "RVHF_UPDATE_NOTIFY_VACUUM",
+   heap_rv_undoredo_update,
+   heap_rv_undoredo_update,
+   log_rv_dump_char,
+   log_rv_dump_char},
+
   {RVBO_DELVOL,
    "RVBO_DELVOL",
    NULL,

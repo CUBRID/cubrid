@@ -1458,7 +1458,8 @@ enum log_repl_flush
    || ((rcvindex) == RVHF_MVCC_DELETE_RELOCATION) \
    || ((rcvindex) == RVHF_MVCC_DELETE_RELOCATED) \
    || ((rcvindex) == RVHF_MVCC_INSERT) \
-   || ((rcvindex) == RVHF_MVCC_MODIFY_RELOCATION_LINK))
+   || ((rcvindex) == RVHF_MVCC_MODIFY_RELOCATION_LINK) \
+   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM))
 
 /* Is log record for a b-tree MVCC operation */
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \

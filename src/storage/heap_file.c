@@ -7944,8 +7944,21 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  addr.pgptr = home_page_watcher.pgptr;
 	  recdes->type = REC_HOME;
 
-	  log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
-				      &home_recdes, recdes);
+	  if (type == REC_ASSIGN_ADDRESS
+	      && !heap_is_mvcc_disabled_for_class (class_oid))
+	    {
+	      /* Vacuum is not notified when an address is assigned, but it
+	       * must be notified now that object data is finally inserted.
+	       */
+	      log_append_undoredo_recdes (thread_p, RVHF_UPDATE_NOTIFY_VACUUM,
+					  &addr, &home_recdes, recdes);
+	    }
+	  else
+	    {
+	      /* Update in place. */
+	      log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
+					  &home_recdes, recdes);
+	    }
 
 	  sp_success = spage_update (thread_p, home_page_watcher.pgptr,
 				     oid->slotid, recdes);
