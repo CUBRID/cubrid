@@ -12800,10 +12800,17 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
       break;
     }
 
-  if (curr_page_watcher.pgptr != NULL
-      && (scan_cache == NULL || !scan_cache->cache_last_fix_page))
+  if (curr_page_watcher.pgptr != NULL)
     {
-      pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
+      if (scan_cache == NULL || !scan_cache->cache_last_fix_page)
+	{
+	  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
+	}
+      else
+	{
+	  pgbuf_replace_watcher (thread_p, &curr_page_watcher,
+				 &scan_cache->page_watcher);
+	}
     }
 
   return scan;

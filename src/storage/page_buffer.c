@@ -10519,7 +10519,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	      assert (pg_watcher->curr_rank >= PGBUF_ORDERED_HEAP_HDR
 		      && pg_watcher->curr_rank <
 		      PGBUF_ORDERED_RANK_UNDEFINED);
-	      assert (!VPID_ISNULL (&pg_watcher->group_id));
+	      if (VPID_ISNULL (&pg_watcher->group_id)
+		  || VPID_ISNULL (&req_watcher->group_id))
+		{
+		  assert (VPID_EQ (&pg_watcher->group_id,
+				   &req_watcher->group_id));
+		}
 #endif
 	      if (page_rank == PGBUF_ORDERED_RANK_UNDEFINED)
 		{
