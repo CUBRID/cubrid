@@ -27,7 +27,7 @@ show_usage ()
   echo "                 a new C file containing all timezone names is generated,"
   echo "                 and it must be included in CUBRID src before the new"
   echo "                 timezone library can be used."
-  echo "	-d arg  Set the database name used when in extend mode"
+  echo "    -d arg  Set the database name used when in extend mode"
   echo "    -? | -h Show this help message and exit"
   echo ""
   echo " EXAMPLES"
@@ -38,30 +38,6 @@ show_usage ()
   echo ""
 }
 
-error_target()
-{
-	show_usage
-	echo ""
-	echo "Target already set to $BUILD_TARGET"
-	exit 1
-}
-
-error_build_mode()
-{
-	show_usage
-	echo ""
-	echo "Build mode already set to $BUILD_MODE"
-	exit 1
-}
-
-error_tz_gen_mode()
-{
-	show_usage
-	echo ""
-	echo "Generation mode already set to $TZ_GEN_MODE"
-	exit 1
-}
-
 error_database_name()
 {
 	show_usage
@@ -70,44 +46,21 @@ error_database_name()
 	exit 1
 }
 
-error_param()
-{
-	show_usage
-	echo "Invalid parameter "
-	exit 1
-}
-
 BUILD_TARGET=32bit
-BUILD_MODE=debug
+BUILD_MODE=release
 TZ_GEN_MODE=new
 DATABASE_NAME=""
 
-  while getopts ":t:m:g:d:h" opt; do
-    case $opt in
-      t ) if [ "$BUILD_TARGET" = "32bit" ]; then
-			BUILD_TARGET="$OPTARG"
-		  else
-		    error_target
-		  fi			
-	  ;;
-      m ) if [ "$BUILD_MODE" = "debug" ]; then
-			BUILD_MODE="$OPTARG"
-		  else
-		    error_build_mode
-		  fi
-	   ;;
-	  g ) if [ "$TZ_GEN_MODE" = "new" ]; then
-			TZ_GEN_MODE="$OPTARG"
-		  else
-		    error_tz_gen_mode
-		  fi
-	   ;;
-	  d ) DATABASE_NAME="$OPTARG"
-	   ;;
-      h|\?|* ) show_usage; exit 1;;
-    esac
-  done
-  shift $(($OPTIND - 1))
+while getopts ":t:m:g:d:h" opt; do
+	case $opt in
+		t ) BUILD_TARGET="$OPTARG";;
+		m ) BUILD_MODE="$OPTARG";;
+		g ) TZ_GEN_MODE="$OPTARG";;
+		d ) DATABASE_NAME="$OPTARG";;
+		h|\?|* ) show_usage; exit 1;;
+	esac
+done
+shift $(($OPTIND - 1))
 
 if [[ "$DATABASE_NAME" = "" && "$TZ_GEN_MODE" = "extend" ]]; then
 	error_database_name
@@ -119,36 +72,36 @@ if [ $# -gt 0 ]; then
 	exit 1
 fi
 
-  case $BUILD_TARGET in
-    i386|x86|32|32bit|.) BUILD_TARGET=32bit;;
-    x86_64|x64|64|64bit) BUILD_TARGET=64bit;;
-    *) 
-	  show_usage
-	  echo "Target [$BUILD_TARGET] is not valid target"
-	  exit 1
-	;;
-  esac
+case $BUILD_TARGET in
+	i386|x86|32|32bit|.) BUILD_TARGET=32bit;;
+	x86_64|x64|64|64bit) BUILD_TARGET=64bit;;
+	*)
+		show_usage
+		echo "Target [$BUILD_TARGET] is not valid target"
+		exit 1
+		;;
+esac
 
-  case $BUILD_MODE in
-    release|.) BUILD_MODE="release";;
-	debug);;
-    *) 
-	  show_usage
-	  echo "Mode [$BUILD_MODE] is not valid mode"
-	  exit 1
-	;;
-  esac
-  
-  case $TZ_GEN_MODE in
-    new) TZ_GEN_MODE=new;;
+case $BUILD_MODE in
+	release|.) BUILD_MODE="release";;
+	debug) ;;
+	*)
+		show_usage
+		echo "Mode [$BUILD_MODE] is not valid mode"
+		exit 1
+		;;
+esac
+
+case $TZ_GEN_MODE in
+	new) TZ_GEN_MODE=new;;
 	update) TZ_GEN_MODE=update;;
 	extend) TZ_GEN_MODE=extend;;
-    *) 
-	  show_usage
-	  echo "Generation mode [$TZ_GEN_MODE] is not valid"
-	  exit 1
-	;;
-  esac
+	*)
+		show_usage
+		echo "Generation mode [$TZ_GEN_MODE] is not valid"
+		exit 1
+		;;
+esac
 
 echo " Running $APP_NAME with parameters:"
 echo "         BUILD_TARGET = $BUILD_TARGET"
