@@ -826,7 +826,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       if (er_errid () == NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1,
 		  "Failed to initialize timezone module");
 	}
       error_code = ER_TZ_LOAD_ERROR;

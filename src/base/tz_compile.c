@@ -5659,7 +5659,6 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
   err_status = tz_load_with_library_path (&old_tzd, timezone_library_path);
   if (err_status != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
       goto exit;
     }
 

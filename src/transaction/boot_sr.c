@@ -2731,7 +2731,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
     {
       if (er_errid () == NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1,
 		  "Failed to initialize timezone module");
 	}
       goto exit_on_error;
@@ -3333,7 +3333,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       if (er_errid () == NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1,
 		  "Failed to initialize timezone module");
 	}
       error_code = ER_TZ_LOAD_ERROR;
@@ -4085,7 +4085,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
     {
       if (er_errid () == NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1,
 		  "Failed to initialize timezone module");
 	}
       return NULL_TRAN_INDEX;

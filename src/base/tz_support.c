@@ -176,6 +176,8 @@ static const int days_up_to_month[] =
     v = (SYM_TYPE) TZ_GET_SYM_ADDR (lh, SYM_NAME);			    \
     if (v == NULL)							    \
       {									    \
+	strncpy (sym_name, (SYM_NAME), sizeof (sym_name) - 1);		    \
+	sym_name[sizeof (sym_name) - 1] = '\0';				    \
 	goto error_loading_symbol;					    \
       }									    \
   } while (0)
@@ -248,14 +250,15 @@ tz_load_library (const char *lib_file, void **handle)
 		" Unable to load %s !\n %s", lib_file, error);
 #endif
       printf ("%s\n", err_msg);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1, err_msg);
     }
 
   return err_status;
 }
 
 /*
- * tz_load_from_lib() - uses the handle to load the data from the timezone
- *			shared library into tzd
+ * tz_load_data_from_lib() - uses the handle to load the data from the
+ *                           timezone shared library into tzd.
  * Returns: 0 (NO_ERROR) if success, -1 otherwise
  * tzd(out): TZ_DATA parameter where to load the data into
  * lib_handle(in): shared library/object handle
@@ -313,11 +316,12 @@ tz_load_data_from_lib (TZ_DATA * tzd, void *lib_handle)
 
 error_loading_symbol:
   snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Cannot load symbol %s from the timezone library file!",
+	    "Cannot load symbol '%s' from the timezone library file!",
 	    sym_name);
-  printf ("%s", err_msg);
+  printf ("%s\n", err_msg);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1, err_msg);
 
-  return -1;
+  return ER_TZ_LOAD_ERROR;
 }
 
 /*
@@ -341,23 +345,29 @@ tz_load (void)
 
   if (err_status != NO_ERROR)
     {
-      goto exit;
+      goto error_exit;
     }
 
   err_status = tz_load_data_from_lib (&timezone_data, tz_lib_handle);
   if (err_status != NO_ERROR)
     {
-      goto exit;
+      goto error_exit;
     }
 
   tz_initialized = 1;
 
-exit:
-  if (err_status != NO_ERROR)
+  return NO_ERROR;
+
+error_exit:
+  assert (er_errid () != NO_ERROR);
+
+  if (er_errid () == NO_ERROR)
     {
+      err_status = ER_TZ_LOAD_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR,
 	      1, lib_file);
     }
+
   return err_status;
 }
 
@@ -3537,7 +3547,8 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr,
   if (tzd == NULL)
     {
       er_status = ER_TZ_LOAD_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 1,
+	      "timezone lib not loaded");
       return er_status;
     }
 
@@ -4623,21 +4634,27 @@ tz_load_with_library_path (TZ_DATA * tzd, const char *timezone_library_path)
   err_status = tz_load_library (timezone_library_path, &tz_lib_handle);
   if (err_status != NO_ERROR)
     {
-      goto exit;
+      goto error_exit;
     }
 
   err_status = tz_load_data_from_lib (tzd, tz_lib_handle);
   if (err_status != NO_ERROR)
     {
-      goto exit;
+      goto error_exit;
     }
 
-exit:
-  if (err_status != NO_ERROR)
+  return NO_ERROR;
+
+error_exit:
+  assert (er_errid () != NO_ERROR);
+
+  if (er_errid () == NO_ERROR)
     {
+      err_status = ER_TZ_LOAD_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR,
 	      1, timezone_library_path);
     }
+
   return err_status;
 }
 
