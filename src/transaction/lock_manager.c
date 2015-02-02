@@ -161,20 +161,12 @@ extern int lock_Comp[13][13];
 #define SET_EMULATE_THREAD_WITH_LOCK_ENTRY(th,lock_entry) \
   do \
     { \
+      THREAD_ENTRY *locked_thread_entry_p; \
       assert ((th)->emulate_tid == ((pthread_t) 0)); \
-      if ((lock_entry)->thrd_entry != NULL)  \
+      locked_thread_entry_p = thread_find_entry_by_tran_index ((lock_entry)->tran_index); \
+      if (locked_thread_entry_p != NULL) \
 	{ \
-	  (th)->emulate_tid = (lock_entry)->thrd_entry->tid; \
-	} \
-      else \
-	{ \
-	  THREAD_ENTRY *locked_thread_entry_p; \
-	  locked_thread_entry_p = thread_find_entry_by_tran_index_except_me \
-				  ((lock_entry)->tran_index); \
-	  if (locked_thread_entry_p != NULL) \
-	    { \
-	      (th)->emulate_tid = locked_thread_entry_p->tid; \
-	    } \
+	  (th)->emulate_tid = locked_thread_entry_p->tid; \
 	} \
     } \
    while (0)

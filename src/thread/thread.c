@@ -137,7 +137,6 @@ static int thread_First_vacuum_worker_thread_index = -1;
 static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
 
-static THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
 static void thread_stop_oob_handler_thread ();
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR *
@@ -1420,7 +1419,7 @@ thread_find_entry_by_tran_index_except_me (int tran_index)
  *   return:
  *   tran_index(in):
  */
-static THREAD_ENTRY *
+THREAD_ENTRY *
 thread_find_entry_by_tran_index (int tran_index)
 {
   THREAD_ENTRY *thread_p;

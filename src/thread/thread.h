@@ -431,6 +431,7 @@ extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void thread_set_comm_request_id (unsigned int rid);
 #endif
+extern THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
 extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int
 								tran_index);
 extern int thread_get_current_entry_index (void);
