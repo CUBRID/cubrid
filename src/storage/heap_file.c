@@ -191,7 +191,7 @@ static int rv;
   while (0)
 
 #define HEAP_SCAN_ORDERED_HFID(scan) \
-  (((scan) != NULL) ? (&(scan)->hfid) : (PGBUG_ORDERED_NULL_HFID))
+  (((scan) != NULL) ? (&(scan)->hfid) : (PGBUF_ORDERED_NULL_HFID))
 
 typedef enum
 {
@@ -9738,7 +9738,7 @@ exit_on_error:
   scan_cache->page_latch = NULL_LOCK;
   scan_cache->cache_last_fix_page = false;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher),
-		      PGBUF_ORDERED_RANK_UNDEFINED, PGBUG_ORDERED_NULL_HFID);
+		      PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
@@ -10042,7 +10042,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache)
   scan_cache->page_latch = S_LOCK;
   scan_cache->cache_last_fix_page = true;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL,
-		      PGBUG_ORDERED_NULL_HFID);
+		      PGBUF_ORDERED_NULL_HFID);
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
@@ -13556,7 +13556,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
   bool old_check_interrupt;
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL,
-		      PGBUG_ORDERED_NULL_HFID);
+		      PGBUF_ORDERED_NULL_HFID);
 
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 

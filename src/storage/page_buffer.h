@@ -92,7 +92,7 @@
   } while (0)
 
 #define PGBUF_WATCHER_MAGIC_NUMBER 0x12345678
-#define PGBUG_ORDERED_NULL_HFID (pgbuf_ordered_null_hfid)
+#define PGBUF_ORDERED_NULL_HFID (pgbuf_ordered_null_hfid)
 
 #define PGBUF_WATCHER_SET_GROUP(w,hfid) \
   do { \

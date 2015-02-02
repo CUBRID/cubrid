@@ -9840,7 +9840,7 @@ static int
 pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
 				   PGBUF_BCB * bufptr, int *flushed_pages)
 {
-#define PGBUG_PAGES_COUNT_THRESHOLD 4
+#define PGBUF_PAGES_COUNT_THRESHOLD 4
   int error = NO_ERROR, i;
   LOG_LSA log_newest_oldest_unflush_lsa;
   VPID first_vpid, vpid;
@@ -10047,7 +10047,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
 	  dirty_pages_cnt++;
 	}
 
-      if (helper->npages > PGBUG_PAGES_COUNT_THRESHOLD
+      if (helper->npages > PGBUF_PAGES_COUNT_THRESHOLD
 	  && ((2 * dirty_pages_cnt) < helper->npages))
 	{
 	  /* too many nondirty pages */
@@ -10173,7 +10173,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
   helper->npages = 0;
 
   return error;
-#undef PGBUG_PAGES_COUNT_THRESHOLD
+#undef PGBUF_PAGES_COUNT_THRESHOLD
 }
 
 /*

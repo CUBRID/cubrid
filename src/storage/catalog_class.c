@@ -4618,9 +4618,9 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
   PGBUF_WATCHER fwd_page_watcher;
 
   PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
-		      PGBUG_ORDERED_NULL_HFID);
+		      PGBUF_ORDERED_NULL_HFID);
   PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
-		      PGBUG_ORDERED_NULL_HFID);
+		      PGBUF_ORDERED_NULL_HFID);
 
   assert (oid != NULL && need_mvcc_update != NULL);
   if (heap_prepare_get_record (thread_p, oid, NULL, &forward_oid,
