@@ -540,6 +540,8 @@ extern void *thread_worker (void *);
 
 extern int thread_first_vacuum_worker_thread_index (void);
 
+extern bool thread_is_auto_volume_expansion_thread_available (void);
+
 #endif /* SERVER_MODE */
 
 #endif /* _THREAD_H_ */

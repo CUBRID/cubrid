@@ -1221,6 +1221,14 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
 #endif
   VOLID volid;
   DBDEF_VOL_EXT_INFO ext_info;
+  bool can_use_auto_expansion;
+
+#if !defined (SERVER_MODE)
+  can_use_auto_expansion = false;
+#else
+  can_use_auto_expansion =
+    thread_is_auto_volume_expansion_thread_available ();
+#endif
 
   ext_info.max_npages =
     (DKNPAGES) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / IO_PAGESIZE);
@@ -1245,79 +1253,123 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
   ext_info.overwrite = false;
   ext_info.max_writesize_in_sec = 0;
 
-#if defined (SERVER_MODE)
-  ext_info.extend_npages =
-    CEIL_PTVDIV (min_npages, AUTO_ADD_VOL_EXPAND_NPAGES) *
-    AUTO_ADD_VOL_EXPAND_NPAGES;
-
-retry:
-  volid = NULL_VOLID;
-
-  pthread_mutex_lock (&boot_Auto_addvol_job.lock);
-
-  if (boot_Auto_addvol_job.ext_info.extend_npages > 0)
+  if (can_use_auto_expansion)
     {
-      /* add_vol_job is already running */
-      int allocating_npages;
+      /* SERVER_MODE and auto_volume_expansion thread is available */
+#if defined (SERVER_MODE)
+      ext_info.extend_npages =
+	CEIL_PTVDIV (min_npages, AUTO_ADD_VOL_EXPAND_NPAGES) *
+	AUTO_ADD_VOL_EXPAND_NPAGES;
 
-      assert_release (boot_Auto_addvol_job.ext_info.purpose ==
-		      DISK_PERMVOL_GENERIC_PURPOSE);
+    retry:
+      volid = NULL_VOLID;
+
+      pthread_mutex_lock (&boot_Auto_addvol_job.lock);
+
+      if (boot_Auto_addvol_job.ext_info.extend_npages > 0)
+	{
+	  /* add_vol_job is already running */
+	  int allocating_npages;
+
+	  assert_release (boot_Auto_addvol_job.ext_info.purpose ==
+			  DISK_PERMVOL_GENERIC_PURPOSE);
+
+	  if (wait)
+	    {
+	      allocating_npages = boot_Auto_addvol_job.ext_info.extend_npages;
+
+	      pthread_cond_wait (&boot_Auto_addvol_job.cond,
+				 &boot_Auto_addvol_job.lock);
+
+	      volid = boot_Auto_addvol_job.ret_volid;
+
+	      if (volid != NULL_VOLID && allocating_npages < min_npages)
+		{
+		  /* allocated size is not enough */
+		  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
+		  goto retry;
+		}
+	    }
+
+	  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
+
+	  /* if wait flag is false, NULL_VOLID will be returned */
+	  return volid;
+	}
+
+      if (thread_auto_volume_expansion_thread_is_running ())
+	{
+	  /* volume_expansion_thread is active, but auto_addvol_job is empty.
+	   * Maybe, the last addvol_job was just finished.
+	   * Retry add job.
+	   */
+	  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
+	  thread_sleep (10);
+	  goto retry;
+	}
+
+      /* Register current job to boot_Auto_addvol_job */
+      memcpy (&boot_Auto_addvol_job.ext_info, &ext_info,
+	      sizeof (DBDEF_VOL_EXT_INFO));
+
+      if (disk_cache_get_auto_extend_volid (thread_p) == NULL_VOLID)
+	{
+	  /* New volume must be added */
+	  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
+
+	  /* add new volume with minimum pages */
+	  new_vol_npages =
+	    1 + disk_get_num_overhead_for_newvol (ext_info.max_npages);
+
+	  ext_info.extend_npages =
+	    CEIL_PTVDIV (new_vol_npages, AUTO_ADD_VOL_EXPAND_NPAGES) *
+	    AUTO_ADD_VOL_EXPAND_NPAGES;
+
+	  /* Do not check interrupt while volume extension */
+	  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  volid = boot_xadd_volume_extension (thread_p, &ext_info);
+	  thread_set_check_interrupt (thread_p, old_check_interrupt);
+
+	  if (volid != NULL_VOLID)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		      ER_BO_NOTIFY_AUTO_VOLEXT, 2,
+		      fileio_get_volume_label (volid, PEEK),
+		      ext_info.extend_npages);
+	    }
+	  else
+	    {
+	      /* just continue to expansion, although there was an error.
+	       * In this case, auto expansion thread will detect this situation
+	       * and set ret_volid to NULL_VOLID.
+	       */
+	    }
+
+	  pthread_mutex_lock (&boot_Auto_addvol_job.lock);
+	}
+
+      /* expand volume */
+      (void) thread_wakeup_auto_volume_expansion_thread ();
 
       if (wait)
 	{
-	  allocating_npages = boot_Auto_addvol_job.ext_info.extend_npages;
-
 	  pthread_cond_wait (&boot_Auto_addvol_job.cond,
 			     &boot_Auto_addvol_job.lock);
-
 	  volid = boot_Auto_addvol_job.ret_volid;
-
-	  if (volid != NULL_VOLID && allocating_npages < min_npages)
-	    {
-	      /* allocated size is not enough */
-	      pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-	      goto retry;
-	    }
 	}
 
       pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-
-      /* if wait flag is false, NULL_VOLID will be returned */
-      return volid;
+#else
+      /* cannot be here */
+      assert (false);
+#endif
     }
-
-  if (thread_auto_volume_expansion_thread_is_running ())
+  else
     {
-      /* volume_expansion_thread is active, but auto_addvol_job is empty.
-       * Maybe, the last addvol_job was just finished.
-       * Retry add job.
-       */
-      pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-      thread_sleep (10);
-      goto retry;
-    }
+      /* SA_MODE or auto_volume_expansion thread is unavailable */
+      ext_info.extend_npages = ext_info.max_npages;
 
-  /* Register current job to boot_Auto_addvol_job */
-  memcpy (&boot_Auto_addvol_job.ext_info, &ext_info,
-	  sizeof (DBDEF_VOL_EXT_INFO));
-
-  if (disk_cache_get_auto_extend_volid (thread_p) == NULL_VOLID)
-    {
-      /* New volume must be added */
-      pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-
-      /* add new volume with minimum pages */
-      new_vol_npages =
-	1 + disk_get_num_overhead_for_newvol (ext_info.max_npages);
-
-      ext_info.extend_npages =
-	CEIL_PTVDIV (new_vol_npages, AUTO_ADD_VOL_EXPAND_NPAGES) *
-	AUTO_ADD_VOL_EXPAND_NPAGES;
-
-      /* Do not check interrupt while volume extension */
-      old_check_interrupt = thread_set_check_interrupt (thread_p, false);
       volid = boot_xadd_volume_extension (thread_p, &ext_info);
-      thread_set_check_interrupt (thread_p, old_check_interrupt);
 
       if (volid != NULL_VOLID)
 	{
@@ -1326,41 +1378,7 @@ retry:
 		  fileio_get_volume_label (volid, PEEK),
 		  ext_info.extend_npages);
 	}
-      else
-	{
-	  /* just continue to expansion, although there was an error.
-	   * In this case, auto expansion thread will detect this situation
-	   * and set ret_volid to NULL_VOLID.
-	   */
-	}
-
-      pthread_mutex_lock (&boot_Auto_addvol_job.lock);
     }
-
-  /* expand volume */
-  (void) thread_wakeup_auto_volume_expansion_thread ();
-
-  if (wait)
-    {
-      pthread_cond_wait (&boot_Auto_addvol_job.cond,
-			 &boot_Auto_addvol_job.lock);
-      volid = boot_Auto_addvol_job.ret_volid;
-    }
-
-  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-
-#else /* !SERVER_MODE */
-  ext_info.extend_npages = ext_info.max_npages;
-
-  volid = boot_xadd_volume_extension (thread_p, &ext_info);
-
-  if (volid != NULL_VOLID)
-    {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_NOTIFY_AUTO_VOLEXT, 2,
-	      fileio_get_volume_label (volid, PEEK), ext_info.extend_npages);
-    }
-#endif /* !SERVER_MODE */
 
   return volid;
 }

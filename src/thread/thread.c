@@ -4077,6 +4077,20 @@ thread_auto_volume_expansion_thread_is_running (void)
 }
 
 /*
+ * thread_is_auto_volume_expansion_thread_available () -
+ *   return:
+ *
+ *   NOTE: This is used in boot_add_auto_volume_extension()
+ *         to tell whether the thread is working or not.
+ *         When restart server, in log_recovery phase, the thread may be unavailable.
+ */
+bool
+thread_is_auto_volume_expansion_thread_available (void)
+{
+  return thread_Auto_volume_expansion_thread.is_available;
+}
+
+/*
  *  thread_wakeup_auto_volume_expansion_thread() -
  *   return:
  */
