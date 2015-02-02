@@ -1434,16 +1434,32 @@ try_again:
 
   buf_lock_acquired = false;
   bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
-#if defined(ENABLE_SYSTEMTAP)
   if (bufptr != NULL)
     {
+#if defined (ENABLE_SYSTEMTAP)
       CUBRID_PGBUF_HIT ();
       pgbuf_hit = true;
-    }
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (bufptr == NULL)
+      if (fetch_mode == NEW_PAGE)
+	{
+	  /* Fix a page as NEW_PAGE, 
+	   * when oldest_unflush_lsa of the page is not NULL_LSA, it should be dirty. 
+	   */
+	  assert (LSA_ISNULL (&bufptr->oldest_unflush_lsa) || bufptr->dirty);
+
+	  /* The page may be invalidated and has been remained in the buffer and
+	   * it is going to be used again as a new page.
+	   * We need to reset dirty flag and its oldest_unflush_lsa.
+	   */
+	  bufptr->dirty = false;
+	  LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+	}
+    }
+  else
     {
+      /* (bufptr == NULL) */
+
       /* The page is not found in the hash chain
        * the caller is holding hash_anchor->hash_mutex
        */

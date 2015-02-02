@@ -9649,7 +9649,18 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
   else
     {
-      pgbuf_unfix_and_init (thread_p, ovfl_page);
+      /* Even though the page is not actually modified and about to be deallocated, 
+       * mark it as dirty since an undo log (RVBT_KEYVAL_DEL) was written.
+       * The undo log may change oldest_unflush_lsa of the page. 
+       * If the page remains non-dirty with the oldest_unflush_lsa, 
+       * it may be re-allocated and the new user will set it as dirty 
+       * during initialization. This may drive an inconsistent page status,
+       * when its oldest_unflush_lsa is older than the last checkpoint.
+       * Checkpoint regards the page has been remained as unflushed 
+       * since the last checkpoint and hits an assertion.
+       */
+      pgbuf_set_dirty (thread_p, ovfl_page, FREE);
+      ovfl_page = NULL;
 
       ret = file_dealloc_page (thread_p, &btid->sys_btid->vfid, ovfl_vpid);
       if (ret != NO_ERROR)
