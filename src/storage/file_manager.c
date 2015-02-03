@@ -10259,6 +10259,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
   FILE_RECV_SHIFT_SECTOR_TABLE recv_undo;
   FILE_RECV_SHIFT_SECTOR_TABLE recv_redo;
   int ret = NO_ERROR;
+  INT16 redo_offset;
 
   (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
   (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
@@ -10300,6 +10301,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 
   CAST_TO_PAGEARRAY (to_aid_ptr, to_pgptr, ftb_offset);
   CAST_TO_PAGEARRAY (to_outptr, to_pgptr, DB_PAGESIZE);
+  redo_offset = ftb_offset;
 
   /* Find the location for the from part. */
   ret = file_find_limits (from_pgptr, allocset, &from_aid_ptr, &from_outptr,
@@ -10389,9 +10391,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 	     page.. no just this step */
 
 	  addr.pgptr = to_pgptr;
-	  addr.offset = (VPID_EQ (&to_vpid, &allocset->start_sects_vpid)
-			 ? allocset->start_sects_offset
-			 : SSIZEOF (FILE_FTAB_CHAIN));
+	  addr.offset = redo_offset;
 	  CAST_TO_PAGEARRAY (to_aid_ptr, to_pgptr, addr.offset);
 	  log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr, length,
 				to_aid_ptr);
@@ -10400,17 +10400,10 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 	  length = 0;
 
 	  /* Get the next to page */
-	  if (VPID_EQ (&to_vpid, &allocset->end_sects_vpid))
+	  ret = file_ftabvpid_next (fhdr, to_pgptr, &to_vpid);
+	  if (ret != NO_ERROR)
 	    {
-	      break;
-	    }
-	  else
-	    {
-	      ret = file_ftabvpid_next (fhdr, to_pgptr, &to_vpid);
-	      if (ret != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
+	      goto exit_on_error;
 	    }
 
 	  pgbuf_unfix_and_init (thread_p, to_pgptr);
@@ -10425,6 +10418,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 
 	  CAST_TO_PAGEARRAY (to_aid_ptr, to_pgptr, sizeof (FILE_FTAB_CHAIN));
 	  CAST_TO_PAGEARRAY (to_outptr, to_pgptr, DB_PAGESIZE);
+	  redo_offset = sizeof (FILE_FTAB_CHAIN);
 	}
     }
 
@@ -10464,8 +10458,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
   /* Log the last portion of the to page that was changed */
 
   addr.pgptr = to_pgptr;
-  addr.offset = (VPID_EQ (&to_vpid, &allocset->start_sects_vpid)
-		 ? allocset->start_sects_offset : SSIZEOF (FILE_FTAB_CHAIN));
+  addr.offset = redo_offset;
   CAST_TO_PAGEARRAY (to_aid_ptr, to_pgptr, addr.offset);
   log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr, length, to_aid_ptr);
 
