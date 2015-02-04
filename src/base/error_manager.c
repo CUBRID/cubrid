@@ -1230,6 +1230,8 @@ er_start (void)
 void
 er_final (bool do_global_final)
 {
+  FILE *fh;
+
   if (do_global_final == false)
     {
       THREAD_ENTRY *th_entry;
@@ -1276,15 +1278,17 @@ er_final (bool do_global_final)
 	{
 	  if (er_Msglog_fh != NULL && er_Msglog_fh != stderr)
 	    {
-	      (void) fclose (er_Msglog_fh);
+	      fh = er_Msglog_fh;
 	      er_Msglog_fh = NULL;
+	      (void) fclose (fh);
 	    }
 	  logfile_Opened = false;
 
 	  if (er_Accesslog_fh != NULL && er_Accesslog_fh != stderr)
 	    {
-	      (void) fclose (er_Accesslog_fh);
+	      fh = er_Accesslog_fh;
 	      er_Accesslog_fh = NULL;
+	      (void) fclose (fh);
 	    }
 
 	}
@@ -1320,6 +1324,7 @@ void
 er_final (void)
 {
   int i;
+  FILE *fh;
 
   er_event_final ();
 
@@ -1328,14 +1333,16 @@ er_final (void)
       er_stack_clear ();
       if (er_Msglog_fh != NULL && er_Msglog_fh != stderr)
 	{
-	  (void) fclose (er_Msglog_fh);
+	  fh = er_Msglog_fh;
 	  er_Msglog_fh = NULL;
+	  (void) fclose (fh);
 	}
 
       if (er_Accesslog_fh != NULL && er_Accesslog_fh != stderr)
 	{
-	  (void) fclose (er_Accesslog_fh);
+	  fh = er_Accesslog_fh;
 	  er_Accesslog_fh = NULL;
+	  (void) fclose (fh);
 	}
 
       for (i = 0; i < (int) DIM (er_Fmt_list); i++)
@@ -1867,14 +1874,12 @@ er_log (int err_id)
       log_fh = &er_Msglog_fh;
     }
 
-#if defined (WINDOWS)
   /* Check for an invalid output file    */
   /* (stderr is not valid under Windows and is set to NULL) */
   if (log_fh == NULL || *log_fh == NULL)
     {
       return;
     }
-#endif /* WINDOWS */
 
   /* Make sure that we have a valid error identifier */
 

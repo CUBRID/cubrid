@@ -243,6 +243,8 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   rep = (DISK_REPR *) malloc (sizeof (DISK_REPR));
   if (rep == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (DISK_REPR));
       goto error;
     }
 
@@ -276,6 +278,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       rep->fixed = (DISK_ATTR *) malloc (sizeof (DISK_ATTR) * rep->n_fixed);
       if (rep->fixed == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DISK_ATTR) * rep->n_fixed);
 	  goto error;
 	}
     }
@@ -286,6 +291,8 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	(DISK_ATTR *) malloc (sizeof (DISK_ATTR) * rep->n_variable);
       if (rep->variable == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (DISK_ATTR) * rep->n_variable);
 	  goto error;
 	}
     }
@@ -332,6 +339,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	    (BTREE_STATS *) malloc (sizeof (BTREE_STATS) * n_btstats);
 	  if (att->bt_stats == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (BTREE_STATS) * n_btstats);
 	      goto error;
 	    }
 
@@ -387,7 +397,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 				PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (root == NULL)
 		{
-		  continue;
+		  goto error;
 		}
 
 	      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
@@ -396,7 +406,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      if (root_header == NULL)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
-		  continue;
+		  goto error;
 		}
 
 	      /* construct BTID_INT structure */
@@ -406,7 +416,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 						&btid_int) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
-		  continue;
+		  goto error;
 		}
 
 	      pgbuf_unfix_and_init (thread_p, root);
@@ -433,7 +443,10 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      if (bt_statsp->pkeys == NULL)
 		{
 		  bt_statsp->pkeys_size = 0;
-		  continue;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  bt_statsp->pkeys_size * sizeof (int));
+		  goto error;
 		}
 
 	      assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
