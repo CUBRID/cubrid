@@ -101,6 +101,24 @@ init_gcrypt (void)
     {
 #if defined(SERVER_MODE)
       pthread_mutex_lock (&gcrypt_init_mutex);
+
+      if (gcrypt_initialized == 1)
+	{
+	  /* It means other concurrent thread has initialized gcrypt when 
+	   * the thread blocked by pthread_mutex_lock(&gcrypt_init_mutex). */
+	  pthread_mutex_unlock (&gcrypt_init_mutex);
+	  return NO_ERROR;
+	}
+
+      i_gcrypt_err =
+	gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+      if (i_gcrypt_err != GPG_ERR_NO_ERROR)
+	{
+	  pthread_mutex_unlock (&gcrypt_init_mutex);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED,
+		  1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+	  return ER_ENCRYPTION_LIB_FAILED;
+	}
 #endif
       gcry_check_version (NULL);
 
