@@ -5207,7 +5207,17 @@ fileio_get_number_of_partition_free_pages (const char *path_p,
 	}
     }
 
-  return (int) npages;
+  if (npages < 0)
+    {
+      return -1;
+    }
+  else
+    {
+      assert (npages <= INT_MAX);
+
+      return (int) npages;
+    }
+
 #endif /* WINDOWS */
 }
 
