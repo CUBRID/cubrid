@@ -3018,8 +3018,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc,
 	    }
 	  else
 	    {
-	      (void) fileio_initialize_res (thread_p,
-					    &(malloc_io_page_p->prv));
+	      LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
 	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p,
 				page_id, IO_PAGESIZE) == NULL)
 		{

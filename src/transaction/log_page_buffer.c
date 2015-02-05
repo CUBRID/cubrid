@@ -1955,6 +1955,31 @@ logpb_create_header_page (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logpb_copy_log_header - Copy a log header
+ *
+ * return: NO_ERROR if all OK
+ *
+ *   to_hdr(in): New log header
+ *   from_hdr(in): Source log header
+ * 
+ * NOTE: Copy a log header.
+ */
+int
+logpb_copy_log_header (THREAD_ENTRY * thread_p, struct log_header *to_hdr,
+		       const struct log_header *from_hdr)
+{
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (to_hdr != NULL);
+  assert (from_hdr != NULL);
+
+  to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
+
+  /* Add other attributes that need to be copied */
+
+  return NO_ERROR;
+}
+
+/*
  * logpb_fetch_header - Fetch log header
  *
  * return: nothing
@@ -11208,6 +11233,12 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
     logpb_initialize_header (thread_p, to_hdr, to_prefix_logname,
 			     log_Gl.hdr.npages + 1, &db_creation);
   if (error_code != NO_ERROR)
+    {
+      fileio_dismount (thread_p, to_vdes);
+      goto error;
+    }
+
+  if (logpb_copy_log_header (thread_p, to_hdr, &log_Gl.hdr) != NO_ERROR)
     {
       fileio_dismount (thread_p, to_vdes);
       goto error;

@@ -634,10 +634,6 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  if (mvcc_Enabled)
-    {
-      logtb_finalize_mvcctable (thread_p);
-    }
   lock_finalize ();
   pgbuf_finalize ();
   (void) file_manager_finalize (thread_p);
@@ -692,6 +688,11 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	  log_Gl.trantable.area = area->next;
 	  free_and_init (area);
 	}
+    }
+
+  if (mvcc_Enabled)
+    {
+      logtb_finalize_mvcctable (thread_p);
     }
 
   logtb_initialize_trantable (&log_Gl.trantable);
