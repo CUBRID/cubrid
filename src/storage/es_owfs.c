@@ -653,6 +653,8 @@ es_owfs_delete_file (const char *path)
     }
 
   ret = owfs_delete_file (oh, file_name);
+  owfs_close_owner (oh);
+
   if (ret == -OWFS_ENOENT)
     {
       assert (0);
@@ -709,6 +711,7 @@ es_owfs_copy_file (const char *src_path, char *metaname, char *new_path)
   dest_fsh = es_open_owfs (es_base_mds_ip, es_base_svc_code);
   if (dest_fsh == NULL)
     {
+      owfs_close_owner (src_oh);
       return ER_ES_GENERAL;
     }
 
