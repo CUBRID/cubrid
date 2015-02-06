@@ -6860,12 +6860,28 @@ show_type_of_like
 		{{
 			$$ = SHOWSTMT_ACCESS_STATUS;
 		}}
+	| TIMEZONES
+		{{
+			$$ = SHOWSTMT_TIMEZONES;
+		}}
+	| FULL TIMEZONES
+		{{
+			$$ = SHOWSTMT_FULL_TIMEZONES;
+		}}	
 	;
 
 show_type_of_where
 	: ACCESS STATUS
 		{{
 			$$ = SHOWSTMT_ACCESS_STATUS;
+		}}
+	| TIMEZONES
+		{{
+			$$ = SHOWSTMT_TIMEZONES;
+		}}
+	| FULL TIMEZONES
+		{{
+			$$ = SHOWSTMT_FULL_TIMEZONES;
 		}}
 	;
 
