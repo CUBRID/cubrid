@@ -3633,6 +3633,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
 {
   DB_ELO elo;
   int err = NO_ERROR;
+  int result = 0;
   int new_len;
   INT64 size;
   char *locator = NULL;
@@ -3703,7 +3704,15 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
       /* make elo */
       elo_init_structure (&elo);
 
-      parse_bigint (&size, size_sp, 10);
+      result = str_to_int64 (&size, &size_ep, size_sp, 10);
+      if (result != 0 || size < 0)
+	{
+	  err = ER_LDR_ELO_INPUT_FILE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_ELO_INPUT_FILE, 1,
+		  str);
+	  goto error_exit;
+	}
+
       locator = db_private_alloc (NULL, locator_ep - locator_sp + 1);
       if (locator == NULL)
 	{
