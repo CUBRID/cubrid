@@ -11775,7 +11775,15 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	    {
 	      if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
 		{
-		  if (num_pk != 0)
+		  /* Do not count the primary key from parent
+		   * when rename primary key for partition class
+		   * NOTE: BTID_IS_NULL is used to make sure the btid must be NULL
+		   *       for (local indexed) PK of a partition table.
+		   *       See flatten_properties for details
+		   */
+		  if (num_pk != 0
+		      && (!is_partitioned
+			  || !BTID_IS_NULL (&con->index_btid)))
 		    {
 		      error = ER_SM_PRIMARY_KEY_EXISTS;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
