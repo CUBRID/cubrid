@@ -495,14 +495,14 @@ static void lock_free_scanid_bit (THREAD_ENTRY * thread_p, int idx);
 static void lk_free_all_scanid_bit (void);
 #endif
 static int lock_remove_resource (LK_RES * res_ptr);
-static void lock_insert_into_tran_hold_list (THREAD_ENTRY * thread_p,
-					     LK_ENTRY * entry_ptr);
-static int lock_delete_from_tran_hold_list (THREAD_ENTRY * thread_p,
-					    LK_ENTRY * entry_ptr);
-static void lock_insert_into_tran_non2pl_list (THREAD_ENTRY * thread_p,
-					       LK_ENTRY * non2pl);
-static int lock_delete_from_tran_non2pl_list (THREAD_ENTRY * thread_p,
-					      LK_ENTRY * non2pl);
+static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr,
+					     int owner_tran_index);
+static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr,
+					    int owner_tran_index);
+static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl,
+					       int owner_tran_index);
+static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl,
+					      int owner_tran_index);
 static LK_ENTRY *lock_find_tran_hold_entry (int tran_index, const OID * oid,
 					    bool is_class);
 static bool lock_is_class_lock_escalated (LOCK class_lock,
@@ -1465,18 +1465,16 @@ lock_remove_resource (LK_RES * res_ptr)
  *     list. That is, The lock is held by the transaction.
  */
 static void
-lock_insert_into_tran_hold_list (THREAD_ENTRY * thread_p,
-				 LK_ENTRY * entry_ptr)
+lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
-  int tran_index, rv;
+  int rv;
 
   /* The caller is holding a resource mutex */
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (tran_index != entry_ptr->tran_index)
+  if (owner_tran_index != entry_ptr->tran_index)
     {
-      assert (tran_index == entry_ptr->tran_index);
+      assert (owner_tran_index == entry_ptr->tran_index);
       return;
     }
 
@@ -1577,19 +1575,17 @@ lock_insert_into_tran_hold_list (THREAD_ENTRY * thread_p,
  *     lock hold list and then deletes it from the lock hold list.
  */
 static int
-lock_delete_from_tran_hold_list (THREAD_ENTRY * thread_p,
-				 LK_ENTRY * entry_ptr)
+lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
-  int tran_index, rv;
+  int rv;
   int error_code = NO_ERROR;
 
   /* The caller is holding a resource mutex */
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (tran_index != entry_ptr->tran_index)
+  if (owner_tran_index != entry_ptr->tran_index)
     {
-      assert (tran_index == entry_ptr->tran_index);
+      assert (owner_tran_index == entry_ptr->tran_index);
       return ER_FAILED;
     }
 
@@ -1691,17 +1687,16 @@ lock_delete_from_tran_hold_list (THREAD_ENTRY * thread_p,
  *     non2pl list.
  */
 static void
-lock_insert_into_tran_non2pl_list (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl)
+lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
-  int tran_index, rv;
+  int rv;
 
   /* The caller is holding a resource mutex */
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (tran_index != non2pl->tran_index)
+  if (owner_tran_index != non2pl->tran_index)
     {
-      assert (tran_index == non2pl->tran_index);
+      assert (owner_tran_index == non2pl->tran_index);
       return;
     }
 
@@ -1732,19 +1727,18 @@ lock_insert_into_tran_non2pl_list (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl)
  *     non2pl list and then deletes it from the non2pl list.
  */
 static int
-lock_delete_from_tran_non2pl_list (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl)
+lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *prev, *curr;
-  int tran_index, rv;
+  int rv;
   int error_code = NO_ERROR;
 
   /* The caller is holding a resource mutex */
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (tran_index != non2pl->tran_index)
+  if (owner_tran_index != non2pl->tran_index)
     {
-      assert (tran_index == non2pl->tran_index);
+      assert (owner_tran_index == non2pl->tran_index);
       return ER_FAILED;
     }
 
@@ -1938,7 +1932,7 @@ lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 	  lock_initialize_entry_as_non2pl (non2pl, tran_index, res_ptr, lock);
 	  non2pl->next = res_ptr->non2pl;
 	  res_ptr->non2pl = non2pl;
-	  lock_insert_into_tran_non2pl_list (thread_p, non2pl);
+	  lock_insert_into_tran_non2pl_list (non2pl, tran_index);
 	}
       else
 	{
@@ -2932,6 +2926,8 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       /* check if the thread is still waiting for a lock */
       if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
 	{
+	  int owner_tran_index;
+
 	  /* The thread is still waiting for a lock. */
 	  change_total_waiters_mode = true;
 
@@ -2960,7 +2956,8 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* insert the lock entry into transaction hold list. */
-	  lock_insert_into_tran_hold_list (thread_p, check);
+	  owner_tran_index = LOG_FIND_THREAD_TRAN_INDEX (check->thrd_entry);
+	  lock_insert_into_tran_hold_list (check, owner_tran_index);
 
 	  /* reflect the granted lock in the non2pl list */
 	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index,
@@ -3094,6 +3091,8 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
       (void) thread_lock_entry (check->thrd_entry);
       if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
 	{
+	  int owner_tran_index;
+
 	  /* the thread is waiting on a lock */
 	  /* remove the lock entry from the waiter */
 	  if (prev_check == NULL)
@@ -3120,7 +3119,8 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* insert into transaction lock hold list */
-	  lock_insert_into_tran_hold_list (thread_p, check);
+	  owner_tran_index = LOG_FIND_THREAD_TRAN_INDEX (check->thrd_entry);
+	  lock_insert_into_tran_hold_list (check, owner_tran_index);
 
 	  /* reflect the granted lock in the non2pl list */
 	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index,
@@ -3667,11 +3667,10 @@ start:
     }
 
   /* find or add the lockable object in the lock table */
-  search_key =
-    lock_create_search_key ((OID *) oid, (OID *) class_oid, (BTID *) btid);
-  rv =
-    lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table,
-			    (void *) &search_key, (void **) &res_ptr);
+  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid,
+				       (BTID *) btid);
+  rv = lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table,
+			       (void *) &search_key, (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       return rv;
@@ -3703,6 +3702,7 @@ start:
 
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
+
       /* initialize the lock entry as granted state */
       lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
       if (is_instant_duration)
@@ -3718,7 +3718,7 @@ start:
       lock_increment_class_granules (class_entry);
 
       /* add the lock entry into the transaction hold list */
-      lock_insert_into_tran_hold_list (thread_p, entry_ptr);
+      lock_insert_into_tran_hold_list (entry_ptr, tran_index);
 
       res_ptr->total_holders_mode = lock;
 
@@ -3788,8 +3788,8 @@ start:
       if (compat1 == true && compat2 == true)
 	{
 
-	  entry_ptr =
-	    lf_freelist_claim (t_entry_ent, &lk_Gl.obj_free_entry_list);
+	  entry_ptr = lf_freelist_claim (t_entry_ent,
+					 &lk_Gl.obj_free_entry_list);
 	  if (entry_ptr == NULL)
 	    {
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -3802,6 +3802,7 @@ start:
 
 	      return LK_NOTGRANTED_DUE_ERROR;
 	    }
+
 	  /* initialize the lock entry as granted state */
 	  lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr,
 					    lock);
@@ -3809,6 +3810,7 @@ start:
 	    {
 	      entry_ptr->instant_lock_count++;
 	    }
+
 	  /* to manage granules */
 	  entry_ptr->class_entry = class_entry;
 	  lock_increment_class_granules (class_entry);
@@ -3824,7 +3826,7 @@ start:
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* add the lock entry into the transaction hold list */
-	  lock_insert_into_tran_hold_list (thread_p, entry_ptr);
+	  lock_insert_into_tran_hold_list (entry_ptr, tran_index);
 
 	  lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
 
@@ -4390,7 +4392,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
 				     int move_to_non2pl)
 {
   LF_TRAN_ENTRY *t_entry =
-    thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_ENT);
+    thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   int tran_index;
   LK_RES *res_ptr;
   LK_ENTRY *i;
@@ -4551,7 +4553,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
   else
     {
       /* remove the lock entry from the transaction lock hold list */
-      (void) lock_delete_from_tran_hold_list (thread_p, curr);
+      (void) lock_delete_from_tran_hold_list (curr, tran_index);
 
       /* to manage granules */
       lock_decrement_class_granules (curr->class_entry);
@@ -5399,7 +5401,7 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 	    {
 	      prev->next = curr->next;
 	    }
-	  (void) lock_delete_from_tran_non2pl_list (thread_p, curr);
+	  (void) lock_delete_from_tran_non2pl_list (curr, tran_index);
 	  lf_freelist_retire (t_entry, &lk_Gl.obj_free_entry_list, curr);
 	  curr = next;
 	}
@@ -11221,11 +11223,10 @@ start:
     }
 
   /* check if the lockable object is in object lock table */
-  search_key =
-    lock_create_search_key ((OID *) oid, (OID *) class_oid, (BTID *) btid);
-  rv =
-    lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table,
-			    (void *) &search_key, (void **) &res_ptr);
+  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid,
+				       (BTID *) btid);
+  rv = lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table,
+			       (void *) &search_key, (void **) &res_ptr);
   if (rv != NO_ERROR)
     {
       return LK_NOTGRANTED_DUE_ERROR;
@@ -11254,6 +11255,7 @@ start:
 		  1, "lock heap entry");
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
+
       /* initialize the lock entry as granted state */
       lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
       if (is_instant_duration)
@@ -11269,7 +11271,7 @@ start:
       lock_increment_class_granules (class_entry);
 
       /* add the lock entry into the transaction hold list */
-      lock_insert_into_tran_hold_list (thread_p, entry_ptr);
+      lock_insert_into_tran_hold_list (entry_ptr, tran_index);
 
       /* prv_tot_hold_mode is NULL_LOCK */
       res_ptr->total_holders_mode = lock;
@@ -11332,8 +11334,8 @@ start:
 	{
 
 	  /* allocate a lock entry */
-	  entry_ptr =
-	    lf_freelist_claim (t_entry_ent, &lk_Gl.obj_free_entry_list);
+	  entry_ptr = lf_freelist_claim (t_entry_ent,
+					 &lk_Gl.obj_free_entry_list);
 	  if (entry_ptr == NULL)
 	    {
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -11341,6 +11343,7 @@ start:
 		      1, "lock heap entry");
 	      return LK_NOTGRANTED_DUE_ERROR;
 	    }
+
 	  /* initialize the lock entry as granted state */
 	  lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr,
 					    lock);
@@ -11348,6 +11351,7 @@ start:
 	    {
 	      entry_ptr->instant_lock_count++;
 	    }
+
 	  /* to manage granules */
 	  entry_ptr->class_entry = class_entry;
 	  lock_increment_class_granules (class_entry);
@@ -11364,7 +11368,7 @@ start:
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* add the lock entry into the transaction hold list */
-	  lock_insert_into_tran_hold_list (thread_p, entry_ptr);
+	  lock_insert_into_tran_hold_list (entry_ptr, tran_index);
 
 	  lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
 
