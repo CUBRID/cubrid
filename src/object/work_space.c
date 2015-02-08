@@ -4461,9 +4461,6 @@ ws_need_flush (void)
   return (ws_Num_dirty_mop > 0);
 }
 
-
-
-
 /*
  * ws_area_init - initialize area for object list links.
  *    return: NO_ERROR or error code.
@@ -4603,7 +4600,6 @@ ws_list_free (DB_LIST * list, LFREEER function)
     }
 }
 
-
 /*
  * ws_list_total - maps a function over the elements of a list and totals up
  * the integers returned by the mapping function.
@@ -4624,7 +4620,6 @@ ws_list_total (DB_LIST * list, LTOTALER function)
 
   return (total);
 }
-
 
 /*
  * ws_list_copy - Copies a list by calling a copier function for each element.
@@ -4668,7 +4663,6 @@ memory_error:
   return NULL;
 }
 
-
 /*
  * ws_list_nconc - concatenate list2 to list1
  *    return: list pointer
@@ -4689,10 +4683,12 @@ ws_list_nconc (DB_LIST * list1, DB_LIST * list2)
   else
     {
       result = list1;
-      for (el = list1; el->next != NULL; el = el->next);
+      for (el = list1; el->next != NULL; el = el->next)
+	;
       el->next = list2;
     }
-  return (result);
+
+  return result;
 }
 
 /*
@@ -4705,7 +4701,6 @@ ws_list_nconc (DB_LIST * list1, DB_LIST * list2)
  *   const char *name;
  * }
  */
-
 
 /*
  * nlist_find - Search a name list for an entry with the given name.
@@ -4728,14 +4723,15 @@ nlist_find (DB_NAMELIST * list, const char *name, NLSEARCHER fcn)
 
   for (el = list; el != NULL && found == NULL; el = el->next)
     {
-      if ((el->name == name) ||
-	  ((el->name != NULL) && (name != NULL)
-	   && (*fcn) (el->name, name) == 0))
+      if ((el->name == name)
+	  || ((el->name != NULL) && (name != NULL)
+	      && (*fcn) (el->name, name) == 0))
 	{
 	  found = el;
 	}
     }
-  return (found);
+
+  return found;
 }
 
 
@@ -4774,6 +4770,7 @@ nlist_remove (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
 	  prev = el;
 	}
     }
+
   if (found != NULL)
     {
       if (prev == NULL)
@@ -4786,9 +4783,8 @@ nlist_remove (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
 	}
     }
 
-  return (found);
+  return found;
 }
-
 
 /*
  * nlist_add - Adds an element to a namelist if it does not already exist.
@@ -4830,6 +4826,7 @@ nlist_add (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
 
   new_->next = *list;
   *list = new_;
+
   status = 1;
 
 error:
@@ -4837,9 +4834,9 @@ error:
     {
       *added_ptr = status;
     }
+
   return NO_ERROR;
 }
-
 
 /*
  * nlist_append - appends an element to a namelist if it does not exist.
@@ -4871,20 +4868,21 @@ nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
 
   for (el = *list; el != NULL && found == NULL; el = el->next)
     {
-      if ((el->name == name) ||
-	  ((el->name != NULL) && (name != NULL)
-	   && (*fcn) (el->name, name) == 0))
+      if ((el->name == name)
+	  || ((el->name != NULL) && (name != NULL)
+	      && (*fcn) (el->name, name) == 0))
 	{
 	  found = el;
 	}
       last = el;
     }
+
   if (found != NULL)
     {
       goto error;
     }
-  new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
 
+  new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
   if (new_ == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -4892,7 +4890,6 @@ nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
     }
 
   new_->name = ws_copy_string (name);
-
   if (new_->name == NULL)
     {
       db_ws_free (new_);
@@ -4911,6 +4908,7 @@ nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
     {
       last->next = new_;
     }
+
   status = 1;
 
 error:
@@ -4918,6 +4916,7 @@ error:
     {
       *added_ptr = status;
     }
+
   return NO_ERROR;
 }
 
@@ -4993,7 +4992,6 @@ nlist_find_or_append (DB_NAMELIST ** list, const char *name,
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-
 /*
  * nlist_free - frees a name list
  *    return: none
@@ -5011,7 +5009,6 @@ nlist_free (DB_NAMELIST * list)
       db_ws_free (el);
     }
 }
-
 
 /*
  * nlist_copy - makes a copy of a named list
@@ -5050,13 +5047,13 @@ nlist_copy (DB_NAMELIST * list)
 	}
       last = new_;
     }
+
   return first;
 
 memory_error:
   nlist_free (first);
   return NULL;
 }
-
 
 /*
  * nlist_filter - remove all elements with the given name from a list
@@ -5082,9 +5079,9 @@ nlist_filter (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
   for (el = head, prev = NULL, next = NULL; el != NULL; el = next)
     {
       next = el->next;
-      if ((el->name == name) ||
-	  ((el->name != NULL) && (name != NULL)
-	   && (*fcn) (el->name, name) == 0))
+      if ((el->name == name)
+	  || ((el->name != NULL) && (name != NULL)
+	      && (*fcn) (el->name, name) == 0))
 	{
 	  if (prev == NULL)
 	    {
@@ -5104,7 +5101,7 @@ nlist_filter (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
     }
 
   *root = head;
-  return (filter);
+  return filter;
 }
 
 /*
@@ -5117,7 +5114,6 @@ nlist_filter (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
  *
  */
 
-
 /*
  * ml_find - searches a list for the given mop.
  *    return: non-zero if mop was in the list
@@ -5128,17 +5124,18 @@ int
 ml_find (DB_OBJLIST * list, MOP mop)
 {
   DB_OBJLIST *l;
-  int found;
+  int found = 0;
 
-  found = 0;
-  for (l = list; l != NULL && found == 0; l = l->next)
+  for (l = list; l != NULL && !found; l = l->next)
     {
       if (l->op == mop)
-	found = 1;
+	{
+	  found = 1;
+	}
     }
-  return (found);
-}
 
+  return found;
+}
 
 /*
  * ml_add - Adds a MOP to the list if it isn't already present.
@@ -5170,6 +5167,7 @@ ml_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
 	  found = l;
 	}
     }
+
   /* since we can get the end of list easily, may want to append here */
   if (found != NULL)
     {
@@ -5182,9 +5180,11 @@ ml_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
+
   new_->op = mop;
   new_->next = *list;
   *list = new_;
+
   added = 1;
 
 error:
@@ -5192,9 +5192,9 @@ error:
     {
       *added_ptr = added;
     }
+
   return NO_ERROR;
 }
-
 
 /*
  * ml_append - Appends a MOP to the list if it isn't already present.
@@ -5224,6 +5224,7 @@ ml_append (DB_OBJLIST ** list, MOP mop, int *added_ptr)
 	}
       last = l;
     }
+
   /* since we can get the end of list easily, may want to append here */
 
   if (found != NULL)
@@ -5237,6 +5238,7 @@ ml_append (DB_OBJLIST ** list, MOP mop, int *added_ptr)
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
+
   new_->op = mop;
   new_->next = NULL;
   if (last == NULL)
@@ -5247,6 +5249,7 @@ ml_append (DB_OBJLIST ** list, MOP mop, int *added_ptr)
     {
       last->next = new_;
     }
+
   added = 1;
 
 error:
@@ -5255,9 +5258,9 @@ error:
     {
       *added_ptr = added;
     }
+
   return NO_ERROR;
 }
-
 
 /*
  * ml_remove - removes a mop from a mop list if it is found.
@@ -5284,6 +5287,7 @@ ml_remove (DB_OBJLIST ** list, MOP mop)
 	  prev = l;
 	}
     }
+
   if (found != NULL)
     {
       if (prev == NULL)
@@ -5297,9 +5301,9 @@ ml_remove (DB_OBJLIST ** list, MOP mop)
       db_ws_free (found);
       deleted = 1;
     }
-  return (deleted);
-}
 
+  return deleted;
+}
 
 /*
  * ml_free - free a list of MOPs.
@@ -5317,7 +5321,6 @@ ml_free (DB_OBJLIST * list)
       db_ws_free (l);
     }
 }
-
 
 /*
  * ml_copy - copy a list of mops.
@@ -5350,13 +5353,13 @@ ml_copy (DB_OBJLIST * list)
 	}
       last = new_;
     }
-  return (first);
+
+  return first;
 
 memory_error:
   ml_free (first);
   return NULL;
 }
-
 
 /*
  * ml_size - This calculates the number of bytes of memory required for the
@@ -5373,7 +5376,6 @@ ml_size (DB_OBJLIST * list)
 
   return (size);
 }
-
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -5454,7 +5456,6 @@ ml_ext_free_link (DB_OBJLIST * link)
     }
 }
 
-
 /*
  * ml_ext_free - frees a complete list of links allocated with the
  * ml_ext_alloc_link function.
@@ -5481,7 +5482,6 @@ ml_ext_free (DB_OBJLIST * list)
     }
 }
 
-
 /*
  * ml_ext_copy - Like ml_copy except that it allocates the mop list links using
  * ml_ext_alloc_link so they can be returned to the application level.
@@ -5503,6 +5503,7 @@ ml_ext_copy (DB_OBJLIST * list)
 	{
 	  goto memory_error;
 	}
+
       new_->next = NULL;
       new_->op = l->op;
       if (first == NULL)
@@ -5513,15 +5514,16 @@ ml_ext_copy (DB_OBJLIST * list)
 	{
 	  last->next = new_;
 	}
+
       last = new_;
     }
-  return (first);
+
+  return first;
 
 memory_error:
   ml_ext_free (first);
   return NULL;
 }
-
 
 /*
  * ml_ext_add - same as ml_add except that it allocates a mop in the external
@@ -5542,6 +5544,7 @@ ml_ext_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
     {
       goto error;
     }
+
   for (l = *list, found = NULL; l != NULL && found == NULL; l = l->next)
     {
       if (l->op == mop)
@@ -5549,6 +5552,7 @@ ml_ext_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
 	  found = l;
 	}
     }
+
   /* since we can get the end of list easily, may want to append here */
   if (found == NULL)
     {
@@ -5871,6 +5875,7 @@ void
 ws_move_label_value_list (MOP dest_mop, MOP src_mop)
 {
   WS_VALUE_LIST *value_node;
+
   if (dest_mop == NULL || src_mop == NULL)
     {
       return;
@@ -5915,6 +5920,7 @@ void
 ws_remove_label_value_from_mop (MOP mop, DB_VALUE * val)
 {
   WS_VALUE_LIST *prev_value_node, *value_node;
+
   if (mop == NULL || val == NULL)
     {
       return;
@@ -6007,6 +6013,7 @@ void
 ws_clean_label_value_list (MOP mop)
 {
   WS_VALUE_LIST *next_value_node, *value_node;
+
   value_node = mop->label_value_list;
   while (value_node != NULL)
     {

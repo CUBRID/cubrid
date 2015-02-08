@@ -9338,7 +9338,7 @@ file_allocset_remove (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	}
     }
 
-  /* If there was a failure, fisnih at this moment */
+  /* If there was a failure, finish at this moment */
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -9733,9 +9733,9 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
   recv_undo.end_pages_offset = allocset->end_pages_offset;
   recv_undo.num_holes = allocset->num_holes;
 
-  if (rm_freespace_sectors == 1
-      && (!(VPID_EQ (&allocset->start_pages_vpid, &allocset->end_sects_vpid)
-	    && allocset->start_pages_offset == allocset->end_sects_offset))
+  if (rm_freespace_sectors == true
+      && (!VPID_EQ (&allocset->start_pages_vpid, &allocset->end_sects_vpid)
+	  || allocset->start_pages_offset != allocset->end_sects_offset)
       && allocset->start_sects_offset < DB_PAGESIZE)
     {
       /* The page table must be moved to the end of the sector table since we do
@@ -9897,12 +9897,13 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
   addr.pgptr = to_pgptr;
   addr.offset = to_start_offset;
   log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
-			CAST_BUFLEN ((char *) to_outptr -
-				     (char *) to_aid_ptr), to_aid_ptr);
+			CAST_BUFLEN (((char *) to_outptr
+				      - (char *) to_aid_ptr)), 
+			to_aid_ptr);
   length = 0;
 
-  while (!VPID_EQ (&from_vpid, &allocset->end_pages_vpid) ||
-	 from_aid_ptr <= from_outptr)
+  while (!VPID_EQ (&from_vpid, &allocset->end_pages_vpid)
+	 || from_aid_ptr <= from_outptr)
     {
       /* Boundary condition on from-page ? */
       if (from_aid_ptr >= from_outptr)
@@ -9952,7 +9953,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
       if (to_aid_ptr >= to_outptr)
 	{
 #ifdef FILE_DEBUG
-	  if (from_aid_ptr > from_outptr)
+	  if (to_aid_ptr > to_outptr)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "file_allocset_compact_page_table:"
 			    " *** Boundary condition system error ***\n");
@@ -10145,8 +10146,8 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	  pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
 
 	  /* Update the last to_table to point to nothing */
-	  if (to_vpid.volid != fhdr->vfid.volid ||
-	      to_vpid.pageid != fhdr->vfid.fileid)
+	  if (to_vpid.volid != fhdr->vfid.volid
+	      || to_vpid.pageid != fhdr->vfid.fileid)
 	    {
 	      /* Header Page does not have a chain. */
 	      chain = (FILE_FTAB_CHAIN *) (to_pgptr + FILE_FTAB_CHAIN_OFFSET);
@@ -10495,13 +10496,13 @@ exit_on_error:
  *                           located
  *   prev_allocset_offset(in): Offset in page address where the previous
  *                             allocation set is located
- *   allocset_vpid(in): Page address where the current allocation set is
- *                      located
- *   allocset_offset(in): Location in allocset page where allocation set is
- *                        located
- *   ftb_vpid(in): The file table page where the allocation set is moved
- *   ftb_offset(in): Offset in the file table page where the allocation set is
- *                   moved
+ *   allocset_vpid(in/out): Page address where the current allocation set is
+ *                          located
+ *   allocset_offset(in/out): Location in allocset page where allocation set is
+ *                            located
+ *   ftb_vpid(in/out): The file table page where the allocation set is moved
+ *   ftb_offset(in/out): Offset in the file table page where the allocation set is
+ *                       moved
  */
 static int
 file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
@@ -10620,10 +10621,10 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr,
 					     PAGE_FTAB);
 
-	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
-					    prev_allocset_offset);
+	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr 
+					    + prev_allocset_offset);
 
-	      /* Save the informationthat is going to be changed for undo
+	      /* Save the information that is going to be changed for undo
 	         purposes */
 	      recv_undo.next_allocset_vpid = allocset->next_allocset_vpid;
 	      recv_undo.next_allocset_offset = allocset->next_allocset_offset;
@@ -10641,8 +10642,8 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	      addr.offset = prev_allocset_offset;
 	      log_append_undoredo_data (thread_p, RVFL_ALLOCSET_LINK, &addr,
 					sizeof (recv_undo),
-					sizeof (recv_redo), &recv_undo,
-					&recv_redo);
+					sizeof (recv_redo), 
+					&recv_undo, &recv_redo);
 
 	      pgbuf_set_dirty (thread_p, allocset_pgptr, FREE);
 	      allocset_pgptr = NULL;
@@ -10684,8 +10685,8 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr,
 					     PAGE_FTAB);
 
-	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
-					    *allocset_offset);
+	      allocset = (FILE_ALLOCSET *) (((char *) allocset_pgptr
+					     + *allocset_offset));
 	      break;
 	    }
 	}
@@ -10693,11 +10694,10 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   if (file_allocset_shift_sector_table (thread_p, fhdr_pgptr, allocset_pgptr,
 					*allocset_offset, ftb_vpid,
-					*ftb_offset) != NO_ERROR ||
-      file_allocset_compact_page_table (thread_p, fhdr_pgptr, allocset_pgptr,
-					*allocset_offset,
-					((islast_allocset == true)
-					 ? false : true)) != NO_ERROR)
+					*ftb_offset) != NO_ERROR
+      || file_allocset_compact_page_table (thread_p, fhdr_pgptr, 
+					   allocset_pgptr, *allocset_offset,
+					   !islast_allocset) != NO_ERROR)
     {
       goto exit_on_error;
     }

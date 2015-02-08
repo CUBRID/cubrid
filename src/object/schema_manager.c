@@ -12737,8 +12737,8 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
       flags[0] = LC_PREF_FLAG_LOCK;
-      if (locator_lockhint_classes
-	  (1, names, locks, subs, flags, 1, NULL_LOCK) == LC_CLASSNAME_ERROR)
+      if (locator_lockhint_classes (1, names, locks, subs, flags, 1, 
+				    NULL_LOCK) == LC_CLASSNAME_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -12750,8 +12750,8 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
       flags[0] = LC_PREF_FLAG_LOCK;
-      if (locator_lockhint_classes
-	  (1, names, locks, subs, flags, 1, NULL_LOCK) == LC_CLASSNAME_ERROR)
+      if (locator_lockhint_classes (1, names, locks, subs, flags, 1, 
+				    NULL_LOCK) == LC_CLASSNAME_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
