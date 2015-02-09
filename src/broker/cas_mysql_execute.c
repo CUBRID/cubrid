@@ -1264,6 +1264,9 @@ cubval_to_mysqlval (int cub_type)
     case CCI_U_TYPE_MULTISET:
     case CCI_U_TYPE_SEQUENCE:
     case CCI_U_TYPE_RESULTSET:
+    case CCI_U_TYPE_TIMETZ:
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_DATETIMETZ:
     default:
       cas_log_write (0, false, "type convert fail : [%d]", cub_type);
       return ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);

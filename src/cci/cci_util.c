@@ -773,16 +773,21 @@ void
 ut_date_tz_to_str (T_CCI_DATE_TZ * value, T_CCI_U_TYPE u_type, char *str,
 		   int size)
 {
+  int len;
+
   if (u_type == CCI_U_TYPE_DATETIMETZ || u_type == CCI_U_TYPE_TIMETZ
       || u_type == CCI_U_TYPE_TIMESTAMPTZ)
     {
       int remain_size;
       ut_date_to_str ((T_CCI_DATE *) value, u_type, str, size);
 
-      remain_size = size - strlen (str);
+      len = strlen (str);
+      remain_size = size - len;
       if (remain_size > 1)
 	{
+	  str += len;
 	  *str++ = ' ';
+	  *str = '\0';
 	  strncat (str, value->tz, remain_size - 1);
 	}
     }

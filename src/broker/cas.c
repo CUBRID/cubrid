@@ -2065,6 +2065,20 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  /* for driver less than 10.0 */
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+      (req_info->client_version, PROTOCOL_V7))
+    {
+      ux_set_utype_for_timetz (CCI_U_TYPE_TIME);
+      ux_set_utype_for_datetimetz (CCI_U_TYPE_DATETIME);
+      ux_set_utype_for_timestamptz (CCI_U_TYPE_TIMESTAMP);
+      ux_set_utype_for_timeltz (CCI_U_TYPE_TIME);
+      ux_set_utype_for_datetimeltz (CCI_U_TYPE_DATETIME);
+      ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMP);
+    }
+#endif
+
   set_hang_check_time ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   set_hang_check_time ();
@@ -2076,6 +2090,20 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       ux_set_utype_for_enum (CCI_U_TYPE_ENUM);
     }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  /* for driver less than 10.0 */
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+      (req_info->client_version, PROTOCOL_V7))
+    {
+      ux_set_utype_for_timetz (CCI_U_TYPE_TIMETZ);
+      ux_set_utype_for_datetimetz (CCI_U_TYPE_DATETIMETZ);
+      ux_set_utype_for_timestamptz (CCI_U_TYPE_TIMESTAMPTZ);
+      ux_set_utype_for_timeltz (CCI_U_TYPE_TIMETZ);
+      ux_set_utype_for_datetimeltz (CCI_U_TYPE_DATETIMETZ);
+      ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMPTZ);
+    }
+#endif
 
 #ifndef LIBCAS_FOR_JSP
   cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",

@@ -1921,6 +1921,9 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no,
       err_code = qe_get_data_req_handle (con_handle, req_handle, col_value_p,
 					 value);
       break;
+    case CCI_A_TYPE_DATE_TZ:
+      err_code = qe_get_data_date_tz (u_type, col_value_p, value, data_size);
+      break;
     default:
       return CCI_ER_ATYPE;
     }
@@ -3490,7 +3493,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
       {
 	T_CCI_DATE_TZ data_tz;
 
-	qe_get_data_date_tz (u_type, col_value_p, &data_tz);
+	qe_get_data_date_tz (u_type, col_value_p, &data_tz, col_val_size);
 
 	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
 	  {
@@ -4042,7 +4045,8 @@ qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 }
 
 int
-qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
+qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value,
+		     int total_size)
 {
   T_CCI_DATE_TZ data;
 
@@ -4051,13 +4055,13 @@ qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
   switch (u_type)
     {
     case CCI_U_TYPE_TIMETZ:
-      NET_STR_TO_TIMETZ (data, col_value_p);
+      NET_STR_TO_TIMETZ (data, col_value_p, total_size);
       break;
     case CCI_U_TYPE_TIMESTAMPTZ:
-      NET_STR_TO_TIMESTAMPTZ (data, col_value_p);
+      NET_STR_TO_TIMESTAMPTZ (data, col_value_p, total_size);
       break;
     case CCI_U_TYPE_DATETIMETZ:
-      NET_STR_TO_DATETIMETZ (data, col_value_p);
+      NET_STR_TO_DATETIMETZ (data, col_value_p, total_size);
       break;
     default:
       return CCI_ER_TYPE_CONVERSION;

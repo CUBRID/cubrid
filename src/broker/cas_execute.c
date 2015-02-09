@@ -3720,6 +3720,42 @@ ux_set_utype_for_enum (char u_type)
   cas_u_type[DB_TYPE_ENUMERATION] = u_type;
 }
 
+void
+ux_set_utype_for_timetz (char u_type)
+{
+  cas_u_type[DB_TYPE_TIMETZ] = u_type;
+}
+
+void
+ux_set_utype_for_timestamptz (char u_type)
+{
+  cas_u_type[DB_TYPE_TIMESTAMPTZ] = u_type;
+}
+
+void
+ux_set_utype_for_datetimetz (char u_type)
+{
+  cas_u_type[DB_TYPE_DATETIMETZ] = u_type;
+}
+
+void
+ux_set_utype_for_timeltz (char u_type)
+{
+  cas_u_type[DB_TYPE_TIMELTZ] = u_type;
+}
+
+void
+ux_set_utype_for_timestampltz (char u_type)
+{
+  cas_u_type[DB_TYPE_TIMESTAMPLTZ] = u_type;
+}
+
+void
+ux_set_utype_for_datetimeltz (char u_type)
+{
+  cas_u_type[DB_TYPE_DATETIMELTZ] = u_type;
+}
+
 int
 ux_schema_info (int schema_type, char *arg1, char *arg2, char flag,
 		T_NET_BUF * net_buf, T_REQ_INFO * req_info,

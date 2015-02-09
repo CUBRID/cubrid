@@ -1298,6 +1298,9 @@ netval_to_oraval (void *net_type, void *net_value, DB_VALUE * out_val,
     case CCI_U_TYPE_USHORT:
     case CCI_U_TYPE_UINT:
     case CCI_U_TYPE_UBIGINT:
+    case CCI_U_TYPE_TIMETZ:
+    case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_TIMESTAMPTZ:
     default:
       return ERROR_INFO_SET (CAS_ER_UNKNOWN_U_TYPE, CAS_ERROR_INDICATOR);
     }

@@ -164,14 +164,12 @@
 	  (TIME_VAL).ss = macro_var_ss;			                \
 	} while (0)
 
-#define NET_STR_TO_TIMETZ(TIME_VAL, PTR)		                \
+#define NET_STR_TO_TIMETZ(TIME_VAL, PTR, TOTAL_SIZE)		        \
 	do {					                        \
-          unsigned char net_tz_size = 0;                                \
 	  int tz_size;							\
 	  NET_STR_TO_TIME ((TIME_VAL), (PTR));				\
-	  NET_STR_TO_BYTE (net_tz_size, (PTR) + NET_SIZE_TIME);		\
-	  tz_size = MIN (net_tz_size, CCI_TZ_SIZE);			\
-	  strncpy ((TIME_VAL).tz, (PTR) + NET_SIZE_TIME + 1, tz_size);	\
+	  tz_size = MIN (TOTAL_SIZE - NET_SIZE_TIME, CCI_TZ_SIZE);	\
+	  strncpy ((TIME_VAL).tz, (PTR) + NET_SIZE_TIME, tz_size);	\
 	} while (0)
 
 #define NET_STR_TO_MTIME(TIME_VAL, PTR)                                 \
@@ -197,14 +195,12 @@
 	  NET_STR_TO_TIME((TS_VAL), (PTR) + NET_SIZE_DATE);	\
 	} while (0)
 
-#define NET_STR_TO_TIMESTAMPTZ(TS_VAL, PTR)		                \
+#define NET_STR_TO_TIMESTAMPTZ(TS_VAL, PTR, TOTAL_SIZE)		        \
 	do {					                        \
-          unsigned char net_tz_size = 0;                                \
 	  int tz_size;							\
 	  NET_STR_TO_TIMESTAMP ((TS_VAL), (PTR));			\
-	  NET_STR_TO_BYTE (net_tz_size, (PTR) + NET_SIZE_TIMESTAMP);	\
-	  tz_size = MIN (net_tz_size, CCI_TZ_SIZE);			\
-	  strncpy ((TS_VAL).tz, (PTR) + NET_SIZE_TIMESTAMP + 1, tz_size); \
+	  tz_size = MIN (TOTAL_SIZE - NET_SIZE_TIMESTAMP, CCI_TZ_SIZE);	\
+	  strncpy ((TS_VAL).tz, (PTR) + NET_SIZE_TIMESTAMP, tz_size);   \
 	} while (0)
 
 #define NET_STR_TO_DATETIME(TS_VAL, PTR)                \
@@ -213,14 +209,12 @@
           NET_STR_TO_MTIME((TS_VAL), (PTR) + NET_SIZE_DATE);\
         } while (0)
 
-#define NET_STR_TO_DATETIMETZ(DT_VAL, PTR)		                \
+#define NET_STR_TO_DATETIMETZ(DT_VAL, PTR, TOTAL_SIZE)		        \
 	do {					                        \
-          unsigned char net_tz_size = 0;                                \
 	  int tz_size;							\
 	  NET_STR_TO_DATETIME ((DT_VAL), (PTR));			\
-	  NET_STR_TO_BYTE (net_tz_size, (PTR) + NET_SIZE_DATETIME);	\
-	  tz_size = MIN (net_tz_size, CCI_TZ_SIZE);			\
-	  strncpy ((DT_VAL).tz, (PTR) + NET_SIZE_DATETIME + 1, tz_size); \
+	  tz_size = MIN (TOTAL_SIZE - NET_SIZE_DATETIME, CCI_TZ_SIZE);  \
+	  strncpy ((DT_VAL).tz, (PTR) + NET_SIZE_DATETIME, tz_size);    \
 	} while (0)
 
 #define NET_STR_TO_OBJECT(OBJ_VAL, PTR)		                \
@@ -529,7 +523,8 @@ extern int qe_get_data_double (T_CCI_U_TYPE u_type,
 extern int qe_get_data_date (T_CCI_U_TYPE u_type,
 			     char *col_value_p, void *value);
 extern int qe_get_data_date_tz (T_CCI_U_TYPE u_type,
-				char *col_value_p, void *value);
+				char *col_value_p, void *value,
+				int total_size);
 extern int qe_get_data_bit (T_CCI_U_TYPE u_type,
 			    char *col_value_p, int col_val_size, void *value);
 extern int qe_get_data_lob (T_CCI_U_TYPE u_type,
