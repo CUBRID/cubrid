@@ -180,6 +180,9 @@ struct lf_bitmap
 #define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_FULL_USAGE_RATIO
 #endif
 
+#define LF_BITMAP_IS_FULL(bitmap)                              \
+  (((float)VOLATILE_ACCESS((bitmap)->entry_count_in_use, int)) \
+        / (bitmap)->entry_count >= (bitmap)->usage_threshold)
 
 #define LF_BITMAP_COUNT_ALIGN(count) \
     (((count) + (LF_BITFIELD_WORD_SIZE) - 1) & ~((LF_BITFIELD_WORD_SIZE) - 1))

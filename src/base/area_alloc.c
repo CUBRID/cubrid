@@ -81,6 +81,9 @@ pthread_mutex_t area_List_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void area_info (AREA * area, FILE * fp);
 static AREA_BLOCK *area_alloc_block (AREA * area);
+static AREA_BLOCKSET_LIST *area_alloc_blockset (AREA * area);
+static int area_insert_block (AREA * area, AREA_BLOCK * new_block);
+static AREA_BLOCK *area_find_block (AREA * area, const void *ptr);
 
 /*
  * area_init - Initialize the area manager
@@ -149,6 +152,7 @@ area_create (const char *name, size_t element_size, size_t alloc_count)
 	      1, sizeof (AREA));
       return NULL;
     }
+  area->blockset_list = NULL;
 
   if (name == NULL)
     {
@@ -189,7 +193,22 @@ area_create (const char *name, size_t element_size, size_t alloc_count)
 #else
   area->failure_function = ws_abort_transaction;
 #endif
-  area->blocks = NULL;
+
+  area->blockset_list = area_alloc_blockset (area);
+  if (area->blockset_list == NULL)
+    {
+      goto error;
+    }
+
+  area->hint_block = area_alloc_block (area);
+  if (area->hint_block == NULL)
+    {
+      goto error;
+    }
+  area->blockset_list->items[0] = area->hint_block;
+  area->blockset_list->used_count++;
+
+  pthread_mutex_init (&area->area_mutex, NULL);
 
   rv = pthread_mutex_lock (&area_List_lock);
   area->next = area_List;
@@ -203,6 +222,11 @@ error:
   if (area->name)
     {
       free_and_init (area->name);
+    }
+
+  if (area->blockset_list != NULL)
+    {
+      free_and_init (area->blockset_list);
     }
 
   free_and_init (area);
@@ -291,7 +315,6 @@ area_alloc_block (AREA * area)
   assert (area->alloc_count == new_block->bitmap.entry_count);
 
   new_block->data = ((char *) new_block) + sizeof (AREA_BLOCK);
-  new_block->next = NULL;
 
   return new_block;
 
@@ -299,6 +322,38 @@ error:
   free_and_init (new_block);
 
   return NULL;
+}
+
+/*
+ * area_alloc_blockset - Allocate a new blockset node
+ *   return: the address of area blockset, if error, return NULL.
+ *   area(in): AREA
+ *
+ */
+static AREA_BLOCKSET_LIST *
+area_alloc_blockset (AREA * area)
+{
+  AREA_BLOCKSET_LIST *new_blockset;
+
+  new_blockset = (AREA_BLOCKSET_LIST *) malloc (sizeof (AREA_BLOCKSET_LIST));
+  if (new_blockset == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (AREA_BLOCKSET_LIST));
+      if (area->failure_function != NULL)
+	{
+	  (*(area->failure_function)) ();
+	}
+
+      return NULL;
+    }
+
+  new_blockset->next = NULL;
+  new_blockset->used_count = 0;
+  memset ((void *) new_blockset->items, 0,
+	  sizeof (sizeof (AREA_BLOCK *) * AREA_BLOCKSET_SIZE));
+
+  return new_blockset;
 }
 
 /*
@@ -313,9 +368,9 @@ error:
 void *
 area_alloc (AREA * area)
 {
-  AREA_BLOCK *curr, *block = NULL;
-  AREA_BLOCK **curr_p;
-  int free_entry_idx;
+  AREA_BLOCKSET_LIST *blockset;
+  AREA_BLOCK *block, *hint_block;
+  int used_count, i, entry_idx;
   char *entry_ptr;
 #if !defined (NDEBUG)
   int *prefix;
@@ -323,44 +378,85 @@ area_alloc (AREA * area)
 
   assert (area != NULL);
 
-  curr_p = &area->blocks;
-  curr = VOLATILE_ACCESS (*curr_p, AREA_BLOCK *);
-
-  while (curr_p != NULL)
+  /* Step 1: find free entry from hint block */
+  hint_block = VOLATILE_ACCESS (area->hint_block, AREA_BLOCK *);
+  entry_idx = lf_bitmap_get_entry (&hint_block->bitmap);
+  if (entry_idx != -1)
     {
-      if (curr != NULL)
-	{
-	  free_entry_idx = lf_bitmap_get_entry (&curr->bitmap);
-	  if (free_entry_idx != -1)
-	    {
-	      break;
-	    }
-	  curr_p = (AREA_BLOCK **) (&curr->next);
-	  curr = VOLATILE_ACCESS (*curr_p, AREA_BLOCK *);
-	}
-      else
-	{
-	  block = area_alloc_block (area);
-	  if (block == NULL)
-	    {
-	      /* error has been set */
-	      return NULL;
-	    }
+      block = hint_block;
+      goto found;
+    }
 
-	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, block))
-	    {
-	      /* someone added block before us, free this block */
-	      er_log_debug (ARG_FILE_LINE,
-			    "The '%s' failed to append new area_block, it will try again.\n",
-			    area->name);
+  /* Step 2: if not found, find free entry from blockset list */
+  for (blockset = area->blockset_list; blockset != NULL;
+       blockset = VOLATILE_ACCESS (blockset->next, AREA_BLOCKSET_LIST *))
+    {
+      used_count = VOLATILE_ACCESS (blockset->used_count, int);
+      for (i = 0; i < used_count; i++)
+	{
+	  block = VOLATILE_ACCESS (blockset->items[i], AREA_BLOCK *);
 
-	      lf_bitmap_destroy (&block->bitmap);
-	      free_and_init (block);
+	  entry_idx = lf_bitmap_get_entry (&block->bitmap);
+	  if (entry_idx != -1)
+	    {
+	      /* change hint block if needed */
+	      hint_block = VOLATILE_ACCESS (area->hint_block, AREA_BLOCK *);
+	      if (LF_BITMAP_IS_FULL (&hint_block->bitmap)
+		  && !LF_BITMAP_IS_FULL (&block->bitmap))
+		{
+		  ATOMIC_CAS_ADDR (&area->hint_block, hint_block, block);
+		}
+
+	      goto found;
 	    }
-	  curr = VOLATILE_ACCESS (*curr_p, AREA_BLOCK *);
-	  assert_release (curr != NULL);
 	}
     }
+
+  /* Step 3: if not found, add an new block. Then find free entry in
+   * this new block. Only allow 1 thread add new block in the same time
+   */
+  pthread_mutex_lock (&area->area_mutex);
+
+  if (area->hint_block != hint_block)
+    {
+      /* someone maybe change the hint block */
+      block = area->hint_block;
+      entry_idx = lf_bitmap_get_entry (&block->bitmap);
+      if (entry_idx != -1)
+	{
+	  pthread_mutex_unlock (&area->area_mutex);
+	  goto found;
+	}
+    }
+
+  block = area_alloc_block (area);
+  if (block == NULL)
+    {
+      pthread_mutex_unlock (&area->area_mutex);
+      /* error has been set */
+      return NULL;
+    }
+
+  /* alloc free entry from this new block */
+  entry_idx = lf_bitmap_get_entry (&block->bitmap);
+  assert (entry_idx != -1);
+
+  if (area_insert_block (area, block) != NO_ERROR)
+    {
+      lf_bitmap_destroy (&block->bitmap);
+      free_and_init (block);
+
+      pthread_mutex_unlock (&area->area_mutex);
+      /* error has been set */
+      return NULL;
+    }
+
+  /* always set new block as hint_block */
+  area->hint_block = block;
+
+  pthread_mutex_unlock (&area->area_mutex);
+
+found:
 
 #if defined(SERVER_MODE)
   /* do not count in SERVER_MODE */
@@ -369,7 +465,7 @@ area_alloc (AREA * area)
   area->n_allocs++;
 #endif
 
-  entry_ptr = curr->data + area->element_size * free_entry_idx;
+  entry_ptr = block->data + area->element_size * entry_idx;
 
 #if !defined (NDEBUG)
   prefix = (int *) entry_ptr;
@@ -378,7 +474,7 @@ area_alloc (AREA * area)
   entry_ptr += AREA_PREFIX_SIZE;
 #endif /* !NDEBUG */
 
-  assert (entry_ptr < (curr->data + area->block_size));
+  assert (entry_ptr < (block->data + area->block_size));
 
   return ((void *) entry_ptr);
 }
@@ -398,24 +494,16 @@ int
 area_validate (AREA * area, const void *address)
 {
   AREA_BLOCK *p;
-  int error = ER_AREA_ILLEGAL_POINTER;
+  int error = NO_ERROR;
 
   assert (area != NULL);
 
-  for (p = area->blocks; p != NULL && error != NO_ERROR; p = p->next)
-    {
-      if ((p->data <= (char *) address)
-	  && (p->data + area->block_size > (char *) address))
-	{
-	  error = NO_ERROR;
-	  break;
-	}
-    }
-
-  if (error != NO_ERROR)
+  p = area_find_block (area, address);
+  if (p == NULL)
     {
       /* need more specific error here */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AREA_ILLEGAL_POINTER, 0);
+      error = ER_AREA_ILLEGAL_POINTER;
     }
 
   return error;
@@ -432,7 +520,7 @@ area_validate (AREA * area, const void *address)
 int
 area_free (AREA * area, void *ptr)
 {
-  AREA_BLOCK *curr;
+  AREA_BLOCK *block, *hint_block;
   char *entry_ptr;
   int error, entry_idx;
   int offset = -1;
@@ -455,18 +543,15 @@ area_free (AREA * area, void *ptr)
   entry_ptr = (char *) ptr;
 #endif /* !NDEBUG */
 
-  curr = area->blocks;
-  while (curr != NULL)
+  block = area_find_block (area, (const void *) entry_ptr);
+  if (block == NULL)
     {
-      if ((curr->data <= entry_ptr)
-	  && (entry_ptr < curr->data + area->block_size))
-	{
-	  offset = (int) (entry_ptr - curr->data);
-	  break;
-	}
-      curr = curr->next;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AREA_ILLEGAL_POINTER, 0);
+      assert (false);
+      return ER_AREA_ILLEGAL_POINTER;
     }
 
+  offset = (int) (entry_ptr - block->data);
   if (offset < 0 || offset % area->element_size != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AREA_ILLEGAL_POINTER, 0);
@@ -489,10 +574,18 @@ area_free (AREA * area, void *ptr)
 
   assert (entry_idx >= 0 && entry_idx < area->alloc_count);
 
-  error = lf_bitmap_free_entry (&curr->bitmap, entry_idx);
+  error = lf_bitmap_free_entry (&block->bitmap, entry_idx);
   if (error != NO_ERROR)
     {
       return error;
+    }
+
+  /* change hint block if needed */
+  hint_block = VOLATILE_ACCESS (area->hint_block, AREA_BLOCK *);
+  if (LF_BITMAP_IS_FULL (&hint_block->bitmap)
+      && !LF_BITMAP_IS_FULL (&block->bitmap))
+    {
+      ATOMIC_CAS_ADDR (&area->hint_block, hint_block, block);
     }
 
 #if defined(SERVER_MODE)
@@ -515,23 +608,195 @@ area_free (AREA * area, void *ptr)
 void
 area_flush (AREA * area)
 {
-  AREA_BLOCK *block, *next;
+  AREA_BLOCKSET_LIST *blockset, *next_blockset;
+  AREA_BLOCK *block;
+  int i;
 
   assert (area != NULL);
 
-
-  for (block = area->blocks, next = NULL; block != NULL; block = next)
+  for (blockset = area->blockset_list; blockset != NULL;
+       blockset = next_blockset)
     {
-      next = block->next;
-      lf_bitmap_destroy (&block->bitmap);
-      free_and_init (block);
+      next_blockset = blockset->next;
+
+      for (i = 0; i < blockset->used_count; i++)
+	{
+	  block = blockset->items[i];
+
+	  lf_bitmap_destroy (&block->bitmap);
+	  free_and_init (block);
+	  blockset->items[i] = NULL;
+	}
+
+      free_and_init (blockset);
     }
-  area->blocks = NULL;
+  area->blockset_list = NULL;
+
+  pthread_mutex_destroy (&area->area_mutex);
 
   if (area->name != NULL)
     {
       free_and_init (area->name);
     }
+
+}
+
+/*
+ * area_add_block --- insert block into the blockset list
+ *   return: none
+ *   area(in): area descriptor
+ *   new_block(in): the new area_block pointer
+ *
+ *   Note: This function is protected by area_mutex, which mean only
+ *   1 thread can insert block in the same time.
+ */
+static int
+area_insert_block (AREA * area, AREA_BLOCK * new_block)
+{
+  AREA_BLOCKSET_LIST **last_blockset_p;
+  AREA_BLOCKSET_LIST *blockset, *new_blockset;
+  int used_count;
+  int error;
+
+  assert (area != NULL && new_block != NULL);
+
+  last_blockset_p = &area->blockset_list;
+  /* find an available blockset and insert new_block into it */
+  for (blockset = area->blockset_list; blockset != NULL;
+       blockset = blockset->next)
+    {
+      last_blockset_p = &blockset->next;
+
+      used_count = blockset->used_count;
+      if (used_count == AREA_BLOCKSET_SIZE)
+	{
+	  /* no room */
+	  continue;
+	}
+      /* each blockset owns one block at least */
+      assert (used_count >= 1);
+
+      /* If it fits, insert new_block to the last slot of this blockset.
+       * We don't shift/re-sort the blockset to manage sorted order.
+       * Our policy may require more space but greatly reduces the complexity
+       * of logic.
+       */
+      if (blockset->items[used_count - 1] < new_block)
+	{
+	  blockset->items[used_count] = new_block;
+
+          /* Use full barrier to ensure that above assignment done before
+	   * increase used_count
+	   */
+	  ATOMIC_INC_32 (&blockset->used_count, 1);
+
+	  return NO_ERROR;
+	}
+    }
+
+  /* If there's no available blockset, we need to allocate a new blockset */
+  new_blockset = area_alloc_blockset (area);
+  if (new_blockset == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  /* insert new_block to the first slot */
+  new_blockset->items[0] = new_block;
+
+  /* Use full barrier to ensure that above assignment done before
+   * increase used_count
+   */
+  ATOMIC_INC_32 (&new_blockset->used_count, 1);
+
+  /* append the new blockset to the end of blockset list */
+  assert ((*last_blockset_p) == NULL);
+  *last_blockset_p = new_blockset;
+
+  return NO_ERROR;
+}
+
+/*
+ * area_find_block -- find related block in blockset list.
+ *
+ *   return: the related block pointer, if not found, return NULL
+ *   area(in): area descriptor
+ *   ptr(in): the entry pointer
+ *
+ * Note: This function does not require area_mutex.
+ */
+static AREA_BLOCK *
+area_find_block (AREA * area, const void *ptr)
+{
+  AREA_BLOCKSET_LIST *blockset;
+  AREA_BLOCK *first_block, *last_block, *block;
+  int middle, left, right, pos;
+  int used_count;
+
+  /* find the related block in blockset list */
+  for (blockset = area->blockset_list; blockset != NULL;
+       blockset = VOLATILE_ACCESS (blockset->next, AREA_BLOCKSET_LIST *))
+    {
+      used_count = VOLATILE_ACCESS (blockset->used_count, int);
+      /* each blocskset owns one block at least */
+      assert (used_count >= 1);
+
+      first_block = blockset->items[0];
+      if ((char *) ptr < first_block->data)
+	{
+	  continue;		/* less than min address */
+	}
+
+      last_block =
+	VOLATILE_ACCESS (blockset->items[used_count - 1], AREA_BLOCK *);
+      if (last_block->data + area->block_size <= (char *) ptr)
+	{
+	  continue;		/* large than max address */
+	}
+
+      assert ((first_block->data <= (char *) ptr)
+	      && ((char *) ptr < last_block->data + area->block_size));
+
+      left = 0;
+      right = used_count - 1;
+
+      /* binary search in this blockset */
+      while (left <= right)
+	{
+	  middle = (left + right) / 2;
+
+	  block = VOLATILE_ACCESS (blockset->items[middle], AREA_BLOCK *);
+	  if (block->data > (char *) ptr)
+	    {
+	      right = middle - 1;
+	    }
+	  else
+	    {
+	      left = middle + 1;
+	    }
+	}
+      pos = right;
+
+      if (pos < 0 || pos >= AREA_BLOCKSET_SIZE)
+	{
+	  /* impossible to here */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AREA_ILLEGAL_POINTER,
+		  0);
+	  assert (false);
+	  return NULL;
+	}
+
+      block = VOLATILE_ACCESS (blockset->items[pos], AREA_BLOCK *);
+      if ((block->data <= (char *) ptr)
+	  && ((char *) ptr < block->data + area->block_size))
+	{
+	  return block;
+	}
+    }
+
+  /* not found */
+  return NULL;
 }
 
 /*
@@ -543,6 +808,7 @@ area_flush (AREA * area)
 static void
 area_info (AREA * area, FILE * fp)
 {
+  AREA_BLOCKSET_LIST *blockset;
   AREA_BLOCK *block;
   size_t nblocks, bytes, elements, used, unused;
   size_t nallocs = 0, nfrees = 0;
@@ -551,12 +817,17 @@ area_info (AREA * area, FILE * fp)
   assert (area != NULL && fp != NULL);
 
   nblocks = bytes = elements = used = unused = 0;
-
-  for (block = area->blocks; block != NULL; block = block->next)
+  for (blockset = area->blockset_list; blockset != NULL;
+       blockset = blockset->next)
     {
-      nblocks++;
-      used += block->bitmap.entry_count_in_use;
-      bytes += area->block_size + sizeof (AREA_BLOCK);
+      for (i = 0; i < blockset->used_count; i++)
+	{
+	  block = blockset->items[i];
+
+	  nblocks++;
+	  used += block->bitmap.entry_count_in_use;
+	  bytes += area->block_size + sizeof (AREA_BLOCK);
+	}
     }
   elements = (nblocks * area->alloc_count);
   unused = elements - used;
@@ -582,7 +853,6 @@ area_info (AREA * area, FILE * fp)
   fprintf (fp, "  %lld total allocs, %lld total frees\n",
 	   (long long) nallocs, (long long) nfrees);
 }
-
 
 /*
  * area_dump - Print descriptions of all areas.

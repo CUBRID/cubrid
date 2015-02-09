@@ -2583,6 +2583,8 @@ lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt,
   int i;
 
   assert (bitmap != NULL);
+  /* We only allow full usage for LF_BITMAP_ONE_CHUNK. */
+  assert (style == LF_BITMAP_LIST_OF_CHUNKS || usage_threshold == 1.0f);
 
   bitmap->style = style;
   bitmap->entry_count = entries_cnt;
@@ -2670,9 +2672,7 @@ restart:			/* wait-free process */
   slot_idx = -1;
 
   /* when reaches the predefined threshold */
-  if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS
-      && ((float) bitmap->entry_count_in_use) / bitmap->entry_count >
-      bitmap->usage_threshold)
+  if (LF_BITMAP_IS_FULL (bitmap))
     {
       return -1;
     }

@@ -36,6 +36,8 @@
 #endif /* SERVER_MODE */
 #include "lock_free.h"
 
+#define AREA_BLOCKSET_SIZE 256
+
 /*
  * AREA_BLOCK - Structure used in the implementation of workspace areas.
  *   Maintains information about a block of allocation in an area.
@@ -45,9 +47,21 @@
 typedef struct area_block AREA_BLOCK;
 struct area_block
 {
-  AREA_BLOCK *next;
   LF_BITMAP bitmap;
   char *data;
+};
+
+/*
+ * AREA_BLOCKSET_LIST - Structure used in the implementation of workspace
+ *   areas. It includes a group of blocks pointers. These pointers are
+ *   sorted by their address.
+ */
+typedef struct area_blockset_list AREA_BLOCKSET_LIST;
+struct area_blockset_list
+{
+  AREA_BLOCKSET_LIST *next;
+  AREA_BLOCK *items[AREA_BLOCKSET_SIZE];
+  int used_count;
 };
 
 /*
@@ -64,7 +78,10 @@ struct area
   size_t alloc_count;
   size_t block_size;
 
-  AREA_BLOCK *blocks;		/* the allocated block list */
+  AREA_BLOCKSET_LIST *blockset_list;	/* the blockset list */
+  AREA_BLOCK *hint_block;	/* the hint block which may
+				 * include free slot */
+  pthread_mutex_t area_mutex;	/* only used for insert new block */
 
   /* for dumping */
   size_t n_allocs;		/* total alloc element count */

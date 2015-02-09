@@ -44,6 +44,7 @@ struct area_create_info
 
 void *test_area_proc (void *param);
 void *test_area_proc_1 (void *param);
+void *test_area_proc_2 (void *param);
 
 /* print function */
 static struct timeval start_time;
@@ -166,6 +167,66 @@ test_area_proc_1 (void *param)
 	}
     }
 
+  for (i = 0; i < NCACHES; i++)
+    {
+      if (entry[idx] != NULL)
+	{
+	  error = area_free (area_p, (void *) entry[idx]);
+	  if (error != NO_ERROR)
+	    {
+	      pthread_exit ((void *) ER_FAILED);
+	    }
+	  entry[idx] = NULL;
+	}
+      idx++;
+      if (idx >= NCACHES)
+	{
+	  idx = 0;
+	}
+    }
+
+  pthread_exit ((void *) NO_ERROR);
+
+#undef NCACHES
+#undef NOPS
+}
+
+void *
+test_area_proc_2 (void *param)
+{
+#define NOPS	  1000000	/* 1M */
+#define NCACHES   500
+
+  AREA *area_p = (AREA *) param;
+  void *entry[NCACHES];
+  int idx, i, error;
+
+
+  for (idx = 0; idx < NCACHES; idx++)
+    {
+      entry[idx] = NULL;
+    }
+
+  for (i = 0; i < NOPS; i++)
+    {
+      idx = rand () % NCACHES;
+      if (entry[idx] != NULL)
+	{
+	  error = area_free (area_p, (void *) entry[idx]);
+	  if (error != NO_ERROR)
+	    {
+	      pthread_exit ((void *) ER_FAILED);
+	    }
+	  entry[idx] = NULL;
+	}
+
+      entry[idx] = area_alloc (area_p);
+      if (entry[idx] == NULL)
+	{
+	  pthread_exit ((void *) ER_FAILED);
+	}
+    }
+
   for (idx = 0; idx < NCACHES; idx++)
     {
       if (entry[idx] != NULL)
@@ -238,24 +299,33 @@ test_area (AREA_CREATE_INFO * info, int nthreads, void *(*proc) (void *))
 
   /* results */
   {
+    AREA_BLOCKSET_LIST *blockset;
     AREA_BLOCK *block;
-    int block_cnt = 0, chunk_count;
-    for (block = area->blocks; block != NULL; block = block->next)
+    int i, j, blockset_cnt = 0, block_cnt = 0, chunk_count;
+    for (blockset = area->blockset_list; blockset != NULL;
+	 blockset = blockset->next)
       {
-	chunk_count =
-	  CEIL_PTVDIV (block->bitmap.entry_count, LF_BITFIELD_WORD_SIZE);
-
-	for (i = 0; i < chunk_count; i++)
+	for (i = 0; i < blockset->used_count; i++)
 	  {
-	    if (block->bitmap.bitfield[i])
-	      {
-		return fail ("check bitmap status");
-	      }
-	  }
+	    block = blockset->items[i];
+	    assert (block != NULL);
 
-	block_cnt++;
+	    chunk_count =
+	      CEIL_PTVDIV (block->bitmap.entry_count, LF_BITFIELD_WORD_SIZE);
+
+	    for (j = 0; j < chunk_count; j++)
+	      {
+		if (block->bitmap.bitfield[j])
+		  {
+		    return fail ("check bitmap status");
+		  }
+	      }
+
+	    block_cnt++;
+	  }
+	blockset_cnt++;
       }
-    printf (" Used %2d blocks. ", block_cnt);
+    printf (" Used %3d blocks(%2d blocksets). ", block_cnt, blockset_cnt);
   }
 
   /* destory */
@@ -300,12 +370,25 @@ main (int argc, char **argv)
       }
 
     printf ("============================================================\n");
-    printf ("Test get/free entry with cache:\n");
+    printf ("Test get/free entry with cache(32):\n");
     for (j = 0; j < (int) DIM (cubrid_infos); j++)
       {
 	for (i = 1; i <= 64; i *= 2)
 	  {
 	    if (test_area (&cubrid_infos[j], i, test_area_proc_1) != NO_ERROR)
+	      {
+		goto fail;
+	      }
+	  }
+      }
+
+    printf ("============================================================\n");
+    printf ("Test get/free entry with cache(500), random access:\n");
+    for (j = 0; j < (int) DIM (cubrid_infos); j++)
+      {
+	for (i = 1; i <= 64; i *= 2)
+	  {
+	    if (test_area (&cubrid_infos[j], i, test_area_proc_2) != NO_ERROR)
 	      {
 		goto fail;
 	      }
