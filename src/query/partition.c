@@ -1431,6 +1431,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 		       const PRUNING_OP op, PRUNING_BITSET * pruned)
 {
   int i = 0, error = NO_ERROR;
+  int added = 0;
   OR_PARTITION *part;
   DB_VALUE min, max;
   int rmin = DB_UNK, rmax = DB_UNK;
@@ -1499,6 +1500,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	  if ((rmin == DB_EQ || rmin == DB_LT) && rmax == DB_LT)
 	    {
 	      pruningset_add (pruned, i);
+	      ++added;
 	      /* no need to look any further */
 	      goto cleanup;
 	    }
@@ -1510,6 +1512,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	  if (rmin == DB_LT)
 	    {
 	      pruningset_add (pruned, i);
+	      ++added;
 	    }
 	  break;
 
@@ -1520,11 +1523,13 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	    {
 	      /* this is the only partition than can qualify */
 	      pruningset_add (pruned, i);
+	      ++added;
 	      goto cleanup;
 	    }
 	  else if (rmin == DB_LT)
 	    {
 	      pruningset_add (pruned, i);
+	      ++added;
 	    }
 	  break;
 
@@ -1534,6 +1539,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	  if (rmax == DB_LT)
 	    {
 	      pruningset_add (pruned, i);
+	      ++added;
 	    }
 	  break;
 
@@ -1543,6 +1549,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	  if (rmax == DB_LT)
 	    {
 	      pruningset_add (pruned, i);
+	      ++added;
 	    }
 	  break;
 
@@ -1550,6 +1557,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	  if (DB_IS_NULL (&min))
 	    {
 	      pruningset_add (pruned, i);
+	      ++added;
 	      /* no need to look any further */
 	      goto cleanup;
 	    }
@@ -1564,6 +1572,11 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 cleanup:
   pr_clear_value (&min);
   pr_clear_value (&max);
+
+  if (status == MATCH_OK && added == 0)
+    {
+      status = MATCH_NOT_FOUND;
+    }
 
   return status;
 }
