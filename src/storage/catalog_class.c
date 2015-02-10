@@ -5812,7 +5812,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
   int i;
   bool attr_info_inited = false;
   bool scan_cache_inited = false;
-
+  int num_record = 0;
 
   assert (log_record_time != NULL);
   *log_record_time = 0;
@@ -5926,6 +5926,8 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
 	{
 	  *log_record_time = tmp_log_record_time;
 	}
+
+      num_record++;
     }
 
 exit:
@@ -5941,10 +5943,13 @@ exit:
       attr_info_inited = false;
     }
 
+  if (error == NO_ERROR && num_record == 0)
+    {
+      error = ER_FAILED;
+    }
+
   return error;
 }
-
-
 
 /*
  * catcls_find_and_set_cached_class_oid () - Used to find OID for collation

@@ -3371,7 +3371,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 	  error_code =
 	    catcls_get_apply_info_log_record_time (tsd_ptr, &log_record_time);
 
-	  if (error_code == NO_ERROR)
+	  if (error_code == NO_ERROR && log_record_time > 0)
 	    {
 	      curr_delay_in_secs = time (NULL) - log_record_time;
 	      if (curr_delay_in_secs > 0)
