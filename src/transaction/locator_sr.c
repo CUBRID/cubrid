@@ -11689,7 +11689,7 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
   HEAP_SCANCACHE scan;
   DISK_ISVALID rv = DISK_ERROR;
 
-  if (heap_scancache_quick_start (&scan) != NO_ERROR)
+  if (heap_scancache_quick_start_root_hfid (thread_p, &scan) != NO_ERROR)
     {
       return DISK_ERROR;
     }
@@ -13078,7 +13078,7 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
 
-  if (heap_scancache_quick_start (&scan) != NO_ERROR)
+  if (heap_scancache_quick_start_root_hfid (thread_p, &scan) != NO_ERROR)
     {
       return ER_FAILED;
     }

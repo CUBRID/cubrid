@@ -197,7 +197,7 @@ class_is_system_class (THREAD_ENTRY * thread_p, const OID * class_oid,
   assert (is_system_class_p != NULL && class_oid != NULL
 	  && !OID_ISNULL (class_oid));
 
-  (void) heap_scancache_quick_start (&scan_cache);
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK, NULL_CHN)
       != S_SUCCESS)
     {

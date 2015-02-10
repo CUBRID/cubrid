@@ -4893,7 +4893,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
       atts = ct_Classes[c]->cc_atts;
       n_atts = ct_Classes[c]->cc_n_atts;
 
-      if (heap_scancache_quick_start (&scan) != NO_ERROR)
+      if (heap_scancache_quick_start_root_hfid (thread_p, &scan) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -5007,7 +5007,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p,
     }
   attr_info_inited = true;
 
-  (void) heap_scancache_quick_start (&scan_cache);
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   scan_cache_inited = true;
 
   if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK,
@@ -5605,7 +5605,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p,
     }
   attr_info_inited = true;
 
-  (void) heap_scancache_quick_start (&scan_cache);
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   scan_cache_inited = true;
 
   if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK,
@@ -5843,7 +5843,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
     }
   attr_info_inited = true;
 
-  heap_scancache_quick_start (&scan_cache);
+  heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   scan_cache_inited = true;
 
   if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK, NULL_CHN) !=

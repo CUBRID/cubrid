@@ -4724,7 +4724,8 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid,
 	{
 	  return DISK_ERROR;
 	}
-      error_code = heap_scancache_quick_start (&scan_cache);
+      error_code =
+	heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
       if (error_code != NO_ERROR)
 	{
 	  lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK,

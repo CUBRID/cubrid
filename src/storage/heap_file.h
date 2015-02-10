@@ -722,4 +722,20 @@ extern bool heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p,
 					      ATTR_ID * att_id, int n_att_id);
 extern VPID *heap_get_header_page (THREAD_ENTRY * thread_p, HFID * hfid, VPID
 				   * header_vpid);
+extern int heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p,
+						 HEAP_SCANCACHE * scan_cache);
+extern int heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p,
+						      HEAP_SCANCACHE *
+						      scan_cache,
+						      OID * class_oid);
+extern int heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY *
+						       thread_p,
+						       HEAP_SCANCACHE *
+						       scan_cache,
+						       const HFID * hfid);
+extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY *
+							     thread_p,
+							     HEAP_SCANCACHE *
+							     scan_cache,
+							     OID * class_oid);
 #endif /* _HEAP_FILE_H_ */

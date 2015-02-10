@@ -8234,7 +8234,8 @@ btree_check_all (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      error_code = heap_scancache_quick_start (&scan_cache);
+      error_code =
+	heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
       if (error_code != NO_ERROR)
 	{
 	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid,

@@ -220,8 +220,11 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p,
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   ATTR_ID attrid;
   DB_VALUE *cur_val;
+  OID serial_class_oid;
 
-  heap_scancache_quick_start (&scan_cache);
+  oid_get_serial_oid (&serial_class_oid);
+  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache,
+					     &serial_class_oid);
 
   /* get record into record desc */
   scan =
@@ -500,6 +503,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
   DB_VALUE *val;
   DB_VALUE key_val;
   ATTR_ID attrid;
+  OID serial_class_oid;
 
   DB_MAKE_NULL (&key_val);
 
@@ -509,7 +513,9 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
       return ret;
     }
 
-  heap_scancache_quick_start_modify (&scan_cache);
+  oid_get_serial_oid (&serial_class_oid);
+  heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache,
+						    &serial_class_oid);
 
   scan =
     heap_get (thread_p, &entry->oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
@@ -621,10 +627,13 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p,
   int cached_num, nturns;
   SERIAL_CACHE_ENTRY *entry = NULL;
   ATTR_ID attrid;
+  OID serial_class_oid;
 
   DB_MAKE_NULL (&key_val);
 
-  heap_scancache_quick_start_modify (&scan_cache);
+  oid_get_serial_oid (&serial_class_oid);
+  heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache,
+						    &serial_class_oid);
 
   scan =
     heap_get (thread_p, serial_oidp, &recdesc, &scan_cache, PEEK, NULL_CHN);
@@ -1175,7 +1184,10 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 
   oid_get_serial_oid (&serial_Cache_pool.db_serial_class_oid);
 
-  if (heap_scancache_quick_start (&scan) != NO_ERROR)
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan,
+						 &serial_Cache_pool.
+						 db_serial_class_oid)
+      != NO_ERROR)
     {
       return ER_FAILED;
     }

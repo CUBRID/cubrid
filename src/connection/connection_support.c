@@ -2787,7 +2787,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
     }
   attr_info_inited = true;
 
-  heap_scancache_quick_start (&scan_cache);
+  heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   scan_cache_inited = true;
 
   if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK,

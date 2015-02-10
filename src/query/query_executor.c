@@ -27573,7 +27573,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  heap_scancache_quick_start (&scan);
+  heap_scancache_quick_start_root_hfid (thread_p, &scan);
 
   assert (xasl_state != NULL);
   class_oid = &(xasl->spec_list->s.cls_node.cls_oid);
@@ -28452,7 +28452,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  heap_scancache_quick_start (&scan);
+  heap_scancache_quick_start_root_hfid (thread_p, &scan);
 
   assert (xasl_state != NULL);
   class_oid = &(xasl->spec_list->s.cls_node.cls_oid);

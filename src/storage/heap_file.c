@@ -767,7 +767,8 @@ static int heap_scancache_reset_modify (THREAD_ENTRY * thread_p,
 					HEAP_SCANCACHE * scan_cache,
 					const HFID * hfid,
 					const OID * class_oid);
-static int heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache);
+static int heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache,
+						const HFID * hfid);
 static int heap_scancache_quick_end (THREAD_ENTRY * thread_p,
 				     HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p,
@@ -2510,7 +2511,7 @@ heap_classrepr_get_from_record (THREAD_ENTRY * thread_p,
     }
   else
     {
-      heap_scancache_quick_start (&scan_cache);
+      heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
       if (heap_get (thread_p, class_oid, &peek_recdes, &scan_cache,
 		    PEEK, NULL_CHN) != S_SUCCESS)
 	{
@@ -10004,7 +10005,7 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p,
 int
 heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache)
 {
-  heap_scancache_quick_start_internal (scan_cache);
+  heap_scancache_quick_start_internal (scan_cache, NULL);
 
   scan_cache->page_latch = S_LOCK;
 
@@ -10020,7 +10021,7 @@ heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache)
 int
 heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache)
 {
-  heap_scancache_quick_start_internal (scan_cache);
+  heap_scancache_quick_start_internal (scan_cache, NULL);
 
   scan_cache->page_latch = X_LOCK;
 
@@ -10034,15 +10035,25 @@ heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache)
  *   scan_cache(in/out): Scan cache
  */
 static int
-heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache)
+heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache,
+				     const HFID * hfid)
 {
   HFID_SET_NULL (&scan_cache->hfid);
-  scan_cache->hfid.vfid.volid = NULL_VOLID;
+  if (hfid == NULL)
+    {
+      scan_cache->hfid.vfid.volid = NULL_VOLID;
+      PGBUF_INIT_WATCHER (&(scan_cache->page_watcher),
+			  PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+    }
+  else
+    {
+      HFID_COPY (&scan_cache->hfid, hfid);
+      PGBUF_INIT_WATCHER (&(scan_cache->page_watcher),
+			  PGBUF_ORDERED_HEAP_NORMAL, hfid);
+    }
   OID_SET_NULL (&scan_cache->class_oid);
   scan_cache->page_latch = S_LOCK;
   scan_cache->cache_last_fix_page = true;
-  PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL,
-		      PGBUF_ORDERED_NULL_HFID);
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
@@ -14135,7 +14146,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,
   HEAP_SCANCACHE scan_cache;
   OID root_oid;
 
-  heap_scancache_quick_start (&scan_cache);
+  heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
   if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes,
 			       &scan_cache, PEEK) == S_SUCCESS)
@@ -15763,7 +15774,7 @@ heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid,
   RECDES recdes;
   int error = NO_ERROR;
 
-  error = heap_scancache_quick_start (&scan_cache);
+  error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (error != NO_ERROR)
     {
       return error;
@@ -15813,7 +15824,8 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid,
   assert (partition_oid != NULL);
   assert (class_oid != NULL);
 
-  if (heap_scancache_quick_start (&scan_cache) != NO_ERROR)
+  if (heap_scancache_quick_start_root_hfid (thread_p, &scan_cache) !=
+      NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -15882,7 +15894,7 @@ heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid,
     }
   *type_id = *values_id = NULL_ATTRID;
 
-  if (heap_scancache_quick_start (&scan) != NO_ERROR)
+  if (heap_scancache_quick_start_root_hfid (thread_p, &scan) != NO_ERROR)
     {
       error = ER_FAILED;
       goto cleanup;
@@ -16081,7 +16093,7 @@ heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p,
       goto cleanup;
     }
   /* Start a heap scan for _db_partition class */
-  error = heap_scancache_quick_start (&scan_cache);
+  error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -16327,7 +16339,7 @@ heap_get_class_supers (THREAD_ENTRY * thread_p, const OID * class_oid,
   RECDES recdes;
   int error = NO_ERROR;
 
-  error = heap_scancache_quick_start (&scan_cache);
+  error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (error != NO_ERROR)
     {
       return error;
@@ -19377,7 +19389,8 @@ heap_check_all_heaps (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      error_code = heap_scancache_quick_start (&scan_cache);
+      error_code =
+	heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
       if (error_code != NO_ERROR)
 	{
 	  lock_unlock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid,
@@ -22271,7 +22284,7 @@ heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid,
       return ER_FAILED;
     }
 
-  error_code = heap_scancache_quick_start (&scan_cache);
+  error_code = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -22434,7 +22447,7 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
       need_free_classname = true;
     }
 
-  heap_scancache_quick_start (&scan_cache);
+  heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
   if (heap_get (thread_p, class_oid, &peek_recdes, &scan_cache,
 		PEEK, NULL_CHN) == S_SUCCESS)
@@ -25942,7 +25955,10 @@ heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, OID * oid,
        * the latest version of row */
       recdesp = &temp_recdes;
       oid_inst = oid;
-      if (heap_scancache_quick_start (&local_scan_cache) != NO_ERROR)
+      if (heap_scancache_quick_start_with_class_hfid (thread_p,
+						      &local_scan_cache,
+						      &scan_cache->hfid)
+	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
 	  goto end;
@@ -27972,4 +27988,115 @@ heap_get_header_page (THREAD_ENTRY * thread_p, HFID * hfid,
   assert (!VPID_ISNULL (header_vpid));
 
   return vpid;
+}
+
+/*
+ * heap_scancache_quick_start_root_hfid () - Start caching information for a
+ *					     heap scan on root hfid
+ *   return: NO_ERROR
+ *   thread_p(in):
+ *   scan_cache(in/out): Scan cache
+ *
+ * Note: this is similar to heap_scancache_quick_start, except it sets the
+ *	 HFID of root in the scan_cache (otherwise remains NULL).
+ *	 This should be used to avoid inconsistency when using ordered fix.
+ */
+int
+heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p,
+				      HEAP_SCANCACHE * scan_cache)
+{
+  HFID root_hfid;
+
+  (void) boot_find_root_heap (&root_hfid);
+  (void) heap_scancache_quick_start_internal (scan_cache, &root_hfid);
+  scan_cache->page_latch = S_LOCK;
+
+  return NO_ERROR;
+}
+
+
+/*
+ * heap_scancache_quick_start_with_class_oid () - Start caching information for
+ *						   a heap scan on a class.
+ *
+ *   return: NO_ERROR
+ *   thread_p(in):
+ *   scan_cache(in/out): Scan cache
+ *   class_oid(in): class
+ *
+ * Note: this is similar to heap_scancache_quick_start, except it sets the
+ *	 HFID of class in the scan_cache (otherwise remains NULL).
+ *	 This should be used to avoid inconsistency when using ordered fix.
+ *	 This has a page latch overhead on top of heap_scancache_quick_start.
+ *
+ */
+int
+heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p,
+					   HEAP_SCANCACHE * scan_cache,
+					   OID * class_oid)
+{
+  HFID class_hfid;
+
+  /* TODO: this is an access on a page, to replace with OID->HFID cache */
+  heap_get_hfid_from_class_oid (thread_p, class_oid, &class_hfid);
+  (void) heap_scancache_quick_start_with_class_hfid (thread_p, scan_cache,
+						     &class_hfid);
+  scan_cache->page_latch = S_LOCK;
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_scancache_quick_start_with_class_hfid () - Start caching information for
+ *						   a heap scan on a class.
+ *
+ *   return: NO_ERROR
+ *   thread_p(in):
+ *   scan_cache(in/out): Scan cache
+ *   class_oid(in): class
+ *
+ * Note: this is similar to heap_scancache_quick_start, except it sets the
+ *	 HFID of class in the scan_cache (otherwise remains NULL).
+ *	 This should be used to avoid inconsistency when using ordered fix.
+ *
+ */
+int
+heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p,
+					    HEAP_SCANCACHE * scan_cache,
+					    const HFID * hfid)
+{
+  (void) heap_scancache_quick_start_internal (scan_cache, hfid);
+  scan_cache->page_latch = S_LOCK;
+
+  return NO_ERROR;
+}
+
+
+/*
+ * heap_scancache_quick_start_modify_with_class_oid () -
+ *			Start caching information for a heap scan on class.
+ *
+ *   return: NO_ERROR
+ *   thread_p(in):
+ *   scan_cache(in/out): Scan cache
+ *   class_oid(in): class
+ *
+ * Note: this is similar to heap_scancache_quick_start_modify, except it sets
+ *	 the HFID of class in the scan_cache (otherwise remains NULL).
+ *	 This should be used to avoid inconsistency when using ordered fix.
+ *	 This has a page latch overhead on top of heap_scancache_quick_start.
+ */
+int
+heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p,
+						  HEAP_SCANCACHE * scan_cache,
+						  OID * class_oid)
+{
+  HFID class_hfid;
+
+  /* TODO: this is an access on a page, to replace with OID->HFID cache */
+  heap_get_hfid_from_class_oid (thread_p, class_oid, &class_hfid);
+  (void) heap_scancache_quick_start_internal (scan_cache, &class_hfid);
+  scan_cache->page_latch = X_LOCK;
+
+  return NO_ERROR;
 }
