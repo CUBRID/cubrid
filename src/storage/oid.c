@@ -39,6 +39,7 @@ static OID oid_Root_class = { 0, 0, 0 };
 static OID oid_Serial_class = { 0, 0, 0 };
 static OID oid_Partition_class = { 0, 0, 0 };
 static OID oid_Collation_class = { 0, 0, 0 };
+static OID oid_HA_apply_info_class = { 0, 0, 0 };
 static OID oid_Rep_Read_Tran = { 0, 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -52,11 +53,12 @@ OID *oid_Serial_class_oid = &oid_Serial_class;
 OID *oid_Partition_class_oid = &oid_Partition_class;
 
 
-OID_CACHE_ENTRY oid_cache[OID_CACHE_SIZE] = {
+OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Root_class, NULL},	/* Root class is not identifiable by a name */
   {&oid_Serial_class, CT_SERIAL_NAME},
   {&oid_Partition_class, CT_PARTITION_NAME},
-  {&oid_Collation_class, CT_COLLATION_NAME}
+  {&oid_Collation_class, CT_COLLATION_NAME},
+  {&oid_HA_apply_info_class, CT_HA_APPLY_INFO_NAME}
 };
 
 /*
@@ -254,7 +256,7 @@ oid_compare_equals (const void *key_oid1, const void *key_oid2)
 bool
 oid_check_cached_class_oid (const int cache_id, const OID * oid)
 {
-  return OID_EQ (oid, oid_cache[cache_id].oid);
+  return OID_EQ (oid, oid_Cache[cache_id].oid);
 }
 
 /*
@@ -266,7 +268,7 @@ oid_check_cached_class_oid (const int cache_id, const OID * oid)
 void
 oid_set_cached_class_oid (const int cache_id, const OID * oid)
 {
-  COPY_OID (oid_cache[cache_id].oid, oid);
+  COPY_OID (oid_Cache[cache_id].oid, oid);
 }
 
 /*
@@ -278,7 +280,7 @@ oid_set_cached_class_oid (const int cache_id, const OID * oid)
 const char *
 oid_get_cached_class_name (const int cache_id)
 {
-  return oid_cache[cache_id].class_name;
+  return oid_Cache[cache_id].class_name;
 }
 
 /*

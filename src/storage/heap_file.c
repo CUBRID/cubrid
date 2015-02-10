@@ -26161,6 +26161,7 @@ heap_is_mvcc_disabled_for_class (const OID * class_oid)
       /* MVCC is disabled for root class */
       return true;
     }
+
   if (oid_is_serial (class_oid))
     {
       return true;
@@ -26175,6 +26176,13 @@ heap_is_mvcc_disabled_for_class (const OID * class_oid)
     {
       return true;
     }
+
+  if (oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID,
+				  class_oid))
+    {
+      return true;
+    }
+
   return false;
 }
 
