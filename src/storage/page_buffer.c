@@ -10831,6 +10831,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	{
 	  DISK_ISVALID valid;
 
+	  er_status = er_errid ();
+	  if (er_status == ER_INTERRUPTED)
+	    {
+	      goto exit;
+	    }
+
 	  valid =
 	    pgbuf_is_valid_page (thread_p, &(ordered_holders_info[i].vpid),
 				 VPID_EQ (req_vpid,
@@ -10865,7 +10871,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	    {
 	      int prev_er_status = er_status;
 	      er_status = ER_PB_ORDERED_REFIX_FAILED;
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3,
 		      ordered_holders_info[i].vpid.volid,
 		      ordered_holders_info[i].vpid.pageid, prev_er_status);
 	      goto exit;
