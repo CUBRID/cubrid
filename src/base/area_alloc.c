@@ -810,16 +810,22 @@ area_info (AREA * area, FILE * fp)
 {
   AREA_BLOCKSET_LIST *blockset;
   AREA_BLOCK *block;
-  size_t nblocks, bytes, elements, used, unused;
+  size_t nblocksets, nblocks, bytes, elements, used, unused;
+  size_t min_blocks_in_set, avg_blocks_in_set, max_blocks_in_set;
   size_t nallocs = 0, nfrees = 0;
   unsigned int i;
 
   assert (area != NULL && fp != NULL);
 
-  nblocks = bytes = elements = used = unused = 0;
+  nblocksets = nblocks = bytes = elements = used = unused = 0;
+  min_blocks_in_set = AREA_BLOCKSET_SIZE;
+  max_blocks_in_set = 0;
+
   for (blockset = area->blockset_list; blockset != NULL;
        blockset = blockset->next)
     {
+      nblocksets++;
+
       for (i = 0; i < blockset->used_count; i++)
 	{
 	  block = blockset->items[i];
@@ -828,7 +834,18 @@ area_info (AREA * area, FILE * fp)
 	  used += block->bitmap.entry_count_in_use;
 	  bytes += area->block_size + sizeof (AREA_BLOCK);
 	}
+
+      if (blockset->used_count < min_blocks_in_set)
+	{
+	  min_blocks_in_set = blockset->used_count;
+	}
+      if (blockset->used_count > max_blocks_in_set)
+	{
+	  max_blocks_in_set = blockset->used_count;
+	}
     }
+  avg_blocks_in_set = nblocks / nblocksets;
+
   elements = (nblocks * area->alloc_count);
   unused = elements - used;
 
@@ -839,11 +856,17 @@ area_info (AREA * area, FILE * fp)
 #if !defined (NDEBUG)
   fprintf (fp, "  %lld bytes/element ",
 	   (long long) area->element_size - AREA_PREFIX_SIZE);
-  fprintf (fp, "(plus %d bytes overhead) ", (int) AREA_PREFIX_SIZE);
+  fprintf (fp, "(plus %d bytes overhead), ", (int) AREA_PREFIX_SIZE);
 #else
-  fprintf (fp, "  %lld bytes/element ", (long long) area->element_size);
+  fprintf (fp, "  %lld bytes/element, ", (long long) area->element_size);
 #endif
-  fprintf (fp, "%lld elements/block\n", (long long) area->alloc_count);
+  fprintf (fp, "%lld elements/block, %lld blocks/blockset\n",
+	   (long long) area->alloc_count, (long long) AREA_BLOCKSET_SIZE);
+
+  fprintf (fp, "  %lld blocksets, usage stats:"
+	   " MIN %lld, AVG %lld, MAX %lld\n",
+	   (long long) nblocksets, (long long) min_blocks_in_set,
+	   (long long) avg_blocks_in_set, (long long) max_blocks_in_set);
 
   fprintf (fp, "  %lld blocks, %lld bytes, %lld elements,"
 	   " %lld unused, %lld in use\n",
