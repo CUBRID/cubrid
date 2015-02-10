@@ -287,6 +287,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
 			LOG_LSA * topop_lsa)
 {
   TRAN_STATE state;
+  bool drop_transient_class = false;
 
   assert (result == LOG_RESULT_TOPOP_ABORT
 	  || result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -301,6 +302,11 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
     case LOG_RESULT_TOPOP_COMMIT:
     case LOG_RESULT_TOPOP_ABORT:
       if (log_get_parent_lsa_system_op (thread_p, topop_lsa) == topop_lsa)
+	{
+	  drop_transient_class = true;
+	}
+      state = log_end_system_op (thread_p, result);
+      if (drop_transient_class)
 	{
 	  (void) locator_drop_transient_class_name_entries (thread_p,
 							    topop_lsa);
@@ -320,7 +326,6 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
 	    }
 	  log_clear_lob_locator_list (thread_p, tdes, false, topop_lsa);
 	}
-      state = log_end_system_op (thread_p, result);
       break;
 
     case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:

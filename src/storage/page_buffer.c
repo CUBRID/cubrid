@@ -10438,6 +10438,16 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	{
 	  /* attempts to unfix-refix old page may fail since CONDITIONAL latch
 	   * will be enforced; just return page cannot be fixed */
+	  if (er_status == NO_ERROR)
+	    {
+	      /* LK_FORCE_ZERO_WAIT is used in some page scan functions
+	       * (e.g. heap_stats_find_page_in_bestspace) to skip busy pages;
+	       * here we return an error code (which means the page was not
+	       * fixed), however no error is set : this allows scan of pages to
+	       * continue */
+	      assert (wait_msecs == LK_FORCE_ZERO_WAIT);
+	      er_status = ER_LK_PAGE_TIMEOUT;
+	    }
 	  goto exit;
 	}
     }
