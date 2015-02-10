@@ -30198,17 +30198,18 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       tuple = (TOPN_TUPLE *) heap->members[row];
 
-      if (is_final)
+      /* evaluate orderby_num predicate */
+      res = qexec_eval_ordbynum_pred (thread_p, &ordby_info);
+      if (res != V_TRUE)
 	{
-	  /* evaluate orderby_num predicate */
-	  res = qexec_eval_ordbynum_pred (thread_p, &ordby_info);
-	  if (res != V_TRUE)
+	  if (res == V_ERROR)
 	    {
-	      if (res == V_ERROR)
-		{
-		  error = ER_FAILED;
-		  goto cleanup;
-		}
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+
+	  if (is_final)
+	    {
 	      /* skip this tuple */
 	      qexec_clear_topn_tuple (thread_p, tuple, values_count);
 	      heap->members[row] = NULL;
@@ -30228,16 +30229,13 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      continue;
 	    }
+
 	  if (varp->value.type == TYPE_ORDERBY_NUM)
 	    {
-	      if (!is_final)
-		{
-		  /* don't evaluate orderby_num now */
-		  continue;
-		}
 	      pr_clone_value (ordby_info.ordbynum_val,
 			      &tuple->values[tpl_descr->f_cnt]);
 	    }
+
 	  tpl_descr->f_valp[tpl_descr->f_cnt] =
 	    &tuple->values[tpl_descr->f_cnt];
 
@@ -30249,9 +30247,11 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      error = value_size;
 	      goto cleanup;
 	    }
+
 	  tpl_descr->tpl_size += value_size;
 	  tpl_descr->f_cnt++;
 	}
+
       error = qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
       if (error != NO_ERROR)
 	{
