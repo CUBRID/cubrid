@@ -15785,22 +15785,22 @@ pt_metadomains_compatible (ANALYTIC_KEY_METADOMAIN * f1,
   /* interpolation function with string arg type is not compatible with other functions */
   if (analytic1 != NULL && analytic2 != NULL)
     {
-      if (analytic1->function == PT_MEDIAN
-	  && analytic2->function == PT_MEDIAN
+      if (QPROC_IS_INTERPOLATION_FUNC (analytic1)
+	  && QPROC_IS_INTERPOLATION_FUNC (analytic2)
 	  && (f1->part_size != f2->part_size
 	      || (TP_IS_STRING_TYPE (analytic1->opr_dbtype)
 		  ^ TP_IS_STRING_TYPE (analytic2->opr_dbtype))))
 	{
 	  return false;
 	}
-      else if (analytic1->function == PT_MEDIAN
-	       && analytic2->function != PT_MEDIAN
+      else if (QPROC_IS_INTERPOLATION_FUNC (analytic1)
+	       && !QPROC_IS_INTERPOLATION_FUNC (analytic2)
 	       && TP_IS_STRING_TYPE (analytic1->opr_dbtype))
 	{
 	  return false;
 	}
-      else if (analytic2->function == PT_MEDIAN
-	       && analytic1->function != PT_MEDIAN
+      else if (QPROC_IS_INTERPOLATION_FUNC (analytic2)
+	       && !QPROC_IS_INTERPOLATION_FUNC (analytic1)
 	       && TP_IS_STRING_TYPE (analytic2->opr_dbtype))
 	{
 	  return false;
