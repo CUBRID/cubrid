@@ -11685,25 +11685,78 @@ DISK_ISVALID
 locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
 			    HFID * hfid, BTID * index_btid, bool repair)
 {
-  RECDES peek;
+  RECDES copy_rec = RECDES_INITIALIZER;
   HEAP_SCANCACHE scan;
+  HFID root_hfid;
   DISK_ISVALID rv = DISK_ERROR;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
-  if (heap_scancache_quick_start_root_hfid (thread_p, &scan) != NO_ERROR)
+  if (mvcc_Enabled)
+    {
+      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (mvcc_snapshot == NULL)
+	{
+	  return DISK_ERROR;
+	}
+    }
+
+  if (boot_find_root_heap (&root_hfid) != NO_ERROR
+      || HFID_IS_NULL (&root_hfid))
     {
       return DISK_ERROR;
     }
 
-  if (heap_get (thread_p, cls_oid, &peek, &scan, PEEK, NULL_CHN) == S_SUCCESS)
+  if (heap_scancache_start (thread_p, &scan, &root_hfid, oid_Root_class_oid,
+			    true, false, mvcc_snapshot) != NO_ERROR)
     {
-      rv =
-	locator_check_class (thread_p, cls_oid, &peek, hfid, index_btid,
-			     repair);
+      return DISK_ERROR;
     }
-  else
+
+  if (heap_get (thread_p, cls_oid, &copy_rec, &scan, COPY, NULL_CHN)
+      != S_SUCCESS)
     {
-      rv = DISK_ERROR;
+      heap_scancache_end (thread_p, &scan);
+      return DISK_ERROR;
     }
+
+  /* lock class and unlatch page */
+  if (lock_object
+      (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK,
+       LK_COND_LOCK) != LK_GRANTED)
+    {
+      if (scan.page_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &scan.page_watcher);
+	}
+
+      if (lock_object (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK,
+		       LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  heap_scancache_end (thread_p, &scan);
+	  return DISK_ERROR;
+	}
+
+      copy_rec.data = NULL;
+      if (heap_get (thread_p, cls_oid, &copy_rec, &scan, COPY, NULL_CHN)
+	  != S_SUCCESS)
+	{
+	  lock_unlock_object (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK,
+			      true);
+	  heap_scancache_end (thread_p, &scan);
+	  return DISK_ERROR;
+	}
+    }
+
+  /* we have lock on class_oid, record COPYed, while page is latched */
+  if (scan.page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan.page_watcher);
+    }
+
+  rv = locator_check_class (thread_p, cls_oid, &copy_rec, hfid, index_btid,
+			    repair);
+
+  lock_unlock_object (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK, true);
 
   heap_scancache_end (thread_p, &scan);
 
@@ -11724,7 +11777,7 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
 DISK_ISVALID
 locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 {
-  RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
+  RECDES copy_rec = RECDES_INITIALIZER;	/* Record descriptor for copy object */
   HFID root_hfid;
   HFID hfid;
   OID oid;
@@ -11768,24 +11821,55 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 
   while (isallvalid != DISK_ERROR)
     {
-      code = heap_next (thread_p, &root_hfid, oid_Root_class_oid, &oid, &peek,
-			&scan, PEEK);
+      code = heap_next (thread_p, &root_hfid, oid_Root_class_oid, &oid,
+			&copy_rec, &scan, COPY);
       if (code != S_SUCCESS)
 	{
 	  break;
 	}
 
-      or_class_hfid (&peek, &hfid);
+      or_class_hfid (&copy_rec, &hfid);
       if (HFID_IS_NULL (&hfid))
 	{
 	  continue;
 	}
 
-      if (locator_check_class (thread_p, &oid, &peek, &hfid, NULL, repair) !=
-	  DISK_VALID)
+      /* lock class and unlatch page */
+      if (lock_object (thread_p, &oid, oid_Root_class_oid,
+		       IS_LOCK, LK_COND_LOCK) != LK_GRANTED)
+	{
+	  if (scan.page_watcher.pgptr != NULL)
+	    {
+	      pgbuf_ordered_unfix (thread_p, &scan.page_watcher);
+	    }
+
+	  if (lock_object (thread_p, &oid, oid_Root_class_oid,
+			   IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	    {
+	      break;
+	    }
+
+	  copy_rec.data = NULL;
+	  code = heap_get (thread_p, &oid, &copy_rec, &scan, COPY, NULL_CHN);
+	  if (code != S_SUCCESS)
+	    {
+	      break;
+	    }
+	}
+
+      /* we have lock on class_oid, record COPYed, while page is latched */
+      if (scan.page_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &scan.page_watcher);
+	}
+
+      if (locator_check_class (thread_p, &oid, &copy_rec, &hfid, NULL, repair)
+	  != DISK_VALID)
 	{
 	  isallvalid = DISK_ERROR;
 	}
+
+      lock_unlock_object (thread_p, &oid, oid_Root_class_oid, IS_LOCK, true);
     }
 
   if (code != S_END)
