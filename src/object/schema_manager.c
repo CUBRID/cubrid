@@ -8787,27 +8787,31 @@ retain_former_ids (SM_TEMPLATE * flat)
       DB_VALUE pname;
       bool is_partition = false;
       int error = NO_ERROR;
+      int save;
 
+      /* for db_is_deleted(...->partition_of), since SM_CLASS->partition_of
+       * always points to catalog class '_db_partition', for this class
+       * we need to skip the function check_authorization(), otherwise we
+       * get an error '-157'.
+       */
+      AU_DISABLE (save);
       if (flat->current->partition_of != NULL
 	  && !db_is_deleted (flat->current->partition_of))
 	{
-	  int save;
-
 	  db_make_null (&pname);
-
-	  AU_DISABLE (save);
 	  error = db_get (flat->current->partition_of, PARTITION_ATT_PNAME,
 			  &pname);
-	  AU_ENABLE (save);
 
 	  if (error != NO_ERROR)
 	    {
 	      pr_clear_value (&pname);
+	      AU_ENABLE (save);
 	      return error;
 	    }
 	  is_partition = (DB_IS_NULL (&pname) ? false : true);
 	  pr_clear_value (&pname);
 	}
+      AU_ENABLE (save);
 
       /* Check each new inherited class attribute.  These attribute will not
          have an assigned id and their class MOPs will not match */
@@ -12737,7 +12741,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
       flags[0] = LC_PREF_FLAG_LOCK;
-      if (locator_lockhint_classes (1, names, locks, subs, flags, 1, 
+      if (locator_lockhint_classes (1, names, locks, subs, flags, 1,
 				    NULL_LOCK) == LC_CLASSNAME_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -12750,7 +12754,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
       flags[0] = LC_PREF_FLAG_LOCK;
-      if (locator_lockhint_classes (1, names, locks, subs, flags, 1, 
+      if (locator_lockhint_classes (1, names, locks, subs, flags, 1,
 				    NULL_LOCK) == LC_CLASSNAME_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
