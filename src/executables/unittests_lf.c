@@ -1051,7 +1051,7 @@ test_hash_iterator ()
     char msg[256];
     int sum = 0;
 
-    it = lf_hash_create_iterator (te, &hash);
+    lf_hash_create_iterator (&it, te, &hash);
     for (curr = lf_hash_iterate (&it); curr != NULL;
 	 curr = lf_hash_iterate (&it))
       {

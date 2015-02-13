@@ -639,7 +639,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
       er_log_debug (ARG_FILE_LINE, "printing active sessions\n");
 
-      it = lf_hash_create_iterator (t_entry, &sessions.sessions_table);
+      lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
       for (state = lf_hash_iterate (&it); state != NULL;
 	   state = lf_hash_iterate (&it))
 	{
@@ -819,7 +819,7 @@ session_remove_expired_sessions (struct timeval *timeout)
   timeout_info.session_ids = NULL;
   timeout_info.timeout = timeout;
 
-  it = lf_hash_create_iterator (t_entry, &sessions.sessions_table);
+  lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
   state = lf_hash_iterate (&it);
   while (state)
     {
@@ -2203,7 +2203,7 @@ session_states_dump (THREAD_ENTRY * thread_p)
   session_count = MAX (session_count, 0);
   fprintf (stdout, "\nSESSION COUNT = %d\n", session_count);
 
-  it = lf_hash_create_iterator (t_entry, &sessions.sessions_table);
+  lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
   for (state = lf_hash_iterate (&it); state != NULL;
        state = lf_hash_iterate (&it))
     {

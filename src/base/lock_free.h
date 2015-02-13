@@ -390,9 +390,9 @@ struct lf_hash_table_iterator
   LF_TRAN_ENTRY *tran_entry;
 };
 
-extern LF_HASH_TABLE_ITERATOR lf_hash_create_iterator (LF_TRAN_ENTRY *
-						       tran_entry,
-						       LF_HASH_TABLE * table);
+extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator,
+				     LF_TRAN_ENTRY * tran_entry,
+				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
 
 /*

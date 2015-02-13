@@ -9356,7 +9356,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   /* hold the deadlock detection mutex */
   rv = pthread_mutex_lock (&lk_Gl.DL_detection_mutex);
 
-  iterator = lf_hash_create_iterator (t_entry, &lk_Gl.obj_hash_table);
+  lf_hash_create_iterator (&iterator, t_entry, &lk_Gl.obj_hash_table);
   res_ptr = lf_hash_iterate (&iterator);
 
   for (; res_ptr != NULL; res_ptr = lf_hash_iterate (&iterator))
@@ -10297,7 +10297,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 	   "\tMaximum number of objects which can be locked = %d\n\n",
 	   lk_Gl.obj_hash_table.freelist->alloc_cnt);
 
-  iterator = lf_hash_create_iterator (t_entry, &lk_Gl.obj_hash_table);
+  lf_hash_create_iterator (&iterator, t_entry, &lk_Gl.obj_hash_table);
   res_ptr = lf_hash_iterate (&iterator);
   for (; res_ptr != NULL; res_ptr = lf_hash_iterate (&iterator))
     {

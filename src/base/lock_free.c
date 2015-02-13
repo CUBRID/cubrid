@@ -2074,22 +2074,21 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 
 /*
  * lf_hash_create_iterator () - create an iterator for a hash table
+ *   iterator(out): iterator to be initialized
+ *   tran_entry(in): 
  *   table(in): hash table to iterate on
- *   returns: iterator
+ *   returns: void
  */
-LF_HASH_TABLE_ITERATOR
-lf_hash_create_iterator (LF_TRAN_ENTRY * tran_entry, LF_HASH_TABLE * table)
+void
+lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator,
+			 LF_TRAN_ENTRY * tran_entry, LF_HASH_TABLE * table)
 {
-  LF_HASH_TABLE_ITERATOR iterator;
+  assert (iterator != NULL && table != NULL);
 
-  assert (table != NULL);
-
-  iterator.hash_table = table;
-  iterator.curr = NULL;
-  iterator.bucket_index = -1;
-  iterator.tran_entry = tran_entry;
-
-  return iterator;
+  iterator->hash_table = table;
+  iterator->curr = NULL;
+  iterator->bucket_index = -1;
+  iterator->tran_entry = tran_entry;
 }
 
 /*

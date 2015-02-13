@@ -1357,5 +1357,5 @@ extern void qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p,
 				    int indent);
 #endif /* SERVER_MODE */
-const char *qdump_function_type_string (FUNC_TYPE ftype);
+extern const char *qdump_function_type_string (FUNC_TYPE ftype);
 #endif /* _QUERY_EXECUTOR_H_ */
