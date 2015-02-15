@@ -1525,6 +1525,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
   if (owner_tran_index != entry_ptr->tran_index)
     {
       assert (owner_tran_index == entry_ptr->tran_index);
+      abort ();
       return;
     }
 
@@ -1636,6 +1637,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
   if (owner_tran_index != entry_ptr->tran_index)
     {
       assert (owner_tran_index == entry_ptr->tran_index);
+      abort ();
       return ER_FAILED;
     }
 
@@ -1747,6 +1749,7 @@ lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
   if (owner_tran_index != non2pl->tran_index)
     {
       assert (owner_tran_index == non2pl->tran_index);
+      abort ();
       return;
     }
 
@@ -1789,6 +1792,7 @@ lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
   if (owner_tran_index != non2pl->tran_index)
     {
       assert (owner_tran_index == non2pl->tran_index);
+      abort ();
       return ER_FAILED;
     }
 
@@ -1881,6 +1885,10 @@ lock_find_class_entry (int tran_index, const OID * class_oid)
       while (entry_ptr != NULL)
 	{
 	  assert (tran_index == entry_ptr->tran_index);
+	  if (tran_index != entry_ptr->tran_index)
+	    {
+	      abort ();
+	    }
 
 	  if (OID_EQ (&entry_ptr->res_head->key.oid, class_oid))
 	    {
@@ -4497,6 +4505,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
   if (entry_ptr->tran_index != tran_index)
     {
       assert (false);
+      abort ();
       return;
     }
 
@@ -4589,6 +4598,8 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
       else
 	{
 	  assert (false);
+	  abort ();
+
 	  /* The transaction is neither the lock holder nor the lock waiter */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_LOST_TRANSACTION, 4,
 		  tran_index,
@@ -4938,6 +4949,10 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
   while (curr != NULL)
     {
       assert (tran_index == curr->tran_index);
+      if (tran_index != curr->tran_index)
+	{
+	  abort ();
+	}
 
       next = curr->tran_next;
       if (curr->granted_mode == S_LOCK || curr->granted_mode == SIX_LOCK)
@@ -4952,6 +4967,10 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
   if (curr != NULL)
     {
       assert (tran_index == curr->tran_index);
+      if (tran_index != curr->tran_index)
+	{
+	  abort ();
+	}
 
       if (curr->granted_mode == S_LOCK || curr->granted_mode == SIX_LOCK)
 	{
@@ -5022,6 +5041,10 @@ lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index,
   while (curr != NULL)
     {
       assert (tran_index == curr->tran_index);
+      if (tran_index != curr->tran_index)
+	{
+	  abort ();
+	}
 
       next = curr->tran_next;
       /* since class lock can't be NS_LOCK or NX_LOCK,
@@ -5039,6 +5062,10 @@ lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index,
   if (curr != NULL)
     {
       assert (tran_index == curr->tran_index);
+      if (tran_index != curr->tran_index)
+	{
+	  abort ();
+	}
 
       if (curr->granted_mode <= lock)
 	{
@@ -5077,6 +5104,10 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index,
   while (curr != NULL)
     {
       assert (tran_index == curr->tran_index);
+      if (tran_index != curr->tran_index)
+	{
+	  abort ();
+	}
 
       next = curr->tran_next;
       if (class_oid == NULL || OID_ISNULL (class_oid)
@@ -5149,6 +5180,10 @@ lock_remove_all_inst_locks_with_scanid (THREAD_ENTRY * thread_p,
   while (curr != NULL)
     {
       assert (tran_index == curr->tran_index);
+      if (tran_index != curr->tran_index)
+	{
+	  abort ();
+	}
 
       next = curr->tran_next;
       if (IS_SCANID_BIT_SET (curr->scanid_bitset, scanid_bit)
@@ -5266,6 +5301,10 @@ lock_remove_all_key_locks_with_scanid (THREAD_ENTRY * thread_p,
   while (curr != NULL)
     {
       assert (tran_index == curr->tran_index);
+      if (tran_index != curr->tran_index)
+	{
+	  abort ();
+	}
 
       next = curr->tran_next;
       if (IS_SCANID_BIT_SET (curr->scanid_bitset, scanid_bit)
@@ -8465,6 +8504,10 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   while (entry_ptr != NULL)
     {
       assert (tran_index == entry_ptr->tran_index);
+      if (tran_index != entry_ptr->tran_index)
+	{
+	  abort ();
+	}
 
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
       entry_ptr = tran_lock->inst_hold_list;
@@ -8475,6 +8518,10 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   while (entry_ptr != NULL)
     {
       assert (tran_index == entry_ptr->tran_index);
+      if (tran_index != entry_ptr->tran_index)
+	{
+	  abort ();
+	}
 
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
       entry_ptr = tran_lock->class_hold_list;
@@ -8485,6 +8532,10 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   if (entry_ptr != NULL)
     {
       assert (tran_index == entry_ptr->tran_index);
+      if (tran_index != entry_ptr->tran_index)
+	{
+	  abort ();
+	}
 
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
     }
@@ -8497,6 +8548,10 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
       tran_lock->non2pl_list = entry_ptr->tran_next;
 
       assert (tran_index == entry_ptr->tran_index);
+      if (tran_index != entry_ptr->tran_index)
+	{
+	  abort ();
+	}
 
       if (entry_ptr->granted_mode == INCON_NON_TWO_PHASE_LOCK)
 	{
@@ -10175,6 +10230,10 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p,
       if (entry_ptr != NULL)
 	{
 	  assert (tran_index == entry_ptr->tran_index);
+	  if (tran_index != entry_ptr->tran_index)
+	    {
+	      abort ();
+	    }
 
 	  COPY_OID (&acqlocks->obj[idx].oid, oid_Root_class_oid);
 	  OID_SET_NULL (&acqlocks->obj[idx].class_oid);
@@ -10187,6 +10246,10 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p,
 	   entry_ptr = entry_ptr->tran_next)
 	{
 	  assert (tran_index == entry_ptr->tran_index);
+	  if (tran_index != entry_ptr->tran_index)
+	    {
+	      abort ();
+	    }
 
 	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
 	  COPY_OID (&acqlocks->obj[idx].class_oid, oid_Root_class_oid);
@@ -10199,6 +10262,10 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p,
 	   entry_ptr = entry_ptr->tran_next)
 	{
 	  assert (tran_index == entry_ptr->tran_index);
+	  if (tran_index != entry_ptr->tran_index)
+	    {
+	      abort ();
+	    }
 
 	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
 	  COPY_OID (&acqlocks->obj[idx].class_oid,
@@ -10863,6 +10930,10 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
   while (entry_ptr != NULL)
     {
       assert (tran_index == entry_ptr->tran_index);
+      if (tran_index != entry_ptr->tran_index)
+	{
+	  abort ();
+	}
 
       next_ptr = entry_ptr->tran_next;
       count = entry_ptr->instant_lock_count;
@@ -10886,6 +10957,10 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
   while (entry_ptr != NULL)
     {
       assert (tran_index == entry_ptr->tran_index);
+      if (tran_index != entry_ptr->tran_index)
+	{
+	  abort ();
+	}
 
       next_ptr = entry_ptr->tran_next;
       count = entry_ptr->instant_lock_count;
@@ -10909,6 +10984,10 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
   if (entry_ptr != NULL)
     {
       assert (tran_index == entry_ptr->tran_index);
+      if (tran_index != entry_ptr->tran_index)
+	{
+	  abort ();
+	}
 
       count = entry_ptr->instant_lock_count;
       assert_release (count >= 0);
@@ -12851,6 +12930,10 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
        entry = entry->tran_next, i++)
     {
       assert (tran_index == entry->tran_index);
+      if (tran_index != entry->tran_index)
+	{
+	  abort ();
+	}
 
       fprintf (log_fp, "%*clock: %s", indent, ' ',
 	       LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
