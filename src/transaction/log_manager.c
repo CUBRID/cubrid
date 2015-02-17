@@ -82,6 +82,8 @@
 #include "connection_support.h"
 #include "log_writer.h"
 
+#include "fault_injection.h"
+
 #if !defined(SERVER_MODE)
 
 #define pthread_mutex_init(a, b)
@@ -10632,6 +10634,14 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		      break;
 
 		    case LOG_POSTPONE:
+		      {
+			int mod_factor = 1000;
+
+			FI_TEST_ARG (thread_p,
+				     FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE,
+				     &mod_factor, 0);
+		      }
+
 		      if (log_run_postpone_op (thread_p,
 					       &log_lsa,
 					       log_pgptr) != NO_ERROR)

@@ -140,6 +140,7 @@ BASE_SOURCES = \
 	$(BASE_DIR)/perf_monitor.c \
 	$(BASE_DIR)/ini_parser.c \
 	$(BASE_DIR)/system_parameter.c \
+	$(BASE_DIR)/fault_injection.c \
 	$(BASE_DIR)/release_string.c \
 	$(BASE_DIR)/stack_dump.c \
 	$(BASE_DIR)/message_catalog.c \

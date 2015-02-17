@@ -232,8 +232,10 @@ struct thread_resource_track
 #endif
 };
 
-/* Forward definition of struct vacuum_worker to fix compile error. */
+/* Forward definition to fix compile error. */
 struct vacuum_worker;
+struct fi_test_item;
+
 
 typedef struct thread_entry THREAD_ENTRY;
 
@@ -344,6 +346,10 @@ struct thread_entry
 
   /* for lock free structures */
   LF_TRAN_ENTRY *tran_entries[THREAD_TS_COUNT];
+
+#if !defined(NDEBUG)
+  struct fi_test_item *fi_test_array;
+#endif
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \

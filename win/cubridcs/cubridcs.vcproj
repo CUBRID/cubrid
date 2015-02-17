@@ -473,6 +473,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\fault_injection.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\tsc_timer.c"
 					>
 				</File>

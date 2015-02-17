@@ -57,6 +57,8 @@
 #include "mvcc.h"
 #include "transform.h"
 
+#include "fault_injection.h"
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -1038,11 +1040,6 @@ static bool btree_leaf_lsa_eq (THREAD_ENTRY * thread_p, LOG_LSA * a,
 
 #if !defined(NDEBUG)
 static int btree_get_node_level (PAGE_PTR page_ptr);
-static void random_exit (THREAD_ENTRY * thread_p);
-
-#define RANDOM_EXIT(a)        random_exit(a)
-#else
-#define RANDOM_EXIT(a)
 #endif
 
 static int btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
@@ -1170,39 +1167,6 @@ btree_get_node_level (PAGE_PTR page_ptr)
   assert (header->node_level > 0);
 
   return header->node_level;
-}
-
-static void
-random_exit (THREAD_ENTRY * thread_p)
-{
-  static bool init = false;
-  int r;
-#define MOD_FACTOR	20000
-
-  if (prm_get_bool_value (PRM_ID_QA_BTREE_RANDOM_EXIT) == false)
-    {
-      return;
-    }
-
-  if (init == false)
-    {
-      srand (time (NULL));
-      init = true;
-    }
-
-  r = rand ();
-
-  if ((r % 10) == 0)
-    {
-      LOG_CS_ENTER (thread_p);
-      logpb_flush_pages_direct (thread_p);
-      LOG_CS_EXIT (thread_p);
-    }
-
-  if ((r % MOD_FACTOR) == 0)
-    {
-      _exit (0);
-    }
 }
 #endif
 
@@ -9451,7 +9415,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     &btid->sys_btid->vfid, leaf_pg, slot_id,
 			     rv_key_len, 0, rv_key, NULL);
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   header = btree_get_node_header (leaf_pg);
   if (header == NULL)
@@ -9466,7 +9430,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
       goto exit_on_error;
     }
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   /* key deleted, update node header */
   key_cnt = btree_node_number_of_keys (leaf_pg);
@@ -9475,7 +9439,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
       header->max_key_len = 0;
     }
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   pgbuf_set_dirty (thread_p, leaf_pg, DONT_FREE);
 
@@ -9650,14 +9614,14 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
   else
     {
-      /* Even though the page is not actually modified and about to be deallocated, 
+      /* Even though the page is not actually modified and about to be deallocated,
        * mark it as dirty since an undo log (RVBT_KEYVAL_DEL) was written.
-       * The undo log may change oldest_unflush_lsa of the page. 
-       * If the page remains non-dirty with the oldest_unflush_lsa, 
-       * it may be re-allocated and the new user will set it as dirty 
+       * The undo log may change oldest_unflush_lsa of the page.
+       * If the page remains non-dirty with the oldest_unflush_lsa,
+       * it may be re-allocated and the new user will set it as dirty
        * during initialization. This may drive an inconsistent page status,
        * when its oldest_unflush_lsa is older than the last checkpoint.
-       * Checkpoint regards the page has been remained as unflushed 
+       * Checkpoint regards the page has been remained as unflushed
        * since the last checkpoint and hits an assertion.
        */
       pgbuf_set_dirty (thread_p, ovfl_page, FREE);
@@ -11639,7 +11603,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			     &btid->sys_btid->vfid, P, p_slot_id,
 			     recset_length,
 			     sizeof (p_slot_id), recset_data, &p_slot_id);
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   assert (p_slot_id > 0);
   if (spage_delete (thread_p, P, p_slot_id) != p_slot_id)
@@ -12144,6 +12108,8 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   is_active = logtb_is_current_active (thread_p);
   tran_isolation = logtb_find_current_isolation (thread_p);
 
+  FI_SET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, 1);
+
 #if !defined(NDEBUG)
   if (BTREE_INVALID_INDEX_ID (btid))
     {
@@ -12301,6 +12267,8 @@ fix_root:
 	  btree_dump (thread_p, stdout, btid, 2);
 	}
 #endif
+
+      FI_RESET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
 
       return key;
     }
@@ -12896,6 +12864,9 @@ skip_root_merge:
 		  (void) thread_set_check_interrupt (thread_p,
 						     old_check_interrupt);
 
+		  FI_RESET (thread_p,
+			    FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
+
 		  return NULL;
 		}
 	    }
@@ -13079,6 +13050,9 @@ skip_root_merge:
 
 		  (void) thread_set_check_interrupt (thread_p,
 						     old_check_interrupt);
+
+		  FI_RESET (thread_p,
+			    FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
 
 		  return NULL;
 		}
@@ -13801,6 +13775,8 @@ key_deletion:
     }
 #endif
 
+  FI_RESET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
+
   return key;
 
 error:
@@ -13856,6 +13832,8 @@ error:
     }
 
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+
+  FI_RESET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
 
   return NULL;
 }
@@ -14304,7 +14282,7 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 					      p_mvcc_rec_header);
     }
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   assert (rec->length % 4 == 0);
   assert (slot_id > 0);
@@ -14318,7 +14296,7 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
       goto exit_on_error;
     }
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
 
@@ -17213,7 +17191,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   rheader->split_info = qheader->split_info;
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   if (btree_init_node_header (thread_p, &btid->sys_btid->vfid,
 			      R, rheader, false) != NO_ERROR)
@@ -17278,7 +17256,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       leftsize++;
     }
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   ret = btree_compress_node (thread_p, btid, Q);
   if (ret != NO_ERROR)
@@ -17305,7 +17283,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid,
 			 R, -1, DB_PAGESIZE, R);
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   /****************************************************************************
    ***   STEP 5: insert sep_key to P
@@ -17338,7 +17316,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   p_slot_id++;
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   /* add undo/redo logging for page P */
   assert (p_slot_id > 0);
@@ -17356,7 +17334,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			     sizeof (p_slot_id), p_redo_length, &p_slot_id,
 			     p_redo_data);
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   key_cnt = btree_node_number_of_keys (P);
   assert_release (key_cnt > 0);
@@ -17414,7 +17392,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   pgbuf_set_dirty (thread_p, Q, DONT_FREE);
   pgbuf_set_dirty (thread_p, R, DONT_FREE);
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   mnt_bt_splits (thread_p);
 
@@ -33020,7 +32998,7 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p,
 			    &(p_mvcc_rec_header->delid_chn.mvcc_del_id));
     }
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   assert (rec->length % 4 == 0);
 
@@ -33033,7 +33011,7 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
-  RANDOM_EXIT (thread_p);
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 

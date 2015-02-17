@@ -55,6 +55,8 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
+#include "fault_injection.h"
+
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -5049,7 +5051,7 @@ file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID *
 }
 
 /*
- * file_alloc_iterator_init () - 
+ * file_alloc_iterator_init () -
  *   return: iterator or NULL
  *   vfid(in): Complete file identifier
  *   iter(out):
@@ -5084,7 +5086,7 @@ file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid,
 }
 
 /*
- * file_alloc_iterator_get_current_page () - 
+ * file_alloc_iterator_get_current_page () -
  *   return: pageid or NULL_PAGEID
  *   iter(in):
  *   vpid(out):
@@ -5111,7 +5113,7 @@ file_alloc_iterator_get_current_page (THREAD_ENTRY * thread_p,
 }
 
 /*
- * file_alloc_iterator_next () - 
+ * file_alloc_iterator_next () -
  *   return: iterator or NULL
  *   iter(in):
  */
@@ -8665,6 +8667,12 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
   bool restore_check_interrupt = false;
   bool rv;
 
+  if (FI_TEST (thread_p,
+	       FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, 1) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   isfile_new = file_isnew_with_type (thread_p, vfid, &file_type);
   if (isfile_new == FILE_ERROR)
     {
@@ -9898,8 +9906,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
   addr.offset = to_start_offset;
   log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
 			CAST_BUFLEN (((char *) to_outptr
-				      - (char *) to_aid_ptr)), 
-			to_aid_ptr);
+				      - (char *) to_aid_ptr)), to_aid_ptr);
   length = 0;
 
   while (!VPID_EQ (&from_vpid, &allocset->end_pages_vpid)
@@ -10621,7 +10628,7 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr,
 					     PAGE_FTAB);
 
-	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr 
+	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 					    + prev_allocset_offset);
 
 	      /* Save the information that is going to be changed for undo
@@ -10642,7 +10649,7 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	      addr.offset = prev_allocset_offset;
 	      log_append_undoredo_data (thread_p, RVFL_ALLOCSET_LINK, &addr,
 					sizeof (recv_undo),
-					sizeof (recv_redo), 
+					sizeof (recv_redo),
 					&recv_undo, &recv_redo);
 
 	      pgbuf_set_dirty (thread_p, allocset_pgptr, FREE);
@@ -10695,7 +10702,7 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   if (file_allocset_shift_sector_table (thread_p, fhdr_pgptr, allocset_pgptr,
 					*allocset_offset, ftb_vpid,
 					*ftb_offset) != NO_ERROR
-      || file_allocset_compact_page_table (thread_p, fhdr_pgptr, 
+      || file_allocset_compact_page_table (thread_p, fhdr_pgptr,
 					   allocset_pgptr, *allocset_offset,
 					   !islast_allocset) != NO_ERROR)
     {

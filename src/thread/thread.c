@@ -76,6 +76,8 @@
 
 #include "tsc_timer.h"
 
+#include "fault_injection.h"
+
 #if defined(HPUX)
 #define thread_initialize_key()
 #endif /* HPUX */
@@ -1267,6 +1269,12 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
     lf_tran_request_entry (&free_sort_list_Ts);
 
   entry_p->vacuum_worker = NULL;
+
+#if !defined(NDEBUG)
+  entry_p->fi_test_array = NULL;
+
+  fi_thread_init (entry_p);
+#endif
 
   return NO_ERROR;
 }
@@ -4232,7 +4240,7 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index,
 }
 
 /*
- * xthread_kill_or_interrupt_tran() - 
+ * xthread_kill_or_interrupt_tran() -
  *   return:
  *   thread_p(in):
  *   tran_index(in):
@@ -4295,8 +4303,8 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index,
 
   if (is_trx_exists == false)
     {
-      /* 
-       * Note that the following error will be ignored by 
+      /*
+       * Note that the following error will be ignored by
        * sthread_kill_or_interrupt_tran().
        */
       return ER_FAILED;
@@ -4374,7 +4382,7 @@ thread_find_entry_by_index (int thread_index)
 
 /*
  * thread_find_entry_by_tid() -
- *   return: 
+ *   return:
  *   tid(in)
  */
 THREAD_ENTRY *
@@ -4754,7 +4762,7 @@ thread_rc_track_mgrname (int mgr_idx)
  * thread_rc_track_threshold_amount () - Get the maximum amount for different
  *					 trackers.
  *
- * return	 : 
+ * return	 :
  * thread_p (in) :
  * rc_idx (in)	 :
  */

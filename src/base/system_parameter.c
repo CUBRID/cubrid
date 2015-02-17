@@ -84,6 +84,8 @@
 #include "vacuum.h"
 #include "tz_support.h"
 
+#include "fault_injection.h"
+
 
 #define ER_LOG_FILE_DIR	"server"
 #if !defined (CS_MODE)
@@ -539,8 +541,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_USE_BTREE_FENCE_KEY "use_btree_fence_key"
 
-#define PRM_NAME_QA_BTREE_RANDOM_EXIT "qa_btree_random_exit"
-
 #define PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN "optimizer_enable_merge_join"
 #define PRM_NAME_OPTIMIZER_RESERVE_01 "optimizer_reserve_01"
 #define PRM_NAME_OPTIMIZER_RESERVE_02 "optimizer_reserve_02"
@@ -599,6 +599,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PB_NEIGHBOR_FLUSH_NONDIRTY "data_buffer_neighbor_flush_nondirty"
 #define PRM_NAME_PB_NEIGHBOR_FLUSH_PAGES "data_buffer_neighbor_flush_pages"
 
+#define PRM_NAME_FAULT_INJECTION_IDS "fault_injection_ids"
+#define PRM_NAME_FAULT_INJECTION_TEST "fault_injection_test"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
 /*
@@ -643,11 +646,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_FOR_HA_CONTEXT  0x00008000	/* should be replicated into HA log
 					 * applier */
 
-#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter 
-					 * from client/server parameter.  
-					 * Note that this flag only can be set 
-					 * if the parameter has PRM_FOR_CLIENT, 
-					 * PRM_FOR_SERVER, and PRM_USER_CHANGE 
+#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter
+					 * from client/server parameter.
+					 * Note that this flag only can be set
+					 * if the parameter has PRM_FOR_CLIENT,
+					 * PRM_FOR_SERVER, and PRM_USER_CHANGE
 					 * flags.
 					 */
 
@@ -1780,10 +1783,6 @@ bool PRM_USE_BTREE_FENCE_KEY = true;
 static bool prm_use_btree_fence_key_default = true;
 static unsigned int prm_use_btree_fence_key_flag = 0;
 
-bool PRM_QA_BTREE_RANDOM_EXIT = false;
-static bool prm_qa_btree_random_exit_default = false;
-static unsigned int prm_qa_btree_random_exit_flag = 0;
-
 bool PRM_UPDATE_USE_ATTRIBUTE_REFERENCES = false;
 static bool prm_update_use_attribute_references_default = false;
 static unsigned int prm_update_use_attribute_references_flag = 0;
@@ -1996,6 +1995,16 @@ static unsigned int prm_pb_neighbor_flush_pages_flag = 0;
 static unsigned int prm_pb_neighbor_flush_pages_default = 8;
 static unsigned int prm_pb_neighbor_flush_pages_upper = 32;
 static unsigned int prm_pb_neighbor_flush_pages_lower = 0;
+
+int *PRM_FAULT_INJECTION_IDS = int_list_initial;
+static int prm_fault_injection_id_flag = 0;
+static int *prm_fault_injection_id_default = NULL;
+
+int PRM_FAULT_INJECTION_TEST = FI_GROUP_NONE;
+static int prm_fault_injection_test_flag = 0;
+static int prm_fault_injection_test_default = FI_GROUP_NONE;
+static int prm_fault_injection_test_lower = FI_GROUP_NONE;
+static int prm_fault_injection_test_upper = FI_GROUP_MAX;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4334,17 +4343,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_QA_BTREE_RANDOM_EXIT,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   (void *) &prm_qa_btree_random_exit_flag,
-   (void *) &prm_qa_btree_random_exit_default,
-   (void *) &PRM_QA_BTREE_RANDOM_EXIT,
-   (void *) NULL,
-   (void *) NULL,
-   (void *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
@@ -4802,6 +4800,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_pb_neighbor_flush_pages_lower,
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_FAULT_INJECTION_IDS,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER_LIST,
+   (void *) &prm_fault_injection_id_flag,
+   (void *) &prm_fault_injection_id_default,
+   (void *) &PRM_FAULT_INJECTION_IDS,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_FAULT_INJECTION_TEST,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_KEYWORD,
+   (void *) &prm_fault_injection_test_flag,
+   (void *) &prm_fault_injection_test_default,
+   (void *) &PRM_FAULT_INJECTION_TEST,
+   (void *) &prm_fault_injection_test_upper,
+   (void *) &prm_fault_injection_test_lower,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -4958,6 +4978,10 @@ static KEYVAL check_peer_alive_words[] = {
 static KEYVAL query_trace_format_words[] = {
   {"text", QUERY_TRACE_TEXT},
   {"json", QUERY_TRACE_JSON},
+};
+
+static KEYVAL fi_test_words[] = {
+  {"recovery", FI_GROUP_RECOVERY},
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
@@ -5591,8 +5615,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
       if (PRM_IS_GET_SERVER (flag)
 	  && (PRM_IS_FOR_SESSION (flag) || PRM_IS_HIDDEN (flag)))
 	{
-	  /* session and hidden parameters are not allowed 
-	   * to use PRM_GET_SERVER flag 
+	  /* session and hidden parameters are not allowed
+	   * to use PRM_GET_SERVER flag
 	   */
 	  assert (0);
 	}
@@ -5600,9 +5624,9 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 	  && (!PRM_IS_FOR_CLIENT (flag) || !PRM_IS_FOR_SERVER (flag)
 	      || !PRM_USER_CAN_CHANGE (flag)))
 	{
-	  /* Note that PRM_GET_SERVER flag only can be set if the 
-	   * parameter has PRM_FOR_CLIENT, PRM_FOR_SERVER, and 
-	   * PRM_USER_CHANGE flags.                              
+	  /* Note that PRM_GET_SERVER flag only can be set if the
+	   * parameter has PRM_FOR_CLIENT, PRM_FOR_SERVER, and
+	   * PRM_USER_CHANGE flags.
 	   */
 	  assert (0);
 	}
@@ -7004,6 +7028,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 				 NULL, query_trace_format_words,
 				 DIM (query_trace_format_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_FAULT_INJECTION_TEST) ==
+	       0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
+				 NULL, fi_test_words, DIM (fi_test_words));
+	}
       else
 	{
 	  assert (false);
@@ -7321,6 +7351,12 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	  keyvalp = prm_keyword (value.i, NULL, query_trace_format_words,
 				 DIM (query_trace_format_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_FAULT_INJECTION_TEST) ==
+	       0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, fi_test_words,
+				 DIM (fi_test_words));
+	}
       else
 	{
 	  assert (false);
@@ -7548,7 +7584,7 @@ xsysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
  *
  * NOTE: Obtains value for parameters that are for server only. For parameters
  *       that are client/server, values should be obtained from client UNLESS
- *       it has PRM_GET_SERVER flag. 
+ *       it has PRM_GET_SERVER flag.
  */
 void
 xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values)
@@ -8489,6 +8525,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	    keyvalp = prm_keyword (-1, value, query_trace_format_words,
 				   DIM (query_trace_format_words));
 	  }
+	else if (intl_mbs_casecmp (prm->name,
+				   PRM_NAME_FAULT_INJECTION_TEST) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, fi_test_words,
+				   DIM (fi_test_words));
+	  }
 	else
 	  {
 	    assert (false);
@@ -9204,6 +9246,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *force_remove_log_archives_prm;
   SYSPRM_PARAM *call_stack_dump_activation_prm;
   SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
+  SYSPRM_PARAM *fault_injection_ids_prm;
+  SYSPRM_PARAM *fault_injection_test_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
@@ -9459,6 +9503,45 @@ prm_tune_parameters (void)
       PRM_CLEAR_BIT (PRM_DEFAULT_USED,
 		     *call_stack_dump_activation_prm->dynamic_flag);
     }
+
+#if !defined(NDEBUG)
+  fault_injection_ids_prm = GET_PRM (PRM_ID_FAULT_INJECTION_IDS);
+  fault_injection_test_prm = GET_PRM (PRM_ID_FAULT_INJECTION_TEST);
+  if (PRM_IS_SET (*fault_injection_test_prm->dynamic_flag))
+    {
+      int group_code;
+      int dim;
+      int *integer_list = NULL;
+
+      group_code = PRM_GET_INT (fault_injection_test_prm->value);
+
+      if (PRM_IS_ALLOCATED (*fault_injection_ids_prm->dynamic_flag))
+	{
+	  free_and_init (PRM_GET_INTEGER_LIST
+			 (fault_injection_ids_prm->value));
+	}
+
+      for (dim = 0; fi_Groups[group_code][dim] != FI_TEST_NONE; dim++)
+	{
+	  ;
+	}
+
+      integer_list = (int *) malloc ((dim + 1) * sizeof (int));
+      if (integer_list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (dim + 1) * sizeof (int));
+	  return;
+	}
+
+      integer_list[0] = dim;
+      memcpy (&integer_list[1], fi_Groups[group_code], dim * sizeof (int));
+      prm_set_integer_list_value (PRM_ID_FAULT_INJECTION_IDS, integer_list);
+      PRM_SET_BIT (PRM_SET, *fault_injection_ids_prm->dynamic_flag);
+      PRM_CLEAR_BIT (PRM_DEFAULT_USED,
+		     *fault_injection_ids_prm->dynamic_flag);
+    }
+#endif
 
   return;
 }
@@ -10071,6 +10154,35 @@ sysprm_find_err_in_integer_list (PARAM_ID prm_id, int error_code)
   for (i = 1; i <= integer_list[0]; i++)
     {
       if (integer_list[i] == error_code || integer_list[i] == -error_code)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * sysprm_find_fi_code_in_integer_list () - function that searches a FI_TEST_CODE in an
+ *                                   integer list
+ *
+ * return      : true if FI_TEST_CODE is found, false otherwise
+ * prm_id (in) : id of the system parameter that contains an integer list
+ * fi_code (in)  : FI_TEST_CODE to look for
+ */
+bool
+sysprm_find_fi_code_in_integer_list (PARAM_ID prm_id, int fi_code)
+{
+  int i;
+  int *integer_list = prm_get_integer_list_value (prm_id);
+
+  if (integer_list == NULL)
+    {
+      return false;
+    }
+
+  for (i = 1; i <= integer_list[0]; i++)
+    {
+      if (integer_list[i] == fi_code)
 	{
 	  return true;
 	}
@@ -10805,7 +10917,7 @@ sysprm_get_id (const SYSPRM_PARAM * prm)
  * return		   : void
  * thread_p (in)	   : thread entry
  * session_params (in)     : pointer to session parameters vector
- *			     
+ *
  */
 static void
 update_session_state_from_sys_params (THREAD_ENTRY * thread_p,

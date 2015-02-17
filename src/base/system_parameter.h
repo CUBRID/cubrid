@@ -327,7 +327,6 @@ enum param_id
   PRM_ID_MAX_AGG_HASH_SIZE,
   PRM_ID_AGG_HASH_RESPECT_ORDER,
   PRM_ID_USE_BTREE_FENCE_KEY,
-  PRM_ID_QA_BTREE_RANDOM_EXIT,
   PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN,
   PRM_ID_OPTIMIZER_RESERVE_01,
   PRM_ID_OPTIMIZER_RESERVE_02,
@@ -380,8 +379,10 @@ enum param_id
 
   PRM_ID_PB_NEIGHBOR_FLUSH_NONDIRTY,
   PRM_ID_PB_NEIGHBOR_FLUSH_PAGES,
+  PRM_ID_FAULT_INJECTION_IDS,
+  PRM_ID_FAULT_INJECTION_TEST,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PB_NEIGHBOR_FLUSH_PAGES
+  PRM_LAST_ID = PRM_ID_FAULT_INJECTION_TEST
 };
 
 /*
@@ -453,6 +454,8 @@ extern void prm_set_integer_list_value (PARAM_ID prm_id, int *value);
 extern void prm_set_bigint_value (PARAM_ID prm_id, UINT64 value);
 
 extern bool sysprm_find_err_in_integer_list (PARAM_ID prm_id, int error_code);
+extern bool sysprm_find_fi_code_in_integer_list (PARAM_ID prm_id,
+						 int fi_code);
 
 extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
 extern int sysprm_load_and_init_client (const char *db_name,
