@@ -12170,7 +12170,7 @@ fix_root:
   if (node_type == BTREE_LEAF_NODE)
     {
       /* promote latch */
-      ret_val = pgbuf_promote_read_latch (thread_p, P,
+      ret_val = pgbuf_promote_read_latch (thread_p, &P,
 					  PGBUF_PROMOTE_SHARED_READER);
       if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	{
@@ -12178,7 +12178,7 @@ fix_root:
 	  P_latch = PGBUF_LATCH_WRITE;
 	  goto fix_root;
 	}
-      else if (ret_val != NO_ERROR)
+      else if (ret_val != NO_ERROR || P == NULL)
 	{
 	  goto error;
 	}
@@ -12214,7 +12214,7 @@ fix_root:
 		{
 		  /* promote latch */
 		  ret_val =
-		    pgbuf_promote_read_latch (thread_p, P,
+		    pgbuf_promote_read_latch (thread_p, &P,
 					      PGBUF_PROMOTE_SHARED_READER);
 		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		    {
@@ -12222,7 +12222,7 @@ fix_root:
 		      P_latch = PGBUF_LATCH_WRITE;
 		      goto fix_root;
 		    }
-		  else if (ret_val != NO_ERROR)
+		  else if (ret_val != NO_ERROR || P == NULL)
 		    {
 		      goto error;
 		    }
@@ -12303,7 +12303,7 @@ fix_root:
 	    {
 	      /* promote latch */
 	      ret_val =
-		pgbuf_promote_read_latch (thread_p, P,
+		pgbuf_promote_read_latch (thread_p, &P,
 					  PGBUF_PROMOTE_SHARED_READER);
 	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		{
@@ -12311,7 +12311,7 @@ fix_root:
 		  P_latch = PGBUF_LATCH_WRITE;
 		  goto fix_root;
 		}
-	      else if (ret_val != NO_ERROR)
+	      else if (ret_val != NO_ERROR || P == NULL)
 		{
 		  goto error;
 		}
@@ -12546,7 +12546,7 @@ start_point:
 
 	  /* promote P latch */
 	  ret_val =
-	    pgbuf_promote_read_latch (thread_p, P,
+	    pgbuf_promote_read_latch (thread_p, &P,
 				      PGBUF_PROMOTE_SHARED_READER);
 	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
@@ -12556,14 +12556,14 @@ start_point:
 	      pgbuf_unfix_and_init (thread_p, R);
 	      goto skip_root_merge;
 	    }
-	  else if (ret_val != NO_ERROR)
+	  else if (ret_val != NO_ERROR || P == NULL)
 	    {
 	      goto error;
 	    }
 
 	  /* promote Q latch */
 	  ret_val =
-	    pgbuf_promote_read_latch (thread_p, Q,
+	    pgbuf_promote_read_latch (thread_p, &Q,
 				      PGBUF_PROMOTE_SHARED_READER);
 	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
@@ -12573,14 +12573,14 @@ start_point:
 	      pgbuf_unfix_and_init (thread_p, R);
 	      goto skip_root_merge;
 	    }
-	  else if (ret_val != NO_ERROR)
+	  else if (ret_val != NO_ERROR || Q == NULL)
 	    {
 	      goto error;
 	    }
 
 	  /* promote R latch */
 	  ret_val =
-	    pgbuf_promote_read_latch (thread_p, R,
+	    pgbuf_promote_read_latch (thread_p, &R,
 				      PGBUF_PROMOTE_SHARED_READER);
 	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
@@ -12590,7 +12590,7 @@ start_point:
 	      pgbuf_unfix_and_init (thread_p, R);
 	      goto skip_root_merge;
 	    }
-	  else if (ret_val != NO_ERROR)
+	  else if (ret_val != NO_ERROR || R == NULL)
 	    {
 	      goto error;
 	    }
@@ -12744,13 +12744,13 @@ skip_root_merge:
 	    {
 	      /* promote read latches */
 	      ret_val =
-		pgbuf_promote_read_latch (thread_p, P, level_promote_cond);
+		pgbuf_promote_read_latch (thread_p, &P, level_promote_cond);
 	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		{
 		  /* skip merge for this btree walk */
 		  merge_status = BTREE_MERGE_NO;
 		}
-	      else if (ret_val != NO_ERROR)
+	      else if (ret_val != NO_ERROR || P == NULL)
 		{
 		  goto error;
 		}
@@ -12758,14 +12758,14 @@ skip_root_merge:
 	      if (merge_status != BTREE_MERGE_NO)
 		{
 		  ret_val =
-		    pgbuf_promote_read_latch (thread_p, Q,
+		    pgbuf_promote_read_latch (thread_p, &Q,
 					      level_promote_cond);
 		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		    {
 		      /* skip merge for this btree walk */
 		      merge_status = BTREE_MERGE_NO;
 		    }
-		  else if (ret_val != NO_ERROR)
+		  else if (ret_val != NO_ERROR || Q == NULL)
 		    {
 		      goto error;
 		    }
@@ -12774,14 +12774,14 @@ skip_root_merge:
 	      if (merge_status != BTREE_MERGE_NO)
 		{
 		  ret_val =
-		    pgbuf_promote_read_latch (thread_p, Right,
+		    pgbuf_promote_read_latch (thread_p, &Right,
 					      level_promote_cond);
 		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		    {
 		      /* skip merge for this btree walk */
 		      merge_status = BTREE_MERGE_NO;
 		    }
-		  else if (ret_val != NO_ERROR)
+		  else if (ret_val != NO_ERROR || Right == NULL)
 		    {
 		      goto error;
 		    }
@@ -12925,13 +12925,13 @@ skip_root_merge:
 	    {
 	      /* promote read latches */
 	      ret_val =
-		pgbuf_promote_read_latch (thread_p, P, level_promote_cond);
+		pgbuf_promote_read_latch (thread_p, &P, level_promote_cond);
 	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		{
 		  /* skip merge for this btree walk */
 		  merge_status = BTREE_MERGE_NO;
 		}
-	      else if (ret_val != NO_ERROR)
+	      else if (ret_val != NO_ERROR || P == NULL)
 		{
 		  goto error;
 		}
@@ -12939,14 +12939,14 @@ skip_root_merge:
 	      if (merge_status != BTREE_MERGE_NO)
 		{
 		  ret_val =
-		    pgbuf_promote_read_latch (thread_p, Left,
+		    pgbuf_promote_read_latch (thread_p, &Left,
 					      level_promote_cond);
 		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		    {
 		      /* skip merge for this btree walk */
 		      merge_status = BTREE_MERGE_NO;
 		    }
-		  else if (ret_val != NO_ERROR)
+		  else if (ret_val != NO_ERROR || Left == NULL)
 		    {
 		      goto error;
 		    }
@@ -12955,14 +12955,14 @@ skip_root_merge:
 	      if (merge_status != BTREE_MERGE_NO)
 		{
 		  ret_val =
-		    pgbuf_promote_read_latch (thread_p, Q,
+		    pgbuf_promote_read_latch (thread_p, &Q,
 					      level_promote_cond);
 		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		    {
 		      /* skip merge for this btree walk */
 		      merge_status = BTREE_MERGE_NO;
 		    }
-		  else if (ret_val != NO_ERROR)
+		  else if (ret_val != NO_ERROR || Q == NULL)
 		    {
 		      goto error;
 		    }
@@ -18813,7 +18813,7 @@ restart_walk:
 		{
 		  /* promote latch */
 		  ret_val =
-		    pgbuf_promote_read_latch (thread_p, P,
+		    pgbuf_promote_read_latch (thread_p, &P,
 					      PGBUF_PROMOTE_SHARED_READER);
 		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		    {
@@ -18821,7 +18821,7 @@ restart_walk:
 		      latch_mode = PGBUF_LATCH_WRITE;
 		      goto restart_walk;
 		    }
-		  else if (ret_val != NO_ERROR)
+		  else if (ret_val != NO_ERROR || P == NULL)
 		    {
 		      goto error;
 		    }
@@ -18885,7 +18885,7 @@ restart_walk:
   if (key_len >= BTREE_MAX_KEYLEN_INPAGE && VFID_ISNULL (&btid_int.ovfid))
     {
       /* promote latch */
-      ret_val = pgbuf_promote_read_latch (thread_p, P,
+      ret_val = pgbuf_promote_read_latch (thread_p, &P,
 					  PGBUF_PROMOTE_SHARED_READER);
       if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	{
@@ -18894,7 +18894,7 @@ restart_walk:
 	  latch_mode = PGBUF_LATCH_WRITE;
 	  goto restart_walk;
 	}
-      else if (ret_val != NO_ERROR)
+      else if (ret_val != NO_ERROR || P == NULL)
 	{
 	  goto error;
 	}
@@ -18938,14 +18938,14 @@ restart_walk:
     {
       /* promote latch */
       ret_val =
-	pgbuf_promote_read_latch (thread_p, P, PGBUF_PROMOTE_SHARED_READER);
+	pgbuf_promote_read_latch (thread_p, &P, PGBUF_PROMOTE_SHARED_READER);
       if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	{
 	  pgbuf_unfix_and_init (thread_p, P);
 	  latch_mode = PGBUF_LATCH_WRITE;
 	  goto restart_walk;
 	}
-      else if (ret_val != NO_ERROR)
+      else if (ret_val != NO_ERROR || P == NULL)
 	{
 	  goto error;
 	}
@@ -19014,7 +19014,7 @@ restart_walk:
 	  else
 	    {
 	      /* promote latch */
-	      ret_val = pgbuf_promote_read_latch (thread_p, P,
+	      ret_val = pgbuf_promote_read_latch (thread_p, &P,
 						  PGBUF_PROMOTE_SHARED_READER);
 	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 		{
@@ -19023,7 +19023,7 @@ restart_walk:
 		  latch_mode = PGBUF_LATCH_WRITE;
 		  goto restart_walk;
 		}
-	      else if (ret_val != NO_ERROR)
+	      else if (ret_val != NO_ERROR || P == NULL)
 		{
 		  goto error;
 		}
@@ -19162,7 +19162,7 @@ start_point:
   if (max_entry > max_free)
     {
       /* promote latch */
-      ret_val = pgbuf_promote_read_latch (thread_p, P,
+      ret_val = pgbuf_promote_read_latch (thread_p, &P,
 					  PGBUF_PROMOTE_SHARED_READER);
       if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	{
@@ -19171,7 +19171,7 @@ start_point:
 	  latch_mode = PGBUF_LATCH_WRITE;
 	  goto restart_walk;
 	}
-      else if (ret_val != NO_ERROR)
+      else if (ret_val != NO_ERROR || P == NULL)
 	{
 	  goto error;
 	}
@@ -19347,7 +19347,7 @@ start_point:
 	{
 	  /* promote latches */
 	  ret_val =
-	    pgbuf_promote_read_latch (thread_p, P, level_promote_cond);
+	    pgbuf_promote_read_latch (thread_p, &P, level_promote_cond);
 	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
 	      /* retry fix with write latch */
@@ -19356,12 +19356,12 @@ start_point:
 	      latch_mode = PGBUF_LATCH_WRITE;
 	      goto restart_walk;
 	    }
-	  else if (ret_val != NO_ERROR)
+	  else if (ret_val != NO_ERROR || P == NULL)
 	    {
 	      goto error;
 	    }
 	  ret_val =
-	    pgbuf_promote_read_latch (thread_p, Q, level_promote_cond);
+	    pgbuf_promote_read_latch (thread_p, &Q, level_promote_cond);
 	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
 	      /* retry fix with write latch */
@@ -19370,7 +19370,7 @@ start_point:
 	      latch_mode = PGBUF_LATCH_WRITE;
 	      goto restart_walk;
 	    }
-	  else if (ret_val != NO_ERROR)
+	  else if (ret_val != NO_ERROR || Q == NULL)
 	    {
 	      goto error;
 	    }
@@ -19416,7 +19416,7 @@ start_point:
 
 	  /* promote latches */
 	  ret_val =
-	    pgbuf_promote_read_latch (thread_p, P, level_promote_cond);
+	    pgbuf_promote_read_latch (thread_p, &P, level_promote_cond);
 	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
 	      /* retry fix with write latch */
@@ -19425,12 +19425,12 @@ start_point:
 	      latch_mode = PGBUF_LATCH_WRITE;
 	      goto restart_walk;
 	    }
-	  else if (ret_val != NO_ERROR)
+	  else if (ret_val != NO_ERROR || P == NULL)
 	    {
 	      goto error;
 	    }
 	  ret_val =
-	    pgbuf_promote_read_latch (thread_p, Q, level_promote_cond);
+	    pgbuf_promote_read_latch (thread_p, &Q, level_promote_cond);
 	  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
 	      /* retry fix with write latch */
@@ -19439,7 +19439,7 @@ start_point:
 	      latch_mode = PGBUF_LATCH_WRITE;
 	      goto restart_walk;
 	    }
-	  else if (ret_val != NO_ERROR)
+	  else if (ret_val != NO_ERROR || Q == NULL)
 	    {
 	      goto error;
 	    }
@@ -19575,14 +19575,14 @@ start_point:
 
   /* assure write latch */
   ret_val =
-    pgbuf_promote_read_latch (thread_p, P, PGBUF_PROMOTE_SHARED_READER);
+    pgbuf_promote_read_latch (thread_p, &P, PGBUF_PROMOTE_SHARED_READER);
   if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
     {
       pgbuf_unfix_and_init (thread_p, P);
       latch_mode = PGBUF_LATCH_WRITE;
       goto restart_walk;
     }
-  else if (ret_val != NO_ERROR)
+  else if (ret_val != NO_ERROR || P == NULL)
     {
       goto error;
     }

@@ -1824,17 +1824,17 @@ try_again:
 /*
  * pgbuf_promote_read_latch () - Promote read latch to write latch
  *   return: error code or NO_ERROR
- *   pgptr(in): page pointer
- *   condition(in):
+ *   pgptr(in/out): page pointer
+ *   condition(in): promotion condition (single reader holder/shared reader holder)
  */
 #if !defined (NDEBUG)
 int
-pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 				PGBUF_PROMOTE_CONDITION condition,
 				const char *caller_file, int caller_line)
 #else /* NDEBUG */
 int
-pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 				  PGBUF_PROMOTE_CONDITION condition)
 #endif				/* NDEBUG */
 {
@@ -1851,25 +1851,26 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 #endif /* SERVER_MODE */
 
 #if !defined (NDEBUG)
-  assert (pgptr != NULL);
+  assert (pgptr_p != NULL);
+  assert (*pgptr_p != NULL);
 
   if (pgbuf_get_check_page_validation (thread_p,
 				       PGBUF_DEBUG_PAGE_VALIDATION_FREE))
     {
-      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+      if (pgbuf_is_valid_page_ptr (*pgptr_p) == false)
 	{
 	  return ER_FAILED;
 	}
     }
 #else /* !NDEBUG */
-  if (pgptr == NULL)
+  if (*pgptr_p == NULL)
     {
       return ER_FAILED;
     }
 #endif /* !NDEBUG */
 
   /* fetch BCB from page pointer */
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  CAST_PGPTR_TO_BFPTR (bufptr, *pgptr_p);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   /* check latch mode - no need for BCB mutex, page is already latched */
@@ -1909,7 +1910,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
       FILEIO_PAGE *io_pgptr;
 
       /* page type */
-      CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
+      CAST_PGPTR_TO_IOPGPTR (io_pgptr, *pgptr_p);
       stat_page_type = io_pgptr->prv.ptype;
 
       /* promote condition */
@@ -1985,12 +1986,17 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 	  holder->fix_count = 0;
 	  if (pgbuf_remove_thrd_holder (thread_p, holder) != NO_ERROR)
 	    {
+	      /* We unfixed the page, but failed to remove holder entry;
+	         consider the page as unfixed */
+	      *pgptr_p = NULL;
+
 	      /* shouldn't happen */
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 	      assert_release (false);
 	      return ER_FAILED;
 	    }
 	  holder = NULL;
+	  /* NOTE: at this point the page is unfixed */
 
 	  /* flag this thread as promoter */
 	  thread_p->wait_for_latch_promote = true;
@@ -2006,6 +2012,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 	       true) != NO_ERROR)
 #endif /* NDEBUG */
 	    {
+	      *pgptr_p = NULL;	/* we didn't get a new latch */
 	      thread_p->wait_for_latch_promote = false;
 	      return ER_FAILED;
 	    }
@@ -2020,6 +2027,8 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 	  holder = pgbuf_allocate_thrd_holder_entry (thread_p);
 	  if (holder == NULL)
 	    {
+	      /* We have new latch, but can't add a holder entry; consider the
+	         page as fixed */
 	      /* This situation must not be occurred. */
 	      assert_release (false);
 	      return ER_FAILED;

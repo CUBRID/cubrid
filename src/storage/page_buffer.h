@@ -284,11 +284,11 @@ extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p,
 				    PGBUF_WATCHER * req_watcher,
 				    const char *caller_file, int caller_line);
 
-#define pgbuf_promote_read_latch(thread_p, pgptr, condition) \
-	pgbuf_promote_read_latch_debug(thread_p, pgptr, condition, \
+#define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
+	pgbuf_promote_read_latch_debug(thread_p, pgptr_p, condition, \
 				       __FILE__, __LINE__)
 extern int pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p,
-					   PAGE_PTR pgptr,
+					   PAGE_PTR * pgptr_p,
 					   PGBUF_PROMOTE_CONDITION condition,
 					   const char *caller_file,
 					   int caller_line);
@@ -364,10 +364,10 @@ extern int pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p,
 				      const int requestmode,
 				      PGBUF_WATCHER * watcher_object);
 
-#define pgbuf_promote_read_latch(thread_p, pgptr, condition) \
-  pgbuf_promote_read_latch_release(thread_p, pgptr, condition)
+#define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
+  pgbuf_promote_read_latch_release(thread_p, pgptr_p, condition)
 extern int pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p,
-					     PAGE_PTR pgptr,
+					     PAGE_PTR * pgptr_p,
 					     PGBUF_PROMOTE_CONDITION
 					     condition);
 
