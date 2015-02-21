@@ -12,9 +12,10 @@
 define thread_find_by_tran_index
   set $i = 0
   set $arg1 = 0
+  set $found = 0
   while $i < thread_Manager.num_total && $found == 0
     if thread_Manager.thread_array[$i]->tran_index == $arg0
-      $arg1 = thread_Manager.thread_array[$i]
+      set $arg1 = thread_Manager.thread_array[$i]
       loop_break
     end
     set $i=$i+1
