@@ -5814,6 +5814,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
     {
       /* This situation must not be occurred. */
       assert (false);
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
       return ER_FAILED;
     }
 
