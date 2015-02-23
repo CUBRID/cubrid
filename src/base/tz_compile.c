@@ -3593,7 +3593,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
   else
     {
       offset_rule->until_year = (unsigned short) val_read;
-      offset_rule->until_mon = TZ_MON_COUNT;	/* invalid month or day */
+      offset_rule->until_mon = 0;
       offset_rule->until_day = 0;
       offset_rule->until_hour = 0;
       offset_rule->until_min = 0;

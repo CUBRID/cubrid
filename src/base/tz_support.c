@@ -3005,6 +3005,7 @@ detect_dst:
 	}
       curr_off_rule = next_off_rule;
       next_off_rule = NULL;
+      curr_offset_id++;
 
       goto detect_dst;
     }
@@ -3236,6 +3237,7 @@ detect_dst:
 	}
       curr_off_rule = next_off_rule;
       next_off_rule = NULL;
+      curr_offset_id++;
       goto detect_dst;
     }
 
