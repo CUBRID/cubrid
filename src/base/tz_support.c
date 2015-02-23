@@ -1964,7 +1964,7 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
   if (zone_off_rule->ds_type == DS_TYPE_RULESET_ID)
     {
       TZ_DS_RULESET *ds_ruleset;
-      TZ_DS_RULE *ds_rule;
+      TZ_DS_RULE *ds_rule = NULL;
       int dst_id = tz_info->zone.dst_id;
       const char *ds_abbr = NULL;
 
@@ -1991,7 +1991,7 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
 	}
       else
 	{
-	  if (ds_rule->save_time != 0)
+	  if (ds_rule != NULL && ds_rule->save_time != 0)
 	    {
 	      p_dst_format = zone_off_rule->save_format;
 	    }
