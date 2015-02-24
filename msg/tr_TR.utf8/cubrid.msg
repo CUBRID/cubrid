@@ -1089,7 +1089,7 @@ $ LOADDB
 1020 Harici dosya "%1$s" bulunamadı.
 1021 Bir deadlock döngüsü algılandı. %1$s.
 1022 İndeksin önek uzunluğu için geçersiz değer "%1$d".
-1023 HA hata kodu saklıdır.
+1023 log applier filter: %1$s.
 1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).

@@ -1273,7 +1273,7 @@
 
 #define ER_SM_INVALID_PREFIX_LENGTH                 -1022
 
-/* Please note that error code -1023 is reserved for HA */
+#define ER_HA_LA_REPL_FILTER_GENERIC                -1023
 #define ER_HA_LW_FAILED_GET_LOG_PAGE                -1024
 #define ER_HA_REPL_DELAY_DETECTED                   -1025
 #define ER_HA_REPL_DELAY_RESOLVED                   -1026

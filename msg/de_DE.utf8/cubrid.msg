@@ -1089,7 +1089,7 @@ $ LOADDB
 1020 Externe Datei "%1$s" nicht gefunden.
 1021 Ein Deadlock-Zyklus erkannt. %1$s.
 1022 Ungültiger Wert "%1$d" für Präfixlänge des Indexes.
-1023 Reservierter Fehlercode für HA.
+1023 log applier filter: %1$s.
 1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).

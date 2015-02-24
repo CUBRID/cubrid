@@ -76,6 +76,7 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 #include "heartbeat.h"
+#include "log_applier.h"
 #include "utility.h"
 #include "page_buffer.h"
 #if !defined (CS_MODE)
@@ -601,6 +602,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FAULT_INJECTION_IDS "fault_injection_ids"
 #define PRM_NAME_FAULT_INJECTION_TEST "fault_injection_test"
+
+#define PRM_NAME_HA_REPL_FILTER_TYPE "ha_repl_filter_type"
+#define PRM_NAME_HA_REPL_FILTER_FILE "ha_repl_filter_file"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
@@ -2005,6 +2009,16 @@ static int prm_fault_injection_test_flag = 0;
 static int prm_fault_injection_test_default = FI_GROUP_NONE;
 static int prm_fault_injection_test_lower = FI_GROUP_NONE;
 static int prm_fault_injection_test_upper = FI_GROUP_MAX;
+
+int PRM_HA_REPL_FILTER_TYPE = REPL_FILTER_NONE;
+static int prm_ha_repl_filter_type_default = REPL_FILTER_NONE;
+static int prm_ha_repl_filter_type_lower = REPL_FILTER_NONE;
+static int prm_ha_repl_filter_type_upper = REPL_FILTER_EXCLUDE_TBL;
+static unsigned int prm_ha_repl_filter_type_flag = 0;
+
+const char *PRM_HA_REPL_FILTER_FILE = "";
+static const char *prm_ha_repl_filter_file_default = "";
+static unsigned int prm_ha_repl_filter_file_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4822,6 +4836,27 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_fault_injection_test_lower,
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_REPL_FILTER_TYPE,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_KEYWORD,
+   (void *) &prm_ha_repl_filter_type_flag,
+   (void *) &prm_ha_repl_filter_type_default,
+   (void *) &PRM_HA_REPL_FILTER_TYPE,
+   (void *) &prm_ha_repl_filter_type_upper,
+   (void *) &prm_ha_repl_filter_type_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_REPL_FILTER_FILE,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_STRING,
+   (void *) &prm_ha_repl_filter_file_flag,
+   (void *) &prm_ha_repl_filter_file_default,
+   (void *) &PRM_HA_REPL_FILTER_FILE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -4982,6 +5017,12 @@ static KEYVAL query_trace_format_words[] = {
 
 static KEYVAL fi_test_words[] = {
   {"recovery", FI_GROUP_RECOVERY},
+};
+
+static KEYVAL ha_repl_filter_type_words[] = {
+  {"none", REPL_FILTER_NONE},
+  {"include_table", REPL_FILTER_INCLUDE_TBL},
+  {"exclude_table", REPL_FILTER_EXCLUDE_TBL}
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
@@ -7034,6 +7075,13 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
 				 NULL, fi_test_words, DIM (fi_test_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) ==
+	       0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
+				 NULL, ha_repl_filter_type_words,
+				 DIM (ha_repl_filter_type_words));
+	}
       else
 	{
 	  assert (false);
@@ -7356,6 +7404,12 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	{
 	  keyvalp = prm_keyword (value.i, NULL, fi_test_words,
 				 DIM (fi_test_words));
+	}
+      else if (intl_mbs_casecmp (prm->name,
+				 PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, ha_repl_filter_type_words,
+				 DIM (ha_repl_filter_type_words));
 	}
       else
 	{
@@ -8530,6 +8584,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  {
 	    keyvalp = prm_keyword (-1, value, fi_test_words,
 				   DIM (fi_test_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name,
+				   PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, ha_repl_filter_type_words,
+				   DIM (ha_repl_filter_type_words));
 	  }
 	else
 	  {

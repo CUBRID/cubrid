@@ -39,6 +39,13 @@
    (error == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)     || \
    (error == ER_LK_DEADLOCK_CYCLE_DETECTED))
 
+typedef enum
+{
+  REPL_FILTER_NONE,
+  REPL_FILTER_INCLUDE_TBL,
+  REPL_FILTER_EXCLUDE_TBL
+} REPL_FILTER_TYPE;
+
 #if defined (CS_MODE)
 int
 la_log_page_check (const char *database_name, const char *log_path,

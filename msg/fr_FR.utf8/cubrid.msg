@@ -1089,7 +1089,7 @@ $ LOADDB
 1020 Fichier externe "%1$s" n'a pas été trouvé.
 1021 Un cycle d'interblocage est détecté. %1$s.
 1022 Valeur non valide "%1$d" pour la longueur du préfixe de l'index.
-1023 Code d'erreur réservé pour HA.
+1023 log applier filter: %1$s.
 1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).

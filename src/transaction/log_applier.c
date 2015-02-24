@@ -91,6 +91,8 @@
 #define LA_WS_CULL_MOPS_PER_APPLY_MIN           (100)
 #define LA_WS_CULL_MOPS_INTERVAL_MIN            (2)
 
+#define LA_NUM_REPL_FILTER			50
+
 #define LA_LOG_IS_IN_ARCHIVE(pageid) \
   ((pageid) < la_Info.act_log.log_hdr->nxarv_pageid)
 
@@ -181,6 +183,15 @@ struct la_cache_pb
   LA_CACHE_BUFFER **log_buffer;	/* buffer pool */
   int num_buffers;		/* # of buffers */
   LA_CACHE_BUFFER_AREA *buffer_area;	/* contignous area of buffers */
+};
+
+typedef struct la_repl_filter LA_REPL_FILTER;
+struct la_repl_filter
+{
+  char **list;
+  int list_size;
+  int num_filters;
+  REPL_FILTER_TYPE type;
 };
 
 typedef struct la_act_log LA_ACT_LOG;
@@ -317,6 +328,8 @@ struct la_info
   /* file lock */
   int log_path_lockf_vdes;
   int db_lockf_vdes;
+
+  LA_REPL_FILTER repl_filter;
 };
 
 typedef struct la_ovf_first_part LA_OVF_FIRST_PART;
@@ -602,6 +615,12 @@ static int lp_get_ha_applied_info (bool is_first);
 static void *lp_calc_applier_speed_thread_f (void *arg);
 
 static int la_flush_repl_items (bool immediate);
+
+static bool la_need_filter_out (LA_ITEM * item);
+static int la_create_repl_filter (void);
+static void la_destroy_repl_filter (void);
+static void la_print_repl_filter_info (void);
+
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
  *                                it does the shutdown process.
@@ -5974,7 +5993,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 	  la_release_all_page_buffers (final_pageid);
 	}
 
-      if (LSA_GT (&item->lsa, &la_Info.last_committed_rep_lsa))
+      if (LSA_GT (&item->lsa, &la_Info.last_committed_rep_lsa)
+	  && la_need_filter_out (item) == false)
 	{
 	  if (item->log_type == LOG_REPLICATION_DATA)
 	    {
@@ -7231,6 +7251,10 @@ la_init (const char *log_path, const int max_mem_size)
       ws_init_repl_objs ();
     }
 
+  la_Info.repl_filter.type = REPL_FILTER_NONE;
+  la_Info.repl_filter.list_size = 0;
+  la_Info.repl_filter.num_filters = 0;
+
   return;
 }
 
@@ -7340,6 +7364,8 @@ la_shutdown (void)
     }
 
   la_Info.num_unflushed = 0;
+
+  la_destroy_repl_filter ();
 
   return;
 }
@@ -8734,6 +8760,294 @@ la_get_adaptive_time_commit_interval (int *time_commit_interval,
 }
 
 /*
+ * la_print_repl_filter_info() - print replication filter info
+ *   return: none
+ *
+ */
+static void
+la_print_repl_filter_info (void)
+{
+  char buffer[LINE_MAX];
+  char *p, *last;
+  int i;
+  LA_REPL_FILTER *filter;
+
+  p = buffer;
+  last = buffer + sizeof (buffer);
+
+  filter = &la_Info.repl_filter;
+
+  if (filter->type == REPL_FILTER_NONE || filter->num_filters <= 0)
+    {
+      return;
+    }
+
+  if (filter->type == REPL_FILTER_INCLUDE_TBL)
+    {
+      p +=
+	snprintf (p, MAX ((last - p), 0),
+		  "updates only on the following tables will be applied: ");
+    }
+  else if (filter->type == REPL_FILTER_EXCLUDE_TBL)
+    {
+      p +=
+	snprintf (p, MAX ((last - p), 0),
+		  "updates on the following tables will be ignored: ");
+    }
+
+  p += snprintf (p, MAX ((last - p), 0), "[%s]", filter->list[0]);
+  for (i = 1; i < filter->num_filters; i++)
+    {
+      p += snprintf (p, MAX (last - p, 0), ", [%s]", filter->list[i]);
+    }
+
+  er_stack_push ();
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  ER_HA_LA_REPL_FILTER_GENERIC, 1, buffer);
+  er_stack_pop ();
+
+  return;
+}
+
+/*
+ * la_need_filter_out() - check if an item needs to be applied or not.
+ *   item (in): replication item
+ *   return: true when to exclude the given item for replication
+ *
+ */
+static bool
+la_need_filter_out (LA_ITEM * item)
+{
+  LA_REPL_FILTER *filter;
+  bool filter_found = false;
+  int i;
+
+  filter = &la_Info.repl_filter;
+
+  if (filter->type == REPL_FILTER_NONE
+      || item->log_type == LOG_REPLICATION_STATEMENT)
+    {
+      return false;
+    }
+
+  assert (item != NULL && item->class_name != NULL);
+
+  for (i = 0; i < filter->num_filters; i++)
+    {
+      if (strcasecmp (filter->list[i], item->class_name) == 0)
+	{
+	  filter_found = true;
+	  break;
+	}
+    }
+
+  if ((filter->type == REPL_FILTER_INCLUDE_TBL && filter_found == false)
+      || (filter->type == REPL_FILTER_EXCLUDE_TBL && filter_found == true))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
+ * la_add_repl_filter() - add a table to filter list
+ *   return: error
+ *
+ */
+static int
+la_add_repl_filter (const char *classname)
+{
+  LA_REPL_FILTER *filter;
+
+  filter = &la_Info.repl_filter;
+
+  assert (filter != NULL);
+  assert (filter->list != NULL && filter->list_size > 0);
+
+  if (classname == NULL || classname[0] == '\0')
+    {
+      return NO_ERROR;
+    }
+
+  if (filter->num_filters >= filter->list_size)
+    {
+      filter->list =
+	(char **) realloc (filter->list,
+			   (filter->list_size +
+			    LA_NUM_REPL_FILTER) * sizeof (char *));
+      if (filter->list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, LA_NUM_REPL_FILTER);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      filter->list_size += LA_NUM_REPL_FILTER;
+    }
+
+  filter->list[filter->num_filters] = strdup (classname);
+
+  if (filter->list[filter->num_filters] == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      strlen (classname));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  else
+    {
+      filter->num_filters++;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * la_create_repl_filter() - read replication filter file and setup filters
+ *   return: error
+ *
+ */
+static int
+la_create_repl_filter (void)
+{
+  int error = NO_ERROR;
+  char *filter_file;
+  char filter_file_real_path[PATH_MAX];
+  char buffer[LINE_MAX];
+  char error_msg[LINE_MAX];
+  char classname[SM_MAX_IDENTIFIER_LENGTH];
+  int classname_len = 0;
+  LA_REPL_FILTER *filter;
+  FILE *fp;
+  DB_OBJECT *class_ = NULL;
+  int i;
+
+  filter = &la_Info.repl_filter;
+
+  filter->type = prm_get_integer_value (PRM_ID_HA_REPL_FILTER_TYPE);
+  if (filter->type == REPL_FILTER_NONE)
+    {
+      return NO_ERROR;
+    }
+
+  filter_file = prm_get_string_value (PRM_ID_HA_REPL_FILTER_FILE);
+  if (filter_file == NULL || filter_file[0] == '\0')
+    {
+      snprintf (error_msg, LINE_MAX,
+		"no replication filter file is specified");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC,
+	      1, error_msg);
+
+      return ER_HA_LA_REPL_FILTER_GENERIC;
+    }
+
+  if (filter_file[0] != PATH_SEPARATOR)
+    {
+      filter_file =
+	envvar_confdir_file (filter_file_real_path, PATH_MAX, filter_file);
+    }
+
+  fp = fopen (filter_file, "r");
+  if (fp == NULL)
+    {
+      snprintf (error_msg, LINE_MAX, "failed to open %s", filter_file);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
+
+      return ER_HA_LA_REPL_FILTER_GENERIC;
+    }
+
+  filter->list = (char **) malloc (LA_NUM_REPL_FILTER * sizeof (char *));
+  if (filter->list == NULL)
+    {
+      fclose (fp);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, LA_NUM_REPL_FILTER);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  filter->list_size = LA_NUM_REPL_FILTER;
+
+  /* get filter table list */
+  while (fgets ((char *) buffer, LINE_MAX, fp) != NULL)
+    {
+      trim (buffer);
+      classname_len = strlen (buffer);
+      if (classname_len > 0 && buffer[classname_len - 1] == '\n')
+	{
+	  buffer[classname_len - 1] = '\0';
+	  classname_len--;
+	}
+
+      if (classname_len <= 0)
+	{
+	  continue;
+	}
+
+      sm_downcase_name (buffer, classname, SM_MAX_IDENTIFIER_LENGTH);
+
+      class_ = locator_find_class (classname);
+      if (class_ == NULL)
+	{
+	  snprintf (error_msg, LINE_MAX,
+		    "cannot find table [%s] listed in %s", buffer,
+		    filter_file);
+	  er_stack_push ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
+	  er_stack_pop ();
+	}
+
+      error = la_add_repl_filter (classname);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+    }
+
+  fclose (fp);
+  return NO_ERROR;
+
+error_return:
+  fclose (fp);
+  la_destroy_repl_filter ();
+
+  return error;
+}
+
+/*
+ * la_destroy_repl_filter() - free memory used for replication filter
+ *   return: none
+ *
+ */
+static void
+la_destroy_repl_filter (void)
+{
+  int i;
+  LA_REPL_FILTER *filter;
+
+  filter = &la_Info.repl_filter;
+
+  if (filter->list_size > 0 && filter->list != NULL)
+    {
+      for (i = 0; i < filter->num_filters; i++)
+	{
+	  if (filter->list[i] != NULL)
+	    {
+	      free_and_init (filter->list[i]);
+	    }
+	}
+      free_and_init (filter->list);
+    }
+
+  filter->list_size = 0;
+  filter->num_filters = 0;
+
+  return;
+}
+
+/*
  * la_apply_log_file() - apply the transaction log to the slave
  *   return: int
  *   database_name: apply database
@@ -8904,6 +9218,20 @@ la_apply_log_file (const char *database_name, const char *log_path,
     }
   time_commit_interval =
     prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
+
+  if (prm_get_integer_value (PRM_ID_HA_REPL_FILTER_TYPE) != REPL_FILTER_NONE)
+    {
+      error = la_create_repl_filter ();
+      if (error != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_REPL_FILTER_GENERIC, 1,
+		  "failed to initialize replication filters");
+	  return error;
+	}
+
+      la_print_repl_filter_info ();
+    }
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STARTED, 6,
 	  la_Info.required_lsa.pageid,
