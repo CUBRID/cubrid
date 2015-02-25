@@ -3971,26 +3971,23 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      if (mvcc_Enabled)
+      if (btree_leaf_key_oid_is_mvcc_flaged (rec->data,
+					     BTREE_LEAF_OID_HAS_MVCC_INSID))
 	{
-	  if (btree_leaf_key_oid_is_mvcc_flaged (rec->data,
-						 BTREE_LEAF_OID_HAS_MVCC_INSID))
+	  rc = or_advance (&buf, OR_MVCCID_SIZE);	/* skip insert mvccid */
+	  if (rc != NO_ERROR)
 	    {
-	      rc = or_advance (&buf, OR_BIGINT_SIZE);	/* skip class oid */
-	      if (rc != NO_ERROR)
-		{
-		  return rc;
-		}
+	      return rc;
 	    }
+	}
 
-	  if (btree_leaf_key_oid_is_mvcc_flaged (rec->data,
-						 BTREE_LEAF_OID_HAS_MVCC_DELID))
+      if (btree_leaf_key_oid_is_mvcc_flaged (rec->data,
+					     BTREE_LEAF_OID_HAS_MVCC_DELID))
+	{
+	  rc = or_advance (&buf, OR_MVCCID_SIZE);	/* skip delete mvccid */
+	  if (rc != NO_ERROR)
 	    {
-	      rc = or_advance (&buf, OR_BIGINT_SIZE);	/* skip class oid */
-	      if (rc != NO_ERROR)
-		{
-		  return rc;
-		}
+	      return rc;
 	    }
 	}
 
@@ -32981,7 +32978,7 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p,
 	  || btree_leaf_key_oid_is_mvcc_flaged (rec->data + oid_offset,
 						BTREE_LEAF_OID_HAS_MVCC_INSID))
 	{
-	  mvcc_insid_size = OR_BIGINT_SIZE;
+	  mvcc_insid_size = OR_MVCCID_SIZE;
 	}
       OR_GET_MVCCID (rec->data + oid_offset + oid_size + mvcc_insid_size,
 		     &old_mvcc_delid);

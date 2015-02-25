@@ -6549,7 +6549,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	   */
 	  if (setobj_put_value (set, i, &value) != NO_ERROR)
 	    {
-	      /* PR9043 if value not added to set, clear it */
+	      /* if value not added to set, clear it */
 	      pr_clear_value (&value);
 	    }
 	}
@@ -7979,13 +7979,13 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
   mvcc_header_size = OR_MVCC_REP_SIZE;
   if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
     {
-      mvcc_header_size += OR_BIGINT_SIZE;
+      mvcc_header_size += OR_MVCCID_SIZE;
     }
 
   if ((mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
       || (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN))
     {
-      mvcc_header_size += OR_BIGINT_SIZE;
+      mvcc_header_size += OR_MVCCID_SIZE;
     }
   else
     {
