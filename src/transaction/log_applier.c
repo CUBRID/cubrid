@@ -8985,6 +8985,16 @@ la_create_repl_filter (void)
 	  continue;
 	}
 
+      if (classname_len >= SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  snprintf (error_msg, LINE_MAX, "invalid table name %s", buffer);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
+	  error = ER_HA_LA_REPL_FILTER_GENERIC;
+
+	  goto error_return;
+	}
+
       sm_downcase_name (buffer, classname, SM_MAX_IDENTIFIER_LENGTH);
 
       class_ = locator_find_class (classname);
