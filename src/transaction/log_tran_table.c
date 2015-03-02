@@ -137,29 +137,40 @@ static int logtb_initialize_mvcctable (THREAD_ENTRY * thread_p);
 static void logtb_finalize_mvcctable (THREAD_ENTRY * thread_p);
 static int logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p);
 
-static void logtb_mvcc_free_class_unique_stats (LOG_MVCC_CLASS_UPDATE_STATS *
-						class_stats);
-static void logtb_mvcc_free_update_stats (LOG_MVCC_UPDATE_STATS *
+static void logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS *
 					  log_upd_stats);
-static void logtb_mvcc_clear_update_stats (LOG_MVCC_UPDATE_STATS *
+static void logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS *
 					   log_upd_stats);
-static LOG_MVCC_CLASS_UPDATE_STATS
-  * logtb_mvcc_alloc_class_stats (LOG_MVCC_UPDATE_STATS * log_upd_stats);
-static void logtb_mvcc_free_class_stats (LOG_MVCC_UPDATE_STATS *
-					 log_upd_stats,
-					 LOG_MVCC_CLASS_UPDATE_STATS * entry);
-static LOG_MVCC_CLASS_UPDATE_STATS
-  * logtb_mvcc_create_class_stats (THREAD_ENTRY * thread_p,
-				   const OID * class_oid);
-static LOG_MVCC_BTID_UNIQUE_STATS
-  * logtb_mvcc_create_btid_unique_stats (THREAD_ENTRY * thread_p,
-					 LOG_MVCC_CLASS_UPDATE_STATS *
-					 class_stats, const BTID * btid);
-static int logtb_mvcc_reflect_unique_statistics (THREAD_ENTRY * thread_p);
-static int logtb_mvcc_load_global_statistics (THREAD_ENTRY * thread_p);
+static unsigned int logtb_tran_btid_hash_func (const void *key,
+					       const unsigned int ht_size);
+static int logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2);
+static LOG_TRAN_CLASS_COS
+  * logtb_tran_create_class_cos (THREAD_ENTRY * thread_p,
+				 const OID * class_oid);
+static LOG_TRAN_BTID_UNIQUE_STATS
+  * logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p,
+					 const BTID * btid);
+static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p,
+					      void *data, void *args);
+static int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY *
+						      thread_p);
+static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p,
+					      void *data, void *args);
+static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data,
+				      void *args);
+static int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
 static int logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p,
-						LOG_MVCC_CLASS_UPDATE_STATS *
-						class_stats);
+						OID * class_oid);
+static GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY
+								 * thread_p,
+								 BTID * btid);
+static void *logtb_global_unique_stat_alloc (void);
+static int logtb_global_unique_stat_free (void *unique_stat);
+static int logtb_global_unique_stat_init (void *unique_stat);
+static int logtb_global_unique_stat_key_copy (void *src, void *dest);
+static unsigned int logtb_global_unique_stat_key_hash (void *key,
+						       int hash_table_size);
+static int logtb_global_unique_stat_key_compare (void *k1, void *k2);
 
 /*
  * logtb_realloc_topops_stack - realloc stack of top system operations
@@ -634,6 +645,10 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
+  if (mvcc_Enabled)
+    {
+      logtb_finalize_mvcctable (thread_p);
+    }
   lock_finalize ();
   pgbuf_finalize ();
   (void) file_manager_finalize (thread_p);
@@ -662,7 +677,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 #endif
 
 	      logtb_clear_tdes (thread_p, tdes);
-	      logtb_mvcc_free_update_stats (&tdes->log_upd_stats);
+	      logtb_tran_free_update_stats (&tdes->log_upd_stats);
 	      csect_finalize_critical_section (&tdes->cs_topop);
 	      if (tdes->topops.max != 0)
 		{
@@ -688,11 +703,6 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	  log_Gl.trantable.area = area->next;
 	  free_and_init (area);
 	}
-    }
-
-  if (mvcc_Enabled)
-    {
-      logtb_finalize_mvcctable (thread_p);
     }
 
   logtb_initialize_trantable (&log_Gl.trantable);
@@ -1872,7 +1882,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
 
-  logtb_mvcc_clear_update_stats (&tdes->log_upd_stats);
+  logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
   assert (tdes->mvcc_info == NULL || tdes->mvcc_info->mvcc_id == MVCCID_NULL);
 
@@ -1975,9 +1985,22 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   tdes->mvcc_info = NULL;
 
-  tdes->log_upd_stats.crt_tran_entries = NULL;
-  tdes->log_upd_stats.free_entries = NULL;
-  tdes->log_upd_stats.topop_id = -1;
+
+  tdes->log_upd_stats.cos_count = 0;
+  tdes->log_upd_stats.cos_first_chunk = NULL;
+  tdes->log_upd_stats.cos_current_chunk = NULL;
+  tdes->log_upd_stats.classes_cos_hash = NULL;
+
+  tdes->log_upd_stats.stats_count = 0;
+  tdes->log_upd_stats.stats_first_chunk = NULL;
+  tdes->log_upd_stats.stats_current_chunk = NULL;
+  tdes->log_upd_stats.unique_stats_hash = NULL;
+
+  tdes->log_upd_stats.unique_stats_hash =
+    mht_create ("Tran_unique_stats", 101, logtb_tran_btid_hash_func,
+		logtb_tran_btid_hash_cmp_func);
+  tdes->log_upd_stats.classes_cos_hash =
+    mht_create ("Tran_classes_cos", 101, oid_hash, oid_compare_equals);
 }
 
 /*
@@ -3505,57 +3528,61 @@ logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_mvcc_free_class_unique_stats - free class unique statistics
- *
- * return: nothing
- */
-static void
-logtb_mvcc_free_class_unique_stats (LOG_MVCC_CLASS_UPDATE_STATS * class_stats)
-{
-  if (class_stats == NULL)
-    {
-      return;
-    }
-
-  if (class_stats->unique_stats != NULL)
-    {
-      free_and_init (class_stats->unique_stats);
-      class_stats->n_btids = class_stats->n_max_btids = 0;
-    }
-}
-
-/*
- * logtb_mvcc_free_update_stats () - Free logged list of update statistics.
+ * logtb_tran_free_update_stats () - Free logged list of update statistics.
  *
  * return	    : Void.
  * log_upd_stats (in) : List of logged update statistics records.
  */
 static void
-logtb_mvcc_free_update_stats (LOG_MVCC_UPDATE_STATS * log_upd_stats)
+logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats)
 {
-  LOG_MVCC_CLASS_UPDATE_STATS *entry = NULL, *save_next = NULL;
+  LOG_TRAN_CLASS_COS_CHUNK *cos_chunk = NULL, *next_cos_chunk = NULL;
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_chunk = NULL, *next_stats_chunk =
+    NULL;
 
-  for (entry = log_upd_stats->crt_tran_entries; entry != NULL;
-       entry = save_next)
+  logtb_tran_clear_update_stats (log_upd_stats);
+
+  /* free count optimization structure */
+  cos_chunk = log_upd_stats->cos_first_chunk;
+  if (cos_chunk != NULL)
     {
-      save_next = entry->next;
-      logtb_mvcc_free_class_unique_stats (entry);
-      free (entry);
+      for (; cos_chunk != NULL; cos_chunk = next_cos_chunk)
+	{
+	  next_cos_chunk = cos_chunk->next_chunk;
+	  free (cos_chunk);
+	}
+      log_upd_stats->cos_first_chunk = NULL;
+      log_upd_stats->cos_current_chunk = NULL;
+      log_upd_stats->cos_count = 0;
+    }
+  if (log_upd_stats->classes_cos_hash != NULL)
+    {
+      mht_destroy (log_upd_stats->classes_cos_hash);
+      log_upd_stats->classes_cos_hash = NULL;
     }
 
-  for (entry = log_upd_stats->free_entries; entry != NULL; entry = save_next)
+  /* free unique statistics structure */
+  stats_chunk = log_upd_stats->stats_first_chunk;
+  if (stats_chunk != NULL)
     {
-      save_next = entry->next;
-      logtb_mvcc_free_class_unique_stats (entry);
-      free (entry);
+      for (; stats_chunk != NULL; stats_chunk = next_stats_chunk)
+	{
+	  next_stats_chunk = stats_chunk->next_chunk;
+	  free (stats_chunk);
+	}
+      log_upd_stats->stats_first_chunk = NULL;
+      log_upd_stats->stats_current_chunk = NULL;
+      log_upd_stats->stats_count = 0;
     }
-
-  log_upd_stats->crt_tran_entries = NULL;
-  log_upd_stats->free_entries = NULL;
+  if (log_upd_stats->unique_stats_hash != NULL)
+    {
+      mht_destroy (log_upd_stats->unique_stats_hash);
+      log_upd_stats->unique_stats_hash = NULL;
+    }
 }
 
 /*
- * logtb_mvcc_clear_update_stats () - Clear logged update statistics.
+ * logtb_tran_clear_update_stats () - Clear logged update statistics.
  *				      Entries are not actually freed, they are
  *				      appended to a list of free entries ready
  *				      to be reused.
@@ -3564,172 +3591,213 @@ logtb_mvcc_free_update_stats (LOG_MVCC_UPDATE_STATS * log_upd_stats)
  * log_upd_stats (in) : Pointer to update statistics log.
  */
 static void
-logtb_mvcc_clear_update_stats (LOG_MVCC_UPDATE_STATS * log_upd_stats)
+logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats)
 {
-  LOG_MVCC_CLASS_UPDATE_STATS *entry = NULL, *save_next = NULL;
-
-  for (entry = log_upd_stats->crt_tran_entries; entry != NULL;
-       entry = save_next)
+  /* clear count optimization structure */
+  log_upd_stats->cos_current_chunk = log_upd_stats->cos_first_chunk;
+  log_upd_stats->cos_count = 0;
+  if (log_upd_stats->classes_cos_hash != NULL)
     {
-      save_next = entry->next;
-      logtb_mvcc_free_class_stats (log_upd_stats, entry);
+      mht_clear (log_upd_stats->classes_cos_hash, NULL, NULL);
     }
 
-  log_upd_stats->crt_tran_entries = NULL;
+  /* clear unique statistics structure */
+  log_upd_stats->stats_current_chunk = log_upd_stats->stats_first_chunk;
+  log_upd_stats->stats_count = 0;
+  if (log_upd_stats->unique_stats_hash != NULL)
+    {
+      mht_clear (log_upd_stats->unique_stats_hash, NULL, NULL);
+    }
 }
 
 /*
- * logtb_mvcc_alloc_class_stats () - Allocate a new entry to class statistics
- *				     records during transaction. First check if
- *				     there are any entries in the list of free
- *				     entries, and allocate memory for a new one
- *				     only if this list is empty.
- *
- * return	    : Pointer to allocated entry.
- * thread_p (in)    : Thread entry.
- * log_upd_stats (in) :
+ * logtb_tran_btid_hash_func() - Hash function for BTIDs
+ *   return: hash value
+ *   key(in): BTID to hash
+ *   ht_size(in): Size of hash table
  */
-static LOG_MVCC_CLASS_UPDATE_STATS *
-logtb_mvcc_alloc_class_stats (LOG_MVCC_UPDATE_STATS * log_upd_stats)
+static unsigned int
+logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size)
 {
-  LOG_MVCC_CLASS_UPDATE_STATS *new_entry = NULL;
-
-  assert (log_upd_stats != NULL);
-
-  if (log_upd_stats->free_entries != NULL)
-    {
-      new_entry = log_upd_stats->free_entries;
-      log_upd_stats->free_entries = new_entry->next;
-      new_entry->next = NULL;
-      new_entry->n_btids = 0;
-      new_entry->count_state = COS_NOT_LOADED;
-    }
-  else
-    {
-      /* new_entry will be added to log_upd_stats->free_entries later */
-      new_entry =
-	(LOG_MVCC_CLASS_UPDATE_STATS *)
-	malloc (sizeof (LOG_MVCC_CLASS_UPDATE_STATS));
-      if (new_entry == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (LOG_MVCC_CLASS_UPDATE_STATS));
-	  return NULL;
-	}
-
-      /* clear all data */
-      memset (new_entry, 0, sizeof (LOG_MVCC_CLASS_UPDATE_STATS));
-    }
-
-  return new_entry;
+  return ((BTID *) key)->vfid.fileid % ht_size;
 }
 
 /*
- * logtb_mvcc_free_class_stats () - Append entry to a list of free entries.
- *
- * return	    : Void.
- * log_upd_stats (in) : Update statistics log.
- * entry (in)	    : Entry to free.
+ * logtb_tran_btid_hash_func() - Comparison function for BTIDs (equal or not)
+ *   return: 0 not equal, 1 otherwise
+ *   key1(in): left key
+ *   key2(in): right key
  */
-static void
-logtb_mvcc_free_class_stats (LOG_MVCC_UPDATE_STATS * log_upd_stats,
-			     LOG_MVCC_CLASS_UPDATE_STATS * entry)
+static int
+logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2)
 {
-  assert (log_upd_stats != NULL);
-
-  entry->next = log_upd_stats->free_entries;
-  log_upd_stats->free_entries = entry;
+  return BTID_IS_EQUAL ((BTID *) key1, (BTID *) key2);
 }
 
 /*
- * logtb_mvcc_create_btid_unique_stats () - allocates memory and initializes
+ * logtb_tran_create_btid_unique_stats () - allocates memory and initializes
  *					    statistics associated with btid
  *
- * return	    : The address of newly created statistics structure
+ * return	    : The address of newly created statistics structure or NULL
+ *		      in case of error.
  * thread_p(in)	    :
- * class_stats (in) : entry associated with a class
  * btid (in)	    : Id of unique index for which the statistics will be
  *		      created
  */
-static LOG_MVCC_BTID_UNIQUE_STATS *
-logtb_mvcc_create_btid_unique_stats (THREAD_ENTRY * thread_p,
-				     LOG_MVCC_CLASS_UPDATE_STATS *
-				     class_stats, const BTID * btid)
+static LOG_TRAN_BTID_UNIQUE_STATS *
+logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p,
+				     const BTID * btid)
 {
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats = NULL;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  if (class_stats == NULL || btid == NULL)
+  if (btid == NULL)
     {
       assert (false);
       return NULL;
     }
 
-  /* if space is full then extend it */
-  if (class_stats->n_btids == class_stats->n_max_btids)
+  if (tdes->log_upd_stats.stats_count % TRAN_UNIQUE_STATS_CHUNK_SIZE == 0)
     {
-      class_stats->n_max_btids += UNIQUE_STAT_INFO_INCREMENT;
-      class_stats->unique_stats =
-	(LOG_MVCC_BTID_UNIQUE_STATS *) realloc (class_stats->unique_stats,
-						class_stats->n_max_btids *
-						sizeof
-						(LOG_MVCC_BTID_UNIQUE_STATS));
-      if (class_stats->unique_stats == NULL)
+      LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *chunk = NULL;
+
+      if (tdes->log_upd_stats.stats_current_chunk != NULL
+	  && tdes->log_upd_stats.stats_current_chunk->next_chunk != NULL)
 	{
-	  return NULL;
+	  /* reuse the old chunk */
+	  chunk = tdes->log_upd_stats.stats_current_chunk->next_chunk;
 	}
+      else
+	{
+	  /* if the entire allocated space was exhausted then alloc a new chunk */
+	  int size =
+	    sizeof (LOG_TRAN_BTID_UNIQUE_STATS_CHUNK) +
+	    (TRAN_UNIQUE_STATS_CHUNK_SIZE -
+	     1) * sizeof (LOG_TRAN_BTID_UNIQUE_STATS);
+	  chunk = (LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *) malloc (size);
+
+	  if (chunk == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      return NULL;
+	    }
+	  if (tdes->log_upd_stats.stats_first_chunk == NULL)
+	    {
+	      tdes->log_upd_stats.stats_first_chunk = chunk;
+	    }
+	  else
+	    {
+	      tdes->log_upd_stats.stats_current_chunk->next_chunk = chunk;
+	    }
+	  chunk->next_chunk = NULL;
+	}
+      tdes->log_upd_stats.stats_current_chunk = chunk;
     }
 
-  unique_stats = &class_stats->unique_stats[class_stats->n_btids++];
+  /* get a new entry */
+  unique_stats =
+    &tdes->log_upd_stats.stats_current_chunk->buffer[tdes->log_upd_stats.
+						     stats_count++ %
+						     TRAN_UNIQUE_STATS_CHUNK_SIZE];
 
-  unique_stats->btid = *btid;
+  BTID_COPY (&unique_stats->btid, btid);
   unique_stats->deleted = false;
 
+  /* init transaction local statistics */
   unique_stats->tran_stats.num_keys = 0;
   unique_stats->tran_stats.num_oids = 0;
   unique_stats->tran_stats.num_nulls = 0;
 
+  /* init global statistics */
   unique_stats->global_stats.num_keys = -1;
   unique_stats->global_stats.num_oids = -1;
   unique_stats->global_stats.num_nulls = -1;
+
+  /* Store the new entry in hash */
+  if (mht_put
+      (tdes->log_upd_stats.unique_stats_hash, &unique_stats->btid,
+       unique_stats) == NULL)
+    {
+      return NULL;
+    }
 
   return unique_stats;
 }
 
 /*
- * logtb_mvcc_create_class_stats () - creates an entry of statistics for the
- *				      given class
+ * logtb_tran_create_class_cos () - creates a new count optimization state entry
+ *				    for a class
  *
  * return	    : return the adddress of newly created entry
  * thread_p(in)	    :
  * class_oid (in)   : OID of the class for which the entry will be created
  */
-static LOG_MVCC_CLASS_UPDATE_STATS *
-logtb_mvcc_create_class_stats (THREAD_ENTRY * thread_p, const OID * class_oid)
+static LOG_TRAN_CLASS_COS *
+logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  LOG_MVCC_CLASS_UPDATE_STATS *entry = NULL;
-  int error = NO_ERROR;
+  LOG_TRAN_CLASS_COS *entry = NULL;
 
-  /* An entry for class_oid was not found, create a new one */
-  entry = logtb_mvcc_alloc_class_stats (&tdes->log_upd_stats);
-  if (entry == NULL)
+  if (tdes->log_upd_stats.cos_count % COS_CLASSES_CHUNK_SIZE == 0)
     {
-      /* ER_OUT_OF_VIRTUAL_MEMORY */
-      return NULL;
+      LOG_TRAN_CLASS_COS_CHUNK *chunk = NULL;
+      if (tdes->log_upd_stats.cos_current_chunk != NULL
+	  && tdes->log_upd_stats.cos_current_chunk->next_chunk != NULL)
+	{
+	  /* reuse the old chunk */
+	  chunk = tdes->log_upd_stats.cos_current_chunk->next_chunk;
+	}
+      else
+	{
+	  /* if the entire allocated space was exhausted then alloc a new chunk */
+	  int size =
+	    sizeof (LOG_TRAN_CLASS_COS_CHUNK) + (COS_CLASSES_CHUNK_SIZE -
+						 1) *
+	    sizeof (LOG_TRAN_CLASS_COS);
+	  chunk = (LOG_TRAN_CLASS_COS_CHUNK *) malloc (size);
+
+	  if (chunk == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      return NULL;
+	    }
+	  if (tdes->log_upd_stats.cos_first_chunk == NULL)
+	    {
+	      tdes->log_upd_stats.cos_first_chunk = chunk;
+	    }
+	  else
+	    {
+	      tdes->log_upd_stats.cos_current_chunk->next_chunk = chunk;
+	    }
+	  chunk->next_chunk = NULL;
+	}
+      tdes->log_upd_stats.cos_current_chunk = chunk;
     }
 
-  COPY_OID (&entry->class_oid, class_oid);
+  /* get a new entry */
+  entry =
+    &tdes->log_upd_stats.cos_current_chunk->buffer[tdes->log_upd_stats.
+						   cos_count++ %
+						   COS_CLASSES_CHUNK_SIZE];
 
-  /* Append entry to current list of inserted/deleted records */
-  entry->next = tdes->log_upd_stats.crt_tran_entries;
-  tdes->log_upd_stats.crt_tran_entries = entry;
+  /* init newly created entry */
+  COPY_OID (&entry->class_oid, class_oid);
+  entry->count_state = COS_NOT_LOADED;
+
+  if (mht_put (tdes->log_upd_stats.classes_cos_hash, &entry->class_oid, entry)
+      == NULL)
+    {
+      return NULL;
+    }
 
   return entry;
 }
 
 /*
- * logtb_mvcc_find_class_stats () - searches the list of class statistics entries
- *				    for statistics for a specified class
+ * logtb_tran_find_class_cos () - searches the hash of count optimization states
+ *				  for a specific class oid
  *
  * return	    : address of found (or newly created) entry or null
  *		      otherwise
@@ -3738,197 +3806,71 @@ logtb_mvcc_create_class_stats (THREAD_ENTRY * thread_p, const OID * class_oid)
  * create(in)	    : true if the caller needs a new entry to be created if not
  *		      found an already existing one
  */
-LOG_MVCC_CLASS_UPDATE_STATS *
-logtb_mvcc_find_class_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
-			     bool create)
+LOG_TRAN_CLASS_COS *
+logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid,
+			   bool create)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  LOG_MVCC_CLASS_UPDATE_STATS *entry = NULL;
+  LOG_TRAN_CLASS_COS *entry = NULL;
 
   assert (tdes != NULL && class_oid != NULL);
 
-  for (entry = tdes->log_upd_stats.crt_tran_entries;
-       entry != NULL; entry = entry->next)
-    {
-      if (OID_EQ (class_oid, &entry->class_oid))
-	{
-	  /* Found, stop looking */
-	  break;
-	}
-    }
+  /* search */
+  entry =
+    (LOG_TRAN_CLASS_COS *) mht_get (tdes->log_upd_stats.classes_cos_hash,
+				    class_oid);
 
   if (entry == NULL && create)
     {
-      entry = logtb_mvcc_create_class_stats (thread_p, class_oid);
+      /* create if not found */
+      entry = logtb_tran_create_class_cos (thread_p, class_oid);
     }
 
   return entry;
 }
 
 /*
- * logtb_mvcc_find_btid_stats () - searches the list of statistics of a given class
- *			       for a specified index
+ * logtb_tran_find_btid_stats () - searches the hash of statistics for a
+ *				   specific index.
  *
  * return	    : address of found (or newly created) statistics or null
  *		      otherwise
  * thread_p(in)	    :
- * btid (in)	    : B-tree id to be searched
+ * btid (in)	    : index id to be searched
  * create(in)	    : true if the caller needs a new entry to be created if not
  *		      found an already existing one
  */
-LOG_MVCC_BTID_UNIQUE_STATS *
-logtb_mvcc_find_btid_stats (THREAD_ENTRY * thread_p,
-			    LOG_MVCC_CLASS_UPDATE_STATS * class_stats,
-			    const BTID * btid, bool create)
+LOG_TRAN_BTID_UNIQUE_STATS *
+logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid,
+			    bool create)
 {
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats = NULL;
-  int idx;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  if (class_stats == NULL || btid == NULL)
+  if (btid == NULL)
     {
       return NULL;
     }
 
-  for (idx = class_stats->n_btids - 1; idx >= 0; idx--)
-    {
-      unique_stats = &class_stats->unique_stats[idx];
-      if (BTID_IS_EQUAL (&unique_stats->btid, btid))
-	{
-	  return unique_stats;
-	}
-    }
-
-  if (idx < 0)
-    {
-      unique_stats = NULL;
-      if (create)
-	{
-	  unique_stats =
-	    logtb_mvcc_create_btid_unique_stats (thread_p, class_stats, btid);
-	}
-    }
-
-  return unique_stats;
-}
-
-/*
- * logtb_mvcc_find_class_oid_btid_stats () - searches the list of statistics for
- *					     statistics associated with
- *					     class_oid and btid.
- *
- * return	    : address of found (or newly created) statistics or null
- *		      otherwise
- * thread_p(in)	    :
- * class_oid(in)    : class_oid to be searched
- * btid (in)	    : B-tree id to be searched
- * create(in)	    : true if the caller needs a new entry to be created if not
- *		      found an already existing one
- */
-LOG_MVCC_BTID_UNIQUE_STATS *
-logtb_mvcc_find_class_oid_btid_stats (THREAD_ENTRY * thread_p,
-				      OID * class_oid, BTID * btid,
-				      bool create)
-{
-  LOG_MVCC_CLASS_UPDATE_STATS *class_stats =
-    logtb_mvcc_find_class_stats (thread_p, class_oid, create);
-
-  if (class_stats == NULL)
-    {
-      return NULL;
-    }
-
-  return logtb_mvcc_find_btid_stats (thread_p, class_stats, btid, create);
-}
-
-/*
- * logtb_mvcc_search_btid_stats_all_classes () - searches for a given B-tree id
- *						 in all existing classes
- *
- * return	    : address of found statistics or null otherwise
- * thread_p(in)	    :
- * btid (in)	    : B-tree id to be searched
- * create(in)	    :
- */
-LOG_MVCC_BTID_UNIQUE_STATS *
-logtb_mvcc_search_btid_stats_all_classes (THREAD_ENTRY * thread_p,
-					  const BTID * btid, bool create)
-{
-  LOG_TDES *tdes = NULL;
-  LOG_MVCC_CLASS_UPDATE_STATS *entry = NULL;
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats = NULL;
-
-  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  if (tdes == NULL || tdes->log_upd_stats.crt_tran_entries == NULL)
-    {
-      return NULL;
-    }
-
-  for (entry = tdes->log_upd_stats.crt_tran_entries; entry != NULL;
-       entry = entry->next)
-    {
-      unique_stats =
-	logtb_mvcc_find_btid_stats (thread_p, entry, btid, false);
-      if (unique_stats != NULL)
-	{
-	  break;
-	}
-    }
+  /* search */
+  unique_stats = mht_get (tdes->log_upd_stats.unique_stats_hash, btid);
 
   if (unique_stats == NULL && create)
     {
-      VPID root_vpid;
-      PAGE_PTR root = NULL;
-      OID class_oid;
-      BTREE_ROOT_HEADER *root_header = NULL;
-
-      OID_SET_NULL (&class_oid);
-      root_vpid.pageid = btid->root_pageid;
-      root_vpid.volid = btid->vfid.volid;
-
-      root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-			PGBUF_UNCONDITIONAL_LATCH);
-      if (root == NULL)
-	{
-	  return NULL;
-	}
-
-      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
-
-      root_header = btree_get_root_header (root);
-      if (root_header == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, root);
-	  return NULL;
-	}
-
-      if (OID_ISNULL (&class_oid))
-	{
-	  pgbuf_unfix_and_init (thread_p, root);
-	  return NULL;
-	}
-
-      entry = logtb_mvcc_find_class_stats (thread_p, &class_oid, true);
-      if (entry == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, root);
-	  return NULL;
-	}
-
-      pgbuf_unfix_and_init (thread_p, root);
-      unique_stats = logtb_mvcc_find_btid_stats (thread_p, entry, btid, true);
+      /* create if not found */
+      unique_stats = logtb_tran_create_btid_unique_stats (thread_p, btid);
     }
 
   return unique_stats;
 }
 
 /*
- * logtb_mvcc_update_btid_unique_stats () - updates statistics associated with
- *					    the given btid and class
+ * logtb_tran_update_btid_unique_stats () - updates statistics associated with
+ *					    the given btid
  *
  * return	    : error code or NO_ERROR
  * thread_p(in)	    :
- * class_stats(in)  : entry for class to which the btid belongs
- * btid (in)	    : B-tree id to be searched
+ * btid (in)	    : index id to be searched
  * n_keys(in)	    : number of keys to be added to statistics
  * n_oids(in)	    : number of oids to be added to statistics
  * n_nulls(in)	    : number of nulls to be added to statistics
@@ -3936,39 +3878,32 @@ logtb_mvcc_search_btid_stats_all_classes (THREAD_ENTRY * thread_p,
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_mvcc_update_btid_unique_stats (THREAD_ENTRY * thread_p,
-				     LOG_MVCC_CLASS_UPDATE_STATS *
-				     class_stats, BTID * btid, int n_keys,
-				     int n_oids, int n_nulls)
+logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
+				     int n_keys, int n_oids, int n_nulls)
 {
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats =
-    logtb_mvcc_find_btid_stats (thread_p, class_stats, btid, true);
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  /* search and create if not found */
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats =
+    logtb_tran_find_btid_stats (thread_p, btid, true);
 
   if (unique_stats == NULL)
     {
       return ER_FAILED;
     }
 
+  /* update statistics */
   unique_stats->tran_stats.num_keys += n_keys;
   unique_stats->tran_stats.num_oids += n_oids;
   unique_stats->tran_stats.num_nulls += n_nulls;
-
-  if (tdes->log_upd_stats.topop_id < 0)
-    {
-      tdes->log_upd_stats.topop_id = tdes->topops.last;
-    }
 
   return NO_ERROR;
 }
 
 /*
- * logtb_mvcc_update_class_unique_stats () - updates statistics associated with
- *					     the given class and btid
+ * logtb_tran_update_unique_stats () - updates statistics associated with
+ *				       the given class and btid
  *
  * return	    : error code or NO_ERROR
  * thread_p(in)	    :
- * class_oid(in)    : class OID of class to which the btid belongs
  * btid (in)	    : B-tree id to be searched
  * n_keys(in)	    : number of keys to be added to statistics
  * n_oids(in)	    : number of oids to be added to statistics
@@ -3978,47 +3913,39 @@ logtb_mvcc_update_btid_unique_stats (THREAD_ENTRY * thread_p,
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_mvcc_update_class_unique_stats (THREAD_ENTRY * thread_p,
-				      OID * class_oid, BTID * btid,
-				      int n_keys, int n_oids, int n_nulls,
-				      bool write_to_log)
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
+				int n_keys, int n_oids, int n_nulls,
+				bool write_to_log)
 {
-  LOG_MVCC_CLASS_UPDATE_STATS *class_stats = NULL;
   int error = NO_ERROR;
 
-  if (class_oid == NULL)
+  /* update statistics */
+  error =
+    logtb_tran_update_btid_unique_stats (thread_p, btid, n_keys, n_oids,
+					 n_nulls);
+  if (error != NO_ERROR)
     {
-      return ER_FAILED;
+      return error;
     }
-
-  class_stats = logtb_mvcc_find_class_stats (thread_p, class_oid, true);
-  if (class_stats == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  error = logtb_mvcc_update_btid_unique_stats (thread_p, class_stats, btid,
-					       n_keys, n_oids, n_nulls);
 
   if (write_to_log)
     {
-      char undo_rec_buf[3 * OR_INT_SIZE + OR_OID_SIZE + OR_BTID_ALIGNED_SIZE +
+      /* log statistics */
+      char undo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE +
 			MAX_ALIGNMENT];
-      char redo_rec_buf[3 * OR_INT_SIZE + OR_OID_SIZE + OR_BTID_ALIGNED_SIZE +
+      char redo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE +
 			MAX_ALIGNMENT];
       RECDES undo_rec, redo_rec;
 
-      undo_rec.area_size = ((3 * OR_INT_SIZE) + OR_OID_SIZE
-			    + OR_BTID_ALIGNED_SIZE);
+      undo_rec.area_size = ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
       undo_rec.data = PTR_ALIGN (undo_rec_buf, MAX_ALIGNMENT);
 
-      redo_rec.area_size = ((3 * OR_INT_SIZE) + OR_OID_SIZE
-			    + OR_BTID_ALIGNED_SIZE);
+      redo_rec.area_size = ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
       redo_rec.data = PTR_ALIGN (redo_rec_buf, MAX_ALIGNMENT);
 
-      btree_rv_mvcc_save_increments (class_oid, btid, -n_keys, -n_oids,
-				     -n_nulls, &undo_rec);
-      btree_rv_mvcc_save_increments (class_oid, btid, n_keys, n_oids, n_nulls,
+      btree_rv_mvcc_save_increments (btid, -n_keys, -n_oids, -n_nulls,
+				     &undo_rec);
+      btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls,
 				     &redo_rec);
 
       log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD,
@@ -4031,192 +3958,152 @@ logtb_mvcc_update_class_unique_stats (THREAD_ENTRY * thread_p,
 }
 
 /*
- * logtb_mvcc_reflect_unique_statistics () - reflects in B-tree the statistics
- *					     accumulated during transaction
+ * logtb_tran_update_delta_hash_func () - updates statistics associated with
+ *					  the given btid by local statistics
  *
  * return	    : error code or NO_ERROR
  * thread_p(in)	    :
- * class_oid(in)    : class OID of class to which the btid belongs
- * btid (in)	    : B-tree id to be searched
- * n_keys(in)	    : number of keys to be added to statistics
- * n_oids(in)	    : number of oids to be added to statistics
- * n_nulls(in)	    : number of nulls to be added to statistics
+ * data(in)	    : unique statistics
+ * args(in)	    : not used
  *
- * Note: the statistics are searched and created if they not exist.
+ * Note: This is a function that is called for each element during the hash
+ *	 iteration.
  */
 static int
-logtb_mvcc_reflect_unique_statistics (THREAD_ENTRY * thread_p)
+logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data,
+				   void *args)
 {
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  int error_code = NO_ERROR, idx;
-  LOG_MVCC_CLASS_UPDATE_STATS *entry = NULL;
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats = NULL;
-  BTREE_UNIQUE_STATS btree_stats;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats =
+    (LOG_TRAN_BTID_UNIQUE_STATS *) data;
+  int error_code = NO_ERROR;
 
-  if (tdes == NULL)
+  if (unique_stats->deleted)
     {
-      return ER_FAILED;
+      /* ignore if deleted */
+      return NO_ERROR;
     }
 
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  for (entry = tdes->log_upd_stats.crt_tran_entries; entry != NULL;
-       entry = entry->next)
-    {
-      if (heap_is_mvcc_disabled_for_class (&(entry->class_oid)))
-	{
-	  /* do not reflect statistics for non-MVCC classes
-	   * since they are already reflected at insert/delete
-	   */
-	  continue;
-	}
-
-      for (idx = entry->n_btids - 1; idx >= 0; idx--)
-	{
-	  unique_stats = &entry->unique_stats[idx];
-	  if (unique_stats->deleted)
-	    {
-	      continue;
-	    }
-
-	  BTID_COPY (&btree_stats.btid, &unique_stats->btid);
-
-	  btree_stats.num_keys = unique_stats->tran_stats.num_keys;
-	  btree_stats.num_nulls = unique_stats->tran_stats.num_nulls;
-	  btree_stats.num_oids = unique_stats->tran_stats.num_oids;
-
-	  error_code =
-	    btree_reflect_unique_statistics (thread_p, &btree_stats, false);
-	  if (error_code != NO_ERROR)
-	    {
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-	      return error_code;
-	    }
-	}
-    }
-
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  error_code =
+    logtb_update_global_unique_stats_by_delta (thread_p, &unique_stats->btid,
+					       unique_stats->tran_stats.
+					       num_oids,
+					       unique_stats->tran_stats.
+					       num_nulls,
+					       unique_stats->tran_stats.
+					       num_keys, true);
 
   return error_code;
 }
 
 /*
- * logtb_mvcc_load_global_statistics () - loads global statistics from B-tree
- *					  into memory for classes for which the
- *					  COS_TO_LOAD state is active
+ * logtb_tran_update_all_global_unique_stats () - update global statistics
+ *						  by local statistics for all
+ *						  indexes found in transaction's
+ *						  unique statistics hash
  *
  * return	    : error code or NO_ERROR
  * thread_p(in)	    :
  *
- * Note: if the statistics were successfully loaded then set state to COS_LOADED
+ * Note: this function must be called at the end of transaction (commit)
  */
 static int
-logtb_mvcc_load_global_statistics (THREAD_ENTRY * thread_p)
+logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
 {
-  int error_code = NO_ERROR, idx, idx2;
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  LOG_MVCC_CLASS_UPDATE_STATS *entry = NULL, *new_entry = NULL;
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats = NULL;
-  PRUNING_CONTEXT context;
+  int error_code = NO_ERROR;
 
   if (tdes == NULL)
     {
       return ER_FAILED;
     }
 
+  error_code =
+    mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash,
+		    logtb_tran_update_delta_hash_func, thread_p);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return error_code;
+}
+
+/*
+ * logtb_tran_load_global_stats_func () - load global statistics into the
+ *					  current transaction for a given class.
+ *
+ * return	    : error code or NO_ERROR
+ * thread_p(in)	    :
+ * data(in)	    : count optimization state entry
+ * args(in)	    : not used
+ *
+ * Note: This function is called for each element of the count optimization
+ *	 states hash. If the statistics were successfully loaded then set state
+ *	 to COS_LOADED. In case of a partitioned class, statistics for each
+ *	 partition are loaded.
+ */
+static int
+logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
+				   void *args)
+{
+  int error_code = NO_ERROR, idx;
+  PRUNING_CONTEXT context;
+  LOG_TRAN_CLASS_COS *entry = NULL, *new_entry = NULL;
+
+  entry = (LOG_TRAN_CLASS_COS *) data;
+  if (entry->count_state != COS_TO_LOAD)
+    {
+      return NO_ERROR;
+    }
+
   partition_init_pruning_context (&context);
 
-  for (entry = tdes->log_upd_stats.crt_tran_entries; entry != NULL;
-       entry = entry->next)
+  /* In case of partitioned class load statistics for each partition */
+  error_code =
+    partition_load_pruning_context (thread_p, &entry->class_oid,
+				    DB_PARTITIONED_CLASS, &context);
+  if (error_code != NO_ERROR)
     {
-      if (entry->count_state != COS_TO_LOAD)
-	{
-	  continue;
-	}
+      goto cleanup;
+    }
 
-      /* In case of partitioned class load statistics for each partition */
-      error_code =
-	partition_load_pruning_context (thread_p, &entry->class_oid,
-					DB_PARTITIONED_CLASS, &context);
-      if (error_code != NO_ERROR)
+  if (context.count > 0)
+    {
+      for (idx = 0; idx < context.count; idx++)
 	{
-	  goto cleanup;
-	}
-
-      if (context.count > 0)
-	{
-	  for (idx = 0; idx < context.count; idx++)
+	  if (OID_ISNULL (&context.partitions[idx].class_oid))
 	    {
-	      if (OID_ISNULL (&context.partitions[idx].class_oid))
-		{
-		  continue;
-		}
-	      new_entry =
-		logtb_mvcc_find_class_stats (thread_p,
-					     &context.partitions[idx].
-					     class_oid, true);
-	      if (new_entry == NULL)
-		{
-		  error_code = ER_FAILED;
-		  goto cleanup;
-		}
-
-	      error_code =
-		logtb_create_unique_stats_from_repr (thread_p, new_entry);
-	      if (error_code != NO_ERROR)
-		{
-		  goto cleanup;
-		}
-
-	      for (idx2 = new_entry->n_btids - 1; idx2 >= 0; idx2--)
-		{
-		  unique_stats = &new_entry->unique_stats[idx2];
-		  error_code =
-		    btree_get_unique_statistics (thread_p,
-						 &unique_stats->btid,
-						 &unique_stats->global_stats.
-						 num_oids,
-						 &unique_stats->global_stats.
-						 num_nulls,
-						 &unique_stats->global_stats.
-						 num_keys);
-		  if (error_code != NO_ERROR)
-		    {
-		      goto cleanup;
-		    }
-		}
-
-	      new_entry->count_state = COS_LOADED;
+	      continue;
 	    }
-	}
+	  new_entry =
+	    logtb_tran_find_class_cos (thread_p,
+				       &context.partitions[idx].class_oid,
+				       true);
+	  if (new_entry == NULL)
+	    {
+	      error_code = ER_FAILED;
+	      goto cleanup;
+	    }
 
-      error_code = logtb_create_unique_stats_from_repr (thread_p, entry);
-      if (error_code != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      for (idx = entry->n_btids - 1; idx >= 0; idx--)
-	{
-	  unique_stats = &entry->unique_stats[idx];
 	  error_code =
-	    btree_get_unique_statistics (thread_p, &unique_stats->btid,
-					 &unique_stats->global_stats.num_oids,
-					 &unique_stats->global_stats.
-					 num_nulls,
-					 &unique_stats->global_stats.
-					 num_keys);
+	    logtb_create_unique_stats_from_repr (thread_p, &entry->class_oid);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto cleanup;
 	    }
-	}
 
-      entry->count_state = COS_LOADED;
+	  new_entry->count_state = COS_LOADED;
+	}
     }
+
+  error_code =
+    logtb_create_unique_stats_from_repr (thread_p, &entry->class_oid);
+  if (error_code != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  entry->count_state = COS_LOADED;
 
 cleanup:
   partition_clear_pruning_context (&context);
@@ -4225,47 +4112,38 @@ cleanup:
 }
 
 /*
- * logtb_mvcc_update_tran_class_stats () - Called at the end of a command,
- *					   should update the class sattistics
- *					   for the current running
- *					   transaction.
+ * logtb_load_global_statistics_to_tran () - load global statistics into the
+ *					     current transaction for all classes
+ *					     with COS_TO_LOAD count optimization
+ *					     state.
  *
- * return	       : Error code.
- * thread_p (in)       : Thread entry.
- * cancel_command (in) : True if command was canceled due to error. All
- *			 inserted records will not be physically removed,
- *			 but are also counted as deleted. All deleted records
- *			 are "revived" (n_deleted is ignored).
+ * return	    : error code or NO_ERROR
+ * thread_p(in)	    :
+ *
+ * Note: The statistics will be loaded only for classes that have COS_TO_LOAD
+ *	 count optimization state. This function is used when a snapshot is
+ *	 taken.
  */
-int
-logtb_mvcc_update_tran_class_stats (THREAD_ENTRY * thread_p,
-				    bool cancel_command)
+static int
+logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p)
 {
+  int error_code = NO_ERROR;
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  int error = NO_ERROR, idx;
-  LOG_MVCC_CLASS_UPDATE_STATS *class_stats = NULL;
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats = NULL;
 
   if (tdes == NULL)
     {
-      assert (0);
       return ER_FAILED;
     }
 
-  for (class_stats = tdes->log_upd_stats.crt_tran_entries;
-       class_stats != NULL; class_stats = class_stats->next)
+  error_code =
+    mht_map_no_key (thread_p, tdes->log_upd_stats.classes_cos_hash,
+		    logtb_tran_load_global_stats_func, thread_p);
+  if (error_code != NO_ERROR)
     {
-      for (idx = class_stats->n_btids - 1; idx >= 0; idx--)
-	{
-	  unique_stats = &class_stats->unique_stats[idx];
-	  if (cancel_command)
-	    {
-	      unique_stats->deleted = false;
-	    }
-	}
+      return error_code;
     }
 
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -4393,9 +4271,10 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
     }
 
   /* The below code resided initially after the critical section but was moved
-   * here because we need the snapshot in logtb_mvcc_load_global_statistics in
-   * order to check that the class is partitioned or not not and if it is then
-   * also load unique statistics for partitions.
+   * here because we need the snapshot in
+   * logtb_load_global_statistics_to_tran in order to check that the class
+   * is partitioned or not not and if it is then also load unique statistics for
+   * partitions.
    */
 
   /* update lowest active mvccid computed for the most recent snapshot */
@@ -4408,7 +4287,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   snapshot->valid = true;
 
   /* load global statistics. This must take place here and no where else. */
-  if (logtb_mvcc_load_global_statistics (thread_p) != NO_ERROR)
+  if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
       error_code = ER_MVCC_CANT_GET_SNAPSHOT;
@@ -4442,7 +4321,7 @@ xlogtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p)
     {
       /* Invalidate snapshot */
       tdes->mvcc_info->mvcc_snapshot.valid = false;
-      logtb_mvcc_reset_count_optim_state (thread_p);
+      logtb_tran_reset_count_optim_state (thread_p);
     }
 
   return NO_ERROR;
@@ -4861,7 +4740,6 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 void
 logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 {
-  LOG_MVCC_CLASS_UPDATE_STATS *entry = NULL;
   MVCC_INFO *curr_mvcc_info = NULL, *head_null_mvccids = NULL;
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
   MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;
@@ -4878,19 +4756,14 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   if (MVCCID_IS_VALID (curr_mvcc_info->mvcc_id))
     {
-      /* reflect accumulated statistics to B-trees
-       * temporary reflected before acquiring CSECT_TRAN_TABLE critical section,
-       * in order to not affect the performance
-       * Don't hold CS here because it will generate a deadlock on latch
-       * pages.
-       */
+      (void) csect_enter (NULL, CSECT_MVCC_ACTIVE_TRANS, INF_WAIT);
+
+      /* reflect accumulated statistics to B-trees */
       if (committed
-	  && logtb_mvcc_reflect_unique_statistics (thread_p) != NO_ERROR)
+	  && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{
 	  assert (false);
 	}
-
-      (void) csect_enter (NULL, CSECT_MVCC_ACTIVE_TRANS, INF_WAIT);
 
       head_null_mvccids = mvcc_table->head_null_mvccids;
 
@@ -4978,12 +4851,12 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   p_mvcc_snapshot = &(curr_mvcc_info->mvcc_snapshot);
   if (p_mvcc_snapshot->valid)
     {
-      logtb_mvcc_reset_count_optim_state (thread_p);
+      logtb_tran_reset_count_optim_state (thread_p);
     }
 
   MVCC_CLEAR_SNAPSHOT_DATA (p_mvcc_snapshot);
 
-  logtb_mvcc_clear_update_stats (&tdes->log_upd_stats);
+  logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -5428,7 +5301,7 @@ logtb_release_mvcc_info (THREAD_ENTRY * thread_p)
   p_mvcc_snapshot = &(curr_mvcc_info->mvcc_snapshot);
   if (p_mvcc_snapshot->valid)
     {
-      logtb_mvcc_reset_count_optim_state (thread_p);
+      logtb_tran_reset_count_optim_state (thread_p);
     }
   MVCC_CLEAR_SNAPSHOT_DATA (p_mvcc_snapshot);
 
@@ -5539,7 +5412,7 @@ logtb_alloc_mvcc_info_block (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_mvcc_prepare_count_optim_classes - prepare classes for count
+ * logtb_tran_prepare_count_optim_classes - prepare classes for count
  *					    optimization (for unique statistics
  *					    loading)
  *
@@ -5549,9 +5422,14 @@ logtb_alloc_mvcc_info_block (THREAD_ENTRY * thread_p)
  * classes(in): classes names list
  * flags(in): flags associated with class names
  * n_classes(in): number of classes names
+ *
+ * Note: This function is called at prefetch request. It receives a list of
+ *	 classes and for each class the COS_TO_LOAD flag will be set if the
+ *	 statistics were not already loaded. The statistics will be loaded at
+ *	 snapshot.
  */
 int
-logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
+logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 					const char **classes,
 					LC_PREFETCH_FLAGS * flags,
 					int n_classes)
@@ -5559,7 +5437,7 @@ logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
   int idx;
   OID class_oid;
   LC_FIND_CLASSNAME find;
-  LOG_MVCC_CLASS_UPDATE_STATS *class_stats = NULL;
+  LOG_TRAN_CLASS_COS *class_cos = NULL;
 
   for (idx = n_classes - 1; idx >= 0; idx--)
     {
@@ -5586,9 +5464,9 @@ logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 	  else
 	    {
 	      /* search for class statistics (create if not exist). */
-	      class_stats =
-		logtb_mvcc_find_class_stats (thread_p, &class_oid, true);
-	      if (class_stats == NULL)
+	      class_cos =
+		logtb_tran_find_class_cos (thread_p, &class_oid, true);
+	      if (class_cos == NULL)
 		{
 		  /* something wrong happened. Just return error */
 		  return ER_FAILED;
@@ -5597,9 +5475,9 @@ logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 	      /* Mark class for unique statistics loading. The statistics will
 	       * be loaded when snapshot will be taken
 	       */
-	      if (class_stats->count_state != COS_LOADED)
+	      if (class_cos->count_state != COS_LOADED)
 		{
-		  class_stats->count_state = COS_TO_LOAD;
+		  class_cos->count_state = COS_TO_LOAD;
 		}
 	    }
 	  break;
@@ -5613,7 +5491,25 @@ logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 }
 
 /*
- * logtb_mvcc_reset_count_optim_state - reset count optimization state for all
+ * logtb_tran_reset_cos_func - working function for
+ *			       logtb_tran_reset_count_optim_state
+ *
+ * return:
+ * data(in): count optimization state entry.
+ * args(in): not used.
+ *
+ * thread_p(in): thread entry
+ */
+static int
+logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  ((LOG_TRAN_CLASS_COS *) data)->count_state = COS_NOT_LOADED;
+
+  return NO_ERROR;
+}
+
+/*
+ * logtb_tran_reset_count_optim_state - reset count optimization state for all
  *					class statistics instances
  *
  * return:
@@ -5621,42 +5517,34 @@ logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
  * thread_p(in): thread entry
  */
 void
-logtb_mvcc_reset_count_optim_state (THREAD_ENTRY * thread_p)
+logtb_tran_reset_count_optim_state (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  LOG_MVCC_CLASS_UPDATE_STATS *class_stats =
-    tdes->log_upd_stats.crt_tran_entries;
 
-  while (class_stats != NULL)
-    {
-      class_stats->count_state = COS_NOT_LOADED;
-
-      class_stats = class_stats->next;
-    }
+  mht_map_no_key (thread_p, tdes->log_upd_stats.classes_cos_hash,
+		  logtb_tran_reset_cos_func, NULL);
 }
 
 /*
- * logtb_create_unique_stats_from_repr - create count optimization instances
- *					 for all unique indexes of the given
- *					 class
+ * logtb_create_unique_stats_from_repr - create unique statistics instances
+ *					 for all unique indexes of a class
  *
  * return: error code
  *
  * thread_p(in)	  : thread entry
- * class_stats(in): class statistics instance for which count optimization
- *		    unique statistics will be created.
+ * class_oid(in)  : class for which the unique statistics will be created
  */
 static int
-logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p,
-				     LOG_MVCC_CLASS_UPDATE_STATS *
-				     class_stats)
+logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
 {
   OR_CLASSREP *classrepr = NULL;
   int error_code = NO_ERROR, idx, classrepr_cacheindex = -1;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
 
   /* get class representation to find the total number of indexes */
-  classrepr = heap_classrepr_get (thread_p, &class_stats->class_oid, NULL,
-				  NULL_REPRID, &classrepr_cacheindex);
+  classrepr =
+    heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID,
+			&classrepr_cacheindex);
   if (classrepr == NULL)
     {
       goto exit_on_error;
@@ -5666,11 +5554,24 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p,
     {
       if (btree_is_unique_type (classrepr->indexes[idx].type))
 	{
-	  if (logtb_mvcc_find_btid_stats (thread_p, class_stats,
-					  &classrepr->indexes[idx].btid,
-					  true) == NULL)
+	  unique_stats =
+	    logtb_tran_find_btid_stats (thread_p,
+					&classrepr->indexes[idx].btid, true);
+	  if (unique_stats == NULL)
 	    {
 	      error_code = ER_FAILED;
+	      goto exit_on_error;
+	    }
+	  error_code =
+	    logtb_get_global_unique_stats (thread_p, &unique_stats->btid,
+					   &unique_stats->global_stats.
+					   num_oids,
+					   &unique_stats->global_stats.
+					   num_nulls,
+					   &unique_stats->global_stats.
+					   num_keys);
+	  if (error_code != NO_ERROR)
+	    {
 	      goto exit_on_error;
 	    }
 	}
@@ -5997,4 +5898,587 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
   csect_exit (thread_p, CSECT_MVCC_ACTIVE_TRANS);
+}
+
+/*
+ * logtb_global_unique_stat_alloc () - allocate a new structure of unique
+ *				       statistics for a btree
+ *   returns: new pointer or NULL on error
+ */
+static void *
+logtb_global_unique_stat_alloc (void)
+{
+  GLOBAL_UNIQUE_STATS *unique_stat =
+    (GLOBAL_UNIQUE_STATS *) malloc (sizeof (GLOBAL_UNIQUE_STATS));
+  if (unique_stat != NULL)
+    {
+      pthread_mutex_init (&unique_stat->mutex, NULL);
+    }
+  return (void *) unique_stat;
+}
+
+/*
+ * logtb_global_unique_stat_free () - free a global unique statistics of a btree
+ *   returns: error code or NO_ERROR
+ *   unique_stat(in): global unique statistics entry to free
+ *		      (GLOBAL_UNIQUE_STATS)
+ */
+static int
+logtb_global_unique_stat_free (void *unique_stat)
+{
+  if (unique_stat != NULL)
+    {
+      pthread_mutex_destroy (&((GLOBAL_UNIQUE_STATS *) unique_stat)->mutex);
+      free (unique_stat);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
+/*
+ * logtb_global_unique_stat_init () - initialize global unique statistics element
+ *   returns: error code or NO_ERROR
+ *   unique_stat(in): global unique statistics element
+ */
+static int
+logtb_global_unique_stat_init (void *unique_stat)
+{
+  GLOBAL_UNIQUE_STATS *unique_stat_p = (GLOBAL_UNIQUE_STATS *) unique_stat;
+
+  if (unique_stat == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* initialize fields */
+  BTID_SET_NULL (&unique_stat_p->btid);
+  unique_stat_p->unique_stats.num_nulls = 0;
+  unique_stat_p->unique_stats.num_keys = 0;
+  unique_stat_p->unique_stats.num_oids = 0;
+  LSA_SET_NULL (&unique_stat_p->last_log_lsa);
+
+  return NO_ERROR;
+}
+
+/*
+ * logtb_global_unique_stat_key_copy () - copy a global unique statistics key
+ *   returns: error code or NO_ERROR
+ *   src(in): source
+ *   dest(in): destination
+ */
+static int
+logtb_global_unique_stat_key_copy (void *src, void *dest)
+{
+  if (src == NULL || dest == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  BTID_COPY ((BTID *) dest, (BTID *) src);
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * logtb_global_unique_stat_key_hash () - hashing function for the global
+ *					  unique statistics hash
+ *   return: int
+ *   key(in): Session key
+ *   hash_table_size(in): Memory Hash Table Size
+ *
+ * Note: Generate a hash number for the given key for the given hash table
+ *	 size.
+ */
+static unsigned int
+logtb_global_unique_stat_key_hash (void *key, int hash_table_size)
+{
+  return (((BTID *) key)->vfid.fileid % hash_table_size);
+}
+
+/*
+ * logtb_global_unique_stat_key_compare () - Compare two global unique
+ *					     statistics keys (BTIDs)
+ *   return: int (true or false)
+ *   k1  (in) : First BTID key
+ *   k2 (in) : Second BTID key
+ */
+static int
+logtb_global_unique_stat_key_compare (void *k1, void *k2)
+{
+  BTID *key1, *key2;
+
+  key1 = (BTID *) k1;
+  key2 = (BTID *) k2;
+
+  if (k1 == NULL || k2 == NULL)
+    {
+      /* should not happen */
+      assert (false);
+      return 0;
+    }
+
+  if (BTID_IS_EQUAL (key1, key2))
+    {
+      /* equal */
+      return 0;
+    }
+  else
+    {
+      /* not equal */
+      return 1;
+    }
+}
+
+/*
+ * logtb_initialize_global_unique_stats_table () - Creates and initializes
+ *						   global structure for global
+ *						   unique statistics
+ *   return: error code
+ *   thread_p  (in) : 
+ */
+int
+logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
+{
+  int ret = NO_ERROR;
+  LF_ENTRY_DESCRIPTOR *edesc =
+    &log_Gl.unique_stats_table.unique_stats_descriptor;
+
+  if (log_Gl.unique_stats_table.initialized)
+    {
+      return NO_ERROR;
+    }
+  edesc->of_local_next = offsetof (GLOBAL_UNIQUE_STATS, stack);
+  edesc->of_next = offsetof (GLOBAL_UNIQUE_STATS, next);
+  edesc->of_del_tran_id = offsetof (GLOBAL_UNIQUE_STATS, del_id);
+  edesc->of_key = offsetof (GLOBAL_UNIQUE_STATS, btid);
+  edesc->of_mutex = offsetof (GLOBAL_UNIQUE_STATS, mutex);
+  edesc->mutex_flags =
+    LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE |
+    LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  edesc->f_alloc = logtb_global_unique_stat_alloc;
+  edesc->f_free = logtb_global_unique_stat_free;
+  edesc->f_init = logtb_global_unique_stat_init;
+  edesc->f_uninit = NULL;
+  edesc->f_key_copy = logtb_global_unique_stat_key_copy;
+  edesc->f_key_cmp = logtb_global_unique_stat_key_compare;
+  edesc->f_hash = logtb_global_unique_stat_key_hash;
+  edesc->f_duplicate = NULL;
+
+  /* initialize freelist */
+  ret =
+    lf_freelist_init (&log_Gl.unique_stats_table.unique_stats_freelist, 1,
+		      100, edesc, &global_unique_stats_Ts);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  /* initialize hash table */
+  ret =
+    lf_hash_init (&log_Gl.unique_stats_table.unique_stats_hash,
+		  &log_Gl.unique_stats_table.unique_stats_freelist,
+		  GLOBAL_UNIQUE_STATS_HASH_SIZE, edesc);
+  if (ret != NO_ERROR)
+    {
+      lf_hash_destroy (&log_Gl.unique_stats_table.unique_stats_hash);
+      return ret;
+    }
+
+  LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
+  log_Gl.unique_stats_table.initialized = true;
+
+  return ret;
+}
+
+/*
+ * logtb_finalize_global_unique_stats_table () - Finalize global structure for
+ *						 global unique statistics
+ *   return: error code
+ *   thread_p  (in) : 
+ */
+void
+logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p)
+{
+  if (log_Gl.unique_stats_table.initialized)
+    {
+      /* destroy hash and freelist */
+      lf_hash_destroy (&log_Gl.unique_stats_table.unique_stats_hash);
+      lf_freelist_destroy (&log_Gl.unique_stats_table.unique_stats_freelist);
+
+      log_Gl.unique_stats_table.initialized = false;
+    }
+}
+
+/*
+ * logtb_get_global_unique_stats_entry () - returns the entry into the global
+ *					    unique statistics associated with
+ *					    the given btid
+ *   return: the entry associated with btid or NULL in case of error
+ *   thread_p  (in) :
+ *   btid (in) : the btree id for which the entry will be returned
+ *
+ *    NOTE: The statistics are searched in the global hash. If they are found
+ *	    then the found entry is returned. Otherwise the statistics will be
+ *	    loaded from the btree header, inserted into the global hash and then
+ *	    returned the newly inserted entry.
+ */
+static GLOBAL_UNIQUE_STATS *
+logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid)
+{
+  int error_code = NO_ERROR;
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
+  GLOBAL_UNIQUE_STATS *stats = NULL;
+  int num_oids, num_nulls, num_keys;
+
+  assert (btid != NULL);
+
+  error_code =
+    lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid,
+		  &stats);
+  if (error_code != NO_ERROR)
+    {
+      return NULL;
+    }
+  if (stats == NULL)
+    {
+      error_code =
+	btree_get_unique_statistics (thread_p, btid, &num_oids, &num_nulls,
+				     &num_keys);
+      if (error_code != NO_ERROR)
+	{
+	  return NULL;
+	}
+      error_code =
+	lf_hash_find_or_insert (t_entry,
+				&log_Gl.unique_stats_table.unique_stats_hash,
+				btid, &stats);
+      if (error_code != NO_ERROR || stats == NULL)
+	{
+	  return NULL;
+	}
+      stats->unique_stats.num_oids = num_oids;
+      stats->unique_stats.num_nulls = num_nulls;
+      stats->unique_stats.num_keys = num_keys;
+    }
+
+  return stats;
+}
+
+/*
+ * logtb_get_global_unique_stats () - returns the global unique statistics for
+ *				      the given btid
+ *   return: error code
+ *   thread_p  (in) :
+ *   btid (in) : the btree id for which the statistics will be returned
+ *   num_oids (in) : address of an integer that will receive the global number
+ *		     of oids for the given btid
+ *   num_nulls (in) : address of an integer that will receive the global number
+ *		     of nulls for the given btid
+ *   num_keys (in) : address of an integer that will receive the global number
+ *		     of keys for the given btid
+ */
+int
+logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
+			       int *num_oids, int *num_nulls, int *num_keys)
+{
+  int error_code = NO_ERROR;
+  GLOBAL_UNIQUE_STATS *stats = NULL;
+
+  assert (btid != NULL);
+
+  stats = logtb_get_global_unique_stats_entry (thread_p, btid);
+  if (stats == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  *num_oids = stats->unique_stats.num_oids;
+  *num_nulls = stats->unique_stats.num_nulls;
+  *num_keys = stats->unique_stats.num_keys;
+
+  pthread_mutex_unlock (&stats->mutex);
+
+  return error_code;
+}
+
+/*
+ * logtb_update_global_unique_stats_by_abs () - updates the global unique
+ *						statistics associated with the
+ *						given btid by absolute values
+ *   return: error code
+ *   thread_p  (in) :
+ *   btid (in) : the btree id for which the statistics will be updated
+ *   num_oids (in) : the new number of oids 
+ *   num_nulls (in) : the new number of nulls
+ *   num_keys (in) : the new number of keys
+ *   log (in) : true if we need to log the changes
+ */
+int
+logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid,
+					 int num_oids, int num_nulls,
+					 int num_keys, bool log)
+{
+  int error_code = NO_ERROR;
+  GLOBAL_UNIQUE_STATS *stats = NULL;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  stats = logtb_get_global_unique_stats_entry (thread_p, btid);
+  if (stats == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (stats->unique_stats.num_oids == num_oids
+      && stats->unique_stats.num_nulls == num_nulls
+      && stats->unique_stats.num_keys == num_keys)
+    {
+      pthread_mutex_unlock (&stats->mutex);
+      return NO_ERROR;
+    }
+
+  if (log)
+    {
+      RECDES undo_rec, redo_rec;
+      char undo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
+			BTREE_MAX_ALIGN], *datap = NULL;
+      char redo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
+			BTREE_MAX_ALIGN];
+      int null_delta, oid_delta, key_delta;
+
+      null_delta = num_nulls - stats->unique_stats.num_nulls;
+      oid_delta = num_oids - stats->unique_stats.num_oids;
+      key_delta = num_keys - stats->unique_stats.num_keys;
+
+      /* although we don't change the btree header, we still need to log here
+       * the new values of statistics so that they can be recovered at recover
+       * stage
+       */
+
+      undo_rec.data = NULL;
+      undo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
+      undo_rec.data = PTR_ALIGN (undo_rec_buf, BTREE_MAX_ALIGN);
+
+      undo_rec.length = 0;
+      datap = (char *) undo_rec.data;
+      OR_PUT_BTID (datap, btid);
+      datap += OR_BTID_ALIGNED_SIZE;
+      OR_PUT_INT (datap, null_delta);
+      datap += OR_INT_SIZE;
+      OR_PUT_INT (datap, oid_delta);
+      datap += OR_INT_SIZE;
+      OR_PUT_INT (datap, key_delta);
+      datap += OR_INT_SIZE;
+      undo_rec.length = CAST_STRLEN (datap - undo_rec.data);
+
+      redo_rec.data = NULL;
+      redo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
+      redo_rec.data = PTR_ALIGN (redo_rec_buf, BTREE_MAX_ALIGN);
+
+      redo_rec.length = 0;
+      datap = (char *) redo_rec.data;
+      OR_PUT_BTID (datap, btid);
+      datap += OR_BTID_ALIGNED_SIZE;
+      OR_PUT_INT (datap, num_nulls);
+      datap += OR_INT_SIZE;
+      OR_PUT_INT (datap, num_oids);
+      datap += OR_INT_SIZE;
+      OR_PUT_INT (datap, num_keys);
+      datap += OR_INT_SIZE;
+      redo_rec.length = CAST_STRLEN (datap - redo_rec.data);
+
+      log_append_undoredo_data2 (thread_p,
+				 RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL,
+				 NULL, HEADER, undo_rec.length,
+				 redo_rec.length, undo_rec.data,
+				 redo_rec.data);
+
+      LSA_COPY (&stats->last_log_lsa, &tdes->tail_lsa);
+    }
+  else if (!LSA_ISNULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa))
+    {
+      /* Here we assume that we are at recovery stage */
+      LSA_COPY (&stats->last_log_lsa,
+		&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
+    }
+
+  stats->unique_stats.num_oids = num_oids;
+  stats->unique_stats.num_nulls = num_nulls;
+  stats->unique_stats.num_keys = num_keys;
+
+  pthread_mutex_unlock (&stats->mutex);
+
+  return error_code;
+}
+
+/*
+ * logtb_update_global_unique_stats_by_delta () - updates the global unique
+ *						  statistics associated with the
+ *						  given btid by delta values
+ *   return: error code
+ *   thread_p  (in) :
+ *   btid (in) : the btree id for which the statistics will be updated
+ *   oid_delta (in) : the delta of oids that will be added 
+ *   null_delta (in) : the delta of nulls that will be added
+ *   key_delta (in) : the delta of keys that will be added
+ *   log (in) : true if we need to log the changes
+ */
+int
+logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
+					   BTID * btid, int oid_delta,
+					   int null_delta, int key_delta,
+					   bool log)
+{
+  int error_code = NO_ERROR;
+  GLOBAL_UNIQUE_STATS *stats = NULL;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  int num_oids, num_nulls, num_keys;
+
+  if (oid_delta == 0 && null_delta == 0 && null_delta == 0)
+    {
+      return NO_ERROR;
+    }
+
+  stats = logtb_get_global_unique_stats_entry (thread_p, btid);
+  if (stats == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  num_oids = stats->unique_stats.num_oids + oid_delta;
+  num_nulls = stats->unique_stats.num_nulls + null_delta;
+  num_keys = stats->unique_stats.num_keys + key_delta;
+
+  if (log)
+    {
+      RECDES undo_rec, redo_rec;
+      char undo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
+			BTREE_MAX_ALIGN], *datap = NULL;
+      char redo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
+			BTREE_MAX_ALIGN];
+
+      /* although we don't change the btree header, we still need to log here
+       * the new values of statistics so that they can be recovered at recover
+       * stage. For undo purposes we log the increments.
+       */
+      undo_rec.data = NULL;
+      undo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
+      undo_rec.data = PTR_ALIGN (undo_rec_buf, BTREE_MAX_ALIGN);
+
+      undo_rec.length = 0;
+      datap = (char *) undo_rec.data;
+      OR_PUT_BTID (datap, btid);
+      datap += OR_BTID_ALIGNED_SIZE;
+      OR_PUT_INT (datap, null_delta);
+      datap += OR_INT_SIZE;
+      OR_PUT_INT (datap, oid_delta);
+      datap += OR_INT_SIZE;
+      OR_PUT_INT (datap, key_delta);
+      datap += OR_INT_SIZE;
+      undo_rec.length = CAST_STRLEN (datap - undo_rec.data);
+
+      redo_rec.data = NULL;
+      redo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
+      redo_rec.data = PTR_ALIGN (redo_rec_buf, BTREE_MAX_ALIGN);
+
+      redo_rec.length = 0;
+      datap = (char *) redo_rec.data;
+      OR_PUT_BTID (datap, btid);
+      datap += OR_BTID_ALIGNED_SIZE;
+      OR_PUT_INT (datap, num_nulls);
+      datap += OR_INT_SIZE;
+      OR_PUT_INT (datap, num_oids);
+      datap += OR_INT_SIZE;
+      OR_PUT_INT (datap, num_keys);
+      datap += OR_INT_SIZE;
+      redo_rec.length = CAST_STRLEN (datap - redo_rec.data);
+
+      log_append_undoredo_data2 (thread_p,
+				 RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL,
+				 NULL, HEADER, undo_rec.length,
+				 redo_rec.length, undo_rec.data,
+				 redo_rec.data);
+      LSA_COPY (&stats->last_log_lsa, &tdes->tail_lsa);
+    }
+  else if (!LSA_ISNULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa))
+    {
+      /* Here we assume that we are at recovery stage */
+      LSA_COPY (&stats->last_log_lsa,
+		&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
+    }
+
+  stats->unique_stats.num_oids = num_oids;
+  stats->unique_stats.num_nulls = num_nulls;
+  stats->unique_stats.num_keys = num_keys;
+
+  pthread_mutex_unlock (&stats->mutex);
+
+  return error_code;
+}
+
+/*
+ * logtb_delete_global_unique_stats () - deletes the entry associated with
+ *					 the given btid from global unique
+ *					 statistics hash 
+ *   return: error code
+ *   thread_p  (in) :
+ *   btid (in) : the btree id for which the statistics entry will be deleted
+ */
+int
+logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
+{
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
+  int error = NO_ERROR;
+
+  error =
+    lf_hash_delete (t_entry, &log_Gl.unique_stats_table.unique_stats_hash,
+		    btid, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * logtb_reflect_global_unique_stats_to_btree () - reflects the global
+ *						   statistics into the btree
+ *						   header
+ *   return: error code
+ *   thread_p  (in) :
+ */
+int
+logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
+{
+  int error = NO_ERROR;
+  LF_HASH_TABLE_ITERATOR it;
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
+  GLOBAL_UNIQUE_STATS *stats = NULL;
+
+  lf_hash_create_iterator (&it, t_entry,
+			   &log_Gl.unique_stats_table.unique_stats_hash);
+  for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL;
+       stats = lf_hash_iterate (&it))
+    {
+      /* reflect only if some changes were logged */
+      if (!LSA_ISNULL (&stats->last_log_lsa))
+	{
+	  error =
+	    btree_reflect_global_unique_statistics (thread_p, stats, false);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  LSA_SET_NULL (&stats->last_log_lsa);
+	}
+    }
+
+  return NO_ERROR;
 }

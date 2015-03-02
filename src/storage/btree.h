@@ -443,10 +443,10 @@ extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid,
 			 OID * cls_oid, OID * oid, OID * new_oid,
 			 int op_type, BTREE_UNIQUE_STATS * unique_stat_info,
 			 int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
-extern int btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
-					    BTREE_UNIQUE_STATS *
-					    unique_stat_info,
-					    bool only_active_tran);
+extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p,
+						   GLOBAL_UNIQUE_STATS *
+						   unique_stat_info,
+						   bool only_active_tran);
 extern int btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
 				      DB_VALUE * key, int flag_minkey);
 extern bool btree_multicol_key_is_null (DB_VALUE * key);
@@ -541,6 +541,10 @@ extern int btree_rv_logical_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 extern void btree_rv_dump_redo_insert_mvcc_delid (FILE * fp, int length,
 						  void *data);
+extern int btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
+						     LOG_RCV * recv);
+extern int btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
+						     LOG_RCV * recv);
 
 #include "scan_manager.h"
 

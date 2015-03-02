@@ -110,6 +110,9 @@ struct lf_entry_descriptor
   LF_ENTRY_DUPLICATE_KEY_HANDLER f_duplicate;
 };
 
+#define LF_ENTRY_DESCRIPTOR_INITIALIZER { 0, 0, 0, 0, 0, 0, NULL, NULL, NULL, \
+					  NULL, NULL, NULL, NULL, NULL}
+
 /*
  * Lock free transaction based memory garbage collector
  */
@@ -239,6 +242,7 @@ extern LF_TRAN_SYSTEM obj_lock_ent_Ts;
 extern LF_TRAN_SYSTEM catalog_Ts;
 extern LF_TRAN_SYSTEM sessions_Ts;
 extern LF_TRAN_SYSTEM free_sort_list_Ts;
+extern LF_TRAN_SYSTEM global_unique_stats_Ts;
 
 extern int lf_initialize_transaction_systems (int max_threads);
 extern void lf_destroy_transaction_systems (void);

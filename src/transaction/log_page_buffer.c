@@ -8605,6 +8605,14 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_CS_EXIT (thread_p);
 
   er_log_debug (ARG_FILE_LINE,
+		"logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
+  if (logtb_reflect_global_unique_stats_to_btree (thread_p) != NO_ERROR)
+    {
+      LOG_CS_ENTER (thread_p);
+      goto error_cannot_chkpt;
+    }
+
+  er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
   if (pgbuf_flush_checkpoint
       (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa,

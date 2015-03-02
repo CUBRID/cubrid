@@ -7225,19 +7225,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 
   if (mobjs->end_multi_update)
     {
-      LOG_MVCC_CLASS_UPDATE_STATS *class_stats;
       BTREE_UNIQUE_STATS *unique_stats = NULL;
-
-      if (mvcc_Enabled)
-	{
-	  class_stats =
-	    logtb_mvcc_find_class_stats (thread_p, &class_oid, true);
-	  if (class_stats == NULL)
-	    {
-	      error_code = ER_FAILED;
-	      goto error;
-	    }
-	}
 
       for (s = 0; s < tdes->num_unique_btrees; s++)
 	{
@@ -7257,30 +7245,14 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 	      goto error;
 	    }
 
-	  if (mvcc_Enabled)
+	  error_code =
+	    logtb_tran_update_unique_stats (thread_p, &unique_stats->btid,
+					    unique_stats->num_keys,
+					    unique_stats->num_oids,
+					    unique_stats->num_nulls, true);
+	  if (error_code != NO_ERROR)
 	    {
-	      error_code =
-		logtb_mvcc_update_class_unique_stats (thread_p, &class_oid,
-						      &unique_stats->btid,
-						      unique_stats->num_keys,
-						      unique_stats->num_oids,
-						      unique_stats->num_nulls,
-						      true);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	  else
-	    {
-	      /* (num_nulls + num_keys) == num_oids */
-	      error_code =
-		btree_reflect_unique_statistics (thread_p, unique_stats,
-						 true);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
+	      goto error;
 	    }
 	}
 
@@ -10169,30 +10141,13 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
   if (unique_info.num_nulls != 0 || unique_info.num_keys != 0
       || unique_info.num_oids != 0)
     {
-      if (mvcc_Enabled)
+      error_code =
+	logtb_tran_update_unique_stats (thread_p, btid, unique_info.num_keys,
+					unique_info.num_oids,
+					unique_info.num_nulls, true);
+      if (error_code != NO_ERROR)
 	{
-	  error_code =
-	    logtb_mvcc_update_class_unique_stats (thread_p, class_oid, btid,
-						  unique_info.num_keys,
-						  unique_info.num_oids,
-						  unique_info.num_nulls,
-						  true);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-      else
-	{
-	  /* reflect local statistical information 'unique_info'
-	   * into global statistical information kept in root page.
-	   */
-	  error_code =
-	    btree_reflect_unique_statistics (thread_p, &unique_info, true);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	  goto error;
 	}
     }
 
@@ -11356,9 +11311,9 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   /* check to see that the btree root statistics are correct. */
-  if (btree_get_unique_statistics (thread_p, btid, &btree_oid_cnt,
-				   &btree_null_cnt,
-				   &btree_key_cnt) != NO_ERROR)
+  if (logtb_get_global_unique_stats (thread_p, btid, &btree_oid_cnt,
+				     &btree_null_cnt,
+				     &btree_key_cnt) != NO_ERROR)
     {
       goto error;
     }
@@ -12611,7 +12566,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
       *hlock = NULL;
     }
 
-  if (logtb_mvcc_prepare_count_optim_classes (thread_p, many_classnames,
+  if (logtb_tran_prepare_count_optim_classes (thread_p, many_classnames,
 					      many_flags,
 					      num_classes) != NO_ERROR)
     {

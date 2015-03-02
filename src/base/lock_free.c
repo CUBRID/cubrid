@@ -44,6 +44,7 @@ LF_TRAN_SYSTEM obj_lock_ent_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM catalog_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM sessions_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM free_sort_list_Ts = LF_TRAN_SYSTEM_INITIALIZER;
+LF_TRAN_SYSTEM global_unique_stats_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 
 static bool tran_systems_initialized = false;
 
@@ -414,6 +415,10 @@ lf_initialize_transaction_systems (int max_threads)
     {
       goto error;
     }
+  if (lf_tran_system_init (&global_unique_stats_Ts, max_threads) != NO_ERROR)
+    {
+      goto error;
+    }
 
   tran_systems_initialized = true;
   return NO_ERROR;
@@ -435,6 +440,7 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&catalog_Ts);
   lf_tran_system_destroy (&sessions_Ts);
   lf_tran_system_destroy (&free_sort_list_Ts);
+  lf_tran_system_destroy (&global_unique_stats_Ts);
 
   tran_systems_initialized = false;
 }
@@ -1799,7 +1805,7 @@ lf_hash_destroy (LF_HASH_TABLE * table)
  *   tran(in): LF transaction entry
  *   table(in): hash table
  *   key(in): key of entry that we seek
- *   entry(out): existing or new entry
+ *   entry(out): existing or NULL otherwise
  */
 int
 lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,

@@ -165,7 +165,8 @@ LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_ent_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &catalog_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0}
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0}
 };
 
 extern void boot_client_all_finalize (bool is_er_final);
@@ -3674,6 +3675,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       goto error;
     }
 
+  error_code = logtb_initialize_global_unique_stats_table (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
@@ -4052,6 +4059,8 @@ error:
     }
 
   session_states_finalize (thread_p);
+  logtb_finalize_global_unique_stats_table (thread_p);
+
   log_final (thread_p);
   qexec_finalize_filter_pred_cache (thread_p);
   qfile_finalize_list_cache (thread_p);
@@ -4182,6 +4191,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
 #endif
 
       /* before removing temp vols */
+      (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
       qfile_finalize_list_cache (thread_p);
       (void) qexec_finalize_xasl_cache (thread_p);
       (void) qexec_finalize_filter_pred_cache (thread_p);
@@ -4968,6 +4978,7 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag,
 void
 boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
 {
+  logtb_finalize_global_unique_stats_table (thread_p);
   locator_finalize (thread_p);
   spage_finalize (thread_p);
   catalog_finalize ();
@@ -6142,6 +6153,13 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
       goto error;
     }
 #endif
+
+  /* Initialize structures for global unique statistics */
+  error_code = logtb_initialize_global_unique_stats_table (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (catalog_create (thread_p, &boot_Db_parm->ctid, -1, -1) == NULL)
     {

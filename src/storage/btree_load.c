@@ -580,6 +580,7 @@ btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta,
 /*
  * btree_rv_mvcc_save_increments () - Save unique_stats
  *   return:
+ *   btid(in):
  *   max_key_len(in):
  *   null_delta(in):
  *   oid_delta(in):
@@ -591,21 +592,17 @@ btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta,
  * Note: This is a UTILITY routine, but not an actual recovery routine.
  */
 void
-btree_rv_mvcc_save_increments (OID * class_oid, BTID * btid,
-			       int key_delta, int oid_delta, int null_delta,
-			       RECDES * recdes)
+btree_rv_mvcc_save_increments (BTID * btid, int key_delta, int oid_delta,
+			       int null_delta, RECDES * recdes)
 {
   char *datap;
 
   assert (recdes != NULL
 	  && (recdes->area_size >=
-	      ((3 * OR_INT_SIZE) + OR_OID_SIZE + OR_BTID_ALIGNED_SIZE)));
+	      ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE)));
 
-  recdes->length = (3 * OR_INT_SIZE) + OR_OID_SIZE + OR_BTID_ALIGNED_SIZE;
+  recdes->length = (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE;
   datap = (char *) recdes->data;
-
-  OR_PUT_OID (datap, class_oid);
-  datap += OR_OID_SIZE;
 
   OR_PUT_BTID (datap, btid);
   datap += OR_BTID_ALIGNED_SIZE;
@@ -695,6 +692,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   void *buf_info = NULL;
   void *func_unpack_info = NULL;
   VPID *ret_vpid;
+  bool btree_id_complete = false;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -963,6 +961,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
       goto error;
     }
   load_args->btid->sys_btid->root_pageid = root_vpid.pageid;
+  btree_id_complete = true;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -1144,8 +1143,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   addr.vfid = NULL;
   addr.pgptr = NULL;
   addr.offset = 0;
-  log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (VFID),
-			&(btid->vfid));
+  log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (BTID),
+			btid);
 
   /* Already append a vacuum undo logging when file was created, but
    * since that was included in the system operation which just got
@@ -1170,6 +1169,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   return btid;
 
 error:
+
+  if (btree_id_complete)
+    {
+      logtb_delete_global_unique_stats (thread_p, btid);
+    }
 
   if (sort_args->scancache_inited)
     {
@@ -4159,12 +4163,15 @@ btree_load_foo_debug (void)
 int
 btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  VFID *vfid;
+  BTID *btid;
   int ret;
 
-  vfid = (VFID *) rcv->data;
-  ret = file_destroy (thread_p, vfid);
-
+  btid = (BTID *) rcv->data;
+  ret = logtb_delete_global_unique_stats (thread_p, btid);
+  if (ret == NO_ERROR)
+    {
+      ret = file_destroy (thread_p, &btid->vfid);
+    }
   assert (ret == NO_ERROR);
 
   return ((ret == NO_ERROR) ? NO_ERROR : er_errid ());
@@ -4183,7 +4190,7 @@ btree_rv_dump_create_index (FILE * fp, int length_ignore, void *data)
 {
   VFID *vfid;
 
-  vfid = (VFID *) data;
+  vfid = &((BTID *) data)->vfid;
   (void) fprintf (fp, "Undo creation of Index vfid: %d|%d\n",
 		  vfid->volid, vfid->fileid);
 }

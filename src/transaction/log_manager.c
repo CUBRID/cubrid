@@ -142,6 +142,7 @@ static int rv;
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
    (!LOG_IS_VACUUM_DATA_RECOVERY (RCVI) \
     && ((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
+    && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
 /* Assume that locator end with <path>/<meta_name>.<key_name> */
@@ -5726,7 +5727,6 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   LOB_LOCATOR_ENTRY *entry, *next;
   bool need_to_delete;
-  bool is_system_op_started = false;
 
   if (tdes == NULL)
     {
@@ -5818,23 +5818,6 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 #if defined (SERVER_MODE)
 	  if (at_commit && entry->top->state == LOB_PERMANENT_DELETED)
 	    {
-	      /* Since this lob file may be still be visible to active
-	       * transactions, just notify vacuum about deleting file and it
-	       * will delete it when the file becomes invisible.
-	       */
-	      if (!is_system_op_started)
-		{
-		  /* Start system operations so logging is allowed even if
-		   * the transaction is currently committing.
-		   */
-		  if (log_start_system_op (thread_p) == NULL)
-		    {
-		      /* Error starting system operation */
-		      assert_release (false);
-		      return;
-		    }
-		  is_system_op_started = true;
-		}
 	      es_notify_vacuum_for_delete (thread_p, entry->top->locator);
 	    }
 	  else
@@ -5865,13 +5848,6 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	}
       assert (RB_EMPTY (&tdes->lob_locator_root));
     }
-
-#if defined (SERVER_MODE)
-  if (is_system_op_started)
-    {
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-    }
-#endif /* SERVER_MODE */
 }
 
 /*
@@ -5940,6 +5916,30 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 {
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
+  /* log_clear_lob_locator_list and logtb_complete_mvcc operations must be done
+   * before entering unactive state because they do some logging. We must NOT
+   * log (or do other regular changes to the database) after the transaction
+   * enters the unactive state because of the following scenario:
+   * 1. enter TRAN_UNACTIVE_WILL_COMMIT state
+   * 2. a checkpoint occurs and finishes. All active transactions are saved in
+   *    log including their state. Our transaction will be saved with
+   *    TRAN_UNACTIVE_WILL_COMMIT state.
+   * 3. a crash occurs before our logging. Here, for example in case of unique
+   *    statistics, we will lost logging of unique statistics.
+   * 4. A recovery will occur. Because our transaction was saved at checkpoint
+   *    with TRAN_UNACTIVE_WILL_COMMIT state, it will be committed. Because
+   *    we didn't logged the changes made by the transaction we will not reflect
+   *    the changes. They will be definitely lost.
+   */
+  log_clear_lob_locator_list (thread_p, tdes, true, NULL);
+  /* clear mvccid before releasing the locks.
+   * This operation must be done before
+   * do_postpone because it stores unique statistics for all B-trees and if an
+   * error occurs those operations and all operations of current transaction
+   * must be rolled back.
+   */
+  logtb_complete_mvcc (thread_p, tdes, true);
+
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   if (tdes->num_new_tmp_files + tdes->num_new_tmp_tmp_files > 0)
     {
@@ -5947,24 +5947,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
     }
   assert (tdes->num_new_tmp_files == 0 && tdes->num_new_tmp_tmp_files == 0);
 
-  log_clear_lob_locator_list (thread_p, tdes, true, NULL);
-
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
       /*
        * Transaction updated data.
        */
-
-      /* clear mvccid before releasing the locks */
-      if (mvcc_Enabled == true)
-	{
-	  /* This operation must be done before do_postpone because it stores
-	   * unique statistics for all B-trees and if an error occurs those
-	   * operations and all operations of current transaction must be rolled
-	   * back.
-	   */
-	  logtb_complete_mvcc (thread_p, tdes, true);
-	}
 
       log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa,
 		       LOG_COMMIT_WITH_POSTPONE);
@@ -6039,12 +6026,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 	  (void) file_new_declare_as_old (thread_p, NULL);
 	}
       assert (tdes->num_new_files == 0);
-
-      /* clear mvccid before releasing the locks */
-      if (mvcc_Enabled == true)
-	{
-	  logtb_complete_mvcc (thread_p, tdes, true);
-	}
 
       if (retain_lock != true)
 	{

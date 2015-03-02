@@ -3705,10 +3705,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	  if (end_redo_lsa != NULL
 	      && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
 	    {
-	      return;
+	      goto exit;
 	    }
 	  else
 	    {
+	      LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 				 "log_recovery_redo");
 	      return;
@@ -3748,6 +3749,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      continue;
 	    }
 
+	  LSA_COPY (&log_Gl.unique_stats_table.curr_rcv_rec_lsa, &lsa);
+
 	  /* Find the log record */
 	  log_lsa.offset = lsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
@@ -3778,6 +3781,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      && lsa.offset <= log_lsa.offset)))
 	    {
 	      /* It seems to be a system error. Maybe a loop in the log */
+
+	      LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
+
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_recovery_redo: ** System error:"
 			    " It seems to be a loop in the log\n."
@@ -3951,6 +3957,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      (thread_p, temp_length, &log_lsa, log_pgptr,
 		       undo_unzip_ptr))
 		    {
+		      LSA_SET_NULL (&log_Gl.unique_stats_table.
+				    curr_rcv_rec_lsa);
 		      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 					 "log_recovery_redo");
 		    }
@@ -3977,6 +3985,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 				   (thread_p, ++log_lsa.pageid,
 				    log_pgptr)) == NULL)
 				{
+				  LSA_SET_NULL (&log_Gl.unique_stats_table.
+						curr_rcv_rec_lsa);
 				  logpb_fatal_error (thread_p, true,
 						     ARG_FILE_LINE,
 						     "log_recovery_redo");
@@ -4570,6 +4580,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      if (block_particps_ids == NULL)
 			{
 			  /* Out of memory */
+			  LSA_SET_NULL (&log_Gl.unique_stats_table.
+					curr_rcv_rec_lsa);
 			  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 					     "log_recovery_redo");
 			  break;
@@ -4592,6 +4604,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 						    block_particps_ids)
 			  == NULL)
 			{
+			  LSA_SET_NULL (&log_Gl.unique_stats_table.
+					curr_rcv_rec_lsa);
 			  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 					     "log_recovery_redo");
 			  break;
@@ -4607,6 +4621,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 			   (int *) malloc (i)) == NULL)
 			{
 			  /* Out of memory */
+			  LSA_SET_NULL (&log_Gl.unique_stats_table.
+					curr_rcv_rec_lsa);
 			  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 					     "log_recovery_redo");
 			  break;
@@ -4848,6 +4864,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
   logpb_flush_header (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
+
+exit:
+  LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 
   return;
 }

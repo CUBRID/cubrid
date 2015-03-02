@@ -109,6 +109,8 @@ struct log_lsa
     (lsa_ptr)->offset = NULL_OFFSET;                                          \
   } while(0)
 
+#define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
+
 #define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
 #define LSA_SET_INIT_TEMP(lsa_ptr)\
   do {									      \

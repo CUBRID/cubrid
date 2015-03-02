@@ -1267,6 +1267,8 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
     lf_tran_request_entry (&sessions_Ts);
   entry_p->tran_entries[THREAD_TS_FREE_SORT_LIST] =
     lf_tran_request_entry (&free_sort_list_Ts);
+  entry_p->tran_entries[THREAD_TS_GLOBAL_UNIQUE_STATS] =
+    lf_tran_request_entry (&global_unique_stats_Ts);
 
   entry_p->vacuum_worker = NULL;
 

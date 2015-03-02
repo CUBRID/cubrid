@@ -917,7 +917,14 @@ struct rvfun RV_fun[] = {
    NULL,
    boot_rv_del_volume_extension,
    NULL,
-   boot_rv_dump_del_volume}
+   boot_rv_dump_del_volume},
+
+  {RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT,
+   "RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT",
+   btree_rv_undo_global_unique_stats_commit,
+   btree_rv_redo_global_unique_stats_commit,
+   NULL,
+   NULL}
 };
 
 /*

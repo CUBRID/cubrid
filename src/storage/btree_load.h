@@ -230,9 +230,9 @@ extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p,
 extern void btree_rv_dump_create_index (FILE * fp, int length_ignore,
 					void *data);
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
-extern void btree_rv_mvcc_save_increments (OID * class_oid, BTID * btid,
-					   int key_delta, int oid_delta,
-					   int null_delta, RECDES * recdes);
+extern void btree_rv_mvcc_save_increments (BTID * btid, int key_delta,
+					   int oid_delta, int null_delta,
+					   RECDES * recdes);
 
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p,

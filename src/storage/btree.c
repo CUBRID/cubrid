@@ -5071,6 +5071,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   bool is_file_created = false;
   unsigned short alignment;
   LOG_DATA_ADDR addr;
+  bool btree_id_complete = false;
 
   root_header = &root_header_info;
 
@@ -5173,11 +5174,15 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   file_new_declare_as_old (thread_p, &btid->vfid);
 
+  /* set the B+tree index identifier */
+  btid->root_pageid = root_vpid.pageid;
+  btree_id_complete = true;
+
   addr.vfid = NULL;
   addr.pgptr = NULL;
   addr.offset = 0;
-  log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (VFID),
-			&(btid->vfid));
+  log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (BTID),
+			btid);
 
   /* Already append a vacuum undo logging when file was created, but
    * since that was included in the system operation which just got
@@ -5186,12 +5191,13 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   vacuum_log_add_dropped_file (thread_p, &btid->vfid,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
-  /* set the B+tree index identifier */
-  btid->root_pageid = root_vpid.pageid;
-
   return btid;
 
 error:
+  if (btree_id_complete)
+    {
+      logtb_delete_global_unique_stats (thread_p, btid);
+    }
   if (page_ptr)
     {
       pgbuf_unfix_and_init (thread_p, page_ptr);
@@ -5227,7 +5233,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   BTREE_ROOT_HEADER *root_header = NULL;
   VFID ovfid;
   int ret = NO_ERROR;
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats = NULL;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
@@ -5250,17 +5256,29 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
 
   ovfid = root_header->ovfid;
 
-  pgbuf_unfix_and_init (thread_p, P);
-
-  /* mark the statistics associated with deelted B-tree as deleted */
-  unique_stats =
-    logtb_mvcc_find_class_oid_btid_stats (thread_p,
-					  &root_header->topclass_oid, btid,
-					  true);
-  if (unique_stats != NULL)
+  if (root_header->unique_pk)
     {
-      unique_stats->deleted = true;
+      /* mark the statistics associated with deleted B-tree as deleted */
+      unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
+      if (unique_stats == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, P);
+	  return ER_FAILED;
+	}
+      else
+	{
+	  unique_stats->deleted = true;
+	}
+
+      ret = logtb_delete_global_unique_stats (thread_p, btid);
+      if (ret != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, P);
+	  return ret;
+	}
     }
+
+  pgbuf_unfix_and_init (thread_p, P);
 
   btid->root_pageid = NULL_PAGEID;
 
@@ -5805,8 +5823,8 @@ xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid)
 {
   INT32 num_oids, num_nulls, num_keys;
 
-  if (btree_get_unique_statistics (thread_p, btid, &num_oids,
-				   &num_nulls, &num_keys) != NO_ERROR)
+  if (logtb_get_global_unique_stats (thread_p, btid, &num_oids,
+				     &num_nulls, &num_keys) != NO_ERROR)
     {
       return 0;
     }
@@ -5880,31 +5898,19 @@ btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid,
 				       int *oid_cnt, int *null_cnt,
 				       int *key_cnt)
 {
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats = NULL, *part_stats = NULL;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL, *part_stats = NULL;
 
-  if (mvcc_Enabled)
+  unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
+  if (unique_stats == NULL)
     {
-      unique_stats =
-	logtb_mvcc_search_btid_stats_all_classes (thread_p, btid, true);
-      if (unique_stats == NULL)
-	{
-	  return ER_FAILED;
-	}
-      *oid_cnt =
-	unique_stats->tran_stats.num_oids +
-	unique_stats->global_stats.num_oids;
-      *key_cnt =
-	unique_stats->tran_stats.num_keys +
-	unique_stats->global_stats.num_keys;
-      *null_cnt =
-	unique_stats->tran_stats.num_nulls +
-	unique_stats->global_stats.num_nulls;
+      return ER_FAILED;
     }
-  else
-    {
-      return btree_get_unique_statistics (thread_p, btid, oid_cnt, null_cnt,
-					  key_cnt);
-    }
+  *oid_cnt =
+    unique_stats->tran_stats.num_oids + unique_stats->global_stats.num_oids;
+  *key_cnt =
+    unique_stats->tran_stats.num_keys + unique_stats->global_stats.num_keys;
+  *null_cnt =
+    unique_stats->tran_stats.num_nulls + unique_stats->global_stats.num_nulls;
 
   return NO_ERROR;
 }
@@ -12198,42 +12204,10 @@ fix_root:
 	  if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	      || op_type == SINGLE_ROW_MODIFY)
 	    {
-	      if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (cls_oid))
+	      if (logtb_tran_update_unique_stats
+		  (thread_p, btid, 0, -1, -1, true) != NO_ERROR)
 		{
-		  if (logtb_mvcc_update_class_unique_stats
-		      (thread_p, &btid_int.topclass_oid, btid, 0, -1, -1,
-		       true) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
-	      else
-		{
-		  /* promote latch */
-		  ret_val =
-		    pgbuf_promote_read_latch (thread_p, &P,
-					      PGBUF_PROMOTE_SHARED_READER);
-		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
-		    {
-		      pgbuf_unfix_and_init (thread_p, P);
-		      P_latch = PGBUF_LATCH_WRITE;
-		      goto fix_root;
-		    }
-		  else if (ret_val != NO_ERROR || P == NULL)
-		    {
-		      goto error;
-		    }
-
-		  /* update the root header */
-		  ret_val =
-		    btree_change_root_header_delta (thread_p, &btid->vfid, P,
-						    -1, -1, 0);
-		  if (ret_val != NO_ERROR)
-		    {
-		      goto error;
-		    }
-
-		  pgbuf_set_dirty (thread_p, P, DONT_FREE);
+		  goto error;
 		}
 	    }
 	  else
@@ -12287,44 +12261,10 @@ fix_root:
       if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
 	{
-	  if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (cls_oid))
+	  if (logtb_tran_update_unique_stats (thread_p, btid, -1, -1, 0, true)
+	      != NO_ERROR)
 	    {
-	      if (logtb_mvcc_update_class_unique_stats
-		  (thread_p, &btid_int.topclass_oid, btid, -1, -1, 0,
-		   true) != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	  else
-	    {
-	      /* promote latch */
-	      ret_val =
-		pgbuf_promote_read_latch (thread_p, &P,
-					  PGBUF_PROMOTE_SHARED_READER);
-	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
-		{
-		  pgbuf_unfix_and_init (thread_p, P);
-		  P_latch = PGBUF_LATCH_WRITE;
-		  goto fix_root;
-		}
-	      else if (ret_val != NO_ERROR || P == NULL)
-		{
-		  goto error;
-		}
-
-	      /* update the root header
-	       * guess existing key delete
-	       */
-	      ret_val =
-		btree_change_root_header_delta (thread_p, &btid->vfid, P, 0,
-						-1, -1);
-	      if (ret_val != NO_ERROR)
-		{
-		  goto error;
-		}
-
-	      pgbuf_set_dirty (thread_p, P, DONT_FREE);
+	      goto error;
 	    }
 	}
       else
@@ -18776,9 +18716,8 @@ restart_walk:
 	      if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 		  || op_type == SINGLE_ROW_MODIFY)
 		{
-		  if (logtb_mvcc_update_class_unique_stats
-		      (thread_p, &btid_int.topclass_oid, btid, 0, -1, -1,
-		       true) != NO_ERROR)
+		  if (logtb_tran_update_unique_stats
+		      (thread_p, btid, 0, -1, -1, true) != NO_ERROR)
 		    {
 		      goto error;
 		    }
@@ -18797,41 +18736,10 @@ restart_walk:
 		   || op_type == SINGLE_ROW_UPDATE
 		   || op_type == SINGLE_ROW_MODIFY)
 	    {
-	      if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (cls_oid))
+	      if (logtb_tran_update_unique_stats
+		  (thread_p, btid, 0, 1, 1, true) != NO_ERROR)
 		{
-		  if (logtb_mvcc_update_class_unique_stats
-		      (thread_p, &btid_int.topclass_oid, btid, 0, 1, 1,
-		       true) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
-	      else
-		{
-		  /* promote latch */
-		  ret_val =
-		    pgbuf_promote_read_latch (thread_p, &P,
-					      PGBUF_PROMOTE_SHARED_READER);
-		  if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
-		    {
-		      pgbuf_unfix_and_init (thread_p, P);
-		      latch_mode = PGBUF_LATCH_WRITE;
-		      goto restart_walk;
-		    }
-		  else if (ret_val != NO_ERROR || P == NULL)
-		    {
-		      goto error;
-		    }
-
-		  ret_val =
-		    btree_change_root_header_delta (thread_p, &btid->vfid, P,
-						    1, 1, 0);
-		  if (ret_val != NO_ERROR)
-		    {
-		      goto error;
-		    }
-
-		  pgbuf_set_dirty (thread_p, P, DONT_FREE);
+		  goto error;
 		}
 	    }
 	  else
@@ -18978,9 +18886,8 @@ restart_walk:
 	  if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	      || op_type == SINGLE_ROW_MODIFY)
 	    {
-	      if (logtb_mvcc_update_class_unique_stats
-		  (thread_p, &btid_int.topclass_oid, btid, -1, -1, 0,
-		   true) != NO_ERROR)
+	      if (logtb_tran_update_unique_stats
+		  (thread_p, btid, -1, -1, 0, true) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -18999,42 +18906,10 @@ restart_walk:
       else if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE
 	       || op_type == SINGLE_ROW_MODIFY)
 	{
-	  if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (cls_oid))
+	  if (logtb_tran_update_unique_stats (thread_p, btid, 1, 1, 0, true)
+	      != NO_ERROR)
 	    {
-	      if (logtb_mvcc_update_class_unique_stats
-		  (thread_p, &btid_int.topclass_oid, btid, 1, 1, 0,
-		   true) != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	  else
-	    {
-	      /* promote latch */
-	      ret_val = pgbuf_promote_read_latch (thread_p, &P,
-						  PGBUF_PROMOTE_SHARED_READER);
-	      if (ret_val == ER_PAGE_LATCH_PROMOTE_FAIL)
-		{
-		  /* retry fix with write latch */
-		  pgbuf_unfix_and_init (thread_p, P);
-		  latch_mode = PGBUF_LATCH_WRITE;
-		  goto restart_walk;
-		}
-	      else if (ret_val != NO_ERROR || P == NULL)
-		{
-		  goto error;
-		}
-
-	      /* update the root header */
-	      ret_val =
-		btree_change_root_header_delta (thread_p, &btid->vfid, P, 0,
-						1, 1);
-	      if (ret_val != NO_ERROR)
-		{
-		  goto error;
-		}
-
-	      pgbuf_set_dirty (thread_p, P, DONT_FREE);
+	      goto error;
 	    }
 	}
       else
@@ -20818,26 +20693,28 @@ exit_on_error:
 }
 
 /*
- * btree_reflect_unique_statistics () -
+ * btree_reflect_global_unique_statistics () - reflects the global statistical
+ *					       information into btree header
  *   return: NO_ERROR
  *   unique_stat_info(in):
  *   only_active_tran(in): if true then reflect statistics only if transaction
  *			   is active
  *
- * Note: This function reflects the given local statistical
- * information into the global statistical information
- * saved in a root page of corresponding unique index.
+ * Note: We don't need to log the changes at this point because the changes were
+ *	 already logged at commit stage.
  */
 int
-btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
-				 BTREE_UNIQUE_STATS * unique_stat_info,
-				 bool only_active_tran)
+btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p,
+					GLOBAL_UNIQUE_STATS *
+					unique_stat_info,
+					bool only_active_tran)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
   char *redo_data = NULL;
   int ret = NO_ERROR;
+  LOG_LSA *page_lsa = NULL;
 
   /* check if unique_stat_info is NULL */
   if (unique_stat_info == NULL)
@@ -20871,15 +20748,22 @@ btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
       if (!only_active_tran || logtb_is_current_active (thread_p))
 	{
 	  /* update header information */
-	  ret = btree_change_root_header_delta (thread_p,
-						&unique_stat_info->btid.vfid,
-						root,
-						unique_stat_info->num_nulls,
-						unique_stat_info->num_oids,
-						unique_stat_info->num_keys);
-	  if (ret != NO_ERROR)
+	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls;
+	  root_header->num_oids = unique_stat_info->unique_stats.num_oids;
+	  root_header->num_keys = unique_stat_info->unique_stats.num_keys;
+
+	  page_lsa = pgbuf_get_lsa (root);
+	  /* update the page's LSA to the last global unique statistics change
+	   * that was made at commit, only if it is newer than the last change
+	   * recorded in the page's LSA.
+	   */
+	  if (LSA_LT (page_lsa, &unique_stat_info->last_log_lsa))
 	    {
-	      goto exit_on_error;
+	      if (pgbuf_set_lsa
+		  (thread_p, root, &unique_stat_info->last_log_lsa) == NULL)
+		{
+		  goto exit_on_error;
+		}
 	    }
 
 	  /* set the root page as dirty page */
@@ -25197,14 +25081,10 @@ btree_rv_mvcc_undo_redo_increments_update (THREAD_ENTRY * thread_p,
   OID class_oid;
   BTID btid;
 
-  assert (recv->length >=
-	  (3 * OR_INT_SIZE) + OR_OID_SIZE + OR_BTID_ALIGNED_SIZE);
+  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
 
   /* unpack the root statistics */
   datap = (char *) recv->data;
-
-  OR_GET_OID (datap, &class_oid);
-  datap += OR_OID_SIZE;
 
   OR_GET_BTID (datap, &btid);
   datap += OR_BTID_ALIGNED_SIZE;
@@ -25218,9 +25098,8 @@ btree_rv_mvcc_undo_redo_increments_update (THREAD_ENTRY * thread_p,
   num_nulls = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
 
-  if (logtb_mvcc_update_class_unique_stats
-      (thread_p, &class_oid, &btid, num_keys, num_oids, num_nulls,
-       false) != NO_ERROR)
+  if (logtb_tran_update_unique_stats
+      (thread_p, &btid, num_keys, num_oids, num_nulls, false) != NO_ERROR)
     {
       goto error;
     }
@@ -32299,6 +32178,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   char buf[256] = { 0 };
   OR_BUF or_buf;
   TP_DOMAIN *key_type;
+  int num_oids = 0, num_nulls = 0, num_keys = 0;
 
   /* get root header point */
   root_vpid.pageid = btid_p->root_pageid;
@@ -32370,13 +32250,21 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   db_make_int (out_values[idx], root_header->node.max_key_len);
   idx++;
 
-  db_make_int (out_values[idx], root_header->num_oids);
+  error =
+    logtb_get_global_unique_stats (thread_p, btid_p, &num_oids, &num_nulls,
+				   &num_keys);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  db_make_int (out_values[idx], num_oids);
   idx++;
 
-  db_make_int (out_values[idx], root_header->num_nulls);
+  db_make_int (out_values[idx], num_nulls);
   idx++;
 
-  db_make_int (out_values[idx], root_header->num_keys);
+  db_make_int (out_values[idx], num_keys);
   idx++;
 
   buf[0] = '\0';
@@ -33972,4 +33860,96 @@ error:
     }
 
   return BTREE_ERROR_OCCURRED;
+}
+
+/*
+ * btree_rv_undo_global_unique_stats_commit () -
+ *   return: int
+ *   recv(in): Recovery structure
+ *
+ * Note: Decrement the in-memory global unique statistics.
+ */
+int
+btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
+					  LOG_RCV * recv)
+{
+  char *datap;
+  int num_nulls, num_oids, num_keys;
+  BTID btid;
+
+  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+
+  /* unpack the root statistics */
+  datap = (char *) recv->data;
+
+  OR_GET_BTID (datap, &btid);
+  datap += OR_BTID_ALIGNED_SIZE;
+
+  num_nulls = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+
+  num_oids = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+
+  num_keys = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+
+  if (logtb_update_global_unique_stats_by_delta
+      (thread_p, &btid, -num_oids, -num_nulls, -num_keys, false) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  return NO_ERROR;
+
+error:
+  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+  return ER_GENERIC_ERROR;
+}
+
+/*
+ * btree_rv_redo_global_unique_stats_commit () -
+ *   return: int
+ *   recv(in): Recovery structure
+ *
+ * Note: Recover the in-memory global unique statistics.
+ */
+int
+btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
+					  LOG_RCV * recv)
+{
+  char *datap;
+  int num_nulls, num_oids, num_keys;
+  BTID btid;
+
+  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+
+  /* unpack the root statistics */
+  datap = (char *) recv->data;
+
+  OR_GET_BTID (datap, &btid);
+  datap += OR_BTID_ALIGNED_SIZE;
+
+  num_nulls = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+
+  num_oids = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+
+  num_keys = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+
+  if (logtb_update_global_unique_stats_by_abs
+      (thread_p, &btid, num_oids, num_nulls, num_keys, false) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  return NO_ERROR;
+
+error:
+  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+  return ER_GENERIC_ERROR;
 }

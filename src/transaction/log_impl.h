@@ -798,8 +798,8 @@ struct log_unique_stats
   int num_oids;			/* number of oids */
 };
 
-typedef struct log_mvcc_btid_unique_stats LOG_MVCC_BTID_UNIQUE_STATS;
-struct log_mvcc_btid_unique_stats
+typedef struct log_tran_btid_unique_stats LOG_TRAN_BTID_UNIQUE_STATS;
+struct log_tran_btid_unique_stats
 {
   BTID btid;			/* id of B-tree */
   bool deleted;			/* true if the B-tree was deleted */
@@ -818,37 +818,79 @@ enum count_optim_state
   COS_LOADED = 2		/* the global statistics were loaded */
 };
 
-/* LOG_MVCC_CLASS_UPDATE_STATS
- * Structure used to collect statistics on inserted and deleted records
- * during a transaction. For now, these statistics are used in the auto
- * vacuuming algorithm. Each command collects inserted/deleted record counts
- * on heap_update, heap_delete and heap_insert. When the command is finished,
- * the statistics are then passed to current transaction. At the end of
- * the transaction, these statistics are finally passed to vacuum_Stats_table.
- */
-typedef struct log_mvcc_class_update_stats LOG_MVCC_CLASS_UPDATE_STATS;
-struct log_mvcc_class_update_stats
-{
-  OID class_oid;		/* Class object identifier. */
-  COUNT_OPTIM_STATE count_state;
-  int n_max_btids;
-  int n_btids;
-  LOG_MVCC_BTID_UNIQUE_STATS *unique_stats;
+#define TRAN_UNIQUE_STATS_CHUNK_SIZE  128	/* size of the memory chunk for
+						 * unique statistics
+						 */
 
-  LOG_MVCC_CLASS_UPDATE_STATS *next;	/* Pointer to the next entry */
+/* LOG_TRAN_BTID_UNIQUE_STATS_CHUNK
+ * Represents a chunk of memory for transaction unique statistics
+ */
+typedef struct log_tran_btid_unique_stats_chunk
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK;
+struct log_tran_btid_unique_stats_chunk
+{
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *next_chunk;	/* address of next chunk of
+						 * memory
+						 */
+  LOG_TRAN_BTID_UNIQUE_STATS buffer[1];	/* more than one */
 };
 
-/* LOG_MVCC_UPDATE_STATS
- * Structure used to collect inserted/deleted record counts on multiple
- * classes during a transaction. Also used to reuse memory allocated by
- * previous transactions.
+/* LOG_TRAN_CLASS_COS
+ * Structure used to store the state of the count optimization for classes.
  */
-typedef struct log_mvcc_update_stats LOG_MVCC_UPDATE_STATS;
-struct log_mvcc_update_stats
+typedef struct log_tran_class_cos LOG_TRAN_CLASS_COS;
+struct log_tran_class_cos
 {
-  LOG_MVCC_CLASS_UPDATE_STATS *crt_tran_entries;
-  LOG_MVCC_CLASS_UPDATE_STATS *free_entries;
-  int topop_id;
+  OID class_oid;		/* class object identifier. */
+  COUNT_OPTIM_STATE count_state;	/* count optimization state for class_oid */
+};
+
+#define COS_CLASSES_CHUNK_SIZE	64	/* size of the memory chunk for count
+					 * optimization classes
+					 */
+
+/* LOG_TRAN_CLASS_COS_CHUNK
+ * Represents a chunk of memory for count optimization states
+ */
+typedef struct log_tran_class_cos_chunk LOG_TRAN_CLASS_COS_CHUNK;
+struct log_tran_class_cos_chunk
+{
+  LOG_TRAN_CLASS_COS_CHUNK *next_chunk;	/* address of next chunk of memory */
+  LOG_TRAN_CLASS_COS buffer[1];	/* more than one */
+};
+
+/* LOG_TRAN_UPDATE_STATS
+ * Structure used for transaction local unique statistics and count optimization
+ * management
+ */
+typedef struct log_tran_update_stats LOG_TRAN_UPDATE_STATS;
+struct log_tran_update_stats
+{
+  int cos_count;		/* the number of hashed elements */
+  LOG_TRAN_CLASS_COS_CHUNK *cos_first_chunk;	/* address of first chunk in the
+						 * chunks list
+						 */
+  LOG_TRAN_CLASS_COS_CHUNK *cos_current_chunk;	/* address of current chunk from
+						 * which new elements are
+						 * assigned
+						 */
+  MHT_TABLE *classes_cos_hash;	/* hash of count optimization states for
+				 * classes that were or will be subject to
+				 * count optimization.
+				 */
+
+  int stats_count;		/* the number of hashed elements */
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_first_chunk;	/* address of first chunk
+							 * in the chunks list
+							 */
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_current_chunk;	/* address of current
+								 * chunk from which new
+								 * elements are
+								 * assigned
+								 */
+  MHT_TABLE *unique_stats_hash;	/* hash of unique statistics for indexes used
+				 * during transaction.
+				 */
 };
 
 typedef struct log_tdes LOG_TDES;
@@ -975,7 +1017,7 @@ struct log_tdes
 
   int num_log_records_written;	/* # of log records generated */
 
-  LOG_MVCC_UPDATE_STATS log_upd_stats;	/* Collects data about inserted/
+  LOG_TRAN_UPDATE_STATS log_upd_stats;	/* Collects data about inserted/
 					 * deleted records during last
 					 * command/transaction
 					 */
@@ -1902,6 +1944,47 @@ struct log_prior_lsa_info
     PTHREAD_MUTEX_INITIALIZER                              \
   }
 
+/* stores global statistics for a unique btree */
+typedef struct global_unique_stats GLOBAL_UNIQUE_STATS;
+struct global_unique_stats
+{
+  BTID btid;			/* btree id */
+  GLOBAL_UNIQUE_STATS *stack;	/* used in freelist */
+  GLOBAL_UNIQUE_STATS *next;	/* used in hash table */
+  pthread_mutex_t mutex;	/* state mutex */
+  UINT64 del_id;		/* delete transaction ID (for lock free) */
+
+  LOG_UNIQUE_STATS unique_stats;	/* statistics for btid unique btree */
+  LOG_LSA last_log_lsa;		/* The log lsa of the last
+				 * RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT record
+				 * logged into the btree header page of btid
+				 */
+};
+
+/* stores global statistics for all unique btrees */
+typedef struct global_unique_stats_table GLOBAL_UNIQUE_STATS_TABLE;
+struct global_unique_stats_table
+{
+  LF_HASH_TABLE unique_stats_hash;	/* hash with btid as key and
+					 * GLOBAL_UNIQUE_STATS as data
+					 */
+  LF_ENTRY_DESCRIPTOR unique_stats_descriptor;	/* used by unique_stats_hash */
+  LF_FREELIST unique_stats_freelist;	/* used by unique_stats_hash */
+
+  LOG_LSA curr_rcv_rec_lsa;	/* This is used at recovery stage to pass the lsa
+				 * of the log record to be processed, to the
+				 * record processing funtion, in order to restore
+				 * the last_log_lsa from GLOBAL_UNIQUE_STATS
+				 */
+  bool initialized;		/* true if the current instance was initialized */
+};
+
+#define GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER \
+ {LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER, \
+  LF_FREELIST_INITIALIZER, LSA_INITIALIZER, false}
+
+#define GLOBAL_UNIQUE_STATS_HASH_SIZE 1000
+
 /* Global structure to trantable, log buffer pool, etc */
 typedef struct log_global LOG_GLOBAL;
 struct log_global
@@ -1943,6 +2026,7 @@ struct log_global
   BACKGROUND_ARCHIVING_INFO bg_archive_info;
 
   MVCCTABLE mvcc_table;		/* MVCC table */
+  GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 };
 
 /* logging statistics */
@@ -2474,46 +2558,52 @@ extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				 bool committed);
 
-extern int logtb_mvcc_update_tran_class_stats (THREAD_ENTRY * thread_p,
-					       bool cancel_command);
-extern LOG_MVCC_CLASS_UPDATE_STATS *logtb_mvcc_find_class_stats (THREAD_ENTRY
-								 * thread_p,
-								 const OID *
-								 class_oid,
-								 bool create);
-extern int logtb_mvcc_update_class_unique_stats (THREAD_ENTRY * thread_p,
-						 OID * class_oid, BTID * btid,
-						 int n_keys, int n_oids,
-						 int n_nulls,
-						 bool write_to_log);
-extern int logtb_mvcc_update_btid_unique_stats (THREAD_ENTRY * thread_p,
-						LOG_MVCC_CLASS_UPDATE_STATS *
-						class_stats, BTID * btid,
-						int n_keys, int n_oids,
-						int n_nulls);
-extern LOG_MVCC_BTID_UNIQUE_STATS *logtb_mvcc_find_btid_stats (THREAD_ENTRY *
+extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p,
+						      const OID * class_oid,
+						      bool create);
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p,
+					   BTID * btid, int n_keys,
+					   int n_oids, int n_nulls,
+					   bool write_to_log);
+extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p,
+						BTID * btid, int n_keys,
+						int n_oids, int n_nulls);
+extern LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_find_btid_stats (THREAD_ENTRY *
 							       thread_p,
-							       LOG_MVCC_CLASS_UPDATE_STATS
-							       * class_stats,
 							       const BTID *
 							       btid,
 							       bool create);
-extern LOG_MVCC_BTID_UNIQUE_STATS
-  * logtb_mvcc_find_class_oid_btid_stats (THREAD_ENTRY * thread_p,
-					  OID * class_oid, BTID * btid,
-					  bool create);
-extern LOG_MVCC_BTID_UNIQUE_STATS
-  * logtb_mvcc_search_btid_stats_all_classes (THREAD_ENTRY * thread_p,
-					      const BTID * btid, bool create);
-extern int logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
+extern int logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 						   const char **classes,
 						   LC_PREFETCH_FLAGS * flags,
 						   int n_classes);
-extern void logtb_mvcc_reset_count_optim_state (THREAD_ENTRY * thread_p);
+extern void logtb_tran_reset_count_optim_state (THREAD_ENTRY * thread_p);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p,
 				     LOG_TDES * tdes);
 extern int logtb_find_log_records_count (int tran_index);
 
 extern void logtb_initialize_vacuum_worker_tdes (LOG_TDES * tdes,
 						 TRANID trid);
+extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY *
+						       thread_p);
+extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY *
+						      thread_p);
+extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p,
+					  BTID * btid, int *num_oids,
+					  int *num_nulls, int *num_keys);
+extern int logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p,
+						    BTID * btid, int num_oids,
+						    int num_nulls,
+						    int num_keys, bool log);
+extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
+						      BTID * btid,
+						      int oid_delta,
+						      int null_delta,
+						      int key_delta,
+						      bool log);
+extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p,
+					     BTID * btid);
+extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY *
+						       thread_p);
+
 #endif /* _LOG_IMPL_H_ */

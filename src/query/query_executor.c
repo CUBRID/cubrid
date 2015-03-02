@@ -10644,7 +10644,6 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid,
 {
   BTREE_UNIQUE_STATS *unique_stat_info, *unique_stat1 = NULL;
   int error = NO_ERROR, i;
-  LOG_MVCC_CLASS_UPDATE_STATS *class_stats = NULL;
 
   if (internal_class->unique_stats.scan_cache_inited)
     {
@@ -10655,16 +10654,6 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid,
       if (error != NO_ERROR)
 	{
 	  return error;
-	}
-    }
-
-  if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (class_oid))
-    {
-      /* find statistics for current class */
-      class_stats = logtb_mvcc_find_class_stats (thread_p, class_oid, true);
-      if (class_stats == NULL)
-	{
-	  return ER_FAILED;
 	}
     }
 
@@ -10694,27 +10683,13 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid,
 	  return ER_FAILED;
 	}
 
-      if (class_stats != NULL)
+      /* In MVCC, at this point, we will update only in-memory statistics */
+      error = logtb_tran_update_unique_stats
+	(thread_p, &unique_stat1->btid, unique_stat1->num_keys,
+	 unique_stat1->num_oids, unique_stat1->num_nulls, true);
+      if (error != NO_ERROR)
 	{
-	  /* In MVCC, at this point, we will update only in-memory statistics */
-	  error = logtb_mvcc_update_class_unique_stats
-	    (thread_p, class_oid, &unique_stat1->btid, unique_stat1->num_keys,
-	     unique_stat1->num_oids, unique_stat1->num_nulls, true);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-      else
-	{
-	  /* (num_nulls + num_keys) == num_oids */
-	  /* reflect the local information into the global information. */
-	  error =
-	    btree_reflect_unique_statistics (thread_p, unique_stat1, true);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
+	  return error;
 	}
     }
   return NO_ERROR;
@@ -10740,7 +10715,6 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
   SCANCACHE_LIST *node = NULL;
   BTREE_UNIQUE_STATS *unique_stat_info, *unique_stat = NULL;
   int error = NO_ERROR, i;
-  LOG_MVCC_CLASS_UPDATE_STATS *class_stats = NULL;
 
   for (node = pcontext->scan_cache_list; node != NULL; node = node->next)
     {
@@ -10752,23 +10726,6 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
       unique_stat_info = scan_cache->scan_cache.index_stat_info;
       if (unique_stat_info != NULL)
 	{
-	  if (mvcc_Enabled && !OID_ISNULL (&scan_cache->scan_cache.class_oid)
-	      && !heap_is_mvcc_disabled_for_class (&scan_cache->scan_cache.
-						   class_oid))
-	    {
-	      class_stats =
-		logtb_mvcc_find_class_stats (thread_p,
-					     &scan_cache->scan_cache.
-					     class_oid, true);
-	      if (class_stats == NULL)
-		{
-		  return ER_FAILED;
-		}
-	    }
-	  else
-	    {
-	      class_stats = NULL;
-	    }
 	  for (i = 0; i < scan_cache->scan_cache.num_btids; i++)
 	    {
 	      unique_stat = &unique_stat_info[i];
@@ -10806,34 +10763,14 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
 		  return ER_FAILED;
 		}
 
-	      if (class_stats != NULL)
+	      error =
+		logtb_tran_update_unique_stats (thread_p, &unique_stat->btid,
+						unique_stat->num_keys,
+						unique_stat->num_oids,
+						unique_stat->num_nulls, true);
+	      if (error != NO_ERROR)
 		{
-		  error =
-		    logtb_mvcc_update_class_unique_stats (thread_p,
-							  &scan_cache->
-							  scan_cache.
-							  class_oid,
-							  &unique_stat->btid,
-							  unique_stat->
-							  num_keys,
-							  unique_stat->
-							  num_oids,
-							  unique_stat->
-							  num_nulls, true);
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
-		}
-	      else
-		{
-		  error =
-		    btree_reflect_unique_statistics (thread_p, unique_stat,
-						     true);
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
+		  return error;
 		}
 	    }
 	}
@@ -12965,13 +12902,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       else
 	{
 	  BTREE_UNIQUE_STATS *unique_stats = NULL;
-	  LOG_MVCC_CLASS_UPDATE_STATS *class_stats =
-	    logtb_mvcc_find_class_stats (thread_p, &class_oid, true);
-
-	  if (class_stats == NULL)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
 
 	  for (k = 0; k < scan_cache.num_btids; k++)
 	    {
@@ -12991,27 +12921,13 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      if (mvcc_Enabled)
-		{
-		  error =
-		    logtb_mvcc_update_class_unique_stats (thread_p,
-							  &class_oid,
-							  &unique_stats->btid,
-							  unique_stats->
-							  num_keys,
-							  unique_stats->
-							  num_oids,
-							  unique_stats->
-							  num_nulls, true);
-		  if (error != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  continue;
-		}
-
-	      if (btree_reflect_unique_statistics
-		  (thread_p, unique_stats, true) != NO_ERROR)
+	      error =
+		logtb_tran_update_unique_stats (thread_p, &unique_stats->btid,
+						unique_stats->num_keys,
+						unique_stats->num_oids,
+						unique_stats->num_nulls,
+						true);
+	      if (error != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -29649,10 +29565,10 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	{
 	  LOG_TDES *tdes =
 	    LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-	  LOG_MVCC_CLASS_UPDATE_STATS *class_stats =
-	    logtb_mvcc_find_class_stats (thread_p,
-					 &ACCESS_SPEC_CLS_OID (spec), true);
-	  if (class_stats == NULL)
+	  LOG_TRAN_CLASS_COS *class_cos =
+	    logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec),
+				       true);
+	  if (class_cos == NULL)
 	    {
 	      agg_ptr->flag_agg_optimize = false;
 	      *is_scan_needed = true;
@@ -29660,7 +29576,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	    }
 	  if (tdes->mvcc_info->mvcc_snapshot.valid)
 	    {
-	      if (class_stats->count_state != COS_LOADED)
+	      if (class_cos->count_state != COS_LOADED)
 		{
 		  agg_ptr->flag_agg_optimize = false;
 		  *is_scan_needed = true;
@@ -29669,14 +29585,14 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	    }
 	  else
 	    {
-	      if (logtb_mvcc_find_btid_stats
-		  (thread_p, class_stats, &agg_ptr->btid, true) == NULL)
+	      if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true)
+		  == NULL)
 		{
 		  agg_ptr->flag_agg_optimize = false;
 		  *is_scan_needed = true;
 		  break;
 		}
-	      class_stats->count_state = COS_TO_LOAD;
+	      class_cos->count_state = COS_TO_LOAD;
 
 	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
 		{
