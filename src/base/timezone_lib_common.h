@@ -172,6 +172,11 @@ struct tz_ds_ruleset
   int index_start;
   int count;
   const char *ruleset_name;
+  int to_year_max;		/* maximum of all to_year numbers in the
+				 * ruleset */
+  const char *default_abrev;	/* default abbreviation for all 
+				 * the ds_rules in this ruleset that have 
+				 * daylight saving time 0 */
 };
 
 typedef struct tz_name TZ_NAME;

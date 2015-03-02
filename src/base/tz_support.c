@@ -107,15 +107,16 @@ static void tz_decode_tz_region (const TZ_REGION * tz_region,
 				 TZ_DECODE_INFO * tz_info);
 static int tz_fast_find_ds_rule (const TZ_DATA * tzd,
 				 const TZ_DS_RULESET * ds_ruleset,
-				 const int src_julian_date, int src_year,
+				 const int src_julian_date,
+				 const int src_year, const int src_month,
 				 int *ds_rule_id);
 static bool tz_check_ds_match_string (const TZ_OFFSET_RULE * off_rule,
 				      const TZ_DS_RULE * ds_rule,
-				      const char *ds_string);
+				      const char *ds_string,
+				      const char *default_abrev);
 static int tz_datetime_utc_conv (const DB_DATETIME * src_dt,
-				 TZ_DECODE_INFO * tz_info,
-				 bool src_is_utc, bool only_tz_adjust,
-				 DB_DATETIME * dest_dt);
+				 TZ_DECODE_INFO * tz_info, bool src_is_utc,
+				 bool only_tz_adjust, DB_DATETIME * dest_dt);
 static int tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt,
 					    const TZ_DECODE_INFO *
 					    src_zone_info_in,
@@ -2687,12 +2688,13 @@ tz_get_ds_change_julian_date (const TZ_DS_RULE * ds_rule, const int year,
  * ds_ruleset(in): set of daylight saving rules
  * src_julian_date(in): julian date for which we search a rule
  * src_year(in): year of date
+ * src_month(in): month of date
  * ds_rule_id(out): fount rule
  */
 static int
 tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
-		      const int src_julian_date, int src_year,
-		      int *ds_rule_id)
+		      const int src_julian_date, const int src_year,
+		      const int src_month, int *ds_rule_id)
 {
   int curr_ds_id;
   int er_status = NO_ERROR;
@@ -2700,6 +2702,12 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
   full_date_t smallest_date_diff = -1;
 
   *ds_rule_id = -1;
+
+  if ((src_year > ds_ruleset->to_year_max && src_month > TZ_MON_JAN)
+      || (src_year > ds_ruleset->to_year_max + 1))
+    {
+      goto exit;
+    }
 
   for (curr_ds_id = 0; curr_ds_id < ds_ruleset->count; curr_ds_id++)
     {
@@ -2720,7 +2728,7 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
       if (src_year - 1 > curr_ds_rule->to_year
 	  || (src_year < curr_ds_rule->from_year
 	      && curr_ds_rule->in_month > TZ_MON_JAN)
-	  || (src_year > curr_ds_rule->to_year
+	  || (src_year > ds_ruleset->to_year_max
 	      && curr_ds_rule->in_month < TZ_MON_DEC))
 	{
 	  /* this rule cannot apply */
@@ -2736,7 +2744,7 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 
       if (ds_rule_julian_date == -1)
 	{
-	  /* not found a rule for this year, search for precedeeing year */
+	  /* not found a rule for this year, search for preceding year */
 	  er_status = tz_get_ds_change_julian_date (curr_ds_rule,
 						    src_year - 1,
 						    &ds_rule_julian_date);
@@ -2775,22 +2783,34 @@ exit:
  * off_rule(in): Offset rule
  * ds_rule(in): daylight saving rule
  * ds_string(in): daylight saving specifier (user source)
+ * default_abrev(in): default abbreviation in case ds_rule is NULL
  */
 static bool
 tz_check_ds_match_string (const TZ_OFFSET_RULE * off_rule,
-			  const TZ_DS_RULE * ds_rule, const char *ds_string)
+			  const TZ_DS_RULE * ds_rule, const char *ds_string,
+			  const char *default_abrev)
 {
   bool rule_matched = true;
+  const char *letter_abrev = NULL;
+
+  if (ds_rule != NULL && ds_rule->letter_abbrev != NULL
+      && *ds_rule->letter_abbrev != '-')
+    {
+      letter_abrev = ds_rule->letter_abbrev;
+    }
+  else if (ds_rule == NULL && *default_abrev != '-')
+    {
+      letter_abrev = default_abrev;
+    }
 
   if (off_rule->var_format != NULL)
     {
       char rule_dst_format[TZ_MAX_FORMAT_SIZE];
 
-      if (ds_rule != NULL && ds_rule->letter_abbrev != NULL
-	  && *ds_rule->letter_abbrev != '-')
+      if (letter_abrev != NULL)
 	{
 	  snprintf (rule_dst_format, sizeof (rule_dst_format) - 1,
-		    off_rule->var_format, ds_rule->letter_abbrev);
+		    off_rule->var_format, letter_abrev);
 	}
       else
 	{
@@ -2849,6 +2869,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
   int src_julian_date, rule_julian_date;
   int src_time_sec, rule_time_sec;
   int src_year;
+  int src_month;
   int gmt_std_offset_sec;
   int total_offset_sec;
   int err_status = NO_ERROR;
@@ -2944,7 +2965,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
   assert (next_off_rule != NULL
 	  || curr_off_rule->until_flag == UNTIL_INFINITE);
 
-  julian_decode (src_julian_date, NULL, NULL, &src_year, NULL);
+  julian_decode (src_julian_date, &src_month, NULL, &src_year, NULL);
 
 detect_dst:
   if (curr_off_rule->until_flag == UNTIL_EXPLICIT)
@@ -3021,7 +3042,17 @@ detect_dst:
       check_user_dst = true;
     }
 
-  for (curr_ds_id = 0; curr_ds_id < ds_ruleset->count; curr_ds_id++)
+  if ((src_year > ds_ruleset->to_year_max && src_month > TZ_MON_JAN)
+      || (src_year > ds_ruleset->to_year_max + 1))
+    {
+      curr_ds_id = ds_ruleset->count;
+    }
+  else
+    {
+      curr_ds_id = 0;
+    }
+
+  for (; curr_ds_id < ds_ruleset->count; curr_ds_id++)
     {
       int ds_rule_julian_date;
       full_date_t date_diff;
@@ -3041,7 +3072,7 @@ detect_dst:
       if (src_year - 1 > curr_ds_rule->to_year
 	  || (src_year < curr_ds_rule->from_year
 	      && curr_ds_rule->in_month > TZ_MON_JAN)
-	  || (src_year > curr_ds_rule->to_year
+	  || (src_year > ds_ruleset->to_year_max
 	      && curr_ds_rule->in_month < TZ_MON_DEC))
 	{
 	  /* this rule cannot apply */
@@ -3077,7 +3108,8 @@ detect_dst:
 	    - 2 * DATE_DIFF_MATCH_SAFE_THRESHOLD_DAYS;
 
 	  err_status = tz_fast_find_ds_rule (tzd, ds_ruleset,
-					     wall_safe_julian_date, src_year,
+					     wall_safe_julian_date,
+					     src_year, src_month,
 					     &wall_ds_rule_id);
 	  if (err_status != NO_ERROR)
 	    {
@@ -3150,7 +3182,8 @@ detect_dst:
 		{
 		  rule_matched =
 		    tz_check_ds_match_string (curr_off_rule, curr_ds_rule,
-					      tz_info->zone.dst_str);
+					      tz_info->zone.dst_str,
+					      ds_ruleset->default_abrev);
 		}
 	      else if (applying_ds_id != -1)
 		{
@@ -3208,7 +3241,8 @@ detect_dst:
       if (check_user_dst)
 	{
 	  if (tz_check_ds_match_string (curr_off_rule, applying_ds_rule,
-					tz_info->zone.dst_str) == false)
+					tz_info->zone.dst_str,
+					ds_ruleset->default_abrev) == false)
 	    {
 	      err_status = ER_TZ_INVALID_COMBINATION;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
@@ -3226,7 +3260,9 @@ detect_dst:
 	  if (tz_info->zone.dst_str[0] != '\0'
 	      && curr_off_rule->var_format != NULL
 	      && tz_check_ds_match_string (curr_off_rule, NULL,
-					   tz_info->zone.dst_str) == false)
+					   tz_info->zone.dst_str,
+					   ds_ruleset->default_abrev)
+	      == false)
 	    {
 	      err_status = ER_TZ_INVALID_DST;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);

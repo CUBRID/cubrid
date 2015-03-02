@@ -803,6 +803,10 @@ tzc_free_tz_data (TZ_DATA * tzd, bool full)
 	    {
 	      free ((void *) (tzd->ds_rulesets[i].ruleset_name));
 	    }
+	  if (tzd->ds_rulesets[i].default_abrev != NULL)
+	    {
+	      free ((void *) (tzd->ds_rulesets[i].default_abrev));
+	    }
 	}
       free (tzd->ds_rulesets);
     }
@@ -3503,6 +3507,10 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
   for (i = 0; i < tzd->ds_ruleset_count; i++)
     {
+      int to_year_max = 0;
+      bool has_default_abbrev = true;
+      char *prev_letter_abbrev = NULL;
+
       ruleset = &(tzd->ds_rulesets[i]);
       ruleset->index_start = cur_rule_index;
       ruleset->count = tzd_raw->ds_rulesets[i].rule_count;
@@ -3540,11 +3548,56 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 				  TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 	      goto exit;
 	    }
+	  if (has_default_abbrev == true && rule_raw->save_time == 0)
+	    {
+	      /* common single letter abbreviation having daylight save time zero 
+	       * (common standard time) */
+	      if (strlen (rule->letter_abbrev) > 1
+		  || (prev_letter_abbrev != NULL
+		      && strcmp (rule->letter_abbrev,
+				 prev_letter_abbrev) != 0))
+		{
+		  has_default_abbrev = false;
+		}
+	      else
+		{
+		  prev_letter_abbrev = rule->letter_abbrev;
+		}
+	    }
+
 	  rule->save_time = rule_raw->save_time;
 	  rule->to_year = rule_raw->to_year;
+	  if (rule->to_year > to_year_max)
+	    {
+	      to_year_max = rule->to_year;
+	    }
 
 	  cur_rule_index++;
 	}
+
+      if (has_default_abbrev == true && prev_letter_abbrev != NULL)
+	{
+	  ruleset->default_abrev = strdup (prev_letter_abbrev);
+	}
+      else
+	{
+	  char empty[2];
+	  empty[0] = '-';
+	  empty[1] = '\0';
+	  prev_letter_abbrev = empty;
+	  ruleset->default_abrev = strdup (empty);
+	}
+      if (ruleset->default_abrev == NULL)
+	{
+	  char err_msg[TZC_ERR_MSG_MAX_SIZE];
+
+	  sprintf (err_msg, "%d", strlen (prev_letter_abbrev));
+	  err_status = TZC_ERR_OUT_OF_MEMORY;
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw),
+			      TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
+	  goto exit;
+	}
+      ruleset->to_year_max = to_year_max;
     }
 
 exit:
@@ -4422,8 +4475,11 @@ tzc_export_timezone_C_file (const TZ_DATA * tzd)
 	   SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->ds_ruleset_count; i++)
     {
-      fprintf (fp, "\t{%d, %d, \"%s\"}%s\n", tzd->ds_rulesets[i].index_start,
-	       tzd->ds_rulesets[i].count, tzd->ds_rulesets[i].ruleset_name,
+      fprintf (fp, "\t{%d, %d, \"%s\", %d, \"%s\"}%s\n",
+	       tzd->ds_rulesets[i].index_start, tzd->ds_rulesets[i].count,
+	       tzd->ds_rulesets[i].ruleset_name,
+	       tzd->ds_rulesets[i].to_year_max,
+	       tzd->ds_rulesets[i].default_abrev,
 	       (i == tzd->ds_ruleset_count - 1) ? "" : ",");
     }
   fprintf (fp, "};\n\n");
