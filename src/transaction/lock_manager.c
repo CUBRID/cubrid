@@ -679,60 +679,10 @@ LF_ENTRY_DESCRIPTOR obj_lock_res_desc = {
   lock_res_key_hash,
   NULL				/* no inserts */
 };
-
-/* test code here */
-static void lock_check_res_cycle (LK_RES * res_ptr);
-static void lock_check_cycle (LK_ENTRY * entry);
 #endif /* SERVER_MODE */
 
 
 #if defined(SERVER_MODE)
-
-/* test code here */
-static void
-lock_check_res_cycle (LK_RES * res_ptr)
-{
-  assert (res_ptr != NULL);
-
-  /*check holder */
-  if (res_ptr->holder != NULL)
-    {
-      lock_check_cycle (res_ptr->holder);
-    }
-
-  /* check waiter */
-  if (res_ptr->waiter != NULL)
-    {
-      lock_check_cycle (res_ptr->waiter);
-    }
-}
-
-static void
-lock_check_cycle (LK_ENTRY * entry)
-{
-  LK_ENTRY *p, *q;
-
-  assert (entry != NULL);
-
-  for (p = q = entry; p != NULL && q != NULL; p = p->next)
-    {
-      if (q->next == NULL)
-	{
-	  /* to the end */
-	  return;
-	}
-
-      q = q->next->next;
-      if (p == q)
-	{
-	  /* cycle found !!! */
-	  assert (p != q);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  raise (SIGABRT);
-	  return;
-	}
-    }
-}
 
 static LK_RES_KEY
 lock_create_search_key (OID * oid, OID * class_oid, BTID * btid)
@@ -2120,9 +2070,6 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
       entry_ptr->next = prev->next;
       prev->next = entry_ptr;
     }
-
-  /* test code here */
-  lock_check_res_cycle (res_ptr);
 }
 #endif /* SERVER_MODE */
 
@@ -2894,9 +2841,6 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	      prev->next = check;
 	    }
 
-	  /* test code here */
-	  lock_check_res_cycle (res_ptr);
-
 	  /* change granted_mode and blocked_mode */
 	  check->granted_mode = check->blocked_mode;
 	  check->blocked_mode = NULL_LOCK;
@@ -3004,9 +2948,6 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	    {
 	      prev_check->next = check->next;
 	    }
-
-	  /* test code here */
-	  lock_check_res_cycle (res_ptr);
 
 	  /* change granted_mode and blocked_mode of the entry */
 	  check->granted_mode = check->blocked_mode;
@@ -3170,9 +3111,6 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 	    {
 	      prev_check->next = check->next;
 	    }
-
-	  /* test code here */
-	  lock_check_res_cycle (res_ptr);
 
 	  /* change granted_mode and blocked_mode of the entry */
 	  check->granted_mode = check->blocked_mode;
@@ -4088,9 +4026,6 @@ start:
 	  prev->next = entry_ptr;
 	}
 
-      /* test code here */
-      lock_check_res_cycle (res_ptr);
-
       /* change total_waiters_mode (total mode of waiting waiter) */
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
       res_ptr->total_waiters_mode =
@@ -4317,9 +4252,6 @@ start:
     {
       prev->next = entry_ptr->next;
     }
-
-  /* test code here */
-  lock_check_res_cycle (res_ptr);
 
   /* position the lock entry in the holder list according to UPR */
   lock_position_holder_entry (res_ptr, entry_ptr);
@@ -4570,9 +4502,6 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
 	      prev->next = curr->next;
 	    }
 
-	  /* test code here */
-	  lock_check_res_cycle (res_ptr);
-
 	  /* free the lock entry */
 	  lf_freelist_retire (t_entry, &lk_Gl.obj_free_entry_list, curr);
 
@@ -4623,9 +4552,6 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
     {
       prev->next = curr->next;
     }
-
-  /* test code here */
-  lock_check_res_cycle (res_ptr);
 
   if (release_flag == false && curr->count > 0)
     {
@@ -11678,9 +11604,6 @@ start:
 	  prev->next = entry_ptr;
 	}
 
-      /* test code here */
-      lock_check_res_cycle (res_ptr);
-
       /* change total_waiters_mode (total mode of waiting waiter) */
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
       /* the previous total holders mode will be calculated when resume
@@ -11911,9 +11834,6 @@ start:
     {
       prev->next = entry_ptr->next;
     }
-
-  /* test code here */
-  lock_check_res_cycle (res_ptr);
 
   /* position the lock entry in the holder list according to UPR */
   lock_position_holder_entry (res_ptr, entry_ptr);
