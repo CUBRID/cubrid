@@ -8825,7 +8825,8 @@ la_need_filter_out (LA_ITEM * item)
   filter = &la_Info.repl_filter;
 
   if (filter->type == REPL_FILTER_NONE
-      || item->log_type == LOG_REPLICATION_STATEMENT)
+      || item->log_type == LOG_REPLICATION_STATEMENT
+      || strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
     {
       return false;
     }
