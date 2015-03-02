@@ -104,6 +104,8 @@ AC_PROG_YACC
 AC_PROG_LEX
 AC_PROG_EGREP
 AC_PROG_AWK
+AC_CHECK_PROG(DIFF, diff, diff, diff-is-missing)
+
 CFLAGS="$remember_CFLAGS"
 CXXFLAGS="$remember_CXXFLAGS"
 LDFLAGS="$remember_LDFLAGS"

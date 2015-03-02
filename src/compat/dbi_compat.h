@@ -247,7 +247,7 @@
 #define ER_TP_INCOMPATIBLE_DOMAINS                  -179	/* not used */
 #define ER_TP_INCOMPATIBLE_VALUE                    -180
 #define ER_TP_CANT_COERCE                           -181
-#define ER_TP_CANT_COERCE_OVERFLOW                  -182	/* not used */
+#define ER_TP_CANT_COERCE_OVERFLOW                  -182
 
 #define ER_NET_DATASIZE_MISMATCH                    -183
 #define ER_NET_CANT_ALLOC_BUFFER                    -184
@@ -817,7 +817,7 @@
 
 #define ER_CFG_READ_DATABASES                       -675
 #define ER_CFG_FIND_DATABASE                        -676
-#define ER_BO_CONNECT_FAILED                         -677
+#define ER_BO_CONNECT_FAILED                        -677
 #define ER_BO_CLIENT_INIT_INTERNAL                  -678
 
 #define ER_CPLUS_TRANSACTION_BEGUN_TWICE            -679
@@ -1155,9 +1155,9 @@
 #define ER_FK_NOT_GRANTED_LOCK                      -925
 #define ER_FK_CANT_DELETE_INSTANCE                  -926
 #define ER_FK_NOT_MATCH_KEY_COUNT                   -927
-#define ER_FK_CANT_ASSIGN_CACHE_ATTR                -928
+#define ER_FK_CANT_ASSIGN_CACHE_ATTR                -928	/* not used */
 #define ER_FK_CANT_ON_VCLASS                        -929
-#define ER_FK_CANT_DROP_CACHE_ATTR                  -930
+#define ER_FK_CANT_DROP_CACHE_ATTR                  -930	/* not used */
 
 #define ER_AUTO_INCREMENT_STARTVAL_MUST_LT_MAXVAL   -931
 
@@ -1220,7 +1220,7 @@
 #define ER_LOG_CHECKPOINT_STARTED                   -977
 #define ER_LOG_CHECKPOINT_FINISHED                  -978
 
-#define ER_QPROC_CYCLE_DETECTED                     -979
+#define	ER_QPROC_CYCLE_DETECTED                     -979
 
 #define ER_MNT_WAITING_THREAD                       -980
 #define ER_MNT_STATS_THRESHOLD                      -981
@@ -1240,7 +1240,7 @@
 
 #define ER_LOG_FLUSH_VICTIM_STARTED                 -991
 #define ER_LOG_FLUSH_VICTIM_FINISHED                -992
-#define ER_QPROC_OVERFLOW_BITOP                     -993
+#define	ER_QPROC_OVERFLOW_BITOP			    -993
 #define ER_IT_IS_DISALLOWED_AS_PREPARED             -994
 #define ER_IT_PREPARED_NAME_NOT_FOUND               -995
 #define ER_IT_INCORRECT_HOSTVAR_COUNT               -996
@@ -1259,11 +1259,11 @@
 
 #define ER_COMPACTDB_ALREADY_STARTED		    -1009
 #define ER_SM_INVALID_INDEX_WITH_PREFIX_TYPE        -1010
-#define ER_FK_CANT_ON_SHARED_ATTRIBUTE              -1011
+#define ER_FK_CANT_ON_SHARED_ATTRIBUTE		    -1011
 #define ER_CREATE_AS_SELECT_NULL_TYPE		    -1012
 
-#define ER_SM_DEFAULT_NOT_ALLOWED		    -1013
-#define ER_SM_NOT_NULL_NOT_ALLOWED		    -1014
+#define ER_SM_DEFAULT_NOT_ALLOWED                   -1013
+#define ER_SM_NOT_NULL_NOT_ALLOWED                  -1014
 
 #define ER_BO_DIRECTORY_DOESNOT_EXIST               -1015
 
@@ -1272,7 +1272,7 @@
 #define ER_ES_COPY_TO_DIFFERENT_TYPE                -1018
 #define ER_ES_NO_LOB_PATH			    -1019
 #define ER_ES_FILE_NOT_FOUND                        -1020
-#define ER_LK_DEADLOCK_CYCLE_DETECTED               -1021
+#define ER_LK_DEADLOCK_CYCLE_DETECTED		    -1021
 
 #define ER_SM_INVALID_PREFIX_LENGTH                 -1022
 
@@ -1280,6 +1280,7 @@
 #define ER_HA_LW_FAILED_GET_LOG_PAGE                -1024
 #define ER_HA_REPL_DELAY_DETECTED                   -1025
 #define ER_HA_REPL_DELAY_RESOLVED                   -1026
+#define ER_HA_LA_FAILED_TO_CHANGE_STATE             -1027
 #define ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG      -1028
 #define ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET     -1029
 #define ER_HA_LA_INVALID_REPL_LOG_RECORD            -1030
@@ -1290,7 +1291,7 @@
 #define ER_HA_LA_EXCEED_MAX_MEM_SIZE                -1035
 #define ER_HA_LA_STOPPED_BY_SIGNAL                  -1036
 #define ER_HA_LW_STOPPED_BY_SIGNAL                  -1037
-#define ER_HA_LA_STARTED			    -1038
+#define ER_HA_LA_STARTED		            -1038
 #define ER_HA_LW_STARTED			    -1039
 #define ER_HA_GENERIC_ERROR			    -1040
 
@@ -1339,7 +1340,7 @@
 #define ER_INVALID_ACCESS_IP_CONTROL_FILE_FORMAT    -1073
 #define ER_OPEN_ACCESS_LIST_FILE		    -1074
 
-#define ER_DESC_ISCAN_ABORTED                       -1075
+#define ER_DESC_ISCAN_ABORTED			    -1075
 
 #define ER_BO_CANT_LOAD_SYSPRM                      -1076
 
@@ -1360,21 +1361,23 @@
 #define ER_REGEX_COMPILE_ERROR			    -1085
 #define ER_REGEX_EXEC_ERROR			    -1086
 
-#define ER_LOC_INIT				    -1087
-#define ER_LOC_GEN				    -1088
-#define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1089
+#define ER_LOG_BACKUP_CS_ENTER 			    -1087
+#define ER_LOG_BACKUP_CS_EXIT			    -1088
 
-#define ER_OPFUNC_INET_ATON_ARG                     -1090
-#define ER_OPFUNC_INET_NTOA_ARG                     -1091
+#define ER_HF_MAX_BESTSPACE_ENTRIES		    -1089
 
-#define ER_LOG_BACKUP_CS_ENTER                      -1092
-#define ER_LOG_BACKUP_CS_EXIT                       -1093
+#define ER_LOC_INIT				    -1090
+#define ER_LOC_GEN				    -1091
+#define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1092
 
-#define ER_USER_NAME_TOO_LONG			    -1094
+#define ER_OPFUNC_INET_ATON_ARG			    -1093
+#define ER_OPFUNC_INET_NTOA_ARG			    -1094
 
-#define ER_HF_MAX_BESTSPACE_ENTRIES                 -1095
+#define ER_USER_NAME_TOO_LONG			    -1095
+
 #define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1096
 #define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1097
+
 #define ER_LANG_CODESET_NOT_AVAILABLE		    -1098
 
 #define ER_BLOCK_DDL_STMT                           -1099
@@ -1401,9 +1404,9 @@
 
 #define ER_DATA_IS_TRUNCATED_TO_PRECISION           -1111
 
-#define ER_CHAR_CONV_NO_MATCH                       -1112
+#define ER_CHAR_CONV_NO_MATCH			    -1112
 
-#define ER_BINARY_HEAP_OUT_OF_RANGE                 -1113
+#define ER_BINARY_HEAP_OUT_OF_RANGE		    -1113
 
 #define ER_ARG_OUT_OF_RANGE                         -1114
 
@@ -1414,8 +1417,8 @@
 
 #define ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN  -1118
 
-#define ER_FILE_INCONSISTENT_PAGE_ALLOCED           -1119
-#define ER_FILE_INCONSISTENT_PAGE_NOT_ALLOCED       -1120
+#define ER_FILE_INCONSISTENT_PAGE_NOT_ALLOCED       -1119
+#define ER_FILE_INCONSISTENT_PAGE_ALLOCED           -1120
 
 #define ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE	    -1121
 
@@ -1436,7 +1439,7 @@
 
 #define ER_LK_ROLLBACK_ON_LOCK_ESCALATION	    -1130
 
-#define ER_SP_INVALID_HEADER	                    -1131
+#define ER_SP_INVALID_HEADER                        -1131
 
 #define ER_ENCRYPTION_LIB_FAILED                    -1132
 
@@ -1473,7 +1476,7 @@
 
 #define ER_ATTEMPT_TO_USE_ZERODATE                  -1153
 
-#define ER_MVCC_ROW_ALREADY_DELETED		    -1154
+#define ER_MVCC_NOT_SATISFIED_REEVALUATION	    -1154
 #define ER_MVCC_ROW_INVALID_FOR_DELETE		    -1155
 #define ER_MVCC_CANT_GET_SNAPSHOT		    -1156
 #define ER_MVCC_LOG_INVALID_ISOLATION_LEVEL         -1157
@@ -1481,11 +1484,11 @@
 
 #define ER_TZ_COMPILE_ERROR                         -1159
 #define ER_TZ_LOAD_ERROR                            -1160
-#define ER_TZ_INTERNAL_ERROR                        -1161
-#define ER_TZ_INVALID_TIMEZONE                      -1162
-#define ER_TZ_INVALID_DST                           -1163
-#define ER_TZ_DST_NOT_SUPPORTED                     -1164
-#define ER_TZ_INVALID_COMBINATION                   -1165
+#define ER_TZ_INTERNAL_ERROR			    -1161
+#define ER_TZ_INVALID_TIMEZONE			    -1162
+#define ER_TZ_INVALID_DST			    -1163
+#define ER_TZ_DST_NOT_SUPPORTED			    -1164
+#define ER_TZ_INVALID_COMBINATION		    -1165
 #define ER_TZ_DURING_DS_LEAP                        -1166
 
 #define ER_AU_COMMENT_OVERFLOW                      -1167
@@ -1500,6 +1503,7 @@
 
 #define ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE     -1172
 #define ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP  -1173
+
 #define ER_INHERIT_FROM_PARTITION_TABLE		    -1174
 
 #define ER_TZ_GEOGRAPHIC_ZONE			    -1175
