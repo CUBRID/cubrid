@@ -1339,6 +1339,8 @@
 		<row><td>SCRIPT_STR_0051</td><td>1042</td><td>CUBRIDProvider를 등록하지 못했습니다.</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0052</td><td>1033</td><td>TOKEN is running. Terminate it?</td><td>0</td><td/><td>-1046513136</td></row>
 		<row><td>SCRIPT_STR_0052</td><td>1042</td><td>TOKEN가 실행 중입니다. 자동 종료 후 진행하겠습니까?</td><td>0</td><td/><td>-1046529520</td></row>
+		<row><td>SCRIPT_STR_0053</td><td>1033</td><td>You are currently using a 32-bit operating system.\nPlease use installer for 32-bit on a 32-bit operating system.</td><td>0</td><td/><td>-1046513136</td></row>
+		<row><td>SCRIPT_STR_0053</td><td>1042</td><td>현재 32비트 운영체제를 사용 중입니다.\n32비트 운영 체제에는 32비트용 설치 프로그램을 사용해주시기 바랍니다. </td><td>0</td><td/><td>-1046529520</td></row>
 		<row><td>SUPPORT_URL</td><td>1033</td><td>http://www.cubrid.com</td><td>0</td><td/><td>-1323323310</td></row>
 		<row><td>SUPPORT_URL</td><td>1042</td><td>http://www.cubrid.com</td><td>0</td><td/><td>-1323318674</td></row>
 		<row><td>TITLE_MAIN</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323327310</td></row>

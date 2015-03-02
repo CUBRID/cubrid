@@ -221,6 +221,13 @@ begin
     // SetColor(BACKGROUND,RGB (0, 128, 128));
     // Set Initial value
 
+    if (@CUBRID_ARCH = "x64") then    
+	if (SYSINFO.bIsWow64 = 0) then
+	    MessageBox(@SCRIPT_STR_0053, SEVERE);
+	    exit;
+	endif;        
+    endif;
+    
     UNINSTALL_STRING = UNINSTALL_STRING + " CUB_UNINSTALL";
 
     szVersionName = @IFX_PRODUCT_VERSION;    
