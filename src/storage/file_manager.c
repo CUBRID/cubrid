@@ -13281,6 +13281,7 @@ exit_on_error:
 int
 file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
 {
+  PGBUF_LATCH_MODE latch_mode = PGBUF_LATCH_READ;
   PAGE_PTR trk_fhdr_pgptr = NULL;
   VFID marked_files[FILE_DESTROY_NUM_MARKED];
   VPID vpid;
@@ -13288,6 +13289,7 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
   int num_marked = 0;
   int i, nth;
   int ret = NO_ERROR;
+  bool latch_promoted = false;
 
   if (file_Tracker->vfid == NULL)
     {
@@ -13299,11 +13301,12 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
    * the reclaim, so that files are not register or unregister during this
    * operation
    */
+restart:
 
   vpid.volid = file_Tracker->vfid->volid;
   vpid.pageid = file_Tracker->vfid->fileid;
 
-  trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+  trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode,
 			      PGBUF_UNCONDITIONAL_LATCH);
   if (trk_fhdr_pgptr == NULL)
     {
@@ -13364,14 +13367,44 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
 	  nth = i + 1 - num_marked;
 	  num_files -= num_marked;
 
-	  for (i = 0; i < num_marked; i++)
+	  if (num_marked > 0)
 	    {
-	      (void) file_destroy (thread_p, &marked_files[i]);
+	      if (!latch_promoted)
+		{
+		  ret =
+		    pgbuf_promote_read_latch (thread_p, &trk_fhdr_pgptr,
+					      PGBUF_PROMOTE_SHARED_READER);
+		  if (ret == ER_PAGE_LATCH_PROMOTE_FAIL)
+		    {
+		      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+
+		      latch_mode = PGBUF_LATCH_WRITE;
+		      latch_promoted = true;
+		      goto restart;
+		    }
+		  else if (ret != NO_ERROR || trk_fhdr_pgptr == NULL)
+		    {
+		      /* unfix trk_fhdr_pgptr if needed */
+		      ret = (ret == NO_ERROR) ? ER_FAILED : ret;
+		      break;
+		    }
+
+		  latch_promoted = true;
+		}
+
+	      for (i = 0; i < num_marked; i++)
+		{
+		  (void) file_destroy (thread_p, &marked_files[i]);
+		}
 	    }
 	}
     }
 
-  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+  if (trk_fhdr_pgptr)
+    {
+      /* release latch here, file_compress will request write latch later */
+      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+    }
 
   if (ret == NO_ERROR)
     {
