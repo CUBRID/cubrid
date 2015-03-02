@@ -48,6 +48,7 @@
 #include "tsc_timer.h"
 #include "query_manager.h"
 #include "xserver_interface.h"
+#include "btree_load.h"
 
 #if defined(CUBRID_DEBUG)
 #include "disk_manager.h"
@@ -246,6 +247,31 @@ static int rv;
 #define PGBUF_MAX_FIXED_SOURCES 5000
 #define PGBUF_MAX_FIXED_SOURCE_LEN 64
 #endif /* PAGE_STATISTICS */
+
+#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
+#define PGBUF_GET_PAGE_TYPE_FOR_STAT(pgptr,perf_page_type) \
+        do { \
+	  FILEIO_PAGE *io_pgptr;  \
+	  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);  \
+	  if (io_pgptr->prv.ptype == PAGE_BTREE)  \
+	    { \
+	      perf_page_type = btree_get_perf_btree_page_type (pgptr); \
+	    } \
+	  else	\
+	    { \
+	      perf_page_type = io_pgptr->prv.ptype; \
+	    } \
+	  } \
+	while (0)
+#else
+#define PGBUF_GET_PAGE_TYPE_FOR_STAT(pgptr,perf_page_type) \
+        do { \
+	  FILEIO_PAGE *io_pgptr;  \
+	  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);  \
+	  perf_page_type = io_pgptr->prv.ptype;	\
+	  } \
+	while (0)
+#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
 
 /* BCB zone */
 typedef enum
@@ -842,7 +868,7 @@ static int pgbuf_compare_fixed_source_for_sort (const void *fix_source1,
 static void pgbuf_add_fixed_source_stat (THREAD_ENTRY * thread_p,
 					 const char *caller_file,
 					 const int caller_line,
-					 PERF_PAGE_MODE stat_page_found,
+					 PERF_PAGE_MODE perf_page_found,
 					 PAGE_PTR pgptr);
 #endif /* NDEBUG */
 #endif /* PAGE_STATISTICS */
@@ -1346,10 +1372,9 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
   QUERY_ID query_id = -1;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
-  PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
-  PERF_HOLDER_LATCH stat_latch_mode;
-  PERF_CONDITIONAL_FIX_TYPE stat_cond_type;
-  FILEIO_PAGE *io_pgptr;
+  PERF_PAGE_MODE perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
+  PERF_HOLDER_LATCH perf_latch_mode;
+  PERF_CONDITIONAL_FIX_TYPE perf_cond_type;
   TSC_TICKS start_tick, end_tick, start_holder_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time, holder_wait_time, fix_wait_time;
@@ -1484,25 +1509,25 @@ try_again:
 
 	  if (fetch_mode == NEW_PAGE)
 	    {
-	      stat_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
+	      perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
 	    }
 	  else
 	    {
-	      stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	      perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	    }
 	  goto try_again;
 	}
 
-      if (stat_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT
-	  && stat_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
+      if (perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT
+	  && perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
 	{
 	  if (fetch_mode == NEW_PAGE)
 	    {
-	      stat_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
+	      perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
 	    }
 	  else
 	    {
-	      stat_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
+	      perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
 	    }
 	}
 
@@ -1754,49 +1779,52 @@ try_again:
 #endif /* NDEBUG */
 
   /* Record number of fetches in statistics */
-  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
   if (is_perf_tracking)
     {
+      PERF_PAGE_TYPE perf_page_type;
+
+      PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
+
       mnt_pb_fetches (thread_p);
       if (request_mode == PGBUF_LATCH_READ)
 	{
-	  stat_latch_mode = PERF_HOLDER_LATCH_READ;
+	  perf_latch_mode = PERF_HOLDER_LATCH_READ;
 	}
       else
 	{
 	  assert (request_mode == PGBUF_LATCH_WRITE);
-	  stat_latch_mode = PERF_HOLDER_LATCH_WRITE;
+	  perf_latch_mode = PERF_HOLDER_LATCH_WRITE;
 	}
 
       if (condition == PGBUF_UNCONDITIONAL_LATCH)
 	{
 	  if (is_latch_wait)
 	    {
-	      stat_cond_type = PERF_UNCONDITIONAL_FIX_WITH_WAIT;
+	      perf_cond_type = PERF_UNCONDITIONAL_FIX_WITH_WAIT;
 	      if (holder_wait_time > 0)
 		{
-		  mnt_pbx_hold_acquire_time (thread_p, io_pgptr->prv.ptype,
-					     stat_page_found, stat_latch_mode,
+		  mnt_pbx_hold_acquire_time (thread_p, perf_page_type,
+					     perf_page_found, perf_latch_mode,
 					     holder_wait_time);
 		}
 	    }
 	  else
 	    {
-	      stat_cond_type = PERF_UNCONDITIONAL_FIX_NO_WAIT;
+	      perf_cond_type = PERF_UNCONDITIONAL_FIX_NO_WAIT;
 	    }
 	}
       else
 	{
-	  stat_cond_type = PERF_CONDITIONAL_FIX;
+	  perf_cond_type = PERF_CONDITIONAL_FIX;
 	}
 
-      mnt_pbx_fix (thread_p, io_pgptr->prv.ptype, stat_page_found,
-		   stat_latch_mode, stat_cond_type);
+      mnt_pbx_fix (thread_p, perf_page_type, perf_page_found,
+		   perf_latch_mode, perf_cond_type);
       if (lock_wait_time > 0)
 	{
-	  mnt_pbx_lock_acquire_time (thread_p, io_pgptr->prv.ptype,
-				     stat_page_found, stat_latch_mode,
-				     stat_cond_type, lock_wait_time);
+	  mnt_pbx_lock_acquire_time (thread_p, perf_page_type,
+				     perf_page_found, perf_latch_mode,
+				     perf_cond_type, lock_wait_time);
 	}
 
       tsc_getticks (&end_tick);
@@ -1805,16 +1833,16 @@ try_again:
 
       if (fix_wait_time > 0)
 	{
-	  mnt_pbx_fix_acquire_time (thread_p, io_pgptr->prv.ptype,
-				    stat_page_found, stat_latch_mode,
-				    stat_cond_type, fix_wait_time);
+	  mnt_pbx_fix_acquire_time (thread_p, perf_page_type,
+				    perf_page_found, perf_latch_mode,
+				    perf_cond_type, fix_wait_time);
 	}
     }
 
 #if defined(PAGE_STATISTICS)
 #if !defined(NDEBUG)
   pgbuf_add_fixed_source_stat (thread_p, caller_file, caller_line,
-			       stat_page_found, pgptr);
+			       perf_page_found, pgptr);
 #endif /* NDEBUG */
 #endif /* PAGE_STATISTICS */
 
@@ -1839,14 +1867,17 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 #endif				/* NDEBUG */
 {
   PGBUF_BCB *bufptr;
+#if defined(SERVER_MODE)
   PGBUF_HOLDER *holder;
   VPID vpid;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 promote_wait_time;
   bool is_perf_tracking;
-  int stat_page_type, stat_cond_type, stat_holder_latch, stat_success;
-#if defined(SERVER_MODE)
+  PERF_PAGE_TYPE perf_page_type;
+  PERF_PROMOTE_CONDITION perf_promote_cond_type;
+  PERF_HOLDER_LATCH perf_holder_latch;
+  int stat_success;
   int rv = NO_ERROR;
 #endif /* SERVER_MODE */
 
@@ -1907,30 +1938,26 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
   vpid = bufptr->vpid;
   if (is_perf_tracking)
     {
-      FILEIO_PAGE *io_pgptr;
-
-      /* page type */
-      CAST_PGPTR_TO_IOPGPTR (io_pgptr, *pgptr_p);
-      stat_page_type = io_pgptr->prv.ptype;
+      PGBUF_GET_PAGE_TYPE_FOR_STAT (*pgptr_p, perf_page_type);
 
       /* promote condition */
       if (condition == PGBUF_PROMOTE_SINGLE_READER)
 	{
-	  stat_cond_type = PERF_PROMOTE_SINGLE_READER;
+	  perf_promote_cond_type = PERF_PROMOTE_SINGLE_READER;
 	}
       else
 	{
-	  stat_cond_type = PERF_PROMOTE_SHARED_READER;
+	  perf_promote_cond_type = PERF_PROMOTE_SHARED_READER;
 	}
 
       /* latch mode - NOTE: MIX will be always zero */
       if (bufptr->latch_mode == PGBUF_LATCH_READ)
 	{
-	  stat_holder_latch = PERF_HOLDER_LATCH_READ;
+	  perf_holder_latch = PERF_HOLDER_LATCH_READ;
 	}
       else
 	{
-	  stat_holder_latch = PERF_HOLDER_LATCH_WRITE;
+	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
 	}
     }
 
@@ -2064,8 +2091,8 @@ end:
 	}
 
       /* aggregate success/fail */
-      mnt_pbx_promote (thread_p, stat_page_type, stat_cond_type,
-		       stat_holder_latch, stat_success, promote_wait_time);
+      mnt_pbx_promote (thread_p, perf_page_type, perf_promote_cond_type,
+		       perf_holder_latch, stat_success, promote_wait_time);
     }
 
   /* all successful */
@@ -2099,9 +2126,10 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-  FILEIO_PAGE *io_pgptr;
-  PERF_HOLDER_LATCH holder_latch;
+  PERF_HOLDER_LATCH perf_holder_latch;
   PGBUF_HOLDER_STAT holder_perf_stat;
+  PERF_PAGE_TYPE perf_page_type;
+  bool is_perf_tracking;
 
 #if defined(CUBRID_DEBUG)
   LOG_LSA restart_lsa;
@@ -2178,31 +2206,38 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 #endif /* CUBRID_DEBUG */
 
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  if (is_perf_tracking)
+    {
+      PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
+    }
   INIT_HOLDER_STAT (&holder_perf_stat);
   holder_status = pgbuf_unlatch_thrd_holder (thread_p, bufptr,
 					     &holder_perf_stat);
 
   assert (holder_perf_stat.hold_has_write_latch == 1
 	  || holder_perf_stat.hold_has_read_latch == 1);
-  if (holder_perf_stat.hold_has_read_latch
-      && holder_perf_stat.hold_has_write_latch)
-    {
-      holder_latch = PERF_HOLDER_LATCH_MIXED;
-    }
-  else if (holder_perf_stat.hold_has_read_latch)
-    {
-      holder_latch = PERF_HOLDER_LATCH_READ;
-    }
-  else
-    {
-      assert (holder_perf_stat.hold_has_write_latch);
-      holder_latch = PERF_HOLDER_LATCH_WRITE;
-    }
 
-  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
-  mnt_pbx_unfix (thread_p, (int) (io_pgptr->prv.ptype),
-		 holder_perf_stat.dirty_before_hold,
-		 holder_perf_stat.dirtied_by_holder, holder_latch);
+  if (is_perf_tracking)
+    {
+      if (holder_perf_stat.hold_has_read_latch
+	  && holder_perf_stat.hold_has_write_latch)
+	{
+	  perf_holder_latch = PERF_HOLDER_LATCH_MIXED;
+	}
+      else if (holder_perf_stat.hold_has_read_latch)
+	{
+	  perf_holder_latch = PERF_HOLDER_LATCH_READ;
+	}
+      else
+	{
+	  assert (holder_perf_stat.hold_has_write_latch);
+	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
+	}
+      mnt_pbx_unfix (thread_p, perf_page_type,
+		     holder_perf_stat.dirty_before_hold,
+		     holder_perf_stat.dirtied_by_holder, perf_holder_latch);
+    }
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
@@ -9502,7 +9537,7 @@ pgbuf_compare_fixed_source_for_sort (const void *fix_source1,
 static void
 pgbuf_add_fixed_source_stat (THREAD_ENTRY * thread_p, const char *caller_file,
 			     const int caller_line,
-			     PERF_PAGE_MODE stat_page_found, PAGE_PTR pgptr)
+			     PERF_PAGE_MODE perf_page_found, PAGE_PTR pgptr)
 {
   char buf[PGBUF_MAX_FIXED_SOURCE_LEN];
   const char *p;
@@ -9545,7 +9580,7 @@ pgbuf_add_fixed_source_stat (THREAD_ENTRY * thread_p, const char *caller_file,
     }
 
   snprintf (buf, sizeof (buf) - 1, "%s:%d:%d:%d", p, caller_line, tran_index,
-	    stat_page_found);
+	    perf_page_found);
 
   pthread_mutex_lock (&ps_info.page_fixed_sources_mutex);
   count_fixed_source = mht_get (ps_info.ht_page_fixed_sources, buf);

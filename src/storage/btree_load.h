@@ -295,4 +295,8 @@ extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid,
 
 extern void btree_dump_key (FILE * fp, DB_VALUE * key);
 
+#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
+extern int btree_get_perf_btree_page_type (PAGE_PTR page_ptr);
+#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
+
 #endif /* _BTREE_LOAD_H_ */

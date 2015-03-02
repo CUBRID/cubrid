@@ -177,6 +177,7 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, lk_num_re_requested_on_objects);        \
     DIFF_METHOD (RES, NEW, OLD, lk_num_waited_on_pages);                \
     DIFF_METHOD (RES, NEW, OLD, lk_num_waited_on_objects);              \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_waited_time_on_objects);         \
                                                                         \
     DIFF_METHOD (RES, NEW, OLD, tran_num_commits);                      \
     DIFF_METHOD (RES, NEW, OLD, tran_num_rollbacks);                    \
@@ -261,6 +262,10 @@ static int rv;
 			 PERF_PAGE_HOLD_TIME_COUNTERS);			\
     DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_fix_time_counters,		\
 			 PERF_PAGE_FIX_TIME_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, mvcc_snapshot_counters,		\
+			 PERF_MVCC_SNAPSHOT_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, obj_lock_time_counters,		\
+			 PERF_OBJ_LOCK_STAT_COUNTERS);			\
 } while (0)
 
 
@@ -276,6 +281,15 @@ static const char *perf_stat_page_mode_name (const int page_mode);
 static const char *perf_stat_holder_latch_name (const int holder_latch);
 static const char *perf_stat_cond_type_name (const int cond_type);
 static const char *perf_stat_promote_cond_name (const int cond_type);
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+static const char *perf_stat_snapshot_name (const int snapshot);
+static const char *perf_stat_snapshot_record_type (const int rec_type);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+static const char *perf_stat_lock_mode_name (const int lock_mode);
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+
+
 static void perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
 						char *s,
 						int *remaining_size,
@@ -309,6 +323,21 @@ static void perf_stat_dump_page_fix_time_array_stat (const UINT64 * stats_ptr,
 						     FILE * stream,
 						     bool
 						     print_zero_counters);
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+static void perf_stat_dump_mvcc_snapshot_array_stat (const UINT64 * stats_ptr,
+						     char *s,
+						     int *remaining_size,
+						     FILE * stream,
+						     bool
+						     print_zero_counters);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+static void perf_stat_dump_obj_lock_array_stat (const UINT64 * stats_ptr,
+						char *s,
+						int *remaining_size,
+						FILE * stream,
+						bool print_zero_counters);
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool mnt_Iscollecting_stats = false;
@@ -1686,6 +1715,7 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_object_locks_re-requested",
   "Num_page_locks_waits",
   "Num_object_locks_waits",
+  "Num_object_locks_time_waited_usec",
   "Num_tran_commits",
   "Num_tran_rollbacks",
   "Num_tran_savepoints",
@@ -1764,7 +1794,9 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_data_page_unfix_ext",
   "Time_data_page_lock_acquire_time",
   "Time_data_page_hold_acquire_time",
-  "Time_data_page_fix_acquire_time"
+  "Time_data_page_fix_acquire_time",
+  "Num_mvcc_snapshot_ext",
+  "Time_obj_lock_acquire_time"
 };
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -2722,6 +2754,38 @@ mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p)
     }
 }
 
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+/*
+ * mnt_x_lk_waited_time_on_objects - Increase lock time wait counter of
+ *                              the current transaction index
+ *   return: none
+ */
+void
+mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode,
+				 UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, lk_num_waited_time_on_objects, amount);
+
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+      assert (lock_mode >= NA_LOCK && lock_mode <= SCH_M_LOCK);
+
+      offset = PERF_OBJ_LOCK_STAT_OFFSET (module, lock_mode);
+      assert (offset < PERF_OBJ_LOCK_STAT_COUNTERS);
+
+      ADD_STATS_IN_ARRAY (stats, obj_lock_time_counters, offset, amount);
+    }
+}
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+
 /*
  * mnt_x_tran_commits - Increase tran_num_commits counter of the current
  *                      transaction index
@@ -3669,7 +3733,7 @@ mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode,
       module = perf_get_module_type (thread_p);
 
       assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
       assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT
 	      && page_found_mode < PERF_PAGE_MODE_CNT);
       assert (latch_mode >= PERF_HOLDER_LATCH_READ
@@ -3704,7 +3768,7 @@ mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type,
       module = perf_get_module_type (thread_p);
 
       assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
       assert (promote_cond >= PERF_PROMOTE_SINGLE_READER
 	      && promote_cond < PERF_PROMOTE_CONDITION_CNT);
       assert (holder_latch >= PERF_HOLDER_LATCH_READ
@@ -3739,7 +3803,7 @@ mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty,
       module = perf_get_module_type (thread_p);
 
       assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_type > PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
       assert (buf_dirty == 0 || buf_dirty == 1);
       assert (dirtied_by_holder == 0 || dirtied_by_holder == 1);
       assert (holder_latch >= PERF_HOLDER_LATCH_READ
@@ -3748,8 +3812,6 @@ mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty,
       offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty,
 					    dirtied_by_holder, holder_latch);
       assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-
-      assert (page_type != PAGE_UNKNOWN);
 
       ADD_STATS_IN_ARRAY (stats, pbx_unfix_counters, offset, 1);
     }
@@ -3774,7 +3836,7 @@ mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type,
       module = perf_get_module_type (thread_p);
 
       assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
       assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT
 	      && page_found_mode < PERF_PAGE_MODE_CNT);
       assert (latch_mode >= PERF_HOLDER_LATCH_READ
@@ -3810,7 +3872,7 @@ mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type,
       module = perf_get_module_type (thread_p);
 
       assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
       assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT
 	      && page_found_mode < PERF_PAGE_MODE_CNT);
       assert (latch_mode >= PERF_HOLDER_LATCH_READ
@@ -3844,7 +3906,7 @@ mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type,
       module = perf_get_module_type (thread_p);
 
       assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PAGE_UNKNOWN && page_type <= PAGE_LAST);
+      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
       assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT
 	      && page_found_mode < PERF_PAGE_MODE_CNT);
       assert (latch_mode >= PERF_HOLDER_LATCH_READ
@@ -3860,6 +3922,35 @@ mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type,
       ADD_STATS_IN_ARRAY (stats, pbx_fix_time_counters, offset, amount);
     }
 }
+
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+/*
+ *   mnt_x_mvcc_snapshot - 
+ *   return: none
+ */
+void
+mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type,
+		     int visibility)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      assert (snapshot >= PERF_SNAPSHOT_SATISFIES_DELETE
+	      && snapshot < PERF_SNAPSHOT_CNT);
+      assert (rec_type >= PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED
+	      && rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT);
+      assert (visibility >= PERF_SNAPSHOT_INVISIBLE
+	      && visibility < PERF_SNAPSHOT_VISIBILITY_CNT);
+      offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
+      assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
+
+      ADD_STATS_IN_ARRAY (stats, mvcc_snapshot_counters, offset, 1);
+    }
+}
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 #endif /* SERVER_MODE || SA_MODE */
 
 
@@ -4034,6 +4125,18 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
 						  p, &remained_size, NULL,
 						  false);
 	  break;
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	case MNT_SERVER_MVCC_SNAPSHOT_STAT_POSITION:
+	  perf_stat_dump_mvcc_snapshot_array_stat
+	    (stats->mvcc_snapshot_counters, p, &remained_size, NULL, false);
+	  break;
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+	case MNT_SERVER_OBJ_LOCK_STAT_POSITION:
+	  perf_stat_dump_obj_lock_array_stat
+	    (stats->obj_lock_time_counters, p, &remained_size, NULL, false);
+	  break;
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 	default:
 	  break;
 	}
@@ -4149,6 +4252,18 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream,
 						  pbx_promote_time_counters,
 						  NULL, NULL, stream, false);
 	  break;
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	case MNT_SERVER_MVCC_SNAPSHOT_STAT_POSITION:
+	  perf_stat_dump_mvcc_snapshot_array_stat
+	    (stats->mvcc_snapshot_counters, NULL, NULL, stream, false);
+	  break;
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+	case MNT_SERVER_OBJ_LOCK_STAT_POSITION:
+	  perf_stat_dump_obj_lock_array_stat
+	    (stats->obj_lock_time_counters, NULL, NULL, stream, false);
+	  break;
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 	default:
 	  break;
 	}
@@ -4222,7 +4337,8 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
+	   page_type++)
 	{
 	  for (buf_dirty = 0; buf_dirty <= 1; buf_dirty++)
 	    {
@@ -4256,7 +4372,8 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
+	   page_type++)
 	{
 	  for (page_found_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	       page_found_mode < PERF_PAGE_MODE_CNT; page_found_mode++)
@@ -4364,7 +4481,8 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
+	   page_type++)
 	{
 	  for (promote_cond = PERF_PROMOTE_SINGLE_READER;
 	       promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
@@ -4480,36 +4598,46 @@ perf_stat_page_type_name (const int page_type)
 {
   switch (page_type)
     {
-    case PAGE_UNKNOWN:
+    case PERF_PAGE_UNKNOWN:
       return "PAGE_UNKNOWN";
-    case PAGE_FTAB:
+    case PERF_PAGE_FTAB:
       return "PAGE_FTAB";
-    case PAGE_HEAP:
+    case PERF_PAGE_HEAP:
       return "PAGE_HEAP";
-    case PAGE_VOLHEADER:
+    case PERF_PAGE_VOLHEADER:
       return "PAGE_VOLHEADER";
-    case PAGE_VOLBITMAP:
+    case PERF_PAGE_VOLBITMAP:
       return "PAGE_VOLBITMAP";
-    case PAGE_XASL:
+    case PERF_PAGE_XASL:
       return "PAGE_XASL";
-    case PAGE_QRESULT:
+    case PERF_PAGE_QRESULT:
       return "PAGE_QRESULT";
-    case PAGE_EHASH:
+    case PERF_PAGE_EHASH:
       return "PAGE_EHASH";
-    case PAGE_LARGEOBJ:
+    case PERF_PAGE_LARGEOBJ:
       return "PAGE_LARGEOBJ";
-    case PAGE_OVERFLOW:
+    case PERF_PAGE_OVERFLOW:
       return "PAGE_OVERFLOW";
-    case PAGE_AREA:
+    case PERF_PAGE_AREA:
       return "PAGE_AREA";
-    case PAGE_CATALOG:
+    case PERF_PAGE_CATALOG:
       return "PAGE_CATALOG";
-    case PAGE_BTREE:
+    case PERF_PAGE_BTREE_GENERIC:
       return "PAGE_BTREE";
-    case PAGE_LOG:
+    case PERF_PAGE_LOG:
       return "PAGE_LOG";
-    case PAGE_DROPPED_FILES:
+    case PERF_PAGE_DROPPED_FILES:
       return "PAGE_DROPPED";
+#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
+    case PERF_PAGE_BTREE_ROOT:
+      return "PAGE_BTREE_R";
+    case PERF_PAGE_BTREE_OVF:
+      return "PAGE_BTREE_O";
+    case PERF_PAGE_BTREE_LEAF:
+      return "PAGE_BTREE_L";
+    case PERF_PAGE_BTREE_NONLEAF:
+      return "PAGE_BTREE_N";
+#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
     default:
       break;
     }
@@ -4580,6 +4708,103 @@ perf_stat_cond_type_name (const int cond_type)
   return "ERROR";
 }
 
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+/*
+ * perf_stat_snapshot_name () -
+ */
+static const char *
+perf_stat_snapshot_name (const int snapshot)
+{
+  switch (snapshot)
+    {
+    case PERF_SNAPSHOT_SATISFIES_DELETE:
+      return "DELETE";
+    case PERF_SNAPSHOT_SATISFIES_DIRTY:
+      return "DIRTY";
+    case PERF_SNAPSHOT_SATISFIES_SNAPSHOT:
+      return "SNAPSHOT";
+    case PERF_SNAPSHOT_SATISFIES_VACUUM:
+      return "VACUUM";
+    default:
+      break;
+    }
+  return "ERROR";
+}
+
+/*
+ * perf_stat_snapshot_record_type () -
+ */
+static const char *
+perf_stat_snapshot_record_type (const int rec_type)
+{
+  switch (rec_type)
+    {
+    case PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED:
+      return "INS_VACUUMED";
+    case PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN:
+      return "INS_CURR";
+    case PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN:
+      return "INS_OTHER";
+    case PERF_SNAPSHOT_RECORD_INSERTED_COMMITED:
+      return "INS_COMMITTED";
+    case PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST:
+      return "INS_COMMITTED_L";
+    case PERF_SNAPSHOT_RECORD_INSERTED_DELETED:
+      return "INS_DELETED";
+    case PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN:
+      return "DELETED_CURR";
+    case PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN:
+      return "DELETED_OTHER";
+    case PERF_SNAPSHOT_RECORD_DELETED_COMMITTED:
+      return "DELETED_COMMITED";
+    case PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST:
+      return "DELETED_COMMITED_L";
+    default:
+      break;
+    }
+  return "ERROR";
+}
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+static const char *
+perf_stat_lock_mode_name (const int lock_mode)
+{
+  switch (lock_mode)
+    {
+    case NA_LOCK:
+      return "NA_LOCK";
+    case INCON_NON_TWO_PHASE_LOCK:
+      return "INCON_2PL";
+    case NULL_LOCK:
+      return "NULL_LOCK";
+    case SCH_S_LOCK:
+      return "SCH_S_LOCK";
+    case IS_LOCK:
+      return "IS_LOCK";
+    case S_LOCK:
+      return "S_LOCK";
+    case IX_LOCK:
+      return "IX_LOCK";
+    case SIX_LOCK:
+      return "SIX_LOCK";
+    case U_LOCK:
+      return "U_LOCK";
+    case X_LOCK:
+      return "X_LOCK";
+    case NS_LOCK:
+      return "NS_LOCK";
+    case NX_LOCK:
+      return "NX_LOCK";
+    case SCH_M_LOCK:
+      return "SCH_M_LOCK";
+    default:
+      break;
+    }
+  return "ERROR";
+}
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+
 /*
  * perf_stat_cond_type_name () -
  */
@@ -4624,7 +4849,8 @@ perf_stat_dump_fix_page_array_stat (const UINT64 * stats_ptr,
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
+	   page_type++)
 	{
 	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	       page_mode < PERF_PAGE_MODE_CNT; page_mode++)
@@ -4714,7 +4940,8 @@ perf_stat_dump_promote_page_array_stat (const UINT64 * stats_ptr,
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
+	   page_type++)
 	{
 	  for (promote_cond = PERF_PROMOTE_SINGLE_READER;
 	       promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
@@ -4803,7 +5030,8 @@ perf_stat_dump_unfix_page_array_stat (const UINT64 * stats_ptr,
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
+	   page_type++)
 	{
 	  for (buf_dirty = 0; buf_dirty <= 1; buf_dirty++)
 	    {
@@ -4894,7 +5122,8 @@ perf_stat_dump_page_lock_time_array_stat (const UINT64 * stats_ptr,
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
+	   page_type++)
 	{
 	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	       page_mode < PERF_PAGE_MODE_CNT; page_mode++)
@@ -4983,7 +5212,8 @@ perf_stat_dump_page_hold_time_array_stat (const UINT64 * stats_ptr,
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
-      for (page_type = PAGE_UNKNOWN; page_type <= PAGE_LAST; page_type++)
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
+	   page_type++)
 	{
 	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	       page_mode < PERF_PAGE_MODE_CNT; page_mode++)
@@ -5057,3 +5287,145 @@ perf_stat_dump_page_fix_time_array_stat (const UINT64 * stats_ptr,
   perf_stat_dump_page_lock_time_array_stat (stats_ptr, s, remaining_size,
 					    stream, print_zero_counters);
 }
+
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+/*
+ * perf_stat_dump_mvcc_snapshot_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
+static void
+perf_stat_dump_mvcc_snapshot_array_stat (const UINT64 * stats_ptr,
+					 char *s, int *remaining_size,
+					 FILE * stream,
+					 bool print_zero_counters)
+{
+  PERF_SNAPSHOT_TYPE snapshot;
+  PERF_SNAPSHOT_RECORD_TYPE rec_type;
+  PERF_SNAPSHOT_VISIBILITY visibility;
+  int offset;
+  const UINT64 *counter;
+  int ret;
+
+  for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE;
+       snapshot < PERF_SNAPSHOT_CNT; snapshot++)
+    {
+      for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+	   rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+	{
+	  for (visibility = PERF_SNAPSHOT_INVISIBLE;
+	       visibility < PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+	    {
+	      offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type,
+						  visibility);
+
+	      assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
+	      counter = stats_ptr + offset;
+	      if (*counter == 0 && print_zero_counters == false)
+		{
+		  continue;
+		}
+
+	      if (s != NULL)
+		{
+		  assert (remaining_size != NULL);
+
+		  ret = snprintf (s, *remaining_size,
+				  "%-8s,%-18s,%-9s = %16llu\n",
+				  perf_stat_snapshot_name (snapshot),
+				  perf_stat_snapshot_record_type (rec_type),
+				  (visibility == PERF_SNAPSHOT_INVISIBLE) ?
+				  "INVISIBLE" : "VISIBLE",
+				  (long long unsigned int) *counter);
+		  *remaining_size -= ret;
+		  if (*remaining_size <= 0)
+		    {
+		      return;
+		    }
+		}
+	      else
+		{
+		  assert (stream != NULL);
+
+		  fprintf (stream, "%-8s,%-18s,%-9s = %16llu\n",
+			   perf_stat_snapshot_name (snapshot),
+			   perf_stat_snapshot_record_type (rec_type),
+			   (visibility == PERF_SNAPSHOT_INVISIBLE) ?
+			   "INVISIBLE" : "VISIBLE",
+			   (long long unsigned int) *counter);
+		}
+	    }
+	}
+    }
+}
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+
+
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+/*
+ * perf_stat_dump_obj_lock_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
+static void
+perf_stat_dump_obj_lock_array_stat (const UINT64 * stats_ptr, char *s,
+				    int *remaining_size, FILE * stream,
+				    bool print_zero_counters)
+{
+  int module;
+  int lock_mode;
+  int offset;
+  const UINT64 *counter;
+  int ret;
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
+	{
+	  offset = PERF_OBJ_LOCK_STAT_OFFSET (module, lock_mode);
+
+	  assert (offset < PERF_OBJ_LOCK_STAT_COUNTERS);
+	  counter = stats_ptr + offset;
+	  if (*counter == 0 && print_zero_counters == false)
+	    {
+	      continue;
+	    }
+
+	  if (s != NULL)
+	    {
+	      assert (remaining_size != NULL);
+
+	      ret = snprintf (s, *remaining_size,
+			      "%-6s,%-10s = %16llu\n",
+			      perf_stat_module_name (module),
+			      perf_stat_lock_mode_name (lock_mode),
+			      (long long unsigned int) *counter);
+	      *remaining_size -= ret;
+	      if (*remaining_size <= 0)
+		{
+		  return;
+		}
+	    }
+	  else
+	    {
+	      assert (stream != NULL);
+
+	      fprintf (stream, "%-6s,%-10s = %16llu\n",
+		       perf_stat_module_name (module),
+		       perf_stat_lock_mode_name (lock_mode),
+		       (long long unsigned int) *counter);
+	    }
+	}
+    }
+}
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */

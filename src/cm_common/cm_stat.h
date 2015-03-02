@@ -294,6 +294,7 @@ extern "C"
     unsigned int lk_num_re_requested_on_objects;
     unsigned int lk_num_waited_on_pages;
     unsigned int lk_num_waited_on_objects;
+    unsigned int lk_num_waited_time_on_objects;
 
     /* Execution statistics for transactions */
     unsigned int tran_num_commits;

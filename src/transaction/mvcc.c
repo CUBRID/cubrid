@@ -28,6 +28,7 @@
 #include "heap_file.h"
 #include "page_buffer.h"
 #include "overflow_file.h"
+#include "perf_monitor.h"
 #include "vacuum.h"
 
 #define MVCC_IS_REC_INSERTER_ACTIVE(thread_p, rec_header_p) \
@@ -126,11 +127,21 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
 	{
 	  /* Record was inserted and is visible for all transactions */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+			     PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
       else if (MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record was inserted by current transaction and is visible */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+			     PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
       else if (MVCC_IS_REC_INSERTER_IN_SNAPSHOT (thread_p, rec_header,
@@ -139,6 +150,11 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
 	  /* Record was inserted by an active transaction or by a transaction
 	   * that has committed after snapshot was obtained.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+			     PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return false;
 	}
       else
@@ -146,6 +162,21 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
 	  /* The inserter transaction has committed and the record is visible
 	   * to current transaction.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE
+	      && vacuum_is_record_lost (rec_header->mvcc_ins_id))
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
+				 PERF_SNAPSHOT_VISIBLE);
+	    }
+	  else
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
+				 PERF_SNAPSHOT_VISIBLE);
+	    }
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
     }
@@ -154,6 +185,11 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
       /* The record is deleted */
       if (MVCC_IS_REC_INSERTER_IN_SNAPSHOT (thread_p, rec_header, snapshot))
 	{
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+			     PERF_SNAPSHOT_RECORD_INSERTED_DELETED,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return false;
 	}
       else if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
@@ -161,6 +197,11 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
 	  /* The record was deleted by current transaction and it is not
 	   * visible anymore.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+			     PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return false;
 	}
       else if (MVCC_IS_REC_DELETER_IN_SNAPSHOT (thread_p, rec_header,
@@ -169,6 +210,11 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
 	  /* The record was deleted by an active transaction or by a
 	   * transaction that has committed after snapshot was obtained.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+			     PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
       else
@@ -176,6 +222,20 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
 	  /* The deleter transaction has committed and the record is not
 	   * visible to current transaction.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  if (vacuum_is_record_lost (rec_header->delid_chn.mvcc_del_id))
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+	  else
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return false;
 	}
     }
@@ -204,6 +264,20 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 	   * 2: Record was recently inserted and is not yet visible to all
 	   *    active transactions.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
+				 PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+	  else
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
+				 PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return VACUUM_RECORD_CANNOT_VACUUM;
 	}
       else
@@ -211,6 +285,11 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 	  /* The inserter transaction has committed and the record is visible
 	   * to all running transactions. Insert MVCCID can be removed.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
+			     PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return VACUUM_RECORD_DELETE_INSID;
 	}
     }
@@ -222,6 +301,11 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 	  /* Record was recently deleted and may still be visible to some
 	   * active transactions.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
+			     PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return VACUUM_RECORD_CANNOT_VACUUM;
 	}
       else
@@ -229,6 +313,11 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 	  /* The deleter transaction has committed and the record is not
 	   * visible to any running transactions.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
+			     PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return VACUUM_RECORD_REMOVE;
 	}
     }
@@ -257,6 +346,11 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
 	{
 	  /* Record was inserted and is visible for all transactions */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+			     PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_CAN_DELETE;
 	}
 
@@ -265,6 +359,11 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	  /* Record is only visible to current transaction and can be safely
 	   * deleted.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+			     PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_CAN_DELETE;
 	}
       else if (MVCC_IS_REC_INSERTER_ACTIVE (thread_p, rec_header))
@@ -272,6 +371,11 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	  /* Record is inserted by an active transaction and is not visible to
 	   * current transaction.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+			     PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_INVISIBLE;
 	}
       else
@@ -279,6 +383,21 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	  /* The inserter transaction has committed and the record can be
 	   * deleted by current transaction.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE
+	      && vacuum_is_record_lost (rec_header->mvcc_ins_id))
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
+				 PERF_SNAPSHOT_VISIBLE);
+	    }
+	  else
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
+				 PERF_SNAPSHOT_VISIBLE);
+	    }
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_CAN_DELETE;
 	}
     }
@@ -288,6 +407,11 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record was already deleted by me... */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+			     PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_SELF_DELETED;
 	}
       else if (MVCC_IS_REC_DELETER_ACTIVE (thread_p, rec_header))
@@ -295,6 +419,11 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	  /* Record was deleted by an active transaction. Current transaction
 	   * must wait until the deleter completes.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+			     PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_IN_PROGRESS;
 	}
       else
@@ -302,6 +431,20 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	  /* Record was already deleted and the deleter has committed. Cannot
 	   * be updated by current transaction.
 	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  if (vacuum_is_record_lost (rec_header->delid_chn.mvcc_del_id))
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+	  else
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
+				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_DELETED;
 	}
     }
@@ -339,22 +482,52 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
 	{
 	  /* Record was inserted and is visible for all transactions */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+			     PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
       else if (MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record was inserted by current transaction and is visible */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+			     PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
       else if (MVCC_IS_REC_INSERTER_ACTIVE (thread_p, rec_header))
 	{
 	  /* Record is inserted by an active transaction and is visible */
 	  snapshot->lowest_active_mvccid = MVCC_GET_INSID (rec_header);
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+			     PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
       else
 	{
 	  /* Record is inserted by committed transaction. */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE
+	      && vacuum_is_record_lost (rec_header->mvcc_ins_id))
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
+				 PERF_SNAPSHOT_VISIBLE);
+	    }
+	  else
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
+				 PERF_SNAPSHOT_VISIBLE);
+	    }
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
     }
@@ -364,6 +537,11 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
       if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record was deleted by current transaction and is not visible */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+			     PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return false;
 	}
       else if (MVCC_IS_REC_DELETER_ACTIVE (thread_p, rec_header))
@@ -372,11 +550,30 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
 	   */
 	  snapshot->highest_completed_mvccid =
 	    rec_header->delid_chn.mvcc_del_id;
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+			     PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+			     PERF_SNAPSHOT_VISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return true;
 	}
       else
 	{
 	  /* Record was already deleted and the deleter has committed. */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  if (vacuum_is_record_lost (rec_header->delid_chn.mvcc_del_id))
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+	  else
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
+				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return false;
 	}
     }

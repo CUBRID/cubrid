@@ -1150,6 +1150,8 @@ static STATDUMP_PROP statdump_offset[] = {
    offsetof (T_CM_DB_EXEC_STAT, lk_num_waited_on_pages)},
   {"Num_object_locks_waits",
    offsetof (T_CM_DB_EXEC_STAT, lk_num_waited_on_objects)},
+  {"Num_object_locks_time_waited_usec",
+   offsetof (T_CM_DB_EXEC_STAT, lk_num_waited_time_on_objects)},
   {"Num_tran_commits", offsetof (T_CM_DB_EXEC_STAT, tran_num_commits)},
   {"Num_tran_rollbacks", offsetof (T_CM_DB_EXEC_STAT, tran_num_rollbacks)},
   {"Num_tran_savepoints", offsetof (T_CM_DB_EXEC_STAT, tran_num_savepoints)},

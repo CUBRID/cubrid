@@ -360,5 +360,5 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY *
 							  rec_header,
 							  int
 							  btree_node_type);
-
+extern bool vacuum_is_record_lost (MVCCID id);
 #endif /* _VACUUM_H_ */

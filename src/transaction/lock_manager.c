@@ -3583,6 +3583,12 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index,
   LK_TRAN_LOCK *tran_lock;
   bool is_instant_duration;
   int compat1, compat2;
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+  bool is_perf_tracking;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 lock_wait_time;
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   assert (!OID_ISNULL (oid));
   assert (class_oid == NULL || !OID_ISNULL (class_oid));
@@ -3597,6 +3603,10 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index,
     }
 
   thrd_entry = thread_p;
+
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   new_mode = group_mode = old_mode = NULL_LOCK;
 #if defined(LK_DUMP)
@@ -4250,6 +4260,13 @@ start:
 
 blocked:
 
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+
   /* LK_CANWAIT(wait_msecs) : wait_msecs > 0 */
   mnt_lk_waited_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
@@ -4259,6 +4276,15 @@ blocked:
   (void) thread_lock_entry (entry_ptr->thrd_entry);
   pthread_mutex_unlock (&res_ptr->res_mutex);
   ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      mnt_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
+    }
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
   if (ret_val != LOCK_RESUMED)
     {
       /* Following three cases are possible.
@@ -11140,6 +11166,12 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY *
   LK_TRAN_LOCK *tran_lock;
   bool is_instant_duration;
   int compat1, compat2;
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+  bool is_perf_tracking;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 lock_wait_time;
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   assert (!OID_ISNULL (oid));
   assert (class_oid == NULL || !OID_ISNULL (class_oid));
@@ -11149,6 +11181,10 @@ lock_internal_lock_object_get_prev_total_hold_mode (THREAD_ENTRY *
     {
       thread_p = thread_get_thread_entry_info ();
     }
+
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   thrd_entry = thread_p;
 
@@ -11760,6 +11796,12 @@ start:
   lock_position_holder_entry (res_ptr, entry_ptr);
 
 blocked:
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   /* LK_CANWAIT(wait_msecs) : wait_msecs > 0 */
   mnt_lk_waited_on_objects (thread_p);
@@ -11770,6 +11812,16 @@ blocked:
   (void) thread_lock_entry (entry_ptr->thrd_entry);
   pthread_mutex_unlock (&res_ptr->res_mutex);
   ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
+#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      mnt_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
+    }
+#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+
   if (ret_val != LOCK_RESUMED)
     {
       /* Following three cases are possible.

@@ -51,30 +51,47 @@
 #define MAX_SERVER_NAMELENGTH           256
 #define SH_MODE 0644
 
-/* PERF_MODULE_TYPE x PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE * COND_FIX_TYPE */
+/*
+ * Enable these macros to add extended statistics information in statdump.
+ * Some overhead is added, do not activate for production environment.
+ * - PERF_ENABLE_DETAILED_BTREE_PAGE_STAT : 
+ *    index pages are detailed by root, leaf, non-leaf 
+ * - PERF_ENABLE_MVCC_SNAPSHOT_STAT
+ *    partitioned information per snapshot function
+ * - PERF_ENABLE_LOCK_OBJECT_STAT
+ *    partitioned information per type of lock
+ */
+
+#if 0
+#define PERF_ENABLE_DETAILED_BTREE_PAGE_STAT
+#define PERF_ENABLE_MVCC_SNAPSHOT_STAT
+#define PERF_ENABLE_LOCK_OBJECT_STAT
+#endif
+
+/* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
-  ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) \
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
    * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
 
 #define PERF_PAGE_PROMOTE_COUNTERS \
-  ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * (PERF_PROMOTE_CONDITION_CNT) \
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
   * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
 
 /* PERF_MODULE_TYPE x PAGE_TYPE x DIRTY_OR_CLEAN x DIRTY_OR_CLEAN x READ_OR_WRITE_OR_MIX */
 #define PERF_PAGE_UNFIX_COUNTERS \
-  ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * 2 * 2 * (PERF_HOLDER_LATCH_CNT))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT))
 
 #define PERF_PAGE_LOCK_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
 #define PERF_PAGE_HOLD_TIME_COUNTERS \
-    ((PERF_MODULE_CNT) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) \
+    ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
    * (PERF_HOLDER_LATCH_CNT))
 
 #define PERF_PAGE_FIX_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
 #define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
 				  cond_type) \
-  ((module) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
     * (PERF_CONDITIONAL_FIX_CNT) \
     + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
        * (PERF_CONDITIONAL_FIX_CNT) \
@@ -83,7 +100,7 @@
 
 #define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond, \
 				      holder_latch,success) \
-  ((module) * (PAGE_LAST + 1) * (PERF_PROMOTE_CONDITION_CNT) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
     * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
     + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) \
     * 2 /* success */ \
@@ -93,7 +110,7 @@
 
 #define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,\
 				    dirtied_by_holder,holder_latch) \
-  ((module) * (PAGE_LAST + 1) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
+  ((module) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
    (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
    (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) + \
    (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) + (holder_latch))
@@ -104,7 +121,7 @@
 				  cond_type)
 
 #define PERF_PAGE_HOLD_TIME_OFFSET(module,page_type,page_found_mode,latch_mode)\
-  ((module) * (PAGE_LAST + 1) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
     + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
     + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) \
     + (latch_mode))
@@ -113,6 +130,19 @@
 				  cond_type) \
 	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
 				  cond_type)
+
+#define PERF_MVCC_SNAPSHOT_COUNTERS \
+  (PERF_SNAPSHOT_CNT * PERF_SNAPSHOT_RECORD_TYPE_CNT \
+   * PERF_SNAPSHOT_VISIBILITY_CNT)
+
+#define PERF_MVCC_SNAPSHOT_OFFSET(snapshot,rec_type,visibility) \
+  ((snapshot) * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT \
+   + (rec_type) * PERF_SNAPSHOT_VISIBILITY_CNT + (visibility))
+
+#define PERF_OBJ_LOCK_STAT_OFFSET(module,lock_mode) \
+  ((module) * (SCH_M_LOCK + 1) + (lock_mode))
+
+#define PERF_OBJ_LOCK_STAT_COUNTERS (PERF_MODULE_CNT * (SCH_M_LOCK + 1))
 
 typedef enum
 {
@@ -160,6 +190,68 @@ typedef enum
   PERF_PAGE_MODE_CNT
 } PERF_PAGE_MODE;
 
+/* extension of PAGE_TYPE (storage_common.h) - keep value compatibility */
+typedef enum
+{
+  PERF_PAGE_UNKNOWN = 0,	/* used for initialized page            */
+  PERF_PAGE_FTAB,		/* file allocset table page             */
+  PERF_PAGE_HEAP,		/* heap page                            */
+  PERF_PAGE_VOLHEADER,		/* volume header page                   */
+  PERF_PAGE_VOLBITMAP,		/* volume bitmap page                   */
+  PERF_PAGE_XASL,		/* xasl stream page                     */
+  PERF_PAGE_QRESULT,		/* query result page                    */
+  PERF_PAGE_EHASH,		/* ehash bucket/dir page                */
+  PERF_PAGE_LARGEOBJ,		/* large object/dir page                */
+  PERF_PAGE_OVERFLOW,		/* overflow page (with ovf_keyval)      */
+  PERF_PAGE_AREA,		/* area page                            */
+  PERF_PAGE_CATALOG,		/* catalog page                         */
+  PERF_PAGE_BTREE_GENERIC,	/* b+tree index (uninitialized)         */
+  PERF_PAGE_LOG,		/* NONE - log page (unused)             */
+  PERF_PAGE_DROPPED_FILES,	/* Dropped files page.                  */
+#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
+  PERF_PAGE_BTREE_ROOT,		/* b+tree root index page               */
+  PERF_PAGE_BTREE_OVF,		/* b+tree overflow index page           */
+  PERF_PAGE_BTREE_LEAF,		/* b+tree leaf index page               */
+  PERF_PAGE_BTREE_NONLEAF,	/* b+tree nonleaf index page            */
+#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
+  PERF_PAGE_CNT
+} PERF_PAGE_TYPE;
+
+typedef enum
+{
+  PERF_SNAPSHOT_SATISFIES_DELETE = 0,
+  PERF_SNAPSHOT_SATISFIES_DIRTY,
+  PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+  PERF_SNAPSHOT_SATISFIES_VACUUM,
+
+  PERF_SNAPSHOT_CNT
+} PERF_SNAPSHOT_TYPE;
+
+typedef enum
+{
+  PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED = 0,	/* already vacuumed */
+  PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,	/* needs commit and vacuum */
+  PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,	/* needs commit and vacuum */
+  PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,	/* commited, needs vacuum */
+  PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,	/* commited, unvacuumed/lost */
+
+  PERF_SNAPSHOT_RECORD_INSERTED_DELETED,	/* inserted, than deleted */
+
+  PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,	/* deleted by current tran */
+  PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,	/* deleted by other active tran */
+  PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,	/* deleted, and committed */
+  PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,	/* deleted, and committed, unvacuumed/lost */
+
+  PERF_SNAPSHOT_RECORD_TYPE_CNT
+} PERF_SNAPSHOT_RECORD_TYPE;
+
+typedef enum
+{
+  PERF_SNAPSHOT_INVISIBLE = 0,
+  PERF_SNAPSHOT_VISIBLE,
+
+  PERF_SNAPSHOT_VISIBILITY_CNT
+} PERF_SNAPSHOT_VISIBILITY;
 
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config
@@ -293,6 +385,9 @@ struct mnt_server_exec_stats
   UINT64 lk_num_re_requested_on_objects;
   UINT64 lk_num_waited_on_pages;
   UINT64 lk_num_waited_on_objects;
+  UINT64 lk_num_waited_time_on_objects;	/* include this to avoid client-server
+					 * compat issue even if extended stats
+					 * are disabled */
 
   /* Execution statistics for transactions */
   UINT64 tran_num_commits;
@@ -415,6 +510,8 @@ struct mnt_server_exec_stats
   UINT64 pbx_lock_time_counters[PERF_PAGE_LOCK_TIME_COUNTERS];
   UINT64 pbx_hold_time_counters[PERF_PAGE_HOLD_TIME_COUNTERS];
   UINT64 pbx_fix_time_counters[PERF_PAGE_FIX_TIME_COUNTERS];
+  UINT64 mvcc_snapshot_counters[PERF_MVCC_SNAPSHOT_COUNTERS];
+  UINT64 obj_lock_time_counters[PERF_OBJ_LOCK_STAT_COUNTERS];
 
   /* This must be kept as last member. Otherwise the
    * MNT_SERVER_EXEC_STATS_SIZEOF macro must be modified */
@@ -422,9 +519,11 @@ struct mnt_server_exec_stats
 };
 
 /* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 99
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 100
+
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 7
+#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 9
+
 /* number of computed stats of MNT_SERVER_EXEC_STATS structure */
 #define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 12
 
@@ -439,7 +538,8 @@ struct mnt_server_exec_stats
 (PERF_PAGE_FIX_COUNTERS + PERF_PAGE_PROMOTE_COUNTERS \
  + PERF_PAGE_PROMOTE_COUNTERS + PERF_PAGE_UNFIX_COUNTERS \
  + PERF_PAGE_LOCK_TIME_COUNTERS + PERF_PAGE_HOLD_TIME_COUNTERS \
- + PERF_PAGE_FIX_TIME_COUNTERS)
+ + PERF_PAGE_FIX_TIME_COUNTERS + PERF_MVCC_SNAPSHOT_COUNTERS \
+ + PERF_OBJ_LOCK_STAT_COUNTERS)
 
 #define MNT_SIZE_OF_SERVER_EXEC_STATS \
   (MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
@@ -463,6 +563,10 @@ struct mnt_server_exec_stats
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 5)
 #define MNT_SERVER_PBX_FIX_TIME_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 6)
+#define MNT_SERVER_MVCC_SNAPSHOT_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 7)
+#define MNT_SERVER_OBJ_LOCK_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 8)
 
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
@@ -716,6 +820,10 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_waited_on_pages(thread_p)
 #define mnt_lk_waited_on_objects(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_waited_on_objects(thread_p)
+#define mnt_lk_waited_time_on_objects(thread_p, lock_mode, time_usec) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_waited_time_on_objects(thread_p, \
+								   lock_mode, \
+								   time_usec)
 
 /*
  * Transaction Management level
@@ -887,6 +995,13 @@ extern int mnt_Num_tran_exec_stats;
 							      latch_mode, \
 							      cond_type, \
 							      amount)
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+#define mnt_mvcc_snapshot(thread_p,snapshot,rec_type,visibility) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_mvcc_snapshot(thread_p, \
+						       snapshot, \
+						       rec_type, \
+						       visibility)
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
@@ -927,6 +1042,8 @@ extern void mnt_x_lk_re_requested_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_re_requested_on_objects (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_waited_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p);
+extern void mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p,
+					     int lock_mode, UINT64 amount);
 extern void mnt_x_tran_commits (THREAD_ENTRY * thread_p);
 extern void mnt_x_tran_rollbacks (THREAD_ENTRY * thread_p);
 extern void mnt_x_tran_savepoints (THREAD_ENTRY * thread_p);
@@ -1023,6 +1140,10 @@ extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p,
 					int page_type, int page_found_mode,
 					int latch_mode, int cond_type,
 					UINT64 amount);
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+extern void mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot,
+				 int rec_type, int visibility);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
 #else /* SERVER_MODE || SA_MODE */
 
@@ -1060,6 +1181,7 @@ extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p,
 #define mnt_lk_re_requested_on_objects(thread_p)
 #define mnt_lk_waited_on_pages(thread_p)
 #define mnt_lk_waited_on_objects(thread_p)
+#define mnt_lk_waited_time_on_objects(thread_p, lock_mode, time_usec)
 
 #define mnt_tran_commits(thread_p)
 #define mnt_tran_rollbacks(thread_p)
@@ -1128,6 +1250,9 @@ extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p,
 #define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount)
 #define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
 #define mnt_pbx_fix_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+#define mnt_mvcc_snapshot(thread_p,snapshot,rec_type,visibility)
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
 
 #endif /* CS_MODE */

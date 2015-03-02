@@ -110,6 +110,8 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->lk_num_waited_on_objects));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->lk_num_waited_time_on_objects));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->tran_num_commits));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->tran_num_rollbacks));
@@ -295,6 +297,18 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
       ptr += OR_INT64_SIZE;
     }
 
+  for (i = 0; i < PERF_MVCC_SNAPSHOT_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->mvcc_snapshot_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_OBJ_LOCK_STAT_COUNTERS; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->obj_lock_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
   return (ptr);
 }
 
@@ -376,6 +390,8 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->lk_num_waited_on_pages));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->lk_num_waited_on_objects));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->lk_num_waited_time_on_objects));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->tran_num_commits));
   ptr += OR_INT64_SIZE;
@@ -559,6 +575,18 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   for (i = 0; i < PERF_PAGE_FIX_TIME_COUNTERS; i++)
     {
       OR_GET_INT64 (ptr, &(stats->pbx_fix_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MVCC_SNAPSHOT_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->mvcc_snapshot_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_OBJ_LOCK_STAT_COUNTERS; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->obj_lock_time_counters[i]));
       ptr += OR_INT64_SIZE;
     }
 

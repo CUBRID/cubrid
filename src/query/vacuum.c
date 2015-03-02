@@ -660,7 +660,9 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
 {
   int error_code = NO_ERROR;
   int i;
+#if defined(SERVER_MODE)
   long long unsigned size_vacuum_prefetch_log_buffer;
+#endif /* SERVER_MODE */
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -7306,8 +7308,10 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
 		      BLOCK_LOG_BUFFER * block_log_buffer,
 		      LOG_PAGE * log_page_p)
 {
+#if defined (SERVER_MODE)
   char *buffer_block_start_ptr;
   char *buffer_page_start_ptr;
+#endif /* SERVER_MODE */
   int error = NO_ERROR;
 
   assert (log_page_p != NULL);
@@ -7571,4 +7575,19 @@ vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p,
   assert (!VPID_ISNULL (first_page_vpid));
 
   return vpid;
+}
+
+/*
+ * vacuum_is_record_lost ()
+ *
+ */
+bool
+vacuum_is_record_lost (MVCCID id)
+{
+  if (id < vacuum_Data->oldest_mvccid)
+    {
+      return true;
+    }
+
+  return false;
 }
