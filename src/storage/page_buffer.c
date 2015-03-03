@@ -3618,7 +3618,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 	}
 
 #if defined(SERVER_MODE)
-      if (thread_p->shutdown == true)
+      if (thread_p && thread_p->shutdown == true)
 	{
 	  return ER_FAILED;
 	}
