@@ -779,7 +779,7 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p,
 					   RECDES * record, char *object_ptr,
 					   OID * oid, OID * class_oid,
 					   BTREE_MVCC_INFO * mvcc_info,
-					   char *stop, void *args);
+					   bool * stop, void *args);
 
 /* Type of b-tree scans. */
 /* Covering index. */
@@ -1214,7 +1214,7 @@ __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int
 btree_count_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		  RECDES * record, char *object_ptr, OID * oid,
-		  OID * class_oid, MVCC_REC_HEADER * mvcc_header, char *stop,
+		  OID * class_oid, MVCC_REC_HEADER * mvcc_header, bool * stop,
 		  void *args) __attribute__ ((ALWAYS_INLINE));
 
 static int btree_store_overflow_key (THREAD_ENTRY * thread_p,
@@ -1904,7 +1904,7 @@ static int btree_select_visible_object_for_range_scan (THREAD_ENTRY *
 						       OID * class_oid,
 						       BTREE_MVCC_INFO *
 						       mvcc_info,
-						       char *stop,
+						       bool * stop,
 						       void *args);
 static int btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p,
 						BTREE_SCAN * bts);
@@ -1913,7 +1913,7 @@ static int btree_fk_object_does_exist (THREAD_ENTRY * thread_p,
 				       char *object_ptr, OID * oid,
 				       OID * class_oid,
 				       BTREE_MVCC_INFO * mvcc_info,
-				       char *stop, void *args);
+				       bool * stop, void *args);
 
 static int btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid,
 				  DB_VALUE * key, OID * class_oid, OID * oid,
@@ -23195,12 +23195,14 @@ btree_rv_keyval_dump (FILE * fp, int length, void *data)
   if (mvcc_flags & BTREE_OID_HAS_MVCC_INSID)
     {
       data = or_unpack_mvccid (data, &mvccid);
-      fprintf (fp, " INSERT MVCCID = %llu \n", mvccid);
+      fprintf (fp, " INSERT MVCCID = %llu \n",
+	       (long long unsigned int) mvccid);
     }
   if (mvcc_flags & BTREE_OID_HAS_MVCC_DELID)
     {
       data = or_unpack_mvccid (data, &mvccid);
-      fprintf (fp, " DELETE MVCCID = %llu \n", mvccid);
+      fprintf (fp, " DELETE MVCCID = %llu \n",
+	       (long long unsigned int) mvccid);
     }
 }
 
@@ -29450,6 +29452,10 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       /* Key is no longer in this page. Need to restart. */
       *restart = true;
       return NO_ERROR;
+    default:
+      /* Unexpected. */
+      assert_release (false);
+      return ER_FAILED;
     }
 
   /* Shouldn't be here: Unhandled case. */
@@ -29727,7 +29733,7 @@ btree_record_object_compare (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
 
   /* Object was found. */
-  helper->found_offset = CAST_BUFLEN (object_ptr, record->data);
+  helper->found_offset = CAST_BUFLEN (object_ptr - record->data);
   *stop = true;
   return NO_ERROR;
 }
@@ -30009,7 +30015,7 @@ STATIC_INLINE int
 btree_count_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		  RECDES * record, char *object_ptr, OID * oid,
 		  OID * class_oid, MVCC_REC_HEADER * mvcc_header,
-		  char *stop, void *args)
+		  bool * stop, void *args)
 {
   /* Assert expected arguments. */
   assert (args != NULL);
@@ -31403,7 +31409,7 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p,
 					    char *object_ptr, OID * oid,
 					    OID * class_oid,
 					    BTREE_MVCC_INFO * mvcc_info,
-					    char *stop, void *args)
+					    bool * stop, void *args)
 {
   BTREE_SCAN *bts = NULL;
   int error_code = NO_ERROR;
@@ -31705,7 +31711,7 @@ static int
 btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 			    RECDES * record, char *object_ptr, OID * oid,
 			    OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
-			    char *stop, void *args)
+			    bool * stop, void *args)
 {
   BTREE_SCAN *bts = (BTREE_SCAN *) args;
   BTREE_FIND_FK_OBJECT *find_fk_obj = NULL;
