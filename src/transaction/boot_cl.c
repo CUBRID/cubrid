@@ -217,6 +217,8 @@ static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
 static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL *
 					 client_credential);
 #endif
+static int boot_client_find_and_cache_class_oids (void);
+
 /*
  * boot_client () -
  *
@@ -1309,6 +1311,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       goto error;
     }
+  error_code = boot_client_find_and_cache_class_oids ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   (void) db_find_or_create_session (client_credential->db_user,
 				    client_credential->program_name);
@@ -2112,7 +2119,8 @@ boot_define_attribute (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index_col_names[3] = { "class_of", "attr_name", NULL };
+  const char *index_col_names[4] =
+    { "class_of", "attr_name", "attr_type", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -6082,3 +6090,34 @@ exit:
 #undef CHECKSUM_SIZE
 }
 #endif /* CS_MODE */
+
+/*
+ * boot_client_find_and_cache_class_oids () - Cache class OID's on client for
+ *					      fast class mop identifying.
+ *
+ * return    : Error code.
+ */
+static int
+boot_client_find_and_cache_class_oids (void)
+{
+  MOP class_mop = NULL;
+
+  class_mop = sm_find_class (CT_SERIAL_NAME);
+  if (class_mop == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+  oid_set_cached_class_oid (OID_CACHE_SERIAL_CLASS_ID,
+			    &class_mop->oid_info.oid);
+
+  class_mop = sm_find_class (CT_HA_APPLY_INFO_NAME);
+  if (class_mop == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+  oid_set_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID,
+			    &class_mop->oid_info.oid);
+  return NO_ERROR;
+}

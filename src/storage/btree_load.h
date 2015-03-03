@@ -34,6 +34,7 @@
 #include "oid.h"
 #include "system_parameter.h"
 #include "object_domain.h"
+#include "slotted_page.h"
 
 /*
  * Constants related to b+tree structure
@@ -64,16 +65,22 @@
 #define BTREE_MAX_ALIGN INT_ALIGNMENT
 
 /* Maximum Leaf Node Entry Size */
-#define LEAFENTSZ(n)  (LEAF_RECORD_SIZE + BTREE_MAX_ALIGN \
-                       + OR_OID_SIZE + BTREE_MAX_ALIGN + n)
-
-/* MVCC Maximum Leaf Entry Size  */
-#define MVCC_LEAFENTSZ(n)  (LEAF_RECORD_SIZE + BTREE_MAX_ALIGN \
-			    + OR_MVCCID_SIZE \
-			    + OR_OID_SIZE + BTREE_MAX_ALIGN + n)
+#define LEAF_ENTRY_MAX_SIZE(n) \
+  (LEAF_RECORD_SIZE \
+   + (2 * OR_OID_SIZE) /* OID + class OID */ \
+   + (2 * OR_MVCCID_SIZE) /* Insert/delete MVCCID */ \
+   + BTREE_MAX_ALIGN /* Alignment */ \
+   + n /* Key disk length. */)
 
 /* Maximum Non_Leaf Entry Size */
-#define NLEAFENTSZ(n) (NON_LEAF_RECORD_SIZE + BTREE_MAX_ALIGN + n)
+#define NON_LEAF_ENTRY_MAX_SIZE(n) \
+  (NON_LEAF_RECORD_SIZE + BTREE_MAX_ALIGN + n)
+
+/* New b-tree entry maximum size. */
+#define BTREE_NEW_ENTRY_MAX_SIZE(key_disk_size, node_type) \
+  ((node_type) == BTREE_LEAF_NODE ? \
+   LEAF_ENTRY_MAX_SIZE (key_disk_size) : \
+   NON_LEAF_ENTRY_MAX_SIZE (key_disk_size))
 
 /* compare two object identifiers */
 #define OIDCMP(n1, n2) \
@@ -179,22 +186,6 @@ struct btree_overflow_header
   VPID next_vpid;
 };
 
-/* Fixed part of a non_leaf record */
-typedef struct non_leaf_rec NON_LEAF_REC;
-struct non_leaf_rec
-{
-  VPID pnt;			/* The Child Page Pointer */
-  short key_len;
-};
-
-/* Fixed part of a leaf record */
-typedef struct leaf_rec LEAF_REC;
-struct leaf_rec
-{
-  VPID ovfl;			/* Overflow page pointer, for overflow OIDs */
-  short key_len;
-};
-
 typedef struct btree_node_info BTREE_NODE_INFO;
 struct btree_node_info
 {
@@ -265,8 +256,7 @@ extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       int node_type, int key_type,
 			       int key_len, bool during_loading,
 			       OID * class_oid, OID * oid,
-			       MVCC_REC_HEADER * p_mvcc_rec_header,
-			       RECDES * rec);
+			       BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
 extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			      PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
 			      void *rec_header, int node_type,

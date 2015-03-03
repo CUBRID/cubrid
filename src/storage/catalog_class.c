@@ -5110,7 +5110,16 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p,
 	      lang_str_len = (lang_str != NULL) ? strlen (lang_str) : 0;
 
 	      assert (lang_str_len < lang_buf_size);
-	      strncpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
+	      if (lang_str_len > 0)
+		{
+		  /* Copying length 0 from NULL pointer fails when DUMA is
+		   * enabled.
+		   */
+		  assert (lang_str != NULL);
+		  assert (lang_buf_size > 0);
+		  strncpy (lang_buf, lang_str,
+			   MIN (lang_str_len, lang_buf_size));
+		}
 	      lang_buf[MIN (lang_str_len, lang_buf_size)] = '\0';
 	    }
 	  else if (heap_value->attrid == timezone_id)
@@ -5125,7 +5134,14 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p,
 	      checksum_len = (checksum != NULL) ? strlen (checksum) : 0;
 
 	      assert (checksum_len <= CHECKSUM_SIZE);
-	      strncpy (timezone_checksum, checksum, checksum_len);
+	      if (checksum_len > 0)
+		{
+		  /* Copying length 0 from NULL pointer fails when DUMA is
+		   * enabled.
+		   */
+		  assert (checksum != NULL);
+		  strncpy (timezone_checksum, checksum, checksum_len);
+		}
 	      timezone_checksum[checksum_len] = '\0';
 	    }
 	}

@@ -128,18 +128,14 @@ struct indx_cov
 
 /* multiple range optimization used on range search index scan:
  * - uses memory instead of lists to store range search results
- * - drops range search faster when key condition is not fullfilled */
+ * - drops range search faster when key condition is not fulfilled */
 typedef struct range_opt_item RANGE_OPT_ITEM;
 struct range_opt_item
 {
-  DB_VALUE index_value;		/* index value (MIDXKEY) as it is read from B+ tree */
+  DB_VALUE index_value;		/* index value (MIDXKEY) as it is read from B+
+				 * tree.
+				 */
   OID inst_oid;			/* instance OID corresponding to index key */
-  OID ck_ps_oid;		/* pseudo-OID corresponding to current key index key;
-				   used of unlocking */
-  OID nk_ps_oid;		/* pseudo-OID corresponding to next key of index key;
-				   used of unlocking */
-  OID class_oid;		/* class OID corresponding to index key/instance OID;
-				   used of unlocking */
 };
 
 typedef struct multi_range_opt MULTI_RANGE_OPT;
@@ -219,6 +215,7 @@ struct indx_scan_id
   bool need_count_only;		/* get count only, no OIDs are copied */
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
+  /* TODO: Can we use these instead of BTS pointers to limits? */
   DB_BIGINT key_limit_lower;	/* lower key limit */
   DB_BIGINT key_limit_upper;	/* upper key limit */
   INDX_COV indx_cov;		/* index covering information */
@@ -229,9 +226,6 @@ struct indx_scan_id
   bool duplicate_key_locked;	/* true if duplicate key have been scanned */
   DB_VALUE **key_info_values;	/* Used for index key info scan */
   REGU_VARIABLE_LIST key_info_regu_list;	/* regulator variable list */
-  bool mvcc_need_locks;		/* true, if need locking in MVCC during
-				 * index scan
-				 */
   bool check_not_vacuumed;	/* if true then during index scan, the entries
 				 * will be checked if they should've been
 				 * vacuumed. Used in checkdb.
@@ -395,7 +389,13 @@ struct mvcc_scan_reev_data
 					 * qualification value */
 };
 
-#define SCAN_IS_INDEX_COVERED(iscan_id_p)   ((iscan_id_p)->indx_cov.list_id != NULL)
+#define SCAN_IS_INDEX_COVERED(iscan_id_p) \
+  ((iscan_id_p)->indx_cov.list_id != NULL)
+#define SCAN_IS_INDEX_MRO(iscan_id_p) ((iscan_id_p)->multi_range_opt.use)
+#define SCAN_IS_INDEX_ISS(iscan_id_p) ((iscan_id_p)->iss.use)
+#define SCAN_IS_INDEX_ILS(iscan_id_p) \
+  ((iscan_id_p)->indx_info != NULL \
+   && (iscan_id_p)->indx_info->ils_prefix_len > 0)
 
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
@@ -576,6 +576,7 @@ extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				     SCAN_POS * scan_pos);
 extern int scan_init_iss (INDX_SCAN_ID * isidp);
 extern void scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
+				  int oid_buf_size,
 				  MVCC_SNAPSHOT * mvcc_snapshot);
 extern void scan_initialize (void);
 extern void scan_finalize (void);

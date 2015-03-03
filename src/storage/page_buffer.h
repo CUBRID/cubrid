@@ -37,6 +37,8 @@
 #define FREE			true	/* Free page buffer */
 #define DONT_FREE		false	/* Don't free the page buffer */
 
+extern const VPID vpid_Null_vpid;
+
 /* Set a vpid with values of volid and pageid */
 #define VPID_SET(vpid_ptr, volid_value, pageid_value)	      \
   do {							      \
@@ -465,7 +467,7 @@ extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
 extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);
 extern VPID *pgbuf_get_vpid_ptr (PAGE_PTR pgptr);
-extern int pgbuf_get_latch_mode (PAGE_PTR pgptr);
+extern PGBUF_LATCH_MODE pgbuf_get_latch_mode (PAGE_PTR pgptr);
 extern PAGEID pgbuf_get_page_id (PAGE_PTR pgptr);
 extern PAGE_TYPE pgbuf_get_page_ptype (THREAD_ENTRY * thread_p,
 				       PAGE_PTR pgptr);

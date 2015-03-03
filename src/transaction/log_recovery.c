@@ -423,7 +423,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 				 "log_rvredo_rec: Error applying redo record "
 				 "at log_lsa=(%lld, %d), "
-				 "rcv = {mvccid=%lld, vpid=(%d, %d), "
+				 "rcv = {mvccid=%llu, vpid=(%d, %d), "
 				 "offset = %d, data_length = %d}",
 				 (long long int) rcv_undo_lsa->pageid,
 				 (int) rcv_undo_lsa->offset,
@@ -640,7 +640,7 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 				 "log_rvredo_rec: Error applying redo record "
 				 "at log_lsa=(%lld, %d), "
-				 "rcv = {mvccid=%lld, vpid=(%d, %d), "
+				 "rcv = {mvccid=%llu, vpid=(%d, %d), "
 				 "offset = %d, data_length = %d}",
 				 (long long int) rcv_lsa_ptr->pageid,
 				 (int) rcv_lsa_ptr->offset,

@@ -44,6 +44,7 @@ typedef struct
 {
   OID *oidp;
   int oid_cnt;
+  int capacity;
 } OID_LIST;			/* list of OIDs */
 
 typedef struct

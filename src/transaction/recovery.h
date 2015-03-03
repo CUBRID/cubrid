@@ -215,7 +215,9 @@ typedef enum
 
   RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT = 141,
 
-  RV_LAST_LOGID = RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT,
+  RVBT_DELETE_OBJECT_PHYSICAL = 142,
+
+  RV_LAST_LOGID = RVBT_DELETE_OBJECT_PHYSICAL,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -255,9 +257,9 @@ struct rvfun
 extern struct rvfun RV_fun[];
 
 extern const char *rv_rcvindex_string (LOG_RCVINDEX rcvindex);
-#if defined(CUBRID_DEBUG)
+#if !defined (NDEBUG)
 extern void rv_check_rvfuns (void);
-#endif /* CUBRID_DEBUG */
+#endif /* !NDEBUG */
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   ((((vpid)->volid == NULL_VOLID) \
@@ -276,6 +278,7 @@ extern void rv_check_rvfuns (void);
     || ((idx) == RVBT_KEYVAL_MVCC_INS_LFRECORD_KEYINS) \
     || ((idx) == RVBT_KEYVAL_MVCC_INS_LFRECORD_OIDINS) \
     || ((idx) == RVBT_MVCC_INCREMENTS_UPD) \
+    || ((idx) == RVBT_DELETE_OBJECT_PHYSICAL) \
     || ((idx) == RVBT_MVCC_NOTIFY_VACUUM)) ? true : false)
 
 #endif /* _RECOVERY_H_ */

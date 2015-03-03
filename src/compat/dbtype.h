@@ -678,6 +678,8 @@ struct vpid
   INT32 pageid;			/* Page identifier */
   INT16 volid;			/* Volume identifier where the page reside */
 };
+#define VPID_INITIALIZER \
+  { NULL_PAGEID, NULL_VOLID }
 
 typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
 struct vfid
@@ -685,6 +687,8 @@ struct vfid
   INT32 fileid;			/* File identifier */
   INT16 volid;			/* Volume identifier where the file reside */
 };
+#define VFID_INITIALIZER \
+  { NULL_FILEID, NULL_VOLID }
 
 typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
 struct loid

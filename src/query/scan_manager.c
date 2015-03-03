@@ -323,14 +323,15 @@ scan_init_iss (INDX_SCAN_ID * isidp)
 /*
  * scan_init_index_scan () - initialize an index scan structure with the
  *			     specified OID buffer
- * return : void
- * isidp (in)	: index scan
- * oid_buf (in) : OID buffer
+ * return	     : void
+ * isidp (in)	     : index scan
+ * oid_buf (in)	     : OID buffer
+ * oid_buf_size (in) : OID buffer size
  * mvcc_snapshot(in) : MVCC snapshot
  */
 void
 scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
-		      MVCC_SNAPSHOT * mvcc_snapshot)
+		      int oid_buf_size, MVCC_SNAPSHOT * mvcc_snapshot)
 {
   if (isidp == NULL)
     {
@@ -340,6 +341,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
 
   isidp->oid_list.oid_cnt = 0;
   isidp->oid_list.oidp = oid_buf;
+  isidp->oid_list.capacity = oid_buf_size / OR_OID_SIZE;
   isidp->copy_buf = NULL;
   isidp->copy_buf_len = 0;
   memset ((void *) (&(isidp->indx_cov)), 0, sizeof (INDX_COV));
@@ -348,7 +350,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
   isidp->duplicate_key_locked = false;
   scan_init_iss (isidp);
   isidp->scan_cache.mvcc_snapshot = mvcc_snapshot;
-  isidp->mvcc_need_locks = false;
+  isidp->need_count_only = false;
   isidp->check_not_vacuumed = false;
   isidp->not_vacuumed_res = DISK_VALID;
 }
@@ -1041,7 +1043,7 @@ scan_alloc_oid_buf (void)
 
 /*
  * scan_alloc_iscan_oid_buf_list () - allocate list of oid buf
- *   return: pointer to alloced oid buf, NULL for error
+ *   return: pointer to allocated oid buf, NULL for error
  */
 static OID *
 scan_alloc_iscan_oid_buf_list (void)
@@ -2251,13 +2253,12 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
   INDX_SCAN_ID *iscan_id;
   FILTER_INFO key_filter;
   INDX_INFO *indx_infop;
-  BTREE_SCAN *BTS;
+  BTREE_SCAN *bts;
   int key_cnt, i;
   KEY_VAL_RANGE *key_vals;
   KEY_RANGE *key_ranges;
   RANGE range, saved_range;
   int ret = NO_ERROR;
-  int n;
   int curr_key_prefix_length = 0;
 
   /* pointer to INDX_SCAN_ID structure */
@@ -2267,7 +2268,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
   indx_infop = iscan_id->indx_info;
 
   /* pointer to index scan info. structure */
-  BTS = &iscan_id->bt_scan;
+  bts = &iscan_id->bt_scan;
 
   /* number of keys */
   if (iscan_id->curr_keyno == -1)	/* very first time */
@@ -2320,7 +2321,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 
 	  ret = scan_regu_key_to_index_key (thread_p, &key_ranges[i],
 					    &key_vals[i], iscan_id,
-					    BTS->btid_int.key_type, s_id->vd);
+					    bts->btid_int.key_type, s_id->vd);
 
 	  if (ret != NO_ERROR)
 	    {
@@ -2433,38 +2434,32 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  goto exit_on_error;
 	}
 
-      n = btree_range_search (thread_p,
-			      &indx_infop->indx_id.i.btid,
-			      s_id->scan_op_type,
-			      BTS,
-			      &key_vals[0],
-			      1,
-			      &iscan_id->cls_oid,
-			      iscan_id->oid_list.oidp,
-			      ISCAN_OID_BUFFER_SIZE,
-			      &key_filter,
-			      iscan_id, false, iscan_id->need_count_only,
-			      key_limit_upper, key_limit_lower, true,
-			      indx_infop->ils_prefix_len);
-      iscan_id->oid_list.oid_cnt = n;
-      if (iscan_id->oid_list.oid_cnt == -1)
+      ret =
+	btree_prepare_bts (thread_p, bts, &indx_infop->indx_id.i.btid,
+			   iscan_id, &key_vals[0], &key_filter,
+			   &iscan_id->cls_oid, key_limit_upper,
+			   key_limit_lower, true, NULL);
+      if (ret != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  goto exit_on_error;
 	}
+      ret =
+	btree_range_scan (thread_p, bts,
+			  btree_range_scan_select_visible_oids);
+      if (ret != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  goto exit_on_error;
+	}
+      iscan_id->oid_list.oid_cnt = bts->n_oids_read_last_iteration;
+      assert (iscan_id->oid_list.oid_cnt >= 0);
 
       /* We only want to advance the key ptr if we've exhausted the
          current crop of oids on the current key. */
-      if (BTREE_END_OF_SCAN (BTS))
+      if (BTREE_END_OF_SCAN (bts))
 	{
 	  iscan_id->curr_keyno++;
-	}
-      else if (indx_infop->ils_prefix_len > 0)
-	{
-	  /* adjust range */
-	  btree_ils_adjust_range (thread_p, &key_vals[iscan_id->curr_keyno],
-				  &BTS->cur_key, indx_infop->ils_prefix_len,
-				  indx_infop->use_desc_index,
-				  BTREE_IS_PART_KEY_DESC (&(BTS->btid_int)));
 	}
 
       if (iscan_id->multi_range_opt.use)
@@ -2473,7 +2468,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	   * OIDS or index keys: the only valid exit condition from
 	   * 'btree_range_search' is when the index scan has reached the end
 	   * for this key */
-	  assert (BTREE_END_OF_SCAN (BTS));
+	  assert (BTREE_END_OF_SCAN (bts));
 	}
 
       break;
@@ -2533,39 +2528,33 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	}
 
       key_vals[0].range = range;
-      n = btree_range_search (thread_p,
-			      &indx_infop->indx_id.i.btid,
-			      s_id->scan_op_type,
-			      BTS,
-			      &key_vals[0],
-			      1,
-			      &iscan_id->cls_oid,
-			      iscan_id->oid_list.oidp,
-			      ISCAN_OID_BUFFER_SIZE,
-			      &key_filter,
-			      iscan_id, false, iscan_id->need_count_only,
-			      key_limit_upper, key_limit_lower, true,
-			      indx_infop->ils_prefix_len);
-      key_vals[0].range = saved_range;
-      iscan_id->oid_list.oid_cnt = n;
-      if (iscan_id->oid_list.oid_cnt == -1)
+      ret =
+	btree_prepare_bts (thread_p, bts, &indx_infop->indx_id.i.btid,
+			   iscan_id, &key_vals[0], &key_filter,
+			   &iscan_id->cls_oid, key_limit_upper,
+			   key_limit_lower, true, NULL);
+      if (ret != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  goto exit_on_error;
 	}
+      ret =
+	btree_range_scan (thread_p, bts,
+			  btree_range_scan_select_visible_oids);
+      key_vals[0].range = saved_range;
+      if (ret != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  goto exit_on_error;
+	}
+      iscan_id->oid_list.oid_cnt = bts->n_oids_read_last_iteration;
+      assert (iscan_id->oid_list.oid_cnt >= 0);
 
       /* We only want to advance the key ptr if we've exhausted the
          current crop of oids on the current key. */
-      if (BTREE_END_OF_SCAN (BTS))
+      if (BTREE_END_OF_SCAN (bts))
 	{
 	  iscan_id->curr_keyno++;
-	}
-      else if (indx_infop->ils_prefix_len > 0)
-	{
-	  /* adjust range */
-	  btree_ils_adjust_range (thread_p, &key_vals[iscan_id->curr_keyno],
-				  &BTS->cur_key, indx_infop->ils_prefix_len,
-				  indx_infop->use_desc_index,
-				  BTREE_IS_PART_KEY_DESC (&(BTS->btid_int)));
 	}
 
       if (iscan_id->multi_range_opt.use)
@@ -2574,7 +2563,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	   * OIDS or index keys: the only valid exit condition from
 	   * 'btree_range_search' is when the index scan has reached the end
 	   * for this key */
-	  assert (BTREE_END_OF_SCAN (BTS));
+	  assert (BTREE_END_OF_SCAN (bts));
 	}
       break;
 
@@ -2605,28 +2594,30 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	      continue;
 	    }
 
-	  n = btree_range_search (thread_p,
-				  &indx_infop->indx_id.i.btid,
-				  s_id->scan_op_type,
-				  BTS,
-				  &key_vals[iscan_id->curr_keyno],
-				  1,
-				  &iscan_id->cls_oid,
-				  iscan_id->oid_list.oidp,
-				  ISCAN_OID_BUFFER_SIZE,
-				  &key_filter,
-				  iscan_id, false, iscan_id->need_count_only,
-				  key_limit_upper, key_limit_lower, true,
-				  indx_infop->ils_prefix_len);
-	  iscan_id->oid_list.oid_cnt = n;
-	  if (iscan_id->oid_list.oid_cnt == -1)
+	  ret =
+	    btree_prepare_bts (thread_p, bts, &indx_infop->indx_id.i.btid,
+			       iscan_id, &key_vals[iscan_id->curr_keyno],
+			       &key_filter, &iscan_id->cls_oid,
+			       key_limit_upper, key_limit_lower, true, NULL);
+	  if (ret != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      goto exit_on_error;
 	    }
+	  ret =
+	    btree_range_scan (thread_p, bts,
+			      btree_range_scan_select_visible_oids);
+	  if (ret != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      goto exit_on_error;
+	    }
+	  iscan_id->oid_list.oid_cnt = bts->n_oids_read_last_iteration;
+	  assert (iscan_id->oid_list.oid_cnt >= 0);
 
 	  /* We only want to advance the key ptr if we've exhausted the
 	     current crop of oids on the current key. */
-	  if (BTREE_END_OF_SCAN (BTS))
+	  if (BTREE_END_OF_SCAN (bts))
 	    {
 	      iscan_id->curr_keyno++;
 	      /* reset upper key limit, if flag is set */
@@ -2642,18 +2633,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 		  *key_limit_upper = iscan_id->key_limit_upper;
 		}
 	    }
-	  else if (indx_infop->ils_prefix_len > 0)
-	    {
-	      bool part_key_desc = BTREE_IS_PART_KEY_DESC (&(BTS->btid_int));
-
-	      /* adjust range */
-	      btree_ils_adjust_range (thread_p,
-				      &key_vals[iscan_id->curr_keyno],
-				      &BTS->cur_key,
-				      indx_infop->ils_prefix_len,
-				      indx_infop->use_desc_index,
-				      part_key_desc);
-	    }
 
 	  if (iscan_id->multi_range_opt.use)
 	    {
@@ -2661,7 +2640,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	       * OIDS or index keys: the only valid exit condition from
 	       * 'btree_range_search' is when the index scan has reached the end
 	       * for this key */
-	      assert (BTREE_END_OF_SCAN (BTS));
+	      assert (BTREE_END_OF_SCAN (bts));
 	      /* continue loop : exhaust all keys in one shot when in
 	       * multiple range search optimization mode */
 	      continue;
@@ -2750,29 +2729,31 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	    }
 
 	  key_vals[iscan_id->curr_keyno].range = range;
-	  n = btree_range_search (thread_p,
-				  &indx_infop->indx_id.i.btid,
-				  s_id->scan_op_type,
-				  BTS,
-				  &key_vals[iscan_id->curr_keyno],
-				  1,
-				  &iscan_id->cls_oid,
-				  iscan_id->oid_list.oidp,
-				  ISCAN_OID_BUFFER_SIZE,
-				  &key_filter,
-				  iscan_id, false, iscan_id->need_count_only,
-				  key_limit_upper, key_limit_lower, true,
-				  indx_infop->ils_prefix_len);
-	  key_vals[iscan_id->curr_keyno].range = saved_range;
-	  iscan_id->oid_list.oid_cnt = n;
-	  if (iscan_id->oid_list.oid_cnt == -1)
+	  ret =
+	    btree_prepare_bts (thread_p, bts, &indx_infop->indx_id.i.btid,
+			       iscan_id, &key_vals[iscan_id->curr_keyno],
+			       &key_filter, &iscan_id->cls_oid,
+			       key_limit_upper, key_limit_lower, true, NULL);
+	  if (ret != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      goto exit_on_error;
 	    }
+	  ret =
+	    btree_range_scan (thread_p, bts,
+			      btree_range_scan_select_visible_oids);
+	  key_vals[iscan_id->curr_keyno].range = saved_range;
+	  if (ret != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      goto exit_on_error;
+	    }
+	  iscan_id->oid_list.oid_cnt = bts->n_oids_read_last_iteration;
+	  assert (iscan_id->oid_list.oid_cnt >= 0);
 
 	  /* We only want to advance the key ptr if we've exhausted the
 	     current crop of oids on the current key. */
-	  if (BTREE_END_OF_SCAN (BTS))
+	  if (BTREE_END_OF_SCAN (bts))
 	    {
 	      iscan_id->curr_keyno++;
 	      /* reset upper key limit, if flag is set */
@@ -2788,18 +2769,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 		  *key_limit_upper = iscan_id->key_limit_upper;
 		}
 	    }
-	  else if (indx_infop->ils_prefix_len > 0)
-	    {
-	      bool part_key_desc = BTREE_IS_PART_KEY_DESC (&(BTS->btid_int));
-
-	      /* adjust range */
-	      btree_ils_adjust_range (thread_p,
-				      &key_vals[iscan_id->curr_keyno],
-				      &BTS->cur_key,
-				      indx_infop->ils_prefix_len,
-				      indx_infop->use_desc_index,
-				      part_key_desc);
-	    }
 
 	  if (iscan_id->multi_range_opt.use)
 	    {
@@ -2807,7 +2776,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	       * OIDS or index keys: the only valid exit condition from
 	       * 'btree_range_search' is when the index scan has reached the end
 	       * for this key */
-	      assert (BTREE_END_OF_SCAN (BTS));
+	      assert (BTREE_END_OF_SCAN (bts));
 	      /* continue loop : exhaust all keys in one shot when in
 	       * multiple range search optimization mode */
 	      continue;
@@ -2838,6 +2807,13 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
     }
 
 end:
+
+  if (key_limit_upper != NULL && *key_limit_upper == 0)
+    {
+      /* End scan here! */
+      iscan_id->curr_keyno = key_cnt;
+    }
+
   /* if the end of this scan */
   if (iscan_id->curr_keyno == key_cnt)
     {
@@ -3297,6 +3273,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* index scan info */
   BTS = &isidp->bt_scan;
+  BTREE_INIT_SCAN (BTS);
 
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
@@ -3307,10 +3284,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       pgbuf_unfix_and_init (thread_p, Root);
       goto exit_on_error;
     }
+  BTS->is_btid_int_valid = true;
 
   pgbuf_unfix_and_init (thread_p, Root);
-
-  BTREE_INIT_SCAN (BTS);
 
   /* initialize key limits */
   if (scan_init_index_key_limit (thread_p, isidp, &indx_info->key_info, vd) !=
@@ -3372,6 +3348,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  goto exit_on_error;
 	}
+      isidp->oid_list.capacity = ISCAN_OID_BUFFER_SIZE / OR_OID_SIZE;
     }
   isidp->curr_oidp = isidp->oid_list.oidp;
 
@@ -3667,9 +3644,8 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       goto exit_on_error;
     }
 
-  bts = &isidp->bt_scan;
-
   /* index scan info */
+  bts = &isidp->bt_scan;
   BTREE_INIT_SCAN (bts);
 
   /* construct BTID_INT structure */
@@ -3679,6 +3655,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       goto exit_on_error;
     }
+  bts->is_btid_int_valid = true;
 
   /* attribute information of the index key */
   if (heap_get_indexinfo_of_btid (thread_p, cls_oid,
@@ -3714,6 +3691,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* OID buffer */
   isidp->oid_list.oid_cnt = 0;
+  isidp->oid_list.capacity = 0;
   isidp->oid_list.oidp = NULL;
   isidp->curr_oidp = NULL;
 
@@ -4409,7 +4387,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       isidp->oid_list.oid_cnt = 0;
       isidp->curr_keyno = -1;
       isidp->curr_oidno = -1;
-      BTREE_INIT_SCAN (&isidp->bt_scan);
       isidp->one_range = false;
       break;
 
@@ -4427,7 +4404,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       isidp->oid_list.oid_cnt = 0;
       isidp->curr_keyno = -1;
       isidp->curr_oidno = -1;
-      BTREE_INIT_SCAN (&isidp->bt_scan);
       break;
 
     case S_INDX_NODE_INFO_SCAN:
@@ -4569,7 +4545,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  s_id->s.isid.curr_oidno = -1;
 	  s_id->s.isid.curr_keyno = -1;
 	  s_id->position = S_BEFORE;
-	  BTREE_INIT_SCAN (&s_id->s.isid.bt_scan);
+	  BTREE_RESET_SCAN (&s_id->s.isid.bt_scan);
 
 	  /* reset key limits */
 	  if (s_id->s.isid.indx_info)
@@ -5850,14 +5826,14 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      if (isidp->curr_oidno == isidp->oid_list.oid_cnt)
 		{
 		  isidp->curr_oidno = isidp->oid_list.oid_cnt - 1;
-		  isidp->curr_oidp = GET_NTH_OID (isidp->oid_list.oidp,
-						  isidp->curr_oidno);
+		  isidp->curr_oidp =
+		    GET_NTH_OID (isidp->oid_list.oidp, isidp->curr_oidno);
 		}
 	      else if (isidp->curr_oidno > 0)
 		{
 		  isidp->curr_oidno--;
-		  isidp->curr_oidp = GET_NTH_OID (isidp->oid_list.oidp,
-						  isidp->curr_oidno);
+		  isidp->curr_oidp =
+		    GET_NTH_OID (isidp->oid_list.oidp, isidp->curr_oidno);
 		}
 	      else
 		{

@@ -130,6 +130,23 @@ typedef void (*PTR_FNERLOG) (int err_id);
             || (err) == ER_OBJ_NO_CONNECT                       \
             || (err) == ER_BO_CONNECT_FAILED)
 
+/* Macros to assert that error is set. */
+#define ASSERT_ERROR() \
+  (assert (er_errid () != NO_ERROR))
+/* This macro will also make sure the error_code to be returned is not
+ * NO_ERROR.
+ */
+#define ASSERT_ERROR_AND_SET(error_code) \
+  do \
+    { \
+      error_code = er_errid (); \
+      if (error_code == NO_ERROR) \
+	{ \
+	  /* Error should be set */ \
+	  assert (false); \
+	  error_code = ER_FAILED; \
+	} \
+    } while (false)
 
 /*
  * Definition of error message structure. One structure is defined for each

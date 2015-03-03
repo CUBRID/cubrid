@@ -149,14 +149,19 @@ struct log_lsa
 #define DB_PAGESIZE             (db_page_size())
 #define DB_MAX_PATH_LENGTH      PATH_MAX
 
-/* BTREE definitions */
-#define NON_LEAF_RECORD_SIZE (2 * OR_INT_SIZE)	/* Non_Leaf Node Record Size */
-#define LEAF_RECORD_SIZE (2 * OR_INT_SIZE)	/* Leaf Node Record Size */
-#define SPLIT_INFO_SIZE (OR_FLOAT_SIZE + OR_INT_SIZE)
-
 #define DISK_VFID_SIZE (OR_INT_SIZE + OR_SHORT_SIZE)
 #define DISK_VPID_SIZE (OR_INT_SIZE + OR_SHORT_SIZE)
 
+#define DISK_VFID_ALIGNED_SIZE (DISK_VFID_SIZE + OR_SHORT_SIZE)
+#define DISK_VPID_ALIGNED_SIZE (DISK_VPID_SIZE + OR_SHORT_SIZE)
+
+/* BTREE definitions */
+
+/* Non_Leaf Node Record Size */
+#define NON_LEAF_RECORD_SIZE (DISK_VPID_ALIGNED_SIZE)
+/* Leaf Node Record Size */
+#define LEAF_RECORD_SIZE (0)
+#define SPLIT_INFO_SIZE (OR_FLOAT_SIZE + OR_INT_SIZE)
 
 typedef struct btree_node_split_info BTREE_NODE_SPLIT_INFO;
 struct btree_node_split_info
@@ -191,7 +196,10 @@ typedef enum
 #define ISCAN_OID_BUFFER_SIZE \
   ((((int) (IO_PAGESIZE * prm_get_float_value (PRM_ID_BT_OID_NBUFFERS))) \
     / OR_OID_SIZE) \
-   * OR_OID_SIZE)
+    * OR_OID_SIZE)
+#define ISCAN_OID_BUFFER_COUNT \
+  (((int) (IO_PAGESIZE * prm_get_float_value (PRM_ID_BT_OID_NBUFFERS))) \
+   / OR_OID_SIZE)
 
 typedef UINT64 MVCCID;		/* MVCC ID */
 
@@ -219,6 +227,40 @@ typedef enum			/* range search option */
   NEQ_NA			/* key != v1 */
 } RANGE;
 
+#define RANGE_REVERSE(range) \
+  do \
+    { \
+      switch (range) \
+	{ \
+	case GT_LE: \
+	  (range) = GE_LT; \
+	  break; \
+	case GE_LT: \
+	  (range) = GT_LE; \
+	  break; \
+	case GE_INF: \
+	  (range) = INF_LE; \
+	  break; \
+	case GT_INF: \
+	  (range) = INF_LT; \
+	  break; \
+	case INF_LE: \
+	  (range) = GE_INF; \
+	  break; \
+	case INF_LT: \
+	  (range) = GT_INF; \
+	  break; \
+	case NA_NA: \
+	case GE_LE: \
+	case GT_LT: \
+	case INF_INF: \
+	case EQ_NA: \
+	default: \
+	  /* No change. */ \
+	  break; \
+	} \
+    } while (0)
+
 /* File structure identifiers */
 
 typedef struct hfid HFID;	/* FILE HEAP IDENTIFIER */
@@ -234,6 +276,8 @@ struct btid
   VFID vfid;			/* B+tree index volume identifier */
   INT32 root_pageid;		/* Root page identifier */
 };
+#define BTID_INITILIZER \
+  { VFID_INITIALIZER, NULL_PAGEID }
 
 typedef struct ehid EHID;	/* EXTENDIBLE HASHING IDENTIFIER */
 struct ehid
@@ -269,6 +313,8 @@ struct mvcc_rec_header
   } delid_chn;
   OID next_version;		/* next row version */
 };
+#define MVCC_REC_HEADER_INITIALIZER \
+  { 0, 0, MVCCID_NULL, { MVCCID_NULL }, OID_INITIALIZER }
 
 typedef struct mvcc_relocate_delete_info MVCC_RELOCATE_DELETE_INFO;
 struct mvcc_relocate_delete_info
@@ -339,6 +385,9 @@ typedef int TRANID;		/* Transaction identifier      */
 #define MVCCID_IS_NORMAL(id)	  ((id) >= MVCCID_FIRST)
 /* are MVCC IDs equal? */
 #define MVCCID_IS_EQUAL(id1,id2)	  ((id1) == (id2))
+/* are MVCC IDs valid, not all visible? */
+#define MVCCID_IS_NOT_ALL_VISIBLE(id) \
+  (MVCCID_IS_VALID (id) && ((id) != MVCCID_ALL_VISIBLE))
 
 /* advance MVCC ID */
 #define MVCCID_FORWARD(id) \
@@ -420,12 +469,28 @@ typedef enum
   EH_ERROR_OCCURRED
 } EH_SEARCH;
 
+/* BTREE_SEARCH - Result for b-tree key or OID search. */
 typedef enum
 {
-  BTREE_KEY_FOUND,		/* in MVCC inserted and committed or deleted and aborted */
-  BTREE_KEY_NOTFOUND,
-  BTREE_ERROR_OCCURRED,
-  BTREE_ACTIVE_KEY_FOUND	/* used only in MVCC - inserted/deleted but not committed/aborted */
+  BTREE_KEY_FOUND,		/* Found key (one visible or dirty version).
+				 */
+  BTREE_KEY_NOTFOUND,		/* Key was not found (or no usable version
+				 * found in key).
+				 */
+  BTREE_ERROR_OCCURRED,		/* Error while searching key/OID. */
+  BTREE_ACTIVE_KEY_FOUND,	/* Found key but the version inserter/deleter
+				 * did not commit/abort.
+				 */
+  BTREE_KEY_SMALLER,		/* Key was not found and it is smaller than
+				 * all the keys it was compared to.
+				 */
+  BTREE_KEY_BIGGER,		/* Key was not found and it is bigger than
+				 * all the keys it was compared to.
+				 */
+  BTREE_KEY_BETWEEN		/* Key was not found and it's value is between
+				 * the smallest and the biggest keys it was
+				 * compared to.
+				 */
 } BTREE_SEARCH;
 
 /* TYPEDEFS FOR BACKUP/RESTORE */

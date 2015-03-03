@@ -68,6 +68,8 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 
+const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
+
 /* minimum number of buffers */
 #define PGBUF_MINIMUM_BUFFERS		(MAX_NTRANS * 10)
 
@@ -2365,6 +2367,8 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
       holder = thrd_holder_info->thrd_hold_list;
       while (holder != NULL)
 	{
+	  assert (false);
+
 	  CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
 
 #if defined(NDEBUG)
@@ -2409,8 +2413,8 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 			" %6d|%4d %10s %p %p-%p\n",
 			bufptr->ipool, bufptr->vpid.volid,
 			bufptr->vpid.pageid, bufptr->fcnt, latch_mode_str,
-			bufptr->dirty, bufptr->avoid_victim,
-			bufptr->async_flush_request, zone_str,
+			(int) bufptr->dirty, (int) bufptr->avoid_victim,
+			(int) bufptr->async_flush_request, zone_str,
 			bufptr->iopage_buffer->iopage.prv.lsa.pageid,
 			bufptr->iopage_buffer->iopage.prv.lsa.offset,
 			consistent_str, (void *) bufptr,
@@ -2421,8 +2425,6 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 	  holder = holder->thrd_link;
 #endif /* NDEBUG */
 	}
-
-      assert (false);
     }
 }
 
@@ -3881,6 +3883,8 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 {
   PGBUF_BCB *bufptr;
 
+  /* TODO: Wouldn't be an useful check here that page is write latched? */
+
   if (pgbuf_get_check_page_validation (thread_p,
 				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
@@ -4116,7 +4120,7 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
  *   return: latch mode
  *   pgptr(in): Page pointer 
  */
-int
+PGBUF_LATCH_MODE
 pgbuf_get_latch_mode (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;

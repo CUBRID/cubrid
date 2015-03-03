@@ -25686,9 +25686,8 @@ cleanup:
   return rc;
 }
 
-
 /*
- * qexec_initialize_filter_pred_cache () - Initialize filter predicatecache
+ * qexec_initialize_filter_pred_cache () - Initialize filter predicate cache
  *   return: NO_ERROR, or ER_code
  */
 int

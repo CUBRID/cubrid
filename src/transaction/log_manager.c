@@ -1201,10 +1201,10 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   int error_code = NO_ERROR;
   time_t *stopat = (r_args) ? &r_args->stopat : NULL;
 
-#if defined(CUBRID_DEBUG)
+#if !defined (NDEBUG)
   /* Make sure that the recovery function array is synchronized.. */
   rv_check_rvfuns ();
-#endif /* CUBRID_DEBUG */
+#endif /* !NDEBUG */
 
   (void) umask (S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
@@ -5357,7 +5357,7 @@ log_map_modified_class_list (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /* always execute for defence */
+  /* always execute for defense */
   (void) locator_drop_transient_class_name_entries (thread_p, savept_lsa);
 
   if (release)
@@ -8151,7 +8151,7 @@ log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 	   "     Creation_time = %s"
 	   "     Release = %s, Compatibility_disk_version = %g,\n"
 	   "     Db_pagesize = %d, log_pagesize= %d, Shutdown = %d,\n"
-	   "     Next_trid = %d, Next_mvcc_id = %lld, Num_avg_trans = %d, Num_avg_locks = %d,\n"
+	   "     Next_trid = %d, Next_mvcc_id = %llu, Num_avg_trans = %d, Num_avg_locks = %d,\n"
 	   "     Num_active_log_pages = %d, First_active_log_page = %lld,\n"
 	   "     Current_append = %lld|%d, Checkpoint = %lld|%d,\n",
 	   log_header_p->magic, (long long) offsetof (LOG_PAGE, area),
@@ -8344,7 +8344,7 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp,
 	   (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.ulength),
 	   (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.rlength));
   fprintf (out_fp,
-	   "     MVCCID = %lld, \n"
+	   "     MVCCID = %llu, \n"
 	   "     Prev_mvcc_op_log_lsa = (%lld, %d), \n"
 	   "     VFID = (%d, %d)",
 	   (long long int) mvcc_undoredo->mvccid,
@@ -8400,7 +8400,7 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
 	   mvcc_undo->undo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undo->undo.length));
   fprintf (out_fp,
-	   "     MVCCID = %lld, \n"
+	   "     MVCCID = %llu, \n"
 	   "     Prev_mvcc_op_log_lsa = (%lld, %d), \n"
 	   "     VFID = (%d, %d)",
 	   (long long int) mvcc_undo->mvccid,
@@ -8446,7 +8446,7 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
 	   mvcc_redo->redo.data.volid, mvcc_redo->redo.data.pageid,
 	   mvcc_redo->redo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_redo->redo.length));
-  fprintf (out_fp, "     MVCCID = %lld, \n",
+  fprintf (out_fp, "     MVCCID = %llu, \n",
 	   (long long int) mvcc_redo->mvccid);
 
   redo_length = mvcc_redo->redo.length;

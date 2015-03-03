@@ -32,6 +32,9 @@
 
 #define ROOTCLASS_NAME "Rootclass"	/* Name of Rootclass */
 
+#define OID_INITIALIZER \
+  {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
+
 #if !defined(SERVER_MODE)
 #define OID_TEMPID_MIN          INT_MIN
 #define OID_INIT_TEMPID()       (oid_Next_tempid = NULL_PAGEID)
@@ -134,6 +137,8 @@ enum
   OID_CACHE_PARTITION_CLASS_ID,
   OID_CACHE_COLLATION_CLASS_ID,
   OID_CACHE_HA_APPLY_INFO_CLASS_ID,
+  OID_CACHE_CLASS_CLASS_ID,
+  OID_CACHE_ATTRIBUTE_CLASS_ID,
 
   OID_CACHE_SIZE
 };
@@ -153,6 +158,9 @@ extern void oid_get_serial_oid (OID * oid);
 extern void oid_set_partition (const OID * oid);
 extern bool oid_is_partition (const OID * oid);
 extern void oid_get_partition_oid (OID * oid);
+
+extern bool oid_is_db_class (const OID * oid);
+extern bool oid_is_db_attribute (const OID * oid);
 
 extern int oid_compare (const void *oid1, const void *oid2);
 extern unsigned int oid_hash (const void *key_oid, unsigned int htsize);

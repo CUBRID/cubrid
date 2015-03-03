@@ -452,10 +452,11 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVBT_KEYVAL_INS,
    "RVBT_KEYVAL_INS",
-   btree_rv_keyval_non_mvcc_undo_insert,
+   btree_rv_keyval_undo_insert,
    NULL,
    btree_rv_keyval_dump,
    NULL},
+  /* Never use this recovery index anymore. Only for backward compatibility */
   {RVBT_KEYVAL_DEL,
    "RVBT_KEYVAL_DEL",
    btree_rv_keyval_undo_delete,
@@ -472,7 +473,7 @@ struct rvfun RV_fun[] = {
   {RVBT_LFRECORD_DEL,
    "RVBT_LFRECORD_DEL",
    NULL,
-   btree_rv_leafrec_redo_delete,
+   NULL,
    NULL,
    NULL},
   {RVBT_LFRECORD_KEYINS,
@@ -709,34 +710,28 @@ struct rvfun RV_fun[] = {
 
   {RVBT_KEYVAL_INS_LFRECORD_KEYINS,
    "RVBT_KEYVAL_INS_LFRECORD_KEYINS",
-   btree_rv_keyval_non_mvcc_undo_insert,
+   btree_rv_keyval_undo_insert,
    btree_rv_leafrec_redo_insert_key,
    btree_rv_keyval_dump,
    NULL},
   {RVBT_KEYVAL_INS_LFRECORD_OIDINS,
    "RVBT_KEYVAL_INS_LFRECORD_OIDINS",
-   btree_rv_keyval_non_mvcc_undo_insert,
+   btree_rv_keyval_undo_insert,
    btree_rv_leafrec_redo_insert_oid,
    btree_rv_keyval_dump,
    btree_rv_leafrec_dump_insert_oid},
+  /* Never use this recovery index anymore. Only for backward compatibility */
   {RVBT_KEYVAL_DEL_LFRECORD_DEL,
    "RVBT_KEYVAL_DEL_LFRECORD_DEL",
-   btree_rv_keyval_undo_delete,
-   btree_rv_leafrec_redo_delete,
-   btree_rv_keyval_dump,
-   NULL},
+   NULL, NULL, NULL, NULL},
+  /* Never use this recovery index anymore. Only for backward compatibility */
   {RVBT_KEYVAL_DEL_NDRECORD_UPD,
    "RVBT_KEYVAL_DEL_NDRECORD_UPD",
-   btree_rv_keyval_undo_delete,
-   btree_rv_noderec_undoredo_update,
-   btree_rv_keyval_dump,
-   btree_rv_noderec_dump},
+   NULL, NULL, NULL, NULL},
+  /* Never use this recovery index anymore. Only for backward compatibility */
   {RVBT_KEYVAL_DEL_NDHEADER_UPD,
    "RVBT_KEYVAL_DEL_NDHEADER_UPD",
-   btree_rv_keyval_undo_delete,
-   btree_rv_nodehdr_undoredo_update,
-   btree_rv_keyval_dump,
-   btree_rv_noderec_dump},
+   NULL, NULL, NULL, NULL},
   {RVBT_KEYVAL_DEL_OID_TRUNCATE,	/* unused */
    "RVBT_KEYVAL_DEL_OID_TRUNCATE",
    btree_rv_keyval_undo_delete,
@@ -815,19 +810,19 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVBT_KEYVAL_MVCC_INS,
    "RVBT_KEYVAL_MVCC_INS",
-   btree_rv_keyval_mvcc_undo_insert,
+   btree_rv_keyval_undo_insert,
    NULL,
    btree_rv_keyval_dump,
    NULL},
   {RVBT_KEYVAL_MVCC_INS_LFRECORD_KEYINS,
    "RVBT_KEYVAL_MVCC_INS_LFRECORD_KEYINS",
-   btree_rv_keyval_mvcc_undo_insert,
+   btree_rv_keyval_undo_insert,
    btree_rv_leafrec_redo_insert_key,
    btree_rv_keyval_dump,
    NULL},
   {RVBT_KEYVAL_MVCC_INS_LFRECORD_OIDINS,
    "RVBT_KEYVAL_MVCC_INS_LFRECORD_OIDINS",
-   btree_rv_keyval_mvcc_undo_insert,
+   btree_rv_keyval_undo_insert,
    btree_rv_leafrec_redo_insert_oid,
    btree_rv_keyval_dump,
    btree_rv_leafrec_dump_insert_oid},
@@ -924,6 +919,13 @@ struct rvfun RV_fun[] = {
    btree_rv_undo_global_unique_stats_commit,
    btree_rv_redo_global_unique_stats_commit,
    NULL,
+   NULL},
+
+  {RVBT_DELETE_OBJECT_PHYSICAL,
+   "RVBT_DELETE_OBJECT_PHYSICAL",
+   btree_rv_keyval_undo_delete,
+   btree_rv_redo_delete_object,
+   btree_rv_keyval_dump,
    NULL}
 };
 
@@ -943,7 +945,7 @@ rv_rcvindex_string (LOG_RCVINDEX rcvindex)
   return RV_fun[rcvindex].recv_string;
 }
 
-#if defined(CUBRID_DEBUG)
+#if !defined (NDEBUG)
 /*
  * rv_check_rvfuns - CHECK ORDERING OF RECOVERY FUNCTIONS
  *
@@ -967,8 +969,9 @@ rv_check_rvfuns (void)
 		      " sequence in index %d of recovery function array\n",
 		      RV_fun[i].recv_index, i);
 	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	assert (false);
 	break;
       }
 
 }
-#endif /* CUBRID_DEBUG */
+#endif /* !NDEBUG */

@@ -317,6 +317,9 @@ static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep,
 					       BITSET * dep_nodes);
 static bool qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node,
 				   QO_NODE * pk_node);
+static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY *
+					     class_entry_p);
+
 /*
  * qo_get_optimization_param () - Return the current value of some (global)
  *				  optimization parameter
@@ -7430,8 +7433,20 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
       /* class information entry */
       class_entryp = &(class_infop->info[i]);
-      /* get constraints of the class */
-      constraints = sm_class_constraints (class_entryp->mop);
+
+      if (qo_is_non_mvcc_class_with_index (class_entryp))
+	{
+	  /* Do not use index of db_serial/db_has_apply_info for scanning.
+	   * Current index scanning is optimized for MVCC, while db_serial and
+	   * db_ha_apply_info have MVCC disabled.
+	   */
+	  constraints = NULL;
+	}
+      else
+	{
+	  /* get constraints of the class */
+	  constraints = sm_class_constraints (class_entryp->mop);
+	}
 
       /* count the number of INDEX and UNIQUE constraints contained in this
          class */
@@ -9902,4 +9917,23 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
     }
 
   return true;
+}
+
+/*
+ * qo_is_non_mvcc_class_with_index () - Is disabled-MVCC class with index.
+ *
+ * return	      : True/false.
+ * class_entry_p (in) : QO class entry.
+ */
+static bool
+qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p)
+{
+  /* Index scan is currently optimized for MVCC and doesn't work properly for
+   * non-MVCC classes. Disable index scan for MVCC-disabled classes that
+   * have indexes. Index is still used to find unique object by key.
+   */
+  return oid_check_cached_class_oid (OID_CACHE_SERIAL_CLASS_ID,
+				     &class_entry_p->oid)
+    || oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID,
+				   &class_entry_p->oid);
 }

@@ -3861,6 +3861,11 @@ ws_decache_allxlockmops_but_norealclasses (void)
 	      ws_decache (mop);
 	      ws_clear_hints (mop, false);
 	    }
+	  if (mop->mvcc_link != NULL && !mop->permanent_mvcc_link)
+	    {
+	      ws_decache (mop->mvcc_link);
+	      mop->mvcc_link = NULL;
+	    }
 	}
     }
 }

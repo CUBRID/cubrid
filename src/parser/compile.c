@@ -409,7 +409,6 @@ pt_add_row_classoid_name (PARSER_CONTEXT * parser,
     }
 }
 
-
 /*
  * pt_compile () - Semantic check and convert parse tree into executable form
  *   return:

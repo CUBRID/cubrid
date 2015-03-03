@@ -40,6 +40,8 @@ static OID oid_Serial_class = { 0, 0, 0 };
 static OID oid_Partition_class = { 0, 0, 0 };
 static OID oid_Collation_class = { 0, 0, 0 };
 static OID oid_HA_apply_info_class = { 0, 0, 0 };
+static OID oid_Class_class = { 0, 0, 0 };
+static OID oid_Attribute_class = { 0, 0, 0 };
 static OID oid_Rep_Read_Tran = { 0, 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -58,7 +60,9 @@ OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Serial_class, CT_SERIAL_NAME},
   {&oid_Partition_class, CT_PARTITION_NAME},
   {&oid_Collation_class, CT_COLLATION_NAME},
-  {&oid_HA_apply_info_class, CT_HA_APPLY_INFO_NAME}
+  {&oid_HA_apply_info_class, CT_HA_APPLY_INFO_NAME},
+  {&oid_Class_class, CT_CLASS_NAME},
+  {&oid_Attribute_class, CT_ATTRIBUTE_NAME}
 };
 
 /*
@@ -161,6 +165,30 @@ void
 oid_get_partition_oid (OID * oid)
 {
   COPY_OID (oid, oid_Partition_class_oid);
+}
+
+/*
+ * oid_is_db_class () - Is this OID of db_class?
+ *
+ * return   : True/false.
+ * oid (in) : Check OID.
+ */
+bool
+oid_is_db_class (const OID * oid)
+{
+  return OID_EQ (oid, &oid_Class_class);
+}
+
+/*
+ * oid_is_db_attribute () - Is this OID of db_attribute?
+ *
+ * return   : True/false.
+ * oid (in) : Check OID.
+ */
+bool
+oid_is_db_attribute (const OID * oid)
+{
+  return OID_EQ (oid, &oid_Attribute_class);
 }
 
 /*
