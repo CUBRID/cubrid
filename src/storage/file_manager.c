@@ -13288,7 +13288,7 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
   int num_files;
   int num_marked = 0;
   int i, nth;
-  int ret = NO_ERROR;
+  int ret;
   bool latch_promoted = false;
 
   if (file_Tracker->vfid == NULL)
@@ -13302,6 +13302,7 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
    * operation
    */
 restart:
+  ret = NO_ERROR;
 
   vpid.volid = file_Tracker->vfid->volid;
   vpid.pageid = file_Tracker->vfid->fileid;
