@@ -2618,10 +2618,12 @@ ldr_xstr_elem (LDR_CONTEXT * context,
 {
   int err = NO_ERROR;
   int dest_size;
-  char *bstring;
+  char *bstring = NULL;
   TP_DOMAIN *domain;
   DB_VALUE temp;
   TP_DOMAIN *domain_ptr, temp_domain;
+
+  DB_MAKE_NULL (&temp);
 
   dest_size = (len + 1) / 2;
 
@@ -2637,6 +2639,9 @@ ldr_xstr_elem (LDR_CONTEXT * context,
 
   DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len * 4);
   temp.need_clear = true;
+
+  /* temp takes ownership of this piece of memory */
+  bstring = NULL;
 
   GET_DOMAIN (context, domain);
 
@@ -2664,6 +2669,11 @@ ldr_xstr_elem (LDR_CONTEXT * context,
 
 error_exit:
   /* cleanup */
+  if (bstring != NULL)
+    {
+      db_private_free_and_init (NULL, bstring);
+    }
+
   db_value_clear (&temp);
   return err;
 }
