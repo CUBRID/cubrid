@@ -581,6 +581,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
       session_state_verify_ref_count (thread_p, session_p);
 #endif
       thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+      thread_p->conn_entry->session_p = NULL;
       session_state_decrease_ref_count (thread_p, session_p);
       pthread_mutex_unlock (&session_p->mutex);
     }
@@ -760,6 +761,7 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
       session_state_verify_ref_count (thread_p, session_p);
 #endif
       thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+      thread_p->conn_entry->session_p = NULL;
       session_state_decrease_ref_count (thread_p, session_p);
       pthread_mutex_unlock (&session_p->mutex);
     }
