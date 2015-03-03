@@ -15149,6 +15149,11 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NO_ERROR;
 	}
 
+      assert (statement->info.spec.entity_name);
+      name =
+	pt_print_bytes (parser,
+			statement->info.spec.entity_name->info.spec.
+			entity_name);
       repl_stmt.statement_type = CUBRID_STMT_TRUNCATE;
       break;
 

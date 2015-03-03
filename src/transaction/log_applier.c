@@ -5757,6 +5757,12 @@ la_apply_statement_log (LA_ITEM * item)
     case CUBRID_STMT_DELETE:
     case CUBRID_STMT_UPDATE:
 
+      if (item->item_type == CUBRID_STMT_TRUNCATE
+	  && la_need_filter_out (item) == true)
+	{
+	  return NO_ERROR;
+	}
+
       /*
        * When we create the schema objects, the object's owner must be changed
        * to the appropriate owner.
@@ -8825,7 +8831,8 @@ la_need_filter_out (LA_ITEM * item)
   filter = &la_Info.repl_filter;
 
   if (filter->type == REPL_FILTER_NONE
-      || item->log_type == LOG_REPLICATION_STATEMENT
+      || (item->log_type == LOG_REPLICATION_STATEMENT
+	  && item->item_type != CUBRID_STMT_TRUNCATE)
       || strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
     {
       return false;
@@ -9083,7 +9090,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
   LA_CACHE_BUFFER *log_buf = NULL;
   LOG_PAGE *pg_ptr;
   LOG_RECORD_HEADER *lrec = NULL;
-  LOG_LSA old_lsa = { -1, -1 };
+  LOG_LSA old_lsa = {
+    -1, -1
+  };
   LOG_LSA prev_final;
   struct timeval time_commit;
   char *s;
