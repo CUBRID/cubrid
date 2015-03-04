@@ -32219,14 +32219,6 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-
-      if (BTREE_IS_UNIQUE (btid_int.unique_pk)
-	  && purpose == BTREE_OP_INSERT_NEW_OBJECT && !insert_helper.is_null)
-	{
-	  /* Unlock object. Its insert will be rollbacked. */
-	  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid,
-						   X_LOCK);
-	}
       return error_code;
     }
 
