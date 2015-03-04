@@ -2820,23 +2820,22 @@ tz_check_ds_match_string (const TZ_OFFSET_RULE * off_rule,
 
       if (strcasecmp (rule_dst_format, ds_string) != 0)
 	{
-	  /* not maching with variable format */
+	  /* not matching with variable format */
 	  rule_matched = false;
 	}
     }
   else if (off_rule->save_format != NULL
-	   && (ds_rule->save_time == 0
-	       || strcasecmp (off_rule->save_format, ds_string) != 0))
+	   && ds_rule->save_time != 0
+	   && strcasecmp (off_rule->save_format, ds_string) != 0)
     {
-      /* not mathcing with DST format */
+      /* not matching with DST format */
       rule_matched = false;
     }
   else if (off_rule->std_format != NULL
-	   && ((ds_rule->save_time != 0
-		&& off_rule->save_format == NULL)
-	       || strcasecmp (off_rule->std_format, ds_string) != 0))
+	   && ds_rule->save_time == 0
+	   && strcasecmp (off_rule->std_format, ds_string) != 0)
     {
-      /* not mathcing with standard format */
+      /* not matching with standard format */
       rule_matched = false;
     }
 
