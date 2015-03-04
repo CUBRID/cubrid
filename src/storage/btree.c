@@ -4958,7 +4958,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p,
 
   buf.ptr = PTR_ALIGN (buf.ptr, OR_INT_SIZE);
 
-  *offset = CAST_STRLEN (buf.ptr - buf.buffer);
+  *offset = CAST_BUFLEN (buf.ptr - buf.buffer);
 
   return rc;
 }
@@ -13093,8 +13093,9 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid,
  */
 DB_VALUE *
 btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
-	      OID * cls_oid, OID * oid, BTREE_LOCKED_KEYS locked_keys,
-	      int *unique, int op_type, BTREE_UNIQUE_STATS * unique_stat_info,
+	      OR_BUF * key_buf, OID * cls_oid, OID * oid,
+	      BTREE_LOCKED_KEYS locked_keys, int *unique, int op_type,
+	      BTREE_UNIQUE_STATS * unique_stat_info,
 	      MVCC_BTREE_OP_ARGUMENTS * mvcc_args)
 {
   int offset, p_key_cnt, root_level = 0;
@@ -13109,6 +13110,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   INT16 p_slot_id;
   int top_op_active = 0;
   DB_VALUE mid_key;
+  DB_VALUE key_value;
   bool clear_key = false;
   BTREE_NODE_TYPE node_type;
   BTID_INT btid_int;
@@ -13148,7 +13150,8 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   BTREE_MERGE_STATUS merge_status;
   PGBUF_LATCH_MODE P_latch;
 
-  assert (key != NULL);
+  assert (key != NULL || key_buf != NULL);
+  assert (key == NULL || key_buf == NULL);
   assert (oid != NULL);
   assert (unique != NULL);
   assert (file_is_new_file (thread_p, &btid->vfid) == FILE_OLD_FILE);
@@ -13157,6 +13160,13 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   is_active = logtb_is_current_active (thread_p);
   tran_isolation = logtb_find_current_isolation (thread_p);
+
+  /* prefer to use key buffer */
+  if (key_buf != NULL)
+    {
+      DB_MAKE_NULL (&key_value);
+      key = NULL;
+    }
 
   FI_SET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, 1);
 
@@ -13194,6 +13204,33 @@ fix_root:
 				    root_header, &btid_int) != NO_ERROR)
     {
       goto error;
+    }
+
+  if (key == NULL)
+    {
+      PR_TYPE *pr_type;
+      int key_size = -1;
+
+      assert (key_buf != NULL);
+
+      pr_type = btid_int.key_type->type;
+
+      /* Do not copy the string--just use the pointer.  The pr_ routines
+       * for strings and sets have different semantics for length.
+       */
+      if (pr_type->id == DB_TYPE_MIDXKEY)
+	{
+	  key_size = CAST_BUFLEN (key_buf->endptr - key_buf->ptr);
+	}
+
+      if ((*(pr_type->index_readval)) (key_buf, &key_value, btid_int.key_type,
+				       key_size, false /* not copy */ ,
+				       NULL, 0) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      key = &key_value;
     }
 
   assert (BTREE_IS_SAME_DB_TYPE (DB_VALUE_DOMAIN_TYPE (key),
@@ -14856,6 +14893,11 @@ key_deletion:
     }
 #endif
 
+  if (key_buf != NULL)
+    {
+      pr_clear_value (&key_value);
+    }
+
   FI_RESET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
 
   return key;
@@ -14910,6 +14952,11 @@ error:
   if (Right)
     {
       pgbuf_unfix_and_init (thread_p, Right);
+    }
+
+  if (key_buf != NULL)
+    {
+      pr_clear_value (&key_value);
     }
 
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
@@ -18748,8 +18795,8 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
          mvcc_args_p = &mvcc_args;
          mvcc_args_p->purpose = BTREE_OP_DELETE_OBJECT_PHYSICAL;
          } */
-      if (btree_delete (thread_p, btid, old_key, cls_oid, oid, locked_keys,
-			unique, op_type, unique_stat_info,
+      if (btree_delete (thread_p, btid, old_key, NULL, cls_oid, oid,
+			locked_keys, unique, op_type, unique_stat_info,
 			NULL /* mvcc_args_p */ )
 	  == NULL)
 	{
@@ -22089,7 +22136,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid,
     }
   datap += key_len;
 
-  *length = CAST_STRLEN (datap - *data);
+  *length = CAST_BUFLEN (datap - *data);
 
   /* Safe guard. */
   assert (0 < *length);
@@ -22832,6 +22879,103 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p, char *datap,
 
   assert (mvcc_info != NULL);
 
+  btree_rv_read_keybuf_nocopy (thread_p, datap, data_size, btid, cls_oid, oid,
+			       mvcc_info, &buf);
+
+  root_vpid.pageid = btid->sys_btid->root_pageid;	/* read root page */
+  root_vpid.volid = btid->sys_btid->vfid.volid;
+
+  root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE,
+		    PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (root == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+
+  root_header = btree_get_root_header (root);
+  if (root_header == NULL)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  error_code = btree_glean_root_header_info (thread_p, root_header, btid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  pgbuf_unfix_and_init (thread_p, root);
+
+  pr_type = btid->key_type->type;
+
+  /* Do not copy the string--just use the pointer.  The pr_ routines
+   * for strings and sets have different semantics for length.
+   */
+  if (pr_type->id == DB_TYPE_MIDXKEY)
+    {
+      key_size = CAST_BUFLEN (buf.endptr - buf.ptr);
+    }
+
+  error_code =
+    (*(pr_type->index_readval)) (&buf, key, btid->key_type, key_size,
+				 false /* not copy */ ,
+				 NULL, 0);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  return NO_ERROR;
+
+error:
+
+  assert (error_code != NO_ERROR);
+  if (root != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, root);
+    }
+  return error_code;
+}
+
+/*
+ * btree_rv_read_keybuf_nocopy () - Initializes a buffer from recovery info
+ *
+ * return	    : Void.
+ * thread_p (in)    : Thread entry.
+ * datap (in)	    : Buffer containing recovery data.
+ * data_size (in)   : Size of recovery data.
+ * btid (out)	    : B-tree identifier.
+ * cls_oid (out)    : Class identifier.
+ * oid (out)	    : Object identifier.
+ * mvcc_id (in/out) : Operation MVCCID. It must be NULL for non-MVCC
+ *		      operations and not NULL for MVCC operations.
+ * key_buf (out)    : buffer for packed key.
+ *
+ * Note: this should be prefered to btree_rv_read_keyval_info_nocopy
+ *	 which performs an additional root page latch to retrieve key type.
+ *	 Use this, if key type is already available.
+ *
+ * Warning: This assumes that the key value has the index's domain and not the
+ *	    non-leaf domain. This should be the case since this is a logical
+ *	    operation and not a physical one.
+ */
+void
+btree_rv_read_keybuf_nocopy (THREAD_ENTRY * thread_p, char *datap,
+			     int data_size, BTID_INT * btid,
+			     OID * cls_oid, OID * oid,
+			     BTREE_MVCC_INFO * mvcc_info, OR_BUF * key_buf)
+{
+  char *start = datap;
+
+  assert (mvcc_info != NULL);
+
   /* extract the stored btid, key, oid data */
   datap = or_unpack_btid (datap, btid->sys_btid);
 
@@ -22872,68 +23016,8 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p, char *datap,
 
   BTREE_OID_CLEAR_ALL_FLAGS (oid);
 
-  root_vpid.pageid = btid->sys_btid->root_pageid;	/* read root page */
-  root_vpid.volid = btid->sys_btid->vfid.volid;
-
-  root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE,
-		    PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (root == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      goto error;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
-
-  root_header = btree_get_root_header (root);
-  if (root_header == NULL)
-    {
-      assert_release (false);
-      error_code = ER_FAILED;
-      goto error;
-    }
-
-  error_code = btree_glean_root_header_info (thread_p, root_header, btid);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
-  pgbuf_unfix_and_init (thread_p, root);
-
   datap = PTR_ALIGN (datap, INT_ALIGNMENT);
-  or_init (&buf, datap, CAST_STRLEN (data_size - (datap - start)));
-  pr_type = btid->key_type->type;
-
-  /* Do not copy the string--just use the pointer.  The pr_ routines
-   * for strings and sets have different semantics for length.
-   */
-  if (pr_type->id == DB_TYPE_MIDXKEY)
-    {
-      key_size = CAST_STRLEN (buf.endptr - buf.ptr);
-    }
-
-  error_code =
-    (*(pr_type->index_readval)) (&buf, key, btid->key_type, key_size,
-				 false /* not copy */ ,
-				 NULL, 0);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
-  return NO_ERROR;
-
-error:
-
-  assert (error_code != NO_ERROR);
-  if (root != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, root);
-    }
-  return error_code;
+  or_init (key_buf, datap, CAST_BUFLEN (data_size - (datap - start)));
 }
 
 /*
@@ -22948,7 +23032,7 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   BTID_INT btid;
   BTID sys_btid;
-  DB_VALUE key;
+  OR_BUF key_buf;
   OID cls_oid;
   OID oid;
   char *datap;
@@ -22963,18 +23047,12 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /* extract the stored btid, key, oid data */
   datap = (char *) recv->data;
   datasize = recv->length;
-  err =
-    btree_rv_read_keyval_info_nocopy (thread_p, datap, datasize, &btid,
-				      &cls_oid, &oid, &dummy_mvcc_info, &key);
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return err;
-    }
+  btree_rv_read_keybuf_nocopy (thread_p, datap, datasize, &btid,
+			       &cls_oid, &oid, &dummy_mvcc_info, &key_buf);
 
   assert (!OID_ISNULL (&oid));
   /* Undo insert: just delete object and all its information. */
-  if (btree_delete (thread_p, btid.sys_btid, &key, &cls_oid, &oid,
+  if (btree_delete (thread_p, btid.sys_btid, NULL, &key_buf, &cls_oid, &oid,
 		    BTREE_NO_KEY_LOCKED, &dummy, SINGLE_ROW_MODIFY,
 		    (BTREE_UNIQUE_STATS *) NULL, NULL) == NULL)
     {
@@ -23001,7 +23079,7 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
 {
   BTID_INT btid;
   BTID sys_btid;
-  DB_VALUE key;
+  OR_BUF key_buf;
   OID cls_oid;
   OID oid;
   char *datap;
@@ -23018,17 +23096,10 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
   /* extract the stored btid, key, oid data */
   datap = (char *) recv->data;
   datasize = recv->length;
-  err =
-    btree_rv_read_keyval_info_nocopy (thread_p, datap, datasize, &btid,
-				      &cls_oid, &oid, &dummy_mvcc_info, &key);
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return err;
-    }
 
+  btree_rv_read_keybuf_nocopy (thread_p, datap, datasize, &btid, &cls_oid,
+			       &oid, &dummy_mvcc_info, &key_buf);
   assert (!OID_ISNULL (&oid));
-
 
   /* Set purpose of delete to remove DELID */
   /* TODO: Rewrite btree_delete. */
@@ -23037,7 +23108,7 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
   mvcc_args.delete_mvccid = recv->mvcc_id;
   mvcc_args.insert_mvccid = MVCCID_NULL;
 
-  if (btree_delete (thread_p, btid.sys_btid, &key, &cls_oid, &oid,
+  if (btree_delete (thread_p, btid.sys_btid, NULL, &key_buf, &cls_oid, &oid,
 		    BTREE_NO_KEY_LOCKED, &dummy, SINGLE_ROW_MODIFY,
 		    (BTREE_UNIQUE_STATS *) NULL, &mvcc_args) == NULL)
     {

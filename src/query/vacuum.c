@@ -2605,7 +2605,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   LOG_PAGE *log_page_p = NULL;
   BTID_INT btid_int;
   BTID sys_btid;
-  DB_VALUE key_value;
   OID class_oid, oid;
   MVCCID threshold_mvccid = vacuum_Global_oldest_active_mvccid;
   int unique;
@@ -2629,9 +2628,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   /* Initialize log_vacuum */
   LSA_SET_NULL (&log_vacuum.prev_mvcc_op_log_lsa);
   VFID_SET_NULL (&log_vacuum.vfid);
-
-  /* Initialize key value as NULL */
-  DB_MAKE_NULL (&key_value);
 
   /* Set sys_btid pointer for internal b-tree block */
   btid_int.sys_btid = &sys_btid;
@@ -2751,27 +2747,16 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
 	{
 	  /* Find b-tree entry and vacuum it */
-	  MVCCID save_mvccid = mvccid;
+	  OR_BUF key_buf;
 
 	  assert (undo_data != NULL);
 
 	  /* TODO: is mvccid really required to be stored? it can also be
 	   *       obtained from undoredo data.
 	   */
-	  error_code =
-	    btree_rv_read_keyval_info_nocopy (thread_p, undo_data,
-					      undo_data_size, &btid_int,
-					      &class_oid, &oid, &mvcc_info,
-					      &key_value);
-	  if (error_code != NO_ERROR)
-	    {
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER
-			     | VACUUM_ER_LOG_BTREE,
-			     "VACUUM ERROR: Failed to read recovery data.\n");
-	      assert_release (false);
-	      goto end;
-	    }
-
+	  btree_rv_read_keybuf_nocopy (thread_p, undo_data, undo_data_size,
+				       &btid_int, &class_oid, &oid,
+				       &mvcc_info, &key_buf);
 	  /* Vacuum b-tree */
 	  unique = BTREE_IS_UNIQUE (btid_int.unique_pk);
 
@@ -2847,7 +2832,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 			 "rem_object" : "rem_insid", mvccid);
 
 	  /* Since data is being removed from b-tree, call btree_delete. */
-	  (void) btree_delete (thread_p, btid_int.sys_btid, &key_value,
+	  (void) btree_delete (thread_p, btid_int.sys_btid, NULL, &key_buf,
 			       &class_oid, &oid, BTREE_NO_KEY_LOCKED, &unique,
 			       SINGLE_ROW_DELETE, NULL, &mvcc_args);
 
@@ -2868,9 +2853,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	      er_clear ();
 	      error_code = NO_ERROR;
 	    }
-
-	  /* Clear key value */
-	  db_value_clear (&key_value);
 	}
       else if (log_record_data.rcvindex == RVES_NOTIFY_VACUUM)
 	{
@@ -2907,8 +2889,6 @@ end:
    *       again.
    */
   vacuum_finished_block_vacuum (thread_p, data, vacuum_complete);
-
-  db_value_clear (&key_value);
 
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);

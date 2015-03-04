@@ -8694,7 +8694,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	      CUBRID_IDX_DELETE_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      key_ins_del = btree_delete (thread_p, &btid, key_dbvalue,
+	      key_ins_del = btree_delete (thread_p, &btid, key_dbvalue, NULL,
 					  class_oid, inst_oid, locked_keys,
 					  &dummy_unique, op_type,
 					  unique_stat_info,
@@ -9637,8 +9637,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 			}
 
 		      if (btree_delete
-			  (thread_p, &old_btid, old_key, class_oid, old_oid,
-			   locked_keys, &unique, op_type,
+			  (thread_p, &old_btid, old_key, NULL, class_oid,
+			   old_oid, locked_keys, &unique, op_type,
 			   unique_stat_info, NULL /* mvcc_args_p */ ) == NULL)
 			{
 			  error_code = er_errid ();
@@ -10165,7 +10165,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	     mvcc_args_p->purpose = MVCC_BTREE_DELETE_OBJECT; */
 	}
       key_del =
-	btree_delete (thread_p, btid, dbvalue_ptr, class_oid, &inst_oid,
+	btree_delete (thread_p, btid, dbvalue_ptr, NULL, class_oid, &inst_oid,
 		      BTREE_NO_KEY_LOCKED, &dummy_unique, MULTI_ROW_DELETE,
 		      &unique_info, NULL /* mvcc_args_p */ );
     }
@@ -10423,7 +10423,7 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
 	  /* mvcc_args_p = &mvcc_args;
 	     mvcc_args_p->purpose = MVCC_BTREE_DELETE_OBJECT; */
 	}
-      if (btree_delete (thread_p, btid, &key, class_oid, inst_oid,
+      if (btree_delete (thread_p, btid, &key, NULL, class_oid, inst_oid,
 			locked_keys, &dummy_unique, SINGLE_ROW_DELETE,
 			NULL, NULL /* mvcc_args_p */ ) != NULL)
 	{
