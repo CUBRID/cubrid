@@ -9016,6 +9016,11 @@ la_create_repl_filter (void)
 		  ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  er_stack_pop ();
 	}
+      else
+	{
+	  ws_release_user_instance (class_);
+	  ws_decache (class_);
+	}
 
       error = la_add_repl_filter (classname);
       if (error != NO_ERROR)
@@ -9023,6 +9028,8 @@ la_create_repl_filter (void)
 	  goto error_return;
 	}
     }
+
+  ws_cull_mops ();
 
   fclose (fp);
   return NO_ERROR;
