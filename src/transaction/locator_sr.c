@@ -1965,7 +1965,7 @@ locator_dump_class_names (THREAD_ENTRY * thread_p, FILE * out_fp)
  *       given one, isvalid is set to DISK_INVALID. In the case of other
  *       kind of error, isvalid is set to DISK_ERROR.
  *       If isvalid is set to DISK_ERROR, we return false to stop
- *       the map hash, otheriwse, we return true to continue.
+ *       the map hash, otherwise, we return true to continue.
  */
 static int
 locator_check_class_on_heap (const void *name, void *ent, void *args)
@@ -2211,13 +2211,13 @@ xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid,
 }
 
 /*
- * locator_find_lockset_missing_class_oids () - Find missing classoids
+ * locator_find_lockset_missing_class_oids () - Find missing class oids
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- *   lockset(in): Request for finding mising classes
+ *   lockset(in): Request for finding missing classes
  *
- * Note: Find missing classoids in requested area.
+ * Note: Find missing class oids in requested area.
  *              The function does not quit when an error is found if the value
  *              of lockset->quit_on_errors is false. In this case the
  *              object with the error is set to a NULL_OID. For example, when
@@ -3553,8 +3553,8 @@ error:
  * return: LC_LOCKSET * or NULL (in case of error)
  *
  *   oid(in): The desired object.
- *   prune_level(in): Get references upto this level. If the value is <= 0
- *                     means upto an infonite level (i.e., all references).
+ *   prune_level(in): Get references up to this level. If the value is <= 0
+ *                     means up to an infinite level (i.e., all references).
  *   inst_lock(in): Indicate this lock in the request area for objects that
  *                     are instances.
  *   class_lock(in): Indicate this lock in the request area for objects that
@@ -4558,7 +4558,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
   int k;
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-  bool found;
+  OID found_oid;
 
   if (mvcc_Enabled)
     {
@@ -4585,17 +4585,22 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	    {
 	      error_code =
 		btree_find_foreign_key (thread_p, &fkref->self_btid, key,
-					&fkref->self_oid, &found);
+					&fkref->self_oid, &found_oid);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  goto error3;
 		}
-	      if (found)
+	      if (!OID_ISNULL (&found_oid))
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1,
 			  fkref->fkname);
 		  error_code = ER_FK_RESTRICT;
+		  /* Unlock child object. */
+		  lock_unlock_object_donot_move_to_non2pl (thread_p,
+							   &found_oid,
+							   &fkref->self_oid,
+							   S_LOCK);
 		  goto error3;
 		}
 	    }
@@ -4988,7 +4993,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
   int k;
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-  bool found = false;
+  OID found_oid;
 
   if (mvcc_Enabled)
     {
@@ -5014,17 +5019,22 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	    {
 	      error_code =
 		btree_find_foreign_key (thread_p, &fkref->self_btid, key,
-					&fkref->self_oid, &found);
+					&fkref->self_oid, &found_oid);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  goto error3;
 		}
-	      if (found)
+	      if (!OID_ISNULL (&found_oid))
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1,
 			  fkref->fkname);
 		  error_code = ER_FK_RESTRICT;
+		  /* Unlock child object. */
+		  lock_unlock_object_donot_move_to_non2pl (thread_p,
+							   &found_oid,
+							   &fkref->self_oid,
+							   S_LOCK);
 		  goto error3;
 		}
 	    }

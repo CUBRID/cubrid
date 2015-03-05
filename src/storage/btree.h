@@ -552,7 +552,7 @@ typedef int BTREE_RANGE_SCAN_PROCESS_KEY_FUNC (THREAD_ENTRY * thread_p,
 
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
 				   DB_VALUE * key, OID * class_oid,
-				   bool * found);
+				   OID * found_oid);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 

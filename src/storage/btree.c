@@ -862,7 +862,7 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p,
 typedef struct btree_find_fk_object BTREE_FIND_FK_OBJECT;
 struct btree_find_fk_object
 {
-  bool found;
+  OID found_oid;
 #if defined (SERVER_MODE)
   OID locked_object;
   LOCK lock_mode;
@@ -871,10 +871,10 @@ struct btree_find_fk_object
 /* BTREE_FIND_FK_OBJECT static initializer */
 #if defined (SERVER_MODE)
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { false, OID_INITIALIZER, NULL_LOCK }
+  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { false }
+  { OID_INITIALIZER }
 #endif /* SA_MODE */
 
 /* BTREE_INSERT_HELPER -
@@ -6478,15 +6478,21 @@ error_return:
 }
 
 /*
- * btree_find_foreign_key () -
- *   return:
- *   btid(in):
- *   key(in):
- *   class_oid(in):
+ * btree_find_foreign_key () - Find and lock any existing object in foreign
+ *			       key. Used to check that delete/update on
+ *			       primary key is allowed.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid (in)	   : B-tree ID.
+ * key (in)	   : Key value.
+ * class_oid (in)  : Class OID.
+ * found_oid (out) : Outputs OID of found object. If no object is found
+ *		     outputs NULL.
  */
 int
 btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
-			DB_VALUE * key, OID * class_oid, bool * found)
+			DB_VALUE * key, OID * class_oid, OID * found_oid)
 {
   BTREE_SCAN btree_scan;
   int error_code = NO_ERROR;
@@ -6496,7 +6502,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
   assert (btid != NULL);
   assert (key != NULL);
   assert (class_oid != NULL);
-  assert (found != NULL);
+  assert (found_oid != NULL);
 
   /* Find if key has any objects. */
 
@@ -6507,7 +6513,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
   key_val_range.num_index_term = 0;
 
   /* Initialize not found. */
-  *found = false;
+  OID_SET_NULL (&find_fk_object.found_oid);
 
 #if defined (SERVER_MODE)
   /* Use S_LOCK to block found object. */
@@ -6529,14 +6535,13 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
 		      btree_range_scan_find_fk_any_object);
   assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 
-  /* Output found. */
-  *found = find_fk_object.found;
+  /* Output found object. */
+  COPY_OID (found_oid, &find_fk_object.found_oid);
 
 #if defined (SERVER_MODE)
-  if (error_code != NO_ERROR || !find_fk_object.found)
+  if (error_code != NO_ERROR || OID_ISNULL (&find_fk_object.found_oid))
     {
       /* Release lock on object if any. */
-      /* TODO: Do we ever need to keep the lock? */
       if (!OID_ISNULL (&find_fk_object.locked_object))
 	{
 	  lock_unlock_object_donot_move_to_non2pl (thread_p,
@@ -31763,7 +31768,8 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p,
       /* Key was fully consumed. We are here because no object was found.
        * Since this key was the only one of interest, scan can be stopped.
        */
-      assert (((BTREE_FIND_FK_OBJECT *) bts->bts_other)->found == false);
+      assert (OID_ISNULL
+	      (&((BTREE_FIND_FK_OBJECT *) bts->bts_other)->found_oid));
       bts->end_scan = true;
     }
   return NO_ERROR;
@@ -31886,7 +31892,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (lock_result == LK_GRANTED)
 	{
 	  /* Object was successfully locked. Stop now. */
-	  find_fk_obj->found = true;
+	  COPY_OID (&find_fk_obj->found_oid, oid);
 	  bts->end_scan = true;
 	  *stop = true;
 #if defined (SERVER_MODE)
