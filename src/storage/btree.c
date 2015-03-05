@@ -1049,8 +1049,8 @@ struct btree_insert_helper
 /* Delete redo recovery: next overflow page was removed. New VPID must be set
  * (or removed completely).
  */
-#define BTREE_RV_REDO_DELOBJ_REMOVE_OVERFLOW(addr, redo_data, redo_length, \
-					     vpid) \
+#define BTREE_RV_REDO_DELOBJ_REMOVE_NEXT_OVERFLOW(addr, redo_data, \
+						  redo_length, vpid) \
   do \
     { \
       (addr)->offset |= BTREE_RV_REDO_DELOBJ_FLAG_REMOVE_OVERFLOW; \
@@ -10531,20 +10531,22 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
    */
   rv_redo_data_ptr = rv_redo_data;
   rv_redo_data_length = 0;
-  if (BTREE_IS_UNIQUE (btid->unique_pk))
-    {
-      BTREE_RV_REDO_DELOBJ_SET_UNIQUE (&leaf_addr, rv_redo_data_ptr,
-				       rv_redo_data_length,
-				       &btid->topclass_oid);
-    }
+
   if (need_dealloc_overflow_page)
     {
       /* Flag log_offset as an overflow page being removed to update overflow
        * link.
        */
-      BTREE_RV_REDO_DELOBJ_REMOVE_OVERFLOW (&leaf_addr, rv_redo_data_ptr,
-					    rv_redo_data_length,
-					    &next_ovfl_vpid);
+      BTREE_RV_REDO_DELOBJ_REMOVE_NEXT_OVERFLOW (&leaf_addr, rv_redo_data_ptr,
+						 rv_redo_data_length,
+						 &next_ovfl_vpid);
+    }
+
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
+    {
+      BTREE_RV_REDO_DELOBJ_SET_UNIQUE (&leaf_addr, rv_redo_data_ptr,
+				       rv_redo_data_length,
+				       &btid->topclass_oid);
     }
 
   /* Negative log_offset_to_object means that first object is removed and
@@ -10925,8 +10927,9 @@ btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   /* Redo data. */
   rv_redo_data_ptr = rv_redo_data;
   rv_redo_data_length = 0;
-  BTREE_RV_REDO_DELOBJ_REMOVE_OVERFLOW (&leaf_addr, rv_redo_data_ptr,
-					rv_redo_data_length, next_ovfl_vpid);
+  BTREE_RV_REDO_DELOBJ_REMOVE_NEXT_OVERFLOW (&leaf_addr, rv_redo_data_ptr,
+					     rv_redo_data_length,
+					     next_ovfl_vpid);
   /* Unique flag does not matter in this case. */
   log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &leaf_addr,
 			    rv_undo_data_length, rv_redo_data_length,
@@ -11020,8 +11023,9 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid,
   /* Redo data. */
   rv_redo_data_ptr = rv_redo_data;
   rv_redo_data_length = 0;
-  BTREE_RV_REDO_DELOBJ_REMOVE_OVERFLOW (&ovf_addr, rv_redo_data_ptr,
-					rv_redo_data_length, next_ovfl_vpid);
+  BTREE_RV_REDO_DELOBJ_REMOVE_NEXT_OVERFLOW (&ovf_addr, rv_redo_data_ptr,
+					     rv_redo_data_length,
+					     next_ovfl_vpid);
   /* Unique flag does not matter in this case. */
 
   log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &ovf_addr,
@@ -11159,14 +11163,15 @@ btree_delete_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Undo is packed key and OID info, redo is offset to object. */
   rv_redo_data_ptr = rv_redo_data;
+  BTREE_RV_REDO_DELOBJ_SET_OVERFLOW (&ovf_addr, rv_redo_data_ptr,
+				     rv_redo_data_length);
   if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       BTREE_RV_REDO_DELOBJ_SET_UNIQUE (&ovf_addr, rv_redo_data_ptr,
 				       rv_redo_data_length,
 				       &btid->topclass_oid);
     }
-  BTREE_RV_REDO_DELOBJ_SET_OVERFLOW (&ovf_addr, rv_redo_data_ptr,
-				     rv_redo_data_length);
+
   BTREE_RV_REDO_DELOBJ_OFFSET_TO_DELETED (&ovf_addr, rv_redo_data_ptr,
 					  rv_redo_data_length,
 					  del_oid_offset, domain_ptr,
@@ -35497,6 +35502,20 @@ btree_rv_redo_delete_object (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	}
     }
 
+  /* Initialize a dummy btid_int to be used later. */
+  btid_int_for_unique_flag.unique_pk =
+    (flags & BTREE_RV_REDO_DELOBJ_FLAG_IS_UNIQUE) ? 1 : 0;
+  if (BTREE_IS_UNIQUE (btid_int_for_unique_flag.unique_pk))
+    {
+      /* Copy top class OID. */
+      COPY_OID (&btid_int_for_unique_flag.topclass_oid, (OID *) rcv_data_ptr);
+      rcv_data_ptr += sizeof (OID);
+    }
+  else
+    {
+      OID_SET_NULL (&btid_int_for_unique_flag.topclass_oid);
+    }
+
   /* We need to remove an object from record. */
   offset_to_object = *((short *) rcv_data_ptr);
   rcv_data_ptr += sizeof (offset_to_object);
@@ -35521,20 +35540,6 @@ btree_rv_redo_delete_object (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   node_type =
     (flags & BTREE_RV_REDO_DELOBJ_FLAG_IS_OVERFLOW) ?
     BTREE_OVERFLOW_NODE : BTREE_LEAF_NODE;
-
-  /* Initialize a dummy btid_int to be used later. */
-  btid_int_for_unique_flag.unique_pk =
-    (flags & BTREE_RV_REDO_DELOBJ_FLAG_IS_UNIQUE) ? 1 : 0;
-  if (BTREE_IS_UNIQUE (btid_int_for_unique_flag.unique_pk))
-    {
-      /* Copy top class OID. */
-      COPY_OID (&btid_int_for_unique_flag.topclass_oid, (OID *) rcv_data_ptr);
-      rcv_data_ptr += sizeof (OID);
-    }
-  else
-    {
-      OID_SET_NULL (&btid_int_for_unique_flag.topclass_oid);
-    }
 
   /* Set NULL key type to skip checking record without enough information. */
   /* TODO: Create a system similar to insert redo that can save key type and
