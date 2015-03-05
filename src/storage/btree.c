@@ -5823,8 +5823,8 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  search_key->slotid = NULL_SLOTID;
 
 	  /* Is this an error case? */
-	  assert (false);
-	  return ER_FAILED;
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
 	}
 
       if (c == DB_EQ)
