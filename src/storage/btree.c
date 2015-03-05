@@ -19021,6 +19021,8 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  && !btree_multicol_key_is_null (key));
   assert (!BTREE_INVALID_INDEX_ID (btid_int->sys_btid));
 
+  *found_p = false;
+
   /* Advance in b-tree following key until leaf node is reached. */
   if (btree_search_key_and_apply_functions (thread_p, btid_int->sys_btid,
 					    NULL, key, NULL, NULL,
@@ -30192,7 +30194,7 @@ static int
 btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   int error_code = NO_ERROR;
-  bool found;
+  bool found = false;
 
   /* Assert expected arguments. */
   assert (bts != NULL);
@@ -30222,6 +30224,12 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       bts->C_page =
 	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key,
 			  &bts->C_vpid, &bts->slot_id, &found);
+      if (bts->C_page == NULL)
+	{
+	  /* Error locating or fixing leaf. */
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
       if (!found && bts->use_desc_index)
 	{
 	  /* Key was not found and the bts->slot_id was positioned to next key
