@@ -335,14 +335,24 @@ struct btree_scan
       (bts)->key_limit_upper = upper; \
     } while (false)
 
+typedef struct btree_iscan_oid_list BTREE_ISCAN_OID_LIST;
+struct btree_iscan_oid_list
+{
+  OID *oidp;			/* OID buffer. */
+  int oid_cnt;			/* Current OID count. */
+  int max_oid_cnt;		/* Maximum desired OID count. */
+  int capacity;			/* Maximum capacity of buffer. Can be different than
+				 * maximum desired OID count.
+				 */
+  BTREE_ISCAN_OID_LIST *next_list;	/* Pointer to next list of OID's. */
+};				/* list of OIDs */
+
 typedef struct btree_checkscan BTREE_CHECKSCAN;
 struct btree_checkscan
 {
   BTID btid;			/* B+tree index identifier */
   BTREE_SCAN btree_scan;	/* B+tree search scan structure */
-  int oid_area_size;		/* Data area size to store OIDs */
-  OID *oid_ptr;			/* Data area to store OIDs */
-  int oid_cnt;			/* Number of OIDs pointed at by oid_ptr */
+  BTREE_ISCAN_OID_LIST oid_list;	/* Data area to store OIDs */
 };				/* B+tree <key-oid> check scan structure */
 
 typedef struct btree_capacity BTREE_CAPACITY;
@@ -717,10 +727,8 @@ extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
 				SCAN_OPERATION_TYPE scan_op_type,
 				BTREE_SCAN * BTS,
 				KEY_VAL_RANGE * key_val_range,
-				OID * class_oid,
-				OID * oids_ptr, int oids_size,
-				FILTER_INFO * filter, INDX_SCAN_ID * isidp,
-				bool is_all_class_srch);
+				OID * class_oid, FILTER_INFO * filter,
+				INDX_SCAN_ID * isidp, bool is_all_class_srch);
 extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 			     BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,

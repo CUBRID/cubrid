@@ -193,13 +193,23 @@ typedef enum
   PAGE_LAST = PAGE_DROPPED_FILES
 } PAGE_TYPE;
 
+/* Index scan OID buffer size as set by system parameter. */
 #define ISCAN_OID_BUFFER_SIZE \
   ((((int) (IO_PAGESIZE * prm_get_float_value (PRM_ID_BT_OID_NBUFFERS))) \
     / OR_OID_SIZE) \
     * OR_OID_SIZE)
 #define ISCAN_OID_BUFFER_COUNT \
-  (((int) (IO_PAGESIZE * prm_get_float_value (PRM_ID_BT_OID_NBUFFERS))) \
-   / OR_OID_SIZE)
+  (ISCAN_OID_BUFFER_SIZE / OR_OID_SIZE)
+/* Minimum capacity of OID buffer.
+ * It should include at least one overflow page and on b-tree leaf record.
+ * It was set to roughly two pages.
+ */
+#define ISCAN_OID_BUFFER_MIN_CAPACITY (2 * DB_PAGESIZE)
+/* OID buffer capacity. It is the maximum value between the size set by
+ * system parameter and the minimum required capacity.
+ */
+#define ISCAN_OID_BUFFER_CAPACITY \
+  (MAX (ISCAN_OID_BUFFER_MIN_CAPACITY, ISCAN_OID_BUFFER_SIZE))
 
 typedef UINT64 MVCCID;		/* MVCC ID */
 

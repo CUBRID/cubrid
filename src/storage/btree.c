@@ -809,21 +809,39 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p,
       (bts)->n_oids_read++; \
       (bts)->n_oids_read_last_iteration++; \
     } while (false)
-/* Capacity of b-tree scan object buffer. */
-#define BTS_OID_BUFFER_CAPACITY(bts) \
+
+/* Soft capacity of OID buffer. It is used to stop one scan iteration as a
+ * general rule. There is an exception when hard capacity is applied.
+ */
+#define BTS_IS_SOFT_CAPACITY_ENOUGH(bts, count) \
+  ((count) \
+   <= (BTS_IS_INDEX_COVERED (bts) ? \
+       /* Covering index: use max tuples as soft limit. */ \
+       (bts)->index_scan_idp->indx_cov.max_tuples \
+       /* Normal scan: use max_oid_cnt as soft limit. */ \
+       : (bts)->index_scan_idp->oid_list->max_oid_cnt))
+/* Hard capacity is the maximum number that can fit the OID buffer. It is
+ * used when the number of objects in a single key does not fit the soft
+ * capacity.
+ * This key objects will be selected from leaf and overflows as long as they
+ * fit the hard capacity. This provides enough space for at least one leaf
+ * and one overflow page or for two full overflow pages.
+ * There is no limit as hard capacity for covering index. Since it uses a
+ * list file, its capacity is considered infinite.
+ */
+#define BTS_IS_HARD_CAPACITY_ENOUGH(bts, count) \
   (BTS_IS_INDEX_COVERED (bts) ? \
-   (bts)->index_scan_idp->indx_cov.max_tuples \
-   : (bts)->index_scan_idp->oid_list.capacity)
-/* B-tree scan object buffer. */
-#define BTS_OID_BUFFER(bts) \
-  (BTS_IS_INDEX_COVERED (bts) ? \
-   NULL : (bts)->index_scan_idp->oid_list.oidp)
+   /* Covering index: no hard limit. */ \
+   true \
+   /* Normal scan: use buffer capacity as hard limit. */ \
+   : (count)  <= (bts)->index_scan_idp->oid_list->capacity)
+
 /* Save an object selected during scan into object buffer. This can only be
  * used by two types of scans:
  * 1. Regular range scans.
  * 2. Index skip scan, if current operations is ISS_OP_DO_RANGE_SEARCH.
  */
-#define BTS_SAVE_OID_IN_BUFFER(bts, oidp) \
+#define BTS_SAVE_OID_IN_BUFFER(bts, oid) \
   do \
     { \
       /* Assert this is not used in an inappropriate context. */ \
@@ -832,9 +850,13 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p,
       assert (!BTS_IS_INDEX_ISS (bts) \
 	      || bts->index_scan_idp->iss.current_op \
 		 == ISS_OP_DO_RANGE_SEARCH); \
-      COPY_OID ((bts)->oid_ptr, oidp); \
+      COPY_OID ((bts)->oid_ptr, oid); \
       (bts)->oid_ptr++; \
       BTS_INCREMENT_READ_OIDS (bts); \
+      assert ((bts)->n_oids_read_last_iteration \
+	      <= (bts)->index_scan_idp->oid_list->capacity); \
+      assert (((bts)->oid_ptr - (bts)->index_scan_idp->oid_list->oidp) \
+	      <= (bts)->index_scan_idp->oid_list->capacity); \
       /* Should we also increment (bts)->index_scan_idp->oid_list.oid_cnt? */ \
     } while (false)
 
@@ -1889,8 +1911,9 @@ static int btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p,
 static int btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_resume (THREAD_ENTRY * thread_p,
 				    BTREE_SCAN * bts);
-static int btree_range_scan_key_oids_count (THREAD_ENTRY * thread_p,
-					    BTREE_SCAN * bts);
+static int btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY *
+							 thread_p,
+							 BTREE_SCAN * bts);
 static int btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				    KEY_VAL_RANGE * key_val_range);
 static int btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -9052,15 +9075,19 @@ btree_keyoid_checkscan_start (THREAD_ENTRY * thread_p, BTID * btid,
   /* initialize scan structure */
   btscan->btid = *btid;
   BTREE_INIT_SCAN (&btscan->btree_scan);
-  btscan->oid_area_size = ISCAN_OID_BUFFER_SIZE;
-  btscan->oid_cnt = 0;
-  btscan->oid_ptr = (OID *) os_malloc (btscan->oid_area_size);
-  if (btscan->oid_ptr == NULL)
+
+  /* Initialize OID list. */
+  btscan->oid_list.oidp = (OID *) os_malloc (ISCAN_OID_BUFFER_CAPACITY);
+  if (btscan->oid_list.oidp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) btscan->oid_area_size);
-      return ER_FAILED;
+	      1, ISCAN_OID_BUFFER_CAPACITY);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  btscan->oid_list.oid_cnt = 0;
+  btscan->oid_list.capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
+  btscan->oid_list.max_oid_cnt = btscan->oid_list.capacity;
+  btscan->oid_list.next_list = NULL;
 
   return NO_ERROR;
 }
@@ -9098,8 +9125,7 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
   /* initialize scan structure */
   BTREE_INIT_SCAN (&btscan->btree_scan);
 
-  scan_init_index_scan (&isid, btscan->oid_ptr, btscan->oid_area_size,
-			mvcc_snapshot);
+  scan_init_index_scan (&isid, &btscan->oid_list, mvcc_snapshot);
 
   assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (key)));
 
@@ -9111,13 +9137,10 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
   do
     {
       /* search index */
-      btscan->oid_cnt = btree_keyval_search (thread_p, &btscan->btid,
-					     S_SELECT,
-					     &btscan->btree_scan,
-					     &key_val_range,
-					     cls_oid, btscan->oid_ptr,
-					     btscan->oid_area_size, NULL,
-					     &isid, false);
+      btscan->oid_list.oid_cnt =
+	btree_keyval_search (thread_p, &btscan->btid, S_SELECT,
+			     &btscan->btree_scan, &key_val_range, cls_oid,
+			     NULL, &isid, false);
 
       if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY
 	  && key->data.midxkey.domain == NULL)
@@ -9127,19 +9150,16 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
 	  key->data.midxkey.domain = btscan->btree_scan.btid_int.key_type;
 	}
 
-      if (btscan->oid_cnt == -1)
+      if (btscan->oid_list.oid_cnt == -1)
 	{
-	  btscan->oid_ptr = isid.oid_list.oidp;
 	  status = DISK_ERROR;
 	  goto end;
 	}
 
-      btscan->oid_ptr = isid.oid_list.oidp;
-
       /* search current set of OIDs to see if given <key-oid> pair exists */
-      for (k = 0; k < btscan->oid_cnt; k++)
+      for (k = 0; k < btscan->oid_list.oid_cnt; k++)
 	{
-	  if (OID_EQ (&btscan->oid_ptr[k], oid))
+	  if (OID_EQ (&btscan->oid_list.oidp[k], oid))
 	    {			/* <key-oid> pair found */
 	      status = DISK_VALID;
 	      goto end;
@@ -9171,10 +9191,11 @@ void
 btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
 {
   /* Deallocate allocated areas */
-  if (btscan->oid_ptr)
+  if (btscan->oid_list.oidp)
     {
-      os_free_and_init (btscan->oid_ptr);
-      btscan->oid_area_size = 0;
+      os_free_and_init (btscan->oid_list.oidp);
+      btscan->oid_list.capacity = 0;
+      btscan->oid_list.max_oid_cnt = 0;
     }
 }
 
@@ -19654,8 +19675,8 @@ btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
 		     SCAN_OPERATION_TYPE scan_op_type,
 		     BTREE_SCAN * bts,
 		     KEY_VAL_RANGE * key_val_range, OID * class_oid,
-		     OID * oids_ptr, int oids_size, FILTER_INFO * filter,
-		     INDX_SCAN_ID * isidp, bool is_all_class_srch)
+		     FILTER_INFO * filter, INDX_SCAN_ID * isidp,
+		     bool is_all_class_srch)
 {
   /* this is just a GE_LE range search with the same key */
   int rc;
@@ -20127,7 +20148,9 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid,
 	{
 	  bts->use_desc_index = false;
 	}
-      bts->oid_ptr = bts->index_scan_idp->oid_list.oidp;
+      bts->oid_ptr =
+	bts->index_scan_idp->oid_list != NULL ?
+	bts->index_scan_idp->oid_list->oidp : NULL;
 
       /* set index key copy_buf info;
        * is allocated at btree_keyval_search() or scan_open_index_scan().
@@ -30109,19 +30132,21 @@ btree_count_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 }
 
 /*
- * btree_range_scan_key_oids_count () - Count key objects.
+ * btree_range_scan_count_oids_leaf_and_one_ovf () - Count key objects from
+ *						     leaf record and from
+ *						     the first overflow page.
  *
- * return	 : Error code.
+ * return	 : OID count or error code.
  * thread_p (in) : Thread entry.
  * bts (in)	 : B-tree scan.
  */
 static int
-btree_range_scan_key_oids_count (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
+btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY * thread_p,
+					      BTREE_SCAN * bts)
 {
-  int key_oids_count = 0;
+  int leaf_oids_count = 0, ovf_oids_count = 0;
   int error_code = NO_ERROR;
-  VPID overflow_vpid;
-  PAGE_PTR overflow_page = NULL, prev_overflow_page = NULL;
+  PAGE_PTR overflow_page = NULL;
   RECDES overflow_record;
   int oid_size = OR_OID_SIZE;
 
@@ -30131,60 +30156,48 @@ btree_range_scan_key_oids_count (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 
   /* Count leaf objects. */
-  key_oids_count =
+  leaf_oids_count =
     btree_leaf_get_num_oids (&bts->key_record, bts->offset, BTREE_LEAF_NODE,
 			     oid_size);
-
-  /* Count overflow objects. */
-  VPID_COPY (&overflow_vpid, &bts->leaf_rec_info.ovfl);
-  while (!VPID_ISNULL (&overflow_vpid))
+  if (leaf_oids_count < 0)
     {
-      /* Fix overflow page. */
-      overflow_page =
-	pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		   PGBUF_UNCONDITIONAL_LATCH);
-      /* Unfix previous overflow page. */
-      if (prev_overflow_page != NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, prev_overflow_page);
-	}
-      if (overflow_page == NULL)
-	{
-	  /* Could not fix. */
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
-	}
-      /* Get overflow record. */
-      if (spage_get_record (overflow_page, 1, &overflow_record, PEEK)
-	  != S_SUCCESS)
-	{
-	  assert_release (false);
-	  return ER_FAILED;
-	}
-      /* Add objects count to total count. */
-      key_oids_count +=
-	btree_leaf_get_num_oids (&bts->key_record, 0, BTREE_OVERFLOW_NODE,
-				 oid_size);
-      /* Get next overflow page. */
-      error_code =
-	btree_get_next_overflow_vpid (overflow_page, &overflow_vpid);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  pgbuf_unfix_and_init (thread_p, overflow_page);
-	  return error_code;
-	}
-      prev_overflow_page = overflow_page;
-      overflow_page = NULL;
+      /* Error */
+      ASSERT_ERROR ();
+      return leaf_oids_count;
     }
-  assert (overflow_page == NULL);
-  if (prev_overflow_page != NULL)
+  if (VPID_ISNULL (&bts->leaf_rec_info.ovfl))
     {
-      /* Unfix last overflow page. */
-      pgbuf_unfix_and_init (thread_p, prev_overflow_page);
+      /* No overflow. */
+      return leaf_oids_count;
     }
-  /* Success counting objects. Return count. */
-  return key_oids_count;
+  /* Get count from overflow. */
+  overflow_page =
+    pgbuf_fix (thread_p, &bts->leaf_rec_info.ovfl, OLD_PAGE, PGBUF_LATCH_READ,
+	       PGBUF_UNCONDITIONAL_LATCH);
+  if (overflow_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  /* Get overflow record. */
+  if (spage_get_record (overflow_page, 1, &overflow_record, PEEK)
+      != S_SUCCESS)
+    {
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, overflow_page);
+      return ER_FAILED;
+    }
+  ovf_oids_count =
+    btree_leaf_get_num_oids (&overflow_record, 0, BTREE_OVERFLOW_NODE,
+			     oid_size);
+  pgbuf_unfix_and_init (thread_p, overflow_page);
+  if (ovf_oids_count < 0)
+    {
+      ASSERT_ERROR ();
+      return ovf_oids_count;
+    }
+  /* Add objects count to total count. */
+  return (leaf_oids_count + ovf_oids_count);
 }
 
 /*
@@ -30915,10 +30928,10 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   /* Reset read counters for iteration. */
   bts->n_oids_read_last_iteration = 0;
 
-  if (bts->index_scan_idp != NULL)
+  if (bts->index_scan_idp != NULL && bts->index_scan_idp->oid_list != NULL)
     {
       /* Reset oid_ptr. */
-      bts->oid_ptr = bts->index_scan_idp->oid_list.oidp;
+      bts->oid_ptr = bts->index_scan_idp->oid_list->oidp;
     }
 
   while (!bts->end_scan && !bts->end_one_iteration)
@@ -31184,52 +31197,68 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
    * When OID buffer is used, it can be filled during scan. If this happens,
    * interrupt range scan, handle currently buffered objects and resume with
    * an empty buffer.
-   * NOTE: Currently buffer is considered able to handle at least leaf record
-   *       and one overflow page. However, the smallest buffer can't. This
-   *       must be fixed, by allocating enough space for one record and one
-   *       overflow page which will be handled in one iteration, as an
-   *       exception to the general rule that stops after around 80 objects.
-   * NOTE: MRO doesn't require any checks. It will consume its range with no
-   *       interrupts.
-   * NOTE: Covering index, due to its file, has no real limit. However, it is
-   *       still interrupted if a default number of objects is exceeded.
-   * NOTE: If objects only have to be counted, no buffer is used.
+   * NOTE: There are two types of limits used here. A soft limit and hard
+   *       limit. Hard limit is used when key has too many objects and don't
+   *       fit soft limit. Hard limit is necessary to handle key processing
+   *       interrupt/resume.
+   *       Soft key limit is ignored if no objects have been processed in this
+   *       iteration.
    */
   /* Don't do any checks for MRO or if objects only have to be counted. */
   if (!BTS_IS_INDEX_MRO (bts) && !BTS_NEED_COUNT_ONLY (bts))
     {
       if (!bts->is_key_partially_processed)
 	{
-	  /* Count the objects. */
-	  if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
+	  /* If no objects have been processed this iteration, don't count.
+	   * If already processed more than soft limit, don't count.
+	   * If currently process + key's leaf and first overflow count exceed
+	   * soft limit, stop iteration before processing key.
+	   */
+	  if (bts->n_oids_read_last_iteration > 0
+	      && BTS_IS_SOFT_CAPACITY_ENOUGH (bts,
+					      bts->
+					      n_oids_read_last_iteration))
 	    {
-	      /* Only one object can be visible for each key. */
-	      oid_count = 1;
-	    }
-	  else
-	    {
-	      /* Get the number of OID in current key. */
-	      /* TODO: Find a better way of getting OID count (store it in
-	       *       leaf record).
-	       */
-	      oid_count = btree_range_scan_key_oids_count (thread_p, bts);
-	      if (oid_count < 0)
+	      /* Count the objects. */
+	      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 		{
-		  /* Unexpected error. */
-		  assert (false);
-		  return ER_FAILED;
+		  /* Only one object can be visible for each key. */
+		  oid_count = 1;
 		}
-	    }
-	  total_oid_count = bts->n_oids_read_last_iteration + oid_count;
+	      else
+		{
+		  /* Get the number of OID in current key's leaf and first
+		   * overflow page.
+		   */
+		  oid_count =
+		    btree_range_scan_count_oids_leaf_and_one_ovf (thread_p,
+								  bts);
+		  if (oid_count < 0)
+		    {
+		      /* Unexpected error. */
+		      assert (false);
+		      return ER_FAILED;
+		    }
+		}
+	      total_oid_count = bts->n_oids_read_last_iteration + oid_count;
 
-	  if (total_oid_count >= BTS_OID_BUFFER_CAPACITY (bts)
-	      && bts->n_oids_read_last_iteration > 0)
-	    {
-	      /* Stop this iteration and resume with an empty buffer. */
-	      bts->end_one_iteration = true;
-	      return NO_ERROR;
+	      if (!BTS_IS_SOFT_CAPACITY_ENOUGH (bts, total_oid_count))
+		{
+		  /* Stop this iteration and resume with an empty buffer. */
+		  bts->end_one_iteration = true;
+		  return NO_ERROR;
+		}
+	      else
+		{
+		  /* Safe guard: if soft capacity is enough, then hard limit
+		   * must also be enough.
+		   */
+		  assert (BTS_IS_HARD_CAPACITY_ENOUGH (bts, total_oid_count));
+		}
+	      /* There is enough space to handle key objects at least in its
+	       * leaf and first overflow.
+	       */
 	    }
-	  /* There is enough space to handle all key objects. */
 	}
       else
 	{
@@ -31282,13 +31311,11 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
 	   *    visibility test. If not found, they are again ignored (as they
 	   *    should). Even creating new overflow pages, does not affect us.
 	   *
-	   * TODO: The above statements are true for default buffer, but not
-	   *       true for the smallest buffer. Smallest buffer may be used
-	   *       to avoid processing many index pages when an external
-	   *       limit is used that could stop the scan earlier. However,
-	   *       in case of key with overflow pages, an exception to
-	   *       the rule should be implemented in order to preserve the
-	   *       consistency provided by above statements.
+	   * The above statements are true for default buffer.
+	   * In order to make it true for small buffers, there are two limits
+	   * used by scan: a soft limit and a hard limit.
+	   * The hard limit is used when key has too many objects.
+	   * See comment from BTS_IS_HARD_CAPACITY_ENOUGH.
 	   */
 	  /* Resume from next page of last overflow page. */
 	  prev_overflow_page =
@@ -31392,9 +31419,9 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
       oid_count =
 	btree_leaf_get_num_oids (&ovf_record, 0, BTREE_OVERFLOW_NODE,
 				 oid_size);
-      if (!BTS_IS_INDEX_COVERED (bts)
-	  && bts->n_oids_read_last_iteration + oid_count
-	  > BTS_OID_BUFFER_CAPACITY (bts))
+      if (!BTS_IS_HARD_CAPACITY_ENOUGH (bts,
+					bts->n_oids_read_last_iteration
+					+ oid_count))
 	{
 	  /* We don't know how many visible objects there are in this page,
 	   * and we don't want to process the page partially.
@@ -31466,6 +31493,8 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
     {
       pgbuf_unfix_and_init (thread_p, prev_overflow_page);
     }
+  /* Entire key has been processed. */
+  VPID_SET_NULL (&bts->O_vpid);
 
   /* Key has been consumed. */
   bts->key_status = BTS_KEY_IS_CONSUMED;
@@ -31732,7 +31761,7 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p,
    */
   BTS_SAVE_OID_IN_BUFFER (bts, oid);
   assert (HEAP_ISVALID_OID (oid) != DISK_INVALID);
-  assert (HEAP_ISVALID_OID (bts->index_scan_idp->oid_list.oidp)
+  assert (HEAP_ISVALID_OID (bts->index_scan_idp->oid_list->oidp)
 	  != DISK_INVALID);
   return NO_ERROR;
 }

@@ -40,19 +40,6 @@
  *
  */
 
-typedef struct
-{
-  OID *oidp;
-  int oid_cnt;
-  int capacity;
-} OID_LIST;			/* list of OIDs */
-
-typedef struct
-{
-  OID_LIST **oidptr;		/* list of OID_LIST pointers */
-  int ptr_cnt;
-} OID_PTRLIST;
-
 #define OID_BLOCK_ARRAY_SIZE    10
 typedef struct oid_block_list
 {

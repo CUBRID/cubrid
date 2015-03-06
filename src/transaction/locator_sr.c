@@ -2053,7 +2053,6 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
   HFID root_hfid;
   OID class_oid;
   char *classname = NULL;
-  OID class_oid2;
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   LOCATOR_CLASSNAME_ENTRY *entry;
@@ -4544,8 +4543,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
   HFID hfid;
-  OID *oid_buf = NULL;
-  int oid_buf_size = ISCAN_OID_BUFFER_SIZE;
   BTREE_SCAN bt_scan;
   INDX_SCAN_ID isid;
   KEY_VAL_RANGE key_val_range;
@@ -4559,6 +4556,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   OID found_oid;
+  BTREE_ISCAN_OID_LIST oid_list;
+
+  oid_list.oidp = NULL;
 
   if (mvcc_Enabled)
     {
@@ -4633,14 +4633,22 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	      goto error3;
 	    }
 
-	  if (oid_buf == NULL)
+	  if (oid_list.oidp == NULL)
 	    {
-	      oid_buf = (OID *) db_private_alloc (thread_p, oid_buf_size);
-	      if (oid_buf == NULL)
+	      oid_list.oidp =
+		(OID *) db_private_alloc (thread_p,
+					  ISCAN_OID_BUFFER_CAPACITY);
+	      if (oid_list.oidp == NULL)
 		{
 		  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+			  ISCAN_OID_BUFFER_CAPACITY);
 		  goto error3;
 		}
+	      oid_list.oid_cnt = 0;
+	      oid_list.capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
+	      oid_list.max_oid_cnt = oid_list.capacity;
+	      oid_list.next_list = NULL;
 	    }
 
 	  error_code = heap_scancache_start (thread_p, &isid.scan_cache,
@@ -4648,10 +4656,10 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 					     true, NULL);
 	  if (error_code != NO_ERROR)
 	    {
-	      db_private_free_and_init (thread_p, oid_buf);
+	      ASSERT_ERROR ();
 	      goto error3;
 	    }
-	  scan_init_index_scan (&isid, oid_buf, oid_buf_size, mvcc_snapshot);
+	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 	  is_upd_scan_init = false;
 	  pr_clone_value (key, &key_val_range.key1);
 	  pr_clone_value (key, &key_val_range.key2);
@@ -4745,7 +4753,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 
 	      for (i = 0; i < oid_cnt; i++)
 		{
-		  OID *oid_ptr = &(oid_buf[i]);
+		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  if (mvcc_Enabled)
 		    {
 		      SCAN_CODE scan_code = S_SUCCESS;
@@ -4931,9 +4939,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
     }
 
 end:
-  if (oid_buf)
+  if (oid_list.oidp)
     {
-      db_private_free_and_init (thread_p, oid_buf);
+      db_private_free_and_init (thread_p, oid_list.oidp);
     }
   if (attr_ids)
     {
@@ -4978,9 +4986,6 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
   HFID hfid;
-  OID *oid_buf = NULL;
-  int oid_buf_size =
-    (int) (DB_PAGESIZE * prm_get_float_value (PRM_ID_BT_OID_NBUFFERS));
   BTREE_SCAN bt_scan;
   INDX_SCAN_ID isid;
   KEY_VAL_RANGE key_val_range;
@@ -4994,6 +4999,9 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   OID found_oid;
+  BTREE_ISCAN_OID_LIST oid_list;
+
+  oid_list.oidp = NULL;
 
   if (mvcc_Enabled)
     {
@@ -5067,14 +5075,22 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	      goto error3;
 	    }
 
-	  if (oid_buf == NULL)
+	  if (oid_list.oidp == NULL)
 	    {
-	      oid_buf = (OID *) db_private_alloc (thread_p, oid_buf_size);
-	      if (oid_buf == NULL)
+	      oid_list.oidp =
+		(OID *) db_private_alloc (thread_p,
+					  ISCAN_OID_BUFFER_CAPACITY);
+	      if (oid_list.oidp == NULL)
 		{
 		  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+			  ISCAN_OID_BUFFER_CAPACITY);
 		  goto error3;
 		}
+	      oid_list.capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
+	      oid_list.max_oid_cnt = oid_list.capacity;
+	      oid_list.oid_cnt = 0;
+	      oid_list.next_list = NULL;
 	    }
 
 	  error_code = heap_scancache_start (thread_p, &isid.scan_cache,
@@ -5082,11 +5098,11 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 					     true, NULL);
 	  if (error_code != NO_ERROR)
 	    {
-	      db_private_free_and_init (thread_p, oid_buf);
+	      ASSERT_ERROR ();
 	      goto error3;
 	    }
 
-	  scan_init_index_scan (&isid, oid_buf, oid_buf_size, mvcc_snapshot);
+	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 
 	  is_upd_scan_init = false;
 	  pr_clone_value (key, &key_val_range.key1);
@@ -5155,7 +5171,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 
 	      for (i = 0; i < oid_cnt; i++)
 		{
-		  OID *oid_ptr = &(oid_buf[i]);
+		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  if (mvcc_Enabled)
 		    {
 		      SCAN_CODE scan_code = S_SUCCESS;
@@ -5293,9 +5309,9 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
     }
 
 end:
-  if (oid_buf)
+  if (oid_list.oidp)
     {
-      db_private_free_and_init (thread_p, oid_buf);
+      db_private_free_and_init (thread_p, oid_list.oidp);
     }
   if (attr_ids)
     {
@@ -5355,7 +5371,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 #endif
-  char *classname;		/* Classname to update */
   bool isold_object;		/* Make sure that this is an old object */
   RECDES new_recdes;
   bool is_cached = false;
@@ -10495,6 +10510,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   int oid_cnt;
   OID *oid_area = NULL;
   INDX_SCAN_ID isid;
+  BTREE_ISCAN_OID_LIST oid_list;
   int i;
   DB_VALUE dbvalue;
   DB_VALUE *key = NULL;
@@ -10526,7 +10542,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 #endif /* SERVER_MODE */
 
-  scan_init_index_scan (&isid, NULL, 0, mvcc_snapshot);
+  scan_init_index_scan (&isid, NULL, mvcc_snapshot);
 
   /* Start a scan cursor and a class attribute information */
   if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true,
@@ -10717,10 +10733,10 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
   BTREE_INIT_SCAN (&bt_scan);
 
-  isid.oid_list.oid_cnt = 0;
-  isid.oid_list.oidp = (OID *) malloc (ISCAN_OID_BUFFER_SIZE);
-  isid.indx_info = NULL;
-  if (isid.oid_list.oidp == NULL)
+  isid.oid_list = &oid_list;
+  isid.oid_list->oid_cnt = 0;
+  isid.oid_list->oidp = (OID *) malloc (ISCAN_OID_BUFFER_CAPACITY);
+  if (isid.oid_list->oidp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) ISCAN_OID_BUFFER_SIZE);
@@ -10728,7 +10744,10 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       isallvalid = DISK_ERROR;
       goto error;
     }
-  isid.oid_list.capacity = ISCAN_OID_BUFFER_SIZE / OR_OID_SIZE;
+  isid.oid_list->capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
+  isid.oid_list->max_oid_cnt = isid.oid_list->capacity;
+  isid.oid_list->next_list = NULL;
+  isid.indx_info = NULL;
 
   /* alloc index key copy_buf */
   isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
@@ -10777,7 +10796,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	  assert (false);
 	  break;
 	}
-      oid_area = isid.oid_list.oidp;
+      oid_area = isid.oid_list->oidp;
       num_btree_oids += oid_cnt;
       for (i = 0; i < oid_cnt; i++)
 	{
@@ -10875,9 +10894,9 @@ end:
       pr_clear_value (key);
     }
 
-  if (isid.oid_list.oidp)
+  if (isid.oid_list->oidp)
     {
-      free_and_init (isid.oid_list.oidp);
+      free_and_init (isid.oid_list->oidp);
     }
 
   /* free index key copy_buf */
@@ -10950,6 +10969,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   HFID *hfids = NULL, *hfid = NULL;
   OID *class_oids = NULL, *class_oid = NULL;
   INDX_SCAN_ID isid;
+  BTREE_ISCAN_OID_LIST oid_list;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   char *classname = NULL;
   KEY_VAL_RANGE key_val_range;
@@ -11023,7 +11043,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       isallvalid = DISK_INVALID;
       goto error;
     }
-  scan_init_index_scan (&isid, NULL, 0, mvcc_snapshot);
+  scan_init_index_scan (&isid, NULL, mvcc_snapshot);
 
 
   for (j = 0; j < num_classes; j++)
@@ -11196,15 +11216,18 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
   BTREE_INIT_SCAN (&bt_scan);
 
-  isid.oid_list.oid_cnt = 0;
-  isid.oid_list.oidp = (OID *) malloc (ISCAN_OID_BUFFER_SIZE);
-  if (isid.oid_list.oidp == NULL)
+  isid.oid_list = &oid_list;
+  isid.oid_list->oid_cnt = 0;
+  isid.oid_list->oidp = (OID *) malloc (ISCAN_OID_BUFFER_CAPACITY);
+  if (isid.oid_list->oidp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) ISCAN_OID_BUFFER_SIZE);
       goto error;
     }
-  isid.oid_list.capacity = ISCAN_OID_BUFFER_SIZE / OR_OID_SIZE;
+  isid.oid_list->capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
+  isid.oid_list->max_oid_cnt = isid.oid_list->capacity;
+  isid.oid_list->next_list = NULL;
   /* alloc index key copy_buf */
   isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
   if (isid.copy_buf == NULL)
@@ -11251,7 +11274,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	  break;
 	}
 
-      oid_area = isid.oid_list.oidp;
+      oid_area = isid.oid_list->oidp;
 
       num_btree_oids += oid_cnt;
       for (i = 0; i < oid_cnt; i++)
@@ -11354,7 +11377,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     }
   while (!BTREE_END_OF_SCAN (&bt_scan));
 
-  free_and_init (isid.oid_list.oidp);
+  free_and_init (isid.oid_list->oidp);
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
@@ -11507,9 +11530,9 @@ end:
 
 error:
 
-  if (isid.oid_list.oidp)
+  if (isid.oid_list->oidp)
     {
-      free_and_init (isid.oid_list.oidp);
+      free_and_init (isid.oid_list->oidp);
     }
 
   /* free index key copy_buf */
@@ -13958,8 +13981,7 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   bt_checkscan_p = &bt_checkscan;
 
   BTREE_INIT_SCAN (&bt_checkscan_p->btree_scan);
-  scan_init_index_scan (&isid, bt_checkscan_p->oid_ptr,
-			bt_checkscan_p->oid_area_size, NULL);
+  scan_init_index_scan (&isid, &bt_checkscan_p->oid_list, NULL);
 
   if (heap_attrinfo_read_dbvalues_without_oid (thread_p, recdes, attr_info_p)
       != NO_ERROR)
@@ -13983,11 +14005,7 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
 
   btree_keyval_search (thread_p, &tmp_btid, S_SELECT,
 		       &bt_checkscan_p->btree_scan, &key_val_range,
-		       class_oid, bt_checkscan_p->oid_ptr,
-		       bt_checkscan_p->oid_area_size, NULL, &isid, false);
-
-  /* the oid buffer might be reallocated during btree_range_search () */
-  bt_checkscan_p->oid_ptr = isid.oid_list.oidp;
+		       class_oid, NULL, &isid, false);
 
   btree_scan_clear_key (&bt_checkscan.btree_scan);
 

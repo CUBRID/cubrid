@@ -8885,7 +8885,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  if (count_star_with_iscan_opt)
 	    {
 	      xasl->proc.buildvalue.agg_list->accumulator.curr_cnt +=
-		(&xasl->curr_spec->s_id)->s.isid.oid_list.oid_cnt;
+		(&xasl->curr_spec->s_id)->s.isid.oid_list->oid_cnt;
 	      /* may have more scan ranges */
 	      continue;
 	    }

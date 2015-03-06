@@ -134,8 +134,11 @@ static const int rop_range_table_size =
 static pthread_mutex_t scan_Iscan_oid_buf_list_mutex =
   PTHREAD_MUTEX_INITIALIZER;
 #endif
-static OID *scan_Iscan_oid_buf_list = NULL;
+
+static BTREE_ISCAN_OID_LIST *scan_Iscan_oid_buf_list = NULL;
 static int scan_Iscan_oid_buf_list_count = 0;
+
+#define SCAN_ISCAN_OID_BUF_LIST_DEFAULT_SIZE 10
 
 static void scan_init_scan_pred (SCAN_PRED * scan_pred_p,
 				 REGU_VARIABLE_LIST regu_list,
@@ -152,9 +155,9 @@ static int scan_init_indx_coverage (THREAD_ENTRY * thread_p,
 				    int max_key_len,
 				    int func_index_col_id,
 				    INDX_COV * indx_cov);
-static OID *scan_alloc_oid_buf (void);
-static OID *scan_alloc_iscan_oid_buf_list (void);
-static void scan_free_iscan_oid_buf_list (OID * oid_buf_p);
+static int scan_alloc_oid_list (BTREE_ISCAN_OID_LIST ** oid_list_p);
+static int scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list);
+static void scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list);
 static void rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right);
 static void range_to_rop (ROP_TYPE * left, ROP_TYPE * rightk, RANGE range);
 static ROP_TYPE compare_val_op (DB_VALUE * val1, ROP_TYPE op1,
@@ -325,13 +328,13 @@ scan_init_iss (INDX_SCAN_ID * isidp)
  *			     specified OID buffer
  * return	     : void
  * isidp (in)	     : index scan
- * oid_buf (in)	     : OID buffer
- * oid_buf_size (in) : OID buffer size
+ * oid_list (in)     : OID list.
  * mvcc_snapshot(in) : MVCC snapshot
  */
 void
-scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
-		      int oid_buf_size, MVCC_SNAPSHOT * mvcc_snapshot)
+scan_init_index_scan (INDX_SCAN_ID * isidp,
+		      struct btree_iscan_oid_list *oid_list,
+		      MVCC_SNAPSHOT * mvcc_snapshot)
 {
   if (isidp == NULL)
     {
@@ -339,9 +342,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
       return;
     }
 
-  isidp->oid_list.oid_cnt = 0;
-  isidp->oid_list.oidp = oid_buf;
-  isidp->oid_list.capacity = oid_buf_size / OR_OID_SIZE;
+  isidp->oid_list = oid_list;
   isidp->copy_buf = NULL;
   isidp->copy_buf_len = 0;
   memset ((void *) (&(isidp->indx_cov)), 0, sizeof (INDX_COV));
@@ -598,7 +599,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* as soon as the scan returned, convert the midxkey dbvalue to real db
      value (if necessary) */
-  if (scan_id->s.isid.oid_list.oid_cnt == 0)
+  if (scan_id->s.isid.oids_count == 0)
     {
       /* no other keys exist; restore scan range and exit */
       scan_restore_range_details (&scan_range_det, isidp);
@@ -1021,83 +1022,138 @@ exit_on_error:
 }
 
 /*
- * scan_alloc_oid_buf () - allocate oid buf
- *   return: pointer to alloced oid buf, NULL for error
+ * scan_alloc_oid_list () - Allocate an index scan OID list.
+ *
+ * return		  : Error code.
+ * oid_buf_p (out)	  : Allocated buffer.
+ * oid_buf_capacity (out) : Allocated buffer capacity.
  */
-static OID *
-scan_alloc_oid_buf (void)
+static int
+scan_alloc_oid_list (BTREE_ISCAN_OID_LIST ** oid_list_p)
 {
-  int oid_buf_size;
-  OID *oid_buf_p;
+  /* Assert expected arguments. */
+  assert (oid_list_p != NULL && *oid_list_p == NULL);
 
-  oid_buf_size = ISCAN_OID_BUFFER_SIZE;
-  oid_buf_p = (OID *) malloc (oid_buf_size);
-  if (oid_buf_p == NULL)
+  /* Allocate OID list entry. */
+  *oid_list_p =
+    (BTREE_ISCAN_OID_LIST *) malloc (sizeof (BTREE_ISCAN_OID_LIST));
+  if (*oid_list_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) oid_buf_size);
+	      1, sizeof (BTREE_ISCAN_OID_LIST));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  return oid_buf_p;
+  /* Allocate OID list buffer. */
+  (*oid_list_p)->capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
+  (*oid_list_p)->oidp =
+    (OID *) malloc ((*oid_list_p)->capacity * OR_OID_SIZE);
+  if ((*oid_list_p)->oidp == NULL)
+    {
+      /* Could not allocate memory. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (*oid_list_p)->capacity * OR_OID_SIZE);
+
+      /* Free already allocated. */
+      free_and_init (*oid_list_p);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  /* Allocation successful. */
+  /* Initialize other fields. */
+  (*oid_list_p)->next_list = NULL;
+  (*oid_list_p)->max_oid_cnt = (*oid_list_p)->capacity;
+  (*oid_list_p)->oid_cnt = 0;
+  return NO_ERROR;
 }
 
 /*
- * scan_alloc_iscan_oid_buf_list () - allocate list of oid buf
- *   return: pointer to allocated oid buf, NULL for error
+ * scan_alloc_iscan_oid_buf_list () - Allocate or use a preallocated buffer
+ *				      for index scan OID list.
+ *
+ * return	  : Error code.
+ * oid_list (out) : Output OID list with allocated buffer.
  */
-static OID *
-scan_alloc_iscan_oid_buf_list (void)
+static int
+scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
 {
-  OID *oid_buf_p;
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  int error_code = NO_ERROR;
 
-  oid_buf_p = NULL;
+  /* Assert expected argument. */
+  assert (oid_list != NULL && *oid_list == NULL);
 
+  /* Is buffer empty? */
   if (scan_Iscan_oid_buf_list != NULL)
     {
+      /* Not empty. */
+      /* Protect by mutex and try to get from buffer. */
       rv = pthread_mutex_lock (&scan_Iscan_oid_buf_list_mutex);
+      /* Was buffer emptied? */
       if (scan_Iscan_oid_buf_list != NULL)
 	{
-	  oid_buf_p = scan_Iscan_oid_buf_list;
-	  /* save previous oid buf pointer */
-	  scan_Iscan_oid_buf_list = (OID *) (*(intptr_t *) oid_buf_p);
+	  /* Not empty */
+	  /* Pop first entry. */
+	  *oid_list = scan_Iscan_oid_buf_list;
+
+	  /* Update buffer. */
+	  scan_Iscan_oid_buf_list = scan_Iscan_oid_buf_list->next_list;
 	  scan_Iscan_oid_buf_list_count--;
+	  pthread_mutex_unlock (&scan_Iscan_oid_buf_list_mutex);
+
+	  /* Reset next_list link. */
+	  (*oid_list)->next_list = NULL;
+	  return NO_ERROR;
 	}
+      /* Empty. */
       pthread_mutex_unlock (&scan_Iscan_oid_buf_list_mutex);
     }
 
-  if (oid_buf_p == NULL)	/* need to alloc */
+  /* Allocate a new OID list entry. */
+  error_code = scan_alloc_oid_list (oid_list);
+  if (error_code != NO_ERROR)
     {
-      oid_buf_p = scan_alloc_oid_buf ();
+      ASSERT_ERROR ();
+      return error_code;
     }
+  /* Safe guard. */
+  assert (*oid_list != NULL);
+  assert ((*oid_list)->oidp != NULL);
+  assert ((*oid_list)->capacity > 0);
 
-  return oid_buf_p;
+  /* Success. */
+  return NO_ERROR;
 }
 
 /*
- * scan_free_iscan_oid_buf_list () - free the given iscan oid buf
- *   return: NO_ERROR
+ * scan_free_iscan_oid_buf_list () - Free OID buffer from OID list of index
+ *				     scan.
+ *
+ * return	 : Void.
+ * oid_list (in) : OID list to free.
  */
 static void
-scan_free_iscan_oid_buf_list (OID * oid_buf_p)
+scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list)
 {
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
 
+  /* Free entry. */
   rv = pthread_mutex_lock (&scan_Iscan_oid_buf_list_mutex);
+  /* Is buffer at its full capacity? */
   if (scan_Iscan_oid_buf_list_count < thread_num_worker_threads ())
     {
-      /* save previous oid buf pointer */
-      *(intptr_t *) oid_buf_p = (intptr_t) scan_Iscan_oid_buf_list;
-      scan_Iscan_oid_buf_list = oid_buf_p;
+      /* Add oid_list to scan_Iscan_oid_buf_list */
+      oid_list->next_list = scan_Iscan_oid_buf_list;
+      scan_Iscan_oid_buf_list = oid_list;
       scan_Iscan_oid_buf_list_count++;
     }
   else
     {
-      free_and_init (oid_buf_p);
+      /* Too many buffers, just free it. */
+      free_and_init (oid_list);
     }
   pthread_mutex_unlock (&scan_Iscan_oid_buf_list_mutex);
 }
@@ -2382,7 +2438,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 			 &iscan_id->cls_oid, iscan_id->bt_num_attrs,
 			 iscan_id->bt_attr_ids, &iscan_id->num_vstr,
 			 iscan_id->vstr_ids);
-  iscan_id->oid_list.oid_cnt = 0;
+  iscan_id->oids_count = 0;
   key_filter.func_idx_col_id = iscan_id->indx_info->func_idx_col_id;
 
   if (iscan_id->multi_range_opt.use && iscan_id->multi_range_opt.cnt > 0)
@@ -2452,8 +2508,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  assert (er_errid () != NO_ERROR);
 	  goto exit_on_error;
 	}
-      iscan_id->oid_list.oid_cnt = bts->n_oids_read_last_iteration;
-      assert (iscan_id->oid_list.oid_cnt >= 0);
+      iscan_id->oids_count = bts->n_oids_read_last_iteration;
+      assert (iscan_id->oids_count >= 0);
 
       /* We only want to advance the key ptr if we've exhausted the
          current crop of oids on the current key. */
@@ -2547,8 +2603,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  assert (er_errid () != NO_ERROR);
 	  goto exit_on_error;
 	}
-      iscan_id->oid_list.oid_cnt = bts->n_oids_read_last_iteration;
-      assert (iscan_id->oid_list.oid_cnt >= 0);
+      iscan_id->oids_count = bts->n_oids_read_last_iteration;
+      assert (iscan_id->oids_count >= 0);
 
       /* We only want to advance the key ptr if we've exhausted the
          current crop of oids on the current key. */
@@ -2612,8 +2668,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	      assert (er_errid () != NO_ERROR);
 	      goto exit_on_error;
 	    }
-	  iscan_id->oid_list.oid_cnt = bts->n_oids_read_last_iteration;
-	  assert (iscan_id->oid_list.oid_cnt >= 0);
+	  iscan_id->oids_count = bts->n_oids_read_last_iteration;
+	  assert (iscan_id->oids_count >= 0);
 
 	  /* We only want to advance the key ptr if we've exhausted the
 	     current crop of oids on the current key. */
@@ -2645,7 +2701,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	       * multiple range search optimization mode */
 	      continue;
 	    }
-	  if (iscan_id->oid_list.oid_cnt > 0)
+	  if (iscan_id->oids_count > 0)
 	    {
 	      /* we've got some result */
 	      break;
@@ -2748,8 +2804,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	      assert (er_errid () != NO_ERROR);
 	      goto exit_on_error;
 	    }
-	  iscan_id->oid_list.oid_cnt = bts->n_oids_read_last_iteration;
-	  assert (iscan_id->oid_list.oid_cnt >= 0);
+	  iscan_id->oids_count = bts->n_oids_read_last_iteration;
+	  assert (iscan_id->oids_count >= 0);
 
 	  /* We only want to advance the key ptr if we've exhausted the
 	     current crop of oids on the current key. */
@@ -2781,7 +2837,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	       * multiple range search optimization mode */
 	      continue;
 	    }
-	  if (iscan_id->oid_list.oid_cnt > 0)
+	  if (iscan_id->oids_count > 0)
 	    {
 	      /* we've got some result */
 	      break;
@@ -2797,12 +2853,13 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
     }
 
   /* When covering index is used, 'index_scan_in_oid_order' parameter is ignored. */
-  if (iscan_id->oid_list.oidp != NULL
-      && iscan_id->oid_list.oid_cnt > 1
+  if (iscan_id->oid_list != NULL
+      && iscan_id->oid_list->oidp != NULL
+      && iscan_id->oids_count > 1
       && iscan_id->iscan_oid_order == true
       && iscan_id->need_count_only == false)
     {
-      qsort (iscan_id->oid_list.oidp, iscan_id->oid_list.oid_cnt,
+      qsort (iscan_id->oid_list->oidp, iscan_id->oids_count,
 	     sizeof (OID), oid_compare);
     }
 
@@ -3261,7 +3318,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->bt_num_attrs = 0;
   isidp->bt_attr_ids = NULL;
   isidp->vstr_ids = NULL;
-  isidp->oid_list.oidp = NULL;
+  isidp->oid_list = NULL;
+  isidp->curr_oidp = NULL;
   isidp->copy_buf = NULL;
   isidp->copy_buf_len = 0;
   isidp->key_vals = NULL;
@@ -3334,23 +3392,33 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->curr_oidno = -1;
 
   /* OID buffer */
-  isidp->oid_list.oid_cnt = 0;
-  if (coverage_enabled && mvcc_Enabled == false)
+  if (coverage_enabled)
     {
       /* Covering index do not use an oid buffer. */
-      isidp->oid_list.oidp = NULL;
       scan_id->stats.covered_index = true;
     }
   else
     {
-      isidp->oid_list.oidp = scan_alloc_iscan_oid_buf_list ();
-      if (isidp->oid_list.oidp == NULL)
+      ret = scan_alloc_iscan_oid_buf_list (&isidp->oid_list);
+      if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
-      isidp->oid_list.capacity = ISCAN_OID_BUFFER_SIZE / OR_OID_SIZE;
+      /* Safe guard. */
+      assert (isidp->oid_list->oidp != NULL);
+      assert (isidp->oid_list->capacity > 0);
+      assert (isidp->oid_list->next_list == NULL);
+
+      /* Initialize OID list. */
+      isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
+      isidp->oid_list->oid_cnt = 0;
+      /* Initialize current OID pointer to start of buffer. */
+      isidp->curr_oidp = isidp->oid_list->oidp;
+
+      /* Safe guard */
+      /* OID count limit should not exceed buffer capacity. */
+      assert (isidp->oid_list->max_oid_cnt <= isidp->oid_list->capacity);
     }
-  isidp->curr_oidp = isidp->oid_list.oidp;
 
   /* class object OID */
   COPY_OID (&isidp->cls_oid, cls_oid);
@@ -3513,10 +3581,10 @@ exit_on_error:
     {
       db_private_free_and_init (thread_p, isidp->vstr_ids);
     }
-  if (isidp->oid_list.oidp)
+  if (isidp->oid_list != NULL)
     {
-      scan_free_iscan_oid_buf_list (isidp->oid_list.oidp);
-      isidp->oid_list.oidp = NULL;
+      scan_free_iscan_oid_buf_list (isidp->oid_list);
+      isidp->oid_list = NULL;
     }
   if (isidp->copy_buf)
     {
@@ -3627,7 +3695,8 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->bt_num_attrs = 0;
   isidp->bt_attr_ids = NULL;
   isidp->vstr_ids = NULL;
-  isidp->oid_list.oidp = NULL;
+  isidp->oid_list = NULL;
+  isidp->curr_oidp = NULL;
   isidp->copy_buf = NULL;
   isidp->copy_buf_len = 0;
   isidp->key_vals = NULL;
@@ -3689,12 +3758,6 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->curr_keyno = -1;
   isidp->curr_oidno = -1;
 
-  /* OID buffer */
-  isidp->oid_list.oid_cnt = 0;
-  isidp->oid_list.capacity = 0;
-  isidp->oid_list.oidp = NULL;
-  isidp->curr_oidp = NULL;
-
   /* class object OID */
   COPY_OID (&isidp->cls_oid, cls_oid);
 
@@ -3753,11 +3816,7 @@ exit_on_error:
     {
       db_private_free_and_init (thread_p, isidp->vstr_ids);
     }
-  if (isidp->oid_list.oidp)
-    {
-      scan_free_iscan_oid_buf_list (isidp->oid_list.oidp);
-      isidp->oid_list.oidp = NULL;
-    }
+  assert (isidp->oid_list == NULL);
   if (isidp->copy_buf)
     {
       db_private_free_and_init (thread_p, isidp->copy_buf);
@@ -4384,7 +4443,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	  isidp->caches_inited = true;
 	}
-      isidp->oid_list.oid_cnt = 0;
+      isidp->oids_count = 0;
       isidp->curr_keyno = -1;
       isidp->curr_oidno = -1;
       isidp->one_range = false;
@@ -4401,7 +4460,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
       isidp->caches_inited = true;
-      isidp->oid_list.oid_cnt = 0;
+      isidp->oids_count = 0;
       isidp->curr_keyno = -1;
       isidp->curr_oidno = -1;
       break;
@@ -4522,7 +4581,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (s_id->direction == S_FORWARD
 	      && s_id->s.isid.iscan_oid_order == true)
 	    {
-	      s_id->s.isid.curr_oidno = s_id->s.isid.oid_list.oid_cnt;
+	      s_id->s.isid.curr_oidno = s_id->s.isid.oids_count;
 	      s_id->direction = S_BACKWARD;
 	    }
 	  else
@@ -4693,7 +4752,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		      return S_ERROR;
 		    }
 
-		  if (s_id->s.isid.oid_list.oid_cnt == 0)
+		  if (s_id->s.isid.oids_count == 0)
 		    {		/* range is empty */
 		      s_id->position = S_AFTER;
 		      return S_END;
@@ -4712,7 +4771,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		{
 		  s_id->position = S_ON;
 		  s_id->direction = S_BACKWARD;
-		  s_id->s.isid.curr_oidno = s_id->s.isid.oid_list.oid_cnt;
+		  s_id->s.isid.curr_oidno = s_id->s.isid.oids_count;
 		}
 
 	      return S_SUCCESS;
@@ -4921,10 +4980,10 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  db_private_free_and_init (thread_p, isidp->vstr_ids);
 	}
-      if (isidp->oid_list.oidp)
+      if (isidp->oid_list != NULL)
 	{
-	  scan_free_iscan_oid_buf_list (isidp->oid_list.oidp);
-	  isidp->oid_list.oidp = NULL;
+	  scan_free_iscan_oid_buf_list (isidp->oid_list);
+	  isidp->oid_list = NULL;
 	}
 
       /* free index key copy_buf */
@@ -5123,7 +5182,7 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
 
       oids_cnt = isidp->multi_range_opt.use ?
-	isidp->multi_range_opt.cnt : isidp->oid_list.oid_cnt;
+	isidp->multi_range_opt.cnt : isidp->oids_count;
 
       if (oids_cnt == 0)
 	{
@@ -5801,6 +5860,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* get next object from OID list */
       if (scan_id->grouped)
 	{
+	  assert (isidp->oid_list != NULL);
 	  /* grouped scan */
 	  if (scan_id->direction == S_FORWARD)
 	    {
@@ -5808,9 +5868,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      if (isidp->curr_oidno == -1)
 		{
 		  isidp->curr_oidno = 0;	/* first oid number */
-		  isidp->curr_oidp = isidp->oid_list.oidp;
+		  isidp->curr_oidp = isidp->oid_list->oidp;
 		}
-	      else if (isidp->curr_oidno < isidp->oid_list.oid_cnt - 1)
+	      else if (isidp->curr_oidno < isidp->oids_count - 1)
 		{
 		  isidp->curr_oidno++;
 		  isidp->curr_oidp++;
@@ -5823,17 +5883,17 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  else
 	    {
 	      /* move backward (to the previous object */
-	      if (isidp->curr_oidno == isidp->oid_list.oid_cnt)
+	      if (isidp->curr_oidno == isidp->oids_count)
 		{
-		  isidp->curr_oidno = isidp->oid_list.oid_cnt - 1;
+		  isidp->curr_oidno = isidp->oids_count - 1;
 		  isidp->curr_oidp =
-		    GET_NTH_OID (isidp->oid_list.oidp, isidp->curr_oidno);
+		    GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
 		}
 	      else if (isidp->curr_oidno > 0)
 		{
 		  isidp->curr_oidno--;
 		  isidp->curr_oidp =
-		    GET_NTH_OID (isidp->oid_list.oidp, isidp->curr_oidno);
+		    GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
 		}
 	      else
 		{
@@ -5869,21 +5929,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	      scan_id->position = S_ON;
 	      isidp->curr_oidno = 0;	/* first oid number */
-	      if (isidp->multi_range_opt.use)
-		{
-		  assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
-		  assert (isidp->multi_range_opt.
-			  top_n_items[isidp->curr_oidno] != NULL);
-
-		  isidp->curr_oidp =
-		    &(isidp->multi_range_opt.
-		      top_n_items[isidp->curr_oidno]->inst_oid);
-		}
-	      else
-		{
-		  isidp->curr_oidp =
-		    GET_NTH_OID (isidp->oid_list.oidp, isidp->curr_oidno);
-		}
 
 	      if (SCAN_IS_INDEX_COVERED (isidp))
 		{
@@ -5896,22 +5941,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	      else
 		{
-		  assert (HEAP_ISVALID_OID (isidp->curr_oidp)
-			  != DISK_INVALID);
-		}
-	    }
-	  else if (scan_id->position == S_ON)
-	    {
-	      int oids_cnt;
-	      /* we are in the S_ON case */
-
-	      oids_cnt = isidp->multi_range_opt.use ?
-		isidp->multi_range_opt.cnt : isidp->oid_list.oid_cnt;
-
-	      /* if there are OIDs left */
-	      if (isidp->curr_oidno < oids_cnt - 1)
-		{
-		  isidp->curr_oidno++;
 		  if (isidp->multi_range_opt.use)
 		    {
 		      assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
@@ -5924,15 +5953,58 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    }
 		  else
 		    {
+		      assert (isidp->oid_list != NULL);
 		      isidp->curr_oidp =
-			GET_NTH_OID (isidp->oid_list.oidp, isidp->curr_oidno);
+			GET_NTH_OID (isidp->oid_list->oidp,
+				     isidp->curr_oidno);
 		    }
-		  /* TODO: Index covering case keeps OID's in
-		   *       isidp->indx_cov.list_id and not in isidp->oid_list.
-		   */
-		  assert (SCAN_IS_INDEX_COVERED (isidp)
-			  || (HEAP_ISVALID_OID (isidp->curr_oidp)
-			      != DISK_INVALID));
+		  assert (HEAP_ISVALID_OID (isidp->curr_oidp)
+			  != DISK_INVALID);
+		}
+	    }
+	  else if (scan_id->position == S_ON)
+	    {
+	      int oids_cnt;
+	      /* we are in the S_ON case */
+
+	      oids_cnt = isidp->multi_range_opt.use ?
+		isidp->multi_range_opt.cnt : isidp->oids_count;
+
+	      /* if there are OIDs left */
+	      if (isidp->curr_oidno < oids_cnt - 1)
+		{
+		  isidp->curr_oidno++;
+		  if (!SCAN_IS_INDEX_COVERED (isidp))
+		    {
+		      if (isidp->multi_range_opt.use)
+			{
+			  assert (isidp->curr_oidno
+				  < isidp->multi_range_opt.cnt);
+			  assert (isidp->multi_range_opt.
+				  top_n_items[isidp->curr_oidno] != NULL);
+
+			  isidp->curr_oidp =
+			    &(isidp->multi_range_opt.
+			      top_n_items[isidp->curr_oidno]->inst_oid);
+			}
+		      else
+			{
+			  assert (isidp->oid_list != NULL);
+			  isidp->curr_oidp =
+			    GET_NTH_OID (isidp->oid_list->oidp,
+					 isidp->curr_oidno);
+			}
+		      assert (HEAP_ISVALID_OID (isidp->curr_oidp)
+			      != DISK_INVALID);
+		    }
+		  else
+		    {
+		      /* TODO: Index covering case keeps OID's in
+		       *       isidp->indx_cov.list_id and not in
+		       *       isidp->oid_list.
+		       * Fall through.
+		       */
+		    }
 		}
 	      else
 		{
@@ -5960,7 +6032,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  /* for "on the fly" case (multi range opt),
 			   * all ranges are exhausted from first
 			   * shoot, force exit */
-			  isidp->oid_list.oid_cnt = 0;
+			  isidp->oids_count = 0;
 			  return S_END;
 			}
 
@@ -6005,8 +6077,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			}
 
 		      isidp->curr_oidno = 0;	/* first oid number */
-		      isidp->curr_oidp = isidp->oid_list.oidp;
-
 		      if (SCAN_IS_INDEX_COVERED (isidp))
 			{
 			  qfile_close_list (thread_p,
@@ -6020,6 +6090,8 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			}
 		      else
 			{
+			  assert (isidp->oid_list != NULL);
+			  isidp->curr_oidp = isidp->oid_list->oidp;
 			  assert (HEAP_ISVALID_OID (isidp->curr_oidp)
 				  != DISK_INVALID);
 			}
@@ -7417,28 +7489,43 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
  * scan_initialize () - initialize scan management routine
  *   return: NO_ERROR if all OK, ER status otherwise
  */
-void
+int
 scan_initialize (void)
 {
-  int i;
-  OID *oid_buf_p;
+  BTREE_ISCAN_OID_LIST *new_oid_list = NULL;
+  int error_code = NO_ERROR;
+  int i = 0;
 
+  /* Initialize */
   scan_Iscan_oid_buf_list = NULL;
   scan_Iscan_oid_buf_list_count = 0;
 
-  /* pre-allocate oid buf list */
-  for (i = 0; i < 10; i++)
+  /* Allocate oid buffer list. */
+  for (i = 0; i < SCAN_ISCAN_OID_BUF_LIST_DEFAULT_SIZE; i++)
     {
-      oid_buf_p = scan_alloc_oid_buf ();
-      if (oid_buf_p == NULL)
+      /* Allocate new entry. */
+      new_oid_list = NULL;
+      error_code = scan_alloc_oid_list (&new_oid_list);
+      if (error_code != NO_ERROR)
 	{
-	  break;
+	  ASSERT_ERROR ();
+	  /* Free what was already allocated. */
+	  scan_finalize ();
+
+	  /* Return error. */
+	  return error_code;
 	}
-      /* save previous oid buf pointer */
-      *(intptr_t *) oid_buf_p = (intptr_t) scan_Iscan_oid_buf_list;
-      scan_Iscan_oid_buf_list = oid_buf_p;
+      /* Safe guard. */
+      assert (new_oid_list->oidp != NULL);
+      assert (new_oid_list->capacity > 0);
+
+      /* Save new buffer to buffer list. */
+      new_oid_list->next_list = scan_Iscan_oid_buf_list;
+      scan_Iscan_oid_buf_list = new_oid_list;
       scan_Iscan_oid_buf_list_count++;
     }
+  /* Success. */
+  return NO_ERROR;
 }
 
 /*
@@ -7448,15 +7535,21 @@ scan_initialize (void)
 void
 scan_finalize (void)
 {
-  OID *oid_buf_p;
+  BTREE_ISCAN_OID_LIST *oid_list_p;
 
   while (scan_Iscan_oid_buf_list != NULL)
     {
-      oid_buf_p = scan_Iscan_oid_buf_list;
-      /* save previous oid buf pointer */
-      scan_Iscan_oid_buf_list = (OID *) (*(intptr_t *) oid_buf_p);
-      free_and_init (oid_buf_p);
+      /* Save current. */
+      oid_list_p = scan_Iscan_oid_buf_list;
+
+      /* Advance to next. */
+      scan_Iscan_oid_buf_list = oid_list_p->next_list;
+
+      /* Free current. */
+      free_and_init (oid_list_p->oidp);
+      free_and_init (oid_list_p);
     }
+  /* Reset count. */
   scan_Iscan_oid_buf_list_count = 0;
 }
 

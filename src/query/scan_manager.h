@@ -178,6 +178,9 @@ struct index_skip_scan
 				   values on the first index column */
 };
 
+/* Forward definition. */
+struct btree_iscan_oid_list;
+
 typedef struct indx_scan_id INDX_SCAN_ID;
 struct indx_scan_id
 {
@@ -194,7 +197,10 @@ struct indx_scan_id
   int curr_oidno;		/* current oid number */
   OID *curr_oidp;		/* current oid pointer */
   char *copy_buf;		/* index key copy_buf pointer info */
-  OID_LIST oid_list;		/* list of object identifiers */
+  struct btree_iscan_oid_list *oid_list;	/* list of object OID's */
+  int oids_count;		/* Generic value of OID count that should be
+				 * common for all index scan types.
+				 */
   OID cls_oid;			/* class object identifier */
   int copy_buf_len;		/* index key copy_buf length info */
   HFID hfid;			/* heap file identifier */
@@ -575,10 +581,10 @@ extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);
 extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				     SCAN_POS * scan_pos);
 extern int scan_init_iss (INDX_SCAN_ID * isidp);
-extern void scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
-				  int oid_buf_size,
+extern void scan_init_index_scan (INDX_SCAN_ID * isidp,
+				  struct btree_iscan_oid_list *oid_list,
 				  MVCC_SNAPSHOT * mvcc_snapshot);
-extern void scan_initialize (void);
+extern int scan_initialize (void);
 extern void scan_finalize (void);
 extern void scan_init_filter_info (FILTER_INFO * filter_info_p,
 				   SCAN_PRED * scan_pred,

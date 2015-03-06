@@ -1177,9 +1177,7 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
   srand48_r ((long) t.tv_usec, &qmgr_rand_buf);
 #endif
 
-  scan_initialize ();
-
-  return NO_ERROR;
+  return scan_initialize ();
 }
 
 /*
