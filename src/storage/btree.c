@@ -30559,8 +30559,9 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p,
 
       /* If key is not in the range 1 -> key count, a different leaf node
        * must be fixed.
+       * This while should pass over all empty or consumed leaf nodes.
        */
-      if (bts->slot_id <= 0 || bts->slot_id > key_count || key_count == 0)
+      while (bts->slot_id <= 0 || bts->slot_id > key_count || key_count == 0)
 	{
 	  /* Current leaf node was consumed (or was empty).
 	   * Try next leaf node.
