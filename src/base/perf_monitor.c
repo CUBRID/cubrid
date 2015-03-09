@@ -323,6 +323,9 @@ static void perf_stat_dump_page_fix_time_array_stat (const UINT64 * stats_ptr,
 						     FILE * stream,
 						     bool
 						     print_zero_counters);
+static INLINE MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY *
+							   thread_p)
+  __attribute__ ((ALWAYS_INLINE));
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 static void perf_stat_dump_mvcc_snapshot_array_stat (const UINT64 * stats_ptr,
 						     char *s,
@@ -2011,7 +2014,7 @@ mnt_server_is_stats_on (THREAD_ENTRY * thread_p)
  * mnt_server_get_stats - Get the recorded server statistics for the current
  *                        transaction index
  */
-MNT_SERVER_EXEC_STATS *
+STATIC_INLINE MNT_SERVER_EXEC_STATS *
 mnt_server_get_stats (THREAD_ENTRY * thread_p)
 {
   int tran_index;

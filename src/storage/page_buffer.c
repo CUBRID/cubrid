@@ -691,7 +691,8 @@ static PGBUF_PS_INFO ps_info;
 static INLINE unsigned int
 pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
-static bool pgbuf_is_temporary_volume (VOLID volid);
+static INLINE bool pgbuf_is_temporary_volume (VOLID volid)
+  __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_initialize_bcb_table (void);
 static int pgbuf_initialize_hash_table (void);
 static int pgbuf_initialize_lock_table (void);
@@ -702,8 +703,9 @@ static int pgbuf_initialize_invalid_list (void);
 static int pgbuf_initialize_thrd_holder (void);
 static PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY *
 						       thread_p);
-static PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p,
-					     PGBUF_BCB * bufptr);
+static INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p,
+						    PGBUF_BCB * bufptr)
+  __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p,
 				     PGBUF_HOLDER * holder);
 static int pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p,
@@ -801,7 +803,8 @@ static void pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr);
 
 static int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p,
 				      PGBUF_BCB * bufptr);
-static bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr);
+static INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr)
+  __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_exist_blocked_reader_writer_victim (PGBUF_BCB * bufptr);
 #if !defined(NDEBUG)
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid,
@@ -839,13 +842,16 @@ static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p,
 #endif /* NDEBUG */
 #endif /* SERVER_MODE */
 
-static bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
-					     int page_validation_level);
+static INLINE bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
+						    int page_validation_level)
+  __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
-static void pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p,
-				     PGBUF_BCB * bufptr);
-static bool pgbuf_check_bcb_page_vpid (THREAD_ENTRY * thread_p,
-				       PGBUF_BCB * bufptr);
+static INLINE void pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p,
+					    PGBUF_BCB * bufptr)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE bool pgbuf_check_bcb_page_vpid (THREAD_ENTRY * thread_p,
+					      PGBUF_BCB * bufptr)
+  __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CUBRID_DEBUG)
 static void pgbuf_scramble (FILEIO_PAGE * iopage);
@@ -4429,7 +4435,7 @@ pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  *
  * Note: This function is used for debugging.
  */
-static void
+STATIC_INLINE void
 pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   if (thread_p == NULL)
@@ -4541,7 +4547,7 @@ pgbuf_is_lsa_temporary (PAGE_PTR pgptr)
  *   return: true/false
  *   volid(in): Volume identifier of last allocated permanent volume
  */
-static bool
+STATIC_INLINE bool
 pgbuf_is_temporary_volume (VOLID volid)
 {
   int i;
@@ -5138,7 +5144,7 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
  *   return: pointer to holder entry or NULL
  *   bufptr(in):
  */
-static PGBUF_HOLDER *
+STATIC_INLINE PGBUF_HOLDER *
 pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   int thrd_index;
@@ -8572,7 +8578,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
  *   return: if found, true, otherwise, false
  *   bufptr(in): pointer to buffer page
  */
-static bool
+STATIC_INLINE bool
 pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr)
 {
 #if defined(SERVER_MODE)
@@ -8683,7 +8689,7 @@ pgbuf_kickoff_blocked_victim_request (PGBUF_BCB * bufptr)
  *   return:
  *
  */
-static bool
+STATIC_INLINE bool
 pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
 				 int page_validation_level)
 {
@@ -8916,7 +8922,7 @@ pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
  * Note: Verify if the given page's prv is valid.
  *       This function is used for debugging purposes.
  */
-static bool
+STATIC_INLINE bool
 pgbuf_check_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   if (thread_p == NULL)

@@ -1003,7 +1003,6 @@ extern int mnt_Num_tran_exec_stats;
 						       visibility)
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
-extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
 extern int mnt_server_init (int num_tran_indices);

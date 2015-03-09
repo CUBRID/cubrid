@@ -1538,8 +1538,11 @@ static bool btree_leaf_is_flaged (RECDES * recp, short record_flag);
 static void btree_leaf_key_oid_set_mvcc_flag (char *data, short record_flag);
 static void btree_leaf_key_oid_clear_mvcc_flag (char *rec_data,
 						short record_flag);
-static short btree_leaf_key_oid_get_mvcc_flag (char *data);
-static bool btree_leaf_key_oid_is_mvcc_flaged (char *data, short mvcc_flag);
+static INLINE short btree_leaf_key_oid_get_mvcc_flag (char *data)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE bool btree_leaf_key_oid_is_mvcc_flaged (char *data,
+						      short mvcc_flag)
+  __attribute__ ((ALWAYS_INLINE));
 static void btree_leaf_rebuild_mvccids_in_record (RECDES * recp, int offset,
 						  int mvcc_old_oid_mvcc_flags,
 						  int oid_size,
@@ -1554,8 +1557,8 @@ static void btree_leaf_set_fixed_mvcc_size_for_first_record_oid (RECDES *
 static void btree_leaf_get_oid_from_oidptr (BTID_INT * btid_int,
 					    char *rec_oid_ptr,
 					    BTREE_NODE_TYPE node_type,
-					    bool is_first,
-					    OID * oid, OID * class_oid);
+					    bool is_first, OID * oid,
+					    OID * class_oid);
 static int btree_leaf_get_num_oids (RECDES * rec, int offset,
 				    BTREE_NODE_TYPE node_type, int oid_size);
 static int btree_mvcc_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY *
@@ -3583,7 +3586,7 @@ btree_leaf_get_flag (RECDES * recp)
  *   return: MVCC flag for key oid
  *   data(in): pointer to OID into key buffer
  */
-static short
+STATIC_INLINE short
 btree_leaf_key_oid_get_mvcc_flag (char *data)
 {
   short vol_id;
@@ -3616,7 +3619,7 @@ btree_leaf_is_flaged (RECDES * recp, short record_flag)
  *   rec_data(in): pointer to OID into key buffer
  *   mvcc_flag(in): the flag to test
  */
-static bool
+STATIC_INLINE bool
 btree_leaf_key_oid_is_mvcc_flaged (char *rec_data, short mvcc_flag)
 {
   assert ((short) (mvcc_flag & ~BTREE_OID_MVCC_FLAGS_MASK) == 0);

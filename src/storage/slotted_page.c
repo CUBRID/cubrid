@@ -226,8 +226,10 @@ static void spage_dump_slots (FILE * fp, const SPAGE_SLOT * sptr,
 static void spage_dump_record (FILE * Fp, PAGE_PTR page_p, PGSLOTID slot_id,
 			       SPAGE_SLOT * slot_p);
 
-static bool spage_is_unknown_slot (PGSLOTID slotid, SPAGE_HEADER * sphdr,
-				   SPAGE_SLOT * sptr);
+static INLINE bool spage_is_unknown_slot (PGSLOTID slotid,
+					  SPAGE_HEADER * sphdr,
+					  SPAGE_SLOT * sptr)
+  __attribute__ ((ALWAYS_INLINE));
 static INLINE SPAGE_SLOT *spage_find_slot (PAGE_PTR pgptr,
 					   SPAGE_HEADER * sphdr,
 					   PGSLOTID slotid,
@@ -5026,7 +5028,7 @@ spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *   page_header_p(in): Pointer to header of slotted page
  *   slot_p(in): Pointer to slotted page pointer array
  */
-static bool
+STATIC_INLINE bool
 spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p,
 		       SPAGE_SLOT * slot_p)
 {

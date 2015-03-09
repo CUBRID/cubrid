@@ -62,8 +62,10 @@ enum
 /* the lowest active mvcc id computed for last */
 /* MVCCID recent_snapshot_lowest_active_mvccid = MVCCID_NULL; */
 
-static bool mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p,
-				    MVCCID mvcc_id, MVCC_SNAPSHOT * snapshot);
+static INLINE bool mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p,
+					   MVCCID mvcc_id,
+					   MVCC_SNAPSHOT * snapshot)
+  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * mvcc_is_id_in_snapshot () - check whether mvcc id is in snapshot -
@@ -73,7 +75,7 @@ static bool mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p,
  *   mvcc_id(in): mvcc id
  *   snapshot(in): mvcc snapshot
  */
-static bool
+STATIC_INLINE bool
 mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvcc_id,
 			MVCC_SNAPSHOT * snapshot)
 {

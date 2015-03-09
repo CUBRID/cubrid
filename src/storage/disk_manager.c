@@ -222,7 +222,8 @@ static int disk_vhdr_set_vol_remarks (DISK_VAR_HEADER * vhdr,
 
 static void disk_bit_set (unsigned char *c, unsigned int n);
 static void disk_bit_clear (unsigned char *c, unsigned int n);
-static bool disk_bit_is_set (unsigned char *c, unsigned int n);
+static INLINE bool disk_bit_is_set (unsigned char *c, unsigned int n)
+  __attribute__ ((ALWAYS_INLINE));
 #if defined (ENABLE_UNUSED_FUNCTION)
 static bool disk_bit_is_cleared (unsigned char *c, unsigned int n);
 #endif
@@ -319,8 +320,9 @@ static int disk_rv_alloctable_helper (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 				      DISK_ALLOCTABLE_MODE mode);
 static void disk_set_page_to_zeros (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
-static void disk_verify_volume_header (THREAD_ENTRY * thread_p,
-				       PAGE_PTR pgptr);
+static INLINE void disk_verify_volume_header (THREAD_ENTRY * thread_p,
+					      PAGE_PTR pgptr)
+  __attribute__ ((ALWAYS_INLINE));
 static bool disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid,
 				     void *arg);
 static int disk_find_cache_index_of_purpose (DISK_VOLPURPOSE vol_purpose,
@@ -397,7 +399,7 @@ disk_bit_clear (unsigned char *c, unsigned int n)
  *
  * Note: Bits are numbered from 0 through 7 from right to left
  */
-static bool
+STATIC_INLINE bool
 disk_bit_is_set (unsigned char *c, unsigned int n)
 {
   return (*c & (1 << n)) ? true : false;
@@ -7446,7 +7448,7 @@ disk_set_page_to_zeros (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  *   return: void
  *   pgphtr(in): Pointer to volume header page
  */
-static void
+STATIC_INLINE void
 disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 {
   DISK_VAR_HEADER *vhdr;

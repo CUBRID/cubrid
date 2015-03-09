@@ -254,19 +254,20 @@ enum mvcc_satisfies_vacuum_result
 extern bool mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
 				     MVCC_REC_HEADER * rec_header,
 				     MVCC_SNAPSHOT * snapshot);
-extern MVCC_SATISFIES_VACUUM_RESULT mvcc_satisfies_vacuum (THREAD_ENTRY *
-							   thread_p,
-							   MVCC_REC_HEADER *
+extern MVCC_SATISFIES_VACUUM_RESULT mvcc_satisfies_vacuum (THREAD_ENTRY
+							   * thread_p,
+							   MVCC_REC_HEADER
+							   *
 							   rec_header,
 							   MVCCID
 							   oldest_mvccid);
 extern bool mvcc_satisfies_not_vacuumed (THREAD_ENTRY * thread_p,
 					 MVCC_REC_HEADER * rec_header,
 					 MVCC_SNAPSHOT * snapshot);
-extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY *
-							   thread_p,
-							   MVCC_REC_HEADER *
-							   rec_header);
+extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY
+							   * thread_p,
+							   MVCC_REC_HEADER
+							   * rec_header);
 
 extern bool mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
 				  MVCC_REC_HEADER * rec_header,

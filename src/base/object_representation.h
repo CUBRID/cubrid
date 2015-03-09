@@ -1238,9 +1238,8 @@ extern int or_chn (RECDES * record);
 extern int or_mvcc_chn (OR_BUF * buf, int mvcc_flags, int *errror);
 extern int or_replace_chn (RECDES * record, int chn);
 extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
-extern int or_mvcc_set_repid_and_flags (OR_BUF * buf,
-					int mvcc_flag, int repid,
-					int bound_bit,
+extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag,
+					int repid, int bound_bit,
 					int variable_offset_size);
 extern int or_set_chn (RECDES * record, int chn);
 extern char *or_class_name (RECDES * record);
