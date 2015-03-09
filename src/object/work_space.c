@@ -5718,13 +5718,20 @@ ws_mvcc_latest_version (MOP mop)
 static MOP
 ws_mvcc_latest_permanent_version (MOP mop)
 {
+  MOP mop_latest = mop, mvcc_link;
+
   assert (mop != NULL);
   assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED));
 
-  if (mop->mvcc_link != NULL && mop->permanent_mvcc_link)
+  while (mop_latest->mvcc_link != NULL && mop_latest->permanent_mvcc_link)
     {
-      mop->mvcc_link = ws_mvcc_latest_permanent_version (mop->mvcc_link);
-      return mop->mvcc_link;
+      mop_latest = mop_latest->mvcc_link;
+    }
+  while (mop != mop_latest)
+    {
+      mvcc_link = mop->mvcc_link;
+      mop->mvcc_link = mop_latest;
+      mop = mvcc_link;
     }
   return mop;
 }
@@ -5744,10 +5751,10 @@ ws_mvcc_latest_permanent_version (MOP mop)
 static MOP
 ws_mvcc_latest_temporary_version (MOP mop)
 {
-  if (mop->mvcc_link != NULL)
+  while (mop->mvcc_link != NULL)
     {
       assert (!mop->permanent_mvcc_link);
-      return ws_mvcc_latest_temporary_version (mop->mvcc_link);
+      mop = mop->mvcc_link;
     }
   return mop;
 }
