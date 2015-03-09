@@ -19089,7 +19089,7 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
  * Note: Find the first/last leaf page of the B+tree index.
  */
 static int
-btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
+btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 			     BTREE_STATS * stat_info_p)
 {
   int key_cnt;
@@ -19098,29 +19098,29 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
   BTREE_NODE_TYPE node_type;
   RECDES rec;
 
-  if (BTS->use_desc_index)
+  if (bts->use_desc_index)
     {
       assert_release (stat_info_p == NULL);
-      BTS->C_page = btree_find_rightmost_leaf (thread_p,
-					       BTS->btid_int.sys_btid,
-					       &BTS->C_vpid, stat_info_p);
+      bts->C_page = btree_find_rightmost_leaf (thread_p,
+					       bts->btid_int.sys_btid,
+					       &bts->C_vpid, stat_info_p);
     }
   else
     {
-      BTS->C_page = btree_find_leftmost_leaf (thread_p,
-					      BTS->btid_int.sys_btid,
-					      &BTS->C_vpid, stat_info_p);
+      bts->C_page = btree_find_leftmost_leaf (thread_p,
+					      bts->btid_int.sys_btid,
+					      &bts->C_vpid, stat_info_p);
     }
 
-  if (BTS->C_page == NULL)
+  if (bts->C_page == NULL)
     {
       goto exit_on_error;
     }
 
   /* get header information (key_cnt) */
-  key_cnt = btree_node_number_of_keys (BTS->C_page);
+  key_cnt = btree_node_number_of_keys (bts->C_page);
 
-  header = btree_get_node_header (BTS->C_page);
+  header = btree_get_node_header (bts->C_page);
   if (header == NULL)
     {
       goto exit_on_error;
@@ -19136,30 +19136,30 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
     }
 
   /* set slot id and OID position */
-  if (BTS->use_desc_index)
+  if (bts->use_desc_index)
     {
-      BTS->slot_id = key_cnt;
+      bts->slot_id = key_cnt;
     }
   else
     {
-      BTS->slot_id = 1;
+      bts->slot_id = 1;
     }
 
   if (key_cnt == 0)
     {
       /* tree is empty; need to unfix current leaf page */
-      ret = btree_find_next_index_record (thread_p, BTS);
+      ret = btree_find_next_index_record (thread_p, bts);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      assert_release (BTREE_END_OF_SCAN (BTS));
+      assert_release (BTREE_END_OF_SCAN (bts));
     }
   else
     {
       /* Key may be fence and fences must be filtered out. */
-      if (spage_get_record (BTS->C_page, BTS->slot_id, &rec, PEEK) !=
+      if (spage_get_record (bts->C_page, bts->slot_id, &rec, PEEK) !=
 	  S_SUCCESS)
 	{
 	  assert (false);
@@ -19170,7 +19170,7 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
       if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
 	{
 	  /* Filter out fence key. */
-	  ret = btree_find_next_index_record (thread_p, BTS);
+	  ret = btree_find_next_index_record (thread_p, bts);
 	  if (ret != NO_ERROR)
 	    {
 	      return ret;
@@ -19178,8 +19178,8 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 	}
       else
 	{
-	  BTS->oid_pos = 0;
-	  assert_release (BTS->slot_id <= key_cnt);
+	  bts->oid_pos = 0;
+	  assert_release (bts->slot_id <= key_cnt);
 	}
     }
 
@@ -34842,10 +34842,10 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p,
 			 btree_obj->class_oid.slotid,
 			 btree_obj->mvcc_info.insert_mvccid,
 			 btree_obj->mvcc_info.delete_mvccid,
-			 pgbuf_get_volume_id (*inserted_page),
-			 pgbuf_get_page_id (*inserted_page),
 			 insert_helper->printed_key != NULL ?
 			 insert_helper->printed_key : "(null)",
+			 pgbuf_get_volume_id (*inserted_page),
+			 pgbuf_get_page_id (*inserted_page),
 			 btid_int->sys_btid->root_pageid,
 			 btid_int->sys_btid->vfid.volid,
 			 btid_int->sys_btid->vfid.fileid,
@@ -34863,7 +34863,7 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p,
 	  _er_log_debug (ARG_FILE_LINE,
 			 "BTREE_INSERT: Inserted object %d|%d|%d, "
 			 "class_oid %d|%d|%d, mvcc_info=%llu|%llu in overflow"
-			 " page %d|%d  in index (%d, %d|%d).\n",
+			 " page %d|%d in index (%d, %d|%d).\n",
 			 btree_obj->oid.volid, btree_obj->oid.pageid,
 			 btree_obj->oid.slotid, btree_obj->class_oid.volid,
 			 btree_obj->class_oid.pageid,
