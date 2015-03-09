@@ -3335,13 +3335,13 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	{
-	  or_advance (buf_p, OR_INT64_SIZE);	/* skip INS_ID */
+	  or_advance (buf_p, OR_MVCCID_SIZE);	/* skip INS_ID */
 	}
 
-      if (mvcc_flags &
-	  (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN))
+      if (mvcc_flags & (OR_MVCC_FLAG_VALID_DELID
+			| OR_MVCC_FLAG_VALID_LONG_CHN))
 	{
-	  or_advance (buf_p, OR_INT64_SIZE);	/* skip DEL_ID / long CHN */
+	  or_advance (buf_p, OR_MVCCID_SIZE);	/* skip DEL_ID / long CHN */
 	}
       else
 	{

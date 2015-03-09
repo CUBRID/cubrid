@@ -1060,14 +1060,14 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record,
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	    {
 	      /* skip insert id */
-	      or_advance (buf, OR_INT64_SIZE);
+	      or_advance (buf, OR_MVCCID_SIZE);
 	    }
 
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID
 	      || mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
 	    {
 	      /* skip delete id */
-	      or_advance (buf, OR_INT64_SIZE);
+	      or_advance (buf, OR_MVCCID_SIZE);
 	    }
 	  else
 	    {
