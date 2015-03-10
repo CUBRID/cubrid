@@ -888,7 +888,7 @@ tz_print_tz_offset (char *result, int tz_offset)
  *                             tz_str timezone
  * tz_str (in) : name or offset of timezone
  * tz_size (in) : length of timezone string 
- * datetime (in) : the current UTC datetime
+ * utc_datetime (in) : the current UTC datetime
  * result (out) : the timezone offset
  */
 int
@@ -3099,6 +3099,8 @@ detect_dst:
 	  TZ_DS_RULE *wall_ds_rule;
 	  full_date_t leap_interval;
 	  int ds_time_offset = 0;
+	  full_date_t ds_rule_date = 0;
+	  full_date_t utc_src_offset = 0;
 
 	  /* there may be an ambiguity :
 	   * check the time deviation of a date before current candidate
@@ -3120,7 +3122,13 @@ detect_dst:
 	  wall_ds_rule = &(tzd->ds_rules[wall_ds_rule_id
 					 + ds_ruleset->index_start]);
 
-	  /* take time into account */
+
+	  /* the difference between the input date and the rule date
+	   * must be made in the same time reference, in our case
+	   * it is the local time reference */
+	  /* ds_time_offset is used to adjust the time at which
+	   * the new daylight saving rule applies */
+
 	  if (curr_ds_rule->at_time_type == TZ_TIME_TYPE_UTC)
 	    {
 	      ds_time_offset = gmt_std_offset_sec;
@@ -3140,11 +3148,16 @@ detect_dst:
 
 	  leap_interval = wall_ds_rule->save_time - curr_ds_rule->save_time;
 
-	  date_diff = FULL_DATE (src_julian_date, src_time_sec)
-	    - FULL_DATE (ds_rule_julian_date,
-			 +TIME_OFFSET (src_is_utc,
-				       ds_time_offset +
-				       curr_ds_rule->at_time));
+	  ds_rule_date = FULL_DATE (ds_rule_julian_date, ds_time_offset +
+				    curr_ds_rule->at_time);
+	  if (src_is_utc == true)
+	    {
+	      utc_src_offset = gmt_std_offset_sec + curr_ds_rule->save_time;
+	    }
+	  date_diff =
+	    FULL_DATE (src_julian_date,
+		       src_time_sec + utc_src_offset) - ds_rule_date;
+
 	  if (date_diff >= 0)
 	    {
 	      if (date_diff <= ABS (leap_interval))
