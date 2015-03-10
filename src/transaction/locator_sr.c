@@ -10894,7 +10894,7 @@ end:
       pr_clear_value (key);
     }
 
-  if (isid.oid_list->oidp)
+  if (isid.oid_list != NULL && isid.oid_list->oidp != NULL)
     {
       free_and_init (isid.oid_list->oidp);
     }
@@ -10982,6 +10982,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 #endif /* SERVER_MODE */
   bool bt_checkscan_inited = false;
 
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
+  {
+    return DISK_ERROR;
+  }
   DB_MAKE_NULL (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
@@ -10989,6 +10994,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 #if defined(SERVER_MODE)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 #endif /* SERVER_MODE */
+
+  scan_init_index_scan (&isid, NULL, mvcc_snapshot);
 
   /* get all the heap files associated with this unique btree */
   if (or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid,
@@ -11036,15 +11043,6 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	  goto end;
 	}
     }
-
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
-    {
-      isallvalid = DISK_INVALID;
-      goto error;
-    }
-  scan_init_index_scan (&isid, NULL, mvcc_snapshot);
-
 
   for (j = 0; j < num_classes; j++)
     {
@@ -11530,7 +11528,7 @@ end:
 
 error:
 
-  if (isid.oid_list->oidp)
+  if (isid.oid_list != NULL && isid.oid_list->oidp != NULL)
     {
       free_and_init (isid.oid_list->oidp);
     }

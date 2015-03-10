@@ -9144,6 +9144,7 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
 	btree_keyval_search (thread_p, &btscan->btid, S_SELECT,
 			     &btscan->btree_scan, &key_val_range, cls_oid,
 			     NULL, &isid, false);
+      assert (btscan->oid_list.oid_cnt <= btscan->oid_list.capacity);
 
       if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY
 	  && key->data.midxkey.domain == NULL)
@@ -9153,7 +9154,7 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
 	  key->data.midxkey.domain = btscan->btree_scan.btid_int.key_type;
 	}
 
-      if (btscan->oid_list.oid_cnt == -1)
+      if (btscan->oid_list.oid_cnt < 0)
 	{
 	  status = DISK_ERROR;
 	  goto end;
@@ -19710,7 +19711,9 @@ btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
       ASSERT_ERROR ();
       return rc;
     }
-  return bts->n_oids_read;
+  assert (bts->n_oids_read_last_iteration >= 0);
+
+  return bts->n_oids_read_last_iteration;
 }
 
 /*
