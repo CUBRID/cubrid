@@ -3160,7 +3160,7 @@ detect_dst:
 
 	  if (date_diff >= 0)
 	    {
-	      if (date_diff <= ABS (leap_interval))
+	      if (date_diff < ABS (leap_interval))
 		{
 		  is_in_leap_interval = true;
 		}
