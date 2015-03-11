@@ -6136,10 +6136,12 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid)
   int num_oids, num_nulls, num_keys;
 
   assert (btid != NULL);
+  assert ((xbtree_get_unique_pk (thread_p, btid)
+	   & (BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
 
   error_code =
     lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid,
-		  &stats);
+		  (void **) &stats);
   if (error_code != NO_ERROR)
     {
       return NULL;
@@ -6156,7 +6158,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid)
       error_code =
 	lf_hash_find_or_insert (t_entry,
 				&log_Gl.unique_stats_table.unique_stats_hash,
-				btid, &stats);
+				btid, (void **) &stats);
       if (error_code != NO_ERROR || stats == NULL)
 	{
 	  return NULL;
