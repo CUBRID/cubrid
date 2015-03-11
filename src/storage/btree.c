@@ -26881,22 +26881,36 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   db_make_int (out_values[idx], root_header->node.max_key_len);
   idx++;
 
-  error =
-    logtb_get_global_unique_stats (thread_p, btid_p, &num_oids, &num_nulls,
-				   &num_keys);
-  if (error != NO_ERROR)
+  if (root_header->unique_pk)
     {
-      goto cleanup;
+      error =
+	logtb_get_global_unique_stats (thread_p, btid_p, &num_oids,
+				       &num_nulls, &num_keys);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      db_make_int (out_values[idx], num_oids);
+      idx++;
+
+      db_make_int (out_values[idx], num_nulls);
+      idx++;
+
+      db_make_int (out_values[idx], num_keys);
+      idx++;
     }
+  else
+    {
+      db_make_int (out_values[idx], root_header->num_oids);
+      idx++;
 
-  db_make_int (out_values[idx], num_oids);
-  idx++;
+      db_make_int (out_values[idx], root_header->num_nulls);
+      idx++;
 
-  db_make_int (out_values[idx], num_nulls);
-  idx++;
-
-  db_make_int (out_values[idx], num_keys);
-  idx++;
+      db_make_int (out_values[idx], root_header->num_keys);
+      idx++;
+    }
 
   buf[0] = '\0';
   if (!OID_ISNULL (&root_header->topclass_oid))
