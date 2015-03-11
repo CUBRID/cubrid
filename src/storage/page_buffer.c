@@ -1483,10 +1483,7 @@ try_again:
 
 	  /* The page may be invalidated and has been remained in the buffer and
 	   * it is going to be used again as a new page.
-	   * We need to reset dirty flag and its oldest_unflush_lsa.
 	   */
-	  bufptr->dirty = false;
-	  LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 	}
     }
   else
