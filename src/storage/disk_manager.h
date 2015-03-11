@@ -218,7 +218,6 @@ extern INT32 disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
 extern INT32 disk_alloc_special_sector (void);
 extern INT32 disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid,
 			      INT32 sectid, INT32 npages, INT32 near_pageid,
-			      bool search_wrap_around,
 			      DISK_PAGE_TYPE alloc_page_type);
 extern int disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
 				INT32 sectid, INT32 nsects);

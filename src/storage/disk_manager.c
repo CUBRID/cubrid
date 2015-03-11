@@ -835,6 +835,13 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
 	   * So, we do not use atomic built-in or mutex variable.
 	   */
 	  disk_Cache->vols[i].hint_freepages += nfree_pages_toadd;
+
+	  if (disk_Cache->vols[i].hint_freepages < 0)
+	    {
+	      /* defense code */
+	      assert_release (disk_Cache->vols[i].hint_freepages >= 0);
+	      disk_Cache->vols[i].hint_freepages = 0;
+	    }
 	}
     }
 
@@ -1064,21 +1071,6 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	    {
 	      *best_numpages = disk_Cache->vols[i].hint_freepages;
 	      *best_volid = disk_Cache->vols[i].volid;
-	    }
-	  else
-	    {
-	      /*
-	       * If a volume is undesirable and we are requesting one page.
-	       * It is likely that such volume does not have any pages.
-	       * Reset the cache for that volume. This is done to try to avoid
-	       * a possible loop which could happen if the bitmap and the disk
-	       * header are inconsistent
-	       */
-	      if (exp_numpages == 1
-		  && undesirable_volid == disk_Cache->vols[i].volid)
-		{
-		  disk_Cache->vols[i].hint_freepages = 0;
-		}
 	    }
 	}
     }
@@ -4047,9 +4039,6 @@ disk_alloc_special_sector (void)
  *   sectid(in): Sector-id from where pages are allocated
  *   npages(in): Number of pages to allocate
  *   near_pageid(in): Near_pageid. Hint only, it may be ignored
- *   search_wrap_around(in): if true,
- *                           search for page(s) from the beginning of the volume
- *			     when the new page(s) could not be allocated
  *
  * Note: This function allocates the closest "npages" contiguous free pages to
  *       the "near_pageid" page in the "Sector-id" sector of the given volume.
@@ -4058,7 +4047,7 @@ disk_alloc_special_sector (void)
  */
 INT32
 disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
-		 INT32 npages, INT32 near_pageid, bool search_wrap_around,
+		 INT32 npages, INT32 near_pageid,
 		 DISK_PAGE_TYPE alloc_page_type)
 {
   DISK_VAR_HEADER *vhdr;
@@ -4168,7 +4157,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
   /* If the near_page is out of bounds, assume the first page of the sector as
      the near page */
   if (near_pageid == NULL_PAGEID || near_pageid < fpageid
-      || (search_wrap_around == true && (near_pageid + npages > lpageid)))
+      || (near_pageid + npages > lpageid))
     {
       near_pageid = fpageid;
     }
@@ -4185,8 +4174,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
   new_pageid = disk_id_alloc (thread_p, volid, vhdr, npages, near_pageid,
 			      lpageid, DISK_PAGE, -1, skip_pageid);
 
-  if (new_pageid == NULL_PAGEID && near_pageid != fpageid
-      && search_wrap_around == true)
+  if (new_pageid == NULL_PAGEID && near_pageid != fpageid)
     {
       /* Try again from the beginning of the sector. Include the near_pageid
          for multiple pages */
