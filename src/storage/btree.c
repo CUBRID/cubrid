@@ -29972,7 +29972,7 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   /* If an overflow page is also fixed, when leaf page is unfixed, overflow
    * page is also unfixed. It is up to the caller to handle re-fix and resume.
    */
-  if (*overflow_page != NULL)
+  if (overflow_page != NULL && *overflow_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, *overflow_page);
     }
