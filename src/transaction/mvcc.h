@@ -47,6 +47,12 @@
 #define MVCC_GET_NEXT_VERSION(header) \
   ((header)->next_version)
 
+#define MVCC_SET_PARTITION_OID(header, partition_oid) \
+  COPY_OID (&((header)->partition_oid), partition_oid)
+
+#define MVCC_GET_PARTITION_OID(header) \
+  ((header)->partition_oid)
+
 #define MVCC_GET_REPID(header) \
   ((header)->repid)
 
@@ -86,6 +92,10 @@
 #define MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE(rec_header_p) \
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID) \
    && MVCC_GET_INSID (rec_header_p) != MVCCID_ALL_VISIBLE)
+
+#define MVCC_IS_HEADER_PARTITION_OID_VALID(rec_header_p) \
+  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_PARTITION_OID) \
+  && !OID_ISNULL (&MVCC_GET_PARTITION_OID (rec_header_p)))
 
 #define MVCC_SET_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag |= (flag))

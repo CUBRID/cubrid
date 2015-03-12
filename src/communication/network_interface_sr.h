@@ -519,4 +519,8 @@ extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p,
 					 unsigned int rid,
 					 char *request, int reqlen);
+
+extern void slocator_cleanup_partition_links (THREAD_ENTRY * thread_p,
+					      unsigned int rid, char *request,
+					      int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

@@ -158,4 +158,7 @@ extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT *
 							    int op_type,
 							    bool
 							    has_function_index);
+extern int xlocator_cleanup_partition_links (THREAD_ENTRY * thread_p,
+					     OID * class_oid, int no_oids,
+					     OID * oid_list);
 #endif /* _LOCATOR_SR_H_ */

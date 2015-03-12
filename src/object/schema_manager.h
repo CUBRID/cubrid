@@ -366,5 +366,7 @@ extern int sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid,
 extern int sm_adjust_partitions_parent (MOP class_mop, bool flush);
 extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop,
 					  bool * found);
+extern int sm_cleanup_partition_links (MOP class_mop, SM_CLASS * class_,
+				       OID * partitions, int no_partitions);
 
 #endif /* _SCHEMA_MANAGER_H_ */

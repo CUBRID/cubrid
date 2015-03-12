@@ -3351,7 +3351,12 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
 	{
-	  or_advance (buf_p, OR_OID_SIZE);	/* skip short CHN */
+	  or_advance (buf_p, OR_OID_SIZE);	/* skip next version */
+	}
+
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
+	{
+	  or_advance (buf_p, OR_OID_SIZE);	/* skip partition link */
 	}
     }
   else
@@ -4624,9 +4629,9 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
 		      PGBUF_ORDERED_NULL_HFID);
 
   assert (oid != NULL && need_mvcc_update != NULL);
-  if (heap_prepare_get_record (thread_p, oid, NULL, &forward_oid,
+  if (heap_prepare_get_record (thread_p, oid, NULL, &forward_oid, NULL,
 			       &home_page_watcher, &fwd_page_watcher,
-			       &record_type) != S_SUCCESS)
+			       &record_type, PGBUF_LATCH_READ) != S_SUCCESS)
     {
       goto error;
     }

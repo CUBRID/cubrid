@@ -12416,7 +12416,15 @@ lock_subclasses_internal (SM_TEMPLATE * def, MOP op,
 
   if (ml_find (newsupers, op))
     {
-      ERROR2 (error, ER_SM_CYCLE_DETECTED, sm_get_ch_name (op), def->name);
+      if (def != NULL)
+	{
+	  ERROR2 (error, ER_SM_CYCLE_DETECTED, sm_get_ch_name (op),
+		  def->name);
+	}
+      else
+	{
+	  ERROR0 (error, ER_SM_INVALID_CLASS);
+	}
     }
   else
     {
@@ -16651,4 +16659,32 @@ error_exit:
       smt_quit (sub_ctemplate);
     }
   goto end;
+}
+
+/*
+ * sm_cleanup_partition_links () - This function performs partition link cleanup
+ *			  for the specified classes.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   class_ (in)        :
+ *   partitions (in)    :
+ *   no_partitions (in) :
+ */
+int
+sm_cleanup_partition_links (MOP op, SM_CLASS * class_, OID * partitions,
+			    int no_partitions)
+{
+  int error = NO_ERROR;
+  DB_OBJLIST *subs = NULL;
+
+  /* get write locks on all subclasses */
+  error = lock_subclasses (NULL, NULL, class_->users, &subs);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = locator_cleanup_partition_links (&op->oid_info.oid, no_partitions,
+					   partitions);
+
+  return error;
 }

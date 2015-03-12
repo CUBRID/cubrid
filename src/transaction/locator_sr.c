@@ -248,7 +248,9 @@ static int locator_delete_force_for_moving (THREAD_ENTRY * thread_p,
 					    int has_index, int op_type,
 					    HEAP_SCANCACHE * scan_cache,
 					    int *force_count,
-					    MVCC_REEV_DATA * mvcc_reev_data);
+					    MVCC_REEV_DATA * mvcc_reev_data,
+					    OID * new_obj_oid,
+					    OID * partition_oid);
 static int locator_delete_force_internal (THREAD_ENTRY * thread_p,
 					  HFID * hfid, OID * oid,
 					  BTID * search_btid,
@@ -259,7 +261,9 @@ static int locator_delete_force_internal (THREAD_ENTRY * thread_p,
 					  int *force_count,
 					  MVCC_REEV_DATA * mvcc_reev_data,
 					  LOCATOR_INDEX_ACTION_FLAG
-					  idx_action_flag);
+					  idx_action_flag,
+					  OID * new_obj_oid,
+					  OID * partition_oid);
 static int locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 					   LC_COPYAREA * force_area);
 
@@ -5905,15 +5909,6 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 
   assert (!OID_IS_ROOTOID (old_class_oid));
   assert (!OID_IS_ROOTOID (new_class_oid));
-  /* delete this record from the class it currently resides in */
-  error = locator_delete_force_for_moving (thread_p, old_hfid, obj_oid, btid,
-					   btid_dup_key_locked, true,
-					   op_type, scan_cache, force_count,
-					   mvcc_reev_data);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
 
   if (context != NULL)
     {
@@ -5959,6 +5954,18 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
       heap_scancache_end (thread_p, &insert_cache);
     }
 
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* delete this record from the class it currently resides in */
+  error = locator_delete_force_for_moving (thread_p, old_hfid, obj_oid, btid,
+					   btid_dup_key_locked, true,
+					   op_type,
+					   scan_cache, force_count,
+					   mvcc_reev_data, &new_obj_oid,
+					   new_class_oid);
   if (error != NO_ERROR)
     {
       return error;
@@ -6789,7 +6796,7 @@ locator_delete_force (THREAD_ENTRY * thread_p,
 					search_btid_duplicate_key_locked,
 					has_index, op_type, scan_cache,
 					force_count, mvcc_reev_data,
-					FOR_INSERT_OR_DELETE);
+					FOR_INSERT_OR_DELETE, NULL, NULL);
 }
 
 /*
@@ -6798,6 +6805,7 @@ locator_delete_force (THREAD_ENTRY * thread_p,
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
+ *   thread_p(in):
  *   hfid(in): Heap where the object is going to be inserted
  *   oid(in): The object identifier
  *   search_btid(in): The BTID of the tree where oid was found
@@ -6814,8 +6822,11 @@ locator_delete_force (THREAD_ENTRY * thread_p,
  *   idx_action_flag(in): is moving record between partitioned table? 
  *			  If FOR_MOVE, this delete&insert is caused by 
  *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
+ *   new_obj_oid(in): next version - only to be used with records relocated in
+ *				  other partitions, in MVCC.
+ *   partition_oid(in): new partition class oid
  *
- * Note: The given object is deleted on this heap and all appropiate
+ * Note: The given object is deleted on this heap and all appropriate
  *              index entries are deleted.
  */
 static int
@@ -6827,14 +6838,15 @@ locator_delete_force_for_moving (THREAD_ENTRY * thread_p,
 				 int has_index, int op_type,
 				 HEAP_SCANCACHE * scan_cache,
 				 int *force_count,
-				 MVCC_REEV_DATA * mvcc_reev_data)
+				 MVCC_REEV_DATA * mvcc_reev_data,
+				 OID * new_obj_oid, OID * partition_oid)
 {
   return locator_delete_force_internal (thread_p, hfid, oid,
 					search_btid,
 					search_btid_duplicate_key_locked,
 					has_index, op_type, scan_cache,
 					force_count, mvcc_reev_data,
-					FOR_MOVE);
+					FOR_MOVE, new_obj_oid, partition_oid);
 }
 
 /*
@@ -6860,8 +6872,11 @@ locator_delete_force_for_moving (THREAD_ENTRY * thread_p,
  *   idx_action_flag(in): is moving record between partitioned table? 
  *			  If FOR_MOVE, this delete&insert is caused by 
  *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
+ *   new_obj_oid(in): next version - only to be used with records relocated in
+ *				  other partitions, in MVCC.
+ *   partition_oid(in): new partition class oid
  *
- * Note: The given object is deleted on this heap and all appropiate
+ * Note: The given object is deleted on this heap and all appropriate
  *              index entries are deleted.
  */
 static int
@@ -6872,7 +6887,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 			       int has_index, int op_type,
 			       HEAP_SCANCACHE * scan_cache, int *force_count,
 			       MVCC_REEV_DATA * mvcc_reev_data,
-			       LOCATOR_INDEX_ACTION_FLAG idx_action_flag)
+			       LOCATOR_INDEX_ACTION_FLAG idx_action_flag,
+			       OID * new_obj_oid, OID * partition_oid)
 {
   bool isold_object;		/* Make sure that this is an old object
 				 * during the deletion */
@@ -7043,22 +7059,46 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 	  /* if MVCC then delete before updating index */
 	  if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (&class_oid))
 	    {
-	      if (heap_delete (thread_p, hfid, &class_oid, oid, scan_cache) ==
-		  NULL)
+	      if (idx_action_flag == FOR_MOVE)
 		{
-		  /*
-		   * Problems deleting the object...Maybe, the transaction should be
-		   * aborted by the caller...Quit..
-		   */
-		  error_code = er_errid ();
-		  er_log_debug (ARG_FILE_LINE,
-				"locator_delete_force: hf_delete failed for tran %d\n",
-				LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-		  if (error_code == NO_ERROR)
+		  assert (new_obj_oid != NULL && partition_oid != NULL);
+
+		  /* delete a record that is to be placed in another partition */
+		  if (heap_mvcc_delete_for_partition (thread_p, hfid,
+						      &class_oid, oid,
+						      scan_cache, new_obj_oid,
+						      partition_oid) == NULL)
 		    {
-		      error_code = ER_FAILED;
+		      error_code = er_errid ();
+		      er_log_debug (ARG_FILE_LINE,
+				    "locator_delete_force: hf_delete failed for tran %d\n",
+				    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+		      if (error_code == NO_ERROR)
+			{
+			  error_code = ER_FAILED;
+			}
+		      goto error;
 		    }
-		  goto error;
+		}
+	      else
+		{
+		  if (heap_delete
+		      (thread_p, hfid, &class_oid, oid, scan_cache) == NULL)
+		    {
+		      /*
+		       * Problems deleting the object...Maybe, the transaction should be
+		       * aborted by the caller...Quit..
+		       */
+		      error_code = er_errid ();
+		      er_log_debug (ARG_FILE_LINE,
+				    "locator_delete_force: hf_delete failed for tran %d\n",
+				    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+		      if (error_code == NO_ERROR)
+			{
+			  error_code = ER_FAILED;
+			}
+		      goto error;
+		    }
 		}
 	      deleted = true;
 	    }
@@ -8528,6 +8568,27 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo,
     }
 
   return false;
+}
+
+/*
+ * xlocator_cleanup_partition_links () - This function performs cleanup of the
+ *					partition links of the given partitions.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   thread_p (in)	: thread entry
+ *   class_oid (in)     : partitioned class OID
+ *   no_oids (in)	:
+ *   oid_list (in)      :
+ */
+int
+xlocator_cleanup_partition_links (THREAD_ENTRY * thread_p, OID * class_oid,
+				  int no_oids, OID * oid_list)
+{
+  int error = NO_ERROR;
+
+  error =
+    heap_remove_partition_links (thread_p, class_oid, oid_list, no_oids);
+
+  return error;
 }
 
 /*

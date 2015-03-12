@@ -322,6 +322,7 @@ struct mvcc_rec_header
     int chn;			/* cache coherency number */
   } delid_chn;
   OID next_version;		/* next row version */
+  OID partition_oid;		/* partition link */
 };
 #define MVCC_REC_HEADER_INITIALIZER \
   { 0, 0, MVCCID_NULL, { MVCCID_NULL }, OID_INITIALIZER }
@@ -616,6 +617,7 @@ typedef enum
   HEAP_RECORD_INFO_T_MVCC_DELID,
   HEAP_RECORD_INFO_T_MVCC_FLAGS,
   HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION,
+  HEAP_RECORD_INFO_T_MVCC_PARTITION_OID,
 
   /* leave this last */
   HEAP_RECORD_INFO_COUNT,

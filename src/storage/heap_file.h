@@ -55,6 +55,18 @@
   (recdes)->data      = (char *)record_data; \
   }while(0)
 
+/* use this to set REC_RELOCATION and REC_BIGONE records */
+#define HEAP_SET_FORWARD_RECORD(recdes, record_area_size, record_length, \
+				record_type, record_data, forward_oid) \
+  do  {	\
+  (recdes)->area_size = record_area_size;  \
+  (recdes)->length    = record_length;  \
+  (recdes)->type      = record_type; \
+  (recdes)->data      = (char *)record_data; \
+  COPY_OID ((OID *) (recdes)->data, forward_oid); \
+  COPY_OID ((OID *) ((recdes)->data + OR_OID_SIZE), &oid_Null_oid); \
+  }while(0)
+
 #define HEAP_HEADER_AND_CHAIN_SLOTID  0	/* Slot for chain and header */
 
 #define HEAP_MAX_ALIGN INT_ALIGNMENT	/* maximum alignment for heap record */
@@ -692,9 +704,11 @@ extern SCAN_CODE heap_prepare_get_record (THREAD_ENTRY * thread_p,
 					  const OID * oid,
 					  OID * class_oid,
 					  OID * forward_oid,
+					  OID * partition_oid,
 					  PGBUF_WATCHER * home_page_watcher,
 					  PGBUF_WATCHER * fwd_page_watcher,
-					  INT16 * record_type);
+					  INT16 * record_type,
+					  PGBUF_LATCH_MODE latch_mode);
 extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p,
 				       const OID * oid,
 				       const OID * forward_oid,
@@ -748,4 +762,18 @@ extern int heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid,
 				  OID * class_oid, LOCK lock_mode,
 				  SNAPSHOT_TYPE snapshot_type,
 				  OID * locked_oid);
+extern const OID *heap_mvcc_delete_for_partition (THREAD_ENTRY * thread_p,
+						  const HFID * hfid,
+						  const OID * class_oid,
+						  const OID * oid,
+						  HEAP_SCANCACHE * scan_cache,
+						  OID * new_obj_oid,
+						  OID * partition_oid);
+extern int heap_remove_partition_links (THREAD_ENTRY * thread_p,
+					OID * class_oid, OID * oid_list,
+					int no_oids);
+extern int heap_rv_mvcc_redo_remove_partition_link (THREAD_ENTRY * thread_p,
+						    LOG_RCV * rcv);
+extern int heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p,
+						    LOG_RCV * rcv);
 #endif /* _HEAP_FILE_H_ */

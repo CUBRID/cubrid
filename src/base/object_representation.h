@@ -546,7 +546,7 @@
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
 /* representation id, MVCC insert id and CHN */
-#define OR_MVCC_MAX_HEADER_SIZE  28
+#define OR_MVCC_MAX_HEADER_SIZE  36
 
 /* representation id and CHN */
 #define OR_MVCC_MIN_HEADER_SIZE  8
@@ -590,7 +590,7 @@
 
 /* Use for MVCC flags the remainder of 5 bits in the first byte. */
 /* Flag will be shifter by 24 bits to the right */
-#define OR_MVCC_FLAG_MASK	    0x0f
+#define OR_MVCC_FLAG_MASK	    0x1f
 #define OR_MVCC_FLAG_SHIFT_BITS	    24
 
 /* The following flags are used for dynamic MVCC information */
@@ -605,6 +605,9 @@
 
 /* The record contains 8 bytes CHN */
 #define OR_MVCC_FLAG_VALID_LONG_CHN	  0x08
+
+/* The record contains a valid partition link */
+#define OR_MVCC_FLAG_VALID_PARTITION_OID  0x10
 
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 

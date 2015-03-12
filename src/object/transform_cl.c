@@ -1436,6 +1436,12 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 	      /* skip next version */
 	      or_advance (buf, OR_OID_SIZE);
 	    }
+
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
+	    {
+	      /* skip partition link */
+	      or_advance (buf, OR_OID_SIZE);
+	    }
 	}
       else
 	{

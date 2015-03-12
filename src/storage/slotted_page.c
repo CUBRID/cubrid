@@ -5311,6 +5311,7 @@ spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
  * page_p (in)	     : Page pointer.
  * slotid (in)	     : Record slot id.
  * next_version (in) : Next object version if it was updated.
+ * partition_oid (in): partition OID if partition has changed.
  * reusable (in)     : True if slots are reusable, false if they are
  *		       referable.
  *
@@ -5329,7 +5330,7 @@ spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
  */
 int
 spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
-		   OID * next_version, bool reusable)
+		   OID * next_version, OID * partition_oid, bool reusable)
 {
   SPAGE_HEADER *page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_SLOT *slot_p = NULL;
@@ -5337,6 +5338,8 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
   int space_left;
   int waste;
   int free_space;
+  OID oid_buff[2];
+  int size = 0;
 
   SPAGE_VERIFY_HEADER (page_header_p);
 
@@ -5366,9 +5369,26 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
 	      || slot_p->record_type == REC_NEWHOME
 	      || slot_p->record_type == REC_MVCC_NEXT_VERSION
 	      || slot_p->record_type == REC_RELOCATION);
-      forward_recdes.length = OR_OID_SIZE;
-      forward_recdes.data = (char *) next_version;
-      space_left = slot_p->record_length - OR_OID_SIZE;
+
+      if (slot_p->record_length > OR_OID_SIZE)
+	{
+	  size = 2 * OR_OID_SIZE;
+	  COPY_OID (&oid_buff[0], next_version);
+	  COPY_OID (&oid_buff[1], partition_oid ?
+		    partition_oid : &oid_Null_oid);
+	  forward_recdes.data = (char *) oid_buff;
+	}
+      else
+	{
+	  assert (partition_oid == NULL || OID_ISNULL (partition_oid));
+	  size = OR_OID_SIZE;
+	  forward_recdes.data = (char *) next_version;
+	}
+
+      forward_recdes.length = size;
+      forward_recdes.area_size = size;
+      space_left = slot_p->record_length - size;
+
       assert (space_left >= 0);
 
       if (spage_update_record_in_place (page_p, page_header_p, slot_p,
@@ -5378,7 +5398,7 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
 	  assert (0);
 	  return ER_FAILED;
 	}
-      spage_set_slot (slot_p, slot_p->offset_to_record, OR_OID_SIZE,
+      spage_set_slot (slot_p, slot_p->offset_to_record, size,
 		      REC_MVCC_NEXT_VERSION);
 
       SPAGE_VERIFY_HEADER (page_header_p);

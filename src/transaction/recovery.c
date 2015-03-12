@@ -926,7 +926,13 @@ struct rvfun RV_fun[] = {
    btree_rv_keyval_undo_delete,
    btree_rv_redo_delete_object,
    btree_rv_keyval_dump,
-   NULL}
+   NULL},
+
+  {RVHF_MVCC_REMOVE_PARTITION_LINK,
+   "RVHF_MVCC_REMOVE_PARTITION_LINK",
+   heap_rv_mvcc_undo_remove_partition_link,
+   heap_rv_mvcc_redo_remove_partition_link,
+   NULL, NULL}
 };
 
 /*

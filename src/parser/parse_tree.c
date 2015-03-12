@@ -110,6 +110,8 @@ PT_RESERVED_NAME pt_Reserved_name_table[] = {
   {"t_flags", RESERVED_T_MVCC_FLAGS, DB_TYPE_INTEGER}
   ,
   {"t_next_version", RESERVED_T_MVCC_NEXT_VERSION, DB_TYPE_OBJECT}
+  ,
+  {"t_partition_oid", RESERVED_T_MVCC_PARTITION_OID, DB_TYPE_OBJECT}
 
   /* page header info attributes */
   ,

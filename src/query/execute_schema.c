@@ -5656,6 +5656,9 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
   SM_CLASS *smclass, *subclass;
   int au_save;
   MOP delpart, classcata;
+  OID *partitions = NULL;
+  int no_partitions = 0;
+  int i;
 
   if (!class_ || !name_list)
     {
@@ -5665,17 +5668,31 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
   error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
-      return error;
+      goto exit;
     }
 
   if (!smclass->partition_of)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return error;
+      goto exit;
     }
 
   for (names = name_list; names; names = names->next)
+    {
+      no_partitions++;
+    }
+
+  partitions = (OID *) malloc (no_partitions * sizeof (OID));
+  if (partitions == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      no_partitions * sizeof (OID));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+
+  for (names = name_list, i = 0; names; names = names->next, i++)
     {
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
 	       sm_ch_name ((MOBJ) smclass), names->info.name.original);
@@ -5683,13 +5700,40 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
       if (classcata == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto exit;
 	}
+
+      COPY_OID (&partitions[i], &classcata->oid_info.oid);
+    }
+
+  error = sm_cleanup_partition_links (class_, smclass, partitions,
+				      no_partitions);
+  if (error != NO_ERROR)
+    {
+      error = ER_INVALID_PARTITION_REQUEST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  for (names = name_list, i = 0; names; names = names->next, i++)
+    {
+      sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
+	       smclass->header.ch_name, names->info.name.original);
+      classcata = sm_find_class (subclass_name);
+      if (classcata == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  goto exit;
+	}
+
+      COPY_OID (&partitions[i], &classcata->oid_info.oid);
 
       error = au_fetch_class (classcata, &subclass, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto exit;
 	}
       if (subclass->partition_of)
 	{
@@ -5697,14 +5741,14 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
 	  error = sm_delete_class_mop (classcata, false);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      goto exit;
 	    }
 	  AU_DISABLE (au_save);
 	  error = obj_delete (delpart);
 	  if (error != NO_ERROR)
 	    {
 	      AU_ENABLE (au_save);
-	      return error;
+	      goto exit;
 	    }
 	  AU_ENABLE (au_save);
 	}
@@ -5712,13 +5756,20 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
 	{
 	  error = ER_PARTITION_NOT_EXIST;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  return error;
+	  goto exit;
 	}
     }
 
   adjust_partition_range (smclass->users);
   adjust_partition_size (class_);
-  return NO_ERROR;
+  error = NO_ERROR;
+
+exit:
+  if (partitions != NULL)
+    {
+      free_and_init (partitions);
+    }
+  return error;
 }
 
 /*
@@ -6513,6 +6564,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
   char **names = NULL;
   int names_count = 0, i = 0;
   int coalesce_count = 0, partitions_count = 0;
+  OID *partitions = NULL;
 
   /* sanity checks */
   assert (parser && alter && pinfo);
@@ -6562,8 +6614,16 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
       return ER_FAILED;
     }
 
-  names_count = 0;
-  for (i = partitions_count - 1; i >= partitions_count - coalesce_count; i--)
+  partitions = (OID *) malloc (partitions_count * sizeof (OID));
+  if (partitions == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      partitions_count * sizeof (OID));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error_return;
+    }
+  for (i = partitions_count - 1, names_count = 0;
+       i >= partitions_count - coalesce_count; i--)
     {
       names[names_count] = (char *) malloc (DB_MAX_IDENTIFIER_LENGTH + 1);
       if (names[names_count] == NULL)
@@ -6576,7 +6636,6 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
       sprintf (names[names_count], "%s" PARTITIONED_SUB_CLASS_TAG "p%d",
 	       sm_ch_name ((MOBJ) class_), i);
       subclass_op = sm_find_class (names[names_count]);
-      names_count++;
       if (subclass_op == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -6587,8 +6646,11 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
 	au_fetch_class (subclass_op, &subclass, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto error_return;
 	}
+
+      COPY_OID (&partitions[names_count], &subclass_op->oid_info.oid);
+      names_count++;
 
       error = do_promote_partition (subclass);
       if (error != NO_ERROR)
@@ -6602,9 +6664,22 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
     {
       goto error_return;
     }
+
+  error = sm_cleanup_partition_links (pinfo->root_op, class_, partitions,
+				      names_count);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
   /* keep the promoted names in the partition alter context */
   pinfo->promoted_names = names;
   pinfo->promoted_count = names_count;
+
+  if (partitions != NULL)
+    {
+      free_and_init (partitions);
+    }
 
   return NO_ERROR;
 
@@ -6616,6 +6691,10 @@ error_return:
 	  free_and_init (names[i]);
 	}
       free_and_init (names);
+    }
+  if (partitions != NULL)
+    {
+      free_and_init (partitions);
     }
   return error;
 }
@@ -6640,6 +6719,9 @@ do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
   int error = NO_ERROR, i = 0;
   const char *root_name = NULL;
   MOP subclass_mop = NULL;
+  OID *partitions = NULL;
+  SM_CLASS *smclass = NULL;
+  MOP class_ = NULL;
 
   /* sanity checks */
   assert (parser && alter && pinfo);
@@ -6653,14 +6735,45 @@ do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
    */
   root_name = alter->info.alter.entity_name->info.name.original;
 
+  class_ = sm_find_class (root_name);
+  if (class_ == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
   error =
     do_redistribute_partitions_data (root_name, pinfo->keycol,
 				     pinfo->promoted_names,
 				     pinfo->promoted_count, true, true);
   if (error != NO_ERROR)
     {
-      return error;
+      goto exit;
     }
+
+  if (pinfo->promoted_count < 1)
+    {
+      error = ER_INVALID_PARTITION_REQUEST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  partitions = (OID *) malloc (pinfo->promoted_count * sizeof (OID));
+  if (partitions == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      pinfo->promoted_count * sizeof (OID));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+
   for (i = 0; i < pinfo->promoted_count; i++)
     {
       subclass_mop = sm_find_class (pinfo->promoted_names[i]);
@@ -6668,13 +6781,40 @@ do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  return error;
+	  goto exit;
+	}
+      COPY_OID (&partitions[i], &subclass_mop->oid_info.oid);
+    }
+
+  error = sm_cleanup_partition_links (class_, smclass, partitions,
+				      pinfo->promoted_count);
+  if (error != NO_ERROR)
+    {
+      error = ER_INVALID_PARTITION_REQUEST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  for (i = 0; i < pinfo->promoted_count; i++)
+    {
+      subclass_mop = sm_find_class (pinfo->promoted_names[i]);
+      if (subclass_mop == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  goto exit;
 	}
       error = sm_delete_class_mop (subclass_mop, false);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto exit;
 	}
+    }
+
+exit:
+  if (partitions != NULL)
+    {
+      free_and_init (partitions);
     }
   return error;
 }
@@ -6981,6 +7121,7 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
   PT_NODE *name_list = NULL;
   DB_OBJLIST *obj = NULL;
   int promoted_count = 0, partitions_count = 0;
+  OID *partitions = NULL;
 
   /* sanity check */
   assert (parser != NULL && alter != NULL && pinfo != NULL);
@@ -7028,6 +7169,14 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
       partitions_count++;
     }
 
+  partitions = (OID *) malloc (partitions_count * sizeof (OID));
+  if (partitions == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      partitions_count * sizeof (OID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
   promoted_count = 0;
   for (name = name_list; name != NULL; name = name->next)
     {
@@ -7044,29 +7193,33 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
 					   subclass_name);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto exit;
 	}
 
       subclass = sm_find_class (subclass_name);
       if (subclass == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto exit;
 	}
       error =
 	au_fetch_class (subclass, &smsubclass, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto exit;
 	}
+
       error = do_promote_partition (smsubclass);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto exit;
 	}
+      COPY_OID (&partitions[promoted_count], &subclass->oid_info.oid);
       promoted_count++;
     }
   assert (partitions_count >= promoted_count);
+
   if (partitions_count - promoted_count == 0)
     {
       /* All partitions were promoted so mark this class as not being
@@ -7085,11 +7238,21 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
 	au_fetch_class (pinfo->root_op, &smclass, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto exit;
 	}
       adjust_partition_range (smclass->users);
       adjust_partition_size (pinfo->root_op);
     }
+
+  error = sm_cleanup_partition_links (pinfo->root_op, smclass, partitions,
+				      promoted_count);
+
+exit:
+  if (partitions != NULL)
+    {
+      free_and_init (partitions);
+    }
+
   return error;
 }
 

@@ -1080,6 +1080,12 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record,
 	      /* skip next version */
 	      or_advance (buf, OR_OID_SIZE);
 	    }
+
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
+	    {
+	      /* skip partition link */
+	      or_advance (buf, OR_OID_SIZE);
+	    }
 	}
       else
 	{
