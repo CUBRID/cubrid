@@ -3146,14 +3146,22 @@ detect_dst:
 	      ds_time_offset = -wall_ds_rule->save_time;
 	    }
 
-	  leap_interval = wall_ds_rule->save_time - curr_ds_rule->save_time;
+	  if (src_is_utc == true)
+	    {
+	      /* UTC time always exists, thus we don't need
+	       * to take into consideration leap interval
+	       * overlap */
+	      leap_interval = 0;
+	      utc_src_offset = gmt_std_offset_sec + curr_ds_rule->save_time;
+	    }
+	  else
+	    {
+	      leap_interval =
+		wall_ds_rule->save_time - curr_ds_rule->save_time;
+	    }
 
 	  ds_rule_date = FULL_DATE (ds_rule_julian_date, ds_time_offset +
 				    curr_ds_rule->at_time);
-	  if (src_is_utc == true)
-	    {
-	      utc_src_offset = gmt_std_offset_sec + curr_ds_rule->save_time;
-	    }
 	  date_diff =
 	    FULL_DATE (src_julian_date,
 		       src_time_sec + utc_src_offset) - ds_rule_date;
