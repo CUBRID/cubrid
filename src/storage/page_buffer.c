@@ -10155,6 +10155,8 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
     {
       /* flush only first page */
       bufptr = helper->pages_bufptr[PGBUF_NEIGHBOR_POS (0)];
+
+      MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
       error = pgbuf_flush_page_with_wal (thread_p, bufptr);
       pthread_mutex_unlock (&bufptr->BCB_mutex);
       if (error == NO_ERROR)
