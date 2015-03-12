@@ -1215,7 +1215,8 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
   ws_find (mop, &inst);
   if (!inst)
     {
-      inst = vid_fetch_instance (mop, DB_FETCH_READ);
+      inst = vid_fetch_instance (mop, DB_FETCH_READ,
+				 TM_TRAN_READ_FETCH_VERSION ());
     }
   if (!inst)
     {
@@ -5133,7 +5134,7 @@ ml_find (DB_OBJLIST * list, MOP mop)
 
   for (l = list; l != NULL && !found; l = l->next)
     {
-      if (l->op == mop)
+      if (ws_is_same_object (l->op, mop))
 	{
 	  found = 1;
 	}
@@ -5167,7 +5168,7 @@ ml_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
 
   for (l = *list, found = NULL; l != NULL && found == NULL; l = l->next)
     {
-      if (l->op == mop)
+      if (ws_is_same_object (l->op, mop))
 	{
 	  found = l;
 	}
@@ -5223,7 +5224,7 @@ ml_append (DB_OBJLIST ** list, MOP mop, int *added_ptr)
   last = NULL;
   for (l = *list, found = NULL; l != NULL && found == NULL; l = l->next)
     {
-      if (l->op == mop)
+      if (ws_is_same_object (l->op, mop))
 	{
 	  found = l;
 	}
@@ -5283,7 +5284,7 @@ ml_remove (DB_OBJLIST ** list, MOP mop)
   for (l = *list, found = NULL, prev = NULL; l != NULL && found == NULL;
        l = l->next)
     {
-      if (l->op == mop)
+      if (ws_is_same_object (l->op, mop))
 	{
 	  found = l;
 	}
@@ -5552,7 +5553,7 @@ ml_ext_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
 
   for (l = *list, found = NULL; l != NULL && found == NULL; l = l->next)
     {
-      if (l->op == mop)
+      if (ws_is_same_object (l->op, mop))
 	{
 	  found = l;
 	}

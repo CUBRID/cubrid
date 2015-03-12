@@ -7529,8 +7529,9 @@ vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid,
       OID cls_oid;
       if (class_oid == NULL)
 	{
-	  if (heap_get_class_oid (thread_p, &cls_oid, oid, SNAPSHOT_TYPE_NONE)
-	      == NULL)
+	  if (heap_get_class_oid_with_lock (thread_p, &cls_oid, oid,
+					    SNAPSHOT_TYPE_NONE, NULL_LOCK,
+					    NULL) == NULL)
 	    {
 	      return DISK_ERROR;
 	    }

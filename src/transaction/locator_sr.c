@@ -178,7 +178,9 @@ static SCAN_CODE locator_lock_and_return_object (THREAD_ENTRY * thread_p,
 						 LOCATOR_RETURN_NXOBJ *
 						 assign, OID * class_oid,
 						 OID * oid, int chn,
-						 int lock_mode);
+						 OID * original_oid,
+						 LOCK lock_mode,
+						 SCAN_OPERATION_TYPE op_type);
 static int locator_find_lockset_missing_class_oids (THREAD_ENTRY * thread_p,
 						    LC_LOCKSET * lockset);
 static SCAN_CODE locator_return_object_assign (THREAD_ENTRY * thread_p,
@@ -2286,8 +2288,9 @@ locator_find_lockset_missing_class_oids (THREAD_ENTRY * thread_p,
        * Caller does not know the class identifier of the requested object.
        * Get the class identifier from disk
        */
-      if (heap_get_class_oid (thread_p, &class_oid, &reqobjs[i].oid,
-			      SNAPSHOT_TYPE_MVCC) == NULL)
+      if (heap_get_class_oid_with_lock (thread_p, &class_oid, &reqobjs[i].oid,
+					SNAPSHOT_TYPE_MVCC, NULL_LOCK,
+					NULL) == NULL)
 	{
 	  /*
 	   * Unable to find the class of the object. Remove the object from
@@ -2470,6 +2473,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
  * assign (in/out) : Locator structure to store object data.
  * class_oid (in)  : Class OID.
  * oid (in)	   : Object OID.
+ * original_oid(in): Original OID - previous version of OID
  * chn (in)	   : Known object CHN (or NULL_CHN if not known).
  * lock_mode (in)  : Require lock on object.
  *
@@ -2483,28 +2487,34 @@ static SCAN_CODE
 locator_lock_and_return_object (THREAD_ENTRY * thread_p,
 				LOCATOR_RETURN_NXOBJ * assign,
 				OID * class_oid, OID * oid, int chn,
-				int lock_mode)
+				OID * original_oid, LOCK lock_mode,
+				SCAN_OPERATION_TYPE op_type)
 {
   SCAN_CODE scan;		/* Scan return value for next operation */
   int guess_chn = chn;
   int tran_index = NULL_TRAN_INDEX;
   int lock_ret;
-  OID original_oid;
+  OID temp_oid;
   OID updated_oid;
 
   /*
    * The next object is placed in the assigned recdes area if the cached
    * object is obsolete and the object fits in the recdes
    */
-
+  assert (oid != NULL);
   if (chn == CHN_UNKNOWN_ATCLIENT)
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       chn = heap_chnguess_get (thread_p, oid, tran_index);
     }
 
-  /* Save current OID to original OID. */
-  COPY_OID (&original_oid, oid);
+  if (original_oid == NULL)
+    {
+      original_oid = &temp_oid;
+      /* Save current OID to original OID. */
+      COPY_OID (original_oid, oid);
+    }
+
   /* Initialize updated_oid as NULL. This can change only for MVCC enabled
    * instances.
    */
@@ -2524,16 +2534,18 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
   /* First check intention locks are not used for instances. */
   if (!OID_IS_ROOTOID (class_oid) && lock_mode > NULL_LOCK)
     {
-      if (lock_mode <= S_LOCK)
+      if (lock_mode == IS_LOCK)
 	{
-	  /* Use S_LOCK. */
+	  /* Use S_LOCK. This lock will be transformed into NULL_LOCK 
+	   * if op_type is S_SELECT and MVCC is not disabled for class OID.        
+	   */
 	  lock_mode = S_LOCK;
 	}
-      else
+      else if (lock_mode == IX_LOCK)
 	{
-	  /* Use X_LOCK. */
 	  lock_mode = X_LOCK;
 	}
+      assert (lock_mode == S_LOCK || lock_mode == X_LOCK);
     }
   if (heap_is_mvcc_disabled_for_class (class_oid))
     {
@@ -2571,12 +2583,23 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
       /* Don't lock anything and get visible object version. */
       scan =
 	heap_mvcc_get_visible (thread_p, oid, &assign->recdes,
-			       assign->ptr_scancache, COPY, chn,
+			       assign->ptr_scancache, op_type, COPY, chn,
 			       &updated_oid);
     }
 
+  if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END)
+    {
+      return scan;
+    }
+
+  if (scan == S_SUCCESS && original_oid != NULL && !OID_EQ (original_oid, oid)
+      && OID_ISNULL (&updated_oid))
+    {
+      COPY_OID (&updated_oid, oid);
+    }
+
   scan =
-    locator_return_object_assign (thread_p, assign, class_oid, &original_oid,
+    locator_return_object_assign (thread_p, assign, class_oid, original_oid,
 				  chn, guess_chn, scan, tran_index,
 				  &updated_oid);
 
@@ -2588,15 +2611,15 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- *   thrd(in):
+ *   thread_p(in):
  *   oid(in): Object identifier of requested object
  *   chn(in): Cache coherence number of object
+ *   original_oid(in): Original OID version - previous version of oid or NULL.
  *   lock(in): Lock to acquire before the object is fetched
- *   retain_lock(in): flag to retain/release lock after fetching the class
- *   fetch_type(in): fetch type
+ *   fetch_version_type(in): fetch version type 
  *   class_oid(in): Class identifier of the object
  *   class_chn(in): Cache coherence number of the class of the object
- *   prefetching(in): true when pretching of neighbors is desired
+ *   prefetching(in): true when prefetching of neighbors is desired
  *   fetch_area(in/out): Pointer to area where the objects are placed
                          (set to point to fetching area)
  *
@@ -2611,13 +2634,15 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
  *              cache coherent numbers were the same as those on disk. The
  *              caller must check the return value of the function to find out
  *              if there was any error.
- *
+ *	  If original_oid is not null => oid is the updated version of
+ *	original_oid.
  *       The returned fetch area should be freed by the caller.
  */
 int
-xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
-		LC_FETCH_TYPE fetch_type, OID * class_oid, int class_chn,
-		int prefetching, LC_COPYAREA ** fetch_area)
+xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
+		OID * original_oid, LOCK lock,
+		LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oid,
+		int class_chn, int prefetching, LC_COPYAREA ** fetch_area)
 {
   OID tmp_oid;			/* Uses to hold the class_oid when
 				 * it is not know by the caller */
@@ -2626,8 +2651,12 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   int copyarea_length;
   SCAN_CODE scan = S_ERROR;
   int error_code = NO_ERROR;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT *mvcc_snapshot;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  SCAN_OPERATION_TYPE operation_type;
+  OID updated_oid, *p_oid = oid;
+  bool object_locked = false;
+  LOCK class_lock;
 
   if (class_oid == NULL)
     {
@@ -2635,6 +2664,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       class_oid = &tmp_oid;
       OID_SET_NULL (class_oid);
     }
+
+  OID_SET_NULL (&updated_oid);
 
   if (OID_ISNULL (class_oid))
     {
@@ -2644,41 +2675,99 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
        */
       SNAPSHOT_TYPE snapshot_type = SNAPSHOT_TYPE_NONE;
 
-      if (LC_FETCH_IS_LAST_MVCC_VERSION_NEEDED (fetch_type))
+      switch (fetch_version_type)
 	{
+	case LC_FETCH_MVCC_VERSION:
 	  snapshot_type = SNAPSHOT_TYPE_MVCC;
-	}
-      else if (LC_FETCH_IS_LAST_DIRTY_VERSION_NEEDED (fetch_type))
-	{
+	  operation_type = S_SELECT;
+	  break;
+
+	case LC_FETCH_DIRTY_VERSION:
 	  snapshot_type = SNAPSHOT_TYPE_DIRTY;
+	  operation_type = S_SELECT_WITH_LOCK;
+	  break;
+
+	case LC_FETCH_CURRENT_VERSION:
+	  snapshot_type = SNAPSHOT_TYPE_NONE;
+	  operation_type = S_SELECT;
+	  break;
+
+	default:
+	  assert (0);
 	}
 
-      if (heap_get_class_oid (thread_p, class_oid, oid, snapshot_type) ==
-	  NULL)
+      if (heap_get_class_oid_with_lock
+	  (thread_p, class_oid, oid, snapshot_type, lock,
+	   &updated_oid) == NULL)
 	{
 	  /* Unable to find the class of the object.. return */
 	  *fetch_area = NULL;
 	  return ER_FAILED;
 	}
+
+      /* prepare for getting the current OID (no snapshot) without lock */
+      mvcc_snapshot = NULL;
+      operation_type = S_SELECT;
+
+      if (lock != NULL_LOCK)
+	{
+	  /* object already locked */
+	  object_locked = true;
+	}
+
+      if (!OID_ISNULL (&updated_oid))
+	{
+	  /* need to fetch updated oid */
+	  chn = NULL_CHN;
+	  p_oid = &updated_oid;
+	}
+    }
+  else
+    {
+      switch (fetch_version_type)
+	{
+	case LC_FETCH_MVCC_VERSION:
+	  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  if (mvcc_snapshot == NULL)
+	    {
+	      error_code = er_errid ();
+	      return (error_code == NO_ERROR ? ER_FAILED : error_code);
+	    }
+	  operation_type = S_SELECT;
+	  break;
+
+	case LC_FETCH_DIRTY_VERSION:
+	  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+	  mvcc_snapshot = &mvcc_snapshot_dirty;
+	  operation_type = S_SELECT_WITH_LOCK;
+	  break;
+
+	case LC_FETCH_CURRENT_VERSION:
+	  mvcc_snapshot = NULL;
+	  operation_type = S_SELECT;
+	  break;
+
+	default:
+	  assert (0);
+	}
     }
 
   assert (!OID_ISNULL (class_oid));
 
-  if (LC_FETCH_IS_LAST_MVCC_VERSION_NEEDED (fetch_type))
-    {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  error_code = er_errid ();
-	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
-	}
-    }
-  else if (LC_FETCH_IS_LAST_DIRTY_VERSION_NEEDED (fetch_type))
-    {
-      mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
-      mvcc_snapshot = &mvcc_snapshot_dirty;
-    }
-
+  /* Current version or dirty version for instance with NULL_LOCK is allowed
+   * only if the transaction already has a lock. This means that is not
+   * necessary to request the lock again. 
+   */
+  assert ((OID_EQ (class_oid, oid_Root_class_oid))
+	  || (LC_FETCH_IS_MVCC_VERSION_NEEDED (fetch_version_type))
+	  || ((lock != NULL_LOCK)
+	      || (lock_get_object_lock
+		  (oid, class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+		  != NULL_LOCK)
+	      || ((class_lock = lock_get_object_lock
+		   (class_oid, oid_Root_class_oid,
+		    LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
+		  || class_lock >= SIX_LOCK)));
   /*
    * Lock and fetch the object and its class.
    */
@@ -2719,9 +2808,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 
       /* Get the interested object first */
 
-      scan =
-	locator_lock_and_return_object (thread_p, &nxobj, class_oid, oid, chn,
-					lock);
+      scan = locator_lock_and_return_object
+	(thread_p, &nxobj, class_oid, p_oid, chn, original_oid,
+	 object_locked ? NULL_LOCK : lock, operation_type);
+
       if (scan == S_SUCCESS)
 	{
 	  break;
@@ -2782,7 +2872,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 
   scan =
     locator_lock_and_return_object (thread_p, &nxobj, oid_Root_class_oid,
-				    class_oid, class_chn, NULL_LOCK);
+				    class_oid, class_chn, NULL, NULL_LOCK,
+				    S_SELECT);
   if (scan == S_SUCCESS && nxobj.mobjs->num_objs == 2)
     {
       LC_COPYAREA_ONEOBJ *first, *second;
@@ -2833,9 +2924,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
     }
 
 error:
-  if (lock != NULL_LOCK && !LC_FETCH_IS_LOCK_RETAINED (fetch_type))
+  if (error_code != NO_ERROR && lock != NULL_LOCK)
     {
-      lock_unlock_object (thread_p, oid, class_oid, lock, false);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, p_oid, class_oid,
+					       lock);
     }
 
   return error_code;
@@ -2883,8 +2975,9 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn,
        * Caller does not know the class of the object. Get the class identifier
        * from disk
        */
-      if (heap_get_class_oid (thread_p, class_oid, oid, SNAPSHOT_TYPE_MVCC) ==
-	  NULL)
+      if (heap_get_class_oid_with_lock (thread_p, class_oid, oid,
+					SNAPSHOT_TYPE_MVCC, NULL_LOCK,
+					NULL) == NULL)
 	{
 	  /*
 	   * Unable to find out the class identifier.
@@ -2910,15 +3003,16 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn,
     }
 
   /*
-   * Now fetch the class, the instance and optinally prefetch some
+   * Now fetch the class, the instance and optionally prefetch some
    * neighbors of the instance. No need to get the last version for class.
    */
 
-  error_code = xlocator_fetch (NULL, class_oid, class_chn, NULL_LOCK,
-			       LC_FETCH_CURRENT_VERSION, oid_Root_class_oid,
-			       -1, prefetching, fetch_area);
+  error_code =
+    xlocator_fetch (thread_p, class_oid, class_chn, NULL, NULL_LOCK,
+		    LC_FETCH_CURRENT_VERSION, oid_Root_class_oid, -1,
+		    prefetching, fetch_area);
 
-  if (lock != NULL_LOCK)
+  if (error_code != NO_ERROR && lock != NULL_LOCK)
     {
       lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, lock,
 			  false);
@@ -2934,6 +3028,7 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn,
  *
  *   hfid(in): Heap file where the instances of the class are placed
  *   lock(in): Lock to acquired (Set as a side effect to NULL_LOCKID)
+ *   fetch_version_type(in): fetch version type
  *   class_oid(in): Class identifier of the instances to fetch
  *   nobjects(out): Total number of objects to fetch.
  *   nfetched(out): Current number of object fetched.
@@ -2943,6 +3038,7 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn,
  */
 int
 xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
+		    LC_FETCH_VERSION_TYPE fetch_version_type,
 		    OID * class_oid, int *nobjects, int *nfetched,
 		    OID * last_oid, LC_COPYAREA ** fetch_area)
 {
@@ -2964,7 +3060,9 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
   SCAN_CODE scan;
   int error_code = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT mvcc_snapshot_dirty;
 
+  assert (lock != NULL);
   if (OID_ISNULL (last_oid))
     {
       /* FIRST TIME. */
@@ -3006,8 +3104,9 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 	}
     }
 
-  if (mvcc_Enabled)
+  switch (fetch_version_type)
     {
+    case LC_FETCH_MVCC_VERSION:
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
 	{
@@ -3018,6 +3117,19 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 	    }
 	  goto error;
 	}
+      break;
+
+    case LC_FETCH_DIRTY_VERSION:
+      mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+      mvcc_snapshot = &mvcc_snapshot_dirty;
+      break;
+
+    case LC_FETCH_CURRENT_VERSION:
+      mvcc_snapshot = NULL;
+      break;
+
+    default:
+      assert (0);
     }
 
   /* Set OID to last fetched object */
@@ -3336,7 +3448,8 @@ xlocator_fetch_lockset (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset,
 					    oid_Root_class_oid,
 					    &reqclasses[i].oid,
 					    reqclasses[i].chn,
-					    lockset->reqobj_class_lock);
+					    NULL, lockset->reqobj_class_lock,
+					    S_SELECT);
 	  if (scan == S_SUCCESS)
 	    {
 	      lockset->num_classes_of_reqobjs_processed++;
@@ -3442,7 +3555,9 @@ xlocator_fetch_lockset (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset,
 							    class_index].oid,
 						&reqobjs[i].oid,
 						reqobjs[i].chn,
-						lockset->reqobj_inst_lock);
+						NULL,
+						lockset->reqobj_inst_lock,
+						S_SELECT);
 	      if (scan == S_SUCCESS)
 		{
 		  lockset->num_reqobjs_processed++;
@@ -3705,7 +3820,7 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p,
       scan =
 	heap_get_with_class_oid (thread_p, &class_oid,
 				 &lockset->objects[ref_num].oid, &peek_recdes,
-				 &scan_cache, PEEK);
+				 &scan_cache, S_SELECT, PEEK, NULL);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_EXIST
@@ -4110,6 +4225,7 @@ xlocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid,
  *   oid(in): Object identifier of desired object
  *   chn(in): Cache coherence number of object
  *   lock(in): Lock to acquire for the object
+ *   fetch_type(in): fetch type
  *   class_oid(in): Class identifier of the object
  *   class_chn(in): Cache coherence number of the class of the object
  *   need_fetching(in):
@@ -4125,10 +4241,14 @@ xlocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid,
  */
 int
 xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
+		     LC_FETCH_VERSION_TYPE fetch_version_type,
 		     OID * class_oid, int class_chn, int need_fetching,
 		     int prefetching, LC_COPYAREA ** fetch_area)
 {
-  OID tmp_oid;
+  OID tmp_oid, updated_oid, *original_oid = NULL, *p_oid = NULL;
+  SNAPSHOT_TYPE snapshot_type;
+  bool check_oid_heap = true;
+  bool object_locked = false;
 
   if (need_fetching && fetch_area != NULL)
     {
@@ -4141,6 +4261,26 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       OID_SET_NULL (class_oid);
     }
 
+  OID_SET_NULL (&updated_oid);
+
+  switch (fetch_version_type)
+    {
+    case LC_FETCH_MVCC_VERSION:
+      snapshot_type = SNAPSHOT_TYPE_MVCC;
+      break;
+
+    case LC_FETCH_DIRTY_VERSION:
+      snapshot_type = SNAPSHOT_TYPE_DIRTY;
+      break;
+
+    case LC_FETCH_CURRENT_VERSION:
+      snapshot_type = SNAPSHOT_TYPE_NONE;
+      break;
+
+    default:
+      assert (0);
+    }
+
   if (OID_ISNULL (class_oid))
     {
       /*
@@ -4148,76 +4288,102 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
        * from disk
        */
       class_chn = CHN_UNKNOWN_ATCLIENT;
-      if (heap_get_class_oid (thread_p, class_oid, oid, SNAPSHOT_TYPE_MVCC) ==
-	  NULL)
+      if (heap_get_class_oid_with_lock
+	  (thread_p, class_oid, oid, snapshot_type, lock,
+	   &updated_oid) == NULL)
 	{
 	  /* Unable to find the class of the object.. return */
 	  return LC_DOESNOT_EXIST;
 	}
 
-      /*
-       * Since the client (caller) did not know the class identifier of the
-       * instance, make sure that a bad lock is not assigned to an instance.
-       * An instance cannot have an intention lock
-       */
+      /* fetch current version without lock */
+      fetch_version_type = LC_FETCH_CURRENT_VERSION;
 
-      if (!OID_IS_ROOTOID (class_oid))
+      if (lock != NULL_LOCK)
 	{
-	  /*
-	   * AN INSTANCE
-	   */
-	  switch (lock)
+	  object_locked = true;
+
+	  if (!OID_EQ (class_oid, oid_Root_class_oid))
 	    {
-	    case IS_LOCK:
-	      lock = S_LOCK;
-	      break;
-
-	    case IX_LOCK:
-	    case SIX_LOCK:
-	      lock = X_LOCK;
-	      break;
-
-	    default:
-	      break;
+	      /* in case of instances, the heap for OID was already checked */
+	      check_oid_heap = false;
 	    }
 	}
     }
 
-  /* Obtain the desired lock */
-  if (lock != NULL_LOCK
-      && lock_object (thread_p, oid, class_oid, lock,
-		      LK_UNCOND_LOCK) != LK_GRANTED)
+  /* Obtain the desired lock, if not already acquired */
+  if (lock != NULL_LOCK && object_locked == false)
     {
-      /*
-       * Unable to acquired lock
-       */
-      return LC_ERROR;
+      if (heap_mvcc_lock_object (thread_p, oid, class_oid, lock,
+				 snapshot_type, &updated_oid) != NO_ERROR)
+	{
+	  return LC_DOESNOT_EXIST;
+	}
+
+      object_locked = true;
+      if (!OID_EQ (class_oid, oid_Root_class_oid))
+	{
+	  /* in case of instances, the heap for OID was already checked */
+	  check_oid_heap = false;
+	}
     }
 
-  if (heap_does_exist (thread_p, class_oid, oid) == true)
+  if (check_oid_heap)
     {
-      if (need_fetching && fetch_area != NULL)
+      /* 
+       * Need to check heap of OID and heap of class OID.
+       */
+      if (!heap_does_exist (thread_p, class_oid, oid))
 	{
-	  /* The object exist. Prefetch the object if that operation is
-	   * desirable */
-	  (void) xlocator_fetch (NULL, oid, chn, NULL_LOCK,
-				 LC_FETCH_NEED_LAST_MVCC_VERSION, class_oid,
-				 class_chn, prefetching, fetch_area);
+	  if (object_locked)
+	    {
+	      lock_unlock_object (thread_p, OID_ISNULL (&updated_oid)
+				  ? oid : &updated_oid, class_oid, lock,
+				  false);
+	    }
+	  return LC_DOESNOT_EXIST;
 	}
-      if (lock != NULL_LOCK)
-	{
-	  lock_unlock_object (thread_p, oid, class_oid, lock, false);
-	}
-      return LC_EXIST;
     }
-  else
+  else if (!OID_EQ (class_oid, oid_Root_class_oid))
     {
-      if (lock != NULL_LOCK)
+      /* The heap for oid was already checked. Need to check class OID heap.
+       */
+      if (!heap_does_exist (thread_p, oid_Root_class_oid, class_oid))
 	{
-	  lock_unlock_object (thread_p, oid, class_oid, lock, false);
+	  if (object_locked)
+	    {
+	      lock_unlock_object (thread_p, OID_ISNULL (&updated_oid)
+				  ? oid : &updated_oid, class_oid, lock,
+				  false);
+	    }
+	  return LC_DOESNOT_EXIST;
 	}
-      return LC_DOESNOT_EXIST;
     }
+
+
+  /* The object exist. Prefetch the object if that operation is desirable */
+  if (need_fetching && fetch_area != NULL)
+    {
+      if (!OID_ISNULL (&updated_oid))
+	{
+	  /* need to fetch updated oid and make link oid->updated_oid */
+	  chn = NULL_CHN;
+	  p_oid = &updated_oid;
+	  original_oid = oid;
+	}
+      else
+	{
+	  /* need to fetch oid */
+	  p_oid = oid;
+	  original_oid = NULL;
+	}
+
+      (void) xlocator_fetch (thread_p, p_oid, NULL_CHN, original_oid,
+			     NULL_LOCK, fetch_version_type, class_oid,
+			     class_chn, prefetching, fetch_area);
+    }
+
+  return LC_EXIST;
 }
 
 /*
@@ -4480,7 +4646,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 		}
 	    }
 	  if (xbtree_find_unique (thread_p, &local_btid,
-				  S_SELECT_LOCK_DIRTY, key_dbvalue,
+				  S_SELECT_WITH_LOCK, key_dbvalue,
 				  &part_oid, &unique_oid,
 				  true) != BTREE_KEY_FOUND)
 	    {
@@ -6346,8 +6512,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  /* make sure we use the correct class oid - we could be dealing
 	   * with a classoid resulted from a unique btid pruning
 	   */
-	  if (heap_get_class_oid (thread_p, class_oid, oid,
-				  SNAPSHOT_TYPE_NONE) == NULL)
+	  if (heap_get_class_oid_with_lock (thread_p, class_oid, oid,
+					    SNAPSHOT_TYPE_NONE,
+					    NULL_LOCK, NULL) == NULL)
 	    {
 	      goto error;
 	    }
@@ -6715,6 +6882,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
   RECDES copy_recdes;
   int error_code = NO_ERROR;
   bool deleted = false;
+  OID updated_oid;
   SCAN_CODE scan_code = S_SUCCESS;
 
   /* Update note :
@@ -6735,29 +6903,19 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
    */
   isold_object = true;
 
-  if (mvcc_Enabled)
+  copy_recdes.data = NULL;
+  scan_code =
+    heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes,
+			      scan_cache, COPY, NULL_CHN, mvcc_reev_data,
+			      &updated_oid);
+  if (scan_code == S_SUCCESS && mvcc_reev_data != NULL
+      && mvcc_reev_data->filter_result == V_FALSE)
     {
-      OID updated_oid;
-      copy_recdes.data = NULL;
-      scan_code =
-	heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes,
-				  scan_cache, COPY, NULL_CHN, mvcc_reev_data,
-				  &updated_oid);
-      if (scan_code == S_SUCCESS && mvcc_reev_data != NULL
-	  && mvcc_reev_data->filter_result == V_FALSE)
-	{
-	  return ER_MVCC_NOT_SATISFIED_REEVALUATION;
-	}
-      if (!OID_ISNULL (&updated_oid))
-	{
-	  COPY_OID (oid, &updated_oid);
-	}
+      return ER_MVCC_NOT_SATISFIED_REEVALUATION;
     }
-  else
+  if (!OID_ISNULL (&updated_oid))
     {
-      scan_code =
-	heap_get_with_class_oid (thread_p, &class_oid, oid, &copy_recdes,
-				 scan_cache, COPY);
+      COPY_OID (oid, &updated_oid);
     }
 
   if (scan_code != S_SUCCESS)
@@ -6836,8 +6994,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 	}
       if (catcls_Enable)
 	{
-	  error_code = catcls_delete_catalog_classes (thread_p, classname,
-						      oid);
+	  error_code =
+	    catcls_delete_catalog_classes (thread_p, classname, oid);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -6929,8 +7087,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 							false,
 							op_type,
 							scan_cache,
-							true, true,
-							hfid, NULL);
+							true, true, hfid,
+							NULL);
 	    }
 
 	  if (error_code != NO_ERROR)
@@ -10984,9 +11142,9 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   if (mvcc_snapshot == NULL)
-  {
-    return DISK_ERROR;
-  }
+    {
+      return DISK_ERROR;
+    }
   DB_MAKE_NULL (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
@@ -11329,8 +11487,9 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	       * check to make sure that the OID is one of the OIDs from our
 	       * list of classes.
 	       */
-	      if (heap_get_class_oid (thread_p, &cl_oid, &oid_area[i],
-				      SNAPSHOT_TYPE_MVCC) == NULL)
+	      if (heap_get_class_oid_with_lock
+		  (thread_p, &cl_oid, &oid_area[i], SNAPSHOT_TYPE_MVCC,
+		   NULL_LOCK, NULL) == NULL)
 		{
 		  (void) heap_scancache_end (thread_p, &isid.scan_cache);
 		  goto error;
@@ -12798,7 +12957,7 @@ xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p,
 					    oid_Root_class_oid,
 					    &lockhint->classes[i].oid,
 					    lockhint->classes[i].chn,
-					    NULL_LOCK);
+					    NULL, NULL_LOCK, S_SELECT);
 	  if (scan == S_SUCCESS)
 	    {
 	      lockhint->num_classes_processed += 1;
@@ -13540,11 +13699,6 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
       *nfetched += mobjs->num_objs;
       *nobjects = *nfetched;
       OID_SET_NULL (last_oid);
-      if (*class_lock != NULL_LOCK)
-	{
-	  lock_unlock_object (thread_p, class_oid, oid_Root_class_oid,
-			      *class_lock, false);
-	}
     }
   else if (scan == S_ERROR)
     {

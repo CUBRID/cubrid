@@ -3498,7 +3498,7 @@ btree_leaf_get_last_oid (BTID_INT * btid, RECDES * recp,
       if (last_oid_mvcc_offset != NULL)
 	{
 	  assert (mvcc_Enabled);
-	  *last_oid_mvcc_offset = offset - recp->data;
+	  *last_oid_mvcc_offset = CAST_BUFLEN (offset - recp->data);
 	}
 
       assert (btree_leaf_key_oid_is_mvcc_flaged (offset,
@@ -3541,7 +3541,7 @@ btree_leaf_get_last_oid (BTID_INT * btid, RECDES * recp,
       /* Offset is positioned to last OID in record */
       if (last_oid_mvcc_offset != NULL)
 	{
-	  *last_oid_mvcc_offset = offset - recp->data;
+	  *last_oid_mvcc_offset = CAST_BUFLEN (offset - recp->data);
 	}
 
       (void) btree_unpack_object (offset, btid, node_type, recp,
@@ -4221,7 +4221,7 @@ btree_insert_oid_with_order (RECDES * rec, OID * oid, OID * class_oid,
   if (!duplicate_oid)
     {
       /* Make room for a new OID */
-      len = (rec->data + rec->length) - (oid_ptr);
+      len = CAST_BUFLEN ((rec->data + rec->length) - (oid_ptr));
       if (len > 0)
 	{
 	  /* Move all following data to the right */
@@ -12376,7 +12376,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
     {
       rec[rec_idx].data =
 	PTR_ALIGN (&merge_buf_ptr[merge_idx], BTREE_MAX_ALIGN);
-      merge_idx = rec[rec_idx].data - merge_buf_ptr;	/* advance align */
+      merge_idx = CAST_BUFLEN (rec[rec_idx].data - merge_buf_ptr);	/* advance align */
       rec[rec_idx].area_size = merge_buf_size - merge_idx;
       rec[rec_idx].type = REC_HOME;
 
@@ -12505,7 +12505,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   for (i = 1; i <= right_cnt; i++, rec_idx++)
     {
       rec[rec_idx].data = PTR_ALIGN (&merge_buf[merge_idx], BTREE_MAX_ALIGN);
-      merge_idx = rec[rec_idx].data - merge_buf;	/* advance align */
+      merge_idx = CAST_BUFLEN (rec[rec_idx].data - merge_buf);	/* advance align */
       rec[rec_idx].area_size = sizeof (merge_buf) - merge_idx;
       rec[rec_idx].type = REC_HOME;
 
@@ -13442,8 +13442,9 @@ fix_root:
     {
       if (is_active)
 	{
-	  if (heap_get_class_oid (thread_p, &class_oid, oid,
-				  SNAPSHOT_TYPE_NONE) == NULL)
+	  if (heap_get_class_oid_with_lock (thread_p, &class_oid, oid,
+					    SNAPSHOT_TYPE_NONE,
+					    NULL_LOCK, NULL) == NULL)
 	    {
 	      goto error;
 	      /* nextkey_lock_request = true; goto start_point; */
@@ -30458,7 +30459,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 
   /* Assert expected arguments. */
   assert (btid != NULL);
-  assert (scan_op_type == S_SELECT || scan_op_type == S_SELECT_LOCK_DIRTY
+  assert (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK
 	  || scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
   assert (oid != NULL);
@@ -30483,7 +30484,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
   /* Make sure transaction has intention lock on table. */
   class_lock =
     (scan_op_type == S_SELECT
-     || scan_op_type == S_SELECT_LOCK_DIRTY) ? IS_LOCK : IX_LOCK;
+     || scan_op_type == S_SELECT_WITH_LOCK) ? IS_LOCK : IX_LOCK;
   lock_result =
     lock_object (thread_p, class_oid, oid_Root_class_oid, class_lock,
 		 LK_UNCOND_LOCK);
@@ -30495,52 +30496,47 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 
   if (scan_op_type == S_SELECT)
     {
-      if (oid_is_db_class (class_oid) || oid_is_db_attribute (class_oid))
+      /* 
+       * If MVCC disabled, do not use snapshot and lock. If MVCC enabled and
+       * find unique in catalog classes, use dirty version without lock.
+       * Otherwise, use dirty version with lock since need to check whether the
+       * object exists.
+       */
+      if (heap_is_mvcc_disabled_for_class (class_oid))
 	{
-	  /* This is not actually an unique index. However, in these cases we
-	   * don't really want the "visible" object, but the non-dirty one.
-	   * We don't need to lock the object as it should be protected by
-	   * lock on class (if anybody changes it must have SCH_M, we should
-	   * have at least SCH_S).
-	   * Cannot use scan_op_type S_SELECT_LOCK_DIRTY since this is not
-	   * a unique index and the algorithm for locking requires unique.
-	   * TODO: Why not let these indexes on db_class and db_attribute be
-	   *       unique. Currently, there would be some conflicts, but they
-	   *       may be solvable.
-	   */
-	  dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
-	  find_unique_helper.snapshot = &dirty_snapshot;
-	}
-      else if (!heap_is_mvcc_disabled_for_class (class_oid))
-	{
-	  /* Use snapshot to filter not visible objects. */
-	  find_unique_helper.snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  find_unique_helper.snapshot = NULL;
+	  key_function = btree_key_find_unique_version_oid;
+	  find_unique_helper.lock_mode = NULL_LOCK;
 	}
       else
 	{
-	  /* Only db_serial/db_ha_apply_info can have non-mvcc/unique
-	   * indexes.
-	   */
-	  /* TODO: If new such cases are needed, make sure that called
-	   *       functions are adapted to these cases.
-	   */
-	  assert (oid_check_cached_class_oid (OID_CACHE_SERIAL_CLASS_ID,
-					      class_oid)
-		  || oid_check_cached_class_oid
-		  (OID_CACHE_HA_APPLY_INFO_CLASS_ID, class_oid));
+	  dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
+	  find_unique_helper.snapshot = &dirty_snapshot;
+
+	  if (tf_is_catalog_class (class_oid))
+	    {
+	      /* find the key without lock */
+	      key_function = btree_key_find_unique_version_oid;
+	      find_unique_helper.lock_mode = NULL_LOCK;
+	    }
+	  else
+	    {
+	      /* find the key with lock */
+	      key_function = btree_key_find_and_lock_unique;
+	      find_unique_helper.lock_mode = S_LOCK;
+	      scan_op_type = S_SELECT_WITH_LOCK;
+	    }
 	}
-      /* Find the visible version. */
-      key_function = btree_key_find_unique_version_oid;
     }
   else
     {
       /* S_SELECT_LOCK_DIRTY, S_DELETE, S_UPDATE. */
-      assert (scan_op_type == S_SELECT_LOCK_DIRTY
+      assert (scan_op_type == S_SELECT_WITH_LOCK
 	      || scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
 
       /* First key object must be locked and returned. */
       find_unique_helper.lock_mode =
-	(scan_op_type == S_SELECT_LOCK_DIRTY) ? S_LOCK : X_LOCK;
+	(scan_op_type == S_SELECT_WITH_LOCK) ? S_LOCK : X_LOCK;
       key_function = btree_key_find_and_lock_unique;
     }
 

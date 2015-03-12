@@ -103,17 +103,18 @@ extern LC_FIND_CLASSNAME xlocator_find_class_oid (THREAD_ENTRY * thread_p,
 extern int xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid,
 				OID * perm_oid, int expected_length,
 				OID * class_oid, const char *classname);
-extern int xlocator_fetch (THREAD_ENTRY * thrd, OID * oid, int chn, LOCK lock,
-			   LC_FETCH_TYPE fetch_type, OID * class_oid,
+extern int xlocator_fetch (THREAD_ENTRY * thrd, OID * oid, int chn,
+			   OID * original_oid, LOCK lock,
+			   LC_FETCH_VERSION_TYPE fetch_type, OID * class_oid,
 			   int class_chn, int prefetching,
 			   LC_COPYAREA ** fetch_area);
 extern int xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid,
 			       int class_chn, const OID * oid, LOCK lock,
 			       int prefetching, LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
-			       LOCK * lock, OID * class_oid, int *nobjects,
-			       int *nfetched, OID * last_oid,
-			       LC_COPYAREA ** fetch_area);
+			       LOCK * lock, LC_FETCH_VERSION_TYPE fetch_type,
+			       OID * class_oid, int *nobjects, int *nfetched,
+			       OID * last_oid, LC_COPYAREA ** fetch_area);
 extern int xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p,
 					const HFID * hfid,
 					LOCK * instance_lock,
@@ -158,7 +159,9 @@ extern int xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p,
 					    LC_LOCKHINT * lockhint,
 					    LC_COPYAREA ** fetch_area);
 extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn,
-				LOCK lock, OID * class_oid, int class_chn,
+				LOCK lock,
+				LC_FETCH_VERSION_TYPE fetch_version_type,
+				OID * class_oid, int class_chn,
 				int need_fetching, int prefetching,
 				LC_COPYAREA ** fetch_area);
 extern int xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area,

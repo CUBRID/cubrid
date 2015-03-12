@@ -815,7 +815,8 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
   if (flags & LC_PREF_FLAG_LOCK)
     {
       lcks->locks[lcks->num_classes] =
-	locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS);
+	locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS,
+				    LC_FETCH_CURRENT_VERSION);
     }
   else
     {
@@ -982,7 +983,9 @@ pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str,
   int i, no_lock_idx = -1;
   LOCK chk_lock;
 
-  chk_lock = locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS);
+  chk_lock =
+    locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS,
+				LC_FETCH_CURRENT_VERSION);
   for (i = 0; i < lcks->num_classes; i++)
     {
       if (intl_identifier_casecmp (str, lcks->classes[i]) == 0)

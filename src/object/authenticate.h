@@ -211,10 +211,11 @@ extern int au_fetch_class_force (MOP op, SM_CLASS ** class_,
 				 AU_FETCHMODE fetchmode);
 
 extern int au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode,
+			      LC_FETCH_VERSION_TYPE fetch_version_type,
 			      DB_AUTH type);
 extern int au_fetch_instance_force (MOP op, MOBJ * obj_ptr,
 				    AU_FETCHMODE fetchmode,
-				    LC_FETCH_TYPE fetch_type);
+				    LC_FETCH_VERSION_TYPE fetch_version_type);
 
 extern int au_check_authorization (MOP op, DB_AUTH auth);
 

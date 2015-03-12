@@ -34,6 +34,7 @@
 #include "db.h"
 #include "schema_manager.h"
 #include "view_transform.h"
+#include "transaction_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -199,17 +200,20 @@ vid_make_vobj (const OID * view_oid,
  *                                    DB_FETCH_READ
  *                                    DB_FETCH_WRITE
  *                                    DB_FETCH_DIRTY
+ *    read_fetch_version_type(in): Fetch version type in case of read
  *
  * Note:
  *      Fetch the instance associated with the given mop for the given purpose.
  *      Locks are handled by the underlying database.
  */
 MOBJ
-vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose)
+vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
+		    LC_FETCH_VERSION_TYPE read_fetch_version_type)
 {
   MOBJ inst;
   MOP class_mop, base_mop;
   SM_CLASS *class_p;
+  LC_FETCH_VERSION_TYPE fetch_version_type;
 
   if (!mop->is_vid)
     {
@@ -242,14 +246,15 @@ vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose)
 	  if (purpose == DB_FETCH_WRITE)
 	    {
 	      fetch_mode = AU_FETCH_WRITE;
+	      fetch_version_type = LC_FETCH_MVCC_VERSION;
 	    }
 	  else
 	    {
 	      fetch_mode = AU_FETCH_READ;
+	      fetch_version_type = read_fetch_version_type;
 	    }
 	  if (au_fetch_instance_force (base_mop, &inst, fetch_mode,
-				       LC_FETCH_NEED_LAST_MVCC_VERSION) !=
-	      NO_ERROR)
+				       fetch_version_type) != NO_ERROR)
 	    {
 	      inst = (MOBJ) 0;
 	    }
@@ -441,7 +446,8 @@ vid_upd_instance (MOP mop)
     }
   else
     {
-      object = vid_fetch_instance (mop, DB_FETCH_WRITE);
+      object =
+	vid_fetch_instance (mop, DB_FETCH_WRITE, LC_FETCH_MVCC_VERSION);
       /* The base instance is marked dirty by vid_fetch_instance */
     }
   return object;
@@ -1482,7 +1488,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	       */
 	      if (vclass && vclass->object == NULL
 		  && au_fetch_instance_force (vclass, &inst, AU_FETCH_READ,
-					      LC_FETCH_NEED_LAST_MVCC_VERSION))
+					      TM_TRAN_READ_FETCH_VERSION ()))
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
@@ -1506,7 +1512,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	      bclass = db_get_object (&elem_value);
 	      if (bclass && bclass->object == NULL
 		  && au_fetch_instance_force (bclass, &inst, AU_FETCH_READ,
-					      LC_FETCH_NEED_LAST_MVCC_VERSION))
+					      TM_TRAN_READ_FETCH_VERSION ()))
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();

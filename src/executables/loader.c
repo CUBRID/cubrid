@@ -4542,7 +4542,8 @@ ldr_reset_context (LDR_CONTEXT * context)
 	  ws_release_instance (context->obj);
 	}
       CHECK_ERR (err, au_fetch_instance (context->obj, &context->mobj,
-					 AU_FETCH_UPDATE, AU_UPDATE));
+					 AU_FETCH_UPDATE,
+					 LC_FETCH_MVCC_VERSION, AU_UPDATE));
       ws_pin_instance_and_class (context->obj, &context->obj_pin,
 				 &context->class_pin);
       ws_class_has_object_dependencies (context->cls);
@@ -5726,7 +5727,7 @@ construct_instance (LDR_CONTEXT * context)
       obj = DB_GET_OBJECT (&retval);
       context->obj = obj;
       err = au_fetch_instance (context->obj, &context->mobj, AU_FETCH_UPDATE,
-			       AU_UPDATE);
+			       LC_FETCH_MVCC_VERSION, AU_UPDATE);
       if (err == NO_ERROR)
 	{
 	  ws_pin_instance_and_class (context->obj,
@@ -6267,7 +6268,8 @@ ldr_init_loader (LDR_CONTEXT * context)
   /* Set up the lockhint array. Used by ldr_find_class() when locating a class.
    */
   ldr_Hint_locks[0] = locator_fetch_mode_to_lock (DB_FETCH_CLREAD_INSTWRITE,
-						  LC_CLASS);
+						  LC_CLASS,
+						  LC_FETCH_CURRENT_VERSION);
   ldr_Hint_classnames[0] = NULL;
   ldr_Hint_subclasses[0] = 0;
   ldr_Hint_flags[0] = LC_PREF_FLAG_LOCK;

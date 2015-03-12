@@ -65,6 +65,7 @@
 #include "transform.h"
 #include "execute_schema.h"
 #include "network_interface_cl.h"
+#include "transaction_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -874,11 +875,10 @@ extractobjects (const char *exec_name)
 #endif /* CUBRID_DEBUG */
 
   /*
-   * Lock all unloaded classes with S_LOCK
+   * Lock all unloaded classes with IS_LOCK
    */
   if (locator_fetch_set (num_unload_classes, unload_class_table,
-			 DB_FETCH_QUERY_READ, DB_FETCH_QUERY_READ,
-			 true) == NULL)
+			 DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
     {
       status = 1;
       goto end;
@@ -1109,7 +1109,7 @@ process_class (int cl_no)
   HFID *hfid;
   OID *class_oid;
   OID last_oid;
-  LOCK lock = S_LOCK;		/* Lock to acquire for the above purpose */
+  LOCK lock = IS_LOCK;		/* Lock to acquire for the above purpose */
   int nobjects, nfetched;
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area        */
@@ -1373,9 +1373,9 @@ process_class (int cl_no)
 
   while (nobjects != nfetched)
     {
-
-      if (locator_fetch_all (hfid, &lock, class_oid, &nobjects, &nfetched,
-			     &last_oid, &fetch_area) == NO_ERROR)
+      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION,
+			     class_oid, &nobjects, &nfetched, &last_oid,
+			     &fetch_area) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {

@@ -459,19 +459,20 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *content_ptr;
   int content_size;
   int num_objs = 0;
-  int fetch_type;
+  int fetch_version_type;
 
   ptr = or_unpack_oid (request, &oid);
   ptr = or_unpack_int (ptr, &chn);
   ptr = or_unpack_lock (ptr, &lock);
-  ptr = or_unpack_int (ptr, &fetch_type);
+  ptr = or_unpack_int (ptr, &fetch_version_type);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &class_chn);
   ptr = or_unpack_int (ptr, &prefetch);
 
   copy_area = NULL;
   success =
-    xlocator_fetch (thread_p, &oid, chn, lock, (LC_FETCH_TYPE) fetch_type,
+    xlocator_fetch (thread_p, &oid, chn, NULL, lock,
+		    (LC_FETCH_VERSION_TYPE) fetch_version_type,
 		    &class_oid, class_chn, prefetch, &copy_area);
 
   if (success != NO_ERROR)
@@ -628,6 +629,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   LC_COPYAREA *copy_area;
   int success;
   char *ptr;
+  int fetch_version_type;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) +
 		  OR_OID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -639,14 +641,16 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_lock (ptr, &lock);
+  ptr = or_unpack_int (ptr, &fetch_version_type);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &nobjects);
   ptr = or_unpack_int (ptr, &nfetched);
   ptr = or_unpack_oid (ptr, &last_oid);
 
   copy_area = NULL;
-  success = xlocator_fetch_all (thread_p, &hfid, &lock, &class_oid, &nobjects,
-				&nfetched, &last_oid, &copy_area);
+  success = xlocator_fetch_all (thread_p, &hfid, &lock, fetch_version_type,
+				&class_oid, &nobjects, &nfetched, &last_oid,
+				&copy_area);
 
   if (success != NO_ERROR)
     {
@@ -718,6 +722,7 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   int chn, class_chn, prefetch, doesexist;
   int need_fetching;
   LOCK lock;
+  int fetch_version_type;
   LC_COPYAREA *copy_area;
   char *ptr;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE +
@@ -732,13 +737,15 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_oid (request, &oid);
   ptr = or_unpack_int (ptr, &chn);
   ptr = or_unpack_lock (ptr, &lock);
+  ptr = or_unpack_int (ptr, &fetch_version_type);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &class_chn);
   ptr = or_unpack_int (ptr, &need_fetching);
   ptr = or_unpack_int (ptr, &prefetch);
 
   copy_area = NULL;
-  doesexist = xlocator_does_exist (thread_p, &oid, chn, lock, &class_oid,
+  doesexist = xlocator_does_exist (thread_p, &oid, chn, lock,
+				   fetch_version_type, &class_oid,
 				   class_chn, need_fetching, prefetch,
 				   &copy_area);
 
@@ -891,7 +898,6 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *packed_desc = NULL;
   int packed_desc_size;
   LC_COPYAREA_MANYOBJS *mobjs, *reply_mobjs;
-  int i;
 
   ptr = or_unpack_int (request, &num_objs);
   ptr = or_unpack_int (ptr, &packed_desc_size);
@@ -5786,7 +5792,6 @@ sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid,
   int int_volid;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int area_length;
   int exist = 0;
 
   (void) or_unpack_int (request, &int_volid);

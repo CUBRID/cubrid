@@ -891,7 +891,8 @@ make_template (MOP object, MOP classobj)
    */
   if (object != NULL && object != classobj)
     {
-      if (au_fetch_instance (object, &obj, AU_FETCH_UPDATE, AU_UPDATE))
+      if (au_fetch_instance (object, &obj, AU_FETCH_UPDATE,
+			     LC_FETCH_MVCC_VERSION, AU_UPDATE))
 	{
 	  return NULL;
 	}
@@ -2109,7 +2110,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
   if (mop != NULL)
     {
       error = au_fetch_instance_force (mop, &obj, AU_FETCH_UPDATE,
-				       LC_FETCH_NEED_LAST_MVCC_VERSION);
+				       LC_FETCH_MVCC_VERSION);
       if (error == NO_ERROR)
 	{
 	  /* must call this when updating instances */
@@ -2606,7 +2607,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		{
 		  error =
 		    au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE,
-					     LC_FETCH_NEED_LAST_MVCC_VERSION);
+					     LC_FETCH_MVCC_VERSION);
 		  if (error != NO_ERROR)
 		    {
 		      if (trstate != NULL)

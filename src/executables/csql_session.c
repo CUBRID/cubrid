@@ -35,6 +35,7 @@
 #include "util_func.h"
 #include "network_interface_cl.h"
 #include "unicode_support.h"
+#include "transaction_cl.h"
 
 /* for short usage of `csql_append_more_line()' and error check */
 #define	APPEND_MORE_LINE(indent, line)	\
@@ -488,6 +489,10 @@ csql_help_trigger (const char *trigger_name)
   char **all_triggers = NULL;
   TRIGGER_HELP *help = NULL;
   char *trigger_name_composed = NULL;
+  LC_FETCH_VERSION_TYPE read_fetch_instance_version;
+
+  read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
+  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
 
   if (trigger_name == NULL || strcmp (trigger_name, "*") == 0)
     {
@@ -638,6 +643,8 @@ csql_help_trigger (const char *trigger_name)
       free_and_init (trigger_name_composed);
     }
 
+  db_set_read_fetch_instance_version (read_fetch_instance_version);
+
   return;
 
 error:
@@ -663,6 +670,8 @@ error:
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
     }
   csql_free_more_lines ();
+
+  db_set_read_fetch_instance_version (read_fetch_instance_version);
 }
 
 /*

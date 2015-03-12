@@ -417,11 +417,13 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 	  if (for_write)
 	    {
 	      error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
-					 AU_UPDATE);
+					 LC_FETCH_MVCC_VERSION, AU_UPDATE);
 	    }
 	  else
 	    {
-	      error = au_fetch_instance (op, &obj, AU_FETCH_READ, AU_SELECT);
+	      error = au_fetch_instance (op, &obj, AU_FETCH_READ,
+					 TM_TRAN_READ_FETCH_VERSION (),
+					 AU_SELECT);
 	    }
 
 	  if (error == NO_ERROR)
@@ -849,7 +851,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 			   */
 			  if (au_fetch_instance_force
 			      (ref_mop, &ref_obj, AU_FETCH_UPDATE,
-			       LC_FETCH_NEED_LAST_MVCC_VERSION) != NO_ERROR)
+			       LC_FETCH_MVCC_VERSION) != NO_ERROR)
 			    {
 			      assert (er_errid () != NO_ERROR);
 			      return er_errid ();
@@ -912,7 +914,8 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	  mem = NULL;
 	  if (att->header.name_space == ID_ATTRIBUTE)
 	    {
-	      if (au_fetch_instance (op, &obj, AU_FETCH_UPDATE, AU_UPDATE))
+	      if (au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
+				     LC_FETCH_MVCC_VERSION, AU_UPDATE))
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
@@ -1171,6 +1174,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
 	  if (!vid_inhibit_null_check)
 	    {
 	      rc = au_fetch_instance (current, &object, AU_FETCH_READ,
+				      TM_TRAN_READ_FETCH_VERSION (),
 				      AU_SELECT);
 	    }
 	  /*
@@ -1505,7 +1509,7 @@ obj_get_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value)
 	{
 	  /* fetch the instance and caluclate memory offset */
 	  if (au_fetch_instance_force (op, &obj, AU_FETCH_READ,
-				       LC_FETCH_NEED_LAST_MVCC_VERSION) !=
+				       TM_TRAN_READ_FETCH_VERSION ()) !=
 	      NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -2078,7 +2082,9 @@ obj_copy (MOP op)
 	return NULL;
 
       /* do this so that we make really sure that op->class is set up */
-      if (au_fetch_instance (op, &src, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+      if (au_fetch_instance (op, &src, AU_FETCH_READ,
+			     TM_TRAN_READ_FETCH_VERSION (), AU_SELECT)
+	  != NO_ERROR)
 	return NULL;
 
       obj_template = obt_def_object (ws_class_mop (op));
@@ -2176,7 +2182,8 @@ obj_delete (MOP op)
       goto error_exit;
     }
 
-  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE, AU_DELETE);
+  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
+			     LC_FETCH_MVCC_VERSION, AU_DELETE);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -2272,7 +2279,8 @@ obj_delete (MOP op)
        */
       if (op->decached)
 	{
-	  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE, AU_DELETE);
+	  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
+				     LC_FETCH_MVCC_VERSION, AU_DELETE);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -3678,13 +3686,17 @@ find_unique (MOP classop, SM_ATTRIBUTE * att,
    * We may suspend here.
    * Note that we're not getting an S lock on the class so we're still
    * not technically correct in terms of the usual index scan locking
-   * model, but that's actually a desireable feature in this case.
+   * model, but that's actually a desirable feature in this case.   
    */
   if (found != NULL)
     {
+      /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix.
+       * Thus, we need to avoid fetching current version without any instance
+       * or shared/exclusive class lock, since btree_find_unique does not
+       * acquire locks in all cases.
+       */
       if (au_fetch_instance_force (found, NULL, fetchmode,
-				   LC_FETCH_NEED_LAST_MVCC_VERSION) !=
-	  NO_ERROR)
+				   LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -4224,13 +4236,17 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons,
        * We may suspend here.
        * Note that we're not getting an S lock on the class so we're still
        * not technically correct in terms of the usual index scan locking
-       * model, but that's actually a desireable feature in this case.
+       * model, but that's actually a desirable feature in this case.       
        */
       if (obj != NULL)
 	{
+	  /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix.
+	   * Thus, we need to avoid fetching current version without any instance
+	   * or shared/exclusive class lock, since btree_find_unique does not
+	   * acquire locks in all cases.
+	   */
 	  if (au_fetch_instance_force (obj, NULL, fetchmode,
-				       LC_FETCH_NEED_LAST_MVCC_VERSION) !=
-	      NO_ERROR)
+				       LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	    {
 	      return NULL;
 	    }
@@ -4433,13 +4449,17 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
    * We may suspend here.
    * Note that we're not getting an S lock on the class so we're still
    * not technically correct in terms of the usual index scan locking
-   * model, but that's actually a desireable feature in this case.
+   * model, but that's actually a desirable feature in this case.   
    */
   if (obj != NULL)
     {
+      /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix.
+       * Thus, we need to avoid fetching current version without any instance
+       * or shared/exclusive class lock, since btree_find_unique does not
+       * acquire locks in all cases.
+       */
       if (au_fetch_instance_force (obj, NULL, fetchmode,
-				   LC_FETCH_NEED_LAST_MVCC_VERSION) !=
-	  NO_ERROR)
+				   LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -4677,6 +4697,7 @@ obj_isinstance (MOP obj)
 	      if (WS_ISVID (obj))
 		{
 		  if ((au_fetch_instance (obj, &object, AU_FETCH_READ,
+					  TM_TRAN_READ_FETCH_VERSION (),
 					  AU_SELECT)) == NO_ERROR)
 		    {
 		      is_instance = 1;
@@ -4733,7 +4754,8 @@ obj_is_instance_of (MOP obj, MOP class_mop)
       if (object_class_mop == NULL)
 	{
 	  /* must force fetch of instance to get its class */
-	  if (au_fetch_instance (obj, NULL, AU_FETCH_READ, AU_SELECT)
+	  if (au_fetch_instance (obj, NULL, AU_FETCH_READ,
+				 TM_TRAN_READ_FETCH_VERSION (), AU_SELECT)
 	      != NO_ERROR)
 	    {
 	      status = -1;
@@ -4788,11 +4810,14 @@ obj_lock (MOP op, int for_write)
 	  if (for_write)
 	    {
 	      error =
-		au_fetch_instance (op, NULL, AU_FETCH_UPDATE, AU_UPDATE);
+		au_fetch_instance (op, NULL, AU_FETCH_UPDATE,
+				   LC_FETCH_MVCC_VERSION, AU_UPDATE);
 	    }
 	  else
 	    {
-	      error = au_fetch_instance (op, NULL, AU_FETCH_READ, AU_SELECT);
+	      /* get dirty version, since need to lock the object */
+	      error = au_fetch_instance (op, NULL, AU_FETCH_READ,
+					 LC_FETCH_DIRTY_VERSION, AU_SELECT);
 	    }
 	}
     }

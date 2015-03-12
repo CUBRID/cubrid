@@ -10971,6 +10971,7 @@ end:
  *			   - S_ERROR for errors.
  * thread_p (in)	 : Thread entry.
  * oid (in)		 : Initial OID.
+ * op_type(in)		 : Scan operation type
  * recdes (in)		 : Record descriptor.
  * scan_cache (in)	 : Scan cache.
  * ispeeking (in)	 : PEEK or COPY.
@@ -10980,11 +10981,12 @@ end:
  */
 SCAN_CODE
 heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
-		       HEAP_SCANCACHE * scan_cache, int ispeeking,
+		       HEAP_SCANCACHE * scan_cache,
+		       SCAN_OPERATION_TYPE op_type, int ispeeking,
 		       int old_chn, OID * updated_oid)
 {
-  return heap_mvcc_lock_and_get_object_version (thread_p, oid, NULL,
-						recdes, scan_cache, S_SELECT,
+  return heap_mvcc_lock_and_get_object_version (thread_p, oid, NULL, recdes,
+						scan_cache, op_type,
 						ispeeking, old_chn, NULL,
 						updated_oid);
 }
@@ -11035,7 +11037,7 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
  * class_oid (in/out) : Class OID.
  * recdes (out)	      : Record descriptor.
  * scan_cache (in)    : Heap scan cache.
- * op_type (in)	      : Operation type (S_SELECT, S_SELECT_LOCK_DIRTY,
+ * op_type (in)	      : Operation type (S_SELECT, S_SELECT_WITH_LOCK,
  *		        S_DELETE, S_UPDATE).
  * ispeeking (in)     : PEEK or COPY.
  * old_chn (in)	      : Cache coherency number for existing record data. It is
@@ -11048,7 +11050,7 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
  *	 obtain the right version depending on operation type.
  *	 S_SELECT operations are supposed to read the "visible" version of
  *	 the object.
- *	 S_SELECT_LOCK_DIRTY operations are supposed to read the last version
+ *	 S_SELECT_WITH_LOCK operations are supposed to read the last version
  *	 of the object and also lock it. This can be used to provide
  *	 protection when MVCC Snapshot is not enough.
  *	 S_DELETE and S_UPDATE operations are supposed to modify the object.
@@ -11170,7 +11172,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
        */
       lock = NULL_LOCK;
     }
-  else if (op_type == S_SELECT_LOCK_DIRTY)
+  else if (op_type == S_SELECT_WITH_LOCK)
     {
       /* We need to read and lock last object version found with satisfy dirty
        * rules. This object must be also locked.
@@ -11250,7 +11252,7 @@ start_current_version:
    *           and repeat steps from 1.
    *         - if version not visible and no next version => S_DOESNT_EXIST.
    *         - if version is visible go to step 4.
-   *    3.2. S_SELECT_LOCK_DIRTY?, S_DELETE, S_UPDATE. Last version must be
+   *    3.2. S_SELECT_WITH_LOCK?, S_DELETE, S_UPDATE. Last version must be
    *         obtained, which is not necessarily the visible object.
    *         If current version < visible version, get next version and repeat
    *         steps from one.
@@ -11403,7 +11405,7 @@ start_current_version:
 	  /* Stop processing object versions and get record. */
 	  goto get_record;
 	}
-      /* op_type is S_DELETE or S_UPDATE or S_SELECT_LOCK_DIRTY */
+      /* op_type is S_DELETE or S_UPDATE or S_SELECT_WITH_LOCK */
       if (scan_reev_data != NULL && scan_reev_data->data_filter != NULL)
 	{
 	  /* Evaluate record. */
@@ -12378,6 +12380,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, OID * oid,
  *   oid(in): Object identifier
  *   recdes(in/out): Record descriptor
  *   scan_cache(in/out): Scan cache or NULL
+ *   scan_operation_type(in): scan operation type
  *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be
  *                  NULL COPY when the object is copied
  *
@@ -12387,7 +12390,9 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, OID * oid,
 SCAN_CODE
 heap_get_with_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
 			 const OID * oid, RECDES * recdes,
-			 HEAP_SCANCACHE * scan_cache, int ispeeking)
+			 HEAP_SCANCACHE * scan_cache,
+			 SCAN_OPERATION_TYPE scan_operation_type,
+			 int ispeeking, OID * updated_oid)
 {
   SCAN_CODE scan;
 
@@ -12400,8 +12405,9 @@ heap_get_with_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
   OID_SET_NULL (class_oid);
   scan =
     heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, recdes,
-					   scan_cache, S_SELECT, ispeeking,
-					   NULL_CHN, NULL, NULL);
+					   scan_cache, scan_operation_type,
+					   ispeeking, NULL_CHN, NULL,
+					   updated_oid);
   if (scan != S_SUCCESS)
     {
       OID_SET_NULL (class_oid);
@@ -13646,8 +13652,9 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 		((class_oid !=
 		  NULL) ? SNAPSHOT_TYPE_MVCC : SNAPSHOT_TYPE_NONE);
 
-	      if (heap_get_class_oid (thread_p, class_oid, oid,
-				      snapshot_type) == NULL)
+	      if (heap_get_class_oid_with_lock (thread_p, class_oid, oid,
+						snapshot_type,
+						NULL_LOCK, NULL) == NULL)
 		{
 		  doesexist = false;
 		  goto exit_on_end;
@@ -14038,21 +14045,24 @@ exit_on_error:
 }
 
 /*
- * heap_get_class_oid () - Find class oid of given instance
+ * heap_get_class_oid_with_lock () - Find class oid of given instance
  *   return: OID *(class_oid on success and NULL on failure)
  *   class_oid(out): The Class oid of the instance
  *   oid(in): The Object identifier of the instance
  *   snapshot_type(in): snapshot type
+ *   lock_mode(in): lock mode
  *
  * Note: Find the class identifier of the given instance.
  */
 OID *
-heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
-		    SNAPSHOT_TYPE snapshot_type)
+heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
+			      const OID * oid, SNAPSHOT_TYPE snapshot_type,
+			      LOCK lock_mode, OID * updated_oid)
 {
   HEAP_SCANCACHE scan_cache;
   DISK_ISVALID oid_valid;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  SCAN_OPERATION_TYPE scan_operation_type;
 
   if (class_oid == NULL)
     {
@@ -14060,9 +14070,38 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
       return NULL;
     }
 
+  if (updated_oid != NULL)
+    {
+      OID_SET_NULL (updated_oid);
+    }
+
+  /* Handle locks. */
+  if (lock_mode > NULL_LOCK)
+    {
+      if (lock_mode <= S_LOCK)
+	{
+	  /* S_LOCK */
+	  scan_operation_type = S_SELECT_WITH_LOCK;
+	}
+      else
+	{
+	  /* X_LOCK */
+	  scan_operation_type = S_DELETE;
+	}
+    }
+  else
+    {
+      scan_operation_type = S_SELECT;
+    }
+
   heap_scancache_quick_start (&scan_cache);
   if (snapshot_type == SNAPSHOT_TYPE_MVCC)
     {
+      /* Instance locks with MVCC version is forbidden. That's because MVCC
+       * version is used at select, where instance lock is not accepted.
+       */
+      assert (OID_EQ (class_oid, oid_Root_class_oid) || OID_ISNULL (class_oid)
+	      || scan_operation_type != S_SELECT_WITH_LOCK);
       scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (scan_cache.mvcc_snapshot == NULL)
 	{
@@ -14071,12 +14110,25 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
     }
   else if (snapshot_type == SNAPSHOT_TYPE_DIRTY)
     {
+      /* get dirty version with lock */
       mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
       scan_cache.mvcc_snapshot = &mvcc_snapshot_dirty;
     }
 
+  /* Current version with NULL_LOCK is allowed only if the transaction
+   * already has a lock. This means that is not necessary to request the
+   * lock again. 
+   */
+  assert (OID_EQ (class_oid, oid_Root_class_oid) || OID_ISNULL (class_oid)
+	  || (snapshot_type != SNAPSHOT_TYPE_NONE)
+	  || ((lock_mode != NULL_LOCK)
+	      || lock_get_object_lock (oid, class_oid,
+				       LOG_FIND_THREAD_TRAN_INDEX (thread_p)))
+	  != NULL_LOCK);
+
   if (heap_get_with_class_oid (thread_p, class_oid, oid, NULL, &scan_cache,
-			       PEEK) != S_SUCCESS)
+			       scan_operation_type, PEEK, updated_oid)
+      != S_SUCCESS)
     {
       OID_SET_NULL (class_oid);
       class_oid = NULL;
@@ -14094,6 +14146,26 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	    }
 	  OID_SET_NULL (class_oid);
 	  class_oid = NULL;
+	}
+      else
+	{
+	  if (lock_mode != NULL_LOCK)
+	    {
+	      if (OID_IS_ROOTOID (class_oid))
+		{
+		  /* oid is a class - need to lock the class */
+		  heap_scancache_end (thread_p, &scan_cache);
+		  if (lock_object (thread_p, oid, class_oid, lock_mode,
+				   LK_UNCOND_LOCK) != LK_GRANTED)
+		    {
+		      /* Acquire lock in case of classes
+		       * Unable to acquired lock
+		       */
+		      return NULL;
+		    }
+		  return class_oid;
+		}
+	    }
 	}
     }
 
@@ -14149,7 +14221,8 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
   if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes,
-			       &scan_cache, PEEK) == S_SUCCESS)
+			       &scan_cache, S_SELECT, PEEK,
+			       NULL) == S_SUCCESS)
     {
       /* Make sure that this is a class */
       if (oid_is_root (&root_oid))
@@ -14222,7 +14295,8 @@ heap_get_class_name_of_instance (THREAD_ENTRY * thread_p,
     }
 
   if (heap_get_with_class_oid (thread_p, &class_oid, inst_oid, NULL,
-			       &scan_cache, PEEK) == S_SUCCESS)
+			       &scan_cache, S_SELECT, PEEK,
+			       NULL) == S_SUCCESS)
     {
       if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK,
 		    NULL_CHN) == S_SUCCESS)
@@ -14280,7 +14354,8 @@ heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p, const OID * oid,
 
   heap_scancache_quick_start (&scan_cache);
   if (heap_get_with_class_oid (thread_p, &class_oid, oid, &recdes,
-			       &scan_cache, PEEK) == S_SUCCESS)
+			       &scan_cache, S_SELECT, PEEK,
+			       NULL) == S_SUCCESS)
     {
       /*
        * If oid is a class, get its name, otherwise, get the name of its class
@@ -15841,7 +15916,8 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
 
   if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes,
-			       &scan_cache, PEEK) != S_SUCCESS)
+			       &scan_cache, S_SELECT, PEEK,
+			       NULL) != S_SUCCESS)
     {
       error = ER_FAILED;
       goto cleanup;
@@ -16245,8 +16321,9 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid,
    * partition information can be found for this class. We will get the OID of
    * the _db_partition class here because we will need it later
    */
-  if (heap_get_class_oid (thread_p, &_db_part_oid, &part_info,
-			  SNAPSHOT_TYPE_NONE) == NULL)
+  if (heap_get_class_oid_with_lock (thread_p, &_db_part_oid, &part_info,
+				    SNAPSHOT_TYPE_NONE, NULL_LOCK, NULL)
+      == NULL)
     {
       error = ER_FAILED;
       goto cleanup;
@@ -28099,4 +28176,97 @@ heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p,
   scan_cache->page_latch = X_LOCK;
 
   return NO_ERROR;
+}
+
+/*
+ * heap_mvcc_lock_object () - lock the last version of the object, if the
+ *			      object is not deleted 
+ *
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   oid_p(in):	OID
+ *   class_oid_p(in): class OID
+ *   lock_mode(in): lock mode
+ *   snapshot_type(in): snapshot type
+ *   locked_oid(out): locked oid
+ */
+int
+heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
+		       LOCK lock_mode, SNAPSHOT_TYPE snapshot_type,
+		       OID * locked_oid)
+{
+  HEAP_SCANCACHE scan_cache;
+  MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  SCAN_OPERATION_TYPE scan_operation_type = S_SELECT;
+  int ret;
+  bool scan_cache_started = false;
+
+  assert (oid != NULL && class_oid != NULL && !OID_ISNULL (class_oid));
+
+  OID_SET_NULL (locked_oid);
+  if (lock_mode == NULL_LOCK)
+    {
+      return NO_ERROR;
+    }
+
+  if (OID_IS_ROOTOID (class_oid))
+    {
+      /* Acquire lock in case of classes
+       * Unable to acquired lock
+       */
+      if (lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK) !=
+	  LK_GRANTED)
+	{
+	  goto exit_on_error;
+	}
+
+      return NO_ERROR;
+    }
+
+  if (lock_mode <= S_LOCK)
+    {
+      /* S_LOCK */
+      scan_operation_type = S_SELECT_WITH_LOCK;
+    }
+  else
+    {
+      /* X_LOCK */
+      scan_operation_type = S_DELETE;
+    }
+
+  heap_scancache_quick_start (&scan_cache);
+  scan_cache_started = true;
+
+  if (snapshot_type == SNAPSHOT_TYPE_MVCC)
+    {
+      scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (scan_cache.mvcc_snapshot == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+  else if (snapshot_type == SNAPSHOT_TYPE_DIRTY)
+    {
+      /* get dirty version with lock */
+      mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+      scan_cache.mvcc_snapshot = &mvcc_snapshot_dirty;
+    }
+
+  if (heap_mvcc_lock_and_get_object_version (thread_p, oid, NULL, NULL,
+					     &scan_cache, scan_operation_type,
+					     true, NULL_CHN, NULL,
+					     locked_oid) != S_SUCCESS)
+    {
+      goto exit_on_error;
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+  return NO_ERROR;
+
+exit_on_error:
+  if (scan_cache_started)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+    }
+  return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }

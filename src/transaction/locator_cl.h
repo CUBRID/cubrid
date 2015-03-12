@@ -73,14 +73,16 @@ typedef enum
 extern bool locator_is_root (MOP mop);
 extern bool locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose);
 extern LOCK locator_fetch_mode_to_lock (DB_FETCH_MODE purpose,
-					LC_OBJTYPE type);
+					LC_OBJTYPE type, LC_FETCH_VERSION_TYPE
+					fetch_version_type);
 extern int locator_get_cache_coherency_number (MOP mop);
-extern MOBJ locator_fetch_object (MOP mop, DB_FETCH_MODE purpose);
+extern MOBJ locator_fetch_object (MOP mop, DB_FETCH_MODE purpose,
+				  LC_FETCH_VERSION_TYPE fetch_version_type);
 extern MOBJ locator_fetch_class (MOP class_mop, DB_FETCH_MODE purpose);
 extern MOBJ locator_fetch_class_of_instance (MOP inst_mop, MOP * class_mop,
 					     DB_FETCH_MODE purpose);
 extern MOBJ locator_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
-				    LC_FETCH_TYPE fetch_type);
+				    LC_FETCH_VERSION_TYPE fetch_version_type);
 extern MOBJ locator_fetch_set (int num_mops, MOP * mop_set,
 			       DB_FETCH_MODE inst_purpose,
 			       DB_FETCH_MODE class_purpose,
@@ -101,7 +103,7 @@ extern MOP locator_add_instance (MOBJ instance, MOP class_mop);
 extern MOP locator_add_root (OID * root_oid, MOBJ class_root);
 extern int locator_remove_class (MOP class_mop);
 extern void locator_remove_instance (MOP mop);
-extern MOBJ locator_update_instance (MOP mop, LC_FETCH_TYPE fetch_type);
+extern MOBJ locator_update_instance (MOP mop);
 extern MOBJ locator_update_class (MOP mop);
 extern int locator_update_tree_classes (MOP * classes_mop_set,
 					int num_classes);

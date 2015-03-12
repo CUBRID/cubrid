@@ -52,6 +52,7 @@
 #include "locator_cl.h"
 #include "class_object.h"
 #include "object_accessor.h"
+#include "transaction_cl.h"
 #include "virtual_object.h"
 #else /* !SERVER_MODE */
 #include "thread.h"
@@ -5023,7 +5024,9 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
     {
       if (mop->is_vid)
 	{
-	  error = au_fetch_instance (mop, NULL, AU_FETCH_READ, AU_SELECT);
+	  error = au_fetch_instance (mop, NULL, AU_FETCH_READ,
+				     TM_TRAN_READ_FETCH_VERSION (),
+				     AU_SELECT);
 	  if (error != NO_ERROR)
 	    {
 	      WS_SET_DELETED (mop);

@@ -72,6 +72,13 @@ LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
 					 * lock twice.
 					 */
 
+/* read fetch version for current command of transaction
+ * must be set before each transaction command.
+ */
+LC_FETCH_VERSION_TYPE
+  tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
+
+
 /* Timeout(milli seconds) for queries.
  *
  * JDBC can send a bundle of queries to a CAS by setting CCI_EXEC_QUERY_ALL flag.

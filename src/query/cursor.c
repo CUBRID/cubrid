@@ -836,8 +836,12 @@ cursor_fetch_oids (CURSOR_ID * cursor_id_p, int oid_index,
 
   if (oid_index == 1)
     {
+      /* the snapshot was already checked on server side for the current oid,
+       * so we can fetch the current version.
+       */
       mobj = locator_fetch_object (cursor_id_p->mop_set[0],
-				   instant_fetch_mode);
+				   instant_fetch_mode,
+				   LC_FETCH_CURRENT_VERSION);
     }
   else
     {

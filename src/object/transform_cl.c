@@ -1683,7 +1683,19 @@ object_set_size (DB_OBJLIST * list)
     }
 
   size = 0;
-  for (count = 0, l = list; l != NULL; l = l->next, count++);
+  for (count = 0, l = list; l != NULL; l = l->next)
+    {
+      if (WS_IS_DELETED (l->op))
+	{
+	  continue;
+	}
+      count++;
+    }
+
+  if (count == 0)
+    {
+      return 0;
+    }
 
   size += OR_SET_HEADER_SIZE;
   size += OR_INT_SIZE;		/* size of domain word */
@@ -1712,7 +1724,19 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
   if (list == NULL)
     return ER_FAILED;
 
-  for (count = 0, l = list; l != NULL; l = l->next, count++);
+  for (count = 0, l = list; l != NULL; l = l->next)
+    {
+      if (WS_IS_DELETED (l->op))
+	{
+	  continue;
+	}
+      count++;
+    }
+
+  if (count == 0)
+    {
+      return NO_ERROR;
+    }
 
   /* w/ domain, no bound bits, no offsets, no tags, no substructure header */
   or_put_set_header (buf, DB_TYPE_SEQUENCE, count, 1, 0, 0, 0, 0);
@@ -1724,6 +1748,10 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
   /* should be using something other than pr_write_mop here ! */
   for (l = list; l != NULL; l = l->next)
     {
+      if (WS_IS_DELETED (l->op))
+	{
+	  continue;
+	}
       pr_write_mop (buf, ws_mvcc_latest_version (l->op));
     }
 

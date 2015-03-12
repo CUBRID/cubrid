@@ -128,22 +128,66 @@ typedef enum
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \
    || operation == LC_FLUSH_UPDATE_PRUNE_VERIFY)
 
+/*
+ *   Currently, classes does not have versions. So, fetching current, MVCC or
+ * dirty version lead to same result when classes are fetched. However,
+ * using LC_FETCH_CURRENT_VERSION is recommended in this case.
+ * 
+ *   When need to read an instance (DB_FETCH_READ) for SELECT purpose, use MVCC
+ * version type. This means visible version for current transaction, without
+ * locking. In this way, we respect the rule "do not lock instances at select"
+ * (reader does not block writer and writer does not block reader)
+ *
+ *   When need to read an instance (DB_FETCH_READ) for UPDATE purpose, use DIRTY
+ * version type. In this case, the updatable version will be S-locked, if.
+ * exists. This guarantees that the object can't be deleted by concurrent
+ * transaction. If we don't lock the object, unexpected results may be obtained.
+ * That's because we will try to update later an object which we consider
+ * "alive", but was deleted meanwhile by concurrent transaction. Also,
+ * "..does_exists.." functions must use this version type (the only way to know
+ * if the object exists, is to lock it). Also, there are other particular
+ * commands like ";trigger" that need to use this version type (need locking).
+ *
+ *   In some particular cases, you can use current version when read an instance
+ * (DB_FETCH_READ). For instance, if the object was already locked, you can
+ * use CURRENT version instead DIRTY (if the current transaction hold an lock
+ * on OID -> is the last version of the object -> no need to lock it again
+ * or to apply snapshot).
+ *
+ *   When need to update an instance (DB_FETCH_WRITE), and the instance is not
+ * locked yet, use MVCC version type. In this case the visible version is
+ * searched into MVCC chain. Then, if exists, starting from visible version,
+ * updatable version is searched and X-locked. This is similar with
+ * update/delete executed on server side.
+ *
+ *   ODKU use find unique (dirty version with S-lock). Since the object is
+ * locked, will be fetched using current or dirty version not MVCC version.
+ *
+ *   In read committed, if have S, SIX, X or SCH-M lock on class, the instance
+ * must be fetched with current or dirty version. In RR, MVCC snapshot must
+ * be used in order to allow SERIALIZABLE conflicts checking.
+ *
+ *   If the instance is not locked and its class doesn't have shared or
+ *  exclusive mode, use MVCC version.
+ *
+ *   Currently, CUBRID tools use MVCC version when need to read instances.
+ *
+ */
 typedef enum
 {
   LC_FETCH_CURRENT_VERSION = 0x01,	/* fetch current version */
-  LC_FETCH_RETAIN_LOCK = 0x02,	/* retain lock after class fetch */
-  LC_FETCH_NEED_LAST_MVCC_VERSION = 0x04,	/* fetch last MVCC version */
-  LC_FETCH_NEED_LAST_DIRTY_VERSION = 0x08	/* fetch last dirty version */
-} LC_FETCH_TYPE;
+  LC_FETCH_MVCC_VERSION = 0x02,	/* fetch MVCC - visible version */
+  LC_FETCH_DIRTY_VERSION = 0x03	/* fetch dirty version - S-locked */
+} LC_FETCH_VERSION_TYPE;
 
-#define LC_FETCH_IS_LOCK_RETAINED(fetch_type) \
-  ((fetch_type & LC_FETCH_RETAIN_LOCK) != 0)
+#define LC_FETCH_IS_MVCC_VERSION_NEEDED(fetch_type) \
+  ((fetch_type) == LC_FETCH_MVCC_VERSION)
 
-#define LC_FETCH_IS_LAST_MVCC_VERSION_NEEDED(fetch_type) \
-  ((fetch_type & LC_FETCH_NEED_LAST_MVCC_VERSION) != 0)
+#define LC_FETCH_IS_DIRTY_VERSION_NEEDED(fetch_type) \
+  ((fetch_type) == LC_FETCH_DIRTY_VERSION)
 
-#define LC_FETCH_IS_LAST_DIRTY_VERSION_NEEDED(fetch_type) \
-  ((fetch_type & LC_FETCH_NEED_LAST_DIRTY_VERSION) != 0)
+#define LC_FETCH_IS_CURRENT_VERSION_NEEDED(fetch_type) \
+  ((fetch_type) == LC_FETCH_CURRENT_VERSION)
 
 #define LC_FLAG_HAS_INDEX_MASK  0x05
 #define LC_ONEOBJ_GET_INDEX_FLAG(obj)  \

@@ -3492,7 +3492,8 @@ sm_check_object_domain (TP_DOMAIN * domain, MOP object)
 	   */
 	  if (ws_class_mop (object) == NULL)
 	    {
-	      au_fetch_instance (object, NULL, AU_FETCH_READ, AU_SELECT);
+	      au_fetch_instance (object, NULL, AU_FETCH_READ,
+				 TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
 	    }
 
 	  /* if its still NULL, assume an authorization error and go on */
@@ -3553,7 +3554,8 @@ sm_coerce_object_domain (TP_DOMAIN * domain, MOP object, MOP * dest_object)
 	   */
 	  if (ws_class_mop (object) == NULL)
 	    {
-	      au_fetch_instance (object, NULL, AU_FETCH_READ, AU_SELECT);
+	      au_fetch_instance (object, NULL, AU_FETCH_READ,
+				 TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
 	    }
 
 	  /* if its still NULL, assume an authorization error and go on */
@@ -4183,6 +4185,7 @@ sm_active_triggers (MOP class_mop, SM_CLASS * class_,
   SM_ATTRIBUTE *att;
   int status;
   bool has_event_type_triggers = false;
+  LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
   /* If trigger firing has been disabled we do not want to search for
    * active triggers.
@@ -4197,12 +4200,16 @@ sm_active_triggers (MOP class_mop, SM_CLASS * class_,
       return (class_->has_active_triggers);
     }
 
+  /* need locking when fetch in order to get active triggers only */
+  read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
+  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
   class_->has_active_triggers = 0;
 
   status = tr_active_schema_cache (class_mop, class_->triggers, event_type,
 				   &has_event_type_triggers);
   if (status < 0)
     {
+      db_set_read_fetch_instance_version (read_fetch_instance_version);
       return status;
     }
   else if (status)
@@ -4218,6 +4225,7 @@ sm_active_triggers (MOP class_mop, SM_CLASS * class_,
 				       &has_event_type_triggers);
       if (status < 0)
 	{
+	  db_set_read_fetch_instance_version (read_fetch_instance_version);
 	  return status;
 	}
       else if (status)
@@ -4236,6 +4244,8 @@ sm_active_triggers (MOP class_mop, SM_CLASS * class_,
 				    &has_event_type_triggers);
 	  if (status < 0)
 	    {
+	      db_set_read_fetch_instance_version
+		(read_fetch_instance_version);
 	      return status;
 	    }
 	  else if (status)
@@ -4248,6 +4258,7 @@ sm_active_triggers (MOP class_mop, SM_CLASS * class_,
   /* don't repeat this process again */
   class_->triggers_validated = 1;
 
+  db_set_read_fetch_instance_version (read_fetch_instance_version);
   return ((has_event_type_triggers) ? 1 : 0);
 }
 
@@ -6125,7 +6136,9 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	    }
 	  else
 	    {
-	      error = au_fetch_instance (obj, &mem, AU_FETCH_READ, AU_SELECT);
+	      error = au_fetch_instance (obj, &mem, AU_FETCH_READ,
+					 TM_TRAN_READ_FETCH_VERSION (),
+					 AU_SELECT);
 	      if (error == NO_ERROR)
 		{
 		  /* don't need to pin here, we only wanted to check authorization */
@@ -12738,7 +12751,8 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
   if (class_ != NULL)
     {
       names[0] = sm_ch_name ((MOBJ) class_);
-      locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
+      locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS,
+					     LC_FETCH_CURRENT_VERSION);
       subs[0] = 1;
       flags[0] = LC_PREF_FLAG_LOCK;
       if (locator_lockhint_classes (1, names, locks, subs, flags, 1,
@@ -12751,7 +12765,8 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
   else if (temp != NULL)
     {
       names[0] = temp->name;
-      locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
+      locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS,
+					     LC_FETCH_CURRENT_VERSION);
       subs[0] = 1;
       flags[0] = LC_PREF_FLAG_LOCK;
       if (locator_lockhint_classes (1, names, locks, subs, flags, 1,

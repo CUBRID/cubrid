@@ -926,6 +926,9 @@ extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION *
 
 extern void db_invalidate_mvcc_snapshot_after_statement (void);
 
+extern void db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE
+						read_Fetch_Instance_Version);
+
 extern int db_query_get_info (DB_QUERY_RESULT * result,
 			      int *done, int *count,
 			      int *error, char **err_string);

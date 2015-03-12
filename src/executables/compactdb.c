@@ -47,6 +47,7 @@
 #include "system_parameter.h"
 #include "utility.h"
 #include "authenticate.h"
+#include "transaction_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -350,9 +351,9 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   desc_obj = make_desc_obj (class_ptr);
   while (nobjects != nfetched)
     {
-
-      if (locator_fetch_all (hfid, &lock, class_oid, &nobjects, &nfetched,
-			     &last_oid, &fetch_area) == NO_ERROR)
+      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION,
+			     class_oid, &nobjects, &nfetched, &last_oid,
+			     &fetch_area) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {
@@ -489,8 +490,9 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	if (heap_get_class_oid (NULL, &ref_class_oid, ref_oid,
-				SNAPSHOT_TYPE_MVCC) == NULL)
+	if (heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid,
+					  SNAPSHOT_TYPE_MVCC,
+					  NULL_LOCK, NULL) == NULL)
 	  {
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;

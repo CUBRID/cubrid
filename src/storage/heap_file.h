@@ -331,6 +331,7 @@ extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid,
 extern SCAN_CODE heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid,
 					RECDES * recdes,
 					HEAP_SCANCACHE * scan_cache,
+					SCAN_OPERATION_TYPE op_type,
 					int ispeeking, int old_chn,
 					OID * updated_oid);
 extern SCAN_CODE heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid,
@@ -343,7 +344,9 @@ extern SCAN_CODE heap_get_with_class_oid (THREAD_ENTRY * thread_p,
 					  OID * class_oid, const OID * oid,
 					  RECDES * recdes,
 					  HEAP_SCANCACHE * scan_cache,
-					  int ispeeking);
+					  SCAN_OPERATION_TYPE
+					  scan_operation_type, int ispeeking,
+					  OID * updated_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid,
 			    OID * class_oid, OID * next_oid, RECDES * recdes,
 			    HEAP_SCANCACHE * scan_cache, int ispeeking);
@@ -417,8 +420,11 @@ extern INT32 heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p,
 					     int avg_obj_size, int num_attrs,
 					     int num_var_attrs);
 
-extern OID *heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
-				const OID * oid, SNAPSHOT_TYPE snapshot_type);
+extern OID *heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p,
+					  OID * class_oid,
+					  const OID * oid,
+					  SNAPSHOT_TYPE snapshot_type,
+					  LOCK lock_mode, OID * updated_oid);
 extern char *heap_get_class_name (THREAD_ENTRY * thread_p,
 				  const OID * class_oid);
 extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,
@@ -738,4 +744,8 @@ extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY *
 							     HEAP_SCANCACHE *
 							     scan_cache,
 							     OID * class_oid);
+extern int heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid,
+				  OID * class_oid, LOCK lock_mode,
+				  SNAPSHOT_TYPE snapshot_type,
+				  OID * locked_oid);
 #endif /* _HEAP_FILE_H_ */

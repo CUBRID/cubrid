@@ -3327,7 +3327,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 	      goto exit_on_error;
 	    }
 	}
-      if (xbtree_find_unique (thread_p, &local_btid, S_SELECT_LOCK_DIRTY,
+      if (xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK,
 			      keyval, &part_oid, &unique_oid,
 			      true) != BTREE_KEY_FOUND)
 	{

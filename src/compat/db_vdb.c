@@ -3125,6 +3125,8 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx,
 
   db_invalidate_mvcc_snapshot_after_statement ();
 
+  db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
+
   return err;
 }
 
@@ -3198,6 +3200,8 @@ db_execute_statement (DB_SESSION * session, int stmt_ndx,
   err = db_execute_statement_local (session, stmt_ndx, result);
 
   db_invalidate_mvcc_snapshot_after_statement ();
+
+  db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
   return err;
 }
@@ -3376,6 +3380,8 @@ db_compile_and_execute_queries_internal (const char *CSQL_query,
 	  if (is_new_statement)
 	    {
 	      db_invalidate_mvcc_snapshot_after_statement ();
+
+	      db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 	    }
 	  /* Compile a new statement */
 	  stmt_no = db_compile_statement_local (session);
@@ -3388,6 +3394,8 @@ db_compile_and_execute_queries_internal (const char *CSQL_query,
       if (is_new_statement)
 	{
 	  db_invalidate_mvcc_snapshot_after_statement ();
+
+	  db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 	}
     }
 
@@ -4184,4 +4192,17 @@ db_invalidate_mvcc_snapshot_after_statement (void)
 
   /* Increment snapshot version in work space */
   ws_increment_mvcc_snapshot_version ();
+}
+
+/*
+ * db_set_read_fetch_instance_version () - Set read fetch instance version
+ *
+ * return : Void.
+ * read_Fetch_Instance_Version(in): read fetch instance version to set
+ */
+void
+db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE
+				    read_Fetch_Instance_Version)
+{
+  tm_Tran_read_fetch_instance_version = read_Fetch_Instance_Version;
 }

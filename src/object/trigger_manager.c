@@ -1196,7 +1196,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
    * cache. Get the last dirty version.
    */
   if (au_fetch_instance_force (object, &obj, AU_FETCH_READ,
-			       LC_FETCH_NEED_LAST_DIRTY_VERSION))
+			       TM_TRAN_READ_FETCH_VERSION ()))
     {
       goto error;
     }
@@ -1751,7 +1751,7 @@ validate_trigger (TR_TRIGGER * trigger)
    */
 
   if (au_fetch_instance_force (trigger->object, &obj, AU_FETCH_READ,
-			       LC_FETCH_CURRENT_VERSION))
+			       TM_TRAN_READ_FETCH_VERSION ()))
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -4437,7 +4437,7 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback,
 		  ws_clear_hints (trigger->object, false);
 		  error = au_fetch_instance_force (trigger->object, NULL,
 						   AU_FETCH_WRITE,
-						   LC_FETCH_NEED_LAST_MVCC_VERSION);
+						   LC_FETCH_MVCC_VERSION);
 		  if (error == NO_ERROR)
 		    {
 		      /* 
@@ -5976,7 +5976,7 @@ its_deleted (DB_OBJECT * object)
 	  int error;
 
 	  error = au_fetch_instance_force (object, NULL, AU_FETCH_READ,
-					   LC_FETCH_NEED_LAST_MVCC_VERSION);
+					   TM_TRAN_READ_FETCH_VERSION ());
 	  if (error == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      deleted = 1;

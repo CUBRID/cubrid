@@ -589,7 +589,7 @@ typedef enum
   S_SELECT,			/* By default MVCC requires no locks for
 				 * select operations.
 				 */
-  S_SELECT_LOCK_DIRTY,		/* Read operation that doesn't plan to modify
+  S_SELECT_WITH_LOCK,		/* Read operation that doesn't plan to modify
 				 * the object, but has to know the exact fate
 				 * of last version. Can be used for foreign
 				 * key and unique constraint checks.

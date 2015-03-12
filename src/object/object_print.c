@@ -54,6 +54,7 @@
 #include "execute_schema.h"
 #include "class_object.h"
 #include "network_interface_cl.h"
+#include "transaction_cl.h"
 
 #include "dbtype.h"
 #include "language_support.h"
@@ -2852,7 +2853,8 @@ help_obj (MOP op)
     }
   else
     {
-      error = au_fetch_instance (op, &obj, AU_FETCH_READ, AU_SELECT);
+      error = au_fetch_instance (op, &obj, AU_FETCH_READ,
+				 TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
       if (error == NO_ERROR)
 	{
 	  pin = ws_pin (op, 1);

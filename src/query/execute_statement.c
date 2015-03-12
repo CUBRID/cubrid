@@ -2893,7 +2893,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   QUERY_EXEC_MODE old_exec_mode;
   bool need_stmt_replication = false;
   int suppress_repl_error = NO_ERROR;
+  LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
+  /* save old read fetch instance version */
+  read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
   /* If it is an internally created statement,
      set its host variable info again to search host variables at parent parser */
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
@@ -2958,6 +2961,84 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      parser->exec_mode = old_exec_mode;
 	      goto end;
 	    }
+	}
+
+      switch (statement->node_type)
+	{
+	case PT_GET_TRIGGER:
+	case PT_GET_XACTION:
+	case PT_SAVEPOINT:
+	case PT_PREPARE_TO_COMMIT:
+	case PT_COMMIT_WORK:
+	case PT_ROLLBACK_WORK:
+	case PT_SCOPE:
+	case PT_INSERT:
+	case PT_SELECT:
+	case PT_DIFFERENCE:
+	case PT_INTERSECTION:
+	case PT_UNION:
+	case PT_EVALUATE:
+	case PT_GET_STATS:
+	case PT_GET_OPT_LVL:
+	case PT_SET_OPT_LVL:
+	case PT_SET_SYS_PARAMS:
+	case PT_DO:
+	case PT_EXECUTE_PREPARE:
+	case PT_VACUUM:
+	case PT_QUERY_TRACE:
+	case PT_KILL_STMT:
+	  db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
+	  break;
+
+	case PT_EXECUTE_TRIGGER:
+	case PT_CREATE_ENTITY:
+	case PT_CREATE_INDEX:
+	case PT_CREATE_SERIAL:
+	case PT_CREATE_TRIGGER:
+	case PT_CREATE_USER:
+	case PT_ALTER:
+	case PT_ALTER_INDEX:
+	case PT_ALTER_SERIAL:
+	case PT_ALTER_TRIGGER:
+	case PT_ALTER_USER:
+	case PT_DROP:
+	case PT_DROP_INDEX:
+	case PT_DROP_SERIAL:
+	case PT_DROP_TRIGGER:
+	case PT_DROP_USER:
+	case PT_DROP_VARIABLE:
+	case PT_RENAME:
+	case PT_RENAME_TRIGGER:
+	case PT_SET_TRIGGER:
+	case PT_REMOVE_TRIGGER:
+	case PT_GRANT:
+	case PT_REVOKE:
+	case PT_2PC_ATTACH:
+	case PT_SET_XACTION:
+	case PT_DELETE:
+	case PT_UPDATE:
+	case PT_MERGE:
+	case PT_METHOD_CALL:
+	case PT_UPDATE_STATS:
+	case PT_CREATE_STORED_PROCEDURE:
+	case PT_ALTER_STORED_PROCEDURE:
+	case PT_DROP_STORED_PROCEDURE:
+	case PT_TRUNCATE:
+	case PT_SET_SESSION_VARIABLES:
+	case PT_DROP_SESSION_VARIABLES:
+	case PT_SET_NAMES:
+	case PT_SET_TIMEZONE:
+
+	  /* Need to get dirty version when fetch the instance. That's because
+	   * we are in an update command.
+	   */
+	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
+	  break;
+
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
+	  break;
 	}
 
       switch (statement->node_type)
@@ -3222,6 +3303,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 end:
+  /* restore old read fetch instance version */
+  db_set_read_fetch_instance_version (read_fetch_instance_version);
   /* There may be parse tree fragments that were collected during the
    * execution of the statement that should be freed now.
    */
@@ -3322,8 +3405,11 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   QUERY_EXEC_MODE old_exec_mode;
   bool need_stmt_based_repl = false;
   int suppress_repl_error;
+  LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
   assert (parser->query_id == NULL_QUERY_ID);
+  /* save old read fetch instance version */
+  read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
 
   /* If it is an internally created statement,
      set its host variable info again to search host variables at parent parser */
@@ -3386,6 +3472,84 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->exec_mode = old_exec_mode;
 	  goto end;
 	}
+    }
+
+  switch (statement->node_type)
+    {
+    case PT_GET_TRIGGER:
+    case PT_GET_XACTION:
+    case PT_SAVEPOINT:
+    case PT_PREPARE_TO_COMMIT:
+    case PT_COMMIT_WORK:
+    case PT_ROLLBACK_WORK:
+    case PT_SCOPE:
+    case PT_INSERT:
+    case PT_SELECT:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_UNION:
+    case PT_EVALUATE:
+    case PT_GET_STATS:
+    case PT_GET_OPT_LVL:
+    case PT_SET_OPT_LVL:
+    case PT_SET_SYS_PARAMS:
+    case PT_DO:
+    case PT_EXECUTE_PREPARE:
+    case PT_VACUUM:
+    case PT_QUERY_TRACE:
+    case PT_KILL_STMT:
+
+      db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
+      break;
+
+    case PT_EXECUTE_TRIGGER:
+    case PT_CREATE_ENTITY:
+    case PT_CREATE_INDEX:
+    case PT_CREATE_SERIAL:
+    case PT_CREATE_TRIGGER:
+    case PT_CREATE_USER:
+    case PT_ALTER:
+    case PT_ALTER_INDEX:
+    case PT_ALTER_SERIAL:
+    case PT_ALTER_TRIGGER:
+    case PT_ALTER_USER:
+    case PT_DROP:
+    case PT_DROP_INDEX:
+    case PT_DROP_SERIAL:
+    case PT_DROP_TRIGGER:
+    case PT_DROP_USER:
+    case PT_DROP_VARIABLE:
+    case PT_RENAME:
+    case PT_RENAME_TRIGGER:
+    case PT_SET_TRIGGER:
+    case PT_REMOVE_TRIGGER:
+    case PT_GRANT:
+    case PT_REVOKE:
+    case PT_2PC_ATTACH:
+    case PT_SET_XACTION:
+    case PT_DELETE:
+    case PT_UPDATE:
+    case PT_MERGE:
+    case PT_METHOD_CALL:
+    case PT_UPDATE_STATS:
+    case PT_CREATE_STORED_PROCEDURE:
+    case PT_ALTER_STORED_PROCEDURE:
+    case PT_DROP_STORED_PROCEDURE:
+    case PT_TRUNCATE:
+    case PT_SET_SESSION_VARIABLES:
+    case PT_DROP_SESSION_VARIABLES:
+    case PT_SET_NAMES:
+    case PT_SET_TIMEZONE:
+      /* Need to get dirty version when fetch the instance. That's because
+       * we are in an update command.
+       */
+      db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
+      break;
     }
 
   switch (statement->node_type)
@@ -3615,6 +3779,10 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 end:
+
+  /* restore old read fetch instance version */
+  db_set_read_fetch_instance_version (read_fetch_instance_version);
+
   /* There may be parse tree fragments that were collected during the
      execution of the statement that should be freed now. */
   pt_free_orphans (parser);

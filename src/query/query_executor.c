@@ -13200,7 +13200,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
       /* fetch the object and the class oid */
       if (heap_get_with_class_oid (thread_p, &cls_oid, dbvaloid,
-				   &oRec, &scan_cache, PEEK) != S_SUCCESS)
+				   &oRec, &scan_cache, S_SELECT,
+				   PEEK, NULL) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
@@ -13796,8 +13797,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      ACCESS_SPEC_TYPE *specp;
 
-	      if (heap_get_class_oid (thread_p, &class_oid_buf, oid,
-				      SNAPSHOT_TYPE_NONE) == NULL)
+	      if (heap_get_class_oid_with_lock (thread_p, &class_oid_buf, oid,
+						SNAPSHOT_TYPE_NONE,
+						NULL_LOCK, NULL) == NULL)
 		{
 		  goto exit_on_error;
 		}

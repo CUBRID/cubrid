@@ -3102,7 +3102,7 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 	(scan_cache != NULL && scan_cache->cache_last_fix_page) ? PEEK : COPY;
       if (heap_mvcc_get_visible (thread_p,
 				 DB_GET_OID (peek_dbval), &mvcc_last_record,
-				 scan_cache, ispeeking, NULL_CHN,
+				 scan_cache, S_SELECT, ispeeking, NULL_CHN,
 				 &mvcc_updated_oid) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS

@@ -195,14 +195,15 @@ length_string_with_null_padding (int len)
  *   oidp(in):
  *   chn(in):
  *   lock(in):
- *   fetch_type(in): fetch type
+ *   fetch_type(in): fetch version type
  *   class_oid(in):
  *   class_chn(in):
  *   prefetch(in):
  *   fetch_copyarea(in):
  */
 int
-locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_TYPE fetch_type,
+locator_fetch (OID * oidp, int chn, LOCK lock,
+	       LC_FETCH_VERSION_TYPE fetch_version_type,
 	       OID * class_oid, int class_chn, int prefetch,
 	       LC_COPYAREA ** fetch_copyarea)
 {
@@ -221,7 +222,7 @@ locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_TYPE fetch_type,
   ptr = or_pack_oid (request, oidp);
   ptr = or_pack_int (ptr, chn);
   ptr = or_pack_lock (ptr, lock);
-  ptr = or_pack_int (ptr, (int) fetch_type);
+  ptr = or_pack_int (ptr, (int) fetch_version_type);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, class_chn);
   ptr = or_pack_int (ptr, prefetch);
@@ -249,8 +250,8 @@ locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_TYPE fetch_type,
 
   ENTER_SERVER ();
 
-  success = xlocator_fetch (NULL, oidp, chn, lock, fetch_type, class_oid,
-			    class_chn, prefetch, fetch_copyarea);
+  success = xlocator_fetch (NULL, oidp, chn, NULL, lock, fetch_version_type,
+			    class_oid, class_chn, prefetch, fetch_copyarea);
 
   EXIT_SERVER ();
 
@@ -335,6 +336,7 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock,
  *
  *   hfid(in):
  *   lock(in):
+ *   fetch_version_type(in): fetch version type
  *   class_oidp(in):
  *   nobjects(in):
  *   nfetched(in):
@@ -344,15 +346,16 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock,
  * NOTE:
  */
 int
-locator_fetch_all (const HFID * hfid, LOCK * lock, OID * class_oidp,
-		   int *nobjects, int *nfetched, OID * last_oidp,
-		   LC_COPYAREA ** fetch_copyarea)
+locator_fetch_all (const HFID * hfid, LOCK * lock,
+		   LC_FETCH_VERSION_TYPE fetch_version_type,
+		   OID * class_oidp, int *nobjects, int *nfetched,
+		   OID * last_oidp, LC_COPYAREA ** fetch_copyarea)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 3) +
+  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 4) +
 		  (OR_OID_SIZE * 2)) a_request;
   char *request;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) +
@@ -364,6 +367,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, OID * class_oidp,
 
   ptr = or_pack_hfid (request, hfid);
   ptr = or_pack_lock (ptr, *lock);
+  ptr = or_pack_int (ptr, fetch_version_type);
   ptr = or_pack_oid (ptr, class_oidp);
   ptr = or_pack_int (ptr, *nobjects);
   ptr = or_pack_int (ptr, *nfetched);
@@ -397,8 +401,8 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, OID * class_oidp,
   ENTER_SERVER ();
 
   success =
-    xlocator_fetch_all (NULL, hfid, lock, class_oidp, nobjects, nfetched,
-			last_oidp, fetch_copyarea);
+    xlocator_fetch_all (NULL, hfid, lock, fetch_version_type, class_oidp,
+			nobjects, nfetched, last_oidp, fetch_copyarea);
 
   EXIT_SERVER ();
 
@@ -431,7 +435,7 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
   int does_exist = LC_ERROR;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF ((OR_OID_SIZE * 2) + (OR_INT_SIZE * 5)) a_request;
+  OR_ALIGNED_BUF ((OR_OID_SIZE * 2) + (OR_INT_SIZE * 6)) a_request;
   char *request;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE +
 		  OR_INT_SIZE + OR_OID_SIZE) a_reply;
@@ -444,6 +448,7 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
   ptr = or_pack_oid (request, oidp);
   ptr = or_pack_int (ptr, chn);
   ptr = or_pack_lock (ptr, lock);
+  ptr = or_pack_int (ptr, (int) LC_FETCH_DIRTY_VERSION);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, class_chn);
   ptr = or_pack_int (ptr, need_fetching);
@@ -479,8 +484,10 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
 
   ENTER_SERVER ();
 
-  success = xlocator_does_exist (NULL, oidp, chn, lock, class_oid, class_chn,
-				 need_fetching, prefetch, fetch_copyarea);
+  success =
+    xlocator_does_exist (NULL, oidp, chn, lock, LC_FETCH_DIRTY_VERSION,
+			 class_oid, class_chn, need_fetching, prefetch,
+			 fetch_copyarea);
 
   EXIT_SERVER ();
 
@@ -567,9 +574,6 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   int content_size;
   int num_objs = 0;
   int req_error;
-  int i;
-
-  LC_COPYAREA_MANYOBJS *mobjs;
 
   request_size = NET_COPY_AREA_SENDRECV_SIZE;
   request = (char *) malloc (request_size);
@@ -790,7 +794,7 @@ locator_force_repl_update (BTID * btid, OID * class_oid,
   ptr = or_pack_int (ptr, operation);
   ptr = or_pack_recdes (ptr, recdes);
 
-  request_size = ptr - request;
+  request_size = CAST_BUFLEN (ptr - request);
 
   req_error = net_client_request (NET_SERVER_LC_FORCE_REPL_UPDATE,
 				  request, request_size, reply,
@@ -7344,7 +7348,7 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
       ptr = or_pack_btid (ptr, btid);
 
       /* reset request_size as real packed size */
-      request_size = ptr - request;
+      request_size = CAST_BUFLEN (ptr - request);
 
       req_error = net_client_request (request_id,
 				      request, request_size, reply,
@@ -7950,7 +7954,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 	}
 
       /* change senddata_size as real packing size */
-      senddata_size = ptr - senddata;
+      senddata_size = CAST_BUFLEN (ptr - senddata);
     }
 
   /* pack XASL file id (XASL_ID), number of parameter values,
@@ -8161,7 +8165,7 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size,
     }
 
   /* change senddata_size as real packing size */
-  senddata_size = ptr - senddata;
+  senddata_size = CAST_BUFLEN (ptr - senddata);
 
   if (IS_SYNC_EXEC_MODE (flag))
     {
@@ -10413,7 +10417,7 @@ locator_prefetch_repl_update_or_delete (OID * class_oid, BTID * btid,
       goto free_and_return;
     }
 
-  request_size = ptr - request;
+  request_size = CAST_BUFLEN (ptr - request);
 
   req_error =
     net_client_request (NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE, request,

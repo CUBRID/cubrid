@@ -31,6 +31,7 @@
 #include "config.h"
 
 #include "error_manager.h"
+#include "locator.h"
 #include "storage_common.h"
 #include "log_comm.h"
 #include "dbdef.h"
@@ -42,6 +43,7 @@
 #define TM_TRAN_WAIT_MSECS() (tm_Tran_wait_msecs)
 #define TM_TRAN_ID()         (tm_Tran_ID)
 #define TM_TRAN_REP_READ_LOCK() (tm_Tran_rep_read_lock)
+#define TM_TRAN_READ_FETCH_VERSION() (tm_Tran_read_fetch_instance_version)
 
 typedef enum savepoint_type
 {
@@ -56,6 +58,7 @@ extern int tm_Tran_wait_msecs;
 extern int tm_Tran_ID;
 extern bool tm_Use_OID_preflush;
 extern LOCK tm_Tran_rep_read_lock;
+extern LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version;
 
 extern void tran_cache_tran_settings (int tran_index, int lock_timeout,
 				      TRAN_ISOLATION tran_isolation);

@@ -104,6 +104,7 @@ struct locator_cache_lock
   LOCK lock;			/* Lock acquired for fetched object     */
   LOCK class_lock;		/* Lock acquired for class              */
   LOCK implicit_lock;		/* Lock acquired for prefetched objects */
+  LC_FETCH_VERSION_TYPE fetch_version_type;	/* version type to fetch */
 };
 
 typedef struct locator_list_nested_mops LOCATOR_LIST_NESTED_MOPS;
@@ -134,7 +135,7 @@ static void locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object,
 				    void *xlockset);
 static LOCK locator_to_prefetched_lock (LOCK class_lock);
 static int locator_lock (MOP mop, LC_OBJTYPE isclass,
-			 LOCK lock, LC_FETCH_TYPE fetch_type);
+			 LOCK lock, LC_FETCH_VERSION_TYPE fetch_version_type);
 static int locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop,
 					   LOCK lock);
 static int locator_lock_and_doesexist (MOP mop, LOCK lock,
@@ -213,7 +214,9 @@ static int locator_add_to_oidset_when_temp_oid (MOP mop, void *data);
 static LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name,
 						     OID * class_oid);
 
-static bool locator_can_skip_fetch_from_server (MOP mop, LOCK * lock);
+static bool locator_can_skip_fetch_from_server (MOP mop, LOCK * lock,
+						LC_FETCH_VERSION_TYPE
+						fetch_version_type);
 
 /*
  * locator_reserve_class_name () -
@@ -301,7 +304,8 @@ locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose)
        * stored with the object since the object is not cached, fetch the object
        * and cache it into the workspace
        */
-      if (locator_fetch_object (mop, hint_purpose) == NULL)
+      if (locator_fetch_object (mop, hint_purpose,
+				TM_TRAN_READ_FETCH_VERSION ()) == NULL)
 	{
 	  return false;		/* Object does not exist, so it is not a class */
 	}
@@ -332,6 +336,7 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
   OID *oid;
   MOP class_mop;
   LOCK lock;
+  LC_FETCH_VERSION_TYPE fetch_version_type = LC_FETCH_MVCC_VERSION;
 
   cache_lock = (LOCATOR_CACHE_LOCK *) xcache_lock;
   oid = ws_oid (mop);
@@ -345,6 +350,7 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
   if (OID_EQ (oid, cache_lock->oid))
     {
       lock = cache_lock->lock;
+      fetch_version_type = cache_lock->fetch_version_type;
     }
   else if (cache_lock->class_oid && OID_EQ (oid, cache_lock->class_oid))
     {
@@ -371,20 +377,32 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
       /*
        * An instance
        */
-      if (lock == IS_LOCK)
+      if (lock > NULL_LOCK)
 	{
-	  lock = S_LOCK;
-	}
-      else if (lock == IX_LOCK)
-	{
-	  lock = X_LOCK;
+	  if (lock == IS_LOCK)
+	    {
+	      /* fix read lock on client */
+	      lock = S_LOCK;
+	    }
+	  else if (lock == IX_LOCK)
+	    {
+	      /* fix write lock on client */
+	      lock = X_LOCK;
+	    }
+
+	  if (lock == S_LOCK)
+	    {
+	      if (!LC_FETCH_IS_DIRTY_VERSION_NEEDED (fetch_version_type))
+		{
+		  /* MVCC does not use shared locks on instances except 
+		   * when need last dirty version (fetch instance for update -
+		   * will be updated later in current command)
+		   */
+		  lock = NULL_LOCK;
+		}
+	    }
 	}
 
-      if (lock <= S_LOCK)
-	{
-	  /* MVCC does not use shared locks on instances */
-	  lock = NULL_LOCK;
-	}
       ws_set_mop_fetched_with_current_snapshot (mop);
     }
 
@@ -630,7 +648,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
  *   mop(in): Mop of the object to lock
  *   isclass(in): LC_OBJTYPE of mop to be locked
  *   lock(in): Lock to acquire
- *   fetch_type(in): fetch type
+ *   fetch_version_type(in): fetch version type
  *
  * Note: The object associated with the given MOP is locked with the
  *              desired lock. The object locator on the server is not invoked
@@ -642,7 +660,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
  */
 static int
 locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
-	      LC_FETCH_TYPE fetch_type)
+	      LC_FETCH_VERSION_TYPE fetch_version_type)
 {
   LOCATOR_CACHE_LOCK cache_lock;	/* Cache the lock */
   OID *oid;			/* OID of object to lock                  */
@@ -657,6 +675,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
   LC_COPYAREA *fetch_area;	/* Area where objects are received        */
   int error_code = NO_ERROR;
   bool is_prefetch;
+  LOCK class_lock;
 
   mop = ws_mvcc_latest_version (mop);
   oid = ws_oid (mop);
@@ -701,7 +720,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
 
   class_mop = ws_class_mop (mop);
 
-  if (locator_can_skip_fetch_from_server (mop, &lock))
+  if (locator_can_skip_fetch_from_server (mop, &lock, fetch_version_type))
     {
       /* No need to fetch object from server */
       goto end;
@@ -713,6 +732,51 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
   cache_lock.oid = oid;
   cache_lock.lock = lock;
   cache_lock.isolation = TM_TRAN_ISOLATION ();
+  if (ws_get_lock (mop) != NULL_LOCK)
+    {
+      /* Normally, use current version since the object was already locked.
+       * However, for safety reason when promote S_LOCK to X_LOCK is better
+       * to use dirty version. This is needed to protect against wrong cached
+       * S-locks on client (the server release S-lock and the S-lock is not
+       * decached on client side).
+       */
+      if (lock == X_LOCK && ws_get_lock (mop) == S_LOCK
+	  && isclass == LC_INSTANCE)
+	{
+	  fetch_version_type = LC_FETCH_DIRTY_VERSION;
+	}
+      else
+	{
+	  fetch_version_type = LC_FETCH_CURRENT_VERSION;
+	}
+    }
+  else if (class_mop != NULL)
+    {
+      class_lock = ws_get_lock (class_mop);
+      /* 
+       *  Since shared or exclusive class lock is requested, the purpose is to
+       * update class or instances (we do not allow such locks at select).
+       *  In read committed, using MVCC version may lead to issues. Thus, we may
+       * select deleted objects (still visible for the current transaction)
+       * and later (same command) we may try to update already deleted object.
+       *  In read committed, when class share or exclusive lock is requested,
+       * we can fetch dirty version of the instances. These instance versions
+       * are updatable instance versions for the current command. Also, these
+       * instance versions are visible versions for the next command of the
+       * transaction.
+       *  In RR and SERIALIZABLE, we have to use MVCC version. Otherwise, we
+       * may update an instance that's not visible for current transaction,
+       * instead of returning SERIALIZABLE conflict (snapshot is acquired
+       * once / transaction).
+       */
+      if ((class_lock == S_LOCK || class_lock >= SIX_LOCK)
+	  && (TM_TRAN_ISOLATION () == TRAN_READ_COMMITTED))
+	{
+	  fetch_version_type = LC_FETCH_DIRTY_VERSION;
+	}
+    }
+
+  cache_lock.fetch_version_type = fetch_version_type;
 
   /* Find the cache coherency numbers for fetching purposes */
   if (object == NULL && WS_IS_DELETED (mop))
@@ -796,8 +860,9 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
       is_prefetch = false;
     }
 
-  if (locator_fetch (oid, chn, lock, fetch_type, class_oid, class_chn,
-		     is_prefetch, &fetch_area) != NO_ERROR)
+  if (locator_fetch (oid, chn, lock, fetch_version_type,
+		     class_oid, class_chn, is_prefetch, &fetch_area)
+      != NO_ERROR)
     {
       error_code = ER_FAILED;
       goto error;
@@ -907,7 +972,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
     {
       /* Out of space... Try single object */
       return locator_lock (vector_mop[0], LC_INSTANCE, reqobj_inst_lock,
-			   LC_FETCH_NEED_LAST_MVCC_VERSION);
+			   TM_TRAN_READ_FETCH_VERSION ());
     }
 
   reqobjs = lockset->objects;
@@ -1052,7 +1117,8 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
       lock = lock_Conv[lock][current_lock];
       assert (lock != NA_LOCK);
 
-      if (locator_can_skip_fetch_from_server (mop, &lock))
+      if (locator_can_skip_fetch_from_server (mop, &lock,
+					      TM_TRAN_READ_FETCH_VERSION ()))
 	{
 	  continue;
 	}
@@ -2028,7 +2094,8 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 
   class_mop = ws_class_mop (mop);
 
-  if (locator_can_skip_fetch_from_server (mop, &lock))
+  if (locator_can_skip_fetch_from_server (mop, &lock,
+					  TM_TRAN_READ_FETCH_VERSION ()))
     {
       return LC_EXIST;
     }
@@ -2038,6 +2105,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
   cache_lock.oid = oid;
   cache_lock.lock = lock;
   cache_lock.isolation = TM_TRAN_ISOLATION ();
+  cache_lock.fetch_version_type = LC_FETCH_DIRTY_VERSION;
 
   /* Find the cache coherency numbers for fetching purposes */
   if (object == NULL && WS_IS_DELETED (mop))
@@ -2194,12 +2262,14 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
  *                                    DB_FETCH_CLREAD_INSTREAD
  *                                    DB_FETCH_QUERY_READ
  *                                    DB_FETCH_QUERY_WRITE
- *   type(in): type of object that will need the above purpose
+ *   type(in): type of object that will need the above purpose 
+ *   fetch_version_type(in): fetch version type
  *
  * Note:Find the equivalent lock for the given fetch purpose.
  */
 LOCK
-locator_fetch_mode_to_lock (DB_FETCH_MODE purpose, LC_OBJTYPE type)
+locator_fetch_mode_to_lock (DB_FETCH_MODE purpose, LC_OBJTYPE type,
+			    LC_FETCH_VERSION_TYPE fetch_version_type)
 {
   LOCK lock;
 
@@ -2225,9 +2295,25 @@ locator_fetch_mode_to_lock (DB_FETCH_MODE purpose, LC_OBJTYPE type)
 	{
 	  lock = SCH_S_LOCK;
 	}
+      else if (type == LC_INSTANCE)
+	{
+	  if (fetch_version_type == LC_FETCH_DIRTY_VERSION)
+	    {
+	      lock = S_LOCK;
+	    }
+	  else
+	    {
+	      lock = NULL_LOCK;
+	    }
+	}
       else
 	{
-	  lock = S_LOCK;
+	  /* Since we don't know whether the object is class or instance, is the
+	   * responsibility of the server to transform this lock, when he finds
+	   * instance. That's because an instance can't have intention lock.
+	   * Then, the client must cache the transformed lock.
+	   */
+	  lock = IS_LOCK;
 	}
       break;
 
@@ -2279,14 +2365,32 @@ locator_fetch_mode_to_lock (DB_FETCH_MODE purpose, LC_OBJTYPE type)
 		    "fetch purpose mode = %d assume DB_FETCH_READ...***\n",
 		    purpose);
 #endif /* CUBRID_DEBUG */
+
       if (type == LC_CLASS)
 	{
 	  lock = SCH_S_LOCK;
 	}
+      else if (type == LC_INSTANCE)
+	{
+	  if (fetch_version_type == LC_FETCH_DIRTY_VERSION)
+	    {
+	      lock = S_LOCK;
+	    }
+	  else
+	    {
+	      lock = NULL_LOCK;
+	    }
+	}
       else
 	{
-	  lock = S_LOCK;
+	  /* Since we don't know whether the object is class or instance, is the
+	   * responsibility of the server to transform this lock, when he finds
+	   * instance. That's because an instance can't have intention lock.
+	   * Then, the client must cache the transformed lock.
+	   */
+	  lock = IS_LOCK;
 	}
+
       break;
     }
 
@@ -2309,24 +2413,27 @@ locator_get_cache_coherency_number (MOP mop)
   LOCK lock;			/* Lock to acquire for the above purpose */
   MOBJ object;			/* The desired object                    */
   LC_OBJTYPE isclass;
+  LC_FETCH_VERSION_TYPE fetch_version_type = TM_TRAN_READ_FETCH_VERSION ();
 
   class_mop = ws_class_mop (mop);
   if (class_mop == NULL)
     {
+      /* the server will decide the type of the lock */
       isclass = LC_OBJECT;
     }
   else if (locator_is_root (class_mop))
     {
       isclass = LC_CLASS;
+      fetch_version_type = LC_FETCH_CURRENT_VERSION;
     }
   else
     {
       isclass = LC_INSTANCE;
     }
 
-  lock = locator_fetch_mode_to_lock (DB_FETCH_READ, isclass);
-  if (locator_lock (mop, isclass, lock, LC_FETCH_NEED_LAST_MVCC_VERSION) !=
-      NO_ERROR)
+  lock = locator_fetch_mode_to_lock (DB_FETCH_READ, isclass,
+				     fetch_version_type);
+  if (locator_lock (mop, isclass, lock, fetch_version_type) != NO_ERROR)
     {
       return NULL_CHN;
     }
@@ -2352,6 +2459,7 @@ locator_get_cache_coherency_number (MOP mop)
  *                                    DB_FETCH_CLREAD_INSTREAD
  *                                    DB_FETCH_QUERY_READ
  *                                    DB_FETCH_QUERY_WRITE
+ *  fetch_version_tyoe(in): fetch version type
  *
  * Note: Fetch the object associated with the given mop for the given
  *              purpose
@@ -2364,7 +2472,8 @@ locator_get_cache_coherency_number (MOP mop)
  *              locator_fetch-class
  */
 MOBJ
-locator_fetch_object (MOP mop, DB_FETCH_MODE purpose)
+locator_fetch_object (MOP mop, DB_FETCH_MODE purpose,
+		      LC_FETCH_VERSION_TYPE fetch_version_type)
 {
   MOP class_mop;		/* Mop of class of the desired object    */
   LOCK lock;			/* Lock to acquire for the above purpose */
@@ -2385,9 +2494,8 @@ locator_fetch_object (MOP mop, DB_FETCH_MODE purpose)
       isclass = LC_INSTANCE;
     }
 
-  lock = locator_fetch_mode_to_lock (purpose, isclass);
-  if (locator_lock (mop, isclass, lock, LC_FETCH_NEED_LAST_MVCC_VERSION) !=
-      NO_ERROR)
+  lock = locator_fetch_mode_to_lock (purpose, isclass, fetch_version_type);
+  if (locator_lock (mop, isclass, lock, fetch_version_type) != NO_ERROR)
     {
       return NULL;
     }
@@ -2426,7 +2534,6 @@ MOBJ
 locator_fetch_class (MOP class_mop, DB_FETCH_MODE purpose)
 {
   LOCK lock;			/* Lock to acquire for the above purpose */
-  LC_FETCH_TYPE fetch_type = LC_FETCH_CURRENT_VERSION;	/* get current version */
   MOBJ class_obj;		/* The desired class                     */
 
   if (class_mop == NULL)
@@ -2449,18 +2556,15 @@ locator_fetch_class (MOP class_mop, DB_FETCH_MODE purpose)
 			" Calling... locator_fetch_instance instead...***\n",
 			oid->volid, oid->pageid, oid->slotid);
 	  return locator_fetch_instance (class_mop, purpose,
-					 LC_FETCH_NEED_LAST_MVCC_VERSION);
+					 LC_FETCH_MVCC_VERSION);
 	}
     }
 #endif /* CUBRID_DEBUG */
 
-  lock = locator_fetch_mode_to_lock (purpose, LC_CLASS);
-  if (purpose == DB_FETCH_SCAN || purpose == DB_FETCH_EXCLUSIVE_SCAN)
-    {
-      fetch_type |= LC_FETCH_RETAIN_LOCK;
-    }
-
-  if (locator_lock (class_mop, LC_CLASS, lock, fetch_type) != NO_ERROR)
+  lock = locator_fetch_mode_to_lock (purpose, LC_CLASS,
+				     LC_FETCH_CURRENT_VERSION);
+  if (locator_lock (class_mop, LC_CLASS, lock, LC_FETCH_CURRENT_VERSION) !=
+      NO_ERROR)
     {
       return NULL;
     }
@@ -2498,7 +2602,8 @@ locator_fetch_class_of_instance (MOP inst_mop, MOP * class_mop,
   LOCK lock;			/* Lock to acquire for the above purpose */
   MOBJ class_obj;		/* The desired class                     */
 
-  lock = locator_fetch_mode_to_lock (purpose, LC_CLASS);
+  lock = locator_fetch_mode_to_lock (purpose, LC_CLASS,
+				     TM_TRAN_READ_FETCH_VERSION ());
   if (locator_lock_class_of_instance (inst_mop, class_mop, lock) != NO_ERROR)
     {
       return NULL;
@@ -2521,7 +2626,7 @@ locator_fetch_class_of_instance (MOP inst_mop, MOP * class_mop,
  *                                    DB_FETCH_READ
  *                                    DB_FETCH_WRITE
  *                                    DB_FETCH_DIRTY
- *   fetch_type(in): fetch type
+ *   fetch_version_type(in): Fetch version type
  *
  * Note: Fetch the instance associated with the given mop for the given
  *              purpose
@@ -2533,7 +2638,7 @@ locator_fetch_class_of_instance (MOP inst_mop, MOP * class_mop,
  */
 MOBJ
 locator_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
-			LC_FETCH_TYPE fetch_type)
+			LC_FETCH_VERSION_TYPE fetch_version_type)
 {
   LOCK lock;			/* Lock to acquire for the above purpose */
   MOBJ inst;			/* The desired instance                  */
@@ -2558,8 +2663,9 @@ locator_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
 #endif /* CUBRID_DEBUG */
 
   inst = NULL;
-  lock = locator_fetch_mode_to_lock (purpose, LC_INSTANCE);
-  if (locator_lock (mop, LC_INSTANCE, lock, fetch_type) != NO_ERROR)
+  lock = locator_fetch_mode_to_lock (purpose, LC_INSTANCE,
+				     fetch_version_type);
+  if (locator_lock (mop, LC_INSTANCE, lock, fetch_version_type) != NO_ERROR)
     {
       return NULL;
     }
@@ -2642,12 +2748,16 @@ locator_fetch_set (int num_mops, MOP * mop_set, DB_FETCH_MODE inst_purpose,
       else
 	{
 	  return locator_fetch_instance (first, inst_purpose,
-					 LC_FETCH_NEED_LAST_MVCC_VERSION);
+					 TM_TRAN_READ_FETCH_VERSION ());
 	}
     }
 
-  reqobj_inst_lock = locator_fetch_mode_to_lock (inst_purpose, LC_INSTANCE);
-  reqobj_class_lock = locator_fetch_mode_to_lock (class_purpose, LC_CLASS);
+  reqobj_inst_lock =
+    locator_fetch_mode_to_lock (inst_purpose, LC_INSTANCE,
+				TM_TRAN_READ_FETCH_VERSION ());
+  reqobj_class_lock =
+    locator_fetch_mode_to_lock (class_purpose, LC_CLASS,
+				LC_FETCH_CURRENT_VERSION);
 
   object = NULL;
   if (locator_lock_set (num_mops, mop_set, reqobj_inst_lock,
@@ -2720,7 +2830,8 @@ locator_fetch_nested (MOP mop, DB_FETCH_MODE purpose, int prune_level,
 #endif /* CUBRID_DEBUG */
 
   inst = NULL;
-  lock = locator_fetch_mode_to_lock (purpose, LC_INSTANCE);
+  lock = locator_fetch_mode_to_lock (purpose, LC_INSTANCE,
+				     TM_TRAN_READ_FETCH_VERSION ());
   if (locator_lock_nested (mop, lock, prune_level, quit_on_errors, NULL, NULL)
       != NO_ERROR)
     {
@@ -2802,6 +2913,7 @@ locator_fun_get_all_mops (MOP class_mop,
   int estimate_nobjects;
   int nfetched;
   int error_code = NO_ERROR;
+  LC_FETCH_VERSION_TYPE fetch_version_type;
 
   /* Get the class */
   class_oid = ws_oid (class_mop);
@@ -2813,7 +2925,8 @@ locator_fun_get_all_mops (MOP class_mop,
     }
 
   /* Find the desired lock on the class */
-  lock = locator_fetch_mode_to_lock (purpose, LC_CLASS);
+  lock = locator_fetch_mode_to_lock (purpose, LC_CLASS,
+				     LC_FETCH_CURRENT_VERSION);
   if (lock == NULL_LOCK)
     {
       lock = ws_get_lock (class_mop);
@@ -2852,6 +2965,30 @@ locator_fun_get_all_mops (MOP class_mop,
   estimate_nobjects = -1;
   OID_SET_NULL (&last_oid);
 
+  /* 
+   *  Since shared or exclusive class lock is requested, the purpose is to
+   * update class or instances (we do not allow such locks at select).
+   *  In read committed, using MVCC version may lead to issues. Thus, we may
+   * select deleted objects (still visible for the current transaction)
+   * and later (same command) we may try to update already deleted object. 
+   *  In read committed, when class share or exclusive lock is requested,
+   * we can fetch dirty version of the instances. These instance versions are
+   * updatable instance versions for the current command. Also, these instance
+   * versions are visible versions for the next command of the transaction.
+   *  In RR and SERIALIZABLE, we have to use MVCC version. Otherwise, we may
+   * update an instance that's not visible for current transaction, instead of
+   * returning SERIALIZABLE conflict (snapshot is acquired once / transaction).
+   */
+  if ((lock == S_LOCK || lock >= SIX_LOCK)
+      && (TM_TRAN_ISOLATION () == TRAN_READ_COMMITTED))
+    {
+      fetch_version_type = LC_FETCH_DIRTY_VERSION;
+    }
+  else
+    {
+      fetch_version_type = LC_FETCH_MVCC_VERSION;
+    }
+
   /* Now start fetching all the instances and build a list of the mops */
 
   while (nobjects != nfetched)
@@ -2860,8 +2997,9 @@ locator_fun_get_all_mops (MOP class_mop,
        * Note that the number of object and the number of fetched objects are
        * updated by the locator_fetch_all function on the server
        */
-      error_code = locator_fetch_all (hfid, &lock, class_oid, &nobjects,
-				      &nfetched, &last_oid, &fetch_area);
+      error_code =
+	locator_fetch_all (hfid, &lock, fetch_version_type, class_oid,
+			   &nobjects, &nfetched, &last_oid, &fetch_area);
       if (error_code != NO_ERROR)
 	{
 	  /* There was a failure. Was the transaction aborted ? */
@@ -3362,7 +3500,8 @@ locator_does_exist_object (MOP mop, DB_FETCH_MODE purpose)
       isclass = LC_INSTANCE;
     }
 
-  lock = locator_fetch_mode_to_lock (purpose, isclass);
+  lock =
+    locator_fetch_mode_to_lock (purpose, isclass, LC_FETCH_DIRTY_VERSION);
 
   return locator_lock_and_doesexist (mop, lock, isclass);
 }
@@ -5229,7 +5368,7 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       /* put packed key_value first */
       obj_start_p = ptr = mflush->recdes.data;
       ptr = or_pack_mem_value (ptr, repl_obj->pkey_value);
-      key_length = ptr - obj_start_p;
+      key_length = CAST_BUFLEN (ptr - obj_start_p);
       mflush->recdes.data = ptr;
 
       if (repl_obj->operation == LC_FLUSH_DELETE)
@@ -6313,8 +6452,7 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname,
  *
  * return: MOBJ
  *
- *   mop(in): Mop of object that it is going to be updated
- *   fetch_type(in): fetch type 
+ *   mop(in): Mop of object that it is going to be updated 
  *
  * Note:Prepare an instance for update. The instance is fetched for
  *              exclusive mode and it is set dirty. Note that it is very
@@ -6326,11 +6464,12 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname,
  *              updated.
  */
 MOBJ
-locator_update_instance (MOP mop, LC_FETCH_TYPE fetch_type)
+locator_update_instance (MOP mop)
 {
   MOBJ object;			/* The instance object */
 
-  object = locator_fetch_instance (mop, DB_FETCH_WRITE, fetch_type);
+  object =
+    locator_fetch_instance (mop, DB_FETCH_WRITE, LC_FETCH_MVCC_VERSION);
   if (object != NULL)
     {
       ws_dirty (mop);
@@ -7232,9 +7371,11 @@ locator_get_append_lsa (LOG_LSA * lsa)
  * mop (in)	 : Mop that 
  * lock (in/out) : Required lock. Output is results of lock convention
  *		   between input lock and current lock.
+ * fetch_version_type(in): fetch version type
  */
 static bool
-locator_can_skip_fetch_from_server (MOP mop, LOCK * lock)
+locator_can_skip_fetch_from_server (MOP mop, LOCK * lock,
+				    LC_FETCH_VERSION_TYPE fetch_version_type)
 {
   MOP class_mop = ws_class_mop (mop);
   LOCK crt_lock = ws_get_lock (mop);
@@ -7260,13 +7401,10 @@ locator_can_skip_fetch_from_server (MOP mop, LOCK * lock)
       return true;
     }
 
-  if (class_mop != NULL && class_mop != sm_Root_class_mop && *lock <= S_LOCK)
+  if (class_mop != NULL && class_mop != sm_Root_class_mop
+      && *lock == NULL_LOCK)
     {
-      /* When MVCC is enabled, shared lock on instances are not used.
-       * However, if object was already fetched using current snapshot,
-       * it is not required to re-fetch them.
-       * Go to server only if required lock is greater than a shared lock.
-       */
+      /* Go to server only if required lock is at least shared lock. */
       return ws_is_mop_fetched_with_current_snapshot (mop);
     }
 

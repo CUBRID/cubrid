@@ -8295,8 +8295,6 @@ lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
     case TRAN_REPEATABLE_READ:
       if (scanid_bit >= 0)
 	{
-	  lock_remove_all_key_locks_with_scanid (thread_p, tran_index,
-						 scanid_bit, S_LOCK);
 	  lock_free_scanid_bit (thread_p, scanid_bit);
 	}
       break;			/* nothing to do */
@@ -8304,13 +8302,7 @@ lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
     case TRAN_READ_COMMITTED:
       if (scanid_bit >= 0)
 	{
-	  lock_remove_all_inst_locks_with_scanid (thread_p, tran_index,
-						  scanid_bit, S_LOCK);
 	  lock_free_scanid_bit (thread_p, scanid_bit);
-	}
-      if (scan_state == END_SCAN)
-	{
-	  lock_demote_shared_class_lock (thread_p, tran_index, class_oid);
 	}
       break;
 

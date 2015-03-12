@@ -554,7 +554,7 @@ static int au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr,
 				    FETCH_BY fetch_by);
 
 static int fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
-			   LC_FETCH_TYPE fetch_type);
+			   LC_FETCH_VERSION_TYPE read_fetch_version_type);
 static int au_perform_login (const char *name, const char *password,
 			     bool ignore_dba_privilege);
 
@@ -4189,7 +4189,8 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		      AU_USER_CLASS_NAME, "authorization");
 	    }
 	  /* lock authorization for write & mark dirty */
-	  else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, AU_UPDATE)
+	  else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE,
+				      LC_FETCH_MVCC_VERSION, AU_UPDATE)
 		   != NO_ERROR)
 	    {
 	      error = ER_AU_CANT_UPDATE;
@@ -4565,7 +4566,8 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 	   * set interface, this just ensures that the locks can be obtained
 	   */
 	  if (au_fetch_instance
-	      (g->auth_object, NULL, AU_FETCH_UPDATE, AU_UPDATE) != NO_ERROR)
+	      (g->auth_object, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION,
+	       AU_UPDATE) != NO_ERROR)
 	    {
 	      error = ER_AU_CANT_UPDATE;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -4735,8 +4737,9 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		  AU_USER_CLASS_NAME, "authorization");
 	  goto fail_end;
 	}
-      else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, AU_UPDATE)
-	       != NO_ERROR)
+      else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE,
+				  LC_FETCH_MVCC_VERSION,
+				  AU_UPDATE) != NO_ERROR)
 	{
 	  error = ER_AU_CANT_UPDATE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -6114,11 +6117,11 @@ au_check_authorization (MOP op, DB_AUTH auth)
  *   op(in): instance MOP
  *   obj_ptr(out): returned pointer to object
  *   fetchmode(in): desired operation
- *   fetch_type(in): fetch type 
+ *   read_fetch_version_type(in): fetch version type used in case of read
  */
 static int
 fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
-		LC_FETCH_TYPE fetch_type)
+		LC_FETCH_VERSION_TYPE read_fetch_version_type)
 {
   int error = NO_ERROR;
   MOBJ obj = NULL;
@@ -6154,10 +6157,12 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
       switch (fetchmode)
 	{
 	case AU_FETCH_READ:
-	  obj = vid_fetch_instance (op, DB_FETCH_READ);
+	  obj =
+	    vid_fetch_instance (op, DB_FETCH_READ, read_fetch_version_type);
 	  break;
 	case AU_FETCH_WRITE:
-	  obj = vid_fetch_instance (op, DB_FETCH_WRITE);
+	  obj =
+	    vid_fetch_instance (op, DB_FETCH_WRITE, LC_FETCH_MVCC_VERSION);
 	  break;
 	case AU_FETCH_UPDATE:
 	  obj = vid_upd_instance (op);
@@ -6175,13 +6180,17 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
       switch (fetchmode)
 	{
 	case AU_FETCH_READ:
-	  obj = locator_fetch_instance (op, DB_FETCH_READ, fetch_type);
+	  obj =
+	    locator_fetch_instance (op, DB_FETCH_READ,
+				    read_fetch_version_type);
 	  break;
 	case AU_FETCH_WRITE:
-	  obj = locator_fetch_instance (op, DB_FETCH_WRITE, fetch_type);
+	  obj =
+	    locator_fetch_instance (op, DB_FETCH_WRITE,
+				    LC_FETCH_MVCC_VERSION);
 	  break;
 	case AU_FETCH_UPDATE:
-	  obj = locator_update_instance (op, fetch_type);
+	  obj = locator_update_instance (op);
 	  break;
 	case AU_FETCH_SCAN:
 	case AU_FETCH_EXCLUSIVE_SCAN:
@@ -6232,6 +6241,7 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
  *   obj_ptr(in):returned pointer to instance memory
  *   mode(in): access type
  *   type(in): authorization type
+ *   fetch_version_type(in): fetch version type
  *
  * Note: Fetch the object from the database if necessary, update the class
  *       authorization cache if necessary and check authorization for the
@@ -6248,7 +6258,8 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
  *      contents of the supplied MOP.
  */
 int
-au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, DB_AUTH type)
+au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode,
+		   LC_FETCH_VERSION_TYPE fetch_version_type, DB_AUTH type)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -6280,8 +6291,7 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, DB_AUTH type)
 
   if (Au_disable || !(error = check_authorization (classmop, class_, type)))
     {
-      error =
-	fetch_instance (op, obj_ptr, mode, LC_FETCH_NEED_LAST_MVCC_VERSION);
+      error = fetch_instance (op, obj_ptr, mode, fetch_version_type);
     }
 
   return error;
@@ -6295,13 +6305,13 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, DB_AUTH type)
  *   op(in): instance MOP
  *   obj_ptr(out): returned instance memory pointer
  *   fetchmode(in): access type
- *   fetch_type(in): fetch type 
+ *   fetch_version_type(in): fetch version type 
  */
 int
 au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
-			 LC_FETCH_TYPE fetch_type)
+			 LC_FETCH_VERSION_TYPE fetch_version_type)
 {
-  return (fetch_instance (op, obj_ptr, fetchmode, fetch_type));
+  return (fetch_instance (op, obj_ptr, fetchmode, fetch_version_type));
 }
 
 

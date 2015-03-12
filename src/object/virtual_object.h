@@ -46,7 +46,9 @@ extern bool vid_inhibit_null_check;
 extern int vid_is_new_pobj (MOP mop);
 extern int vid_make_vobj (const OID * view_oid, const OID * class_oid,
 			  const DB_VALUE * keys, DB_VALUE * vobj);
-extern MOBJ vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose);
+extern MOBJ vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
+				LC_FETCH_VERSION_TYPE
+				read_fetch_version_type);
 extern MOBJ vid_upd_instance (MOP mop);
 extern int vid_flush_all_instances (MOP class_mop, bool decache);
 extern int vid_flush_and_rehash (MOP mop);
