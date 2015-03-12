@@ -34184,6 +34184,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  && search_key->slotid <= btree_node_number_of_keys (leaf_page) + 1);
 #if defined (SERVER_MODE)
   assert (!BTREE_IS_UNIQUE (btid_int->unique_pk)
+	  || log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (INSERT_HELPER_OID (insert_helper),
 				      INSERT_HELPER_CLASS_OID (insert_helper),
 				      thread_get_current_tran_index (),
@@ -34380,10 +34381,11 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
   assert (restart != NULL);
   assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND);
 #if defined (SERVER_MODE)
-  assert (lock_has_lock_on_object (INSERT_HELPER_OID (insert_helper),
-				   INSERT_HELPER_CLASS_OID (insert_helper),
-				   thread_get_current_tran_index (), X_LOCK)
-	  > 0);
+  assert (log_is_in_crash_recovery ()
+	  || lock_has_lock_on_object (INSERT_HELPER_OID (insert_helper),
+				      INSERT_HELPER_CLASS_OID (insert_helper),
+				      thread_get_current_tran_index (),
+				      X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* TODO: Lock escalation. */
