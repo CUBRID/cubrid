@@ -576,7 +576,9 @@ struct btree_search_key_helper
  *
  * Functions:
  * btree_key_find_unique_version_oid.
- * btree_key_find_and_lock_unique_non_dirty_version.
+ * btree_key_find_and_lock_unique.
+ * btree_key_find_and_lock_unique_of_unique.
+ * btree_key_find_and_lock_unique_of_non_unique.
  */
 typedef struct btree_find_unique_helper BTREE_FIND_UNIQUE_HELPER;
 struct btree_find_unique_helper
@@ -752,7 +754,9 @@ typedef int BTREE_ADVANCE_WITH_KEY_FUNCTION (THREAD_ENTRY * thread_p,
  *
  * Functions:
  * btree_key_find_unique_version_oid.
- * btree_key_find_and_lock_unique_non_dirty_version.
+ * btree_key_find_and_lock_unique
+ * btree_key_find_and_lock_unique_of_unique.
+ * btree_key_find_and_lock_unique_of_non_unique
  * btree_key_insert_new_object.
  * btree_key_insert_delete_mvccid.
  */
@@ -1853,19 +1857,34 @@ static int btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p,
 					      search_key,
 					      bool * restart,
 					      void *other_args);
+static int btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p,
+					   BTID_INT * btid_int,
+					   DB_VALUE * key,
+					   PAGE_PTR * leaf_page,
+					   BTREE_SEARCH_KEY_HELPER *
+					   search_key,
+					   bool * restart, void *other_args);
 static int
-btree_key_find_and_lock_unique_non_dirty_version (THREAD_ENTRY * thread_p,
-						  BTID_INT * btid_int,
-						  DB_VALUE * key,
-						  PAGE_PTR * leaf_page,
-						  BTREE_SEARCH_KEY_HELPER *
-						  search_key,
-						  bool * restart,
-						  void *other_args);
+btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p,
+					  BTID_INT * btid_int, DB_VALUE * key,
+					  PAGE_PTR * leaf_page,
+					  BTREE_SEARCH_KEY_HELPER *
+					  search_key,
+					  bool * restart, void *other_args);
+static int
+btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p,
+					      BTID_INT * btid_int,
+					      DB_VALUE * key,
+					      PAGE_PTR * leaf_page,
+					      BTREE_SEARCH_KEY_HELPER *
+					      search_key,
+					      bool * restart,
+					      void *other_args);
 #if defined (SERVER_MODE)
 static int btree_key_lock_object (THREAD_ENTRY * thread_p,
 				  BTID_INT * btid_int, DB_VALUE * key,
-				  PAGE_PTR * leaf_page, OID * oid,
+				  PAGE_PTR * leaf_page,
+				  PAGE_PTR * overflow_page, OID * oid,
 				  OID * class_oid, LOCK lock_mode,
 				  BTREE_SEARCH_KEY_HELPER * search_key,
 				  bool try_cond_lock, bool * restart,
@@ -29164,9 +29183,8 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p,
 }
 
 /*
- * btree_key_find_and_lock_unique_non_dirty_version () - Find key and lock its
- *							 first object (if not
- *							 deleted/dirty).
+ * btree_key_find_and_lock_unique () - Find key and lock its unique non-dirty
+ *				       version.
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
@@ -29179,14 +29197,52 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p,
  * other_args (in/out) : BTREE_FIND_UNIQUE_HELPER *.
  */
 static int
-btree_key_find_and_lock_unique_non_dirty_version (THREAD_ENTRY * thread_p,
-						  BTID_INT * btid_int,
-						  DB_VALUE * key,
-						  PAGE_PTR * leaf_page,
-						  BTREE_SEARCH_KEY_HELPER *
-						  search_key,
-						  bool * restart,
-						  void *other_args)
+btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p,
+				BTID_INT * btid_int,
+				DB_VALUE * key,
+				PAGE_PTR * leaf_page,
+				BTREE_SEARCH_KEY_HELPER *
+				search_key, bool * restart, void *other_args)
+{
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+    {
+      return btree_key_find_and_lock_unique_of_unique (thread_p, btid_int,
+						       key, leaf_page,
+						       search_key, restart,
+						       other_args);
+    }
+  else
+    {
+      return btree_key_find_and_lock_unique_of_non_unique (thread_p, btid_int,
+							   key, leaf_page,
+							   search_key,
+							   restart,
+							   other_args);
+    }
+}
+
+/*
+ * btree_key_find_and_lock_unique_of_unique () - Find key and lock its first
+ *						 object (if not deleted or 
+ *						 dirty).
+ *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * btid_int (in)       : B-tree info.
+ * key (in)	       : Key value.
+ * leaf_page (in/out)  : Leaf node page (where key would normally belong).
+ * search_key (in)     : Search key result.
+ * restart (out)       : Set to true if b-tree traversal must be restarted
+ *			 from root.
+ * other_args (in/out) : BTREE_FIND_UNIQUE_HELPER *.
+ */
+static int
+btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p,
+					  BTID_INT * btid_int, DB_VALUE * key,
+					  PAGE_PTR * leaf_page,
+					  BTREE_SEARCH_KEY_HELPER *
+					  search_key, bool * restart,
+					  void *other_args)
 {
   OID unique_oid, unique_class_oid;	/* Unique object OID and class
 					 * OID.
@@ -29357,7 +29413,7 @@ btree_key_find_and_lock_unique_non_dirty_version (THREAD_ENTRY * thread_p,
 	  try_cond_lock = (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 	  /* Lock object. */
 	  error_code =
-	    btree_key_lock_object (thread_p, btid_int, key, leaf_page,
+	    btree_key_lock_object (thread_p, btid_int, key, leaf_page, NULL,
 				   &unique_oid, &unique_class_oid,
 				   find_unique_helper->lock_mode,
 				   search_key, try_cond_lock, restart,
@@ -29370,7 +29426,8 @@ btree_key_find_and_lock_unique_non_dirty_version (THREAD_ENTRY * thread_p,
 	  /* Object locked. */
 	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid,
 					   thread_get_current_tran_index (),
-					   find_unique_helper->lock_mode));
+					   find_unique_helper->lock_mode)
+		  > 0);
 	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
 	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
 	  if (*restart)
@@ -29415,8 +29472,8 @@ btree_key_find_and_lock_unique_non_dirty_version (THREAD_ENTRY * thread_p,
 	  goto error_or_not_found;
 	}			/* switch (satisfies_delete) */
     }
-  /* Impossible to reach. Loop can only be broken by returns or jumps to error
-   * label.
+  /* Impossible to reach. Loop can only be broken by returns or jumps to
+   * error_or_not_found label.
    */
   assert_release (false);
   error_code = ER_FAILED;
@@ -29425,6 +29482,410 @@ btree_key_find_and_lock_unique_non_dirty_version (THREAD_ENTRY * thread_p,
 error_or_not_found:
   assert (find_unique_helper->found_object == false);
   find_unique_helper->search_result = *search_key;
+
+#if defined (SERVER_MODE)
+  if (!OID_ISNULL (&find_unique_helper->locked_oid))
+    {
+      /* Unlock object. */
+      lock_unlock_object_donot_move_to_non2pl (thread_p,
+					       &find_unique_helper->
+					       locked_oid,
+					       &find_unique_helper->
+					       locked_class_oid,
+					       find_unique_helper->lock_mode);
+      OID_SET_NULL (&find_unique_helper->locked_oid);
+    }
+#endif
+  return error_code;
+}
+
+/*
+ * btree_key_find_and_lock_unique_of_non_unique () - Find key non-dirty
+ *						     version and lock it.
+ *						     This is usually called in
+ *						     indexes of system classes
+ *						     that should be unique
+ *						     but are not.
+ *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * btid_int (in)       : B-tree info.
+ * key (in)	       : Key value.
+ * leaf_page (in/out)  : Leaf node page (where key would normally belong).
+ * search_key (in)     : Search key result.
+ * restart (out)       : Set to true if b-tree traversal must be restarted
+ *			 from root.
+ * other_args (in/out) : BTREE_FIND_UNIQUE_HELPER *.
+ */
+static int
+btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p,
+					      BTID_INT * btid_int,
+					      DB_VALUE * key,
+					      PAGE_PTR * leaf_page,
+					      BTREE_SEARCH_KEY_HELPER *
+					      search_key,
+					      bool * restart,
+					      void *other_args)
+{
+  OID unique_oid, unique_class_oid;	/* Unique object OID and class
+					 * OID.
+					 */
+  /* Unique object MVCC info. */
+  BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
+  /* Converted from b-tree MVCC info to check if object satisfies delete. */
+  MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+  /* Helper used to describe find unique process and to output results. */
+  BTREE_FIND_UNIQUE_HELPER *find_unique_helper = NULL;
+  RECDES record;		/* Key leaf record. */
+  int error_code = NO_ERROR;	/* Error code. */
+  MVCC_SATISFIES_DELETE_RESULT satisfies_delete;	/* Satisfies delete
+							 * result.
+							 */
+  PAGE_PTR overflow_page = NULL;	/* Overflow page. */
+  VPID next_overflow_vpid = VPID_INITIALIZER;	/* VPID of next overflow page.
+						 */
+  OR_BUF buf;			/* Buffer used to read b-tree
+				 * records.
+				 */
+  bool start_reading_leaf_record = true;	/* Set to true when needs to start
+						 * reading from first leaf object.
+						 */
+  PAGE_PTR prev_overflow_page = NULL;	/* Saved pointer to previous
+					 * overflow page when next is fixed.
+					 */
+  int offset_after_key = 0;	/* For leaf record, offset where
+				 * packed key is ended.
+				 */
+  BTREE_NODE_TYPE node_type;	/* Current node type. */
+  LEAF_REC leaf_rec_info;	/* Leaf record info. */
+  bool dummy_clear_key;		/* Dummy. */
+#if defined (SERVER_MODE)
+  /* Next variables are not required for stand-alone mode. */
+  bool try_cond_lock = false;	/* Try conditional lock. */
+  bool was_page_refixed = false;	/* Set to true if conditional lock
+					 * failed and page had to be re-fixed.
+					 */
+#endif /* SERVER_MODE */
+
+  /* Assert expected arguments. */
+  assert (btid_int != NULL);
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
+  assert (key != NULL);
+  assert (leaf_page != NULL && *leaf_page != NULL);
+  assert (restart != NULL);
+  assert (other_args != NULL);
+
+  /* other_args is find unique helper. */
+  find_unique_helper = (BTREE_FIND_UNIQUE_HELPER *) other_args;
+
+  /* Locking is required. */
+  assert (find_unique_helper->lock_mode >= S_LOCK);
+
+  /* Assume result is BTREE_KEY_NOTFOUND. It will be set to BTREE_KEY_FOUND
+   * if key is found and its first object is successfully locked.
+   */
+  find_unique_helper->search_result = *search_key;
+  find_unique_helper->found_object = false;
+
+  if (search_key->result != BTREE_KEY_FOUND)
+    {
+      /* Key doesn't exist. Exit. */
+      goto error_or_not_found;
+    }
+
+  /* Lock key non-dirty version to protect it. Since this is not an unique
+   * index, but can have only one non-dirty version, this must be searched
+   * through the leaf/overflow records.
+   *
+   * Locking object is possible if object is not deleted and it is not dirty
+   * (its inserter/deleter is not active).
+   *
+   * If inserter or deleter is active, or if conditional lock on object
+   * failed, current transaction must suspend until the object lock holder is
+   * completed. This also means unfixing leaf/overflow pages first.
+   *
+   * Current algorithm tries to avoid traversing the b-tree back from root
+   * after resume. If conditional lock on object fails, leaf/overflow nodes
+   * must be unfixed and then fixed again after object is locked. If leaf page
+   * no longer exists or if the page is no longer usable (key is not in page),
+   * the process is restarted from root. If leaf page is still valid,
+   * leaf/overflow records are processed again.
+   *
+   * NOTE: Stand-alone mode doesn't require locking. It should only check
+   *       whether the first key object is deleted or not.
+   */
+
+  /* Initialize unique_oid */
+  OID_SET_NULL (&unique_oid);
+  OID_SET_NULL (&unique_class_oid);
+
+  /* Loop until a visible object is successfully locked or if the entire key
+   * is processed.
+   */
+  while (true)
+    {
+      /* Safe guard: leaf node page must be fixed. */
+      assert (*leaf_page != NULL);
+
+      if (start_reading_leaf_record)
+	{
+	  /* Read leaf record. */
+	  if (spage_get_record (*leaf_page, search_key->slotid, &record, PEEK)
+	      != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto error_or_not_found;
+	    }
+	  node_type = BTREE_LEAF_NODE;
+	  error_code =
+	    btree_read_record (thread_p, btid_int, *leaf_page, &record, NULL,
+			       &leaf_rec_info, node_type, &dummy_clear_key,
+			       &offset_after_key, PEEK_KEY_VALUE, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error_or_not_found;
+	    }
+	  /* Get first overflow vpid. */
+	  VPID_COPY (&next_overflow_vpid, &leaf_rec_info.ovfl);
+	  /* Initialize buffer to read from record. */
+	  BTREE_RECORD_OR_BUF_INIT (buf, &record);
+	  /* Get first object. */
+	  error_code =
+	    btree_or_get_object (&buf, btid_int, node_type, offset_after_key,
+				 &unique_oid, &unique_class_oid, &mvcc_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error_or_not_found;
+	    }
+	  start_reading_leaf_record = false;
+	}
+      else
+	{
+	  /* Get next object. */
+
+	  if (buf.ptr == buf.endptr)
+	    {
+	      /* Processed all objects in this record. */
+	      if (VPID_ISNULL (&next_overflow_vpid))
+		{
+		  /* Not other overflow pages. Not found. */
+		  goto error_or_not_found;
+		}
+	      /* Fix next overflow page. */
+	      if (overflow_page != NULL)
+		{
+		  /* Save this overflow page. */
+		  prev_overflow_page = overflow_page;
+		}
+	      /* Fix next overflow page. */
+	      overflow_page =
+		pgbuf_fix (thread_p, &next_overflow_vpid, OLD_PAGE,
+			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (overflow_page == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto error_or_not_found;
+		}
+	      if (prev_overflow_page != NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, prev_overflow_page);
+		}
+	      /* Now read leaf record. */
+	      if (spage_get_record (overflow_page, 1, &record, PEEK)
+		  != S_SUCCESS)
+		{
+		  assert_release (false);
+		  error_code = ER_FAILED;
+		  goto error_or_not_found;
+		}
+	      /* Initialize buffer to read record. */
+	      BTREE_RECORD_OR_BUF_INIT (buf, &record);
+	      /* Key is not kept in overflow pages. */
+	      offset_after_key = 0;
+	      node_type = BTREE_OVERFLOW_NODE;
+	      /* Get VPID of next overflow page. */
+	      error_code =
+		btree_get_next_overflow_vpid (overflow_page,
+					      &next_overflow_vpid);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error_or_not_found;
+		}
+	    }
+	  /* Assert there are objects in current record. */
+	  assert (buf.ptr < buf.endptr);
+	  error_code =
+	    btree_or_get_object (&buf, btid_int, node_type, offset_after_key,
+				 &unique_oid, &unique_class_oid, &mvcc_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error_or_not_found;
+	    }
+	}
+      /* Safe guard: object was read. */
+      assert (!OID_ISNULL (&unique_oid));
+      assert (!OID_ISNULL (&unique_class_oid));
+
+      if (!OID_ISNULL (&find_unique_helper->match_class_oid)
+	  && !OID_EQ (&find_unique_helper->match_class_oid,
+		      &unique_class_oid))
+	{
+	  /* Class does not match. Try another object. */
+	  continue;
+	}
+
+      /* Check whether object can be locked. */
+      btree_mvcc_info_to_heap_mvcc_header (&mvcc_info, &mvcc_header);
+      satisfies_delete = mvcc_satisfies_delete (thread_p, &mvcc_header);
+      switch (satisfies_delete)
+	{
+	case DELETE_RECORD_INVISIBLE:
+	case DELETE_RECORD_IN_PROGRESS:
+#if defined (SA_MODE)
+	  /* Impossible. */
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error_or_not_found;
+#else	/* !SA_MODE */	       /* SERVER_MODE */
+	  /* Object is being inserted/deleted. We need to lock and suspend
+	   * until it's fate is decided.
+	   */
+	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid,
+					    thread_get_current_tran_index (),
+					    find_unique_helper->lock_mode));
+#endif /* SERVER_MODE */
+	  /* Fall through. */
+	case DELETE_RECORD_CAN_DELETE:
+#if defined (SERVER_MODE)
+	  /* Must lock object. */
+	  if (!OID_ISNULL (&find_unique_helper->locked_oid))
+	    {
+	      if (OID_EQ (&find_unique_helper->locked_oid, &unique_oid))
+		{
+		  /* Object already locked. */
+		  assert (satisfies_delete == DELETE_RECORD_CAN_DELETE);
+
+		  /* Return result. */
+		  COPY_OID (&find_unique_helper->oid, &unique_oid);
+		  find_unique_helper->found_object = true;
+		  if (overflow_page != NULL)
+		    {
+		      pgbuf_unfix_and_init (thread_p, overflow_page);
+		    }
+		  /* Leaf page will be unfixed by caller. */
+		  return NO_ERROR;
+		}
+	      else
+		{
+		  /* Unlock object. */
+		  lock_unlock_object_donot_move_to_non2pl
+		    (thread_p, &find_unique_helper->locked_oid,
+		     &find_unique_helper->locked_class_oid,
+		     find_unique_helper->lock_mode);
+		  OID_SET_NULL (&find_unique_helper->locked_oid);
+		}
+	    }
+	  /* Don't try conditional lock if DELETE_RECORD_INVISIBLE or
+	   * DELETE_RECORD_IN_PROGRESS. Most likely it will fail.
+	   */
+	  try_cond_lock = (satisfies_delete == DELETE_RECORD_CAN_DELETE);
+	  /* Lock object. */
+	  error_code =
+	    btree_key_lock_object (thread_p, btid_int, key, leaf_page,
+				   &overflow_page, &unique_oid,
+				   &unique_class_oid,
+				   find_unique_helper->lock_mode,
+				   search_key, try_cond_lock, restart,
+				   &was_page_refixed);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error_or_not_found;
+	    }
+	  /* Object locked. */
+	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid,
+					   thread_get_current_tran_index (),
+					   find_unique_helper->lock_mode)
+		  > 0);
+	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
+	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
+	  if (*restart)
+	    {
+	      /* Need to restart from top. */
+	      assert (overflow_page == NULL);
+	      return NO_ERROR;
+	    }
+	  if (search_key->result == BTREE_KEY_BETWEEN)
+	    {
+	      /* Key no longer exist. */
+	      goto error_or_not_found;
+	    }
+	  assert (search_key->result == BTREE_KEY_FOUND);
+	  if (was_page_refixed)
+	    {
+	      /* Key was found but we still need to re-check objects.
+	       * Since page was re-fixed, record may have changed (and also
+	       * positions of objects).
+	       */
+	      start_reading_leaf_record = true;
+	      /* Safe guard: overflow page must be unfixed. */
+	      assert (overflow_page == NULL);
+	      break;		/* switch (satisfies_delete) */
+	    }
+	  else
+	    {
+	      /* Safe guard */
+	      assert (satisfies_delete == DELETE_RECORD_CAN_DELETE);
+	    }
+#endif /* SERVER_MODE */
+
+	  /* Object was found. Return result. */
+	  COPY_OID (&find_unique_helper->oid, &unique_oid);
+	  find_unique_helper->found_object = true;
+	  if (overflow_page != NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
+	    }
+	  /* Leaf page will be unfixed by caller. */
+	  return NO_ERROR;
+
+	case DELETE_RECORD_DELETED:
+	case DELETE_RECORD_SELF_DELETED:
+	  /* This object is deleted. */
+	  /* Continue to next object. */
+	  break;
+
+	default:
+	  /* Unhandled/unexpected case. */
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error_or_not_found;
+	}			/* switch (satisfies_delete) */
+    }
+  /* Impossible to reach. Loop can only be broken by returns or jumps to
+   * error_or_not_found label.
+   */
+  assert_release (false);
+  error_code = ER_FAILED;
+  /* Fall through. */
+
+error_or_not_found:
+  assert (find_unique_helper->found_object == false);
+  find_unique_helper->search_result = *search_key;
+
+  if (overflow_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, overflow_page);
+    }
+  if (prev_overflow_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_overflow_page);
+    }
 
 #if defined (SERVER_MODE)
   if (!OID_ISNULL (&find_unique_helper->locked_oid))
@@ -29451,6 +29912,9 @@ error_or_not_found:
  * btid_int (in)	  : B-tree identifier.
  * key (in)		  : Key.
  * leaf_page (in/out)     : Pointer to leaf node page.
+ * overflow_page (in/out) : Pointer to fixed overflow page. If leaf page must
+ *			    be unfixed, this will be unfixed too (without
+ *			    fixing it again).
  * oid (in)		  : OID of object to lock.
  * class_oid (in)	  : Class OID of object to lock.
  * lock_mode (in)	  : Lock mode.
@@ -29466,6 +29930,7 @@ error_or_not_found:
 static int
 btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		       DB_VALUE * key, PAGE_PTR * leaf_page,
+		       PAGE_PTR * overflow_page,
 		       OID * oid, OID * class_oid, LOCK lock_mode,
 		       BTREE_SEARCH_KEY_HELPER * search_key,
 		       bool try_cond_lock, bool * restart,
@@ -29503,6 +29968,14 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
    * leaf page must be unfixed.
    * After lock is obtained, page can be re-fixed and re-used.
    */
+  /* If an overflow page is also fixed, when leaf page is unfixed, overflow
+   * page is also unfixed. It is up to the caller to handle re-fix and resume.
+   */
+  if (*overflow_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, *overflow_page);
+    }
+
   /* Save page VPID. */
   pgbuf_get_vpid (*leaf_page, &leaf_vpid);
   assert (!VPID_ISNULL (&leaf_vpid));
@@ -30068,7 +30541,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
       /* First key object must be locked and returned. */
       find_unique_helper.lock_mode =
 	(scan_op_type == S_SELECT_LOCK_DIRTY) ? S_LOCK : X_LOCK;
-      key_function = btree_key_find_and_lock_unique_non_dirty_version;
+      key_function = btree_key_find_and_lock_unique;
     }
 
   /* Find unique key and object. */
@@ -30107,7 +30580,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
       assert (scan_op_type == S_SELECT
 	      || lock_has_lock_on_object (oid, class_oid,
 					  thread_get_current_tran_index (),
-					  find_unique_helper.lock_mode));
+					  find_unique_helper.lock_mode) > 0);
 #endif /* SERVER_MODE */
 
       return BTREE_KEY_FOUND;
@@ -31919,7 +32392,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	      /* Object already locked. */
 	      assert (lock_has_lock_on_object
 		      (oid, class_oid, thread_get_current_tran_index (),
-		       find_fk_obj->lock_mode));
+		       find_fk_obj->lock_mode) > 0);
 	      lock_result = LK_GRANTED;
 	    }
 	  else
@@ -33718,7 +34191,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  || lock_has_lock_on_object (INSERT_HELPER_OID (insert_helper),
 				      INSERT_HELPER_CLASS_OID (insert_helper),
 				      thread_get_current_tran_index (),
-				      X_LOCK));
+				      X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* Insert new key. */
@@ -33854,7 +34327,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 				 * key ends.
 				 */
   bool dummy_clear_key;		/* Dummy */
-  /* Used by btree_key_find_and_lock_unique_non_dirty_version. */
+  /* Used by btree_key_find_and_lock_unique. */
   BTREE_FIND_UNIQUE_HELPER find_unique_helper =
     BTREE_FIND_UNIQUE_HELPER_INITIALIZER;
   RECINS_STRUCT recins = RECINS_STRUCT_INITIALIZER;	/* Redo recovery
@@ -33913,7 +34386,8 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 #if defined (SERVER_MODE)
   assert (lock_has_lock_on_object (INSERT_HELPER_OID (insert_helper),
 				   INSERT_HELPER_CLASS_OID (insert_helper),
-				   thread_get_current_tran_index (), X_LOCK));
+				   thread_get_current_tran_index (), X_LOCK)
+	  > 0);
 #endif /* SERVER_MODE */
 
   /* TODO: Lock escalation. */
@@ -33933,7 +34407,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
    *         then unique constraint would not be violated. Otherwise, if the
    *         object is not deleted (and nobody else is trying to delete it),
    *         inserting new object is no longer accepted.
-   *         Use btree_key_find_and_lock_unique_non_dirty_version to find and
+   *         Use btree_key_find_and_lock_unique_of_unique to find and
    *         lock the first object.
    *
    * Step 2: Once the first object is locked and it is established that unique
@@ -33956,10 +34430,9 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 
   find_unique_helper.lock_mode = X_LOCK;
   error_code =
-    btree_key_find_and_lock_unique_non_dirty_version (thread_p, btid_int,
-						      key, leaf, search_key,
-						      restart,
-						      &find_unique_helper);
+    btree_key_find_and_lock_unique_of_unique (thread_p, btid_int,
+					      key, leaf, search_key,
+					      restart, &find_unique_helper);
 #if defined (SERVER_MODE)
   /* Transfer locked object from find unique helper to insert helper. */
   COPY_OID (&insert_helper->saved_locked_oid, &find_unique_helper.locked_oid);
