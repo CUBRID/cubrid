@@ -988,7 +988,7 @@ struct btree_insert_helper
     false /* need_update_max_key_len */, \
     false /* is_crt_node_write_latched */, \
     false /* is_root */, \
-    false /* is_unique_key_added_or_deleted */, \
+    true /* is_unique_key_added_or_deleted */, \
     false /* is_unique_multi_update */, \
     false /* is_ha_enabled */, \
     false /* log_operations */, \
@@ -1010,7 +1010,7 @@ struct btree_insert_helper
     false /* need_update_max_key_len */, \
     false /* is_crt_node_write_latched */, \
     false /* is_root */, \
-    false /* is_unique_key_added_or_deleted */, \
+    true /* is_unique_key_added_or_deleted */, \
     false /* is_unique_multi_update */, \
     false /* is_ha_enabled */, \
     false /* log_operations */, \
