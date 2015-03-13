@@ -134,6 +134,9 @@ static void
 tz_timestamp_decode_leap_sec_adj (int timestamp, int *yearp, int *monthsp,
 				  int *dayp, int *hoursp, int *minutesp,
 				  int *secondsp);
+static int tz_offset_with_fixed_ds (const bool src_is_utc,
+				    const TZ_TIME_TYPE until_time_type,
+				    const int gmt_offset_sec);
 #if defined (LINUX)
 static int find_timezone_from_clock (char *timezone_name, int buf_len);
 static int find_timezone_from_localtime (char *timezone_name, int buf_len);
@@ -2849,6 +2852,35 @@ tz_check_ds_match_string (const TZ_OFFSET_RULE * off_rule,
 }
 
 /*
+ * tz_offset_with_fixed_ds  () - Returns an offset that will be used to transform
+ *				 a date into either UTC time reference or
+ *				 local time reference
+ *
+ * Returns: an offset
+ * src_is_utc(in): true if UTC time reference, false otherwise
+ * until_time_type(in): time type of the offset rule
+ * gmt_offset_sec(in): gmt offset of the offset rule 
+ */
+static int
+tz_offset_with_fixed_ds (const bool src_is_utc,
+			 const TZ_TIME_TYPE until_time_type,
+			 const int gmt_offset_sec)
+{
+  int offset = 0;
+
+  if (src_is_utc == true && until_time_type != TZ_TIME_TYPE_UTC)
+    {
+      offset += gmt_offset_sec;
+    }
+  else if (src_is_utc == false && until_time_type == TZ_TIME_TYPE_UTC)
+    {
+      offset -= gmt_offset_sec;
+    }
+
+  return offset;
+}
+
+/*
  * tz_datetime_utc_conv () - 
  *
  * Return: error code
@@ -2991,16 +3023,14 @@ detect_dst:
 
   if (curr_off_rule->ds_type == DS_TYPE_FIXED)
     {
-      int curr_time_offset = 0;
-      /* TODO : (do we need code for types : wall, standard ?) */
-      if (curr_off_rule->until_time_type == TZ_TIME_TYPE_UTC)
-	{
-	  curr_time_offset += gmt_std_offset_sec;
-	}
+      int curr_time_offset;
 
-      if (FULL_DATE (src_julian_date, src_time_sec)
-	  <= FULL_DATE (rule_julian_date, rule_time_sec
-			+ TIME_OFFSET (src_is_utc, curr_time_offset)))
+      curr_time_offset =
+	tz_offset_with_fixed_ds (src_is_utc, curr_off_rule->until_time_type,
+				 gmt_std_offset_sec);
+
+      if (FULL_DATE (src_julian_date, src_time_sec + curr_time_offset)
+	  <= FULL_DATE (rule_julian_date, rule_time_sec))
 	{
 	  if (src_is_utc == false
 	      && tz_info->zone.dst_str[0] != '\0'
@@ -3278,9 +3308,17 @@ detect_dst:
     }
   else
     {
+      int src_offset;
       assert (applying_ds_id == -1);
+
+      src_offset =
+	tz_offset_with_fixed_ds (src_is_utc, curr_off_rule->until_time_type,
+				 gmt_std_offset_sec);
+
       /* try next GMT offset zone */
-      if (next_off_rule == NULL)
+      if (next_off_rule == NULL
+	  || (FULL_DATE (src_julian_date, src_time_sec + src_offset)
+	      <= FULL_DATE (rule_julian_date, rule_time_sec)))
 	{
 	  /* check if provided DS specifier matches the offset rule format */
 	  if (tz_info->zone.dst_str[0] != '\0'
