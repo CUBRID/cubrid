@@ -24751,8 +24751,31 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
 	    }
 	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS],
 		       MVCC_GET_FLAG (&mvcc_header));
-	  DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION],
-		       &MVCC_GET_NEXT_VERSION (&mvcc_header));
+	  if (MVCC_IS_FLAG_SET (&mvcc_header,
+				OR_MVCC_FLAG_VALID_NEXT_VERSION))
+	    {
+	      DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION],
+			   &MVCC_GET_NEXT_VERSION (&mvcc_header));
+	      if (MVCC_IS_FLAG_SET (&mvcc_header,
+				    OR_MVCC_FLAG_VALID_PARTITION_OID))
+		{
+		  DB_MAKE_OID (record_info
+			       [HEAP_RECORD_INFO_T_MVCC_PARTITION_OID],
+			       &MVCC_GET_PARTITION_OID (&mvcc_header));
+		}
+	      else
+		{
+		  DB_MAKE_NULL (record_info
+				[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
+		}
+	    }
+	  else
+	    {
+	      DB_MAKE_NULL (record_info
+			    [HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION]);
+	      DB_MAKE_NULL (record_info
+			    [HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
+	    }
 	}
       break;
 
@@ -24864,10 +24887,20 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
 	  if (slot_p->record_type == REC_MVCC_NEXT_VERSION)
 	    {
 	      peek_oid = (OID *) forward_recdes.data;
-	      DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION],
-			   peek_oid);
-	      DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID],
-			   &MVCC_GET_PARTITION_OID (&mvcc_header));
+	      DB_MAKE_OID (record_info
+			   [HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION], peek_oid);
+	      if (forward_recdes.length > OR_OID_SIZE)
+		{
+		  peek_oid = (OID *) (forward_recdes.data + OR_OID_SIZE);
+		  DB_MAKE_OID (record_info
+			       [HEAP_RECORD_INFO_T_MVCC_PARTITION_OID],
+			       peek_oid);
+		}
+	      else
+		{
+		  DB_MAKE_NULL (record_info
+				[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
+		}
 	    }
 	  else
 	    {

@@ -325,7 +325,7 @@ struct mvcc_rec_header
   OID partition_oid;		/* partition link */
 };
 #define MVCC_REC_HEADER_INITIALIZER \
-  { 0, 0, MVCCID_NULL, { MVCCID_NULL }, OID_INITIALIZER }
+  { 0, 0, MVCCID_NULL, { MVCCID_NULL }, OID_INITIALIZER, OID_INITIALIZER }
 
 typedef struct mvcc_relocate_delete_info MVCC_RELOCATE_DELETE_INFO;
 struct mvcc_relocate_delete_info
