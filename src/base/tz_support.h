@@ -176,17 +176,20 @@ extern "C"
 					   int *ds_rule_julian_date);
   extern int tz_create_datetimetz (const DB_DATETIME * dt,
 				   const char *tz_str,
+				   const int tz_size,
 				   const TZ_REGION * default_tz_region,
 				   DB_DATETIMETZ * dt_tz,
 				   const char **end_tz_str);
   extern int tz_create_timestamptz (const DB_DATE * date,
 				    const DB_TIME * time, const char *tz_str,
+				    const int tz_size,
 				    const TZ_REGION * default_tz_region,
 				    DB_TIMESTAMPTZ * ts_tz,
 				    const char **end_tz_str);
   extern int tz_create_datetimetz_from_ses (const DB_DATETIME * dt,
 					    DB_DATETIMETZ * dt_tz);
   extern int tz_create_timetz (const DB_TIME * time, const char *tz_str,
+			       const int tz_size,
 			       const TZ_REGION * default_tz_region,
 			       DB_TIMETZ * time_tz, const char **end_tz_str);
   extern int tz_create_timetz_ext (const DB_TIME * time,

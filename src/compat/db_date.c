@@ -3860,6 +3860,7 @@ db_string_to_timetz_ex (const char *str, int str_len,
   DB_TIME time;
   const char *p, *p_end, *str_zone;
   int er_status = NO_ERROR;
+  int str_zone_size = 0;
   TZ_REGION session_tz_region;
 
   *has_zone = false;
@@ -3894,10 +3895,12 @@ db_string_to_timetz_ex (const char *str, int str_len,
     {
       *has_zone = true;
       str_zone = p;
+      str_zone_size = (int) (p_end - str_zone);
     }
 
-  er_status = tz_create_timetz (&time, str_zone, &session_tz_region,
-				time_tz, &p);
+  er_status =
+    tz_create_timetz (&time, str_zone, str_zone_size, &session_tz_region,
+		      time_tz, &p);
   if (er_status != NO_ERROR || str_zone == NULL)
     {
       /* error or no timezone in user string (no trailing chars to check) */
@@ -4048,6 +4051,7 @@ db_string_to_timestamptz_ex (const char *str, int str_len,
   DB_DATE date;
   DB_TIME time;
   int err = NO_ERROR;
+  int str_zone_size = 0;
   const char *p, *p_end, *str_zone;
   TZ_REGION session_tz_region;
 
@@ -4081,10 +4085,11 @@ db_string_to_timestamptz_ex (const char *str, int str_len,
     {
       *has_zone = true;
       str_zone = p;
+      str_zone_size = (int) (p_end - str_zone);
     }
 
-  err = tz_create_timestamptz (&date, &time, str_zone, &session_tz_region,
-			       ts_tz, &p);
+  err = tz_create_timestamptz (&date, &time, str_zone, str_zone_size,
+			       &session_tz_region, ts_tz, &p);
   if (err != NO_ERROR || str_zone == NULL)
     {
       /* error or no timezone in user string (no trailing chars to check) */
@@ -4754,6 +4759,7 @@ db_string_to_datetimetz_ex (const char *str, int str_len,
 			    DB_DATETIMETZ * dt_tz, bool * has_zone)
 {
   int er_status = NO_ERROR;
+  int str_zone_size = 0;
   const char *p, *p_end;
   const char *str_zone = NULL;
   TZ_REGION session_tz_region;
@@ -4780,10 +4786,12 @@ db_string_to_datetimetz_ex (const char *str, int str_len,
     {
       *has_zone = true;
       str_zone = p;
+      str_zone_size = (int) (p_end - str_zone);
     }
 
   er_status = tz_create_datetimetz (&dt_tz->datetime, str_zone,
-				    &session_tz_region, dt_tz, &p);
+				    str_zone_size, &session_tz_region, dt_tz,
+				    &p);
   if (er_status != NO_ERROR || str_zone == NULL)
     {
       /* error or no timezone in user string (no trailing chars to check) */

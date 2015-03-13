@@ -4464,7 +4464,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	TZ_REGION ses_tz_region;
 	char *tz_str_p;
 	int tz_size;
-	char tz_str[CCI_TZ_SIZE + 1];
 
 	net_arg_get_timetz (&hh, &mm, &ss, &tz_str_p, &tz_size, net_value);
 	if (tz_size > CCI_TZ_SIZE)
@@ -4472,9 +4471,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION,
 				   CAS_ERROR_INDICATOR);
 	  }
-
-	strncpy (tz_str, tz_str_p, tz_size);
-	tz_str[tz_size] = '\0';
 
 	err_code = db_time_encode (&time, hh, mm, ss);
 	if (err_code != NO_ERROR)
@@ -4484,8 +4480,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 
 	tz_get_session_tz_region (&ses_tz_region);
 
-	err_code = tz_create_timetz (&time, tz_str, &ses_tz_region, &time_tz,
-				     NULL);
+	err_code = tz_create_timetz (&time, tz_str_p, tz_size,
+				     &ses_tz_region, &time_tz, NULL);
 	if (err_code != NO_ERROR)
 	  {
 	    break;
@@ -4528,7 +4524,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	TZ_REGION ses_tz_region;
 	char *tz_str_p;
 	int tz_size;
-	char tz_str[CCI_TZ_SIZE + 1];
 
 	net_arg_get_timestamptz (&yr, &mon, &day, &hh, &mm, &ss, &tz_str_p,
 				 &tz_size, net_value);
@@ -4537,9 +4532,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION,
 				   CAS_ERROR_INDICATOR);
 	  }
-
-	strncpy (tz_str, tz_str_p, tz_size);
-	tz_str[tz_size] = '\0';
 
 	err_code = db_date_encode (&date, mon, day, yr);
 	if (err_code != NO_ERROR)
@@ -4553,7 +4545,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  }
 	tz_get_session_tz_region (&ses_tz_region);
 
-	err_code = tz_create_timestamptz (&date, &time, tz_str,
+	err_code = tz_create_timestamptz (&date, &time, tz_str_p,
+					  tz_size,
 					  &ses_tz_region, &ts_tz, NULL);
 	if (err_code != NO_ERROR)
 	  {
@@ -4584,7 +4577,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	TZ_REGION ses_tz_region;
 	char *tz_str_p;
 	int tz_size;
-	char tz_str[CCI_TZ_SIZE + 1];
 
 	net_arg_get_datetimetz (&yr, &mon, &day, &hh, &mm, &ss, &ms,
 				&tz_str_p, &tz_size, net_value);
@@ -4594,9 +4586,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 				   CAS_ERROR_INDICATOR);
 	  }
 
-	strncpy (tz_str, tz_str_p, tz_size);
-	tz_str[tz_size] = '\0';
-
 	err_code = db_datetime_encode (&dt, mon, day, yr, hh, mm, ss, ms);
 	if (err_code != NO_ERROR)
 	  {
@@ -4604,8 +4593,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  }
 	tz_get_session_tz_region (&ses_tz_region);
 
-	err_code = tz_create_datetimetz (&dt, tz_str, &ses_tz_region, &dt_tz,
-					 NULL);
+	err_code = tz_create_datetimetz (&dt, tz_str_p, tz_size,
+					 &ses_tz_region, &dt_tz, NULL);
 	if (err_code != NO_ERROR)
 	  {
 	    break;

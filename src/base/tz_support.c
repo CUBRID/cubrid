@@ -1371,6 +1371,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size,
  * tz_str(in): string containing timezone information (zone, daylight saving);
  *	       null-terminated, can be NULL, in which case default_tz_region
  *	       is used
+ * tz_size(in): size of tz_str
  * default_tz_region(in): default timezone region to apply if input string
  *			  does not contain a valid zone information
  * dt_tz(out): object containing datetime value (adjusted to UTC) and
@@ -1385,6 +1386,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size,
  */
 int
 tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str,
+		      const int tz_size,
 		      const TZ_REGION * default_tz_region,
 		      DB_DATETIMETZ * dt_tz, const char **end_tz_str)
 {
@@ -1399,7 +1401,7 @@ tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str,
 
   if (tz_str != NULL)
     {
-      err_status = tz_str_timezone_decode (tz_str, strlen (tz_str), false,
+      err_status = tz_str_timezone_decode (tz_str, tz_size, false,
 					   &tz_info, end_tz_str);
       if (err_status != NO_ERROR)
 	{
@@ -1435,6 +1437,7 @@ exit:
  * tz_str(in): string containing timezone information (zone, daylight saving);
  *	       null-terminated, can be NULL, in which case default_tz_region
  *	       is used
+ * tz_size(in): size of tz_str
  * default_tz_region(in): default timezone region to apply if input string
  *			  does not contain a valid zone information
  * ts_tz(out): object containing timestamp value and timezone info
@@ -1443,6 +1446,7 @@ exit:
 int
 tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time,
 		       const char *tz_str,
+		       const int tz_size,
 		       const TZ_REGION * default_tz_region,
 		       DB_TIMESTAMPTZ * ts_tz, const char **end_tz_str)
 {
@@ -1459,7 +1463,7 @@ tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time,
 
   if (tz_str != NULL)
     {
-      err_status = tz_str_timezone_decode (tz_str, strlen (tz_str), false,
+      err_status = tz_str_timezone_decode (tz_str, tz_size, false,
 					   &tz_info, end_tz_str);
       if (err_status != NO_ERROR)
 	{
@@ -1537,6 +1541,7 @@ exit:
  * time(in): decoded local time value (as appears in the user string)
  * tz_str(in): string containing timezone information (zone, daylight saving);
  *	       null-terminated, can be NULL
+ * tz_size(in): size of tz_str
  * default_tz_region(in): default timezone region to apply if input string
  *		          does not contain a valid zone information
  * time_tz(out): object containing time value (adjusted to UTC) and
@@ -1545,6 +1550,7 @@ exit:
  */
 int
 tz_create_timetz (const DB_TIME * time, const char *tz_str,
+		  const int tz_size,
 		  const TZ_REGION * default_tz_region, DB_TIMETZ * time_tz,
 		  const char **end_tz_str)
 {
@@ -1565,7 +1571,7 @@ tz_create_timetz (const DB_TIME * time, const char *tz_str,
 
   if (tz_str != NULL)
     {
-      err_status = tz_str_timezone_decode (tz_str, strlen (tz_str), true,
+      err_status = tz_str_timezone_decode (tz_str, tz_size, true,
 					   &tz_info, end_tz_str);
       if (err_status != NO_ERROR)
 	{
@@ -1654,7 +1660,7 @@ tz_create_timetz_ext (const DB_TIME * time,
     {
       return err_status;
     }
-  err_status = tz_create_datetimetz (&dt, NULL, &region, &dt_tz, NULL);
+  err_status = tz_create_datetimetz (&dt, NULL, 0, &region, &dt_tz, NULL);
 
   if (err_status == NO_ERROR)
     {

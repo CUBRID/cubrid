@@ -6866,7 +6866,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	  }
 
 	tz_id_to_region (&tz_id, &tz_region);
-	error = tz_create_datetimetz (&result_datetime, NULL, &tz_region,
+	error = tz_create_datetimetz (&result_datetime, NULL, 0, &tz_region,
 				      &dt_tz, NULL);
 	if (error != NO_ERROR)
 	  {
@@ -6926,7 +6926,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	(void) db_time_encode (&time_res, rhour, rminute, rsecond);
 	tz_id_to_region (&tz_id, &tz_region);
 	error =
-	  tz_create_timetz (&time_res, NULL, &tz_region, &time_tz, NULL);
+	  tz_create_timetz (&time_res, NULL, 0, &tz_region, &time_tz, NULL);
 	if (error != NO_ERROR)
 	  {
 	    goto error_return;
@@ -21342,7 +21342,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	      TZ_REGION tz_region;
 
 	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL,
+	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
 						   &tz_region, &dt_tz, NULL);
 	      if (error_status != NO_ERROR)
 		{
@@ -21447,7 +21447,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	      TZ_REGION tz_region;
 
 	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL,
+	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
 						   &tz_region, &dt_tz, NULL);
 	      if (error_status != NO_ERROR)
 		{
@@ -22283,7 +22283,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 		  TZ_REGION tz_region;
 
 		  tz_id_to_region (&tz_id, &tz_region);
-		  error_status = tz_create_datetimetz (&db_datetime, NULL,
+		  error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
 						       &tz_region, &dt_tz,
 						       NULL);
 		  if (error_status != NO_ERROR)
@@ -22374,7 +22374,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	      TZ_REGION tz_region;
 
 	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL,
+	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
 						   &tz_region, &dt_tz, NULL);
 	      if (error_status != NO_ERROR)
 		{
@@ -22465,7 +22465,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	      TZ_REGION tz_region;
 
 	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL,
+	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
 						   &tz_region, &dt_tz, NULL);
 	      if (error_status != NO_ERROR)
 		{
@@ -29374,7 +29374,8 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
 	  {
 	    return error;
 	  }
-	error = tz_create_datetimetz (datetime, NULL, &region, &result, NULL);
+	error =
+	  tz_create_datetimetz (datetime, NULL, 0, &region, &result, NULL);
 	if (error != NO_ERROR)
 	  {
 	    return error;
