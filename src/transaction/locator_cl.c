@@ -734,6 +734,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
   cache_lock.isolation = TM_TRAN_ISOLATION ();
   if (ws_get_lock (mop) != NULL_LOCK)
     {
+#if 0
       /* Normally, use current version since the object was already locked.
        * However, for safety reason when promote S_LOCK to X_LOCK is better
        * to use dirty version. This is needed to protect against wrong cached
@@ -742,6 +743,9 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
        */
       if (lock == X_LOCK && ws_get_lock (mop) == S_LOCK
 	  && isclass == LC_INSTANCE)
+#else
+      if (isclass == LC_INSTANCE)
+#endif
 	{
 	  fetch_version_type = LC_FETCH_DIRTY_VERSION;
 	}
@@ -2290,6 +2294,11 @@ locator_fetch_mode_to_lock (DB_FETCH_MODE purpose, LC_OBJTYPE type,
 
   switch (purpose)
     {
+    default:
+      assert (DB_FETCH_READ <= purpose && purpose <= DB_FETCH_EXCLUSIVE_SCAN);
+      /* for release build, assume DB_FETCH_READ */
+      /* fall through */
+
     case DB_FETCH_READ:
       if (type == LC_CLASS)
 	{
@@ -2356,41 +2365,6 @@ locator_fetch_mode_to_lock (DB_FETCH_MODE purpose, LC_OBJTYPE type,
     case DB_FETCH_EXCLUSIVE_SCAN:
       assert (type == LC_CLASS);
       lock = SIX_LOCK;
-      break;
-
-    default:
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "locator_fetch_mode_to_lock: ***SYSTEM ERROR Incorrect "
-		    "fetch purpose mode = %d assume DB_FETCH_READ...***\n",
-		    purpose);
-#endif /* CUBRID_DEBUG */
-
-      if (type == LC_CLASS)
-	{
-	  lock = SCH_S_LOCK;
-	}
-      else if (type == LC_INSTANCE)
-	{
-	  if (fetch_version_type == LC_FETCH_DIRTY_VERSION)
-	    {
-	      lock = S_LOCK;
-	    }
-	  else
-	    {
-	      lock = NULL_LOCK;
-	    }
-	}
-      else
-	{
-	  /* Since we don't know whether the object is class or instance, is the
-	   * responsibility of the server to transform this lock, when he finds
-	   * instance. That's because an instance can't have intention lock.
-	   * Then, the client must cache the transformed lock.
-	   */
-	  lock = IS_LOCK;
-	}
-
       break;
     }
 

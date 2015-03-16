@@ -2762,6 +2762,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
    * only if the transaction already has a lock. This means that is not
    * necessary to request the lock again. 
    */
+#if 0				/* TEMPORARILY DISABLE THE ASSERTION! */
   assert ((OID_EQ (class_oid, oid_Root_class_oid))
 	  || (LC_FETCH_IS_MVCC_VERSION_NEEDED (fetch_version_type))
 	  || ((lock != NULL_LOCK)
@@ -2772,6 +2773,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 		   (class_oid, oid_Root_class_oid,
 		    LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
 		  || class_lock >= SIX_LOCK)));
+#endif
+
   /*
    * Lock and fetch the object and its class.
    */
