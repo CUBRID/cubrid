@@ -163,7 +163,9 @@ static int logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p,
 						OID * class_oid);
 static GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY
 								 * thread_p,
-								 BTID * btid);
+								 BTID * btid,
+								 bool
+								 load_at_creation);
 static void *logtb_global_unique_stat_alloc (void);
 static int logtb_global_unique_stat_free (void *unique_stat);
 static int logtb_global_unique_stat_init (void *unique_stat);
@@ -6120,14 +6122,17 @@ logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p)
  *   return: the entry associated with btid or NULL in case of error
  *   thread_p  (in) :
  *   btid (in) : the btree id for which the entry will be returned
+ *   load_at_creation (in) : if true and there is no entry in hash for btid then
+ *			     load statistics from btree header into hash
  *
  *    NOTE: The statistics are searched in the global hash. If they are found
- *	    then the found entry is returned. Otherwise the statistics will be
- *	    loaded from the btree header, inserted into the global hash and then
- *	    returned the newly inserted entry.
+ *	    then the found entry is returned. Otherwise a new entry will be
+ *	    created and inserted into hash. If load_at_creation is true then the
+ *	    statistics will be loaded from btree header.
  */
 static GLOBAL_UNIQUE_STATS *
-logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid)
+logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
+				     bool load_at_creation)
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry =
@@ -6136,8 +6141,6 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid)
   int num_oids, num_nulls, num_keys;
 
   assert (btid != NULL);
-  assert ((xbtree_get_unique_pk (thread_p, btid)
-	   & (BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
 
   error_code =
     lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid,
@@ -6148,12 +6151,15 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid)
     }
   if (stats == NULL)
     {
-      error_code =
-	btree_get_unique_statistics (thread_p, btid, &num_oids, &num_nulls,
-				     &num_keys);
-      if (error_code != NO_ERROR)
+      if (load_at_creation)
 	{
-	  return NULL;
+	  error_code =
+	    btree_get_unique_statistics (thread_p, btid, &num_oids,
+					 &num_nulls, &num_keys);
+	  if (error_code != NO_ERROR)
+	    {
+	      return NULL;
+	    }
 	}
       error_code =
 	lf_hash_find_or_insert (t_entry,
@@ -6163,9 +6169,12 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid)
 	{
 	  return NULL;
 	}
-      stats->unique_stats.num_oids = num_oids;
-      stats->unique_stats.num_nulls = num_nulls;
-      stats->unique_stats.num_keys = num_keys;
+      if (load_at_creation)
+	{
+	  stats->unique_stats.num_oids = num_oids;
+	  stats->unique_stats.num_nulls = num_nulls;
+	  stats->unique_stats.num_keys = num_keys;
+	}
     }
 
   return stats;
@@ -6193,7 +6202,7 @@ logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
 
   assert (btid != NULL);
 
-  stats = logtb_get_global_unique_stats_entry (thread_p, btid);
+  stats = logtb_get_global_unique_stats_entry (thread_p, btid, true);
   if (stats == NULL)
     {
       return ER_FAILED;
@@ -6229,7 +6238,11 @@ logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid,
   GLOBAL_UNIQUE_STATS *stats = NULL;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-  stats = logtb_get_global_unique_stats_entry (thread_p, btid);
+  /* Because we update the statistics with absolute values (this means that we
+   * override old values) we don't need to load from btree header old values and,
+   * therefore, we give a 'false' value to 'load_at_creation' parameter
+   */
+  stats = logtb_get_global_unique_stats_entry (thread_p, btid, false);
   if (stats == NULL)
     {
       return ER_FAILED;
@@ -6345,7 +6358,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
       return NO_ERROR;
     }
 
-  stats = logtb_get_global_unique_stats_entry (thread_p, btid);
+  stats = logtb_get_global_unique_stats_entry (thread_p, btid, true);
   if (stats == NULL)
     {
       return ER_FAILED;

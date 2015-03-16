@@ -932,7 +932,15 @@ struct rvfun RV_fun[] = {
    "RVHF_MVCC_REMOVE_PARTITION_LINK",
    heap_rv_mvcc_undo_remove_partition_link,
    heap_rv_mvcc_redo_remove_partition_link,
-   NULL, NULL}
+   NULL, NULL},
+
+  {RVBT_DELETE_INDEX,
+   "RVBT_DELETE_INDEX",
+   NULL,
+   btree_rv_redo_delete_index,
+   NULL,
+   NULL}
+
 };
 
 /*

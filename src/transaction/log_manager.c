@@ -143,6 +143,7 @@ static int rv;
    (!LOG_IS_VACUUM_DATA_RECOVERY (RCVI) \
     && ((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    && ((RCVI) != RVBT_DELETE_INDEX) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
 /* Assume that locator end with <path>/<meta_name>.<key_name> */

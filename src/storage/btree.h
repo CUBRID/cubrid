@@ -848,4 +848,6 @@ extern void btree_mvcc_info_to_heap_mvcc_header (BTREE_MVCC_INFO * mvcc_info,
 
 extern int btree_rv_redo_delete_object (THREAD_ENTRY * thread_p,
 					LOG_RCV * rcv);
+extern int btree_rv_redo_delete_index (THREAD_ENTRY * thread_p,
+				       LOG_RCV * recv);
 #endif /* _BTREE_H_ */

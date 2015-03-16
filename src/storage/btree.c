@@ -6151,6 +6151,8 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   VFID ovfid;
   int ret = NO_ERROR;
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
+  RECDES redo_rec;
+  char redo_rec_buf[OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN], *datap = NULL;
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
@@ -6196,6 +6198,23 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
     }
 
   pgbuf_unfix_and_init (thread_p, P);
+
+  /* This is used by unique indexes at recovery to remove the entry from global
+   * hash. However, a special log for such an important step as index deletion
+   * will be useful, also, for other purposes.
+   */
+  redo_rec.data = NULL;
+  redo_rec.area_size = OR_BTID_ALIGNED_SIZE;
+  redo_rec.data = PTR_ALIGN (redo_rec_buf, BTREE_MAX_ALIGN);
+
+  redo_rec.length = 0;
+  datap = (char *) redo_rec.data;
+  OR_PUT_BTID (datap, btid);
+  datap += OR_BTID_ALIGNED_SIZE;
+  redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
+
+  log_append_redo_data2 (thread_p, RVBT_DELETE_INDEX, NULL, NULL, -1,
+			 redo_rec.length, redo_rec.data);
 
   btid->root_pageid = NULL_PAGEID;
 
@@ -6807,6 +6826,10 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
     {
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
+
+  assert ((root_header->
+	   unique_pk & (BTREE_CONSTRAINT_UNIQUE |
+			BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
 
   *oid_cnt = root_header->num_oids;
   *null_cnt = root_header->num_nulls;
@@ -28564,6 +28587,26 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
   num_keys = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
 
+  /* Because this log record is logical, it will be processed even if the B-tree
+   * was deleted. If the B-tree was deleted then skip update of unique
+   * statistics in global hash.
+   */
+  if (log_Gl.rcv_phase == LOG_RECOVERY_UNDO_PHASE)
+    {
+      /* Only in recovery this is possible */
+      if (disk_isvalid_page (thread_p, btid.vfid.volid, btid.root_pageid) !=
+	  DISK_VALID)
+	{
+	  /* The B-tree was already deleted */
+	  return NO_ERROR;
+	}
+    }
+  else
+    {
+      /* This should not happen */
+      assert (disk_isvalid_page (thread_p, btid.vfid.volid, btid.root_pageid)
+	      == DISK_VALID);
+    }
   if (logtb_update_global_unique_stats_by_delta
       (thread_p, &btid, -num_oids, -num_nulls, -num_keys, false) != NO_ERROR)
     {
@@ -28610,6 +28653,16 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
   num_keys = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
 
+  /* Because this log record is logical, it will be processed even if the B-tree
+   * was deleted. If the B-tree was deleted then skip update of unique
+   * statistics in global hash.
+   */
+  if (disk_isvalid_page (thread_p, btid.vfid.volid, btid.root_pageid) !=
+      DISK_VALID)
+    {
+      /* The B-tree was already deleted */
+      return NO_ERROR;
+    }
   if (logtb_update_global_unique_stats_by_abs
       (thread_p, &btid, num_oids, num_nulls, num_keys, false) != NO_ERROR)
     {
@@ -36364,4 +36417,40 @@ btree_rv_redo_delete_object (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   /* Record successfully updated. */
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
+}
+
+/*
+ * btree_rv_redo_delete_index () -
+ *   return: int
+ *   recv(in): Recovery structure
+ *
+ * Note: Remove unique statistics from global hash
+ */
+int
+btree_rv_redo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+{
+  char *datap;
+  BTID btid;
+  int ret = NO_ERROR;
+
+  assert (recv->length >= OR_BTID_ALIGNED_SIZE);
+
+  /* unpack the index btid */
+  datap = (char *) recv->data;
+
+  OR_GET_BTID (datap, &btid);
+  datap += OR_BTID_ALIGNED_SIZE;
+
+  ret = logtb_delete_global_unique_stats (thread_p, &btid);
+  if (ret != NO_ERROR)
+    {
+      goto error;
+    }
+
+  return NO_ERROR;
+
+error:
+  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+  return ER_GENERIC_ERROR;
 }
