@@ -74,13 +74,6 @@ typedef enum
 enum
 { BTREE_COERCE_KEY_WITH_MIN_VALUE = 1, BTREE_COERCE_KEY_WITH_MAX_VALUE = 2 };
 
-typedef enum
-{
-  BTREE_NO_KEY_LOCKED,
-  BTREE_CURRENT_KEYS_LOCKED,
-  BTREE_ALL_KEYS_LOCKED
-} BTREE_LOCKED_KEYS;
-
 /* B+tree node types */
 typedef enum
 {
@@ -509,19 +502,6 @@ enum btree_op_purpose
 				 */
 };
 
-/* MVCC_BTREE_OP_ARGUMENTS - Structure used to pass arguments relevant for
- *				 MVCC to btree_delete function.
- */
-typedef struct mvcc_btree_op_arguments MVCC_BTREE_OP_ARGUMENTS;
-struct mvcc_btree_op_arguments
-{
-  BTREE_OP_PURPOSE purpose;	/* The purpose of b-tree op call */
-  MVCCID insert_mvccid;
-  MVCCID delete_mvccid;
-};
-#define MVCC_BTREE_OP_ARGUMENTS_INITIALIZER \
-  { BTREE_OP_NO_OP, MVCCID_NULL, MVCCID_NULL }
-
 /* BTREE_MVCC_INFO -
  * Structure used to store b-tree specific MVCC information.
  * Flags field will show which information exists (insert and/or delete
@@ -606,17 +586,19 @@ extern int btree_estimate_total_numpages (THREAD_ENTRY * thread_p,
 
 extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid,
 				 BTREE_CAPACITY * cpc);
-extern DB_VALUE *btree_delete (THREAD_ENTRY * thread_p, BTID * btid,
-			       DB_VALUE * key, OR_BUF * key_buf,
-			       OID * cls_oid, OID * oid,
-			       BTREE_LOCKED_KEYS locked_keys, int *unique,
-			       int op_type,
-			       BTREE_UNIQUE_STATS * unique_stat_info,
-			       MVCC_BTREE_OP_ARGUMENTS * mvcc_args);
+extern int btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid,
+				  DB_VALUE * key, OID * oid, OID * class_oid,
+				  int *unique, int op_type,
+				  BTREE_UNIQUE_STATS * unique_stat_info);
+extern int btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid,
+				       OR_BUF * buffered_key, OID * oid,
+				       OID * class_oid, MVCCID insert_mvccid);
+extern int btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid,
+				OR_BUF * buffered_key, OID * oid,
+				OID * class_oid, MVCCID delete_mvccid);
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid,
 			 DB_VALUE * old_key, DB_VALUE * new_key,
-			 BTREE_LOCKED_KEYS locked_keys, OID * cls_oid,
-			 OID * oid, OID * new_oid, int op_type,
+			 OID * cls_oid, OID * oid, OID * new_oid, int op_type,
 			 BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
 			 MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p,
@@ -746,9 +728,6 @@ extern int btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 			    const char *bt_name,
 			    int severity, int err_id,
 			    const char *filename, int lineno);
-extern BTREE_LOCKED_KEYS btree_get_locked_keys (BTID * delete_btid,
-						BTID * search_btid,
-						bool duplicate_key_locked);
 extern DISK_ISVALID btree_repair_prev_link (THREAD_ENTRY * thread_p,
 					    OID * oid, BTID * btid,
 					    bool repair);

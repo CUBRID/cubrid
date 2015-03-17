@@ -11639,13 +11639,31 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		       * in the middle of a drop index statement, the index
 		       * has already been dropped.
 		       */
-		      error = rem_class_from_index (WS_OID (classop),
-						    &con->index_btid,
-						    sm_ch_heap ((MOBJ)
-								class_));
-		      if (error != NO_ERROR)
+		      /* Don't call rem_class_from_index twice in the same
+		       * index
+		       */
+		      SM_CLASS_CONSTRAINT *other_con;
+		      for (other_con = con->next; other_con != NULL;
+			   other_con = other_con->next)
 			{
-			  goto end;
+			  if (BTID_IS_EQUAL (&con->index_btid,
+					     &other_con->index_btid))
+			    {
+			      /* Found duplicate index. */
+			      break;
+			    }
+			}
+		      if (other_con == NULL)
+			{
+			  /* No duplicate indexes. */
+			  error = rem_class_from_index (WS_OID (classop),
+							&con->index_btid,
+							sm_ch_heap ((MOBJ)
+								    class_));
+			  if (error != NO_ERROR)
+			    {
+			      goto end;
+			    }
 			}
 		    }
 		}

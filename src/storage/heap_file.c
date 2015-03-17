@@ -14518,7 +14518,10 @@ heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
 	{
 	  if (lock_mode != NULL_LOCK)
 	    {
-	      if (OID_IS_ROOTOID (class_oid))
+	      /* If MVCC is disabled for class, object was not locked.
+	       * Lock it now.
+	       */
+	      if (heap_is_mvcc_disabled_for_class (class_oid))
 		{
 		  /* oid is a class - need to lock the class */
 		  heap_scancache_end (thread_p, &scan_cache);
@@ -29036,8 +29039,8 @@ start_current_version:
 
 		  /* remember that we are now scanning an invalid partition.
 		   * The next versions in the chain that are from this class
-	           * will also be invalid.
-	           */
+		   * will also be invalid.
+		   */
 		  is_valid_partition = false;
 		  goto start_current_version;
 		}
@@ -29909,4 +29912,3 @@ heap_rv_mvcc_redo_remove_partition_link (THREAD_ENTRY * thread_p,
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
-

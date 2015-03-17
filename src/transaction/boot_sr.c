@@ -5924,6 +5924,8 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
       dir = NULL;
     }
 
+  mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
+
   /* Now delete the database */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path,
 					log_prefix, false, force_delete);

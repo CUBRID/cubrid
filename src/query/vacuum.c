@@ -2703,7 +2703,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   MVCCID threshold_mvccid = vacuum_Global_oldest_active_mvccid;
   int unique;
   int n_pages = 0;
-  MVCC_BTREE_OP_ARGUMENTS mvcc_args;
   BTREE_MVCC_INFO mvcc_info;
   MVCCID mvccid;
   struct log_vacuum_info log_vacuum;
@@ -2866,16 +2865,42 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	       */
 	      if (MVCCID_IS_VALID (mvcc_info.delete_mvccid))
 		{
-		  mvcc_args.purpose = BTREE_OP_DELETE_VACUUM_OBJECT;
-		  mvcc_args.delete_mvccid = mvcc_info.delete_mvccid;
-		  mvcc_args.insert_mvccid = MVCCID_NULL;
+		  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+				 "VACUUM: thread(%d): vacuum from b-tree: "
+				 "btidp(%d, (%d %d)) oid(%d, %d, %d) "
+				 "class_oid(%d, %d, %d), purpose=rem_object, "
+				 "mvccid=%llu\n",
+				 thread_get_current_entry_index (),
+				 btid_int.sys_btid->root_pageid,
+				 btid_int.sys_btid->vfid.fileid,
+				 btid_int.sys_btid->vfid.volid,
+				 oid.volid, oid.pageid, oid.slotid,
+				 class_oid.volid, class_oid.pageid,
+				 class_oid.slotid, mvcc_info.delete_mvccid);
+		  error_code =
+		    btree_vacuum_object (thread_p, btid_int.sys_btid,
+					 &key_buf, &oid, &class_oid,
+					 mvcc_info.delete_mvccid);
 		}
 	      else if (MVCCID_IS_VALID (mvcc_info.insert_mvccid)
 		       && mvcc_info.insert_mvccid != MVCCID_ALL_VISIBLE)
 		{
-		  mvcc_args.purpose = BTREE_OP_DELETE_VACUUM_INSID;
-		  mvcc_args.insert_mvccid = mvcc_info.insert_mvccid;
-		  mvcc_args.delete_mvccid = MVCCID_NULL;
+		  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+				 "VACUUM: thread(%d): vacuum from b-tree: "
+				 "btidp(%d, (%d %d)) oid(%d, %d, %d) "
+				 "class_oid(%d, %d, %d), purpose=rem_insid, "
+				 "mvccid=%llu\n",
+				 thread_get_current_entry_index (),
+				 btid_int.sys_btid->root_pageid,
+				 btid_int.sys_btid->vfid.fileid,
+				 btid_int.sys_btid->vfid.volid,
+				 oid.volid, oid.pageid, oid.slotid,
+				 class_oid.volid, class_oid.pageid,
+				 class_oid.slotid, mvcc_info.insert_mvccid);
+		  error_code =
+		    btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid,
+						&key_buf, &oid, &class_oid,
+						mvcc_info.insert_mvccid);
 		}
 	      else
 		{
@@ -2898,47 +2923,50 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 		   RVBT_KEYVAL_INS_LFRECORD_MVCC_DELID)
 	    {
 	      /* Object was deleted and must be completely removed. */
-	      mvcc_args.purpose = BTREE_OP_DELETE_VACUUM_OBJECT;
-	      mvcc_args.insert_mvccid = MVCCID_NULL;
-	      mvcc_args.delete_mvccid = mvccid;
+	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+			     "VACUUM: thread(%d): vacuum from b-tree: "
+			     "btidp(%d, (%d %d)) oid(%d, %d, %d) "
+			     "class_oid(%d, %d, %d), purpose=rem_object, "
+			     "mvccid=%llu\n",
+			     thread_get_current_entry_index (),
+			     btid_int.sys_btid->root_pageid,
+			     btid_int.sys_btid->vfid.fileid,
+			     btid_int.sys_btid->vfid.volid,
+			     oid.volid, oid.pageid, oid.slotid,
+			     class_oid.volid, class_oid.pageid,
+			     class_oid.slotid, mvccid);
+	      error_code =
+		btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf,
+				     &oid, &class_oid, mvccid);
 	    }
 	  else
 	    {
 	      /* Object was inserted and only its insert MVCCID must be
 	       * removed.
 	       */
-	      mvcc_args.purpose = BTREE_OP_DELETE_VACUUM_INSID;
-	      mvcc_args.insert_mvccid = mvccid;
-	      mvcc_args.delete_mvccid = MVCCID_NULL;
+	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+			     "VACUUM: thread(%d): vacuum from b-tree: "
+			     "btidp(%d, (%d %d)) oid(%d, %d, %d) "
+			     "class_oid(%d, %d, %d), purpose=rem_insid, "
+			     "mvccid=%llu\n",
+			     thread_get_current_entry_index (),
+			     btid_int.sys_btid->root_pageid,
+			     btid_int.sys_btid->vfid.fileid,
+			     btid_int.sys_btid->vfid.volid,
+			     oid.volid, oid.pageid, oid.slotid,
+			     class_oid.volid, class_oid.pageid,
+			     class_oid.slotid, mvccid);
+	      error_code =
+		btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid,
+					    &key_buf, &oid, &class_oid,
+					    mvccid);
 	    }
-
-	  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			 "VACUUM: thread(%d): vacuum from b-tree: "
-			 "btidp(%d, (%d %d)) oid(%d, %d, %d) "
-			 "class_oid(%d, %d, %d), purpose=%s, mvccid=%llu\n",
-			 thread_get_current_entry_index (),
-			 btid_int.sys_btid->root_pageid,
-			 btid_int.sys_btid->vfid.fileid,
-			 btid_int.sys_btid->vfid.volid,
-			 oid.volid, oid.pageid, oid.slotid,
-			 class_oid.volid, class_oid.pageid, class_oid.slotid,
-			 mvcc_args.purpose == BTREE_OP_DELETE_VACUUM_OBJECT ?
-			 "rem_object" : "rem_insid", mvccid);
-
-	  /* Since data is being removed from b-tree, call btree_delete. */
-	  (void) btree_delete (thread_p, btid_int.sys_btid, NULL, &key_buf,
-			       &class_oid, &oid, BTREE_NO_KEY_LOCKED, &unique,
-			       SINGLE_ROW_DELETE, NULL, &mvcc_args);
-
-	  error_code = er_errid ();
+	  /* Did we have any errors? */
 	  if (error_code != NO_ERROR)
 	    {
 	      /* TODO:
-	       * Right now, errors may occur. For instance, the object or the
-	       * key may not be found (they may have been already vacuumed or
-	       * they may not be found due to ghosting).
 	       * For now, continue vacuuming and log these errors. Must
-	       * investigate and see if these cases can be isolated.
+	       * investigate and see if true error cases can be isolated.
 	       */
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 			     "VACUUM: thread(%d): Error deleting object or "

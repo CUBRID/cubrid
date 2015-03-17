@@ -362,6 +362,11 @@ static bool locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p,
 					       LOCATOR_CLASSNAME_ENTRY *
 					       entry);
 
+static DISK_ISVALID locator_repair_btree_by_delete (THREAD_ENTRY * thread_p,
+						    OID * class_oid,
+						    BTID * btid,
+						    OID * inst_oid);
+
 /*
  * locator_initialize () - Initialize the locator on the server
  *
@@ -6324,7 +6329,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        * op_type to a non pruning operation
        */
 
-      if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (class_oid))
+      if (!heap_is_mvcc_disabled_for_class (class_oid))
 	{
 	  if (oldrecdes == NULL)
 	    {
@@ -6426,19 +6431,26 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		       */
 		      is_update_inplace = true;
 		    }
+		  else
+		    {
+#if defined (SERVER_MODE)
+		      /* If not inserted by me, I must have lock. */
+		      assert (lock_has_lock_on_object
+			      (oid, class_oid,
+			       thread_get_current_tran_index (), X_LOCK) > 0);
+#endif /* SERVER_MODE */
+		    }
 		}
 	    }
 	}
       else
 	{
 	  is_update_inplace = true;
-	  if (mvcc_Enabled)
+	  if (lock_object (thread_p, oid, class_oid, X_LOCK, LK_UNCOND_LOCK)
+	      != LK_GRANTED)
 	    {
-	      if (lock_object (thread_p, oid, class_oid, X_LOCK,
-			       LK_UNCOND_LOCK) != LK_GRANTED)
-		{
-		  goto error;
-		}
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto error;
 	    }
 
 	  if (has_index && oldrecdes == NULL)
@@ -7060,7 +7072,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
       if (isold_object == true && has_index)
 	{
 	  /* if MVCC then delete before updating index */
-	  if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (&class_oid))
+	  if (!heap_is_mvcc_disabled_for_class (&class_oid))
 	    {
 	      if (idx_action_flag == FOR_MOVE)
 		{
@@ -8747,11 +8759,9 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
   OR_PREDICATE *or_pred = NULL;
   PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
   DB_LOGICAL ev_res;
-  BTREE_LOCKED_KEYS locked_keys;
   bool use_mvcc = false;
   MVCCID mvccid;
   MVCC_REC_HEADER *p_mvcc_rec_header = NULL;
-  MVCC_BTREE_OP_ARGUMENTS mvcc_args, *mvcc_args_p = NULL;
 
 /* temporary disable standalone optimization (non-mvcc insert/delete style).
  * Must be activated when dynamic heap is introduced */
@@ -8920,54 +8930,26 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	    }
 	  else
 	    {
-	      if (mvcc_Enabled == false)
-		{
-		  locked_keys =
-		    btree_get_locked_keys (&btid, search_btid,
-					   search_btid_duplicate_key_locked);
-		}
-	      else
-		{
-		  /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery
-		   *       issue regarding MVCCID. Must find a solution to
-		   *       recover MVCC info on rollback (otherwise we will
-		   *       have inconsistencies regarding visibility).
-		   */
-		  /* mvcc_args_p = &mvcc_args;
-		     mvcc_args_p->purpose = MVCC_BTREE_DELETE_OBJECT; */
-		}
-
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_DELETE_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      key_ins_del = btree_delete (thread_p, &btid, key_dbvalue, NULL,
-					  class_oid, inst_oid, locked_keys,
-					  &dummy_unique, op_type,
-					  unique_stat_info,
-					  NULL /* mvcc_args_p */ );
-	      if (key_ins_del == NULL)
+	      error_code =
+		btree_physical_delete (thread_p, &btid, key_dbvalue, inst_oid,
+				       class_oid, &dummy_unique, op_type,
+				       unique_stat_info);
+	      if (error_code != NO_ERROR)
 		{
-		  if (error_code == NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error_code = er_errid ();
-		      if (error_code == NO_ERROR)
-			{
-			  error_code = ER_FAILED;
-			}
-		    }
+		  ASSERT_ERROR ();
+
+#if defined(ENABLE_SYSTEMTAP)
+		  CUBRID_IDX_DELETE_END (classname, index->btname, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 		  goto error;
 		}
 #if defined(ENABLE_SYSTEMTAP)
-	      if (key_ins_del == NULL)
-		{
-		  CUBRID_IDX_DELETE_END (classname, index->btname, 1);
-		}
-	      else
-		{
-		  CUBRID_IDX_DELETE_END (classname, index->btname, 0);
-		}
+	      CUBRID_IDX_DELETE_END (classname, index->btname, 0);
 #endif /* ENABLE_SYSTEMTAP */
 
 	    }
@@ -9502,7 +9484,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   RECDES *recs[2];
   bool same_key = true, same_oid = true;
   int c = DB_UNK;
-  BTREE_LOCKED_KEYS locked_keys;
   bool use_mvcc = false;
   MVCC_REC_HEADER *p_mvcc_rec_header = NULL;
   /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery issue regarding
@@ -9865,34 +9846,19 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		    }
 		  else
 		    {
-		      if (mvcc_Enabled == false)
+		      error_code =
+			btree_physical_delete (thread_p, &old_btid, old_key,
+					       old_oid, class_oid, &unique,
+					       op_type, unique_stat_info);
+		      if (error_code != NO_ERROR)
 			{
-			  locked_keys =
-			    btree_get_locked_keys (&old_btid, search_btid,
-						   search_btid_duplicate_key_locked);
-			}
-		      else
-			{
-			  /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to
-			   * recovery issue regarding MVCCID. Must find a
-			   * solution to recover MVCC info on rollback
-			   * (otherwise we will have inconsistencies regarding
-			   * visibility).
-			   */
-			  /* mvcc_args_p = &mvcc_args;
-			     mvcc_args_p->purpose = MVCC_BTREE_DELETE_OBJECT; */
-			}
+			  ASSERT_ERROR ();
 
-		      if (btree_delete
-			  (thread_p, &old_btid, old_key, NULL, class_oid,
-			   old_oid, locked_keys, &unique, op_type,
-			   unique_stat_info, NULL /* mvcc_args_p */ ) == NULL)
-			{
-			  error_code = er_errid ();
-			  if (!(unique && error_code == ER_BTREE_UNKNOWN_KEY))
-			    {
-			      goto error;
-			    }
+#if defined(ENABLE_SYSTEMTAP)
+			  CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
+			  goto error;
 			}
 		    }
 		}
@@ -9921,24 +9887,17 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 			  CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
 #endif /* ENABLE_SYSTEMTAP */
 
-			  assert (er_errid () != NO_ERROR);
+			  ASSERT_ERROR ();
 			  goto error;
 			}
 		    }
 		  else
 		    {
-		      if (mvcc_Enabled == false)
-			{
-			  locked_keys =
-			    btree_get_locked_keys (&old_btid, search_btid,
-						   search_btid_duplicate_key_locked);
-			}
-
 		      error_code =
 			btree_update (thread_p, &old_btid, old_key, new_key,
-				      locked_keys, class_oid, old_oid,
-				      new_oid, op_type, unique_stat_info,
-				      &unique, p_mvcc_rec_header);
+				      class_oid, old_oid, new_oid, op_type,
+				      unique_stat_info, &unique,
+				      p_mvcc_rec_header);
 
 		      if (error_code != NO_ERROR)
 			{
@@ -10227,13 +10186,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
   OR_INDEX *index = NULL;
   DB_LOGICAL ev_res;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-  /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery issue regarding
-   *       MVCCID. Must find a solution to recover MVCC info on rollback
-   *      (otherwise we will have inconsistencies regarding visibility).
-   */
-  /* MVCC_BTREE_OP_ARGUMENTS mvcc_args, *mvcc_args_p = NULL; */
 
-  if (mvcc_Enabled && class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+  if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
@@ -10401,20 +10355,15 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	    }
 	}
 
-      if (mvcc_Enabled)
+      error_code =
+	btree_physical_delete (thread_p, btid, dbvalue_ptr, &inst_oid,
+			       class_oid, &dummy_unique, MULTI_ROW_DELETE,
+			       &unique_info);
+      if (error_code != NO_ERROR)
 	{
-	  /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery issue
-	   *       regarding MVCCID. Must find a solution to recover MVCC info
-	   *       on rollback (otherwise we will have inconsistencies
-	   *       regarding visibility).
-	   */
-	  /* mvcc_args_p = &mvcc_args;
-	     mvcc_args_p->purpose = MVCC_BTREE_DELETE_OBJECT; */
+	  ASSERT_ERROR ();
+	  goto error;
 	}
-      key_del =
-	btree_delete (thread_p, btid, dbvalue_ptr, NULL, class_oid, &inst_oid,
-		      BTREE_NO_KEY_LOCKED, &dummy_unique, MULTI_ROW_DELETE,
-		      &unique_info, NULL /* mvcc_args_p */ );
     }
 
   if (unique_info.num_nulls != 0 || unique_info.num_keys != 0
@@ -10631,18 +10580,12 @@ locator_repair_btree_by_insert (THREAD_ENTRY * thread_p, OID * class_oid,
 
 static DISK_ISVALID
 locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
-				BTID * btid, BTREE_LOCKED_KEYS locked_keys,
-				OID * inst_oid)
+				BTID * btid, OID * inst_oid)
 {
   DB_VALUE key;
   bool clear_key = false;
   int dummy_unique;
   DISK_ISVALID isvalid = DISK_INVALID;
-  /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery issue regarding
-   *       MVCCID. Must find a solution to recover MVCC info on rollback
-   *      (otherwise we will have inconsistencies regarding visibility).
-   */
-  /* MVCC_BTREE_OP_ARGUMENTS mvcc_args, *mvcc_args_p = NULL; */
 #if defined(SERVER_MODE)
   int tran_index;
 
@@ -10660,19 +10603,9 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
     {
       log_start_system_op (thread_p);
 
-      if (mvcc_Enabled)
-	{
-	  /* TODO: MVCC_BTREE_DELETE_OBJECT is removed due to recovery
-	   *       issue regarding MVCCID. Must find a solution to recover
-	   *       MVCC info on rollback (otherwise we will have
-	   *       inconsistencies regarding visibility).
-	   */
-	  /* mvcc_args_p = &mvcc_args;
-	     mvcc_args_p->purpose = MVCC_BTREE_DELETE_OBJECT; */
-	}
-      if (btree_delete (thread_p, btid, &key, NULL, class_oid, inst_oid,
-			locked_keys, &dummy_unique, SINGLE_ROW_DELETE,
-			NULL, NULL /* mvcc_args_p */ ) != NULL)
+      if (btree_physical_delete (thread_p, btid, &key, inst_oid, class_oid,
+				 &dummy_unique, SINGLE_ROW_DELETE, NULL)
+	  == NO_ERROR)
 	{
 	  isvalid = DISK_VALID;
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
@@ -11033,8 +10966,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 		     the keys has been already S_LOCK-ed, not NX_LOCK-ed */
 		  isvalid =
 		    locator_repair_btree_by_delete (thread_p, class_oid,
-						    btid, BTREE_NO_KEY_LOCKED,
-						    &oid_area[i]);
+						    btid, &oid_area[i]);
 		}
 
 	      if (isvalid == DISK_VALID)
@@ -11509,8 +11441,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 		     the keys has been already S_LOCK-ed, not NX_LOCK-ed */
 		  isvalid =
 		    locator_repair_btree_by_delete (thread_p, class_oid,
-						    btid, BTREE_NO_KEY_LOCKED,
-						    &oid_area[i]);
+						    btid, &oid_area[i]);
 		}
 
 	      if (isvalid == DISK_VALID)
