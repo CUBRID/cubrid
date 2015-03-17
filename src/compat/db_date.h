@@ -132,7 +132,7 @@ extern int db_string_to_timestamptz (const char *str, DB_TIMESTAMPTZ * ts_tz,
 				     bool * has_zone);
 extern int db_string_to_timestamptz_ex (const char *str, int str_len,
 					DB_TIMESTAMPTZ * ts_tz,
-					bool * has_zone);
+					bool * has_zone, bool is_cast);
 extern int db_string_to_timestampltz (const char *str, DB_TIMESTAMP * ts);
 extern int db_string_to_timestampltz_ex (const char *str, int str_len,
 					 DB_TIMESTAMP * ts);

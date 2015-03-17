@@ -83,7 +83,8 @@ static const char *parse_mtime (const char *buf, int buf_len,
 				unsigned int *mtime, bool * is_msec,
 				bool * is_explicit);
 static const char *parse_for_timestamp (const char *buf, int buf_len,
-					DB_DATE * date, DB_TIME * time);
+					DB_DATE * date, DB_TIME * time,
+					bool allow_msec);
 static const char *parse_datetime (const char *buf, int buf_len,
 				   DB_DATETIME * datetime);
 static char const *parse_date_separated (char const *str, char const *strend,
@@ -3622,10 +3623,11 @@ db_date_parse_date (char const *str, int str_len, DB_DATE * date)
  * buf_len(in): the length of the string to be parsed
  * date(out): pointer to a DB_DATE
  * time(out): pointer to a DB_TIME
+ * allow_msec(in): tells if milliseconds format is allowed
  */
 static const char *
 parse_for_timestamp (const char *buf, int buf_len, DB_DATE * date,
-		     DB_TIME * time)
+		     DB_TIME * time, bool allow_msec)
 {
   int error = NO_ERROR;
   const char *p;
@@ -3634,7 +3636,15 @@ parse_for_timestamp (const char *buf, int buf_len, DB_DATE * date,
   p = parse_date (buf, buf_len, date);
   if (p)
     {
-      p = parse_time (p, buf_len - (p - buf), time);
+      if (allow_msec)
+	{
+	  p = parse_mtime (p, buf_len - (p - buf), time, NULL, NULL);
+	  *time /= 1000;
+	}
+      else
+	{
+	  p = parse_time (p, buf_len - (p - buf), time);
+	}
       if (p)
 	{
 	  goto finalcheck;
@@ -3642,7 +3652,16 @@ parse_for_timestamp (const char *buf, int buf_len, DB_DATE * date,
     }
 
   /* If that fails, try to parse a time followed by a date. */
-  p = parse_time (buf, buf_len, time);
+  if (allow_msec)
+    {
+      p = parse_mtime (buf, buf_len, time, NULL, NULL);
+      *time /= 1000;
+    }
+  else
+    {
+      p = parse_time (buf, buf_len, time);
+    }
+
   if (p)
     {
       p = parse_date (p, buf_len - (p - buf), date);
@@ -3990,7 +4009,7 @@ db_string_to_timestamp_ex (const char *str, int str_len, DB_TIMESTAMP * utime)
   TZ_ID dummy_tz_id;
 
   p_end = str + str_len;
-  p = parse_for_timestamp (str, str_len, &date, &time);
+  p = parse_for_timestamp (str, str_len, &date, &time, false);
   if (p != NULL)
     {
       while (p < p_end && char_isspace (p[0]))
@@ -4043,10 +4062,12 @@ db_string_to_timestamp (const char *str, DB_TIMESTAMP * utime)
  * ts_tz(out): a pointer to a DB_TIMESTAMPTZ to be modified
  * has_zone(out): true if string had valid zone information to decode, false
  *		  otherwise
+ * is_cast(in): true if the function is called in a casting context
  */
 int
 db_string_to_timestamptz_ex (const char *str, int str_len,
-			     DB_TIMESTAMPTZ * ts_tz, bool * has_zone)
+			     DB_TIMESTAMPTZ * ts_tz, bool * has_zone,
+			     bool is_cast)
 {
   DB_DATE date;
   DB_TIME time;
@@ -4062,7 +4083,8 @@ db_string_to_timestamptz_ex (const char *str, int str_len,
   tz_get_session_tz_region (&session_tz_region);
   ts_tz->tz_id = 0;
 
-  p = parse_for_timestamp (str, str_len, &date, &time);
+  p = parse_for_timestamp (str, str_len, &date, &time, is_cast);
+
   if (p == NULL)
     {
       goto error_exit;
@@ -4130,7 +4152,8 @@ int
 db_string_to_timestamptz (const char *str, DB_TIMESTAMPTZ * ts_tz,
 			  bool * has_zone)
 {
-  return db_string_to_timestamptz_ex (str, strlen (str), ts_tz, has_zone);
+  return db_string_to_timestamptz_ex (str, strlen (str), ts_tz, has_zone,
+				      false);
 }
 
 /*
@@ -4148,7 +4171,9 @@ db_string_to_timestampltz_ex (const char *str, int str_len, DB_TIMESTAMP * ts)
   DB_TIMESTAMPTZ ts_tz;
   bool dummy_has_zone;
 
-  error = db_string_to_timestamptz_ex (str, str_len, &ts_tz, &dummy_has_zone);
+  error =
+    db_string_to_timestamptz_ex (str, str_len, &ts_tz, &dummy_has_zone,
+				 false);
   if (error != NO_ERROR)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);

@@ -14658,7 +14658,7 @@ db_to_timestamp (const DB_VALUE * src_str,
 	  bool has_zone;
 	  if (db_string_to_timestamptz_ex ((const char *) cs,
 					   last_src - cs, &timestamptz_tmp,
-					   &has_zone) == NO_ERROR)
+					   &has_zone, false) == NO_ERROR)
 	    {
 	      DB_MAKE_TIMESTAMPTZ (result_timestamp, &timestamptz_tmp);
 	      goto exit;

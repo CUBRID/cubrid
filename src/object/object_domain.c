@@ -4928,7 +4928,7 @@ tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp)
   int status = NO_ERROR;
   bool dummy_has_zone;
 
-  if (db_string_to_timestamptz_ex (strp, str_len, temp, &dummy_has_zone)
+  if (db_string_to_timestamptz_ex (strp, str_len, temp, &dummy_has_zone, true)
       != NO_ERROR)
     {
       status = ER_FAILED;
