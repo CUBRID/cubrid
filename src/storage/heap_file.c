@@ -28773,6 +28773,7 @@ exit_on_error:
     }
   return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
+
 /*
  * heap_mvcc_get_partition_link_scancache () - retrieve the partition scan cache
  *
@@ -29121,6 +29122,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
   OID next_version;
   OID next_partition_oid;
   OID rec_buffer[2];
+  char buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   OID_SET_NULL (&partition_oid);
@@ -29291,8 +29293,10 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
       break;
 
     case REC_HOME:
+      recdes.area_size = DB_PAGESIZE;
+      recdes.data = (char *) PTR_ALIGN (buffer, MAX_ALIGNMENT);
       scan_code = spage_get_record (home_page_watcher->pgptr, oid->slotid,
-				    &recdes, PEEK);
+				    &recdes, COPY);
       if (scan_code != S_SUCCESS)
 	{
 	  goto end;
@@ -29315,9 +29319,11 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
     case REC_RELOCATION:
 
       /* peek the forward record */
+      recdes.area_size = DB_PAGESIZE;
+      recdes.data = (char *) PTR_ALIGN (buffer, MAX_ALIGNMENT);
       scan_code =
 	spage_get_record (fwd_page_watcher.pgptr, forward_oid.slotid, &recdes,
-			  PEEK);
+			  COPY);
       if (scan_code != S_SUCCESS)
 	{
 	  goto end;
