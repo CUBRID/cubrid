@@ -602,9 +602,6 @@ struct btree_find_unique_helper
 				 * OID matches this class OID.
 				 */
   LOCK lock_mode;		/* Lock mode for found unique object. */
-  BTREE_SEARCH_KEY_HELPER search_result;	/* Unique object search
-						 * result.
-						 */
   MVCC_SNAPSHOT *snapshot;	/* Snapshot used to filter objects not
 				 * visible. If NULL, objects are not filtered.
 				 */
@@ -621,7 +618,6 @@ struct btree_find_unique_helper
   { OID_INITIALIZER, /* oid */ \
     OID_INITIALIZER, /* match_class_oid */ \
     NULL_LOCK, /* lock_mode */ \
-    BTREE_SEARCH_KEY_HELPER_INITIALIZER, /* search_result */ \
     NULL, /* snapshot */ \
     false, /* found_object */ \
     OID_INITIALIZER, /* locked_oid */ \
@@ -632,7 +628,6 @@ struct btree_find_unique_helper
   { OID_INITIALIZER, /* oid */ \
     OID_INITIALIZER, /* match_class_oid */ \
     NULL_LOCK, /* lock_mode */ \
-    BTREE_SEARCH_KEY_HELPER_INITIALIZER, /* search_result */ \
     NULL, /* snapshot */ \
     false /* found_object */ \
   }
@@ -25502,7 +25497,6 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p,
 
   /* Initialize find unique helper. */
   find_unique_helper->found_object = false;
-  find_unique_helper->search_result = *search_key;
 
   /* Normally, this function should be called only on unique indexes. However
    * there are some exceptions in catalog classes (e.g. db_user, db_class)
@@ -25680,7 +25674,6 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p,
   /* Assume result is BTREE_KEY_NOTFOUND. It will be set to BTREE_KEY_FOUND
    * if key is found and its first object is successfully locked.
    */
-  find_unique_helper->search_result = *search_key;
   find_unique_helper->found_object = false;
 
   if (search_key->result != BTREE_KEY_FOUND)
@@ -25878,7 +25871,6 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p,
 
 error_or_not_found:
   assert (find_unique_helper->found_object == false);
-  find_unique_helper->search_result = *search_key;
 
 #if defined (SERVER_MODE)
   if (!OID_ISNULL (&find_unique_helper->locked_oid))
@@ -25981,7 +25973,6 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p,
   /* Assume result is BTREE_KEY_NOTFOUND. It will be set to BTREE_KEY_FOUND
    * if key is found and its first object is successfully locked.
    */
-  find_unique_helper->search_result = *search_key;
   find_unique_helper->found_object = false;
 
   if (search_key->result != BTREE_KEY_FOUND)
@@ -26273,7 +26264,6 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p,
 
 error_or_not_found:
   assert (find_unique_helper->found_object == false);
-  find_unique_helper->search_result = *search_key;
 
   if (overflow_page != NULL)
     {
@@ -30877,7 +30867,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
     }
 #endif /* SERVER_MODE */
 
-  if (find_unique_helper.search_result.result != BTREE_KEY_FOUND)
+  if (search_key->result != BTREE_KEY_FOUND)
     {
       /* Key was deleted or vacuumed. */
       /* Insert key directly. */
@@ -30901,8 +30891,8 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
       /* TODO: Is this required in STAND ALONE? */
 
       /* Get current key record. */
-      if (spage_get_record (*leaf, find_unique_helper.search_result.slotid,
-			    leaf_record, COPY) != S_SUCCESS)
+      if (spage_get_record (*leaf, search_key->slotid, leaf_record, COPY)
+	  != S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -30990,9 +30980,8 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 	   */
 
 	  /* Get current key record. */
-	  if (spage_get_record (*leaf,
-				find_unique_helper.search_result.slotid,
-				leaf_record, COPY) != S_SUCCESS)
+	  if (spage_get_record (*leaf, search_key->slotid, leaf_record, COPY)
+	      != S_SUCCESS)
 	    {
 	      assert_release (false);
 	      return ER_FAILED;
@@ -31075,9 +31064,8 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
   /* New object can be inserted. */
 
   /* Slot ID points to key in page. */
-  assert (find_unique_helper.search_result.slotid > 0
-	  && (find_unique_helper.search_result.slotid
-	      <= btree_node_number_of_keys (*leaf) + 1));
+  assert (search_key->slotid > 0
+	  && (search_key->slotid <= btree_node_number_of_keys (*leaf) + 1));
 
   /* Insert new object in leaf record:
    * 1. Get current first object.
@@ -31089,8 +31077,8 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
   if (!is_key_record_read)
     {
       /* Get current key record. */
-      if (spage_get_record (*leaf, find_unique_helper.search_result.slotid,
-			    leaf_record, COPY) != S_SUCCESS)
+      if (spage_get_record (*leaf, search_key->slotid, leaf_record, COPY)
+	  != S_SUCCESS)
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
@@ -31128,9 +31116,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
   /* Insert current first object elsewhere. */
   error_code =
     btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf,
-					find_unique_helper.search_result.
-					slotid,
-					leaf_record,
+					search_key->slotid, leaf_record,
 					offset_after_key, &leaf_info,
 					&first_object, insert_helper,
 					true, &relocate_page);
@@ -31164,8 +31150,8 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   /* Update record in page. */
-  if (spage_update (thread_p, *leaf, find_unique_helper.search_result.slotid,
-		    leaf_record) != SP_SUCCESS)
+  if (spage_update (thread_p, *leaf, search_key->slotid, leaf_record)
+      != SP_SUCCESS)
     {
       assert_release (false);
       error_code = ER_FAILED;
@@ -31200,7 +31186,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 		     insert_helper->printed_key != NULL ?
 		     insert_helper->printed_key : "(unknown)",
 		     pgbuf_get_volume_id (*leaf), pgbuf_get_page_id (*leaf),
-		     find_unique_helper.search_result.slotid,
+		     search_key->slotid,
 		     btid_int->sys_btid->root_pageid,
 		     btid_int->sys_btid->vfid.volid,
 		     btid_int->sys_btid->vfid.fileid,
@@ -31277,7 +31263,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 
   assert (n_redo_crumbs <= BTREE_KEY_APPEND_UNIQUE_REDO_CRUMBS_MAX);
 
-  addr.offset = find_unique_helper.search_result.slotid;
+  addr.offset = search_key->slotid;
   addr.pgptr = *leaf;
   addr.vfid = &btid_int->sys_btid->vfid;
   rcvindex =
