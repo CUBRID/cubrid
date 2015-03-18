@@ -47,8 +47,8 @@
 #define MVCC_GET_NEXT_VERSION(header) \
   ((header)->next_version)
 
-#define MVCC_SET_PARTITION_OID(header, partition_oid) \
-  COPY_OID (&((header)->partition_oid), partition_oid)
+#define MVCC_SET_PARTITION_OID(header, part_oid) \
+  ((header)->partition_oid = *(part_oid))
 
 #define MVCC_GET_PARTITION_OID(header) \
   ((header)->partition_oid)

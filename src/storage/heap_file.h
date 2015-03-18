@@ -256,6 +256,58 @@ struct heap_idx_elements_info
   int has_multi_col;		/* class has multi-column index  */
 };
 
+/* heap operation types */
+typedef enum
+{
+  HEAP_OPERATION_NONE = 0,
+  HEAP_OPERATION_INSERT,
+  HEAP_OPERATION_DELETE,
+  HEAP_OPERATION_UPDATE
+} HEAP_OPERATION_TYPE;
+
+/* heap operation information structure */
+typedef struct heap_operation_context HEAP_OPERATION_CONTEXT;
+struct heap_operation_context
+{
+  /* heap operation type */
+  HEAP_OPERATION_TYPE type;
+
+  /* logical operation input */
+  HFID hfid;			/* heap file identifier */
+  OID oid;			/* object identifier */
+  OID next_version;		/* pre-inserted next version for delete case */
+  OID partition_link;		/* partition link */
+  OID class_oid;		/* class object identifier */
+  RECDES *recdes_p;		/* record descriptor */
+  HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
+  bool force_non_mvcc;		/* force a non-mvcc operation */
+
+  /* overflow transient data */
+  RECDES map_recdes;		/* built record descriptor during multipage insert */
+  OID ovf_oid[2];		/* overflow object location */
+
+  /* transient data */
+  RECDES home_recdes;
+  INT16 record_type;		/* record type of original record */
+  FILE_TYPE file_type;		/* the file type of hfid */
+
+  /* physical page watchers - these should not be referenced directly */
+  PGBUF_WATCHER home_page_watcher;	/* home page */
+  PGBUF_WATCHER overflow_page_watcher;	/* overflow page */
+  PGBUF_WATCHER header_page_watcher;	/* header page */
+  PGBUF_WATCHER forward_page_watcher;	/* forward page */
+
+  /* page watchers */
+  PGBUF_WATCHER *home_page_watcher_p;
+  PGBUF_WATCHER *overflow_page_watcher_p;
+  PGBUF_WATCHER *header_page_watcher_p;
+  PGBUF_WATCHER *forward_page_watcher_p;
+
+  /* logical operation output */
+  OID res_oid;			/* object identifier (if operation generates one) */
+  bool is_logical_old;		/* true if initial record was not REC_ASSIGN_ADDRESS */
+};
+
 typedef enum heap_update_style HEAP_UPDATE_STYLE;
 enum heap_update_style
 {
@@ -284,29 +336,8 @@ extern int heap_classrepr_dump_anyfixed (void);
 extern int heap_manager_initialize (void);
 extern int heap_manager_finalize (void);
 extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid,
-				OID * oid, int expected_length);
-extern int heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
-					       const HFID * hfid,
-					       OID * class_oid, OID * oid,
-					       int expected_length);
-extern OID *heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid,
-			 OID * class_oid, OID * oid, RECDES * recdes,
-			 HEAP_SCANCACHE * scan_cache);
-extern const OID *heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
-			       const OID * class_oid, const OID * oid,
-			       RECDES * recdes, OID * new_oid,
-			       bool * old, HEAP_SCANCACHE * scan_cache,
-			       HEAP_UPDATE_STYLE update_in_place);
-extern const OID *heap_mvcc_update_to_row_version (THREAD_ENTRY * thread_p,
-						   const HFID * hfid,
-						   const OID * class_oid,
-						   const OID * oid,
-						   OID * new_oid,
-						   HEAP_SCANCACHE *
-						   scan_cache);
-extern const OID *heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
-			       const OID * class_oid, const OID * oid,
-			       HEAP_SCANCACHE * scan_cache);
+				OID * class_oid, OID * oid,
+				int expected_length);
 extern const OID *heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
 				   const OID * ovf_oid, VFID * ovf_vfid_p);
 extern VFID *heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid,
@@ -762,13 +793,6 @@ extern int heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid,
 				  OID * class_oid, LOCK lock_mode,
 				  SNAPSHOT_TYPE snapshot_type,
 				  OID * locked_oid);
-extern const OID *heap_mvcc_delete_for_partition (THREAD_ENTRY * thread_p,
-						  const HFID * hfid,
-						  const OID * class_oid,
-						  const OID * oid,
-						  HEAP_SCANCACHE * scan_cache,
-						  OID * new_obj_oid,
-						  OID * partition_oid);
 extern int heap_remove_partition_links (THREAD_ENTRY * thread_p,
 					OID * class_oid, OID * oid_list,
 					int no_oids);
@@ -776,4 +800,23 @@ extern int heap_rv_mvcc_redo_remove_partition_link (THREAD_ENTRY * thread_p,
 						    LOG_RCV * rcv);
 extern int heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p,
 						    LOG_RCV * rcv);
+extern void heap_create_insert_context (HEAP_OPERATION_CONTEXT * context,
+					HFID * hfid_p, OID * class_oid_p,
+					RECDES * recdes_p,
+					HEAP_SCANCACHE * scancache_p);
+extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context,
+					HFID * hfid_p, OID * oid_p,
+					OID * class_oid_p,
+					HEAP_SCANCACHE * scancache_p);
+extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context,
+					HFID * hfid_p, OID * oid_p,
+					OID * class_oid_p,
+					RECDES * recdes_p,
+					HEAP_SCANCACHE * scancache_p);
+extern int heap_insert_logical (THREAD_ENTRY * thread_p,
+				HEAP_OPERATION_CONTEXT * context);
+extern int heap_delete_logical (THREAD_ENTRY * thread_p,
+				HEAP_OPERATION_CONTEXT * context);
+extern int heap_update_logical (THREAD_ENTRY * thread_p,
+				HEAP_OPERATION_CONTEXT * context);
 #endif /* _HEAP_FILE_H_ */

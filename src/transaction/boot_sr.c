@@ -579,6 +579,7 @@ boot_max_pages_new_volume (void)
 static VOLID
 boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
 {
+  HEAP_OPERATION_CONTEXT update_context;
   VOLID volid;
   int vol_fd;
   RECDES recdes;		/* Record descriptor which describe the volume. */
@@ -671,10 +672,12 @@ boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
   recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
   recdes.data = (char *) boot_Db_parm;
 
-  if (heap_update (thread_p, &boot_Db_parm->hfid,
-		   &boot_Db_parm->rootclass_oid, boot_Db_parm_oid,
-		   &recdes, NULL, &ignore_old, NULL,
-		   HEAP_UPDATE_IN_PLACE) == NULL)
+  heap_create_update_context (&update_context, &boot_Db_parm->hfid,
+			      boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
+			      &recdes, NULL);
+  update_context.force_non_mvcc = true;
+
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       /* Return back our global area of system parameter */
       if (ext_info->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
@@ -752,6 +755,7 @@ error:
 static int
 boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
 {
+  HEAP_OPERATION_CONTEXT update_context;
   RECDES recdes;		/* Record descriptor which describe the
 				 * volume.
 				 */
@@ -823,10 +827,12 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
   recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
   recdes.data = (char *) boot_Db_parm;
 
-  if (heap_update (thread_p, &boot_Db_parm->hfid,
-		   &boot_Db_parm->rootclass_oid, boot_Db_parm_oid, &recdes,
-		   NULL, &ignore_old, NULL,
-		   HEAP_UPDATE_IN_PLACE) != boot_Db_parm_oid)
+  heap_create_update_context (&update_context, &boot_Db_parm->hfid,
+			      boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
+			      &recdes, NULL);
+  update_context.force_non_mvcc = true;
+
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       boot_Db_parm->temp_nvols++;
       if (boot_Db_parm->temp_nvols == 1)
@@ -1902,14 +1908,19 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p)
   if (boot_Db_parm->temp_nvols != 0
       || boot_Db_parm->temp_last_volid != NULL_VOLID)
     {
+      HEAP_OPERATION_CONTEXT update_context;
       boot_Db_parm->temp_nvols = 0;
       boot_Db_parm->temp_last_volid = NULL_VOLID;
       recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
       recdes.data = (char *) boot_Db_parm;
-      if (heap_update (thread_p, &boot_Db_parm->hfid,
-		       &boot_Db_parm->rootclass_oid, boot_Db_parm_oid,
-		       &recdes, NULL, &old_object, NULL,
-		       HEAP_UPDATE_IN_PLACE) != boot_Db_parm_oid
+
+      heap_create_update_context (&update_context, &boot_Db_parm->hfid,
+				  boot_Db_parm_oid,
+				  &boot_Db_parm->rootclass_oid, &recdes,
+				  NULL);
+      update_context.force_non_mvcc = true;
+
+      if (heap_update_logical (thread_p, &update_context) != NO_ERROR
 	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
 	{
 	  error_code = ER_FAILED;
@@ -1934,6 +1945,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p)
 static int
 boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 {
+  HEAP_OPERATION_CONTEXT update_context;
   int error = NO_ERROR;
   int vol_fd;
   bool ignore_old;
@@ -1967,9 +1979,12 @@ boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
   recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
   recdes.data = (char *) boot_Db_parm;
 
-  if (heap_update (thread_p, &boot_Db_parm->hfid,
-		   &boot_Db_parm->rootclass_oid, boot_Db_parm_oid, &recdes,
-		   NULL, &ignore_old, NULL, HEAP_UPDATE_IN_PLACE) == NULL)
+  heap_create_update_context (&update_context, &boot_Db_parm->hfid,
+			      boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
+			      &recdes, NULL);
+  update_context.force_non_mvcc = true;
+
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       boot_Db_parm->nvols++;
       if (boot_Db_parm->last_volid == prev_volid)
@@ -3874,6 +3889,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   /* If there is an existing query area, delete it. */
   if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
     {
+      HEAP_OPERATION_CONTEXT update_context;
+
       (void) file_destroy (thread_p, &boot_Db_parm->query_vfid);
       boot_Db_parm->query_vfid.fileid = NULL_FILEID;
       boot_Db_parm->query_vfid.volid = NULL_VOLID;
@@ -3881,11 +3898,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
       recdes.data = (char *) boot_Db_parm;
 
-      if (heap_update (thread_p, (const HFID *) &boot_Db_parm->hfid,
-		       (const OID *) &boot_Db_parm->rootclass_oid,
-		       (const OID *) boot_Db_parm_oid, &recdes, NULL,
-		       &old_object, NULL,
-		       HEAP_UPDATE_IN_PLACE) != boot_Db_parm_oid
+      heap_create_update_context (&update_context, &boot_Db_parm->hfid,
+				  boot_Db_parm_oid,
+				  &boot_Db_parm->rootclass_oid, &recdes,
+				  NULL);
+      update_context.force_non_mvcc = true;
+
+      if (heap_update_logical (thread_p, &update_context) != NO_ERROR
 	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
 	{
 	  error_code = ER_FAILED;
@@ -6041,6 +6060,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   RECDES recdes;
   int error_code;
   DBDEF_VOL_EXT_INFO ext_info;
+  HEAP_OPERATION_CONTEXT heapop_context;
   bool ignore_old;
 
   assert (client_credential != NULL);
@@ -6141,7 +6161,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
       || xheap_create (thread_p, &boot_Db_parm->rootclass_hfid, NULL,
 		       false) < 0
       || heap_assign_address (thread_p, &boot_Db_parm->rootclass_hfid,
-			      &boot_Db_parm->rootclass_oid, 0) != NO_ERROR)
+			      NULL, &boot_Db_parm->rootclass_oid,
+			      0) != NO_ERROR)
     {
       goto error;
     }
@@ -6180,15 +6201,21 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   recdes.type = REC_HOME;
   recdes.data = (char *) boot_Db_parm;
 
-  if (heap_insert (thread_p, &boot_Db_parm->hfid,
-		   &boot_Db_parm->rootclass_oid, boot_Db_parm_oid,
-		   &recdes, NULL) != boot_Db_parm_oid)
+  /* Prepare context */
+  heap_create_insert_context (&heapop_context, &boot_Db_parm->hfid,
+			      &boot_Db_parm->rootclass_oid, &recdes, NULL);
+
+  /* Insert and fetch location */
+  if (heap_insert_logical (thread_p, &heapop_context) != NO_ERROR)
     {
       goto error;
     }
+  COPY_OID (boot_Db_parm_oid, &heapop_context.res_oid);
 
   if (mvcc_Enabled)
     {
+      HEAP_OPERATION_CONTEXT update_context;
+
       /* Create file for vacuum data */
       if (vacuum_create_file_for_vacuum_data (thread_p,
 					      boot_Db_parm->
@@ -6209,10 +6236,13 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 	}
 
       /* Update boot_Db_parm */
-      if (heap_update (thread_p, &boot_Db_parm->hfid,
-		       &boot_Db_parm->rootclass_oid, boot_Db_parm_oid,
-		       &recdes, NULL, &ignore_old, NULL,
-		       HEAP_UPDATE_IN_PLACE) != boot_Db_parm_oid)
+      heap_create_update_context (&update_context, &boot_Db_parm->hfid,
+				  boot_Db_parm_oid,
+				  &boot_Db_parm->rootclass_oid, &recdes,
+				  NULL);
+      update_context.force_non_mvcc = true;
+
+      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  goto error;
 	}

@@ -594,6 +594,7 @@ is_class (OID * obj_oid, OID * class_oid)
 static int
 disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 {
+  HEAP_OPERATION_CONTEXT update_context;
   HFID *hfid;
   int save_newsize;
   bool has_indexes, oldflag;
@@ -642,8 +643,11 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       update_indexes (WS_OID (classop), oid, Diskrec);
     }
 
-  if (heap_update (NULL, hfid, WS_OID (classop), oid, Diskrec, NULL, &oldflag,
-		   NULL, HEAP_UPDATE_IN_PLACE) != oid)
+  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop),
+			      Diskrec, NULL);
+  update_context.force_non_mvcc = true;
+
+  if (heap_update_logical (NULL, &update_context) != NO_ERROR)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMPACTDB,

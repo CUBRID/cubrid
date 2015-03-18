@@ -4014,6 +4014,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 			OID * oid_p, OID * root_oid_p, OID * class_oid_p,
 			HFID * hfid_p, HEAP_SCANCACHE * scan_p)
 {
+  HEAP_OPERATION_CONTEXT update_context;
   RECDES record;
   OR_VALUE *attrs;
   OR_VALUE *subset_p, *attr_p;
@@ -4024,8 +4025,8 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
   record.data = NULL;
 
-  if (heap_assign_address_with_class_oid (thread_p, hfid_p, class_oid_p,
-					  oid_p, 0) != NO_ERROR)
+  if (heap_assign_address (thread_p, hfid_p, class_oid_p, oid_p, 0) !=
+      NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4119,8 +4120,11 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
       goto error;
     }
 
-  if (heap_update (thread_p, hfid_p, class_oid_p, oid_p, &record, NULL, &old,
-		   scan_p, HEAP_UPDATE_IN_PLACE) == NULL)
+  heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p,
+			      &record, scan_p);
+  update_context.force_non_mvcc = true;
+
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       error = er_errid ();
       assert (error != NO_ERROR);
@@ -4164,6 +4168,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p,
 			OID * class_oid_p, HFID * hfid_p,
 			HEAP_SCANCACHE * scan_p)
 {
+  HEAP_OPERATION_CONTEXT delete_context;
   RECDES record;
   OR_VALUE *value_p = NULL;
   OR_VALUE *attrs;
@@ -4227,7 +4232,12 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p,
       goto error;
     }
 
-  if (heap_delete (thread_p, hfid_p, class_oid_p, oid_p, scan_p) == NULL)
+  /* build operation context */
+  heap_create_delete_context (&delete_context, hfid_p, oid_p, class_oid_p,
+			      scan_p);
+
+  /* delete */
+  if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4378,6 +4388,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
   if (uflag == true)
     {
+      HEAP_OPERATION_CONTEXT update_context;
+
       record.length = catcls_guess_record_length (old_value_p);
       record.area_size = record.length;
       record.type = REC_HOME;
@@ -4410,8 +4422,11 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 	}
 
       /* update in place */
-      if (heap_update (thread_p, hfid_p, class_oid_p, oid_p, &record, NULL,
-		       &old, scan_p, HEAP_UPDATE_IN_PLACE) == NULL)
+      heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p,
+				  &record, scan_p);
+      update_context.force_non_mvcc = true;
+
+      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -5387,6 +5402,7 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 			     OID * class_oid_p, HFID * hfid_p,
 			     HEAP_SCANCACHE * scan_p)
 {
+  HEAP_OPERATION_CONTEXT update_context, delete_context;
   RECDES record, old_record;
   OR_VALUE *old_value_p = NULL;
   OR_VALUE *attrs, *old_attrs;
@@ -5432,8 +5448,8 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
       goto error;
     }
 
-  if (heap_assign_address_with_class_oid (thread_p, hfid_p, class_oid_p,
-					  new_oid, 0) != NO_ERROR)
+  if (heap_assign_address (thread_p, hfid_p, class_oid_p, new_oid, 0) !=
+      NO_ERROR)
     {
       error = er_errid ();
       goto error;
@@ -5511,8 +5527,11 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
     }
 
   /* heap update new object */
-  if (heap_update (thread_p, hfid_p, class_oid_p, new_oid, &record, NULL,
-		   &old, scan_p, HEAP_UPDATE_IN_PLACE) == NULL)
+  heap_create_update_context (&update_context, hfid_p, new_oid, class_oid_p,
+			      &record, scan_p);
+  update_context.force_non_mvcc = true;
+
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       error = er_errid ();
       goto error;
@@ -5528,8 +5547,11 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
     }
 
   /* link the old version by new version */
-  if (heap_mvcc_update_to_row_version (thread_p, hfid_p, class_oid_p, oid_p,
-				       new_oid, scan_p) == NULL)
+  heap_create_delete_context (&delete_context, hfid_p, oid_p, class_oid_p,
+			      scan_p);
+  COPY_OID (&delete_context.next_version, new_oid);
+
+  if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
     {
       error = er_errid ();
       goto error;

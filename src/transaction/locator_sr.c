@@ -2201,8 +2201,8 @@ xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid,
 {
   int error_code = NO_ERROR;
 
-  if (heap_assign_address_with_class_oid (thread_p, hfid, class_oid, perm_oid,
-					  expected_length) != NO_ERROR)
+  if (heap_assign_address (thread_p, hfid, class_oid, perm_oid,
+			   expected_length) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -5559,6 +5559,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   HEAP_SCANCACHE *local_scan_cache = NULL;
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
   OID null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+  HEAP_OPERATION_CONTEXT context;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -5657,8 +5658,16 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
   assert (!OID_IS_ROOTOID (&real_class_oid));
 
-  if (heap_insert (thread_p, &real_hfid, &real_class_oid, oid, recdes,
-		   local_scan_cache) == NULL)
+  /* adjust recdes type (if we got here it should be REC_HOME or REC_BIGONE;
+     REC_BIGONE is detected and handled in heap_insert_logical */
+  recdes->type = REC_HOME;
+
+  /* prepare context */
+  heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes,
+			      local_scan_cache);
+
+  /* execute insert */
+  if (heap_insert_logical (thread_p, &context) != NO_ERROR)
     {
       /*
        * Problems inserting the object...Maybe, the transaction should be
@@ -5672,6 +5681,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	}
       goto error2;
     }
+  COPY_OID (oid, &context.res_oid);
 
 #if 0				/* TODO - dead code; do not delete me */
   if (OID_IS_ROOTOID (&real_class_oid))
@@ -5698,6 +5708,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
       if (!OID_IS_ROOTOID (oid))
 	{
+	  HEAP_OPERATION_CONTEXT update_context;
 	  char *rep_dir_offset;
 
 	  or_class_rep_dir (recdes, &rep_dir);
@@ -5730,9 +5741,12 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	  OR_PUT_OID (rep_dir_offset, &rep_dir);
 
-	  if (heap_update (thread_p, &real_hfid, &real_class_oid, oid,
-			   recdes, NULL, &isold_object, local_scan_cache,
-			   HEAP_UPDATE_IN_PLACE) == NULL)
+	  heap_create_update_context (&update_context, &real_hfid, oid,
+				      &real_class_oid, recdes,
+				      local_scan_cache);
+	  update_context.force_non_mvcc = true;
+
+	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	    {
 	      /*
 	       * Problems updating the object...Maybe, the transaction should be
@@ -5805,11 +5819,16 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	  if (is_cached)
 	    {
+	      HEAP_OPERATION_CONTEXT update_context;
+
 	      recdes = &new_recdes;
 	      /* Cache object has been updated, we need update the value again */
-	      if (heap_update (thread_p, &real_hfid, &real_class_oid, oid,
-			       recdes, NULL, &isold_object, local_scan_cache,
-			       HEAP_UPDATE_IN_PLACE) == NULL)
+	      heap_create_update_context (&update_context, &real_hfid, oid,
+					  &real_class_oid, recdes,
+					  local_scan_cache);
+	      update_context.force_non_mvcc = true;
+
+	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
@@ -5820,7 +5839,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		  goto error1;
 		}
 
-	      assert (isold_object == true);
+	      assert (update_context.is_logical_old);
+	      isold_object = update_context.is_logical_old;
 	    }
 	}
 
@@ -6076,6 +6096,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
   if (OID_IS_ROOTOID (class_oid))
     {
+      HEAP_OPERATION_CONTEXT update_context;
+
       /*
        * A CLASS: classes do not have any indices...however, the classname
        * to oid table may need to be updated
@@ -6176,9 +6198,11 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    }
 	}
 
-      if (heap_update (thread_p, hfid, class_oid, oid, recdes, NULL,
-		       &isold_object, scan_cache,
-		       HEAP_UPDATE_IN_PLACE) == NULL)
+      heap_create_update_context (&update_context, hfid, oid, class_oid,
+				  recdes, scan_cache);
+      update_context.force_non_mvcc = true;
+
+      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  /*
 	   * Problems updating the object...Maybe, the transaction should be
@@ -6191,8 +6215,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    }
 	  goto error;
 	}
+      isold_object = update_context.is_logical_old;
 
-      if (isold_object)
+      if (update_context.is_logical_old)
 	{
 	  /* Update the catalog as long as it is not the root class */
 	  if (!OID_IS_ROOTOID (oid))
@@ -6218,6 +6243,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	   */
 	  if (!OID_IS_ROOTOID (oid))
 	    {
+	      HEAP_OPERATION_CONTEXT update_context;
 	      or_class_rep_dir (recdes, &rep_dir);
 	      assert (OID_ISNULL (&rep_dir));
 
@@ -6242,9 +6268,11 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	      OR_PUT_OID (rep_dir_offset, &rep_dir);
 
-	      if (heap_update (thread_p, hfid, class_oid, oid, recdes, NULL,
-			       &isold_object, scan_cache,
-			       HEAP_UPDATE_IN_PLACE) == NULL)
+	      heap_create_update_context (&update_context, hfid, oid,
+					  class_oid, recdes, scan_cache);
+	      update_context.force_non_mvcc = true;
+
+	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  /*
 		   * Problems updating the object...Maybe, the transaction should be
@@ -6257,6 +6285,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		    }
 		  goto error;
 		}
+	      isold_object = update_context.is_logical_old;
 
 #if !defined(NDEBUG)
 	      or_class_rep_dir (recdes, &rep_dir);
@@ -6586,10 +6615,12 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
       if (!is_update_inplace)
 	{
+	  HEAP_OPERATION_CONTEXT update_context;
+
 	  /* in MVCC update heap and then indexes */
-	  if (heap_update (thread_p, hfid, class_oid, oid, recdes, new_oid_p,
-			   &isold_object, local_scan_cache,
-			   HEAP_UPDATE_MVCC_STYLE) == NULL)
+	  heap_create_update_context (&update_context, hfid, oid, class_oid,
+				      recdes, local_scan_cache);
+	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	    {
 	      /*
 	       * Problems updating the object...Maybe, the transaction should be
@@ -6603,6 +6634,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	      goto error;
 	    }
+	  COPY_OID (new_oid_p, &update_context.res_oid);
+	  isold_object = update_context.is_logical_old;
 	}
       /* AN INSTANCE: Update indices if any */
 
@@ -6702,9 +6735,13 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        */
       if (is_update_inplace)
 	{
-	  if (heap_update (thread_p, hfid, class_oid, oid, recdes, NULL,
-			   &isold_object, local_scan_cache,
-			   HEAP_UPDATE_IN_PLACE) == NULL)
+	  HEAP_OPERATION_CONTEXT update_context;
+
+	  heap_create_update_context (&update_context, hfid, oid, class_oid,
+				      recdes, local_scan_cache);
+	  update_context.force_non_mvcc = true;
+
+	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	    {
 	      /*
 	       * Problems updating the object...Maybe, the transaction should be
@@ -6717,6 +6754,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		}
 	      goto error;
 	    }
+	  isold_object = update_context.is_logical_old;
 	}
 
       /*
@@ -7074,47 +7112,39 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 	  /* if MVCC then delete before updating index */
 	  if (!heap_is_mvcc_disabled_for_class (&class_oid))
 	    {
+	      HEAP_OPERATION_CONTEXT delete_context;
+
+	      /* build operation context */ 
+		heap_create_delete_context (&delete_context, hfid, oid,
+					    &class_oid, scan_cache);
+
+	      /* treat moving */
 	      if (idx_action_flag == FOR_MOVE)
 		{
 		  assert (new_obj_oid != NULL && partition_oid != NULL);
+		  COPY_OID (&delete_context.next_version, new_obj_oid);
+		  COPY_OID (&delete_context.partition_link, partition_oid);
+		}
 
-		  /* delete a record that is to be placed in another partition */
-		  if (heap_mvcc_delete_for_partition (thread_p, hfid,
-						      &class_oid, oid,
-						      scan_cache, new_obj_oid,
-						      partition_oid) == NULL)
-		    {
-		      error_code = er_errid ();
-		      er_log_debug (ARG_FILE_LINE,
-				    "locator_delete_force: hf_delete failed for tran %d\n",
-				    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-		      if (error_code == NO_ERROR)
-			{
-			  error_code = ER_FAILED;
-			}
-		      goto error;
-		    }
-		}
-	      else
+	      /* attempt delete */ 
+		if (heap_delete_logical (thread_p, &delete_context) !=
+		    NO_ERROR)
 		{
-		  if (heap_delete
-		      (thread_p, hfid, &class_oid, oid, scan_cache) == NULL)
+		  /*
+		   * Problems deleting the object...Maybe, the transaction should be
+		   * aborted by the caller...Quit..
+		   */
+		  error_code = er_errid ();
+		  er_log_debug (ARG_FILE_LINE,
+				"locator_delete_force: hf_delete failed for tran %d\n",
+				LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+		  if (error_code == NO_ERROR)
 		    {
-		      /*
-		       * Problems deleting the object...Maybe, the transaction should be
-		       * aborted by the caller...Quit..
-		       */
-		      error_code = er_errid ();
-		      er_log_debug (ARG_FILE_LINE,
-				    "locator_delete_force: hf_delete failed for tran %d\n",
-				    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-		      if (error_code == NO_ERROR)
-			{
-			  error_code = ER_FAILED;
-			}
-		      goto error;
+		      error_code = ER_FAILED;
 		    }
+		  goto error;
 		}
+
 	      deleted = true;
 	    }
 
@@ -7174,7 +7204,14 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 
   if (!deleted)
     {
-      if (heap_delete (thread_p, hfid, &class_oid, oid, scan_cache) == NULL)
+      HEAP_OPERATION_CONTEXT delete_context;
+
+      /* build operation context */
+      heap_create_delete_context (&delete_context, hfid, oid, &class_oid,
+				  scan_cache);
+
+      /* attempt delete */
+      if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
 	{
 	  /*
 	   * Problems deleting the object...Maybe, the transaction should be

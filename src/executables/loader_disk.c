@@ -282,7 +282,7 @@ disk_reserve_instance (MOP classop, OID * oid)
 	}
       else
 	{
-	  if (heap_assign_address_with_class_oid
+	  if (heap_assign_address
 	      (NULL, hfid, ws_oid (classop), oid, expected) != NO_ERROR)
 	    {
 	      error = ER_LDR_CANT_INSERT;
@@ -380,16 +380,26 @@ disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	}
       else
 	{
+	  HEAP_OPERATION_CONTEXT context;
+
+	  /* set up context */
+	  heap_create_insert_context (&context, hfid, WS_OID (classop),
+				      Diskrec, NULL);
+
 	  /* oid is set here as a side effect */
-	  if (heap_insert (NULL, hfid, WS_OID (classop), oid, Diskrec, NULL)
-	      == NULL)
+	  if (heap_insert_logical (NULL, &context) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else if (has_indexes)
 	    {
+	      COPY_OID (oid, &context.res_oid);
 	      error = update_indexes (WS_OID (classop), oid, Diskrec);
+	    }
+	  else
+	    {
+	      COPY_OID (oid, &context.res_oid);
 	    }
 	}
     }
@@ -411,7 +421,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
   int error = NO_ERROR;
   HFID *hfid;
   int newsize;
-  bool has_indexes = false, oldflag;
+  bool has_indexes = false;
 
   Diskrec->length = 0;
   if (desc_obj_to_disk (obj, Diskrec, &has_indexes))
@@ -436,15 +446,20 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
-      else if (heap_update (NULL, hfid, WS_OID (classop), oid, Diskrec, NULL,
-			    &oldflag, NULL, HEAP_UPDATE_MVCC_STYLE) != oid)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
       else
 	{
-	  if (oldflag)
+	  HEAP_OPERATION_CONTEXT update_context;
+
+	  heap_create_update_context (&update_context, hfid, oid,
+				      WS_OID (classop), Diskrec, NULL);
+
+	  if (heap_update_logical (NULL, &update_context) != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+
+	  if (update_context.is_logical_old)
 	    {
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					       MSGCAT_UTIL_SET_LOADDB,
@@ -527,16 +542,26 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
 	}
       else
 	{
+	  HEAP_OPERATION_CONTEXT context;
+
+	  /* set up context */
+	  heap_create_insert_context (&context, hfid, WS_OID (classop),
+				      Diskrec, NULL);
+
 	  /* oid is set here as a side effect */
-	  if (heap_insert (NULL, hfid, WS_OID (classop), oid, Diskrec, NULL)
-	      == NULL)
+	  if (heap_insert_logical (NULL, &context) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else if (has_indexes)
 	    {
+	      COPY_OID (oid, &context.res_oid);
 	      error = update_indexes (WS_OID (classop), oid, Diskrec);
+	    }
+	  else
+	    {
+	      COPY_OID (oid, &context.res_oid);
 	    }
 	}
     }
@@ -561,7 +586,6 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
   HFID *hfid;
   bool has_indexes = false;
   volatile int newsize = 0;
-  bool oldflag;
   TF_STATUS tf_status = TF_SUCCESS;
 
   Diskrec->length = 0;
@@ -607,15 +631,20 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
-      else if (heap_update (NULL, hfid, WS_OID (classop), oid, Diskrec, NULL,
-			    &oldflag, NULL, HEAP_UPDATE_MVCC_STYLE) != oid)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
       else
 	{
-	  if (oldflag)
+	  HEAP_OPERATION_CONTEXT update_context;
+
+	  heap_create_update_context (&update_context, hfid, oid,
+				      WS_OID (classop), Diskerc, NULL);
+
+	  if (heap_update_logical (NULL, &update_context) != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+
+	  if (update_context.is_logical_old)
 	    {
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					       MSGCAT_UTIL_SET_LOADDB,
