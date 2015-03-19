@@ -32949,7 +32949,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
 #endif /* SERVER_MODE */
 
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_OBJ_DELETE_START (class_oid);
+  CUBRID_OBJ_DELETE_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
   /*
@@ -33025,7 +33025,7 @@ error:
   heap_unfix_watchers (thread_p, context);
 
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_OBJ_DELETE_END (class_oid, (del_oid_p == NULL));
+  CUBRID_OBJ_DELETE_END (&context->class_oid, (rc != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
 
   return rc;
@@ -33110,7 +33110,7 @@ heap_update_logical (THREAD_ENTRY * thread_p,
 #endif /* SERVER_MODE */
 
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_OBJ_UPDATE_START (class_oid);
+  CUBRID_OBJ_UPDATE_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
   /*
@@ -33237,7 +33237,7 @@ error:
   heap_unfix_watchers (thread_p, context);
 
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_OBJ_UPDATE_END (class_oid, 1);
+  CUBRID_OBJ_UPDATE_END (&context->class_oid, (rc != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
 
   return rc;
