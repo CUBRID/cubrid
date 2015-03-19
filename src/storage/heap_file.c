@@ -1194,7 +1194,8 @@ static void heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type,
 /* heap insert related functions */
 static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
 					     RECDES * recdes_p,
-					     bool is_mvcc_op);
+					     bool is_mvcc_op,
+					     bool is_mvcc_class);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
 						HEAP_OPERATION_CONTEXT *
 						context);
@@ -30395,10 +30396,11 @@ heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type,
  */
 static int
 heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
-				  bool is_mvcc_op)
+				  bool is_mvcc_op, bool is_mvcc_class)
 {
   MVCC_REC_HEADER mvcc_rec_header;
   MVCCID mvcc_id;
+  int size = recdes_p->length;
 
   if (recdes_p->type == REC_ASSIGN_ADDRESS)
     {
@@ -30414,7 +30416,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
 
   if (is_mvcc_op)
     {
-      int size = recdes_p->length;
       mvcc_id = logtb_get_current_mvccid (thread_p);
 
       /* set MVCC insertid if necessary */
@@ -30424,20 +30425,22 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
 	  size += OR_MVCCID_SIZE;
 	}
       MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
-
-      if (heap_is_big_length (size))
-	{
-	  /* for multipage records, set MVCC header size to maximum size */
-	  HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
-	}
     }
   else
     {
+      size -= or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+
       /* strip MVCC information and upgrade record */
       if (MVCC_IS_ANY_FLAG_SET (&mvcc_rec_header))
 	{
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
 	}
+    }
+
+  if (is_mvcc_class && heap_is_big_length (size))
+    {
+      /* for multipage records, set MVCC header size to maximum size */
+      HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
 
   /* write the header back to the record */
@@ -32765,8 +32768,11 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
   if (!OID_ISNULL (&context->class_oid)
       && !OID_IS_ROOTOID (&context->class_oid))
     {
+      bool is_mvcc_class =
+	!heap_is_mvcc_disabled_for_class (&context->class_oid);
       if (heap_insert_adjust_recdes_header (thread_p, context->recdes_p,
-					    is_mvcc_op) != NO_ERROR)
+					    is_mvcc_op,
+					    is_mvcc_class) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -33128,8 +33134,11 @@ heap_update_logical (THREAD_ENTRY * thread_p,
   if (!OID_ISNULL (&context->class_oid)
       && !OID_IS_ROOTOID (&context->class_oid))
     {
+      bool is_mvcc_class =
+	!heap_is_mvcc_disabled_for_class (&context->class_oid);
       if (heap_insert_adjust_recdes_header (thread_p, context->recdes_p,
-					    is_mvcc_op) != NO_ERROR)
+					    is_mvcc_op,
+					    is_mvcc_class) != NO_ERROR)
 	{
 	  rc = ER_FAILED;
 	  goto error;
