@@ -1445,7 +1445,6 @@ net_server_start (const char *server_name)
 
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
-  mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
   if (csect_initialize () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize critical section\n");

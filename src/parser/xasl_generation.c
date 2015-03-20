@@ -4263,7 +4263,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      || aggregate_list->function == PT_MIN))
 	{
 	  bool need_unique_index;
-	  bool mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
 
 	  classop = sm_find_class (info->class_name);
 	  if (aggregate_list->function == PT_COUNT_STAR
@@ -4283,26 +4282,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      btid = sm_find_index (classop, NULL, 0,
 				    need_unique_index, false,
 				    &aggregate_list->btid);
-	      if (mvcc_Enabled == false || btid != NULL)
+	      if (btid != NULL)
 		{
 		  /* If btree does not exist, optimize with heap in non-MVCC */
 		  aggregate_list->flag_agg_optimize = true;
-		}
-	    }
-	  else
-	    {
-	      if (mvcc_Enabled == false
-		  && tree->info.function.arg_list->node_type == PT_NAME)
-		{
-		  (void) sm_find_index (classop,
-					(char **) &tree->info.
-					function.arg_list->info.name.
-					original, 1, need_unique_index,
-					true, &aggregate_list->btid);
-		  if (!BTID_IS_NULL (&aggregate_list->btid))
-		    {
-		      aggregate_list->flag_agg_optimize = true;
-		    }
 		}
 	    }
 	}
@@ -13214,30 +13197,27 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 
 	      symbols->current_class = class_;
 
-	      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+	      if (pt_get_mvcc_reev_range_data
+		  (parser, table_info, where_key_part, index_pred,
+		   &where_range, &regu_attributes_range,
+		   &cache_range) != NO_ERROR)
 		{
-		  if (pt_get_mvcc_reev_range_data
-		      (parser, table_info, where_key_part, index_pred,
-		       &where_range, &regu_attributes_range,
-		       &cache_range) != NO_ERROR)
+		  parser_free_tree (parser, key_attrs);
+		  if (key_offsets != NULL)
 		    {
-		      parser_free_tree (parser, key_attrs);
-		      if (key_offsets != NULL)
-			{
-			  free_and_init (key_offsets);
-			}
-		      parser_free_tree (parser, pred_attrs);
-		      if (pred_offsets != NULL)
-			{
-			  free_and_init (pred_offsets);
-			}
-		      parser_free_tree (parser, rest_attrs);
-		      if (rest_offsets != NULL)
-			{
-			  free_and_init (rest_offsets);
-			}
-		      return NULL;
+		      free_and_init (key_offsets);
 		    }
+		  parser_free_tree (parser, pred_attrs);
+		  if (pred_offsets != NULL)
+		    {
+		      free_and_init (pred_offsets);
+		    }
+		  parser_free_tree (parser, rest_attrs);
+		  if (rest_offsets != NULL)
+		    {
+		      free_and_init (rest_offsets);
+		    }
+		  return NULL;
 		}
 
 	      cache_key = regu_cache_attrinfo_alloc ();
@@ -20260,8 +20240,7 @@ pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list,
   PT_NODE *node = NULL, *spec = NULL;
   PT_NODE *real_refs = NULL;
 
-  if (!prm_get_bool_value (PRM_ID_MVCC_ENABLED) || spec_list == NULL
-      || cond == NULL)
+  if (spec_list == NULL || cond == NULL)
     {
       return NO_ERROR;
     }
@@ -20305,8 +20284,7 @@ pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list,
   PT_NODE *real_refs = NULL;
   PT_ASSIGNMENTS_HELPER ah;
 
-  if (!prm_get_bool_value (PRM_ID_MVCC_ENABLED) || spec_list == NULL
-      || assign_list == NULL)
+  if (spec_list == NULL || assign_list == NULL)
     {
       return NO_ERROR;
     }
@@ -20366,8 +20344,7 @@ pt_mvcc_set_spec_assign_reev_extra_indexes (PARSER_CONTEXT * parser,
   PT_ASSIGNMENTS_HELPER ah;
   int idx, count = 0;
 
-  if (!prm_get_bool_value (PRM_ID_MVCC_ENABLED) || spec_list == NULL
-      || assign_list == NULL)
+  if (spec_list == NULL || assign_list == NULL)
     {
       return 0;
     }
@@ -20436,8 +20413,7 @@ pt_mvcc_prepare_upd_del_select (PARSER_CONTEXT * parser,
   PT_NODE *from = NULL, *list = NULL;
   int idx = 0, upd_del_class_cnt = 0;
 
-  if (!prm_get_bool_value (PRM_ID_MVCC_ENABLED) || select_stmt == NULL
-      || select_stmt->node_type != PT_SELECT
+  if (select_stmt == NULL || select_stmt->node_type != PT_SELECT
       || select_stmt->info.query.upd_del_class_cnt == 0)
     {
       return select_stmt;
@@ -20848,14 +20824,11 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 
 	  /* can't use hash aggregation for this, might mess up order */
 	  statement->info.query.q.select.hint |= PT_HINT_NO_HASH_AGGREGATE;
-	  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-	    {
-	      /* The locking at update/delete stage does not work with GROUP BY,
-	       * so, we will lock at SELECT stage. 
-	       */
-	      PT_SELECT_INFO_SET_FLAG (statement,
-				       PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	    }
+	  /* The locking at update/delete stage does not work with GROUP BY,
+	   * so, we will lock at SELECT stage. 
+	   */
+	  PT_SELECT_INFO_SET_FLAG (statement,
+				   PT_SELECT_INFO_MVCC_LOCK_NEEDED);
 	}
 
       /* don't allow orderby_for without order_by */
@@ -20886,7 +20859,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 	  /* no strict oid checking for generated subquery */
 	  PT_SELECT_INFO_SET_FLAG (statement,
 				   PT_SELECT_INFO_NO_STRICT_OID_CHECK);
-	  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) && !server_op)
+	  if (!server_op)
 	    {
 	      /* When UPDATE/DELETE statement is broker-side executed we must
 	       * perform locking at SELECT stage 
@@ -20959,7 +20932,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * in DELETE statement is partitioned. The case of partitioned classes
        * referenced in DELETE will be handled in the future 
        */
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) && !has_partitioned)
+      if (!has_partitioned)
 	{
 	  /* Flag specs that are referenced in conditions and assignments */
 
@@ -21105,21 +21078,18 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+      /* Prepare generated SELECT statement for mvcc reevaluation */
+      aptr_statement =
+	pt_mvcc_prepare_upd_del_select (parser, aptr_statement);
+      if (aptr_statement == NULL)
 	{
-	  /* Prepare generated SELECT statement for mvcc reevaluation */
-	  aptr_statement =
-	    pt_mvcc_prepare_upd_del_select (parser, aptr_statement);
-	  if (aptr_statement == NULL)
+	  error = er_errid ();
+	  if (error == NO_ERROR)
 	    {
-	      error = er_errid ();
-	      if (error == NO_ERROR)
-		{
-		  error = ER_GENERIC_ERROR;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-		}
-	      goto error_return;
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
+	  goto error_return;
 	}
 
       xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
@@ -21591,7 +21561,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   OID *oid = NULL;
   float hint_wait_secs;
   int *mvcc_assign_extra_classes = NULL;
-  bool mvcc_enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
   bool has_partitioned = false, abort_reevaluation = false;
 
 
@@ -21636,7 +21605,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
    * UPDATE statement is partitioned. The case of partitioned classes referenced
    * in UPDATE will be handled in future 
    */
-  if (mvcc_enabled && !has_partitioned)
+  if (!has_partitioned)
     {
       /* Flag specs that are referenced in conditions and assignments. This must
        * be done before the generation of select statement, otherwise it will
@@ -21788,21 +21757,17 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
 
-  if (mvcc_enabled)
+  /* Prepare generated SELECT statement for mvcc reevaluation */
+  aptr_statement = pt_mvcc_prepare_upd_del_select (parser, aptr_statement);
+  if (aptr_statement == NULL)
     {
-      /* Prepare generated SELECT statement for mvcc reevaluation */
-      aptr_statement =
-	pt_mvcc_prepare_upd_del_select (parser, aptr_statement);
-      if (aptr_statement == NULL)
+      error = er_errid ();
+      if (error == NO_ERROR)
 	{
-	  error = er_errid ();
-	  if (error == NO_ERROR)
-	    {
-	      error = ER_GENERIC_ERROR;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	  goto cleanup;
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
+      goto cleanup;
     }
 
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);

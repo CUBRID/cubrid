@@ -5108,16 +5108,8 @@ set_iso_level (PARSER_CONTEXT * parser,
     case 2:
     case 3:
     default:
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-	{
-	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		     MSGCAT_MVCC_RUNTIME_XACT_ISO_LVL_MSG);
-	}
-      else
-	{
-	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		     MSGCAT_RUNTIME_XACT_ISO_LVL_MSG);
-	}
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		 MSGCAT_MVCC_RUNTIME_XACT_ISO_LVL_MSG);
       error = ER_GENERIC_ERROR;
     }
 
@@ -8464,7 +8456,6 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
   PT_NODE *lhs = NULL, *att = NULL, *pointer = NULL, *spec = NULL;
   PT_NODE *assignment = NULL;
   DB_OBJECT *class_obj = NULL;
-  bool mvcc_enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
 
   assignment = statement->node_type == PT_MERGE
     ? statement->info.merge.update.assignment
@@ -8518,35 +8509,13 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 	      goto exit_on_error;
 	    }
 
-	  if (mvcc_enabled)
+	  if (!*has_unique
+	      && sm_class_has_unique_constraint (class_obj,
+						 spec->info.spec.only_all ==
+						 PT_ALL))
 	    {
-	      if (!*has_unique
-		  && sm_class_has_unique_constraint (class_obj,
-						     spec->info.spec.
-						     only_all == PT_ALL))
-		{
-		  *has_unique = 1;
-		  spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
-		}
-	    }
-	  else
-	    {
-	      if (*has_unique == 0
-		  && sm_att_unique_constrained (class_obj,
-						att->info.name.original))
-		{
-		  *has_unique = 1;
-		  spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
-		}
-	      if (*has_unique == 0
-		  && sm_att_in_unique_filter_constraint_predicate (class_obj,
-								   att->info.
-								   name.
-								   original))
-		{
-		  *has_unique = 1;
-		  spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
-		}
+	      *has_unique = 1;
+	      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
 	    }
 	  if (sm_att_constrained (class_obj, att->info.name.original,
 				  SM_ATTFLAG_NON_NULL))

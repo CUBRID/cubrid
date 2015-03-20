@@ -197,8 +197,6 @@ struct archive_log_header_scan_context
   struct log_arv_header header;
 };
 
-bool mvcc_Enabled;
-
 /*
  * The maximum number of times to try to undo a log record.
  * It is only used by the log_undo_rec_restartable() function.
@@ -6109,10 +6107,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	}
 
       /* clear mvccid before releasing the locks */
-      if (mvcc_Enabled == true)
-	{
-	  logtb_complete_mvcc (thread_p, tdes, false);
-	}
+      logtb_complete_mvcc (thread_p, tdes, false);
 
       lock_unlock_all (thread_p);
 
@@ -6144,10 +6139,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	}
 
       /* clear mvccid before releasing the locks */
-      if (mvcc_Enabled == true)
-	{
-	  logtb_complete_mvcc (thread_p, tdes, false);
-	}
+      logtb_complete_mvcc (thread_p, tdes, false);
 
       lock_unlock_all (thread_p);
       /* There is no need to create a new transaction identifier */

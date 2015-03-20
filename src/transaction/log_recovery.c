@@ -797,7 +797,6 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   int error_code = NO_ERROR;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
 
   /* Save the transaction index and find the transaction descriptor */
 
@@ -6856,8 +6855,6 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 {
   VACUUM_LOG_BLOCKID mvcc_op_blockid;
   VACUUM_LOG_BLOCKID log_hdr_blockid;
-
-  assert (mvcc_Enabled);
 
   assert (mvccid != MVCCID_NULL);
   assert (mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id));

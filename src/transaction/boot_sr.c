@@ -2945,8 +2945,6 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   sysprm_load_and_init (boot_Db_full_name, NULL);
 #endif /* SERVER_MODE */
 
-  mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
-
   /* If the server is already restarted, shutdown the server */
   if (BO_IS_SERVER_RESTARTED ())
     {
@@ -3506,8 +3504,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       goto error;
     }
 
-  mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
-
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE)
       && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
@@ -3579,8 +3575,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #if defined(DIAG_DEVEL)
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
-#else /* !SERVER_MODE */
-  mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
 #endif /* !SERVER_MODE */
 
   mnt_server_init (MAX_NTRANS);
@@ -5943,8 +5937,6 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
       dir = NULL;
     }
 
-  mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
-
   /* Now delete the database */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path,
 					log_prefix, false, force_delete);
@@ -6060,7 +6052,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   RECDES recdes;
   int error_code;
   DBDEF_VOL_EXT_INFO ext_info;
-  HEAP_OPERATION_CONTEXT heapop_context;
+  HEAP_OPERATION_CONTEXT heapop_context, update_context;
   bool ignore_old;
 
   assert (client_credential != NULL);
@@ -6212,58 +6204,51 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
     }
   COPY_OID (boot_Db_parm_oid, &heapop_context.res_oid);
 
-  if (mvcc_Enabled)
+  /* Create file for vacuum data */
+  if (vacuum_create_file_for_vacuum_data (thread_p,
+					  boot_Db_parm->
+					  vacuum_data_npages,
+					  &boot_Db_parm->vacuum_data_vfid)
+      != NO_ERROR)
     {
-      HEAP_OPERATION_CONTEXT update_context;
-
-      /* Create file for vacuum data */
-      if (vacuum_create_file_for_vacuum_data (thread_p,
-					      boot_Db_parm->
-					      vacuum_data_npages,
-					      &boot_Db_parm->vacuum_data_vfid)
-	  != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      /* Create file for dropped files (tracked by vacuum) */
-      if (vacuum_create_file_for_dropped_files (thread_p,
-						&boot_Db_parm->
-						dropped_files_vfid)
-	  != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      /* Update boot_Db_parm */
-      heap_create_update_context (&update_context, &boot_Db_parm->hfid,
-				  boot_Db_parm_oid,
-				  &boot_Db_parm->rootclass_oid, &recdes,
-				  NULL);
-      update_context.force_non_mvcc = true;
-
-      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      /* TODO: Currently MVCC operation is used in stand-alone including for
-       *       creating database. Vacuum will have to track changes to clean
-       *       up. Remove initialize/load from here when stand-alone is fixed
-       *       to use non-MVCC type operations.
-       */
-      if (vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages,
-			     &boot_Db_parm->vacuum_data_vfid,
-			     &boot_Db_parm->dropped_files_vfid) != NO_ERROR)
-	{
-	  goto error;
-	}
-      if (vacuum_load_dropped_files_from_disk (thread_p) != NO_ERROR)
-	{
-	  goto error;
-	}
-      /* TODO: Remove code until here */
+      goto error;
     }
+
+  /* Create file for dropped files (tracked by vacuum) */
+  if (vacuum_create_file_for_dropped_files (thread_p,
+					    &boot_Db_parm->
+					    dropped_files_vfid) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* Update boot_Db_parm */
+  heap_create_update_context (&update_context, &boot_Db_parm->hfid,
+			      boot_Db_parm_oid,
+			      &boot_Db_parm->rootclass_oid, &recdes, NULL);
+  update_context.force_non_mvcc = true;
+
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* TODO: Currently MVCC operation is used in stand-alone including for
+   *       creating database. Vacuum will have to track changes to clean
+   *       up. Remove initialize/load from here when stand-alone is fixed
+   *       to use non-MVCC type operations.
+   */
+  if (vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages,
+			 &boot_Db_parm->vacuum_data_vfid,
+			 &boot_Db_parm->dropped_files_vfid) != NO_ERROR)
+    {
+      goto error;
+    }
+  if (vacuum_load_dropped_files_from_disk (thread_p) != NO_ERROR)
+    {
+      goto error;
+    }
+  /* TODO: Remove code until here */
 
   /*
    * Create the rest of the other volumes if any

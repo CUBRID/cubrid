@@ -786,8 +786,7 @@ ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
   int error_code = NO_ERROR;
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
 
-  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) && !OID_ISNULL (new_oid)
-      && !OID_EQ (oid, new_oid))
+  if (!OID_ISNULL (new_oid) && !OID_EQ (oid, new_oid))
     {
       /* OID has changed */
       mop = ws_mop_if_exists (oid);
@@ -5695,7 +5694,7 @@ ws_set_mop_fetched_with_current_snapshot (MOP mop)
 MOP
 ws_mvcc_latest_version (MOP mop)
 {
-  if (!prm_get_bool_value (PRM_ID_MVCC_ENABLED) || mop == NULL)
+  if (mop == NULL)
     {
       return mop;
     }
@@ -5722,7 +5721,6 @@ ws_mvcc_latest_permanent_version (MOP mop)
   MOP mop_latest = mop, mvcc_link;
 
   assert (mop != NULL);
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED));
 
   while (mop_latest->mvcc_link != NULL && mop_latest->permanent_mvcc_link)
     {

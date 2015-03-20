@@ -57,8 +57,7 @@
     (recdes_ptr)->data = (char *) ((copy_area_ptr)->mem + \
                                    (oneobj_ptr)->offset); \
     (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length; \
-    if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) \
-	&& !OID_IS_ROOTOID (&((oneobj_ptr)->class_oid))) \
+    if (!OID_IS_ROOTOID (&((oneobj_ptr)->class_oid))) \
       {	\
 	(recdes_ptr)->area_size += \
 	(OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE); \

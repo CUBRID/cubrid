@@ -66,8 +66,7 @@
 							 * related to vacuum.
 							 */
 #define VACUUM_IS_ER_LOG_LEVEL_SET(er_log_level) \
-  (mvcc_Enabled \
-   && ((prm_get_integer_value (PRM_ID_ER_LOG_VACUUM) & (er_log_level)) != 0))
+  ((prm_get_integer_value (PRM_ID_ER_LOG_VACUUM) & (er_log_level)) != 0)
 
 #if defined(SERVER_MODE)
 #define vacuum_er_log(er_log_level, ...) \

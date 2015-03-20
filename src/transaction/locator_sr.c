@@ -2068,13 +2068,10 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   LOCATOR_CLASSNAME_ENTRY *entry;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  return DISK_ERROR;
-	}
+      return DISK_ERROR;
     }
 
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) !=
@@ -3361,14 +3358,11 @@ xlocator_fetch_lockset (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset,
   int error_code = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  error_code = er_errid ();
-	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
-	}
+      error_code = er_errid ();
+      return (error_code == NO_ERROR ? ER_FAILED : error_code);
     }
 
   *fetch_area = NULL;
@@ -3804,13 +3798,10 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p,
   stack[stack_actual_size++] = lockset->num_reqobjs++;	/* Push */
   reqobjs++;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  goto error;
-	}
+      goto error;
     }
 
   /*
@@ -4738,14 +4729,11 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 
   oid_list.oidp = NULL;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  error_code = er_errid ();
-	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
-	}
+      error_code = er_errid ();
+      return (error_code == NO_ERROR ? ER_FAILED : error_code);
     }
 
   db_make_null (&null_value);
@@ -4932,53 +4920,36 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	      for (i = 0; i < oid_cnt; i++)
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
-		  if (mvcc_Enabled)
+		  SCAN_CODE scan_code = S_SUCCESS;
+		  OID updated_oid;
+		  recdes.data = NULL;
+		  /* TO DO - handle reevaluation */
+
+		  scan_code =
+		    heap_mvcc_get_for_delete (thread_p, oid_ptr,
+					      &fkref->self_oid,
+					      &recdes, &scan_cache, COPY,
+					      NULL_CHN, NULL, &updated_oid);
+		  if (scan_code != S_SUCCESS)
 		    {
-		      SCAN_CODE scan_code = S_SUCCESS;
-		      OID updated_oid;
-		      recdes.data = NULL;
-		      /* TO DO - handle reevaluation */
-
-		      scan_code =
-			heap_mvcc_get_for_delete (thread_p, oid_ptr,
-						  &fkref->self_oid,
-						  &recdes, &scan_cache, COPY,
-						  NULL_CHN, NULL,
-						  &updated_oid);
-		      if (scan_code != S_SUCCESS)
+		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 			{
-			  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-			    {
-			      er_log_debug (ARG_FILE_LINE,
-					    "locator_update_force: "
-					    "unknown oid ( %d|%d|%d )\n",
-					    oid_ptr->pageid, oid_ptr->slotid,
-					    oid_ptr->volid);
-			      continue;
-			    }
+			  er_log_debug (ARG_FILE_LINE,
+					"locator_update_force: "
+					"unknown oid ( %d|%d|%d )\n",
+					oid_ptr->pageid, oid_ptr->slotid,
+					oid_ptr->volid);
+			  continue;
+			}
 
-			  error_code = er_errid ();
-			  error_code = (error_code == NO_ERROR ?
-					ER_FAILED : error_code);
-			  goto error1;
-			}
-		      if (!OID_ISNULL (&updated_oid))
-			{
-			  COPY_OID (oid_ptr, &updated_oid);
-			}
+		      error_code = er_errid ();
+		      error_code = (error_code == NO_ERROR ?
+				    ER_FAILED : error_code);
+		      goto error1;
 		    }
-		  else
+		  if (!OID_ISNULL (&updated_oid))
 		    {
-		      /* upgrade U_LOCK to X_LOCK in non-MVCC */
-		      if (lock_object (thread_p, oid_ptr, &fkref->self_oid,
-				       X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				  ER_FK_NOT_GRANTED_LOCK, 1, fkref->fkname);
-			  error_code = ER_FK_NOT_GRANTED_LOCK;
-			  goto error1;
-			}
-
+		      COPY_OID (oid_ptr, &updated_oid);
 		    }
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
@@ -4995,19 +4966,15 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 			{
 			  goto error1;
 			}
-		      if (mvcc_Enabled)
-			{
-			  /* The relationship between primary key and foreign
-			   * key must be reevaluated so we provide to
-			   * reevaluation the primary key. That's because
-			   * between fetch of foreign keys and the deletion the
-			   * foreign keys can be modified by other
-			   * transactions.
-			   */
-			  p_mvcc_reev_data = &mvcc_reev_data;
-			  SET_MVCC_UPDATE_REEV_DATA (p_mvcc_reev_data, NULL,
-						     V_TRUE, key);
-			}
+		      /* The relationship between primary key and foreign key
+		       * must be reevaluated so we provide to reevaluation the
+		       * primary key. That's because between fetch of foreign
+		       * keys and the deletion the foreign keys can be modified
+		       * by other transactions.
+		       */
+		      p_mvcc_reev_data = &mvcc_reev_data;
+		      SET_MVCC_UPDATE_REEV_DATA (p_mvcc_reev_data, NULL,
+						 V_TRUE, key);
 		      error_code = locator_delete_force (thread_p, &hfid,
 							 oid_ptr,
 							 &fkref->self_btid,
@@ -5181,14 +5148,11 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 
   oid_list.oidp = NULL;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  error_code = er_errid ();
-	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
-	}
+      error_code = er_errid ();
+      return (error_code == NO_ERROR ? ER_FAILED : error_code);
     }
 
   db_make_null (&key_val_range.key1);
@@ -5350,51 +5314,36 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	      for (i = 0; i < oid_cnt; i++)
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
-		  if (mvcc_Enabled)
+		  SCAN_CODE scan_code = S_SUCCESS;
+		  OID updated_oid;
+		  recdes.data = NULL;
+		  /* TO DO - handle reevaluation */
+
+		  scan_code =
+		    heap_mvcc_get_for_delete (thread_p, oid_ptr,
+					      &fkref->self_oid, &recdes,
+					      &scan_cache, COPY, NULL_CHN,
+					      NULL, &updated_oid);
+		  if (scan_code != S_SUCCESS)
 		    {
-		      SCAN_CODE scan_code = S_SUCCESS;
-		      OID updated_oid;
-		      recdes.data = NULL;
-		      /* TO DO - handle reevaluation */
-
-		      scan_code =
-			heap_mvcc_get_for_delete (thread_p, oid_ptr,
-						  &fkref->self_oid, &recdes,
-						  &scan_cache, COPY, NULL_CHN,
-						  NULL, &updated_oid);
-		      if (scan_code != S_SUCCESS)
+		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 			{
-			  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-			    {
-			      er_log_debug (ARG_FILE_LINE,
-					    "locator_update_force: "
-					    "unknown oid ( %d|%d|%d )\n",
-					    oid_ptr->pageid, oid_ptr->slotid,
-					    oid_ptr->volid);
-			      continue;
-			    }
+			  er_log_debug (ARG_FILE_LINE,
+					"locator_update_force: "
+					"unknown oid ( %d|%d|%d )\n",
+					oid_ptr->pageid, oid_ptr->slotid,
+					oid_ptr->volid);
+			  continue;
+			}
 
-			  error_code = er_errid ();
-			  error_code = (error_code == NO_ERROR ?
-					ER_FAILED : error_code);
-			  goto error1;
-			}
-		      if (!OID_ISNULL (&updated_oid))
-			{
-			  COPY_OID (oid_ptr, &updated_oid);
-			}
+		      error_code = er_errid ();
+		      error_code = (error_code == NO_ERROR ?
+				    ER_FAILED : error_code);
+		      goto error1;
 		    }
-		  else
+		  if (!OID_ISNULL (&updated_oid))
 		    {
-		      /* update U_LOCK to X_LOCK in non-MVCC */
-		      if (lock_object (thread_p, oid_ptr, &fkref->self_oid,
-				       X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				  ER_FK_NOT_GRANTED_LOCK, 1, fkref->fkname);
-			  error_code = ER_FK_NOT_GRANTED_LOCK;
-			  goto error1;
-			}
+		      COPY_OID (oid_ptr, &updated_oid);
 		    }
 
 		  if ((error_code = heap_attrinfo_clear_dbvalues (&attr_info))
@@ -6485,19 +6434,16 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  if (has_index && oldrecdes == NULL)
 	    {
 	      /* get the old record first */
-	      if (mvcc_Enabled)
+	      local_scan_cache->mvcc_snapshot =
+		logtb_get_mvcc_snapshot (thread_p);
+	      if (local_scan_cache->mvcc_snapshot == NULL)
 		{
-		  local_scan_cache->mvcc_snapshot =
-		    logtb_get_mvcc_snapshot (thread_p);
-		  if (local_scan_cache->mvcc_snapshot == NULL)
+		  error_code = er_errid ();
+		  if (error_code == NO_ERROR)
 		    {
-		      error_code = er_errid ();
-		      if (error_code == NO_ERROR)
-			{
-			  error_code = ER_FAILED;
-			}
-		      goto error;
+		      error_code = ER_FAILED;
 		    }
+		  goto error;
 		}
 
 	      scan =
@@ -6529,14 +6475,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 				    oid->pageid, oid->slotid, oid->volid);
 		    }
 
-		  if (mvcc_Enabled)
-		    {
-		      error_code = ER_HEAP_UNKNOWN_OBJECT;
-		    }
-		  else
-		    {
-		      error_code = ER_FAILED;
-		    }
+		  error_code = ER_HEAP_UNKNOWN_OBJECT;
 		  goto error;
 		}
 	    }
@@ -7114,9 +7053,9 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 	    {
 	      HEAP_OPERATION_CONTEXT delete_context;
 
-	      /* build operation context */ 
-		heap_create_delete_context (&delete_context, hfid, oid,
-					    &class_oid, scan_cache);
+	      /* build operation context */
+	      heap_create_delete_context (&delete_context, hfid, oid,
+					  &class_oid, scan_cache);
 
 	      /* treat moving */
 	      if (idx_action_flag == FOR_MOVE)
@@ -7126,9 +7065,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 		  COPY_OID (&delete_context.partition_link, partition_oid);
 		}
 
-	      /* attempt delete */ 
-		if (heap_delete_logical (thread_p, &delete_context) !=
-		    NO_ERROR)
+	      /* attempt delete */
+	      if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
 		{
 		  /*
 		   * Problems deleting the object...Maybe, the transaction should be
@@ -7435,19 +7373,16 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 	    }
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
 
-	  if (mvcc_Enabled)
+	  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  if (scan_cache.mvcc_snapshot == NULL)
 	    {
-	      scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-	      if (scan_cache.mvcc_snapshot == NULL)
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
 		{
-		  error_code = er_errid ();
-		  if (error_code == NO_ERROR)
-		    {
-		      error_code = ER_FAILED;
-		    }
-
-		  goto error;
+		  error_code = ER_FAILED;
 		}
+
+	      goto error;
 	    }
 
 	  error_code =
@@ -8396,6 +8331,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
   HFID class_hfid;
   OID class_oid;
   OID updated_oid;
+  MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
 
   /*
    * While scanning objects, the given scancache does not fix the last
@@ -8421,39 +8357,30 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
       /* MVCC snapshot no needed for now
        * scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
        */
-      if (mvcc_Enabled)
+      /* The oid has been already locked in select phase, however need to
+       * get the last object that may differ by the current one in case that
+       * transaction updates same OID many times during command execution
+       */
+
+      if (scan_cache && scan_cache->mvcc_snapshot != NULL)
 	{
-	  MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
-	  /* The oid has been already locked in select phase, however need to
-	   * get the last object that may differ by the current one in case that
-	   * transaction updates same OID many times during command execution
-	   */
-
-	  if (scan_cache && scan_cache->mvcc_snapshot != NULL)
-	    {
-	      /* Why is snapshot set to NULL? */
-	      saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
-	      scan_cache->mvcc_snapshot = NULL;
-	    }
-
-	  scan =
-	    heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes,
-				      scan_cache, COPY, NULL_CHN, NULL,
-				      &updated_oid);
-	  if (scan == S_SUCCESS && !OID_ISNULL (&updated_oid))
-	    {
-	      COPY_OID (oid, &updated_oid);
-	    }
-
-	  if (saved_mvcc_snapshot != NULL)
-	    {
-	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
-	    }
+	  /* Why is snapshot set to NULL? */
+	  saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
+	  scan_cache->mvcc_snapshot = NULL;
 	}
-      else
+
+      scan =
+	heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes,
+				  scan_cache, COPY, NULL_CHN, NULL,
+				  &updated_oid);
+      if (scan == S_SUCCESS && !OID_ISNULL (&updated_oid))
 	{
-	  scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY,
-			   NULL_CHN);
+	  COPY_OID (oid, &updated_oid);
+	}
+
+      if (saved_mvcc_snapshot != NULL)
+	{
+	  scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
 	}
 
       if (scan == S_SUCCESS)
@@ -8818,7 +8745,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
-  if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (class_oid))
+  if (!heap_is_mvcc_disabled_for_class (class_oid))
     {
       /* Use MVCC if it's not disabled for current class */
       use_mvcc = true;
@@ -8932,7 +8859,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      if (mvcc_Enabled && index->type == BTREE_FOREIGN_KEY)
+	      if (index->type == BTREE_FOREIGN_KEY)
 		{
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK,
 				   LK_UNCOND_LOCK) != LK_GRANTED)
@@ -9544,7 +9471,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
 
-  if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (class_oid)
+  if (!heap_is_mvcc_disabled_for_class (class_oid)
       && !OID_EQ (old_oid, new_oid))
     {
       use_mvcc = true;
@@ -9904,7 +9831,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		  /* in MVCC - update index key means insert index key */
 		  if ((do_insert_only == true))
 		    {
-		      if (mvcc_Enabled && index->type == BTREE_FOREIGN_KEY)
+		      if (index->type == BTREE_FOREIGN_KEY)
 			{
 			  if (lock_object
 			      (thread_p, new_oid, class_oid, X_LOCK,
@@ -11914,13 +11841,10 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
   DISK_ISVALID rv = DISK_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  return DISK_ERROR;
-	}
+      return DISK_ERROR;
     }
 
   if (boot_find_root_heap (&root_hfid) != NO_ERROR
@@ -12009,15 +11933,11 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
   DISK_ISVALID isallvalid = DISK_VALID;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  return DISK_ERROR;
-	}
+      return DISK_ERROR;
     }
-
 
   /*
    * Find all the classes.
@@ -13294,14 +13214,11 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
   int error_code;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  error_code = er_errid ();
-	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
-	}
+      error_code = er_errid ();
+      return (error_code == NO_ERROR ? ER_FAILED : error_code);
     }
 
   DB_MAKE_NULL (&tmpval);
@@ -13572,7 +13489,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
   /* Set OID to last fetched object */
   COPY_OID (&oid, last_oid);
 
-  if (mvcc_Enabled && class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+  if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
@@ -13832,18 +13749,15 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid,
   bool attrinfo_inited = false;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
+      error = er_errid ();
+      if (error == NO_ERROR)
 	{
-	  error = er_errid ();
-	  if (error == NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	    }
-	  goto error_exit;
+	  error = ER_FAILED;
 	}
+      goto error_exit;
     }
 
   HFID_SET_NULL (&hfid);

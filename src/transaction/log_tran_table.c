@@ -509,13 +509,10 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  if (mvcc_Enabled)
+  error_code = logtb_initialize_mvcctable (thread_p);
+  if (error_code != NO_ERROR)
     {
-      error_code = logtb_initialize_mvcctable (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
+      goto error;
     }
 
   /* Initialize the lock manager and the page buffer pool */
@@ -647,10 +644,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  if (mvcc_Enabled)
-    {
-      logtb_finalize_mvcctable (thread_p);
-    }
+  logtb_finalize_mvcctable (thread_p);
   lock_finalize ();
   pgbuf_finalize ();
   (void) file_manager_finalize (thread_p);
@@ -904,13 +898,10 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 
   if (tran_index != NULL_TRAN_INDEX)
     {
-      if (mvcc_Enabled)
+      if (logtb_allocate_mvcc_info (thread_p) != NO_ERROR)
 	{
-	  if (logtb_allocate_mvcc_info (thread_p) != NO_ERROR)
-	    {
-	      assert (false);
-	      return NULL_TRAN_INDEX;
-	    }
+	  assert (false);
+	  return NULL_TRAN_INDEX;
 	}
 
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, tran_index);
@@ -1349,14 +1340,11 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 	  LSA_COPY (&tdes->head_lsa, log_lsa);
 	}
 
-      if (mvcc_Enabled)
+      /* Need to allocate MVCC info too */
+      if (logtb_allocate_mvcc_info (thread_p) != NO_ERROR)
 	{
-	  /* Need to allocate MVCC info too */
-	  if (logtb_allocate_mvcc_info (thread_p) != NO_ERROR)
-	    {
-	      assert (false);
-	      return NULL;
-	    }
+	  assert (false);
+	  return NULL;
 	}
     }
   else
@@ -1418,16 +1406,13 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index != LOG_SYSTEM_TRAN_INDEX && tdes != NULL)
     {
-      if (mvcc_Enabled)
+      if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 	{
-	  if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
-	    {
-	      logtb_release_mvcc_info (thread_p);
-	    }
-	  else
-	    {
-	      assert (tdes->mvcc_info == NULL);
-	    }
+	  logtb_release_mvcc_info (thread_p);
+	}
+      else
+	{
+	  assert (tdes->mvcc_info == NULL);
 	}
 
       TR_TABLE_CS_ENTER (thread_p);
@@ -2965,19 +2950,9 @@ xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation,
     }
   else
     {
-      if (mvcc_Enabled)
-	{
-	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_MVCC_LOG_INVALID_ISOLATION_LEVEL, 0);
-	  error_code = ER_MVCC_LOG_INVALID_ISOLATION_LEVEL;
-	}
-      else
-	{
-	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LOG_INVALID_ISOLATION_LEVEL, 2,
-		  TRAN_MINVALUE_ISOLATION, TRAN_MAXVALUE_ISOLATION);
-	  error_code = ER_LOG_INVALID_ISOLATION_LEVEL;
-	}
+      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_MVCC_LOG_INVALID_ISOLATION_LEVEL, 0);
+      error_code = ER_MVCC_LOG_INVALID_ISOLATION_LEVEL;
     }
 
   return error_code;
@@ -4312,7 +4287,7 @@ xlogtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p)
   /* Get transaction descriptor */
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  if (!mvcc_Enabled || tdes == NULL || tdes->mvcc_info == NULL
+  if (tdes == NULL || tdes->mvcc_info == NULL
       || tdes->isolation >= TRAN_REPEATABLE_READ)
     {
       /* Nothing to do */
@@ -4700,34 +4675,26 @@ logtb_is_active_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 MVCC_SNAPSHOT *
 logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
-  if (mvcc_Enabled == false)
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (tdes->tran_index == LOG_SYSTEM_TRAN_INDEX
+      || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
-      /* null snapshot if MVCC is disabled */
+      /* System transactions do not have snapshots */
       return NULL;
     }
-  else
-    {
-      LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-      if (tdes->tran_index == LOG_SYSTEM_TRAN_INDEX
-	  || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  assert (tdes != NULL && tdes->mvcc_info != NULL);
+
+  if (!tdes->mvcc_info->mvcc_snapshot.valid)
+    {
+      if (logtb_get_mvcc_snapshot_data (thread_p) != NO_ERROR)
 	{
-	  /* System transactions do not have snapshots */
 	  return NULL;
 	}
-
-      assert (tdes != NULL && tdes->mvcc_info != NULL);
-
-      if (!tdes->mvcc_info->mvcc_snapshot.valid)
-	{
-	  if (logtb_get_mvcc_snapshot_data (thread_p) != NO_ERROR)
-	    {
-	      return NULL;
-	    }
-	}
-
-      return &tdes->mvcc_info->mvcc_snapshot;
     }
+
+  return &tdes->mvcc_info->mvcc_snapshot;
 }
 
 /*
@@ -4747,8 +4714,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;
 
   assert (tdes != NULL);
-
-  assert (mvcc_Enabled == true);
 
   curr_mvcc_info = tdes->mvcc_info;
   if (curr_mvcc_info == NULL)
@@ -5881,7 +5846,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   MVCCID mvcc_sub_id;
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
 
-  assert (mvcc_Enabled == true && tdes != NULL);
+  assert (tdes != NULL);
 
   curr_mvcc_info = tdes->mvcc_info;
   if (curr_mvcc_info == NULL)

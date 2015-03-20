@@ -4258,7 +4258,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_HEAP_SCAN_RECORD_INFO:
       hsidp = &scan_id->s.hsid;
       UT_CAST_TO_NULL_HEAP_OID (&hsidp->hfid, &hsidp->curr_oid);
-      if (mvcc_Enabled && !OID_IS_ROOTOID (&hsidp->cls_oid))
+      if (!OID_IS_ROOTOID (&hsidp->cls_oid))
 	{
 	  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 	  if (mvcc_snapshot == NULL)
@@ -4356,7 +4356,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
-      if (mvcc_Enabled && !OID_IS_ROOTOID (&isidp->cls_oid))
+      if (!OID_IS_ROOTOID (&isidp->cls_oid))
 	{
 	  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 	  if (mvcc_snapshot == NULL)
@@ -5315,7 +5315,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   OID updated_oid;
 
   hsidp = &scan_id->s.hsid;
-  if (mvcc_Enabled == true && scan_id->mvcc_select_lock_needed)
+  if (scan_id->mvcc_select_lock_needed)
     {
       p_current_oid = &current_oid;
     }
@@ -5338,8 +5338,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  sp_scan = heap_scanrange_next (thread_p, &hsidp->curr_oid,
 					 &recdes, &hsidp->scan_range, PEEK);
 
-	  if (mvcc_Enabled == true && scan_id->mvcc_select_lock_needed
-	      && sp_scan == S_SUCCESS)
+	  if (scan_id->mvcc_select_lock_needed && sp_scan == S_SUCCESS)
 	    {
 	      /* data filter already initialized, don't have key or range
 	       * init scan reevaluation structure
@@ -5392,7 +5391,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			       &hsidp->curr_oid, &recdes,
 			       &hsidp->scan_cache, scan_id->fixed);
 
-		  if (mvcc_Enabled == true && scan_id->mvcc_select_lock_needed
+		  if (scan_id->mvcc_select_lock_needed
 		      && sp_scan == S_SUCCESS)
 		    {
 		      /* data filter already initialized, don't have key or range
@@ -5455,7 +5454,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			       &hsidp->curr_oid, &recdes,
 			       &hsidp->scan_cache, scan_id->fixed);
 
-		  if (mvcc_Enabled == true && scan_id->mvcc_select_lock_needed
+		  if (scan_id->mvcc_select_lock_needed
 		      && sp_scan == S_SUCCESS)
 		    {
 		      /* data filter already initialized, don't have key or range
@@ -5532,7 +5531,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       /* evaluate the predicates to see if the object qualifies */
       scan_id->stats.read_rows++;
-      if (mvcc_Enabled == false || !scan_id->mvcc_select_lock_needed)
+      if (!scan_id->mvcc_select_lock_needed)
 	{
 	  ev_res = eval_data_filter (thread_p, p_current_oid, &recdes,
 				     (scan_id->scan_op_type == S_SELECT) ?
@@ -6238,7 +6237,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       recdes.data = NULL;
     }
 
-  if (mvcc_Enabled == false || !scan_id->mvcc_select_lock_needed)
+  if (!scan_id->mvcc_select_lock_needed)
     {
       sp_scan =
 	heap_get (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache,
@@ -6301,8 +6300,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
     }
 
-  if (mvcc_Enabled && sp_scan == S_DOESNT_EXIST
-      && er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+  if (sp_scan == S_DOESNT_EXIST && er_errid () == ER_HEAP_UNKNOWN_OBJECT)
     {
       er_clear ();
       if (SCAN_IS_INDEX_COVERED (isidp))
@@ -6380,7 +6378,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       isidp->cls_regu_inited = true;
     }
 
-  if (mvcc_Enabled == false || !scan_id->mvcc_select_lock_needed)
+  if (!scan_id->mvcc_select_lock_needed)
     {
       /* evaluate the predicates to see if the object qualifies */
       ev_res =

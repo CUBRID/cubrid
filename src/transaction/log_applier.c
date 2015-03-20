@@ -140,8 +140,7 @@
 #define LA_MOVE_INSIDE_RECORD(rec, dest_offset, src_offset) \
   do \
     { \
-      assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED) == true \
-              && (rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
+      assert ((rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
       assert (((rec)->length - (src_offset)) >= 0); \
       assert (((rec)->area_size <= 0) || ((rec)->area_size >= (rec)->length)); \
       assert (((rec)->area_size <= 0) \

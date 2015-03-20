@@ -197,37 +197,34 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
   int *atts_id = NULL;
   int error_code;
   OID updated_oid;
+  SCAN_CODE scan_code;
+  RECDES copy_recdes;
 
   if (upd_scancache == NULL || attr_info == NULL || oid == NULL)
     {
       return -1;
     }
 
-  if (mvcc_Enabled)
+
+  copy_recdes.data = NULL;
+
+  scan_code =
+    heap_mvcc_get_for_delete (thread_p, oid, &upd_scancache->class_oid,
+			      &copy_recdes, upd_scancache, COPY, NULL_CHN,
+			      NULL, &updated_oid);
+  if (scan_code != S_SUCCESS)
     {
-      SCAN_CODE scan_code;
-      RECDES copy_recdes;
-
-      copy_recdes.data = NULL;
-
-      scan_code =
-	heap_mvcc_get_for_delete (thread_p, oid, &upd_scancache->class_oid,
-				  &copy_recdes, upd_scancache, COPY, NULL_CHN,
-				  NULL, &updated_oid);
-      if (scan_code != S_SUCCESS)
+      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	{
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      er_clear ();
-	      return 0;
-	    }
+	  er_clear ();
+	  return 0;
+	}
 
-	  return -1;
-	}
-      if (!OID_ISNULL (&updated_oid))
-	{
-	  COPY_OID (oid, &updated_oid);
-	}
+      return -1;
+    }
+  if (!OID_ISNULL (&updated_oid))
+    {
+      COPY_OID (oid, &updated_oid);
     }
 
   atts_id = (int *) db_private_alloc (thread_p,

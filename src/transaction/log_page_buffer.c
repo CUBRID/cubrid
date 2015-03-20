@@ -8622,16 +8622,14 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       goto error_cannot_chkpt;
     }
 
-  if (mvcc_Enabled)
+  er_log_debug (ARG_FILE_LINE,
+		"logpb_checkpoint: call vacuum_flush_data()\n");
+  if (vacuum_flush_data
+      (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa,
+       false) != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "logpb_checkpoint: call vacuum_flush_data()\n");
-      if (vacuum_flush_data (thread_p, &newchkpt_lsa, &chkpt_redo_lsa,
-			     &tmp_chkpt.redo_lsa, false) != NO_ERROR)
-	{
-	  LOG_CS_ENTER (thread_p);
-	  goto error_cannot_chkpt;
-	}
+      LOG_CS_ENTER (thread_p);
+      goto error_cannot_chkpt;
     }
 
   er_log_debug (ARG_FILE_LINE,

@@ -572,8 +572,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_HA_PREFETCHLOGDB_PAGE_DISTANCE "ha_prefetchlogdb_page_distance"
 #define PRM_NAME_HA_PREFETCHLOGDB_MAX_PAGE_COUNT "ha_prefetchlogdb_max_page_count"
 
-#define PRM_NAME_MVCC_ENABLED "mvcc_enabled"
-
 #define PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL "vacuum_master_interval_in_msecs"
 
 #define PRM_NAME_VACUUM_DATA_PAGES "vacuum_data_pages"
@@ -973,10 +971,6 @@ static int prm_log_isolation_level_default = TRAN_READ_COMMITTED;
 static int prm_log_isolation_level_lower = TRAN_READ_COMMITTED;
 static int prm_log_isolation_level_upper = TRAN_SERIALIZABLE;
 static unsigned int prm_log_isolation_level_flag = 0;
-
-int PRM_MVCC_LOG_ISOLATION_LEVEL = TRAN_READ_COMMITTED;
-static int prm_mvcc_log_isolation_level_default = TRAN_READ_COMMITTED;
-static int prm_mvcc_log_isolation_level_lower = TRAN_READ_COMMITTED;
 
 static unsigned int prm_log_media_failure_support_flag = 0;
 
@@ -1918,10 +1912,6 @@ static unsigned int prm_ha_prefetchlogdb_max_page_count_flag = 0;
 static unsigned int prm_ha_prefetchlogdb_max_page_count_default = 1000;
 static unsigned int prm_ha_prefetchlogdb_max_page_count_lower = 0;
 static unsigned int prm_ha_prefetchlogdb_max_page_count_upper = INT_MAX;
-
-bool PRM_MVCC_ENABLED = true;
-static bool prm_mvcc_enabled_default = true;
-static unsigned int prm_mvcc_enabled_flag = 0;
 
 int PRM_VACUUM_MASTER_WAKEUP_INTERVAL = 10;
 static int prm_vacuum_master_wakeup_interval_default = 10;
@@ -4633,17 +4623,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MVCC_ENABLED,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
-   PRM_BOOLEAN,
-   (void *) &prm_mvcc_enabled_flag,
-   (void *) &prm_mvcc_enabled_default,
-   (void *) &PRM_MVCC_ENABLED,
-   (void *) NULL,
-   (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
@@ -5842,15 +5821,6 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 		  return error;
 		}
 	    }
-	}
-
-      if (strcasecmp (PRM_NAME_MVCC_ENABLED, prm->name) == 0)
-	{
-	  PRM_LOG_ISOLATION_LEVEL = PRM_MVCC_LOG_ISOLATION_LEVEL;
-
-	  prm_log_isolation_level_default =
-	    prm_mvcc_log_isolation_level_default;
-	  prm_log_isolation_level_lower = prm_mvcc_log_isolation_level_lower;
 	}
 
       if ((strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0 && on_client) ||

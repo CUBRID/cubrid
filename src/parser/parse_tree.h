@@ -2547,14 +2547,7 @@ extern PT_RESERVED_NAME pt_Reserved_name_table[];
     {							      \
     case RESERVED_NAME_RECORD_INFO:			      \
       (first) = RESERVED_FIRST_RECORD_INFO;		      \
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))	      \
-	{						      \
-	  (last) = RESERVED_LAST_RECORD_INFO;		      \
-	}						      \
-      else						      \
-	{						      \
-	  (last) = RESERVED_FIRST_MVCC_INFO - 1;	      \
-	}						      \
+      (last) = RESERVED_LAST_RECORD_INFO;		      \
       break;						      \
     case RESERVED_NAME_PAGE_INFO:			      \
       (first) = RESERVED_FIRST_PAGE_INFO;		      \

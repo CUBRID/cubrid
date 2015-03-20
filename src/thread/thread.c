@@ -404,35 +404,27 @@ thread_initialize_manager (void)
 	  return r;
 	}
 
-      if (mvcc_Enabled)
-	{
-	  /* Initialize vacuum workers */
+      /* Initialize vacuum workers */
 
-	  /* Allocate memory for vacuum worker thread monitors */
-	  size = VACUUM_MAX_WORKER_COUNT * sizeof (DAEMON_THREAD_MONITOR);
-	  thread_Vacuum_worker_threads =
-	    (DAEMON_THREAD_MONITOR *) malloc (size);
-	  if (thread_Vacuum_worker_threads == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-	  /* Initialize thread monitors */
-	  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
-	    {
-	      thread_initialize_daemon_monitor
-		(&thread_Vacuum_worker_threads[i]);
-	    }
+      /* Allocate memory for vacuum worker thread monitors */
+      size = VACUUM_MAX_WORKER_COUNT * sizeof (DAEMON_THREAD_MONITOR);
+      thread_Vacuum_worker_threads = (DAEMON_THREAD_MONITOR *) malloc (size);
+      if (thread_Vacuum_worker_threads == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      /* Initialize thread monitors */
+      for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
+	{
+	  thread_initialize_daemon_monitor (&thread_Vacuum_worker_threads[i]);
 	}
 
       /* Initialize daemons */
       thread_Manager.num_daemons = THREAD_DAEMON_NUM_SINGLE_THREADS;
-      if (mvcc_Enabled)
-	{
-	  /* Vacuum master thread and vacuum workers must be added */
-	  thread_Manager.num_daemons += VACUUM_MAX_WORKER_COUNT + 1;
-	}
+      /* Vacuum master thread and vacuum workers must be added */
+      thread_Manager.num_daemons += VACUUM_MAX_WORKER_COUNT + 1;
       size = thread_Manager.num_daemons * sizeof (THREAD_DAEMON);
       thread_Daemons = (THREAD_DAEMON *) malloc (size);
       if (thread_Daemons == NULL)
@@ -508,28 +500,24 @@ thread_initialize_manager (void)
       thread_Daemons[daemon_index++].daemon_function =
 	thread_log_clock_thread;
 
-      if (mvcc_Enabled)
+      /* Initialize auto vacuum daemon */
+      thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_MASTER;
+      thread_Daemons[daemon_index].daemon_monitor =
+	&thread_Vacuum_master_thread;
+      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+      thread_Daemons[daemon_index++].daemon_function =
+	thread_vacuum_master_thread;
+
+      /* Initialize vacuum worker daemons */
+      for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++, daemon_index++)
 	{
-	  /* Initialize auto vacuum daemon */
-	  thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_MASTER;
+	  thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_WORKER;
 	  thread_Daemons[daemon_index].daemon_monitor =
-	    &thread_Vacuum_master_thread;
+	    &thread_Vacuum_worker_threads[i];
 	  thread_Daemons[daemon_index].shutdown_sequence =
 	    shutdown_sequence++;
-	  thread_Daemons[daemon_index++].daemon_function =
-	    thread_vacuum_master_thread;
-
-	  /* Initialize vacuum worker daemons */
-	  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++, daemon_index++)
-	    {
-	      thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_WORKER;
-	      thread_Daemons[daemon_index].daemon_monitor =
-		&thread_Vacuum_worker_threads[i];
-	      thread_Daemons[daemon_index].shutdown_sequence =
-		shutdown_sequence++;
-	      thread_Daemons[daemon_index].daemon_function =
-		thread_vacuum_worker_thread;
-	    }
+	  thread_Daemons[daemon_index].daemon_function =
+	    thread_vacuum_worker_thread;
 	}
 
       /* Leave these three daemons at the end. These are to be shutdown latest */
@@ -1135,14 +1123,7 @@ thread_final_manager (void)
   free_and_init (thread_Manager.thread_array);
 
   free_and_init (thread_Daemons);
-  if (mvcc_Enabled)
-    {
-      free_and_init (thread_Vacuum_worker_threads);
-    }
-  else
-    {
-      assert (thread_Vacuum_worker_threads == NULL);
-    }
+  free_and_init (thread_Vacuum_worker_threads);
 
   lf_destroy_transaction_systems ();
 

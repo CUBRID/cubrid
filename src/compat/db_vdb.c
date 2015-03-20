@@ -4170,12 +4170,6 @@ db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
 void
 db_invalidate_mvcc_snapshot_after_statement (void)
 {
-  if (!prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-    {
-      /* Snapshot is used only if MVCC is enabled */
-      return;
-    }
-
   if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
     {
       /* Do not invalidate snapshot after each statement */

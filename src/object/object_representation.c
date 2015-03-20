@@ -59,8 +59,7 @@
 #define HEAP_MOVE_INSIDE_RECORD(rec, dest_offset, src_offset) \
   do \
     { \
-      assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED) == true \
-              && (rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
+      assert ((rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
       assert (((rec)->length - (src_offset)) >= 0); \
       assert (((rec)->area_size <= 0) || ((rec)->area_size >= (rec)->length)); \
       assert (((rec)->area_size <= 0) \
@@ -362,14 +361,7 @@ or_rep_id (RECDES * record)
     }
   else
     {
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-	{
-	  rep = OR_GET_MVCC_REPID (record->data);
-	}
-      else
-	{
-	  rep = OR_GET_REPID (record->data);
-	}
+      rep = OR_GET_MVCC_REPID (record->data);
     }
 
   return rep;
@@ -406,37 +398,16 @@ or_set_rep_id (RECDES * record, int repid)
   OR_BUF_INIT (orep, record->data, record->area_size);
   buf = &orep;
 
-  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-    {
-      new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
+  new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
 
-      /* Remove old repid */
-      new_bits &= ~OR_MVCC_REPID_MASK;
+  /* Remove old repid */
+  new_bits &= ~OR_MVCC_REPID_MASK;
 
-      /* Add new repid */
-      new_bits |= (repid & OR_MVCC_REPID_MASK);
+  /* Add new repid */
+  new_bits |= (repid & OR_MVCC_REPID_MASK);
 
-      /* Set buffer pointer to the right position */
-      buf->ptr = buf->buffer + OR_REP_OFFSET;
-    }
-  else
-    {
-      /* read REPR_ID flags */
-      if (OR_GET_BOUND_BIT_FLAG (record->data))
-	{
-	  is_bound_bit = true;
-	}
-      offset_size = OR_GET_OFFSET_SIZE (record->data);
-
-      /* construct new REPR_ID element */
-      new_bits = repid;
-      if (is_bound_bit)
-	{
-	  new_bits |= OR_BOUND_BIT_FLAG;
-	}
-      OR_SET_VAR_OFFSET_SIZE (new_bits, offset_size);
-      buf->ptr = buf->buffer + OR_REP_OFFSET;
-    }
+  /* Set buffer pointer to the right position */
+  buf->ptr = buf->buffer + OR_REP_OFFSET;
 
   /* write new REPR_ID to the record */
   or_put_int (buf, new_bits);
@@ -515,55 +486,35 @@ or_replace_rep_id (RECDES * record, int repid)
 int
 or_chn (RECDES * record)
 {
+  int mvcc_flag = 0;
+
   if (record->length < OR_HEADER_SIZE (record->data))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
       return NULL_CHN;
     }
 
-  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+  mvcc_flag = OR_GET_MVCC_FLAG (record->data);
+  if (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
     {
-      int mvcc_flag = OR_GET_MVCC_FLAG (record->data);
-      if (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+      return NULL_CHN;
+    }
+  else
+    {
+      if (mvcc_flag & OR_MVCC_FLAG_VALID_INSID)
 	{
-	  return NULL_CHN;
+	  /* CHN is positioned after representation id and insert MVCC id */
+	  return OR_GET_INT (record->data + OR_MVCC_REP_SIZE +
+			     OR_MVCCID_SIZE);
 	}
       else
 	{
-	  if (mvcc_flag & OR_MVCC_FLAG_VALID_INSID)
-	    {
-	      /* CHN is positioned after representation id and insert MVCC id */
-	      return OR_GET_INT (record->data + OR_MVCC_REP_SIZE +
-				 OR_MVCCID_SIZE);
-	    }
-	  else
-	    {
-	      /* CHN is positioned after representation id */
-	      return OR_GET_INT (record->data + OR_MVCC_REP_SIZE);
-	    }
+	  /* CHN is positioned after representation id */
+	  return OR_GET_INT (record->data + OR_MVCC_REP_SIZE);
 	}
     }
 
   return OR_GET_NON_MVCC_CHN (record->data);
-}
-
-int
-or_set_chn (RECDES * record, int chn)
-{
-  char *p = NULL;
-
-  /* For now, it is used in non MVCC only? */
-  assert (!prm_get_bool_value (PRM_ID_MVCC_ENABLED));
-
-  if (record->length < OR_HEADER_SIZE (record->data))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
-      return ER_FAILED;
-    }
-
-  OR_PUT_INT (record->data + OR_NON_MVCC_CHN_OFFSET, chn);
-
-  return NO_ERROR;
 }
 
 /*
@@ -578,7 +529,6 @@ or_set_chn (RECDES * record, int chn)
 int
 or_mvcc_chn (OR_BUF * buf, int mvcc_flags, int *error)
 {
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED));
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
@@ -607,9 +557,8 @@ or_mvcc_chn (OR_BUF * buf, int mvcc_flags, int *error)
  * record(in/out)  : record
  * chn(int): chn
  *
- *   NOTE: This function is similar to or_set_chn but
- *   it determines the type of record based on flag in record
- *   not system parameter.
+ *   NOTE: It determines the type of record based on flag in record not system
+ *	   parameter.
  */
 int
 or_replace_chn (RECDES * record, int chn)
@@ -663,7 +612,6 @@ or_replace_chn (RECDES * record, int chn)
 int
 or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
 {
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED));
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
@@ -742,7 +690,6 @@ or_mvcc_set_flag (RECDES * record, char flags)
   int mvcc_flag = 1;
   int repid_and_flag = 0;
 
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED));
   assert (record != NULL && record->data != NULL
 	  && record->length >= OR_MVCC_REP_SIZE);
 
@@ -823,8 +770,7 @@ or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
 {
   union DELID_CHN delid_or_chn;
 
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED) && buf != NULL &&
-	  error != NULL);
+  assert (buf != NULL && error != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -879,7 +825,7 @@ STATIC_INLINE int
 or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
   int error_code = NO_ERROR;
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED) && buf != NULL);
+  assert (buf != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
   if (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
@@ -931,7 +877,7 @@ STATIC_INLINE int
 or_mvcc_set_next_version (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
   int error_code = NO_ERROR;
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED) && buf != NULL);
+  assert (buf != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
   if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_NEXT_VERSION))
@@ -976,7 +922,7 @@ static int
 or_mvcc_set_partition_oid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
   int error_code = NO_ERROR;
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED) && buf != NULL);
+  assert (buf != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
   if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_PARTITION_OID))
@@ -1001,8 +947,7 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
   int rc = NO_ERROR;
   int repid_and_flag_bits;
 
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED)
-	  && record != NULL && record->data != NULL
+  assert (record != NULL && record->data != NULL
 	  && record->length >= OR_MVCC_REP_SIZE && mvcc_header != NULL);
 
   or_init (&buf, record->data, record->length);
@@ -1071,8 +1016,7 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
   int old_mvcc_size = 0, new_mvcc_size = 0;
   bool is_bigone = false;
 
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED)
-	  && record != NULL && record->data != NULL && record->length != 0
+  assert (record != NULL && record->data != NULL && record->length != 0
 	  && record->length >= OR_MVCC_MIN_HEADER_SIZE);
 
   repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
@@ -1166,8 +1110,7 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header,
   int old_mvcc_size = 0, new_mvcc_size = 0;
   bool is_bigone = false;
 
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED)
-	  && record != NULL && record->data != NULL && record->length == 0);
+  assert (record != NULL && record->data != NULL && record->length == 0);
 
   OR_BUF_INIT (orep, record->data, record->area_size);
   buf = &orep;
@@ -8023,14 +7966,7 @@ error_return:
 int
 or_header_size (char *ptr)
 {
-  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) == false)
-    {
-      return OR_NON_MVCC_HEADER_SIZE;
-    }
-  else
-    {
-      return or_mvcc_header_size_from_flags (OR_GET_MVCC_FLAG (ptr));
-    }
+  return or_mvcc_header_size_from_flags (OR_GET_MVCC_FLAG (ptr));
 }
 
 /*
@@ -8045,7 +7981,6 @@ int
 or_mvcc_header_size_from_flags (char mvcc_flags)
 {
   int mvcc_header_size = 0;
-  assert (prm_get_bool_value (PRM_ID_MVCC_ENABLED) == true);
 
   /* skip MVCC fields */
   mvcc_header_size = OR_MVCC_REP_SIZE;

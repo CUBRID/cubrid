@@ -4827,13 +4827,10 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  return DISK_ERROR;
-	}
+      return DISK_ERROR;
     }
 
   /* Find every single class
@@ -5080,13 +5077,10 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 
   fprintf (fp, "\n Catalog Dump: \n\n");
 
-  if (mvcc_Enabled)
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
     {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  return;
-	}
+      return;
     }
 
   /* Find every single class

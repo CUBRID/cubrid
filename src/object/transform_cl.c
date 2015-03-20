@@ -667,9 +667,9 @@ object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr)
 
 re_check:
 
-  size = (prm_get_bool_value (PRM_ID_MVCC_ENABLED)
-	  ? OR_MVCC_INSERT_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE)
-    + class_->fixed_size + OR_BOUND_BIT_BYTES (class_->fixed_count);
+  size =
+    OR_MVCC_INSERT_HEADER_SIZE + class_->fixed_size +
+    OR_BOUND_BIT_BYTES (class_->fixed_count);
 
   if (class_->variable_count)
     {
@@ -819,22 +819,19 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj,
     }
 
   expected_size = object_size (class_, obj, &offset_size);
-  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+  if ((expected_size + OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE) >
+      record->area_size)
     {
-      if ((expected_size + OR_MVCC_MAX_HEADER_SIZE -
-	   OR_MVCC_INSERT_HEADER_SIZE) > record->area_size)
+      record->length = -expected_size;
+
+      /* make sure we free this */
+      if (tf_Allow_fixups)
 	{
-	  record->length = -expected_size;
-
-	  /* make sure we free this */
-	  if (tf_Allow_fixups)
-	    {
-	      tf_free_fixup (buf->fixups);
-	    }
-
-	  *index_flag = false;
-	  return (TF_OUT_OF_SPACE);
+	  tf_free_fixup (buf->fixups);
 	}
+
+      *index_flag = false;
+      return (TF_OUT_OF_SPACE);
     }
 
   switch (_setjmp (buf->env))
@@ -866,24 +863,16 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj,
 
       chn = WS_CHN (obj) + 1;
 
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-	{
-	  /* in most of the cases, we expect the MVCC header of a new object
-	   * to have OR_MVCC_FLAG_VALID_INSID flag, repid_bits, MVCC insert id
-	   * and chn. This header may be changed later, at insert/update. So,
-	   * we must be sure that the record has enough free space.
-	   */
+      /* in most of the cases, we expect the MVCC header of a new object to have
+       * OR_MVCC_FLAG_VALID_INSID flag, repid_bits, MVCC insert id and chn. This
+       * header may be changed later, at insert/update. So, we must be sure that
+       * the record has enough free space.
+       */
 
-	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
-	  or_put_int (buf, repid_bits);
-	  or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
-	  or_put_int (buf, chn);	/* CHN, short size */
-	}
-      else
-	{
-	  or_put_int (buf, repid_bits);
-	  or_put_int (buf, chn);
-	}
+      repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+      or_put_int (buf, repid_bits);
+      or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
+      or_put_int (buf, chn);	/* CHN, short size */
 
       /* variable info block */
       put_varinfo (buf, obj, class_, offset_size);
@@ -1383,6 +1372,7 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
   int repid, convert, chn, bound_bit_flag;
   int rc = NO_ERROR;
   int offset_size;
+  char mvcc_flags;
 
   buf = &orep;
   or_init (buf, record->data, record->length);
@@ -1397,59 +1387,45 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
       /* offset size */
       offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
 
-      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+      /* in case of MVCC, repid_bits contains MVCC flags */
+      repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
+      repid = repid_bits & OR_MVCC_REPID_MASK;
+
+      mvcc_flags =
+	(char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	{
-	  char mvcc_flags;
+	  /* skip insert id */
+	  or_advance (buf, OR_MVCCID_SIZE);
+	}
 
-	  /* in case of MVCC, repid_bits contains MVCC flags */
-	  repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
-	  repid = repid_bits & OR_MVCC_REPID_MASK;
-
-	  mvcc_flags =
-	    (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS)
-		    & OR_MVCC_FLAG_MASK);
-
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
-	    {
-	      /* skip insert id */
-	      or_advance (buf, OR_MVCCID_SIZE);
-	    }
-
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-	    {
-	      /* skip delete id */
-	      chn = NULL_CHN;
-	      or_advance (buf, OR_MVCCID_SIZE);
-	    }
-	  else
-	    {
-	      chn = or_get_int (buf, &rc);
-	      if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
-		{
-		  /* skip 4 bytes - fixed MVCC header size */
-		  or_advance (buf, OR_INT_SIZE);
-		}
-	    }
-
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
-	    {
-	      /* skip next version */
-	      or_advance (buf, OR_OID_SIZE);
-	    }
-
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
-	    {
-	      /* skip partition link */
-	      or_advance (buf, OR_OID_SIZE);
-	    }
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+	{
+	  /* skip delete id */
+	  chn = NULL_CHN;
+	  or_advance (buf, OR_MVCCID_SIZE);
 	}
       else
 	{
-	  repid_bits = or_get_int (buf, &rc);
 	  chn = or_get_int (buf, &rc);
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
+	    {
+	      /* skip 4 bytes - fixed MVCC header size */
+	      or_advance (buf, OR_INT_SIZE);
+	    }
+	}
 
-	  /* mask out the repid & bound bit flag  & offset size flag */
-	  repid = repid_bits & ~OR_BOUND_BIT_FLAG & ~OR_OFFSET_SIZE_FLAG;
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+	{
+	  /* skip next version */
+	  or_advance (buf, OR_OID_SIZE);
+	}
+
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
+	{
+	  /* skip partition link */
+	  or_advance (buf, OR_OID_SIZE);
 	}
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 

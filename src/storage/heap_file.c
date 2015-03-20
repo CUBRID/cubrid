@@ -3222,14 +3222,7 @@ heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr)
   int min_freespace;
   int header_size;
 
-  if (mvcc_Enabled)
-    {
-      header_size = OR_MVCC_MAX_HEADER_SIZE;
-    }
-  else
-    {
-      header_size = OR_NON_MVCC_HEADER_SIZE;
-    }
+  header_size = OR_MVCC_MAX_HEADER_SIZE;
 
   /*
    * Don't cache as a good space page if page does not have at least
@@ -6422,9 +6415,9 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
       return ER_FAILED;
     }
 
-  if (mvcc_Enabled && heap_is_mvcc_disabled_for_class (class_oid)
-      && recdes->type != REC_ASSIGN_ADDRESS && !OID_ISNULL (class_oid) &&
-      !OID_IS_ROOTOID (class_oid))
+  if (heap_is_mvcc_disabled_for_class (class_oid)
+      && recdes->type != REC_ASSIGN_ADDRESS && !OID_ISNULL (class_oid)
+      && !OID_IS_ROOTOID (class_oid))
     {
       MVCC_REC_HEADER mvcc_rec_header;
       or_mvcc_get_header (recdes, &mvcc_rec_header);
@@ -6540,7 +6533,7 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
   bool use_mvcc = false;
 
-  if (mvcc_Enabled && !OID_ISNULL (class_oid) && !OID_IS_ROOTOID (class_oid))
+  if (!OID_ISNULL (class_oid) && !OID_IS_ROOTOID (class_oid))
     {
       MVCC_REC_HEADER mvcc_rec_header;
       if (!heap_is_mvcc_disabled_for_class (class_oid))
@@ -6812,7 +6805,7 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
   CUBRID_OBJ_UPDATE_START (class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (mvcc_Enabled && !OID_ISNULL (class_oid) && !OID_IS_ROOTOID (class_oid))
+  if (!OID_ISNULL (class_oid) && !OID_IS_ROOTOID (class_oid))
     {
       MVCC_REC_HEADER mvcc_rec_header;
 
@@ -9859,11 +9852,10 @@ heap_ovf_get (THREAD_ENTRY * thread_p, const OID * ovf_oid, RECDES * recdes,
        * already in the page buffer pool.
        */
 
-      scan = overflow_get_nbytes (thread_p, &ovf_vpid, recdes, 0,
-				  ((prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-				   ? OR_MVCC_MAX_HEADER_SIZE :
-				   OR_NON_MVCC_HEADER_SIZE), &rest_length,
-				  mvcc_snapshot);
+      scan =
+	overflow_get_nbytes (thread_p, &ovf_vpid, recdes, 0,
+			     OR_MVCC_MAX_HEADER_SIZE, &rest_length,
+			     mvcc_snapshot);
       if (scan == S_SUCCESS && chn == or_chn (recdes))
 	{
 	  return S_SUCCESS_CHN_UPTODATE;
@@ -10598,35 +10590,27 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid,
 	  return scan;
 	}
 
-      if (mvcc_Enabled)
+      /* For MVCC we need to obtain header and verify header */
+      or_mvcc_get_header (recdes, &mvcc_header);
+      if (scan == S_SUCCESS && mvcc_snapshot != NULL
+	  && mvcc_snapshot->snapshot_fnc != NULL)
 	{
-	  /* For MVCC we need to obtain header and verify header */
-	  or_mvcc_get_header (recdes, &mvcc_header);
-	  if (scan == S_SUCCESS && mvcc_snapshot != NULL
-	      && mvcc_snapshot->snapshot_fnc != NULL)
+	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
+					   mvcc_snapshot) != true)
 	    {
-	      if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
-					       mvcc_snapshot) != true)
-		{
-		  return S_SNAPSHOT_NOT_SATISFIED;
-		}
-	    }
-	  if (chn != NULL_CHN
-	      && (!MVCC_SHOULD_TEST_CHN (thread_p, &mvcc_header)
-		  || chn == MVCC_GET_CHN (&mvcc_header)))
-	    {
-	      /* Test chn if MVCC is disabled for record or if delete MVCCID
-	       * is invalid and the record is inserted by current transaction.
-	       */
-	      /* When testing chn is not required, the result is considered
-	       * up-to-date.
-	       */
-	      scan = S_SUCCESS_CHN_UPTODATE;
+	      return S_SNAPSHOT_NOT_SATISFIED;
 	    }
 	}
-      else if (chn != NULL_CHN && chn == or_chn (recdes))
+      if (chn != NULL_CHN
+	  && (!MVCC_SHOULD_TEST_CHN (thread_p, &mvcc_header)
+	      || chn == MVCC_GET_CHN (&mvcc_header)))
 	{
-	  /* Non-MVCC should always test chn if it isn't null */
+	  /* Test chn if MVCC is disabled for record or if delete MVCCID
+	   * is invalid and the record is inserted by current transaction.
+	   */
+	  /* When testing chn is not required, the result is considered
+	   * up-to-date.
+	   */
 	  scan = S_SUCCESS_CHN_UPTODATE;
 	}
     }
@@ -10638,37 +10622,30 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid,
 	  return scan;
 	}
 
-      if (mvcc_Enabled)
+      /* For MVCC we need to obtain header and verify header */
+      or_mvcc_get_header (&chn_recdes, &mvcc_header);
+      if (scan == S_SUCCESS && mvcc_snapshot != NULL
+	  && mvcc_snapshot->snapshot_fnc != NULL)
 	{
-	  /* For MVCC we need to obtain header and verify header */
-	  or_mvcc_get_header (&chn_recdes, &mvcc_header);
-	  if (scan == S_SUCCESS && mvcc_snapshot != NULL
-	      && mvcc_snapshot->snapshot_fnc != NULL)
+	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
+					   mvcc_snapshot) != true)
 	    {
-	      if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
-					       mvcc_snapshot) != true)
-		{
-		  return S_SNAPSHOT_NOT_SATISFIED;
-		}
-	    }
-	  if (chn != NULL_CHN
-	      && (!MVCC_SHOULD_TEST_CHN (thread_p, &mvcc_header)
-		  || chn == MVCC_GET_CHN (&mvcc_header)))
-	    {
-	      /* Test chn if MVCC is disabled for record or if delete MVCCID
-	       * is invalid and the record is inserted by current transaction.
-	       */
-	      /* When testing chn is not required, the result is considered
-	       * up-to-date.
-	       */
-	      scan = S_SUCCESS_CHN_UPTODATE;
+	      return S_SNAPSHOT_NOT_SATISFIED;
 	    }
 	}
-      else if (chn != NULL_CHN && chn == or_chn (&chn_recdes))
+      if (chn != NULL_CHN
+	  && (!MVCC_SHOULD_TEST_CHN (thread_p, &mvcc_header)
+	      || chn == MVCC_GET_CHN (&mvcc_header)))
 	{
-	  /* Non-MVCC should always test chn if it isn't null */
+	  /* Test chn if MVCC is disabled for record or if delete MVCCID
+	   * is invalid and the record is inserted by current transaction.
+	   */
+	  /* When testing chn is not required, the result is considered
+	   * up-to-date.
+	   */
 	  scan = S_SUCCESS_CHN_UPTODATE;
 	}
+
       if (scan != S_SUCCESS_CHN_UPTODATE)
 	{
 	  /*
@@ -11007,7 +10984,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 
       type =
 	spage_get_record_type (fwd_page_watcher.pgptr, forward_oid.slotid);
-      if (mvcc_Enabled && type == REC_MVCC_NEXT_VERSION)
+      if (type == REC_MVCC_NEXT_VERSION)
 	{
 	  scan = S_SNAPSHOT_NOT_SATISFIED;
 	  goto end;
@@ -11222,37 +11199,29 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
       break;
 
     case REC_MVCC_NEXT_VERSION:
-      if (mvcc_Enabled)
+      /* This is not a case of error... Must be handled
+       * outside this function call.
+       */
+      if (scan_cache != NULL && scan_cache->cache_last_fix_page)
 	{
-	  /* This is not a case of error... Must be handled
-	   * outside this function call.
-	   */
-	  if (scan_cache != NULL && scan_cache->cache_last_fix_page)
+	  if (home_page_watcher.pgptr != NULL)
 	    {
-	      if (home_page_watcher.pgptr != NULL)
-		{
-		  /* switch page watcher to scan cache */
-		  pgbuf_replace_watcher (thread_p, &home_page_watcher,
-					 &scan_cache->page_watcher);
-		}
-	      else
-		{
-		  assert (PGBUF_IS_CLEAN_WATCHER (&scan_cache->page_watcher));
-		}
+	      /* switch page watcher to scan cache */
+	      pgbuf_replace_watcher (thread_p, &home_page_watcher,
+				     &scan_cache->page_watcher);
 	    }
-	  else if (home_page_watcher.pgptr != NULL)
+	  else
 	    {
-	      pgbuf_ordered_unfix (thread_p, &home_page_watcher);
+	      assert (PGBUF_IS_CLEAN_WATCHER (&scan_cache->page_watcher));
 	    }
-	  scan = S_SNAPSHOT_NOT_SATISFIED;
-	  goto end;
 	}
-      else
+      else if (home_page_watcher.pgptr != NULL)
 	{
-	  /* REC_MVCC_NEXT_VERSION type is only used in the context of MVCC */
-	  assert (false);
-	  /* Fall through */
+	  pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 	}
+      scan = S_SNAPSHOT_NOT_SATISFIED;
+      goto end;
+
     case REC_MARKDELETED:
     case REC_DELETED_WILL_REUSE:
     case REC_NEWHOME:
@@ -14760,13 +14729,10 @@ heap_get_class_name_of_instance (THREAD_ENTRY * thread_p,
   OID class_oid;
 
   heap_scancache_quick_start (&scan_cache);
-  if (mvcc_Enabled)
+  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (scan_cache.mvcc_snapshot == NULL)
     {
-      scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (scan_cache.mvcc_snapshot == NULL)
-	{
-	  return NULL;
-	}
+      return NULL;
     }
 
   if (heap_get_with_class_oid (thread_p, &class_oid, inst_oid, NULL,
@@ -16380,14 +16346,11 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid,
       return ER_FAILED;
     }
 
-  if (mvcc_Enabled)
+  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (scan_cache.mvcc_snapshot == NULL)
     {
-      scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (scan_cache.mvcc_snapshot == NULL)
-	{
-	  error = er_errid ();
-	  return (error == NO_ERROR ? ER_FAILED : error);
-	}
+      error = er_errid ();
+      return (error == NO_ERROR ? ER_FAILED : error);
     }
 
   if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes,
@@ -17236,8 +17199,7 @@ re_check:
 	}
     }
 
-  size += ((mvcc_Enabled == true) ?
-	   OR_MVCC_INSERT_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE);
+  size += OR_MVCC_INSERT_HEADER_SIZE;
   size +=
     OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable,
 				*offset_size_ptr);
@@ -17361,13 +17323,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
   expected_size = heap_attrinfo_get_disksize (attr_info, &tmp);
   offset_size = tmp;
 
-  if (mvcc_Enabled)
-    {
-      mvcc_wasted_space =
-	(OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE);
-      /* reserve enough space if need to add additional MVCC header info */
-      expected_size += mvcc_wasted_space;
-    }
+  mvcc_wasted_space = (OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE);
+  /* reserve enough space if need to add additional MVCC header info */
+  expected_size += mvcc_wasted_space;
 
   switch (_setjmp (buf->env))
     {
@@ -17398,8 +17356,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
        * refetch the object.
        */
       attr_info->inst_chn++;
-      if (mvcc_Enabled
-	  && !heap_is_mvcc_disabled_for_class (&(attr_info->class_oid)))
+      if (!heap_is_mvcc_disabled_for_class (&(attr_info->class_oid)))
 	{
 	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
 	  or_put_int (buf, repid_bits);
@@ -22610,7 +22567,7 @@ xheap_has_instance (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   OID_SET_NULL (&oid);
 
-  if (mvcc_Enabled && has_visible_instance)
+  if (has_visible_instance)
     {
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
@@ -24843,50 +24800,43 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID],
 		   or_rep_id (recdes));
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
-      if (mvcc_Enabled)
+      or_mvcc_get_header (recdes, &mvcc_header);
+      DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID],
+		      MVCC_GET_INSID (&mvcc_header));
+      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
 	{
-	  or_mvcc_get_header (recdes, &mvcc_header);
-	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID],
-			  MVCC_GET_INSID (&mvcc_header));
-	  if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
+	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID],
+			  MVCC_GET_DELID (&mvcc_header));
+	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
+	}
+      else
+	{
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN],
+		       OR_GET_NON_MVCC_CHN (&mvcc_header));
+	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
+	}
+      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS],
+		   MVCC_GET_FLAG (&mvcc_header));
+      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_NEXT_VERSION))
+	{
+	  DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION],
+		       &MVCC_GET_NEXT_VERSION (&mvcc_header));
+	  if (MVCC_IS_FLAG_SET
+	      (&mvcc_header, OR_MVCC_FLAG_VALID_PARTITION_OID))
 	    {
-	      DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID],
-			      MVCC_GET_DELID (&mvcc_header));
-	      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
+	      DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID],
+			   &MVCC_GET_PARTITION_OID (&mvcc_header));
 	    }
 	  else
 	    {
-	      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN],
-			   OR_GET_NON_MVCC_CHN (&mvcc_header));
-	      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
-	    }
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS],
-		       MVCC_GET_FLAG (&mvcc_header));
-	  if (MVCC_IS_FLAG_SET (&mvcc_header,
-				OR_MVCC_FLAG_VALID_NEXT_VERSION))
-	    {
-	      DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION],
-			   &MVCC_GET_NEXT_VERSION (&mvcc_header));
-	      if (MVCC_IS_FLAG_SET (&mvcc_header,
-				    OR_MVCC_FLAG_VALID_PARTITION_OID))
-		{
-		  DB_MAKE_OID (record_info
-			       [HEAP_RECORD_INFO_T_MVCC_PARTITION_OID],
-			       &MVCC_GET_PARTITION_OID (&mvcc_header));
-		}
-	      else
-		{
-		  DB_MAKE_NULL (record_info
-				[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
-		}
-	    }
-	  else
-	    {
-	      DB_MAKE_NULL (record_info
-			    [HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION]);
 	      DB_MAKE_NULL (record_info
 			    [HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
 	    }
+	}
+      else
+	{
+	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION]);
+	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
 	}
       break;
 
@@ -24956,30 +24906,28 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID],
 		   or_rep_id (recdes));
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
-      if (mvcc_Enabled)
+
+      or_mvcc_get_header (recdes, &mvcc_header);
+      DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID],
+		      MVCC_GET_INSID (&mvcc_header));
+      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
 	{
-	  or_mvcc_get_header (recdes, &mvcc_header);
-	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID],
-			  MVCC_GET_INSID (&mvcc_header));
-	  if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
-	    {
-	      DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID],
-			      MVCC_GET_DELID (&mvcc_header));
-	      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
-	    }
-	  else
-	    {
-	      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN],
-			   OR_GET_NON_MVCC_CHN (&mvcc_header));
-	      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
-	    }
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS],
-		       MVCC_GET_FLAG (&mvcc_header));
-	  DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION],
-		       &MVCC_GET_NEXT_VERSION (&mvcc_header));
-	  DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID],
-		       &MVCC_GET_PARTITION_OID (&mvcc_header));
+	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID],
+			  MVCC_GET_DELID (&mvcc_header));
+	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
 	}
+      else
+	{
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN],
+		       OR_GET_NON_MVCC_CHN (&mvcc_header));
+	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
+	}
+      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS],
+		   MVCC_GET_FLAG (&mvcc_header));
+      DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION],
+		   &MVCC_GET_NEXT_VERSION (&mvcc_header));
+      DB_MAKE_OID (record_info[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID],
+		   &MVCC_GET_PARTITION_OID (&mvcc_header));
       break;
     case REC_RELOCATION:
     case REC_MVCC_NEXT_VERSION:
@@ -24990,37 +24938,32 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
     default:
       DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_REPRID]);
       DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
-      if (mvcc_Enabled)
+      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_INSID]);
+      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
+      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS]);
+      if (slot_p->record_type == REC_MVCC_NEXT_VERSION)
 	{
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_INSID]);
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS]);
-	  if (slot_p->record_type == REC_MVCC_NEXT_VERSION)
+	  peek_oid = (OID *) forward_recdes.data;
+	  DB_MAKE_OID (record_info
+		       [HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION], peek_oid);
+	  if (forward_recdes.length > OR_OID_SIZE)
 	    {
-	      peek_oid = (OID *) forward_recdes.data;
+	      peek_oid = (OID *) (forward_recdes.data + OR_OID_SIZE);
 	      DB_MAKE_OID (record_info
-			   [HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION], peek_oid);
-	      if (forward_recdes.length > OR_OID_SIZE)
-		{
-		  peek_oid = (OID *) (forward_recdes.data + OR_OID_SIZE);
-		  DB_MAKE_OID (record_info
-			       [HEAP_RECORD_INFO_T_MVCC_PARTITION_OID],
-			       peek_oid);
-		}
-	      else
-		{
-		  DB_MAKE_NULL (record_info
-				[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
-		}
+			   [HEAP_RECORD_INFO_T_MVCC_PARTITION_OID], peek_oid);
 	    }
 	  else
 	    {
 	      DB_MAKE_NULL (record_info
-			    [HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION]);
-	      DB_MAKE_NULL (record_info
 			    [HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
 	    }
 	}
+      else
+	{
+	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION]);
+	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
+	}
+
       recdes->area_size = -1;
       recdes->data = NULL;
       if (scan_cache != NULL && scan_cache->cache_last_fix_page)
@@ -26403,7 +26346,6 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 			 int ispeeking, OID * forward_oid, RECDES * recdes)
 {
   SCAN_CODE scan = S_SUCCESS;
-  assert (mvcc_Enabled == true);
 
   /* Try to reuse the previously allocated area
    * No need to check the snapshot since was already checked

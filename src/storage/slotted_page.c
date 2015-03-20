@@ -2488,7 +2488,7 @@ spage_check_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   int insert_record_space;
   int max_record_size;
 
-  assert (mvcc_Enabled == true && page_p != NULL);
+  assert (page_p != NULL);
 
   if (mvcc_delete_record_length < 0 || mvcc_insert_record_length < 0)
     {

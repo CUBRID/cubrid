@@ -7675,14 +7675,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
 	}
       else
 	{
-	  if (mvcc_Enabled)
-	    {
-	      class_lock = IS_LOCK;
-	    }
-	  else
-	    {
-	      class_lock = S_LOCK;
-	    }
+	  class_lock = IS_LOCK;
 	}
     }
 

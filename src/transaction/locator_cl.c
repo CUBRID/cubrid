@@ -4662,14 +4662,11 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
 
 	      *round_length_p = -mflush->recdes.length;
 
-	      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-		{
-		  /* reserve enough space for instances, since we can add
-		   * additional MVCC header info at heap insert/update/delete       
-		   */
-		  *round_length_p += (OR_MVCC_MAX_HEADER_SIZE
-				      - OR_MVCC_INSERT_HEADER_SIZE);
-		}
+	      /* reserve enough space for instances, since we can add
+	       * additional MVCC header info at heap insert/update/delete
+	       */
+	      *round_length_p +=
+		(OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE);
 
 	      /*
 	       * If this is the only object in the flushing copy
@@ -5156,8 +5153,7 @@ locator_mflush (MOP mop, void *mf)
 	}
     }
   else if (operation == LC_FLUSH_UPDATE_PRUNE
-	   || (prm_get_bool_value (PRM_ID_MVCC_ENABLED)
-	       && operation == LC_FLUSH_UPDATE
+	   || (operation == LC_FLUSH_UPDATE
 	       && ws_class_mop (mop) != sm_Root_class_mop))
     {
       /* We have to keep track of updated objects from partitioned classes.
@@ -5246,8 +5242,7 @@ locator_mflush (MOP mop, void *mf)
    * start at alignment of sizeof(int)
    */
 
-  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED)
-      && !locator_is_root (class_mop))
+  if (!locator_is_root (class_mop))
     {
       /* reserve enough space for instances, since we can add additional
        * MVCC header info at heap insert/update/delete       

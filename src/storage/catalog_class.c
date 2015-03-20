@@ -675,9 +675,8 @@ catcls_guess_record_length (OR_VALUE * value_p)
   n_attrs = value_p->sub.count;
 
   length =
-    ((mvcc_Enabled == true) ?
-     OR_MVCC_MAX_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE) +
-    OR_VAR_TABLE_SIZE (n_attrs) + OR_BOUND_BIT_BYTES (n_attrs);
+    OR_MVCC_MAX_HEADER_SIZE + OR_VAR_TABLE_SIZE (n_attrs) +
+    OR_BOUND_BIT_BYTES (n_attrs);
 
   for (i = 0; i < n_attrs; i++)
     {
@@ -3195,20 +3194,11 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p,
 
   OR_SET_VAR_OFFSET_SIZE (repr_id_bits, BIG_VAR_OFFSET_SIZE);	/* 4byte */
 
-  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
-    {
-      repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
-      or_put_int (buf_p, repr_id_bits);
-      or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
-      or_put_int (buf_p, chn);	/* CHN */
-      header_size = OR_MVCC_INSERT_HEADER_SIZE;
-    }
-  else
-    {
-      or_put_int (buf_p, repr_id_bits);
-      or_put_int (buf_p, chn);
-      header_size = OR_NON_MVCC_HEADER_SIZE;
-    }
+  repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+  or_put_int (buf_p, repr_id_bits);
+  or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
+  or_put_int (buf_p, chn);	/* CHN */
+  header_size = OR_MVCC_INSERT_HEADER_SIZE;
 
   /* offset table */
   offset_p = buf_p->ptr;
@@ -3310,6 +3300,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   char *start_p;
   int i, pad, size, rc;
   int error = NO_ERROR;
+  char mvcc_flags;
 
   fixed_p = repr_p->fixed;
   n_fixed = repr_p->n_fixed;
@@ -3322,48 +3313,36 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* header */
   assert (OR_GET_OFFSET_SIZE (buf_p->ptr) == BIG_VAR_OFFSET_SIZE);
 
-  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+  repr_id_bits = or_mvcc_get_repid_and_flags (buf_p, &rc);
+  /* get bound_bits_flag and skip other MVCC header fields */
+  bound_bits_flag = repr_id_bits & OR_BOUND_BIT_FLAG;
+  mvcc_flags =
+    (char) ((repr_id_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  repr_id_bits = repr_id_bits & OR_MVCC_REPID_MASK;
+  /* check that only OR_MVCC_FLAG_VALID_INSID is set */
+
+  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
     {
-      char mvcc_flags;
-      repr_id_bits = or_mvcc_get_repid_and_flags (buf_p, &rc);
-      /* get bound_bits_flag and skip other MVCC header fields */
-      bound_bits_flag = repr_id_bits & OR_BOUND_BIT_FLAG;
-      mvcc_flags =
-	(char) ((repr_id_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
-		OR_MVCC_FLAG_MASK);
-      repr_id_bits = repr_id_bits & OR_MVCC_REPID_MASK;
-      /* check that only OR_MVCC_FLAG_VALID_INSID is set */
+      or_advance (buf_p, OR_MVCCID_SIZE);	/* skip INS_ID */
+    }
 
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
-	{
-	  or_advance (buf_p, OR_MVCCID_SIZE);	/* skip INS_ID */
-	}
-
-      if (mvcc_flags & (OR_MVCC_FLAG_VALID_DELID
-			| OR_MVCC_FLAG_VALID_LONG_CHN))
-	{
-	  or_advance (buf_p, OR_MVCCID_SIZE);	/* skip DEL_ID / long CHN */
-	}
-      else
-	{
-	  or_advance (buf_p, OR_INT_SIZE);	/* skip short CHN */
-	}
-
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
-	{
-	  or_advance (buf_p, OR_OID_SIZE);	/* skip next version */
-	}
-
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
-	{
-	  or_advance (buf_p, OR_OID_SIZE);	/* skip partition link */
-	}
+  if (mvcc_flags & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN))
+    {
+      or_advance (buf_p, OR_MVCCID_SIZE);	/* skip DEL_ID / long CHN */
     }
   else
     {
-      repr_id_bits = or_get_int (buf_p, &rc);	/* repid */
-      bound_bits_flag = repr_id_bits & OR_BOUND_BIT_FLAG;
-      or_advance (buf_p, OR_INT_SIZE);	/* chn */
+      or_advance (buf_p, OR_INT_SIZE);	/* skip short CHN */
+    }
+
+  if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+    {
+      or_advance (buf_p, OR_OID_SIZE);	/* skip next version */
+    }
+
+  if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
+    {
+      or_advance (buf_p, OR_OID_SIZE);	/* skip partition link */
     }
 
   if (bound_bits_flag)
@@ -4297,20 +4276,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
   record.data = NULL;
   old_record.data = NULL;
-#if defined(SERVER_MODE)
-  /* in MVCC the lock has been already acquired */
-  if (mvcc_Enabled == false)
-    {
-      if (lock_object (thread_p, oid_p, class_oid_p, X_LOCK, LK_UNCOND_LOCK)
-	  != LK_GRANTED)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  goto error;
-	}
-      is_lock_inited = true;
-    }
-#endif /* SERVER_MODE */
 
   if (heap_get (thread_p, oid_p, &old_record, scan_p, COPY, NULL_CHN) !=
       S_SUCCESS)
