@@ -1200,18 +1200,16 @@ static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
 						HEAP_OPERATION_CONTEXT *
 						context);
 static int heap_get_insert_location (THREAD_ENTRY * thread_p,
-				     HEAP_OPERATION_CONTEXT * context,
-				     bool is_mvcc_op);
-static int heap_insert_newhome (THREAD_ENTRY * thread_p, HFID * hfid_p,
-				RECDES * recdes_p,
-				HEAP_OPERATION_TYPE logging_type,
-				OID * out_oid);
+				     HEAP_OPERATION_CONTEXT * context);
+static int heap_insert_newhome (THREAD_ENTRY * thread_p,
+				HEAP_OPERATION_CONTEXT * parent_context,
+				RECDES * recdes_p, bool is_mvcc_op,
+				OID * out_oid_p);
 static int heap_insert_newver (THREAD_ENTRY * thread_p,
 			       HEAP_OPERATION_CONTEXT * context,
 			       PGBUF_WATCHER * home_hint, bool do_logging);
 static int heap_insert_physical (THREAD_ENTRY * thread_p,
-				 HEAP_OPERATION_CONTEXT * context,
-				 bool is_mvcc_op);
+				 HEAP_OPERATION_CONTEXT * context);
 static void heap_log_insert_physical (THREAD_ENTRY * thread_p, HFID * hfid_p,
 				      PAGE_PTR page_p, RECDES * recdes_p,
 				      int slotid, bool is_mvcc_op);
@@ -29984,6 +29982,9 @@ static void
 heap_link_watchers (HEAP_OPERATION_CONTEXT * child,
 		    HEAP_OPERATION_CONTEXT * parent)
 {
+  assert (child != NULL);
+  assert (parent != NULL);
+
   child->header_page_watcher_p = &parent->header_page_watcher;
   child->forward_page_watcher_p = &parent->forward_page_watcher;
   child->overflow_page_watcher_p = &parent->overflow_page_watcher;
@@ -30032,6 +30033,9 @@ heap_unfix_watchers (THREAD_ENTRY * thread_p,
 static void
 heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
 {
+  assert (context != NULL);
+  assert (hfid_p != NULL);
+
   /* keep hfid */
   HFID_COPY (&context->hfid, hfid_p);
 
@@ -30195,6 +30199,7 @@ heap_fix_header_page (THREAD_ENTRY * thread_p,
   int rc;
 
   assert (context != NULL);
+  assert (context->header_page_watcher_p != NULL);
 
   if (context->header_page_watcher_p->pgptr != NULL)
     {
@@ -30245,6 +30250,7 @@ heap_fix_forward_page (THREAD_ENTRY * thread_p,
   int rc;
 
   assert (context != NULL);
+  assert (context->forward_page_watcher_p != NULL);
 
   if (context->forward_page_watcher_p->pgptr != NULL)
     {
@@ -30254,6 +30260,8 @@ heap_fix_forward_page (THREAD_ENTRY * thread_p,
 
   if (forward_oid_hint == NULL)
     {
+      assert (context->home_recdes.data != NULL);
+
       /* cast home record as forward oid if no hint is provided */
       forward_oid = *((OID *) context->home_recdes.data);
     }
@@ -30344,12 +30352,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
   MVCCID mvcc_id;
   int size = recdes_p->length;
 
-  if (recdes_p->type == REC_ASSIGN_ADDRESS)
-    {
-      /* REC_ASSIGN is an empty recdes and doesn't have a header */
-      return NO_ERROR;
-    }
-
   /* read MVCC header from record */
   if (or_mvcc_get_header (recdes_p, &mvcc_rec_header) != NO_ERROR)
     {
@@ -30358,6 +30360,9 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
 
   if (is_mvcc_op)
     {
+      assert (is_mvcc_class);
+
+      /* get MVCC id */
       mvcc_id = logtb_get_current_mvccid (thread_p);
 
       /* set MVCC insertid if necessary */
@@ -30372,7 +30377,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
     {
       size -= or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
 
-      /* strip MVCC information and upgrade record */
+      /* strip MVCC information */
       if (MVCC_IS_ANY_FLAG_SET (&mvcc_rec_header))
 	{
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
@@ -30446,17 +30451,17 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
  *   is_mvcc_op(in): MVCC or non-MVCC operation
  *   returns: error code or NO_ERROR
  *
- * NOTE: For MVCC operations, this function will find a suitable page, put it
- *       in context->home_page_watcher and populate volid and pageid of
- *       context->res_oid.
- * NOTE: For non-MVCC operations, this function will find a suitable page, put
- *       it in context->home_page_watcher, find a suitable slot, lock it and
+ * NOTE: For all operations, this function will find a suitable page, put it
+ *       in context->home_page_watcher, find a suitable slot, lock it and
  *       put the exact insert location in context->res_oid.
  */
 static int
 heap_get_insert_location (THREAD_ENTRY * thread_p,
-			  HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
+			  HEAP_OPERATION_CONTEXT * context)
 {
+  int slot_count, slot_id, lk_result;
+  LOCK lock;
+
   /* check input */
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT);
@@ -30480,81 +30485,72 @@ heap_get_insert_location (THREAD_ENTRY * thread_p,
   context->res_oid.pageid =
     pgbuf_get_page_id (context->home_page_watcher_p->pgptr);
 
-  /* handle non-MVCC case: we need to acquire lock for slot beforehand */
-  if (!is_mvcc_op)
+  /*
+   * Find a slot that is lockable and lock it
+   */
+  /* determine lock type */
+  if (OID_IS_ROOTOID (&context->class_oid))
     {
-      int slot_count, slot_id, lk_result;
-      LOCK lock;
-
-      /* determine lock type */
-      if (OID_IS_ROOTOID (&context->class_oid))
-	{
-	  /* class creation */
-	  lock = SCH_M_LOCK;
-	}
-      else
-	{
-	  /* instance */
-	  lock = X_LOCK;
-	}
-
-      /* retrieve number of slots in page */
-      slot_count =
-	spage_number_of_slots (context->home_page_watcher_p->pgptr);
-
-      /* find REC_DELETED_WILL_REUSE slot or add new slot */
-      /* slot_id == slot_count means add new slot */
-      for (slot_id = 0; slot_id <= slot_count; slot_id++)
-	{
-	  slot_id =
-	    spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL,
-				  slot_id);
-	  context->res_oid.slotid = slot_id;
-
-	  /* lock the object to be inserted conditionally */
-	  lk_result =
-	    lock_object (thread_p, &context->res_oid, &context->class_oid,
-			 lock, LK_COND_LOCK);
-	  if (lk_result == LK_GRANTED)
-	    {
-	      /* successfully locked! */
-	      return NO_ERROR;
-	    }
-	  else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
-	    {
-#if !defined(NDEBUG)
-	      if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
-		{
-		  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-		  assert (tdes->tran_abort_reason ==
-			  TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
-		}
-	      else
-		{
-		  assert (false);	/* unknown locking error */
-		}
-#endif
-	      break;		/* go to error case */
-	    }
-	}
-
-      /* either lock error or no slot was found in page (which should not happen) */
-      OID_SET_NULL (&context->res_oid);
-      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
-      return ER_FAILED;
+      /* class creation */
+      lock = SCH_M_LOCK;
+    }
+  else
+    {
+      /* instance */
+      lock = X_LOCK;
     }
 
-  /* all ok */
-  return NO_ERROR;
+  /* retrieve number of slots in page */
+  slot_count = spage_number_of_slots (context->home_page_watcher_p->pgptr);
+
+  /* find REC_DELETED_WILL_REUSE slot or add new slot */
+  /* slot_id == slot_count means add new slot */
+  for (slot_id = 0; slot_id <= slot_count; slot_id++)
+    {
+      slot_id =
+	spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL,
+			      slot_id);
+      context->res_oid.slotid = slot_id;
+
+      /* lock the object to be inserted conditionally */
+      lk_result =
+	lock_object (thread_p, &context->res_oid, &context->class_oid,
+		     lock, LK_COND_LOCK);
+      if (lk_result == LK_GRANTED)
+	{
+	  /* successfully locked! */
+	  return NO_ERROR;
+	}
+      else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
+	{
+#if !defined(NDEBUG)
+	  if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
+	    {
+	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+	      assert (tdes->tran_abort_reason ==
+		      TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
+	    }
+	  else
+	    {
+	      assert (false);	/* unknown locking error */
+	    }
+#endif
+	  break;		/* go to error case */
+	}
+    }
+
+  /* either lock error or no slot was found in page (which should not happen) */
+  OID_SET_NULL (&context->res_oid);
+  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+  return ER_FAILED;
 }
 
 /*
  * heap_insert_newhome () - will find an insert location for a REC_NEWHOME
  *                          record and will insert it there
  *   thread_p(in): thread entry
- *   hfid_p(in): heap file identifier
+ *   parent_context(in): the context of the parent operation
  *   recdes_p(in): record descriptor of newhome record
- *   do_logging(in): perform operation logging
  *   out_oid_p(in): pointer to an OID object to be populated with the result
  *                  OID of the insert
  *   returns: error code or NO_ERROR
@@ -30563,48 +30559,54 @@ heap_get_insert_location (THREAD_ENTRY * thread_p,
  *       context for the insert operation.
  */
 static int
-heap_insert_newhome (THREAD_ENTRY * thread_p, HFID * hfid_p,
-		     RECDES * recdes_p, HEAP_OPERATION_TYPE logging_type,
-		     OID * out_oid_p)
+heap_insert_newhome (THREAD_ENTRY * thread_p,
+		     HEAP_OPERATION_CONTEXT * parent_context,
+		     RECDES * recdes_p, bool is_mvcc_op, OID * out_oid_p)
 {
   HEAP_OPERATION_CONTEXT ins_context;
 
   /* check input */
-  assert (hfid_p != NULL);
   assert (recdes_p != NULL);
+  assert (parent_context != NULL);
+  assert (parent_context->type == HEAP_OPERATION_DELETE ||
+	  parent_context->type == HEAP_OPERATION_UPDATE);
 
   /* build insert context */
-  heap_create_insert_context (&ins_context, hfid_p, NULL, recdes_p, NULL);
+  heap_create_insert_context (&ins_context, &parent_context->hfid,
+			      &parent_context->class_oid, recdes_p, NULL);
 
   /* find an insertion location */
-  if (heap_get_insert_location (thread_p, &ins_context, true) != NO_ERROR)
+  if (heap_get_insert_location (thread_p, &ins_context) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
   /* physical insertion */
-  if (heap_insert_physical (thread_p, &ins_context, true) != NO_ERROR)
+  if (heap_insert_physical (thread_p, &ins_context) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
   /* log operation */
-  if (logging_type == HEAP_OPERATION_DELETE)
+  if (parent_context->type == HEAP_OPERATION_DELETE)
     {
       LOG_DATA_ADDR ins_addr;
+
+      /* only delete MVCC operation should generate a newhome */
+      assert (is_mvcc_op);
+
       ins_addr.vfid = &ins_context.hfid.vfid;
       ins_addr.offset = ins_context.res_oid.slotid;
       ins_addr.pgptr = ins_context.home_page_watcher_p->pgptr;
       heap_mvcc_log_delete_relocated (thread_p, NULL, ins_context.recdes_p,
 				      &ins_addr);
     }
-  else if (logging_type == HEAP_OPERATION_UPDATE)
+  else if (parent_context->type == HEAP_OPERATION_UPDATE)
     {
-      LOG_DATA_ADDR ins_addr;
-      ins_addr.vfid = &ins_context.hfid.vfid;
-      ins_addr.offset = ins_context.res_oid.slotid;
-      ins_addr.pgptr = ins_context.home_page_watcher_p->pgptr;
-      heap_mvcc_log_insert (thread_p, ins_context.recdes_p, &ins_addr);
+      heap_log_insert_physical (thread_p, &ins_context.hfid,
+				ins_context.home_page_watcher_p->pgptr,
+				ins_context.recdes_p,
+				ins_context.res_oid.slotid, is_mvcc_op);
     }
 
   /* advertise insert location */
@@ -30616,7 +30618,9 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HFID * hfid_p,
   /* mark insert page as dirty and unfix it */
   pgbuf_set_dirty (thread_p, ins_context.home_page_watcher_p->pgptr,
 		   DONT_FREE);
-  pgbuf_ordered_unfix (thread_p, ins_context.home_page_watcher_p);
+
+  /* unfix all pages of insert context */
+  heap_unfix_watchers (thread_p, &ins_context);
 
   /* all ok */
   return NO_ERROR;
@@ -30692,17 +30696,16 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	    {
 	      return ER_FAILED;
 	    }
-	  /* re-get home */
 	}
 
       /* won't fit in old version's home page; get a fresh location */
-      if (heap_get_insert_location (thread_p, context, true) != NO_ERROR)
+      if (heap_get_insert_location (thread_p, context) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
 
       /* physically insert new version's home */
-      if (heap_insert_physical (thread_p, context, true) != NO_ERROR)
+      if (heap_insert_physical (thread_p, context) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -30724,22 +30727,23 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
  *   context(in): operation context
  *   is_mvcc_op(in): MVCC or non-MVCC operation
  *
- * NOTE: This fuction should receive a fixed page and:
- *        (a) for MVCC operations, a context->res_oid populated with volid and
- *	  pageid (slotid will be populated by this function after insertion)
- *        (b) for non-MVCC operations, a fully populated context->res_oid and
- *        a lock on it (X_LOCK or SCH_M_LOCK, depending on scenario)
- * NOTE: This function DOES NOT unfix the page provided in home_page_watcher.
+ * NOTE: This fuction should receive a fixed page and a location in res_oid,
+ *       where the context->recdes_p will go in.
  */
 static int
 heap_insert_physical (THREAD_ENTRY * thread_p,
-		      HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
+		      HEAP_OPERATION_CONTEXT * context)
 {
   /* check input */
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT);
   assert (context->recdes_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
+
+  /* assume we have the exact location for insert as well as a fixed page */
+  assert (context->res_oid.volid != NULL_VOLID);
+  assert (context->res_oid.pageid != NULL_PAGEID);
+  assert (context->res_oid.slotid != NULL_SLOTID);
 
 #if defined(CUBRID_DEBUG)
   /* function should have received map record if input record was multipage */
@@ -30767,42 +30771,14 @@ heap_insert_physical (THREAD_ENTRY * thread_p,
     }
 #endif
 
-  if (is_mvcc_op)
+  /* physical insertion */
+  if (spage_insert_at (thread_p, context->home_page_watcher_p->pgptr,
+		       context->res_oid.slotid,
+		       context->recdes_p) != SP_SUCCESS)
     {
-      /* assume we have a fixed page (volid + pageid) and we'll determine the
-         slot from spage_insert */
-      assert (context->res_oid.volid != NULL_VOLID);
-      assert (context->res_oid.pageid != NULL_PAGEID);
-      assert (context->res_oid.slotid == NULL_SLOTID);
-
-      /* insert record */
-      if (spage_insert
-	  (thread_p, context->home_page_watcher_p->pgptr, context->recdes_p,
-	   &context->res_oid.slotid) != SP_SUCCESS)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
-	  OID_SET_NULL (&context->res_oid);
-	  return ER_FAILED;
-	}
-    }
-  else
-    {
-      /* assume we have the exact location for insert as well as a fixed page
-         and a lock for our object */
-      assert (context->res_oid.volid != NULL_VOLID);
-      assert (context->res_oid.pageid != NULL_PAGEID);
-      assert (context->res_oid.slotid != NULL_SLOTID);
-
-      if (spage_insert_at
-	  (thread_p, context->home_page_watcher_p->pgptr,
-	   context->res_oid.slotid, context->recdes_p) != SP_SUCCESS)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
-	  OID_SET_NULL (&context->res_oid);
-	  return ER_FAILED;
-	}
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      OID_SET_NULL (&context->res_oid);
+      return ER_FAILED;
     }
 
   /* all ok */
@@ -30946,6 +30922,8 @@ heap_delete_adjust_recdes_header (RECDES * recdes_p, MVCCID mvcc_id,
 {
   MVCC_REC_HEADER rec_header;
 
+  assert (recdes_p != NULL);
+
   /* fetch MVCC header from record descriptor */
   if (or_mvcc_get_header (recdes_p, &rec_header) != NO_ERROR)
     {
@@ -31054,20 +31032,20 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
 		    HEAP_OPERATION_CONTEXT * context,
 		    bool is_mvcc_op, bool do_logging)
 {
-  OID *overflow_oid_p, overflow_oid;
+  OID overflow_oid;
   int rc;
 
   /* check input */
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_DELETE);
   assert (context->home_recdes.data != NULL);
+  assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
+  assert (context->overflow_page_watcher_p != NULL);
   assert (context->overflow_page_watcher_p->pgptr == NULL);
 
   /* MVCC info is in overflow page, we only keep and OID in home */
-  overflow_oid_p = (OID *) context->home_recdes.data;
-  COPY_OID (&overflow_oid, overflow_oid_p);
-  overflow_oid_p = NULL;
+  overflow_oid = *((OID *) context->home_recdes.data);
 
   /* reset overflow watcher rank */
   PGBUF_WATCHER_RESET_RANK (context->overflow_page_watcher_p,
@@ -31200,6 +31178,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_DELETE);
   assert (context->record_type == REC_RELOCATION);
+  assert (context->home_page_watcher_p != NULL);
+  assert (context->home_page_watcher_p->pgptr != NULL);
+  assert (context->forward_page_watcher_p != NULL);
 
   /* get forward oid */
   forward_oid = *((OID *) context->home_recdes.data);
@@ -31346,30 +31327,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	  remove_old_forward = true;
 	  update_old_home = true;
 	}
-      else if (!fits_in_forward && !fits_in_home)
-	{
-	  /* insert a new forward record */
-	  new_forward_recdes.type = REC_NEWHOME;
-	  rc = heap_insert_newhome (thread_p, &context->hfid,
-				    &new_forward_recdes,
-				    HEAP_OPERATION_DELETE,
-				    &new_forward_oid[0]);
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
-
-	  /* new home record will be a REC_RELOCATION and will be placed in
-	     the original home page */
-	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION,
-					new_forward_oid,
-					!OID_ISNULL (&context->
-						     partition_link));
-
-	  /* remove old forward record */
-	  remove_old_forward = true;
-	  update_old_home = true;
-	}
       else if (fits_in_home)
 	{
 	  /* updated forward record fits in home page */
@@ -31396,9 +31353,26 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  /* impossible case */
-	  assert (false);
-	  return ER_FAILED;
+	  /* doesn't fit in either home or forward page */
+	  /* insert a new forward record */
+	  new_forward_recdes.type = REC_NEWHOME;
+	  rc = heap_insert_newhome (thread_p, context, &new_forward_recdes,
+				    true, &new_forward_oid[0]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+
+	  /* new home record will be a REC_RELOCATION and will be placed in
+	     the original home page */
+	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION,
+					new_forward_oid,
+					!OID_ISNULL (&context->
+						     partition_link));
+
+	  /* remove old forward record */
+	  remove_old_forward = true;
+	  update_old_home = true;
 	}
 
       /*
@@ -31580,6 +31554,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
   assert (context->record_type == REC_HOME
 	  || context->record_type == REC_ASSIGN_ADDRESS);
   assert (context->type == HEAP_OPERATION_DELETE);
+  assert (context->home_page_watcher_p != NULL);
+  assert (context->home_page_watcher_p->pgptr != NULL);
 
   /* operation */
   if (is_mvcc_op)
@@ -31673,9 +31649,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 	      forwarding_recdes.type = REC_RELOCATION;
 
 	      /* insert NEWHOME record */
-	      rc = heap_insert_newhome (thread_p, &context->hfid,
-					&built_recdes, HEAP_OPERATION_DELETE,
-					&forward_oid[0]);
+	      rc = heap_insert_newhome (thread_p, context, &built_recdes,
+					true, &forward_oid[0]);
 	      if (rc != NO_ERROR)
 		{
 		  return rc;
@@ -31774,6 +31749,7 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p,
   assert (hfid_p != NULL);
   assert (page_p != NULL);
   assert (oid_p != NULL);
+  assert (oid_p->slotid != NULL_SLOTID);
 
   /* save old freespace */
   free_space = spage_get_free_space_without_saving (thread_p, page_p, NULL);
@@ -31849,6 +31825,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
   assert (context->recdes_p != NULL);
+  assert (context->home_page_watcher_p != NULL);
+  assert (context->home_page_watcher_p->pgptr != NULL);
+  assert (context->overflow_page_watcher_p != NULL);
 
   /* read OID of overflow record */
   overflow_oid = *((OID *) context->home_recdes.data);
@@ -31862,8 +31841,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
        * Insert new version
        */
       /* prepare insert context */
-      heap_create_insert_context (&insert_context, &context->hfid, NULL,
-				  context->recdes_p, NULL);
+      heap_create_insert_context (&insert_context, &context->hfid,
+				  &context->class_oid, context->recdes_p,
+				  NULL);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
@@ -31879,6 +31859,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       heap_unfix_watchers (thread_p, &insert_context);
 
       /* keep new location */
+      assert (!OID_ISNULL (&insert_context.res_oid));
       COPY_OID (&context->res_oid, &insert_context.res_oid);
 
       /* an insert in the home page could trigger a spage_compact, so we'll
@@ -31971,10 +31952,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 
 	      /* insert new home */
 	      context->recdes_p->type = REC_NEWHOME;
-	      if (heap_insert_newhome (thread_p, &context->hfid,
-				       context->recdes_p,
-				       HEAP_OPERATION_UPDATE,
-				       &newhome_oid[0]) != NO_ERROR)
+	      if (heap_insert_newhome (thread_p, context, context->recdes_p,
+				       false, &newhome_oid[0]) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -32047,6 +32026,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
   assert (context != NULL);
   assert (context->recdes_p != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
+  assert (context->home_page_watcher_p != NULL);
+  assert (context->home_page_watcher_p->pgptr != NULL);
+  assert (context->forward_page_watcher_p != NULL);
 
   /* get forward oid */
   forward_oid = *((OID *) context->home_recdes.data);
@@ -32078,8 +32060,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
        */
       /* set up insertion context */
       context->recdes_p->type = REC_HOME;
-      heap_create_insert_context (&insert_context, &context->hfid, NULL,
-				  context->recdes_p, NULL);
+      heap_create_insert_context (&insert_context, &context->hfid,
+				  &context->class_oid, context->recdes_p,
+				  NULL);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
@@ -32095,6 +32078,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
       heap_unfix_watchers (thread_p, &insert_context);
 
       /* keep new location */
+      assert (!OID_ISNULL (&insert_context.res_oid));
       COPY_OID (&context->res_oid, &insert_context.res_oid);
 
       /* an insert in the home page could trigger a spage_compact, so we'll
@@ -32179,9 +32163,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	{
 	  /* insert a new forward record */
 	  context->recdes_p->type = REC_NEWHOME;
-	  rc = heap_insert_newhome (thread_p, &context->hfid,
-				    context->recdes_p, HEAP_OPERATION_UPDATE,
-				    &new_forward_oid[0]);
+	  rc = heap_insert_newhome (thread_p, context, context->recdes_p,
+				    false, &new_forward_oid[0]);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -32332,8 +32315,11 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
   assert (context != NULL);
   assert (context->recdes_p != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
+  assert (context->home_page_watcher_p != NULL);
+  assert (context->home_page_watcher_p->pgptr != NULL);
+  assert (context->forward_page_watcher_p != NULL);
 
-  if (is_mvcc_op && context->recdes_p->type == REC_ASSIGN_ADDRESS)
+  if (is_mvcc_op && context->home_recdes.type == REC_ASSIGN_ADDRESS)
     {
       /* updating a REC_ASSIGN_ADDRESS should be done as a non-mvcc operation */
       assert (false);
@@ -32355,8 +32341,9 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
        */
       /* prepare insert context */
       context->recdes_p->type = REC_HOME;
-      heap_create_insert_context (&insert_context, &context->hfid, NULL,
-				  context->recdes_p, NULL);
+      heap_create_insert_context (&insert_context, &context->hfid,
+				  &context->class_oid, context->recdes_p,
+				  NULL);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
@@ -32371,6 +32358,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       heap_unfix_watchers (thread_p, &insert_context);
 
       /* keep new location */
+      assert (!OID_ISNULL (&insert_context.res_oid));
       COPY_OID (&context->res_oid, &insert_context.res_oid);
 
       /* an insert in the home page could trigger a spage_compact, so we'll
@@ -32446,9 +32434,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 
 	  /* insert new home record */
 	  context->recdes_p->type = REC_NEWHOME;
-	  if (heap_insert_newhome
-	      (thread_p, &context->hfid, context->recdes_p,
-	       HEAP_OPERATION_UPDATE, &forward_oid[0]) != NO_ERROR)
+	  if (heap_insert_newhome (thread_p, context, context->recdes_p,
+				   false, &forward_oid[0]) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -32517,6 +32504,7 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id,
   /* check input */
   assert (page_p != NULL);
   assert (recdes_p != NULL);
+  assert (slot_id != NULL_SLOTID);
 
   /* retrieve current record type */
   old_record_type = spage_get_record_type (page_p, slot_id);
@@ -32708,7 +32696,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
    * Record header adjustments
    */
   if (!OID_ISNULL (&context->class_oid)
-      && !OID_IS_ROOTOID (&context->class_oid))
+      && !OID_IS_ROOTOID (&context->class_oid)
+      && (context->recdes_p->type != REC_ASSIGN_ADDRESS))
     {
       bool is_mvcc_class =
 	!heap_is_mvcc_disabled_for_class (&context->class_oid);
@@ -32749,7 +32738,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
     }
 
   /* get insert location (includes locking for non-MVCC case */
-  if (heap_get_insert_location (thread_p, context, is_mvcc_op) != NO_ERROR)
+  if (heap_get_insert_location (thread_p, context) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -32757,7 +32746,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
   /*
    * Physical insertion
    */
-  if (heap_insert_physical (thread_p, context, is_mvcc_op) != NO_ERROR)
+  if (heap_insert_physical (thread_p, context) != NO_ERROR)
     {
       rc = ER_FAILED;
       goto error;
@@ -32842,6 +32831,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
    * Check input
    */
   assert (context != NULL);
+  assert (context->type == HEAP_OPERATION_DELETE);
   assert (!HFID_IS_NULL (&context->hfid));
   assert (!OID_ISNULL (&context->oid));
 
@@ -32995,9 +32985,10 @@ heap_update_logical (THREAD_ENTRY * thread_p,
   /*
    * Check input
    */
+  assert (context != NULL);
+  assert (context->type == HEAP_OPERATION_UPDATE);
   assert (!OID_ISNULL (&context->oid));
   assert (!OID_ISNULL (&context->class_oid));
-
   /* check scancache */
   if (heap_scancache_check_with_hfid (thread_p, &context->hfid,
 				      &context->class_oid,
