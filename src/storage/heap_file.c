@@ -1200,7 +1200,8 @@ static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
 						HEAP_OPERATION_CONTEXT *
 						context);
 static int heap_get_insert_location (THREAD_ENTRY * thread_p,
-				     HEAP_OPERATION_CONTEXT * context);
+				     HEAP_OPERATION_CONTEXT * context,
+				     PGBUF_WATCHER * home_hint_p);
 static int heap_insert_newhome (THREAD_ENTRY * thread_p,
 				HEAP_OPERATION_CONTEXT * parent_context,
 				RECDES * recdes_p, bool is_mvcc_op,
@@ -30454,16 +30455,20 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
  * heap_get_insert_location () - get a page (and possibly and slot) for insert
  *   thread_p(in): thread entry
  *   context(in): operation context
- *   is_mvcc_op(in): MVCC or non-MVCC operation
+ *   home_hint_p(in): if not null, will try to find and lock a slot in hinted page
  *   returns: error code or NO_ERROR
  *
  * NOTE: For all operations, this function will find a suitable page, put it
  *       in context->home_page_watcher, find a suitable slot, lock it and
  *       put the exact insert location in context->res_oid.
+ * NOTE: If a home hint is present, the function will search for a free and
+ *       lockable slot ONLY in the hinted page. If no hint is present, it will
+ *       find the page on it's own.
  */
 static int
 heap_get_insert_location (THREAD_ENTRY * thread_p,
-			  HEAP_OPERATION_CONTEXT * context)
+			  HEAP_OPERATION_CONTEXT * context,
+			  PGBUF_WATCHER * home_hint_p)
 {
   int slot_count, slot_id, lk_result;
   LOCK lock;
@@ -30473,15 +30478,30 @@ heap_get_insert_location (THREAD_ENTRY * thread_p,
   assert (context->type == HEAP_OPERATION_INSERT);
   assert (context->recdes_p != NULL);
 
-  /* find and fix page for insert */
-  if (heap_stats_find_best_page (thread_p, &context->hfid,
-				 context->recdes_p->length,
-				 (context->recdes_p->type != REC_NEWHOME),
-				 context->recdes_p->length,
-				 context->scan_cache_p,
-				 context->home_page_watcher_p) == NULL)
+  if (home_hint_p == NULL)
     {
-      return ER_FAILED;
+      /* find and fix page for insert */
+      if (heap_stats_find_best_page (thread_p, &context->hfid,
+				     context->recdes_p->length,
+				     (context->recdes_p->type != REC_NEWHOME),
+				     context->recdes_p->length,
+				     context->scan_cache_p,
+				     context->home_page_watcher_p) == NULL)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      assert (home_hint_p->pgptr != NULL);
+
+      /* check page for space and use hinted page as insert page */
+      if (spage_max_space_for_new_record (thread_p, home_hint_p->pgptr)
+	  < context->recdes_p->length)
+	{
+	  return ER_SP_NOSPACE_IN_PAGE;
+	}
+      context->home_page_watcher_p = home_hint_p;
     }
   assert (context->home_page_watcher_p->pgptr != NULL);
 
@@ -30547,7 +30567,14 @@ heap_get_insert_location (THREAD_ENTRY * thread_p,
 
   /* either lock error or no slot was found in page (which should not happen) */
   OID_SET_NULL (&context->res_oid);
-  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+  if (context->home_page_watcher_p != home_hint_p)
+    {
+      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+    }
+  else
+    {
+      context->home_page_watcher_p = NULL;
+    }
   return ER_FAILED;
 }
 
@@ -30582,7 +30609,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p,
 			      &parent_context->class_oid, recdes_p, NULL);
 
   /* find an insertion location */
-  if (heap_get_insert_location (thread_p, &ins_context) != NO_ERROR)
+  if (heap_get_insert_location (thread_p, &ins_context, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -30646,7 +30673,7 @@ static int
 heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 		    PGBUF_WATCHER * home_hint, bool do_logging)
 {
-  bool fixed_header_page = false;
+  int rc = NO_ERROR;
 
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT);
@@ -30659,7 +30686,6 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	{
 	  return NO_ERROR;
 	}
-      fixed_header_page = true;
     }
 
   /* handle overflow case of new record version */
@@ -30668,60 +30694,44 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       return ER_FAILED;
     }
 
-  /* try to insert new version's home in same page as old version's home;
-     if this fails, insert it somewhere else */
-  context->res_oid.volid = pgbuf_get_volume_id (home_hint->pgptr);
-  context->res_oid.pageid = pgbuf_get_page_id (home_hint->pgptr);
-
-  if (home_hint != NULL
-      && spage_insert (thread_p, home_hint->pgptr, context->recdes_p,
-		       &context->res_oid.slotid) == SP_SUCCESS)
+  /* if we get a page hint, try to get the insert location in it */
+  if (home_hint != NULL)
     {
-      /* insertion is successful */
-      if (do_logging)
+      rc = heap_get_insert_location (thread_p, context, home_hint);
+      if (rc != NO_ERROR && rc != ER_SP_NOSPACE_IN_PAGE)
 	{
-	  LOG_DATA_ADDR new_version_address;
-
-	  /* log operation */
-	  new_version_address.offset = context->res_oid.slotid;
-	  new_version_address.pgptr = home_hint->pgptr;
-	  new_version_address.vfid = &context->hfid.vfid;
-	  heap_mvcc_log_insert (thread_p, context->recdes_p,
-				&new_version_address);
+	  return rc;
 	}
-
-      /* home page is dirty */
-      pgbuf_set_dirty (thread_p, home_hint->pgptr, DONT_FREE);
     }
-  else
+
+  /* if we can't insert in hinted page, get a fresh location */
+  if (context->home_page_watcher_p->pgptr == NULL)
     {
+      assert (home_hint == NULL || rc == ER_SP_NOSPACE_IN_PAGE);
+
       /* fix header page */
-      if (!fixed_header_page)
-	{
-	  if (heap_fix_header_page (thread_p, context) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	}
-
-      /* won't fit in old version's home page; get a fresh location */
-      if (heap_get_insert_location (thread_p, context) != NO_ERROR)
+      if (heap_fix_header_page (thread_p, context) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
 
-      /* physically insert new version's home */
-      if (heap_insert_physical (thread_p, context) != NO_ERROR)
+      /* get new insert location */
+      if (heap_get_insert_location (thread_p, context, NULL) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
-
-      /* log operation */
-      heap_log_insert_physical (thread_p, &context->hfid,
-				context->home_page_watcher_p->pgptr,
-				context->recdes_p, context->res_oid.slotid,
-				true);
     }
+
+  /* physically insert new version's home */
+  if (heap_insert_physical (thread_p, context) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* log operation */
+  heap_log_insert_physical (thread_p, &context->hfid,
+			    context->home_page_watcher_p->pgptr,
+			    context->recdes_p, context->res_oid.slotid, true);
 
   /* all ok */
   return NO_ERROR;
@@ -32743,8 +32753,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  /* get insert location (includes locking for non-MVCC case */
-  if (heap_get_insert_location (thread_p, context) != NO_ERROR)
+  /* get insert location (includes locking) */
+  if (heap_get_insert_location (thread_p, context, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }
