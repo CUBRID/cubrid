@@ -195,6 +195,13 @@ static int rv;
 /* maximum number of simultanesou fixed pages from a single thread */
 #define PGBUF_MAX_PAGE_FIXED_BY_TRAN 64
 
+/* max and min flush rate in pages/sec during checkpoint */
+#define PGBUF_CHKPT_MAX_FLUSH_RATE  1200
+#define PGBUF_CHKPT_MIN_FLUSH_RATE  50
+
+/* default pages to flush in each interval during log checkpoint */
+#define PGBUF_CHKPT_BURST_PAGES 16
+
 #if defined(SERVER_MODE)
 
 #define MUTEX_LOCK_VIA_BUSY_WAIT(rv, m) \
@@ -314,6 +321,7 @@ typedef struct pgbuf_buffer_hash PGBUF_BUFFER_HASH;
 typedef struct pgbuf_lru_list PGBUF_LRU_LIST;
 typedef struct pgbuf_ain_list PGBUF_AIN_LIST;
 typedef struct pgbuf_aout_list PGBUF_AOUT_LIST;
+typedef struct pgbuf_seq_flusher PGBUF_SEQ_FLUSHER;
 
 #define PGBUF_IS_2Q_ENABLED (pgbuf_Pool.buf_AIN_list.max_count != 0)
 
@@ -544,6 +552,33 @@ struct pgbuf_ain_list
 				 * in this list */
 };
 
+/* Generic structure to manage sequential flush with flush rate control:
+ * Flush rate control is achieved by breaking each 1 second into intervals, and
+ * attempt to flush an equal number of pages in each interval.
+ * Compensation is appplied accros all intervals in one second to achieve
+ * overall flush rate
+ * In each interval, the pages are flushed either in burst mode or equally
+ * time spread during the entire interval */
+struct pgbuf_seq_flusher
+{
+  PGBUF_VICTIM_CANDIDATE_LIST *flush_list;	/* flush list */
+  LOG_LSA flush_upto_lsa;	/* newest of the oldest LSA record of the
+				 * pages which will be written to disk */
+
+  int control_intervals_cnt;	/* intervals passed */
+  int control_flushed;		/* number of pages flushed since the 1 second
+				 * super-interval started */
+
+  int interval_msec;		/* duration of one interval */
+  int flush_max_size;		/* max size of elements, set only on init */
+  int flush_cnt;		/* current count of elements in flush_list */
+  int flush_idx;		/* index of current element to flush */
+  int flushed_pages;		/* cnt of flushed pages (return parameter) */
+  float flush_rate;		/* maximum rate of flushing (negative if none should be used) */
+
+  bool burst_mode;		/* config : flush in burst or flush one page and wait */
+};
+
 /* The buffer Pool */
 struct pgbuf_buffer_pool
 {
@@ -566,6 +601,8 @@ struct pgbuf_buffer_pool
   PGBUF_INVALID_LIST buf_invalid_list;	/* buffer invalid BCB list */
 
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
+
+  PGBUF_SEQ_FLUSHER seq_chkpt_flusher;
 
   /*
    * the structures for maintaining information on BCB holders.
@@ -597,6 +634,8 @@ struct pgbuf_buffer_pool
   bool check_for_interrupts;
 
 #if defined(SERVER_MODE)
+  bool is_flushing_victims;	/* flag set true when pgbuf flush thread is
+				 * flushing victim candidates */
   pthread_mutex_t volinfo_mutex;
 #endif				/* SERVER_MODE */
   VOLID last_perm_volid;	/* last perm. volume id */
@@ -920,6 +959,19 @@ static PGBUF_HOLDER *pgbuf_get_holder (THREAD_ENTRY * thread_p,
 				       PAGE_PTR pgptr);
 static void pgbuf_remove_watcher (PGBUF_HOLDER * holder,
 				  PGBUF_WATCHER * watcher_object);
+static int pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p,
+				       PGBUF_SEQ_FLUSHER * seq_flusher,
+				       const LOG_LSA * prev_chkpt_redo_lsa,
+				       LOG_LSA * chkpt_smallest_lsa);
+static int pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
+				 PGBUF_SEQ_FLUSHER * seq_flusher,
+				 struct timeval *limit_time,
+				 const LOG_LSA * prev_chkpt_redo_lsa,
+				 LOG_LSA * chkpt_smallest_lsa,
+				 const bool is_ckpt, int *time_rem);
+static int pgbuf_initialize_seq_flusher (PGBUF_SEQ_FLUSHER * seq_flusher,
+					 PGBUF_VICTIM_CANDIDATE_LIST * f_list,
+					 const int cnt);
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -1073,6 +1125,22 @@ pgbuf_initialize (void)
   pgbuf_Pool.ain_victim_req_cnt = 0;
   pgbuf_Pool.fix_req_cnt = 0;
 
+#if defined (SERVER_MODE)
+  pgbuf_Pool.is_flushing_victims = false;
+#endif
+
+  {
+    int cnt;
+    cnt = (int) (0.25f * pgbuf_Pool.num_buffers);
+    cnt = MIN (cnt, 65536);
+
+    if (pgbuf_initialize_seq_flusher (&(pgbuf_Pool.seq_chkpt_flusher), NULL,
+				      cnt) != NO_ERROR)
+      {
+	goto error;
+      }
+  }
+
 #if defined(PAGE_STATISTICS)
   if (pgbuf_initialize_statistics () < 0)
     {
@@ -1225,6 +1293,11 @@ pgbuf_finalize (void)
   pgbuf_Pool.buf_AOUT_list.Aout_top = NULL;
   pgbuf_Pool.buf_AOUT_list.Aout_free = NULL;
   pgbuf_Pool.buf_AOUT_list.max_count = 0;
+
+  if (pgbuf_Pool.seq_chkpt_flusher.flush_list != NULL)
+    {
+      free_and_init (pgbuf_Pool.seq_chkpt_flusher.flush_list);
+    }
 }
 
 /*
@@ -3347,6 +3420,9 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	 sizeof (PGBUF_VICTIM_CANDIDATE_LIST), pgbuf_compare_victim_list);
 
   num_tries = 1;
+#if defined (SERVER_MODE)
+  pgbuf_Pool.is_flushing_victims = true;
+#endif
   while (total_flushed_count <= 0 && num_tries <= 2)
     {
       /* for each victim candidate, do flush task */
@@ -3398,6 +3474,9 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	    {
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		      ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
+#if defined (SERVER_MODE)
+	      pgbuf_Pool.is_flushing_victims = false;
+#endif
 	      return ER_FAILED;
 	    }
 
@@ -3423,6 +3502,9 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
     }
 
 end:
+#if defined (SERVER_MODE)
+  pgbuf_Pool.is_flushing_victims = false;
+#endif
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: "
 		"flush %d pages from (%d) to (%d) list. "
 		"Found AIN:%d/%d/%d, Found LRU:%d/%d",
@@ -3439,7 +3521,7 @@ end:
 
 /*
  * pgbuf_flush_checkpoint () - Flush any unfixed dirty page whose lsa
- *                                      is smaller than the last checkpoint lsa
+ *                             is smaller than the last checkpoint lsa
  *   return:error code or NO_ERROR
  *   flush_upto_lsa(in):
  *   prev_chkpt_redo_lsa(in): Redo_LSA of previous checkpoint
@@ -3469,16 +3551,23 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 {
   PGBUF_BCB *bufptr;
   int bufid;
-  bool done_flush;
-  PAGE_PTR pgptr;
-  VPID vpid;
   int flushed_page_cnt_local = 0;
+  PGBUF_SEQ_FLUSHER *seq_flusher;
+  PGBUF_VICTIM_CANDIDATE_LIST *f_list;
+  int collected_bcbs;
+  int error = NO_ERROR;
 #if defined(SERVER_MODE)
-  int sleep_msecs;
+  struct timeval cur_time = {
+    0, 0
+  };
   int rv;
-
-  sleep_msecs = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_SLEEP_MSECS);
 #endif /* SERVER_MODE */
+
+  er_log_debug (ARG_FILE_LINE,
+		"pgbuf_flush_checkpoint start : flush_upto_LSA:%d, "
+		"prev_chkpt_redo_LSA:%d\n",
+		flush_upto_lsa->pageid,
+		(prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
 
   if (flushed_page_cnt != NULL)
     {
@@ -3489,9 +3578,39 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
   logpb_flush_log_for_wal (thread_p, flush_upto_lsa);
   LSA_SET_NULL (smallest_lsa);
 
-  /* Now, flush all unfixed dirty buffers */
+  seq_flusher = &(pgbuf_Pool.seq_chkpt_flusher);
+  f_list = seq_flusher->flush_list;
+
+  LSA_COPY (&seq_flusher->flush_upto_lsa, flush_upto_lsa);
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : start\n");
+
+  collected_bcbs = 0;
+
   for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
+      if (collected_bcbs >= seq_flusher->flush_max_size)
+	{
+	  /* flush exiting list */
+	  seq_flusher->flush_cnt = collected_bcbs;
+	  seq_flusher->flush_idx = 0;
+
+	  qsort (f_list, seq_flusher->flush_cnt,
+		 sizeof (f_list[0]), pgbuf_compare_victim_list);
+
+	  error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher,
+					      prev_chkpt_redo_lsa,
+					      smallest_lsa);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  flushed_page_cnt_local += seq_flusher->flushed_pages;
+
+	  collected_bcbs = 0;
+	}
+
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
       MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
 
@@ -3524,35 +3643,326 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      /* flush when buffer is not fixed or was fixed by reader */
-      done_flush = false;
-      if ((LSA_ISNULL (&bufptr->oldest_unflush_lsa)
-	   || LSA_LE (&bufptr->oldest_unflush_lsa, flush_upto_lsa))
-	  && bufptr->avoid_victim == false
-	  && (bufptr->latch_mode == PGBUF_NO_LATCH
-	      || bufptr->latch_mode == PGBUF_LATCH_READ
-	      || bufptr->latch_mode == PGBUF_LATCH_FLUSH))
-	{
-	  if (pgbuf_flush_page_with_wal (thread_p, bufptr) == NO_ERROR)
-	    {
-	      flushed_page_cnt_local++;
-	      done_flush = true;
-	    }
-	}
+      /* add to flush list */
+      f_list[collected_bcbs].bufptr = bufptr;
+      VPID_COPY (&f_list[collected_bcbs].vpid, &bufptr->vpid);
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
 
-      if (done_flush == true)
-	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+      collected_bcbs++;
 
 #if defined(SERVER_MODE)
-	  /* Checkpoint Thread is writing data pages slowly to avoid IO burst */
-	  if (sleep_msecs > 0)
-	    {
-	      thread_sleep (sleep_msecs);
-	    }
+      if (thread_p && thread_p->shutdown == true)
+	{
+	  return ER_FAILED;
+	}
 #endif
+    }
+
+  if (collected_bcbs > 0)
+    {
+      /* flush exiting list */
+      seq_flusher->flush_cnt = collected_bcbs;
+      seq_flusher->flush_idx = 0;
+
+      qsort (f_list, seq_flusher->flush_cnt,
+	     sizeof (f_list[0]), pgbuf_compare_victim_list);
+
+      error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher,
+					  prev_chkpt_redo_lsa, smallest_lsa);
+      flushed_page_cnt_local += seq_flusher->flushed_pages;
+    }
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint END flushed:%d\n",
+		flushed_page_cnt_local);
+
+  if (flushed_page_cnt != NULL)
+    {
+      *flushed_page_cnt = flushed_page_cnt_local;
+    }
+
+  return error;
+}
+
+/*
+ * pgbuf_flush_chkpt_seq_list () - flush a sequence of pages during checkpoint
+ *   return:error code or NO_ERROR
+ *   thread_p(in):
+ *   seq_flusher(in): container for list of pages
+ *   prev_chkpt_redo_lsa(in): LSA of previous checkpoint
+ *   chkpt_smallest_lsa(out): smallest LSA found in a page
+ *
+ */
+static int
+pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p,
+			    PGBUF_SEQ_FLUSHER * seq_flusher,
+			    const LOG_LSA * prev_chkpt_redo_lsa,
+			    LOG_LSA * chkpt_smallest_lsa)
+{
+#define WAIT_FLUSH_VICTIMS_MAX_MSEC	1500.0f
+  int error = NO_ERROR;
+  struct timeval *p_limit_time;
+  int total_flushed;
+  int time_rem;
+#if defined (SERVER_MODE)
+  int flush_interval, sleep_msecs;
+  float wait_victims;
+  float chkpt_flush_rate;
+  struct timeval limit_time = {
+    0, 0
+  };
+  struct timeval cur_time = {
+    0, 0
+  };
+#endif
+
+#if defined (SERVER_MODE)
+  sleep_msecs = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_SLEEP_MSECS);
+  if (sleep_msecs > 0)
+    {
+      chkpt_flush_rate = 1000.0f / (float) sleep_msecs;
+    }
+  else
+    {
+      chkpt_flush_rate = 1000.0f;
+    }
+
+  flush_interval =
+    (int) (1000.0f * PGBUF_CHKPT_BURST_PAGES / chkpt_flush_rate);
+  seq_flusher->interval_msec = flush_interval;
+#endif
+
+  total_flushed = 0;
+  seq_flusher->control_flushed = 0;
+  seq_flusher->control_intervals_cnt = 0;
+  while (seq_flusher->flush_idx < seq_flusher->flush_cnt)
+    {
+#if defined (SERVER_MODE)
+      gettimeofday (&cur_time, NULL);
+
+      /* compute time limit for allowed flush interval */
+      timeval_add_msec (&limit_time, &cur_time, flush_interval);
+
+      seq_flusher->flush_rate = chkpt_flush_rate;
+      p_limit_time = &limit_time;
+#else
+      p_limit_time = NULL;
+#endif
+
+#if defined (SERVER_MODE)
+      wait_victims = 0;
+      while (pgbuf_Pool.is_flushing_victims == true
+	     && wait_victims < WAIT_FLUSH_VICTIMS_MAX_MSEC)
+	{
+	  /* wait 100 micro-seconds */
+	  thread_sleep (0.1f);
+	  wait_victims += 0.1f;
+	}
+#endif
+
+      error = pgbuf_flush_seq_list (thread_p, seq_flusher, p_limit_time,
+				    prev_chkpt_redo_lsa, chkpt_smallest_lsa,
+				    true, &time_rem);
+      total_flushed += seq_flusher->flushed_pages;
+
+      if (error != NO_ERROR)
+	{
+	  seq_flusher->flushed_pages = total_flushed;
+	  return error;
+	}
+
+#if defined (SERVER_MODE)
+      if (time_rem > 0)
+	{
+	  thread_sleep (time_rem);
+	}
+#endif
+    }
+
+  seq_flusher->flushed_pages = total_flushed;
+
+  return error;
+#undef WAIT_FLUSH_VICTIMS_MAX_MSEC
+}
+
+/*
+ * pgbuf_flush_seq_list () - flushes a sequence of pages
+ *   return:error code or NO_ERROR
+ *   thread_p(in):
+ *   seq_flusher(in): container for list of pages
+ *   limit_time(in): absolute time limit allowed for this call
+ *   prev_chkpt_redo_lsa(in): LSA of previous checkpoint
+ *   chkpt_smallest_lsa(out): smallest LSA found in a page
+ *   is_ckpt(in): true if we flush in context of checkpoint
+ *   time_rem(in): time remaining until limit time expires 
+ *
+ *  Note : burst_mode from seq_flusher container controls how the flush is
+ *	   performed:
+ *	    - if enabled, an amount of pages is flushed as soon as possible,
+ *	      according to desired flush rate and time limit
+ *	    - if disabled, the same amount of pages is flushed, but with a 
+ *	      pause between each flushed page.
+ *	   Since data flush is concurrent with other IO, burst mode increases
+ *	   the chance that data and other IO sequences do not mix at IO
+ *	   scheduler level and break each-other's sequentiality.
+ */
+static int
+pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
+		      PGBUF_SEQ_FLUSHER * seq_flusher,
+		      struct timeval *limit_time,
+		      const LOG_LSA * prev_chkpt_redo_lsa,
+		      LOG_LSA * chkpt_smallest_lsa, const bool is_ckpt,
+		      int *time_rem)
+{
+  PGBUF_BCB *bufptr;
+  VPID vpid;
+  PAGE_PTR pgptr;
+  double sleep_msecs = 0;
+  int rv;
+  PGBUF_VICTIM_CANDIDATE_LIST *f_list;
+  int error = NO_ERROR;
+  int avail_time_msec, time_rem_msec = 0;
+  struct timeval cur_time = {
+    0, 0
+  };
+  int flush_per_interval;
+  int cnt_writes;
+  int dropped_pages;
+  bool done_flush;
+  float control_est_flush_total = 0;
+  int control_total_cnt_intervals = 0;
+  bool ignore_time_limit = false;
+  bool flush_if_already_flushed;
+
+  assert (seq_flusher != NULL);
+  f_list = seq_flusher->flush_list;
+
+  gettimeofday (&cur_time, NULL);
+
+  if (seq_flusher->burst_mode == true)
+    {
+      assert_release (limit_time != NULL);
+    }
+
+  *time_rem = 0;
+  if (limit_time != NULL)
+    {
+      /* limited time job: amount to flush in this interval */
+      avail_time_msec = (int) timeval_diff_in_msec (limit_time, &cur_time);
+
+      control_total_cnt_intervals =
+	(int) (1000.f / (float) seq_flusher->interval_msec + 0.5f);
+
+      if (seq_flusher->control_intervals_cnt > 0)
+	{
+	  control_est_flush_total = (seq_flusher->flush_rate
+				     *
+				     (float) (seq_flusher->
+					      control_intervals_cnt +
+					      1) /
+				     (float) control_total_cnt_intervals);
+
+	  flush_per_interval =
+	    (int) (control_est_flush_total - seq_flusher->control_flushed);
 	}
       else
+	{
+	  flush_per_interval = (int)
+	    (seq_flusher->flush_rate / control_total_cnt_intervals);
+	  if (seq_flusher->control_intervals_cnt < 0)
+	    {
+	      flush_per_interval -= seq_flusher->control_flushed;
+	    }
+	}
+    }
+  else
+    {
+      /* flush all */
+      avail_time_msec = -1;
+      flush_per_interval = seq_flusher->flush_cnt;
+    }
+
+  flush_per_interval = (int)
+    MAX (flush_per_interval,
+	 (PGBUF_CHKPT_MIN_FLUSH_RATE * seq_flusher->interval_msec) / 1000.0f);
+
+  er_log_debug (ARG_FILE_LINE,
+		"pgbuf_flush_seq_list (%s): start_idx:%d, "
+		"flush_cnt:%d, LSA_flush:%d, "
+		"flush_rate:%.2f, control_flushed:%d, this_interval:%d, "
+		"Est_tot_flush:%.2f, control_intervals:%d, %d "
+		"Avail_time:%d\n",
+		(is_ckpt ? "chkpt" : "bg"),
+		seq_flusher->flush_idx,
+		seq_flusher->flush_cnt,
+		seq_flusher->flush_upto_lsa.pageid,
+		seq_flusher->flush_rate,
+		seq_flusher->control_flushed,
+		flush_per_interval,
+		control_est_flush_total,
+		seq_flusher->control_intervals_cnt,
+		control_total_cnt_intervals, avail_time_msec);
+
+  /* Start to flush */
+  cnt_writes = 0;
+  dropped_pages = 0;
+  seq_flusher->flushed_pages = 0;
+
+  for (;
+       seq_flusher->flush_idx < seq_flusher->flush_cnt
+       && seq_flusher->flushed_pages < flush_per_interval;
+       seq_flusher->flush_idx++)
+    {
+      bufptr = f_list[seq_flusher->flush_idx].bufptr;
+
+      /* prefer sequentiality to an unnecessary flush; skip already flushed
+       * page if is the last in list or if there is already a gap due to missing
+       * next page */
+      flush_if_already_flushed = true;
+      if (seq_flusher->flush_idx + 1 >= seq_flusher->flush_cnt
+	  || f_list[seq_flusher->flush_idx].vpid.pageid + 1
+	  != f_list[seq_flusher->flush_idx + 1].vpid.pageid)
+	{
+	  flush_if_already_flushed = false;
+	}
+
+      MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
+
+      if (!VPID_EQ (&bufptr->vpid, &f_list[seq_flusher->flush_idx].vpid)
+	  || bufptr->dirty == false
+	  || (flush_if_already_flushed == false
+	      && !LSA_ISNULL (&bufptr->oldest_unflush_lsa)
+	      && LSA_GT (&bufptr->oldest_unflush_lsa,
+			 &seq_flusher->flush_upto_lsa)))
+	{
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  dropped_pages++;
+	  continue;
+	}
+
+      /* flush when buffer is not fixed or was fixed by reader */
+      done_flush = false;
+      if (bufptr->avoid_victim == false
+	  && (bufptr->latch_mode == PGBUF_NO_LATCH
+	      || (is_ckpt && (bufptr->latch_mode == PGBUF_LATCH_READ
+			      || bufptr->latch_mode == PGBUF_LATCH_FLUSH))))
+	{
+	  error = pgbuf_flush_page_with_wal (thread_p, bufptr);
+	  if (error != NO_ERROR)
+	    {
+	      if (is_ckpt == false)
+		{
+		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  break;
+		}
+	    }
+	  else
+	    {
+	      done_flush = true;
+	      seq_flusher->flushed_pages++;
+	    }
+	}
+
+      if (is_ckpt && done_flush == false)
 	{
 	  if (LSA_ISNULL (&bufptr->oldest_unflush_lsa))
 	    {
@@ -3579,9 +3989,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 	      vpid = bufptr->vpid;
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 
-	      pgptr =
-		pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS,
-			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS,
+				 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (pgptr == NULL
 		  || pgbuf_flush_with_wal (thread_p, pgptr) == NULL)
 		{
@@ -3597,10 +4006,12 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 		  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
 
 		  /* get the smallest oldest_unflush_lsa */
-		  if (LSA_ISNULL (smallest_lsa)
-		      || LSA_LT (&bufptr->oldest_unflush_lsa, smallest_lsa))
+		  if (LSA_ISNULL (chkpt_smallest_lsa)
+		      || LSA_LT (&bufptr->oldest_unflush_lsa,
+				 chkpt_smallest_lsa))
 		    {
-		      LSA_COPY (smallest_lsa, &bufptr->oldest_unflush_lsa);
+		      LSA_COPY (chkpt_smallest_lsa,
+				&bufptr->oldest_unflush_lsa);
 		    }
 
 		  if (pgptr == NULL)
@@ -3610,9 +4021,10 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 
 		  pthread_mutex_unlock (&bufptr->BCB_mutex);
 		}
-	      else		/* If the result of pgbuf_flush_with_wal() is success, then */
+	      else
 		{
-		  flushed_page_cnt_local++;
+		  /* pgbuf_flush_with_wal successful */
+		  seq_flusher->flushed_pages++;
 		}
 
 	      if (pgptr != NULL)
@@ -3621,21 +4033,100 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 		}
 	    }
 	}
+      else
+	{
+	  assert (is_ckpt == false || done_flush == true);
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	}
 
 #if defined(SERVER_MODE)
+      if (limit_time != NULL && ignore_time_limit == false)
+	{
+	  gettimeofday (&cur_time, NULL);
+	  if (cur_time.tv_sec > limit_time->tv_sec
+	      || (cur_time.tv_sec == limit_time->tv_sec
+		  && cur_time.tv_usec >= limit_time->tv_usec))
+	    {
+	      *time_rem = -1;
+	      break;
+	    }
+	}
+
+      if (seq_flusher->burst_mode == false
+	  && seq_flusher->flush_rate > 0
+	  && seq_flusher->flushed_pages < flush_per_interval
+	  && ignore_time_limit == false)
+	{
+	  if (limit_time != NULL)
+	    {
+	      time_rem_msec = (int)
+		timeval_diff_in_msec (limit_time, &cur_time);
+	      sleep_msecs =
+		time_rem_msec
+		/ (flush_per_interval - seq_flusher->flushed_pages);
+	    }
+	  else
+	    {
+	      sleep_msecs = 1000.0f / (double) (seq_flusher->flush_rate);
+	    }
+
+	  if (sleep_msecs > (1000.0f / PGBUF_CHKPT_MAX_FLUSH_RATE))
+	    {
+	      thread_sleep (sleep_msecs);
+	    }
+	}
+
       if (thread_p && thread_p->shutdown == true)
 	{
 	  return ER_FAILED;
 	}
-#endif /* SERVER_MODE */
+
+#endif
     }
 
-  if (flushed_page_cnt != NULL)
+  gettimeofday (&cur_time, NULL);
+  if (limit_time != NULL)
     {
-      *flushed_page_cnt = flushed_page_cnt_local;
+      time_rem_msec = (int) timeval_diff_in_msec (limit_time, &cur_time);
+      *time_rem = time_rem_msec;
+
+      seq_flusher->control_intervals_cnt++;
+      if (seq_flusher->control_intervals_cnt >= control_total_cnt_intervals
+	  || ignore_time_limit == true)
+	{
+	  seq_flusher->control_intervals_cnt = 0;
+	}
+
+      if (is_ckpt == false
+	  && seq_flusher->flush_idx >= seq_flusher->flush_cnt)
+	{
+	  seq_flusher->control_intervals_cnt = -1;
+	  seq_flusher->control_flushed = seq_flusher->flushed_pages;
+	}
+      else
+	{
+	  if (seq_flusher->control_intervals_cnt == 0)
+	    {
+	      seq_flusher->control_flushed = 0;
+	    }
+	  else
+	    {
+	      seq_flusher->control_flushed += seq_flusher->flushed_pages;
+	    }
+	}
     }
 
-  return NO_ERROR;
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_seq_list end (%s): %s %s"
+		"pages : %d written/%d dropped, "
+		"Remaining_time:%d, Avail_time:%d, Curr:%d/%d,",
+		is_ckpt ? "ckpt" : "",
+		((time_rem_msec <= 0) ? "[Expired] " : ""),
+		(ignore_time_limit ? "[boost]" : ""),
+		seq_flusher->flushed_pages, dropped_pages,
+		time_rem_msec, avail_time_msec,
+		seq_flusher->flush_idx, seq_flusher->flush_cnt);
+
+  return error;
 }
 
 /*
@@ -11489,3 +11980,49 @@ pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file,
     }
 }
 #endif
+
+/*
+ * pgbuf_initialize_seq_flusher () - Initializes sequential flusher on a list of
+ *				     pages to be flushed
+ *
+ *   return: error code
+ *   seq_flusher(in/out):
+ *   f_list(in/out): flush list to use or NULL if needs to be allocated
+ *   cnt(in/out): size of flush list
+ */
+static int
+pgbuf_initialize_seq_flusher (PGBUF_SEQ_FLUSHER * seq_flusher,
+			      PGBUF_VICTIM_CANDIDATE_LIST * f_list,
+			      const int cnt)
+{
+  int alloc_size;
+
+  memset (seq_flusher, 0, sizeof (*seq_flusher));
+  seq_flusher->flush_max_size = cnt;
+
+  if (f_list != NULL)
+    {
+      seq_flusher->flush_list = f_list;
+    }
+  else
+    {
+      alloc_size =
+	seq_flusher->flush_max_size * sizeof (seq_flusher->flush_list[0]);
+      seq_flusher->flush_list =
+	(PGBUF_VICTIM_CANDIDATE_LIST *) malloc (alloc_size);
+      if (seq_flusher->flush_list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, alloc_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  seq_flusher->flush_cnt = 0;
+  seq_flusher->flush_idx = 0;
+  seq_flusher->burst_mode = true;
+
+  seq_flusher->control_intervals_cnt = 0;
+  seq_flusher->control_flushed = 0;
+
+  return NO_ERROR;
+}
