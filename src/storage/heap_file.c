@@ -22729,12 +22729,13 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	      if (classrep->indexes)
 		{
 		  BTREE_SEARCH ret;
+		  OID serial_oid;
 
 		  BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
 		  ret = xbtree_find_unique (thread_p, &serial_btid,
 					    S_SELECT, &key_val,
 					    &serial_class_oid,
-					    &(att->serial_obj), false);
+					    &serial_oid, false);
 		  if (heap_classrepr_free (classrep, &idx_in_cache) !=
 		      NO_ERROR)
 		    {
@@ -22744,6 +22745,11 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 		    {
 		      return ER_FAILED;
 		    }
+
+		  assert (!OID_ISNULL (&serial_oid));
+		  ATOMIC_CAS_64 ((INT64 *) (&att->serial_obj),
+				 *(INT64 *) (&oid_Null_oid),
+				 *(INT64 *) (&serial_oid));
 		}
 	      else
 		{
