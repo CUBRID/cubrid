@@ -4785,6 +4785,11 @@ qdata_subtract_timestampltz_to_dbval (DB_VALUE * ts_ltz_val_p,
 	{
 	  DB_MAKE_TIMESTAMPLTZ (result_p, *DB_GET_UTIME (&tmp_val_res));
 	}
+      else
+	{
+	  assert (tmp_val_res.need_clear == false);
+	  pr_clone_value (&tmp_val_res, result_p);
+	}
       break;
     default:
       break;
