@@ -1109,7 +1109,7 @@ static void heap_mvcc_log_remove_partition_link (THREAD_ENTRY * thread_p,
 						 OID * partition_oid,
 						 OID * new_next_version,
 						 OID * new_partition_oid,
-						 bool is_bigone,
+						 int is_bigone,
 						 LOG_DATA_ADDR * p_addr);
 
 static DB_LOGICAL
@@ -29179,8 +29179,9 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
   int i;
   RECDES recdes;
   PGBUF_WATCHER fwd_page_watcher;
-  LOG_DATA_ADDR addr;
+  LOG_DATA_ADDR home_addr;
   LOG_DATA_ADDR forward_addr;
+  LOG_DATA_ADDR * addr_p;
   OID save_next_version;
   OID save_partition_oid;
   OID next_version;
@@ -29295,7 +29296,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
     }
 
   /* set logging addresses */
-  LOG_SET_DATA_ADDR (&addr, home_page_watcher->pgptr, &(hfid->vfid),
+  LOG_SET_DATA_ADDR (&home_addr, home_page_watcher->pgptr, &(hfid->vfid),
 		     oid->slotid);
   if (fwd_page_watcher.pgptr != NULL)
     {
@@ -29305,6 +29306,17 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
   else
     {
       LOG_SET_DATA_ADDR (&forward_addr, NULL, NULL, 0);
+    }
+
+  if (type == REC_BIGONE || type == REC_RELOCATION)
+    {
+      /* use forward_addr for logging */
+      addr_p = &forward_addr;
+    }
+  else
+    {
+      /* use home_addr for logging */
+      addr_p = &home_addr;
     }
 
   /* cleanup the partition link, according to record type. The record's length
@@ -29351,8 +29363,8 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 	}
       heap_mvcc_log_remove_partition_link (thread_p, &save_next_version,
 					   &save_partition_oid, &next_version,
-					   &next_partition_oid, true,
-					   &forward_addr);
+					   &next_partition_oid, 1,
+					   addr_p);
       pgbuf_set_dirty (thread_p, fwd_page_watcher.pgptr, DONT_FREE);
       break;
 
@@ -29376,7 +29388,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
       heap_mvcc_log_remove_partition_link (thread_p, &save_next_version,
 					   &save_partition_oid,
 					   &next_version, &next_partition_oid,
-					   false, &addr);
+					   0, addr_p);
       pgbuf_set_dirty (thread_p, home_page_watcher->pgptr, DONT_FREE);
       break;
 
@@ -29394,6 +29406,9 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 	}
       if (heap_is_big_length (recdes.length))
 	{
+	  /* fill up to maximum size */
+	  HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_header);
+
 	  if (heap_set_mvcc_rec_header_on_overflow (fwd_page_watcher.pgptr,
 						    &mvcc_header) != NO_ERROR)
 	    {
@@ -29403,8 +29418,8 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 	  heap_mvcc_log_remove_partition_link (thread_p, &save_next_version,
 					       &save_partition_oid,
 					       &next_version,
-					       &next_partition_oid, true,
-					       &addr);
+					       &next_partition_oid, 1,
+					       addr_p);
 	}
       else
 	{
@@ -29419,8 +29434,8 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 	  heap_mvcc_log_remove_partition_link (thread_p, &save_next_version,
 					       &save_partition_oid,
 					       &next_version,
-					       &next_partition_oid, false,
-					       &addr);
+					       &next_partition_oid, 0,
+					       addr_p);
 	}
       pgbuf_set_dirty (thread_p, fwd_page_watcher.pgptr, DONT_FREE);
       break;
@@ -29443,7 +29458,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
       heap_mvcc_log_remove_partition_link (thread_p, &save_next_version,
 					   &save_partition_oid,
 					   &next_version, &next_partition_oid,
-					   false, &addr);
+					   0, addr_p);
       pgbuf_set_dirty (thread_p, home_page_watcher->pgptr, DONT_FREE);
       break;
 
@@ -29652,7 +29667,7 @@ heap_mvcc_log_remove_partition_link (THREAD_ENTRY * thread_p,
 				     OID * old_partition_oid,
 				     OID * new_next_version,
 				     OID * new_partition_oid,
-				     bool is_bigone, LOG_DATA_ADDR * p_addr)
+				     int is_bigone, LOG_DATA_ADDR * p_addr)
 {
 #define HEAP_LOG_MVCC_REMOVE_PARTITION_LINK_MAX_UNDO_CRUMBS 3
 #define HEAP_LOG_MVCC_REMOVE_PARTITION_LINK_MAX_REDO_CRUMBS 3
