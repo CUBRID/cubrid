@@ -6253,7 +6253,7 @@ logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid,
       datap += OR_INT_SIZE;
       OR_PUT_INT (datap, key_delta);
       datap += OR_INT_SIZE;
-      undo_rec.length = CAST_STRLEN (datap - undo_rec.data);
+      undo_rec.length = CAST_BUFLEN (datap - undo_rec.data);
 
       redo_rec.data = NULL;
       redo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
@@ -6269,7 +6269,7 @@ logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid,
       datap += OR_INT_SIZE;
       OR_PUT_INT (datap, num_keys);
       datap += OR_INT_SIZE;
-      redo_rec.length = CAST_STRLEN (datap - redo_rec.data);
+      redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
 
       log_append_undoredo_data2 (thread_p,
 				 RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL,
@@ -6359,7 +6359,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
       datap += OR_INT_SIZE;
       OR_PUT_INT (datap, key_delta);
       datap += OR_INT_SIZE;
-      undo_rec.length = CAST_STRLEN (datap - undo_rec.data);
+      undo_rec.length = CAST_BUFLEN (datap - undo_rec.data);
 
       redo_rec.data = NULL;
       redo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
@@ -6375,7 +6375,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
       datap += OR_INT_SIZE;
       OR_PUT_INT (datap, num_keys);
       datap += OR_INT_SIZE;
-      redo_rec.length = CAST_STRLEN (datap - redo_rec.data);
+      redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
 
       log_append_undoredo_data2 (thread_p,
 				 RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL,

@@ -936,7 +936,7 @@ struct rvfun RV_fun[] = {
 
   {RVBT_DELETE_INDEX,
    "RVBT_DELETE_INDEX",
-   NULL,
+   btree_rv_undo_delete_index,
    btree_rv_redo_delete_index,
    NULL,
    NULL}
