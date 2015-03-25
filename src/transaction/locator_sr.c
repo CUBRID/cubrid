@@ -8745,12 +8745,15 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
+#if defined(SERVER_MODE)
   if (!heap_is_mvcc_disabled_for_class (class_oid))
     {
       /* Use MVCC if it's not disabled for current class */
       use_mvcc = true;
       mvccid = logtb_get_current_mvccid (thread_p);
     }
+#endif /* SERVER_MODE */
+
   /*
    *  Populate the index_attrinfo structure.
    *  Return the number of indexed attributes found.
@@ -8841,9 +8844,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 		  unique_stat_info = NULL;
 		}
 	    }
-/* temporary disable standalone optimization (non-mvcc insert/delete style).
- * Must be activated when dynamic heap is introduced */
-/* #if defined (SERVER_MODE) */
 	  if (use_mvcc)
 	    {
 	      btree_set_mvcc_header_ids_for_update (thread_p, !is_insert,
@@ -8851,7 +8851,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 						    mvcc_rec_header);
 	      p_mvcc_rec_header = mvcc_rec_header;
 	    }
-/* #endif */
 
 	  if (is_insert)
 	    {
@@ -9471,12 +9470,14 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
 
+#if defined(SERVER_MODE)
   if (!heap_is_mvcc_disabled_for_class (class_oid)
       && !OID_EQ (old_oid, new_oid))
     {
       use_mvcc = true;
       mvccid = logtb_get_current_mvccid (thread_p);
     }
+#endif /* SERVER_MODE */
 
   LSA_SET_NULL (&preserved_repl_lsa);
 
@@ -9775,9 +9776,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  if (i < 1 || !locator_was_index_already_applied (new_attrinfo,
 							   &index->btid, i))
 	    {
-/* temporary disable standalone optimization (non-mvcc insert/delete style).
- * Must be activated when dynamic heap is introduced */
-/* #if defined (SERVER_MODE) */
 	      if (use_mvcc)
 		{
 		  btree_set_mvcc_header_ids_for_update (thread_p,
@@ -9787,7 +9785,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 							mvcc_rec_header);
 		  p_mvcc_rec_header = mvcc_rec_header;
 		}
-/* #endif */
 	      if (do_delete_only)
 		{
 		  if (use_mvcc)

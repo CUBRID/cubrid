@@ -2207,6 +2207,10 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 #endif /* CUBRID_DEBUG */
 
+#if !defined(SERVER_MODE)
+  assert_release (!LOG_IS_MVCC_OPERATION (rcvindex));
+#endif /* SERVER_MODE */
+
   if (log_No_logging)
     {
       /* We are not logging */

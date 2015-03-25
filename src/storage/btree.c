@@ -15984,6 +15984,10 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
   assert (new_key != NULL);
   assert (unique != NULL);
 
+#if !defined (SERVER_MODE)
+  assert_release (p_mvcc_rec_header == NULL);
+#endif /* SERVER_MODE */
+
   if (p_mvcc_rec_header != NULL && !OID_EQ (oid, new_oid))
     {
       /* in MVCC, logical deletion means DEL_ID insertion */
@@ -28995,6 +28999,9 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   if (p_mvcc_rec_header != NULL)
     {
+#if !defined (SERVER_MODE)
+      assert_release (false);
+#endif /* SERVER_MODE */
       btree_mvcc_info_from_heap_mvcc_header (p_mvcc_rec_header, &mvcc_info);
     }
 

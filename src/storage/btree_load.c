@@ -2496,16 +2496,26 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	  goto error;
 	}
 
+#if defined(SERVER_MODE)
       if (MVCC_GET_INSID (&mvcc_header) != MVCCID_ALL_VISIBLE)
 	{
 	  /* Set valid insert MVCCID flag */
 	  MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
 	}
+#else
+      /* all inserted OIDs are created as visible in stand-alone */
+      MVCC_SET_INSID (&mvcc_header, MVCCID_ALL_VISIBLE);
+#endif /* SERVER_MODE */
 
       if (MVCC_GET_DELID (&mvcc_header) != MVCCID_NULL)
 	{
+#if defined(SERVER_MODE)
 	  /* Set valid delete MVCCID */
 	  MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
+#else
+	  /* standalone : ignore deleted OID */
+	  continue;
+#endif /* SERVER_MODE */
 	}
 
       assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));

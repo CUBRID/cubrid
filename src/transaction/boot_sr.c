@@ -6233,23 +6233,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
       goto error;
     }
 
-  /* TODO: Currently MVCC operation is used in stand-alone including for
-   *       creating database. Vacuum will have to track changes to clean
-   *       up. Remove initialize/load from here when stand-alone is fixed
-   *       to use non-MVCC type operations.
-   */
-  if (vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages,
-			 &boot_Db_parm->vacuum_data_vfid,
-			 &boot_Db_parm->dropped_files_vfid) != NO_ERROR)
-    {
-      goto error;
-    }
-  if (vacuum_load_dropped_files_from_disk (thread_p) != NO_ERROR)
-    {
-      goto error;
-    }
-  /* TODO: Remove code until here */
-
   /*
    * Create the rest of the other volumes if any
    */
