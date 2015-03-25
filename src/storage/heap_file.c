@@ -29181,7 +29181,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
   PGBUF_WATCHER fwd_page_watcher;
   LOG_DATA_ADDR home_addr;
   LOG_DATA_ADDR forward_addr;
-  LOG_DATA_ADDR * addr_p;
+  LOG_DATA_ADDR *addr_p;
   OID save_next_version;
   OID save_partition_oid;
   OID next_version;
@@ -29363,8 +29363,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 	}
       heap_mvcc_log_remove_partition_link (thread_p, &save_next_version,
 					   &save_partition_oid, &next_version,
-					   &next_partition_oid, 1,
-					   addr_p);
+					   &next_partition_oid, 1, addr_p);
       pgbuf_set_dirty (thread_p, fwd_page_watcher.pgptr, DONT_FREE);
       break;
 
