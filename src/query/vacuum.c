@@ -620,25 +620,23 @@ int
 xvacuum (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
+  int dummy_save_type = 0;
 
 #if defined(SERVER_MODE)
   error_code = ER_VACUUM_CS_NOT_AVAILABLE;
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_CS_NOT_AVAILABLE, 0);
   return error_code;
 #elif defined (SA_MODE)
-  if (vacuum_Assigned_workers_count == 0)
-    {
-      error_code = vacuum_assign_worker (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+
+  VACUUM_CONVERT_THREAD_TO_VACUUM_WORKER (thread_p, &vacuum_Workers[0],
+					  dummy_save_type);
   do
     {
       vacuum_process_vacuum_data (thread_p);
     }
   while (vacuum_Data->n_table_entries > 0);
+
+  VACUUM_RESTORE_THREAD (thread_p, dummy_save_type);
 
   return error_code;
 #else
@@ -802,10 +800,6 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
       logtb_initialize_vacuum_worker_tdes (vacuum_Workers[i].tdes,
 					   VACUUM_WORKER_INDEX_TO_TRANID (i));
     }
-
-#if defined (SA_MODE)
-  VACUUM_SET_VACUUM_WORKER (NULL, &vacuum_Workers[0]);
-#endif /* SA_MODE */
 
   return NO_ERROR;
 
@@ -2701,7 +2695,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   BTID sys_btid;
   OID class_oid, oid;
   MVCCID threshold_mvccid = vacuum_Global_oldest_active_mvccid;
-  int unique;
   int n_pages = 0;
   BTREE_MVCC_INFO mvcc_info;
   MVCCID mvccid;
@@ -2850,8 +2843,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	  btree_rv_read_keybuf_nocopy (thread_p, undo_data, undo_data_size,
 				       &btid_int, &class_oid, &oid,
 				       &mvcc_info, &key_buf);
-	  /* Vacuum b-tree */
-	  unique = BTREE_IS_UNIQUE (btid_int.unique_pk);
 
 	  /* Set btree_delete purpose: vacuum object if it was deleted or
 	   * vacuum insert MVCCID if it was inserted.
@@ -2919,8 +2910,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 		  continue;
 		}
 	    }
-	  else if (log_record_data.rcvindex ==
-		   RVBT_KEYVAL_INS_LFRECORD_MVCC_DELID)
+	  else if (log_record_data.rcvindex == RVBT_MVCC_DELETE_OBJECT)
 	    {
 	      /* Object was deleted and must be completely removed. */
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,

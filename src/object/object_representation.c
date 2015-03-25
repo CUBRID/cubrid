@@ -3004,7 +3004,7 @@ or_length_binary (DB_BINARY * binary)
  *
  * Note:
  *    This advances the translation pointer and adds bytes of zero.
- *    This is used add padding bytes to ensure proper allignment of
+ *    This is used add padding bytes to ensure proper alignment of
  *    some data types.
  */
 int
@@ -3060,6 +3060,25 @@ or_seek (OR_BUF * buf, int psn)
     {
       buf->ptr = buf->buffer + psn;
     }
+  return NO_ERROR;
+}
+
+/*
+ * or_align () - Align current buffer pointer to given alignment.
+ *
+ * return	 : Error code.
+ * buf (in/out)	 : Buffer.
+ * alignment (in) : Desired alignment.
+ */
+int
+or_align (OR_BUF * buf, int alignment)
+{
+  char *new_ptr = PTR_ALIGN (buf->ptr, alignment);
+  if (new_ptr > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  buf->ptr = new_ptr;
   return NO_ERROR;
 }
 

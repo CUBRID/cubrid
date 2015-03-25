@@ -2724,11 +2724,12 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		         record) */
 		      btree_mvcc_info_from_heap_mvcc_header (&mvcc_header,
 							     &mvcc_info);
-		      btree_leaf_change_first_oid (&load_args->out_recdes,
-						   load_args->btid,
-						   &this_oid,
-						   &this_class_oid,
-						   &mvcc_info, &offset);
+		      btree_leaf_change_first_object (&load_args->out_recdes,
+						      load_args->btid,
+						      &this_oid,
+						      &this_class_oid,
+						      &mvcc_info, &offset,
+						      NULL);
 		      if (ret != NO_ERROR)
 			{
 			  goto error;
@@ -2849,9 +2850,9 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 			}
 
 		      /* Connect the new overflow page to the leaf page */
-		      btree_leaf_new_overflow_oids_vpid
-			(&load_args->out_recdes, &load_args->ovf.vpid,
-			 load_args->btid->unique_pk, &this_class_oid);
+		      btree_leaf_record_change_overflow_link
+			(thread_p, load_args->btid, &load_args->out_recdes,
+			 &load_args->ovf.vpid, NULL);
 
 		      /* Try to Store the record into the current leaf page */
 		      sp_success = spage_insert (thread_p,

@@ -9707,12 +9707,65 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       /*
        * Write a compensating log record for operation page level logging.
        * For logical level logging, the recovery undo function must log an
-       * redo/CLR log to describe the undo. This in turn will be transalated
+       * redo/CLR log to describe the undo. This in turn will be translated
        * to a compensating record.
        */
       if (rcvindex == RVVAC_DROPPED_FILE_ADD)
 	{
 	  rv_err = vacuum_notify_dropped_file (thread_p, rcv, NULL);
+	  if (rv_err != NO_ERROR)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "log_rollback_record: SYSTEM ERROR... "
+			    "Transaction %d, "
+			    "Log record %lld|%d, rcvindex = %s, "
+			    "was not undone due to error (%d)\n",
+			    tdes->tran_index, (long long int) log_lsa->pageid,
+			    log_lsa->offset, rv_rcvindex_string (rcvindex),
+			    rv_err);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
+		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+	      assert (false);
+	    }
+	}
+      else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex))
+	{
+	  /* B-tree logical logs will add a regular compensate in the modified
+	   * pages. They do not require a logical compensation since the
+	   * "undone" page can be accessed and logged.
+	   * Only no-page logical operations require logical compensation.
+	   */
+	  /* Invoke Undo recovery function */
+	  rv_err = log_undo_rec_restartable (thread_p, rcvindex, rcv);
+	  if (rv_err != NO_ERROR)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "log_rollback_record: SYSTEM ERROR... "
+			    "Transaction %d, "
+			    "Log record %lld|%d, rcvindex = %s, "
+			    "was not undone due to error (%d)\n",
+			    tdes->tran_index, (long long int) log_lsa->pageid,
+			    log_lsa->offset, rv_rcvindex_string (rcvindex),
+			    rv_err);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
+		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+	      assert (false);
+	    }
+	  else if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "BTREE_ROLLBACK: Successfully executed "
+			     "undo/compensate for log entry before "
+			     "lsa=%lld|%d, undo_nxlsa=%lld|%d. "
+			     "Transaction=%d, rcvindex=%d.\n",
+			     (long long int) log_lsa->pageid,
+			     (int) log_lsa->offset,
+			     (long long int) tdes->undo_nxlsa.pageid,
+			     (int) tdes->undo_nxlsa.offset, tdes->tran_index,
+			     rcvindex);
+	    }
 	}
       else if (!RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
 	{
@@ -9721,6 +9774,21 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 				 rcv->data, tdes);
 	  /* Invoke Undo recovery function */
 	  rv_err = log_undo_rec_restartable (thread_p, rcvindex, rcv);
+	  if (rv_err != NO_ERROR)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "log_rollback_record: SYSTEM ERROR... "
+			    "Transaction %d, "
+			    "Log record %lld|%d, rcvindex = %s, "
+			    "was not undone due to error (%d)\n",
+			    tdes->tran_index, (long long int) log_lsa->pageid,
+			    log_lsa->offset, rv_rcvindex_string (rcvindex),
+			    rv_err);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
+		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+	      assert (false);
+	    }
 	}
       else
 	{
@@ -9792,6 +9860,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
 		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+	      assert (false);
 	    }
 
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
@@ -9814,6 +9883,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 			     rcv->offset, NULL, rcv->length, rcv->data, tdes);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
 	      1, fileio_get_volume_label (rcv_vpid->volid, PEEK));
+      assert (false);
     }
 
   if (area != NULL)

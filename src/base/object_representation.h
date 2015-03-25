@@ -79,6 +79,10 @@
 #define OR_OID_SLOTID           4
 #define OR_OID_VOLID            6
 
+#define OR_VPID_SIZE		6
+#define OR_VPID_PAGEID		0
+#define OR_VPID_VOLID		4
+
 #define OR_LOID_SIZE		12
 #define OR_LOID_VPID_PAGEID	0
 #define OR_LOID_VPID_VOLID	4
@@ -387,6 +391,24 @@
      OR_PUT_INT(((char *)(ptr)) + OR_OID_PAGEID, (oid)->pageid); \
      OR_PUT_SHORT(((char *)(ptr)) + OR_OID_SLOTID, (oid)->slotid); \
      OR_PUT_SHORT(((char *)(ptr)) + OR_OID_VOLID, (oid)->volid); \
+   } while (0)
+
+#define OR_GET_VPID(ptr, vpid) \
+   do { \
+     (vpid)->pageid = OR_GET_INT(((char *)(ptr)) + OR_VPID_PAGEID); \
+     (vpid)->volid = OR_GET_SHORT(((char *)(ptr)) + OR_VPID_VOLID); \
+   } while (0)
+
+#define OR_PUT_VPID(ptr, vpid) \
+   do { \
+     OR_PUT_INT(((char *)(ptr)) + OR_VPID_PAGEID, (vpid)->pageid); \
+     OR_PUT_SHORT(((char *)(ptr)) + OR_VPID_VOLID, (vpid)->volid); \
+   } while (0)
+#define OR_PUT_VPID_ALIGNED(ptr, vpid) \
+  do { \
+     OR_PUT_INT(((char *)(ptr)) + OR_VPID_PAGEID, (vpid)->pageid); \
+     OR_PUT_SHORT(((char *)(ptr)) + OR_VPID_VOLID, (vpid)->volid); \
+     OR_PUT_SHORT(((char *)(ptr)) + OR_VPID_SIZE, 0); \
    } while (0)
 
 #define OR_PUT_NULL_OID(ptr) \
@@ -1464,6 +1486,7 @@ extern int or_skip_varbit_remainder (OR_BUF * buf, int bitlen, int align);
 /* Pack/unpack support functions */
 extern int or_advance (OR_BUF * buf, int offset);
 extern int or_seek (OR_BUF * buf, int psn);
+extern int or_align (OR_BUF * buf, int alignment);
 extern int or_pad (OR_BUF * buf, int length);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_length_string (char *string);

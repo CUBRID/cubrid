@@ -277,9 +277,6 @@ extern int btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 			      TP_DOMAIN * key_domain,
 			      int do_coercion, int total_order,
 			      int *start_colp);
-extern int btree_leaf_new_overflow_oids_vpid (RECDES * rec, VPID * ovfl_vpid,
-					      bool is_unique,
-					      OID * class_oid);
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid,
 			       int col_idx, int *asc_desc);
 

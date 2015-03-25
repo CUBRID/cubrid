@@ -1505,10 +1505,8 @@ enum log_repl_flush
 
 /* Is log record for a b-tree MVCC operation */
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
-  ((rcvindex) == RVBT_KEYVAL_INS_LFRECORD_MVCC_DELID \
-   || (rcvindex) == RVBT_KEYVAL_MVCC_INS \
-   || (rcvindex) == RVBT_KEYVAL_MVCC_INS_LFRECORD_KEYINS \
-   || (rcvindex) == RVBT_KEYVAL_MVCC_INS_LFRECORD_OIDINS \
+  ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
    || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
 
 /* Is log record for a MVCC operation */
@@ -1890,6 +1888,8 @@ struct log_data_addr
   PAGE_PTR pgptr;
   PGLENGTH offset;		/* Offset or slot */
 };
+#define LOG_DATA_ADDR_INITIALIZER \
+  { NULL, NULL, 0 }
 
 typedef struct log_prior_node LOG_PRIOR_NODE;
 struct log_prior_node
@@ -2133,6 +2133,27 @@ extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 extern char log_Name_bg_archive[];
 extern char log_Name_removed_archive[];
+
+#define LOG_RV_RECORD_INSERT		  0x8000
+#define LOG_RV_RECORD_DELETE		  0x4000
+#define LOG_RV_RECORD_UPDATE_ALL	  0xC000
+#define LOG_RV_RECORD_UPDATE_PARTIAL	  0x0000
+#define LOG_RV_RECORD_MODIFY_MASK	  0xC000
+
+#define LOG_RV_RECORD_IS_INSERT(flags) \
+  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_INSERT)
+#define LOG_RV_RECORD_IS_DELETE(flags) \
+  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_DELETE)
+#define LOG_RV_RECORD_IS_UPDATE_ALL(flags) \
+  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_ALL)
+#define LOG_RV_RECORD_IS_UPDATE_PARTIAL(flags) \
+  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_PARTIAL)
+
+#define LOG_RV_RECORD_SET_MODIFY_MODE(addr, mode) \
+  ((addr)->offset = ((addr)->offset & (~LOG_RV_RECORD_MODIFY_MASK)) | (mode))
+
+#define LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE(new_data_size) \
+  (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (void);
@@ -2606,4 +2627,14 @@ extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p,
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY *
 						       thread_p);
 
+extern int log_rv_redo_record_partial_changes (THREAD_ENTRY * thread_p,
+					       char *rcv_data,
+					       int rcv_data_length,
+					       RECDES * record);
+extern int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern char *log_rv_pack_redo_record_changes (char *ptr,
+					      int offset_to_data,
+					      int old_data_size,
+					      int new_data_size,
+					      char *new_data);
 #endif /* _LOG_IMPL_H_ */

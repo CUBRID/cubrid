@@ -308,6 +308,61 @@ struct recdes
   INT16 type;			/* Type of record */
   char *data;			/* The data */
 };
+/* Replace existing data in record at offset_to_data and size old_data_size
+ * with new_data of size new_data_size.
+ */
+#define RECORD_REPLACE_DATA(record, offset_to_data, old_data_size, \
+			    new_data_size, new_data) \
+  do \
+    { \
+      assert ((record) != NULL); \
+      assert ((record)->data != NULL); \
+      assert ((offset_to_data) >= 0 && (offset_to_data) <= (record)->length); \
+      assert ((old_data_size) >= 0 && (new_data_size) >= 0); \
+      assert ((offset_to_data) + (old_data_size) <= (record)->length); \
+      if ((old_data_size) != (new_data_size)) \
+        { \
+	  /* We may need to move data inside record. */ \
+	  if ((offset_to_data) + (old_data_size) < (record)->length) \
+	    { \
+	      /* Move data inside record. */ \
+	      memmove ((record)->data + (offset_to_data) + (new_data_size), \
+		       (record)->data + (offset_to_data) + (old_data_size), \
+		       (record)->length - (offset_to_data) - (old_data_size)); \
+	    } \
+	  /* Update record length. */ \
+	  (record)->length += (new_data_size) - (old_data_size); \
+	} \
+      /* Copy new data (if any). */ \
+      if ((new_data_size) > 0) \
+       { \
+	 memcpy ((record)->data + (offset_to_data), new_data, new_data_size); \
+       } \
+    } \
+  while (false)
+/* Move the data inside a record */
+#define RECORD_MOVE_DATA(rec, dest_offset, src_offset)  \
+  do {	\
+    assert ((rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
+    assert (((rec)->length - (src_offset)) >= 0);  \
+    assert (((rec)->area_size <= 0) || ((rec)->area_size >= (rec)->length));  \
+    assert (((rec)->area_size <= 0) \
+	    || (((rec)->length + ((dest_offset) - (src_offset)))  \
+		<= (rec)->area_size));  \
+    if ((dest_offset) != (src_offset))  \
+      { \
+	if ((rec)->length != (src_offset)) \
+	  { \
+	    memmove ((rec)->data + (dest_offset), (rec)->data + (src_offset), \
+		     (rec)->length - (src_offset)); \
+	    (rec)->length = (rec)->length + ((dest_offset) - (src_offset)); \
+	  } \
+	else \
+	  { \
+	    (rec)->length = (dest_offset); \
+	  } \
+      } \
+  } while (false)
 
 /* MVCC RECORD HEADER */
 typedef struct mvcc_rec_header MVCC_REC_HEADER;

@@ -64,9 +64,8 @@ static void
 log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 		    LOG_PAGE * log_page_p,
 		    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *),
-		    LOG_RCV * rcv, LOG_LSA * rcv_lsa_ptr,
-		    bool ignore_redofunc, int undo_length, char *undo_data,
-		    LOG_ZIP * redo_unzip_ptr);
+		    LOG_RCV * rcv, LOG_LSA * rcv_lsa_ptr, int undo_length,
+		    char *undo_data, LOG_ZIP * redo_unzip_ptr);
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid,
 				    LOG_LSA * rcv_lsa);
 static bool log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length,
@@ -398,6 +397,58 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       if (rcvindex == RVVAC_DROPPED_FILE_ADD)
 	{
 	  error_code = vacuum_notify_dropped_file (thread_p, rcv, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "log_rollback_record: SYSTEM ERROR... "
+			    "Transaction %d, "
+			    "Log record %lld|%d, rcvindex = %s, "
+			    "was not undone due to error (%d)\n",
+			    tdes->tran_index, (long long int) log_lsa->pageid,
+			    log_lsa->offset, rv_rcvindex_string (rcvindex),
+			    error_code);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
+		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+	    }
+	}
+      else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex))
+	{
+	  /* B-tree logical logs will add a regular compensate in the modified
+	   * pages. They do not require a logical compensation since the
+	   * "undone" page can be accessed and logged.
+	   * Only no-page logical operations require logical compensation.
+	   */
+	  /* Invoke Undo recovery function */
+	  error_code = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
+	  if (error_code != NO_ERROR)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				 "log_rv_undo_record: Error applying "
+				 "compensation at log_lsa=(%lld, %d), "
+				 "rcv = {mvccid=%llu, "
+				 "offset = %d, data_length = %d}",
+				 (long long int) rcv_undo_lsa->pageid,
+				 (int) rcv_undo_lsa->offset,
+				 (unsigned long long int) rcv->mvcc_id,
+				 (int) rcv->offset, (int) rcv->length);
+	    }
+	  else if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "BTREE_UNDO: Successfully executed "
+			     "undo/compensate for log entry at "
+			     "lsa=%lld|%d, before lsa=%lld|%d, "
+			     "undo_nxlsa=%lld|%d. "
+			     "Transaction=%d, rcvindex=%d.\n",
+			     (long long int) rcv_undo_lsa->pageid,
+			     (int) rcv_undo_lsa->offset,
+			     (long long int) log_lsa->pageid,
+			     (int) log_lsa->offset,
+			     (long long int) tdes->undo_nxlsa.pageid,
+			     (int) tdes->undo_nxlsa.offset, tdes->tran_index,
+			     rcvindex);
+	    }
 	}
       else if (!RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
 	{
@@ -421,13 +472,13 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 		}
 
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "log_rvredo_rec: Error applying redo record "
-				 "at log_lsa=(%lld, %d), "
+				 "log_rv_undo_record: Error applying "
+				 "compensation at log_lsa=(%lld, %d), "
 				 "rcv = {mvccid=%llu, vpid=(%d, %d), "
 				 "offset = %d, data_length = %d}",
 				 (long long int) rcv_undo_lsa->pageid,
 				 (int) rcv_undo_lsa->offset,
-				 (long long int) rcv->mvcc_id,
+				 (unsigned long long int) rcv->mvcc_id,
 				 (int) vpid.pageid, (int) vpid.volid,
 				 (int) rcv->offset, (int) rcv->length);
 	      goto end;
@@ -554,9 +605,8 @@ static void
 log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 		    LOG_PAGE * log_page_p,
 		    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *),
-		    LOG_RCV * rcv, LOG_LSA * rcv_lsa_ptr,
-		    bool ignore_redofunc, int undo_length, char *undo_data,
-		    LOG_ZIP * redo_unzip_ptr)
+		    LOG_RCV * rcv, LOG_LSA * rcv_lsa_ptr, int undo_length,
+		    char *undo_data, LOG_ZIP * redo_unzip_ptr)
 {
   char *area = NULL;
   bool is_zip = false;
@@ -620,34 +670,29 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
   if (redofun != NULL)
     {
-      if (!ignore_redofunc)
+      error_code = (*redofun) (thread_p, rcv);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = (*redofun) (thread_p, rcv);
-
-	  if (error_code != NO_ERROR)
+	  VPID vpid;
+	  if (rcv->pgptr != NULL)
 	    {
-	      VPID vpid;
-
-	      if (rcv->pgptr != NULL)
-		{
-		  pgbuf_get_vpid (rcv->pgptr, &vpid);
-		}
-	      else
-		{
-		  VPID_SET_NULL (&vpid);
-		}
-
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "log_rvredo_rec: Error applying redo record "
-				 "at log_lsa=(%lld, %d), "
-				 "rcv = {mvccid=%llu, vpid=(%d, %d), "
-				 "offset = %d, data_length = %d}",
-				 (long long int) rcv_lsa_ptr->pageid,
-				 (int) rcv_lsa_ptr->offset,
-				 (long long int) rcv->mvcc_id,
-				 (int) vpid.pageid, (int) vpid.volid,
-				 (int) rcv->offset, (int) rcv->length);
+	      pgbuf_get_vpid (rcv->pgptr, &vpid);
 	    }
+	  else
+	    {
+	      VPID_SET_NULL (&vpid);
+	    }
+
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_rvredo_rec: Error applying redo record "
+			     "at log_lsa=(%lld, %d), "
+			     "rcv = {mvccid=%llu, vpid=(%d, %d), "
+			     "offset = %d, data_length = %d}",
+			     (long long int) rcv_lsa_ptr->pageid,
+			     (int) rcv_lsa_ptr->offset,
+			     (long long int) rcv->mvcc_id,
+			     (int) vpid.pageid, (int) vpid.volid,
+			     (int) rcv->offset, (int) rcv->length);
 	}
     }
   else
@@ -1211,7 +1256,8 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id,
 			" for transaction = %d (index %d).\n"
 			" State should have been either of\n"
 			" %s\n %s\n %s\n", log_state_string (tdes->state),
-			(long long int) log_lsa->pageid, log_lsa->offset,
+			(long long int) log_lsa->pageid,
+			(int) log_lsa->offset,
 			tdes->trid, tdes->tran_index,
 			log_state_string (TRAN_UNACTIVE_WILL_COMMIT),
 			log_state_string
@@ -3549,7 +3595,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   int i;
   int data_header_size = 0;
   MVCCID mvccid = MVCCID_NULL;
-  bool ignore_redofunc;
   LOG_ZIP *undo_unzip_ptr = NULL;
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_diff_rec;
@@ -4034,7 +4079,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  /* XOR Process */
 		  log_rv_redo_record (thread_p, &log_lsa,
 				      log_pgptr, RV_fun[rcvindex].redofun,
-				      &rcv, &rcv_lsa, false,
+				      &rcv, &rcv_lsa,
 				      (int) undo_unzip_ptr->data_length,
 				      (char *) undo_unzip_ptr->log_data,
 				      redo_unzip_ptr);
@@ -4043,7 +4088,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		{
 		  log_rv_redo_record (thread_p, &log_lsa,
 				      log_pgptr, RV_fun[rcvindex].redofun,
-				      &rcv, &rcv_lsa, false, 0, NULL,
+				      &rcv, &rcv_lsa, 0, NULL,
 				      redo_unzip_ptr);
 		}
 	      if (rcv.pgptr != NULL)
@@ -4197,25 +4242,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		}
 #endif /* !NDEBUG */
 
-	      ignore_redofunc = false;
-	      if (rcvindex == RVBT_OID_TRUNCATE
-		  || rcvindex == RVBT_KEYVAL_DEL_OID_TRUNCATE)
-		{
-		  tdes = LOG_FIND_TDES (logtb_find_tran_index (thread_p,
-							       tran_id));
-		  /* if RVBT_OID_TRUNCATE or RVBT_KEYVAL_DEL_OID_TRUNCATE
-		   * redo log is the last log of the tranx,
-		   * then NEVER redo it.
-		   */
-		  if (tdes != NULL && LSA_EQ (&rcv_lsa, &tdes->tail_lsa))
-		    {
-		      ignore_redofunc = true;
-		    }
-		}
 	      log_rv_redo_record (thread_p, &log_lsa,
 				  log_pgptr, RV_fun[rcvindex].redofun, &rcv,
-				  &rcv_lsa, ignore_redofunc, 0, NULL,
-				  redo_unzip_ptr);
+				  &rcv_lsa, 0, NULL, redo_unzip_ptr);
 
 	      if (rcv.pgptr != NULL)
 		{
@@ -4268,7 +4297,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	      log_rv_redo_record (thread_p, &log_lsa,
 				  log_pgptr, RV_fun[rcvindex].redofun, &rcv,
-				  &rcv_lsa, false, 0, NULL, NULL);
+				  &rcv_lsa, 0, NULL, NULL);
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -4374,7 +4403,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	      log_rv_redo_record (thread_p, &log_lsa,
 				  log_pgptr, RV_fun[rcvindex].redofun, &rcv,
-				  &rcv_lsa, false, 0, NULL, NULL);
+				  &rcv_lsa, 0, NULL, NULL);
 
 	      if (rcv.pgptr != NULL)
 		{
@@ -4486,10 +4515,23 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	      log_rv_redo_record (thread_p, &log_lsa,
 				  log_pgptr, RV_fun[rcvindex].undofun, &rcv,
-				  &rcv_lsa, false, 0, NULL, NULL);
+				  &rcv_lsa, 0, NULL, NULL);
 	      if (rcv.pgptr != NULL)
 		{
 		  pgbuf_unfix (thread_p, rcv.pgptr);
+		}
+	      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS)
+		  && rcvindex == RVBT_RECORD_MODIFY_COMPENSATE)
+		{
+		  _er_log_debug (ARG_FILE_LINE,
+				 "BTREE_REDO: Successfully applied "
+				 "compensate lsa=%lld|%d, "
+				 "undo_nxlsa=%lld|%d.\n",
+				 (long long int) rcv_lsa.pageid,
+				 (int) rcv_lsa.offset,
+				 (long long int)
+				 compensate->undo_nxlsa.pageid,
+				 (int) compensate->undo_nxlsa.offset);
 		}
 	      break;
 
@@ -7044,4 +7086,254 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 	  *last_block_newest_mvccid = mvccid;
 	}
     }
+}
+
+/*
+ * log_rv_redo_record_partial_changes () - Redo record data changes.
+ *
+ * return		: Error code.
+ * thread_p (in)	: Thread entry.
+ * rcv_data (in)	: Recovery data pointer.
+ * rcv_data_length (in) : Recovery data length.
+ * record (in)		: Record being modified.
+ *
+ * TODO: Extend this to undo and undoredo.
+ */
+int
+log_rv_redo_record_partial_changes (THREAD_ENTRY * thread_p,
+				    char *rcv_data,
+				    int rcv_data_length, RECDES * record)
+{
+  OR_BUF rcv_buf;		/* Buffer used to process recovery data. */
+  int error_code = NO_ERROR;	/* Error code. */
+  int offset_to_data;		/* Offset to data being modified. */
+  int old_data_size;		/* Size of old data. */
+  int new_data_size;		/* Size of new data. */
+  char *new_data = NULL;	/* New data. */
+
+  /* Assert expected arguments. */
+  assert (rcv_data != NULL);
+  assert (rcv_data_length > 0);
+  assert (record != NULL);
+
+  /* Prepare buffer. */
+  OR_BUF_INIT (rcv_buf, rcv_data, rcv_data_length);
+
+  /* Read buffer to obtain record changes. There can be more than one change.
+   */
+  /* Align buffer to expected alignment. */
+  or_align (&rcv_buf, INT_ALIGNMENT);
+  while (rcv_buf.ptr < rcv_buf.endptr)
+    {
+      /* At least offset_to_data, old_data_size and new_data_size should be
+       * stored.
+       */
+      if (rcv_buf.ptr + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE > rcv_buf.endptr)
+	{
+	  assert_release (false);
+	  return or_overflow (&rcv_buf);
+	}
+
+      /* Get offset_to_data. */
+      offset_to_data = (int) or_get_short (&rcv_buf, &error_code);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+
+      /* Get old_data_size */
+      old_data_size = (int) or_get_byte (&rcv_buf, &error_code);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+
+      /* Get new_data_size */
+      new_data_size = (int) or_get_byte (&rcv_buf, &error_code);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+
+      if (new_data_size > 0)
+	{
+	  /* Get new data. */
+	  new_data = rcv_buf.ptr;
+	  error_code = or_advance (&rcv_buf, new_data_size);
+	  if (error_code != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return error_code;
+	    }
+	}
+      else
+	{
+	  /* No new data. */
+	  new_data = NULL;
+	}
+      /* Align buffer to expected alignment. */
+      or_align (&rcv_buf, INT_ALIGNMENT);
+
+      /* Make record changes. */
+      RECORD_REPLACE_DATA (record, offset_to_data, old_data_size,
+			   new_data_size, new_data);
+    }
+  assert (rcv_buf.ptr == rcv_buf.endptr);
+
+  /* Success. */
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_redo_record_modify () - Modify one record of database slotted page.
+ *				  The change can be one of:
+ *				  1. New record is inserted.
+ *				  2. Existing record is removed.
+ *				  3. Existing record is entirely updated.
+ *				  4. Existing record is partially updated.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  INT16 flags = rcv->offset & LOG_RV_RECORD_MODIFY_MASK;
+  PGSLOTID slotid = rcv->offset & (~LOG_RV_RECORD_MODIFY_MASK);
+  RECDES record;
+  char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  INT16 rec_type = REC_UNKNOWN;
+  char *ptr = NULL;
+  int error_code = NO_ERROR;
+
+  if (LOG_RV_RECORD_IS_INSERT (flags))
+    {
+      /* Insert new record. */
+      ptr = (char *) rcv->data;
+      /* Get record type. */
+      record.type = OR_GET_BYTE (ptr);
+      ptr += OR_BYTE_SIZE;
+      /* Get record data. */
+      record.data = ptr;
+      record.length = rcv->length - CAST_BUFLEN (ptr - rcv->data);
+      if (spage_insert_at (thread_p, rcv->pgptr, slotid, &record)
+	  != SP_SUCCESS)
+	{
+	  /* Unexpected. */
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      /* Success. */
+    }
+  else if (LOG_RV_RECORD_IS_DELETE (flags))
+    {
+      if (spage_delete (thread_p, rcv->pgptr, slotid) != slotid)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      /* Success. */
+    }
+  else if (LOG_RV_RECORD_IS_UPDATE_ALL (flags))
+    {
+      ptr = (char *) rcv->data;
+      /* Get record type. */
+      record.type = OR_GET_BYTE (ptr);
+      ptr += OR_BYTE_SIZE;
+      /* Get record data. */
+      record.data = ptr;
+      record.length = rcv->length - CAST_BUFLEN (ptr - rcv->data);
+      if (spage_update (thread_p, rcv->pgptr, slotid, &record) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      /* Success */
+    }
+  else
+    {
+      assert (LOG_RV_RECORD_IS_UPDATE_PARTIAL (flags));
+      /* Limited changes are done to record and updating it entirely is not
+       * the most efficient way of using log-space. Only the change is logged
+       * (change location, old data size, new data size, new data).
+       */
+      /* Copy existing record. */
+      record.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
+      record.area_size = DB_PAGESIZE;
+      if (spage_get_record (rcv->pgptr, slotid, &record, COPY) != S_SUCCESS)
+	{
+	  /* Unexpected failure. */
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      /* Make recorded changes. */
+      error_code =
+	log_rv_redo_record_partial_changes (thread_p, (char *) rcv->data,
+					    rcv->length, &record);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+      /* Update in page. */
+      if (spage_update (thread_p, rcv->pgptr, slotid, &record) != SP_SUCCESS)
+	{
+	  /* Unexpected. */
+	  assert_release (false);
+	  return error_code;
+	}
+      /* Success. */
+    }
+  /* Page was successfully modified. */
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_pack_redo_record_changes () - Pack recovery data for redo record
+ *					change.
+ *
+ * return	       : Error code.
+ * ptr (in)	       : Where recovery data is packed.
+ * offset_to_data (in) : Offset to data being modified.
+ * old_data_size (in)  : Old data size.
+ * new_data_size (in)  : New data size.
+ * new_data (in)       : New data.
+ */
+char *
+log_rv_pack_redo_record_changes (char *ptr, int offset_to_data,
+				 int old_data_size, int new_data_size,
+				 char *new_data)
+{
+  int error_code = NO_ERROR;	/* Error code. */
+
+  /* Assert expected arguments. */
+  assert (ptr != NULL);
+  assert (offset_to_data >= 0);
+  assert (old_data_size >= 0 && new_data_size >= 0);
+  assert (new_data_size == 0 || new_data != NULL);
+
+  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+
+  OR_PUT_SHORT (ptr, (short) offset_to_data);
+  ptr += OR_SHORT_SIZE;
+
+  OR_PUT_BYTE (ptr, (INT16) old_data_size);
+  ptr += OR_BYTE_SIZE;
+
+  OR_PUT_BYTE (ptr, (INT16) new_data_size);
+  ptr += OR_BYTE_SIZE;
+
+  if (new_data_size > 0)
+    {
+      memcpy (ptr, new_data, new_data_size);
+      ptr += new_data_size;
+    }
+  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+
+  return ptr;
 }
