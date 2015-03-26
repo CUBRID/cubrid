@@ -31065,13 +31065,22 @@ btree_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  bool clear_key;
 	  char *printed_key = NULL;
 
-	  DB_MAKE_NULL (&key);
-	  (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr,
-				    &update_record, &key, &leaf_rec_info,
-				    node_type, &clear_key, &offset_after_key,
-				    PEEK_KEY_VALUE, NULL);
-	  printed_key = pr_valstring (&key);
-	  btree_clear_key_value (&clear_key, &key);
+	  /* Read key value if node is leaf and if key is not overflow
+	   * (avoid fixing other pages here since it may crash).
+	   */
+	  if (node_type == BTREE_LEAF_NODE
+	      && !btree_leaf_is_flaged (&update_record,
+					BTREE_LEAF_RECORD_OVERFLOW_KEY))
+	    {
+	      DB_MAKE_NULL (&key);
+	      (void) btree_read_record (thread_p, &btid_int_for_debug,
+					rcv->pgptr, &update_record, &key,
+					&leaf_rec_info, node_type, &clear_key,
+					&offset_after_key, PEEK_KEY_VALUE,
+					NULL);
+	      printed_key = pr_valstring (&key);
+	      btree_clear_key_value (&clear_key, &key);
+	    }
 
 	  _er_log_debug (ARG_FILE_LINE,
 			 "BTREE_REDO: update slotid=%d from "
