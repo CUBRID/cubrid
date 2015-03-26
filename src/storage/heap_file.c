@@ -27687,11 +27687,24 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       if (do_logging)
 	{
 	  LOG_DATA_ADDR address;
+	  LOG_RCVINDEX rcv_index = RVHF_UPDATE;
 
 	  address.offset = context->oid.slotid;
 	  address.pgptr = context->home_page_watcher_p->pgptr;
 	  address.vfid = &context->hfid.vfid;
-	  log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &address,
+
+#if defined (SERVER_MODE)
+	  /* notify vacuum on REC_ASSIGN_ADDRESS in-place update */
+	  if (context->home_recdes.type == REC_ASSIGN_ADDRESS
+	      && !heap_is_mvcc_disabled_for_class (&context->class_oid))
+
+	    {
+	      /* make sure we populate transaction's mvccid */
+	      (void) logtb_get_current_mvccid (thread_p);
+	      rcv_index = RVHF_UPDATE_NOTIFY_VACUUM;
+	    }
+#endif
+	  log_append_undoredo_recdes (thread_p, rcv_index, &address,
 				      &context->home_recdes,
 				      home_page_updated_recdes_p);
 	}
