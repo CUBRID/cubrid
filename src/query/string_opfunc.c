@@ -10479,7 +10479,6 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 {
   DB_TYPE type = DB_TYPE_UNKNOWN;
   int error_status = NO_ERROR;
-  int val = 0;
   time_t ts = 0;
   int month = 0, day = 0, year = 0;
   int second = 0, minute = 0, hour = 0, ms = 0;
@@ -10498,138 +10497,109 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATE:
       {
+	DB_VALUE *dt_p;
 	DB_VALUE dt;
 	TP_DOMAIN *tp_datetime;
+	DB_DATETIME datetime;
+	DB_TIMESTAMP timestamp;
+	DB_DATE date;
 
-	tp_datetime = db_type_to_db_domain (DB_TYPE_DATETIME);
-	if (tp_value_cast (src_date, &dt, tp_datetime, false)
-	    != DOMAIN_COMPATIBLE)
+	dt_p = &dt;
+	if (type != DB_TYPE_DATETIME && type != DB_TYPE_DATE)
 	  {
-	    error_status = ER_OBJ_INVALID_ARGUMENTS;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	    DB_MAKE_NULL (result_timestamp);
-	    return ER_FAILED;
-	  }
-	error_status = db_datetime_decode (DB_GET_DATETIME (&dt), &month,
-					   &day, &year, &hour, &minute,
-					   &second, &ms);
-	if (year == 0 && month == 0 && day == 0
-	    && hour == 0 && minute == 0 && second == 0 && ms == 0)
-	  {
-	    /* This function should return 0 if the date is zero date */
-	    DB_MAKE_INT (result_timestamp, 0);
-	    return NO_ERROR;
-	  }
+	    tp_datetime = db_type_to_db_domain (DB_TYPE_DATETIME);
 
-	if (year < 1970 || year > 2038)
+	    if (tp_value_cast (src_date, dt_p, tp_datetime, false)
+		!= DOMAIN_COMPATIBLE)
+	      {
+		error_status = ER_OBJ_INVALID_ARGUMENTS;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		DB_MAKE_NULL (result_timestamp);
+		return ER_FAILED;
+	      }
+	    type = DB_TYPE_DATETIME;
+	  }
+	else
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_OBJ_INVALID_ARGUMENTS, 0);
-	    DB_MAKE_NULL (result_timestamp);
-	    return ER_FAILED;
+	    dt_p = (DB_VALUE *) src_date;
 	  }
 
-	set_time_argument (&time_argument, year, month, day, hour, minute,
-			   second);
-	val = (int) calc_unix_timestamp (&time_argument);
-	if (val < 0)
+	/* The supported datetime range is '1970-01-01 00:00:01'
+	 * UTC to '2038-01-19 03:14:07' UTC */
+
+	if (type == DB_TYPE_DATETIME)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_OBJ_INVALID_ARGUMENTS, 0);
-	    return ER_FAILED;
+	    datetime = *DB_GET_DATETIME (dt_p);
+	    datetime.time /= 1000;
+	  }
+	else
+	  {
+	    date = *DB_GET_DATE (dt_p);
+	    datetime.date = date;
+	    datetime.time = 0;
+	  }
+	error_status = db_timestamp_encode (&timestamp, &datetime.date,
+					    &datetime.time);
+	if (error_status != NO_ERROR)
+	  {
+	    return error_status;
 	  }
 
-	DB_MAKE_INT (result_timestamp, val);
+	DB_MAKE_INT (result_timestamp, timestamp);
+	return NO_ERROR;
+      }
+
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+      {
+	DB_DATETIMETZ *datetimetz;
+	DB_DATETIME *datetime;
+	DB_TIMESTAMP timestamp;
+
+	if (type == DB_TYPE_DATETIMETZ)
+	  {
+	    datetimetz = DB_GET_DATETIMETZ (src_date);
+	    datetime = &(datetimetz->datetime);
+	  }
+	else
+	  {
+	    datetime = DB_GET_DATETIME (src_date);
+	  }
+
+	datetime->time /= 1000;
+	error_status = db_timestamp_encode_utc (&datetime->date,
+						&datetime->time, &timestamp);
+	if (error_status != NO_ERROR)
+	  {
+	    return error_status;
+	  }
+	DB_MAKE_INT (result_timestamp, timestamp);
+
 	return NO_ERROR;
       }
 
       /* a TIMESTAMP format */
     case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
       /* The supported timestamp range is '1970-01-01 00:00:01'
        * UTC to '2038-01-19 03:14:07' UTC */
       ts = *DB_GET_TIMESTAMP (src_date);
       /* supplementary conversion from long to int will be needed on
        * 64 bit platforms.  */
-      val = (int) ts;
-      DB_MAKE_INT (result_timestamp, val);
+      DB_MAKE_INT (result_timestamp, ts);
       return NO_ERROR;
 
-      /* a DATETIME format */
-    case DB_TYPE_DATETIME:
-      /* The supported datetime range is '1970-01-01 00:00:01'
-       * UTC to '2038-01-19 03:14:07' UTC */
-
-      error_status = db_datetime_decode (DB_GET_DATETIME (src_date),
-					 &month, &day, &year, &hour,
-					 &minute, &second, &ms);
-      if (error_status != NO_ERROR)
-	{
-	  return error_status;
-	}
-
-      if (year == 0 && month == 0 && day == 0
-	  && hour == 0 && minute == 0 && second == 0 && ms == 0)
-	{
-	  /* This function should return 0 if the date is zero date */
-	  DB_MAKE_INT (result_timestamp, 0);
-	  return NO_ERROR;
-	}
-
-      if (year < 1970 || year > 2038)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-		  0);
-	  DB_MAKE_NULL (result_timestamp);
-	  return ER_FAILED;
-	}
-
-      set_time_argument (&time_argument, year, month, day, hour,
-			 minute, second);
-      val = (int) calc_unix_timestamp (&time_argument);
-      if (val < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ARGUMENTS, 0);
-	  return ER_FAILED;
-	}
-      DB_MAKE_INT (result_timestamp, val);
-      return NO_ERROR;
-
-      /* a DATE format */
-    case DB_TYPE_DATE:
-      /* The supported datetime range is '1970-01-01 00:00:01'
-       * UTC to '2038-01-19 03:14:07' UTC */
-
-      db_date_decode (DB_GET_DATE (src_date), &month, &day, &year);
-
-      if (year == 0 && month == 0 && day == 0
-	  && hour == 0 && minute == 0 && second == 0 && ms == 0)
-	{
-	  /* This function should return 0 if the date is zero date */
-	  DB_MAKE_INT (result_timestamp, 0);
-	  return NO_ERROR;
-	}
-
-      if (year < 1970 || year > 2038)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-		  0);
-	  DB_MAKE_NULL (result_timestamp);
-	  return ER_FAILED;
-	}
-
-      set_time_argument (&time_argument, year, month, day, hour,
-			 minute, second);
-      val = (int) calc_unix_timestamp (&time_argument);
-      if (val < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ARGUMENTS, 0);
-	  return ER_FAILED;
-	}
-      DB_MAKE_INT (result_timestamp, val);
-      return NO_ERROR;
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ *timestamp_tz;
+	timestamp_tz = DB_GET_TIMESTAMPTZ (src_date);
+	ts = timestamp_tz->timestamp;
+	DB_MAKE_INT (result_timestamp, ts);
+	return NO_ERROR;
+      }
 
     default:
       DB_MAKE_NULL (result_timestamp);

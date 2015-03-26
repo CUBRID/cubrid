@@ -619,7 +619,7 @@ db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
  *    local timezone
  * return : error code
  * date(in): encoded julian date
- * time(in): relative time
+ * timeval(in): relative time
  * utime(out): pointer to universal time value
  * dest_tz_id(out): pointer to packed timezone identifier of the result
  *		    (can be NULL, in which case no identifier is provided)
