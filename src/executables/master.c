@@ -687,9 +687,14 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   if (css_receive_data (conn, rid, &server_name, &name_length, -1) ==
       NO_ERRORS && server_name != NULL)
     {
-      if ((temp = css_return_entry_of_server (server_name,
-					      css_Master_socket_anchor))
-	  != NULL)
+      temp =
+	css_return_entry_of_server (server_name, css_Master_socket_anchor);
+      if (temp != NULL
+#if !defined(WINDOWS)
+	  && (temp->ha_mode == false
+	      || hb_is_deactivation_started () == false)
+#endif /* !WINDOWS */
+	)
 	{
 	  if (temp->port_id == -1)
 	    {

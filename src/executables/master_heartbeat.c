@@ -1856,6 +1856,8 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 
   if (is_state_changed == true)
     {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "peer node state has been changed.");
       hb_cluster_job_set_expire_and_reorder (HB_CJOB_CALC_SCORE,
 					     HB_JOB_TIMER_IMMEDIATELY);
     }
@@ -2649,6 +2651,7 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
   HB_RESOURCE_JOB_ARG *resource_job_arg;
   HB_PROC_ENTRY *proc, *proc_next;
   char error_string[LINE_MAX] = "";
+  int num_connected_rsc = 0;
 
   resource_job_arg = (arg) ? &(arg->resource_job_arg) : NULL;
 
@@ -2706,35 +2709,43 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
       assert (proc->state == HB_PSTATE_DEREGISTERED);
       proc_next = proc->next;
 
-      if (kill (proc->pid, 0) && errno == ESRCH)
+      if (proc->type != HB_PTYPE_SERVER)
 	{
+	  if (kill (proc->pid, 0) == 0 || error != ESRCH)
+	    {
+	      kill (proc->pid, SIGKILL);
+
+	      snprintf (error_string, LINE_MAX, "(pid: %d, args:%s)",
+			proc->pid, proc->args);
+	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			     ER_HB_PROCESS_EVENT, 2,
+			     "No response to shutdown request. Process killed",
+			     error_string);
+	    }
 	  hb_Resource->num_procs--;
 	  hb_remove_proc (proc);
 	  proc = NULL;
 	}
-      else if (proc->type != HB_PTYPE_SERVER &&
-	       resource_job_arg->retries >
-	       HB_DEFAULT_MAX_PROCESS_SHUTDOWN_CONFIRM_EXCEPT_SERVER)
+      else
 	{
-	  kill (proc->pid, SIGKILL);
+	  if (kill (proc->pid, 0) && errno == ESRCH)
+	    {
+	      hb_Resource->num_procs--;
+	      hb_remove_proc (proc);
+	      proc = NULL;
+	      continue;
+	    }
+	}
 
-	  snprintf (error_string, LINE_MAX, "(pid: %d, args:%s)",
-		    proc->pid, proc->args);
-
-	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			 ER_HB_PROCESS_EVENT, 2,
-			 "No response to shutdown request. Process killed",
-			 error_string);
-
-	  hb_Resource->num_procs--;
-	  hb_remove_proc (proc);
-	  proc = NULL;
+      if (proc && proc->conn != NULL)
+	{
+	  num_connected_rsc++;
 	}
 
       assert (hb_Resource->num_procs >= 0);
     }
 
-  if (hb_Resource->num_procs == 0)
+  if (hb_Resource->num_procs == 0 || num_connected_rsc == 0)
     {
       goto end_confirm_cleanup;
     }
@@ -2754,9 +2765,6 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
   return;
 
 end_confirm_cleanup:
-  hb_Resource->state = HB_NSTATE_UNKNOWN;
-  hb_Resource->shutdown = true;
-
   pthread_mutex_unlock (&hb_Resource->lock);
 
   if (arg != NULL)
@@ -2765,7 +2773,7 @@ end_confirm_cleanup:
     }
 
   MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT,
-		 2, "All HA processes have been terminated", "");
+		 2, "ready to deactivate heartbeat", "");
   return;
 }
 
@@ -2880,7 +2888,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
 
   if (proc->being_shutdown)
     {
-      if (kill (proc->pid, 0) && errno == ESRCH)
+      if (kill (proc_arg->pid, 0) && errno == ESRCH)
 	{
 	  proc->being_shutdown = false;
 	}
@@ -3957,15 +3965,13 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
       return;
     }
   proc->conn = NULL;
+  proc->sfd = INVALID_SOCKET;
 
   if (proc->state < HB_PSTATE_REGISTERED)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unexpected process's state. "
 			   "(fd:%d, pid:%d, state:%d, args:{%s}). \n", sfd,
 			   proc->pid, proc->state, proc->args);
-
-      proc->sfd = INVALID_SOCKET;
-      proc->conn = NULL;
       /* 
        * Do not delete process entry. 
        * process entry will be removed by resource job.
@@ -4040,6 +4046,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   proc->state = HB_PSTATE_DEAD;
   proc->sfd = INVALID_SOCKET;
   proc->server_hang = false;
+  proc->pid = 0;
   LSA_SET_NULL (&proc->prev_eof);
   LSA_SET_NULL (&proc->curr_eof);
 
@@ -5258,6 +5265,7 @@ hb_resource_shutdown_all_ha_procs (void)
 	      css_remove_entry_by_conn (proc->conn,
 					&css_Master_socket_anchor);
 	      proc->conn = NULL;
+	      proc->sfd = INVALID_SOCKET;
 	    }
 	  else
 	    {
@@ -5280,6 +5288,7 @@ hb_resource_shutdown_all_ha_procs (void)
 	      else
 		{
 		  proc->conn = NULL;
+		  proc->sfd = INVALID_SOCKET;
 		}
 	    }
 	}
@@ -5304,158 +5313,11 @@ hb_resource_shutdown_all_ha_procs (void)
 static void
 hb_resource_cleanup (void)
 {
-  int rv, loop_count, num_active_process, i, rc;
   HB_PROC_ENTRY *proc;
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
+  pthread_mutex_lock (&hb_Resource->lock);
 
   hb_resource_shutdown_all_ha_procs ();
-
-  /* check whether HA server processes are terminated */
-  for (loop_count = 0; loop_count
-       < prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
-       loop_count++)
-    {
-      int server_count = 0;
-      int conn_check_loop_count;
-      struct pollfd po[SERVER_DEREG_MAX_POLL_COUNT];
-
-      for (proc = hb_Resource->procs; proc; proc = proc->next)
-	{
-	  if (proc->type == HB_PTYPE_SERVER && proc->conn == NULL)
-	    {
-	      /* server was deregistered */
-	      proc->state = HB_PSTATE_DEAD;
-	      continue;
-	    }
-
-	  if (proc->conn != NULL && !IS_INVALID_SOCKET (proc->conn->fd))
-	    {
-	      assert (proc->type == HB_PTYPE_SERVER);
-
-	      if (kill (proc->pid, 0) && errno == ESRCH)
-		{
-		  /* process was terminated */
-#if defined (HB_VERBOSE_DEBUG)
-		  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-				       "remove socket-queue entry. (pid:%d). \n",
-				       proc->pid);
-#endif
-		  css_remove_entry_by_conn (proc->conn,
-					    &css_Master_socket_anchor);
-		  proc->conn = NULL;
-		  proc->state = HB_PSTATE_DEAD;
-		}
-	      else if (proc->type == HB_PTYPE_SERVER)
-		{
-		  po[server_count].fd = proc->conn->fd;
-		  po[server_count].events = POLLPRI;
-		  po[server_count].revents = 0;
-
-		  server_count++;
-		  if (server_count >= SERVER_DEREG_MAX_POLL_COUNT)
-		    {
-		      break;
-		    }
-		}
-	    }
-	}
-
-      if (server_count == 0)
-	{
-	  break;
-	}
-
-      rc = poll (po, server_count, 1);
-      if (rc > 0)
-	{
-	  conn_check_loop_count = server_count;
-	  i = 0;
-
-	  while (i < conn_check_loop_count && rc > 0)
-	    {
-	      if ((po[i].revents & POLLPRI) || (po[i].revents & POLLHUP))
-		{
-		  /* server socket was closed */
-		  for (proc = hb_Resource->procs; proc; proc = proc->next)
-		    {
-		      if (proc->conn != NULL && proc->conn->fd == po[i].fd)
-			{
-			  /* socket closed */
-#if defined (HB_VERBOSE_DEBUG)
-			  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-					       "remove socket-queue entry. (pid:%d). \n",
-					       proc->pid);
-#endif
-			  css_remove_entry_by_conn (proc->conn,
-						    &css_Master_socket_anchor);
-			  proc->conn = NULL;
-			  proc->state = HB_PSTATE_DEAD;
-
-			  server_count--;
-			  break;
-			}
-		    }
-		  rc--;
-		}
-	      i++;
-	    }
-	}
-
-      if (server_count == 0)
-	{
-	  break;
-	}
-
-      SLEEP_MILISEC (0,
-		     prm_get_integer_value
-		     (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
-    }
-
-#if defined (HB_VERBOSE_DEBUG)
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-		       "close all local heartbeat connection. (timer:%d*%d).\n",
-		       prm_get_integer_value
-		       (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM),
-		       prm_get_integer_value
-		       (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
-#endif
-
-  /* now all server processes were terminated or dereg time is expired
-   * kill all active processes.
-   */
-  for (num_active_process = 0, proc = hb_Resource->procs; proc;
-       proc = proc->next)
-    {
-      if (proc->pid && proc->state != HB_PSTATE_DEAD)
-	{
-	  if (kill (proc->pid, 0) && errno == ESRCH)
-	    {
-	      /* process was terminated */
-	      proc->state = HB_PSTATE_DEAD;
-	      continue;
-	    }
-	  else
-	    {
-#if defined (HB_VERBOSE_DEBUG)
-	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-				   "Process (pid:%d) did not terminated."
-				   "It is forced to kill.\n", proc->pid);
-
-	      num_active_process++;
-#endif
-	      kill (proc->pid, SIGKILL);
-	    }
-	}
-    }
-
-#if defined (HB_VERBOSE_DEBUG)
-  if (num_active_process == 0)
-    {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-			   "all ha processes are terminated. \n");
-    }
-#endif
 
   hb_remove_all_procs (hb_Resource->procs);
   hb_Resource->procs = NULL;
@@ -6636,26 +6498,9 @@ hb_deactivate_heartbeat (void)
       return NO_ERROR;
     }
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
-  if (hb_Resource->shutdown == false || hb_Resource->num_procs > 0)
+  if (hb_Resource != NULL && resource_Jobs != NULL)
     {
-      pthread_mutex_unlock (&hb_Resource->lock);
-
-      /* resource must be cleaned up before deactivation is requested */
-      snprintf (error_string, LINE_MAX,
-		"%s. (CUBRID heartbeat resources must be cleaned up first)",
-		HB_RESULT_FAILURE_STR);
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
-		     error_string);
-
-      return ER_FAILED;
-    }
-  pthread_mutex_unlock (&hb_Resource->lock);
-
-  if (resource_Jobs != NULL)
-    {
-      hb_resource_job_shutdown ();
+      hb_resource_shutdown_and_cleanup ();
     }
 
   if (hb_Cluster != NULL && cluster_Jobs != NULL)
@@ -7224,17 +7069,21 @@ hb_is_deactivation_started (void)
 bool
 hb_is_deactivation_ready (void)
 {
-  int rv;
-  bool is_ready = false;
+  HB_PROC_ENTRY *proc;
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
-  if (hb_Resource->num_procs == 0 && hb_Resource->shutdown == true)
+  pthread_mutex_lock (&hb_Resource->lock);
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
-      is_ready = true;
+      if (proc->conn != NULL)
+	{
+	  pthread_mutex_unlock (&hb_Resource->lock);
+	  return false;
+	}
+      assert (proc->sfd == INVALID_SOCKET);
     }
   pthread_mutex_unlock (&hb_Resource->lock);
 
-  return is_ready;
+  return true;
 }
 
 
