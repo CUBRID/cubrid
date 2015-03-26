@@ -10922,9 +10922,10 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
 	      if (repair)
 		{
-		  /*don't care about filter predicate here since
-		     we are sure that oid_area[i] is contained in tree,
-		     the keys has been already S_LOCK-ed, not NX_LOCK-ed */
+		  /* don't care about filter predicate here since
+		   * we are sure that oid_area[i] is contained in tree,
+		   * the keys has been already S_LOCK-ed.
+		   */
 		  isvalid =
 		    locator_repair_btree_by_delete (thread_p, class_oid,
 						    btid, &oid_area[i]);
@@ -11397,9 +11398,10 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	      isvalid = DISK_INVALID;
 	      if (repair)
 		{
-		  /*don't care about filter predicate here since
-		     we are sure that oid_area[i] is contained in tree
-		     the keys has been already S_LOCK-ed, not NX_LOCK-ed */
+		  /* don't care about filter predicate here since
+		   * we are sure that oid_area[i] is contained in tree
+		   * the keys has been already S_LOCK-ed.
+		   */
 		  isvalid =
 		    locator_repair_btree_by_delete (thread_p, class_oid,
 						    btid, &oid_area[i]);

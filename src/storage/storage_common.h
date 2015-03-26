@@ -491,22 +491,18 @@ typedef enum
   SIX_LOCK = 7,			/* Shared and intention exclusive lock */
   U_LOCK = 8,			/* Update lock */
   X_LOCK = 9,			/* Exclusive lock */
-  NS_LOCK = 10,			/* Next Key Shared lock */
-  NX_LOCK = 11,			/* Next Key Exclusive lock */
-  SCH_M_LOCK = 12		/* Schema Modification Lock */
+  SCH_M_LOCK = 10		/* Schema Modification Lock */
 } LOCK;
 
-extern LOCK lock_Conv[13][13];
+extern LOCK lock_Conv[11][11];
 
 #define LOCK_TO_LOCKMODE_STRING(lock) 			\
   (((lock) ==NULL_LOCK) ? "NULL_LOCK" :			\
    ((lock) ==  IS_LOCK) ? "  IS_LOCK" :			\
-   ((lock) ==  NS_LOCK) ? "  NS_LOCK" :			\
    ((lock) ==   S_LOCK) ? "   S_LOCK" :			\
    ((lock) ==  IX_LOCK) ? "  IX_LOCK" :			\
    ((lock) == SIX_LOCK) ? " SIX_LOCK" :			\
    ((lock) ==   U_LOCK) ? "   U_LOCK" :			\
-   ((lock) ==  NX_LOCK) ? "  NX_LOCK" :			\
    ((lock) ==  SCH_S_LOCK) ? "  SCH_S_LOCK" :		\
    ((lock) ==  SCH_M_LOCK) ? "  SCH_M_LOCK" :		\
    ((lock) ==   X_LOCK) ? "   X_LOCK" : "UNKNOWN")

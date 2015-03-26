@@ -4795,10 +4795,6 @@ perf_stat_lock_mode_name (const int lock_mode)
       return "U_LOCK";
     case X_LOCK:
       return "X_LOCK";
-    case NS_LOCK:
-      return "NS_LOCK";
-    case NX_LOCK:
-      return "NX_LOCK";
     case SCH_M_LOCK:
       return "SCH_M_LOCK";
     default:

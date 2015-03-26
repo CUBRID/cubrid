@@ -287,32 +287,13 @@ extern int lock_add_composite_lock (THREAD_ENTRY * thread_p,
 extern int lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
 					 LK_COMPOSITE_LOCK * comp_lock);
 extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
-extern int lock_hold_object_instant_get_granted_mode (THREAD_ENTRY * thread_p,
-						      const OID * oid,
-						      const OID * class_oid,
-						      LOCK lock,
-						      LOCK * granted_mode);
-extern int lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
-						   const OID * oid,
-						   const OID * class_oid,
-						   const BTID * btid,
-						   LOCK lock, int cond_flag,
-						   LOCK * granted_mode);
-extern int lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
-						      const OID * oid,
-						      const OID * class_oid,
-						      const BTID * btid,
-						      LOCK lock,
-						      int cond_flag,
-						      LOCK *
-						      prev_tot_hold_mode,
-						      KEY_LOCK_ESCALATION *
-						      key_lock_escalation);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern LOCK lock_get_total_holders_mode (const OID * oid,
 					 const OID * class_oid);
 extern LOCK lock_get_all_except_transaction (const OID * oid,
 					     const OID * class_oid,
 					     int tran_index);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
 					    char **out_buf, int waiter_index,
 					    LK_RES * res);
