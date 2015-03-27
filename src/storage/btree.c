@@ -33488,7 +33488,17 @@ btree_leaf_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		  ASSERT_ERROR ();
 		  return ER_FAILED;
 		}
-	      /* Key was successfully removed. Fall through. */
+	      /* Key was successfully removed. */
+
+	      /* MULTI_ROW_UPDATE will try to check key was deleted in
+	       * btree_key_delete_remove_object. Don't allow it since the
+	       * key no longer exists.
+	       */
+	      assert (!delete_helper->check_key_deleted
+		      || delete_helper->is_key_deleted);
+	      delete_helper->check_key_deleted = false;
+
+	      /* Fall through. */
 	    }
 	  else			/* !VPID_ISNULL (&leaf_rec_info.ovfl) */
 	    {
