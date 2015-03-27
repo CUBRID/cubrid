@@ -5068,8 +5068,13 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
       goto end;
     }
 
-  /* Vacuum master will start to process log */
-  vacuum_Master_is_process_log_phase = true;
+#if defined (SERVER_MODE)
+  if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
+    {
+      /* Vacuum master will start to process log */
+      vacuum_Master_is_process_log_phase = true;
+    }
+#endif /* !SERVER_MODE */
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
@@ -5197,7 +5202,13 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
   while (!LSA_EQ (&crt_lsa, &vacuum_Data->first_blocks_to_recover));
 
   /* Finished processing log to recover blocks */
-  vacuum_Master_is_process_log_phase = false;
+#if defined (SERVER_MODE)
+  if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
+    {
+      /* Vacuum master will start to process log */
+      vacuum_Master_is_process_log_phase = false;
+    }
+#endif /* !SERVER_MODE */
 
   /* Safe guard: all expected blocks have been processed */
   assert (remaining_blocks == 0);
@@ -5257,7 +5268,13 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 				&first_not_recovered_blocks_lsa,
 				first_not_recovered_n_blocks);
 end:
-  vacuum_Master_is_process_log_phase = false;
+#if defined (SERVER_MODE)
+  if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
+    {
+      /* Vacuum master will start to process log */
+      vacuum_Master_is_process_log_phase = false;
+    }
+#endif /* !SERVER_MODE */
 
   if (log_unzip_p != NULL)
     {
