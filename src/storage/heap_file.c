@@ -11415,6 +11415,7 @@ heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
       return NULL;
     }
 
+  OID_SET_NULL (class_oid);
   if (updated_oid != NULL)
     {
       OID_SET_NULL (updated_oid);
@@ -11442,11 +11443,6 @@ heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
   heap_scancache_quick_start (&scan_cache);
   if (snapshot_type == SNAPSHOT_TYPE_MVCC)
     {
-      /* Instance locks with MVCC version is forbidden. That's because MVCC
-       * version is used at select, where instance lock is not accepted.
-       */
-      assert (OID_EQ (class_oid, oid_Root_class_oid) || OID_ISNULL (class_oid)
-	      || scan_operation_type != S_SELECT_WITH_LOCK);
       scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (scan_cache.mvcc_snapshot == NULL)
 	{
@@ -11459,17 +11455,6 @@ heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
       mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
       scan_cache.mvcc_snapshot = &mvcc_snapshot_dirty;
     }
-
-  /* Current version with NULL_LOCK is allowed only if the transaction
-   * already has a lock. This means that is not necessary to request the
-   * lock again. 
-   */
-  assert (OID_EQ (class_oid, oid_Root_class_oid) || OID_ISNULL (class_oid)
-	  || (snapshot_type != SNAPSHOT_TYPE_NONE)
-	  || ((lock_mode != NULL_LOCK)
-	      || lock_get_object_lock (oid, class_oid,
-				       LOG_FIND_THREAD_TRAN_INDEX (thread_p)))
-	  != NULL_LOCK);
 
   if (heap_get_with_class_oid (thread_p, class_oid, oid, NULL, &scan_cache,
 			       scan_operation_type, PEEK, updated_oid)
