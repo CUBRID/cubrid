@@ -3836,6 +3836,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
   assert (seq_flusher != NULL);
   f_list = seq_flusher->flush_list;
 
+#if defined (SERVER_MODE)
   gettimeofday (&cur_time, NULL);
 
   if (seq_flusher->burst_mode == true)
@@ -3884,6 +3885,9 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
   flush_per_interval = (int)
     MAX (flush_per_interval,
 	 (PGBUF_CHKPT_MIN_FLUSH_RATE * seq_flusher->interval_msec) / 1000.0f);
+#else
+  flush_per_interval = seq_flusher->flush_cnt;
+#endif /* SERVER_MODE */
 
   er_log_debug (ARG_FILE_LINE,
 		"pgbuf_flush_seq_list (%s): start_idx:%d, "
@@ -4080,10 +4084,10 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
 	{
 	  return ER_FAILED;
 	}
-
-#endif
+#endif /* SERVER_MODE */
     }
 
+#if defined (SERVER_MODE)
   gettimeofday (&cur_time, NULL);
   if (limit_time != NULL)
     {
@@ -4115,6 +4119,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
 	    }
 	}
     }
+#endif /* SERVER_MODE */
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_seq_list end (%s): %s %s"
 		"pages : %d written/%d dropped, "
