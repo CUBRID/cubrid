@@ -5205,7 +5205,7 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 #if defined (SERVER_MODE)
   if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
     {
-      /* Vacuum master will start to process log */
+      /* Vacuum master completes to process log */
       vacuum_Master_is_process_log_phase = false;
     }
 #endif /* !SERVER_MODE */
@@ -5271,7 +5271,7 @@ end:
 #if defined (SERVER_MODE)
   if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
     {
-      /* Vacuum master will start to process log */
+      /* Vacuum master completes to process log */
       vacuum_Master_is_process_log_phase = false;
     }
 #endif /* !SERVER_MODE */
