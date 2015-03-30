@@ -2565,7 +2565,8 @@ btree_leaf_get_vpid_for_overflow_oids (RECDES * rec, VPID * ovfl_vpid)
 
   assert (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS));
 
-  or_init (&buf, rec->data + rec->length - OR_OID_SIZE, DISK_VPID_SIZE);
+  or_init (&buf, rec->data + rec->length - DISK_VPID_ALIGNED_SIZE,
+	   DISK_VPID_SIZE);
 
   ovfl_vpid->pageid = or_get_int (&buf, &rc);
   if (rc == NO_ERROR)
@@ -3171,7 +3172,6 @@ btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp,
       new_rec_flag &= ~BTREE_LEAF_RECORD_CLASS_OID;
     }
 
-
   /* insert/delete MVCCID's may be present or may be added */
   if (mvcc_info == NULL)
     {
@@ -3195,6 +3195,7 @@ btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp,
 	  new_object_size += OR_OID_SIZE;
 	  new_has_class_oid = true;
 	}
+      new_rec_flag |= BTREE_LEAF_RECORD_OVERFLOW_OIDS;
     }
   else
     {
@@ -4088,6 +4089,7 @@ btree_record_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       append_at -= DISK_VPID_ALIGNED_SIZE;
       /* Save overflow link. */
       OR_GET_VPID (append_at, &ovf_vpid);
+      assert (!VPID_ISNULL (&ovf_vpid));
     }
   offset_to_object = CAST_BUFLEN (append_at - record->data);
 
@@ -10225,7 +10227,9 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		     delete_helper->object_info.class_oid.volid,
 		     delete_helper->object_info.class_oid.pageid,
 		     delete_helper->object_info.class_oid.slotid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.insert_mvccid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.delete_mvccid,
 		     delete_helper->printed_key != NULL ?
 		     delete_helper->printed_key : "(unknown)",
@@ -10374,6 +10378,11 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
       ret = ER_FAILED;
       goto exit_on_error;
     }
+
+#if !defined (NDEBUG)
+  (void) btree_check_valid_record (thread_p, btid, &ovfl_copy_rec,
+				   BTREE_OVERFLOW_NODE, NULL);
+#endif /* NDEBUG */
 
   /* Save VPID of next overflow. */
   btree_get_next_overflow_vpid (ovfl_page, &next_ovfl_vpid);
@@ -10539,7 +10548,9 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		     delete_helper->object_info.class_oid.volid,
 		     delete_helper->object_info.class_oid.pageid,
 		     delete_helper->object_info.class_oid.slotid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.insert_mvccid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.delete_mvccid,
 		     delete_helper->printed_key != NULL ?
 		     delete_helper->printed_key : "(unknown)",
@@ -10688,7 +10699,9 @@ btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		     delete_helper->object_info.class_oid.volid,
 		     delete_helper->object_info.class_oid.pageid,
 		     delete_helper->object_info.class_oid.slotid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.insert_mvccid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.delete_mvccid,
 		     delete_helper->printed_key != NULL ?
 		     delete_helper->printed_key : "(unknown)",
@@ -10846,7 +10859,9 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		     delete_helper->object_info.class_oid.volid,
 		     delete_helper->object_info.class_oid.pageid,
 		     delete_helper->object_info.class_oid.slotid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.insert_mvccid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.delete_mvccid,
 		     delete_helper->printed_key != NULL ?
 		     delete_helper->printed_key : "(unknown)",
@@ -11536,8 +11551,6 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 	      peek_rec.length - offset);
       rec[rec_idx].length += peek_rec.length - offset;
 
-      merge_idx += rec[rec_idx].length;
-
       if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
 	{
 	  btree_leaf_record_handle_first_overflow (&rec[rec_idx], btid, NULL);
@@ -11547,6 +11560,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       btree_check_valid_record (thread_p, btid, &rec[rec_idx],
 				BTREE_LEAF_NODE, NULL);
 #endif
+
+      merge_idx += rec[rec_idx].length;
 
       assert (merge_idx < merge_buf_size);
       assert (rec_idx < (int) (sizeof (rec) / sizeof (rec[0])));
@@ -11649,8 +11664,6 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 	      peek_rec.length - offset);
       rec[rec_idx].length += peek_rec.length - offset;
 
-      merge_idx += rec[rec_idx].length;
-
       if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
 	{
 	  btree_leaf_record_handle_first_overflow (&rec[rec_idx], btid, NULL);
@@ -11660,6 +11673,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       btree_check_valid_record (thread_p, btid, &rec[rec_idx],
 				BTREE_LEAF_NODE, NULL);
 #endif
+
+      merge_idx += rec[rec_idx].length;
 
       assert (merge_idx < merge_buf_size);
       assert (rec_idx < (int) (sizeof (rec) / sizeof (rec[0])));
@@ -23156,6 +23171,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
   bool is_first_oid = true;
   bool has_fixed_size = false;
   bool has_overflow_pages = false;
+  VPID first_overflow_vpid = VPID_INITIALIZER;
 
   if (btid == NULL || btid->key_type == NULL)
     {
@@ -23163,11 +23179,21 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
       return NO_ERROR;
     }
 
-
   if (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
     {
+      char *vpid_ptr = NULL;
+
       has_overflow_pages = true;
-      vpid_size = DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT);
+      vpid_size = DISK_VPID_ALIGNED_SIZE;
+
+      vpid_ptr = recp->data + recp->length - vpid_size;
+      OR_GET_VPID (vpid_ptr, &first_overflow_vpid);
+      if (pgbuf_is_valid_page (thread_p, &first_overflow_vpid, true, NULL,
+			       NULL) == DISK_INVALID)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
     }
 
   or_init (&buffer, recp->data, recp->length - vpid_size);
@@ -29194,6 +29220,11 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+#if !defined (NDEBUG)
+      (void) btree_check_valid_record (thread_p, btid_int, &leaf_record,
+				       BTREE_LEAF_NODE, NULL);
+#endif /* !NDEBUG */
+
       error_code =
 	btree_read_record (thread_p, btid_int, *leaf_page, &leaf_record,
 			   NULL, &leaf_info, BTREE_LEAF_NODE,
@@ -32800,6 +32831,17 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 			 delete_helper->object_info.oid.slotid,
 			 delete_helper->printed_key != NULL ?
 			 delete_helper->printed_key : "(unknown)");
+	  if (delete_helper->log_operations)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "BTREE_DELETE: Could not find object %d|%d|%d "
+			     "in key=%s to vacuum it.",
+			     delete_helper->object_info.oid.volid,
+			     delete_helper->object_info.oid.pageid,
+			     delete_helper->object_info.oid.slotid,
+			     delete_helper->printed_key != NULL ?
+			     delete_helper->printed_key : "(unknown)");
+	    }
 	  return NO_ERROR;
 	}
       else
@@ -33115,7 +33157,9 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p,
 		     delete_helper->object_info.class_oid.volid,
 		     delete_helper->object_info.class_oid.pageid,
 		     delete_helper->object_info.class_oid.slotid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.insert_mvccid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.delete_mvccid,
 		     delete_helper->printed_key != NULL ?
 		     delete_helper->printed_key : "(unknown)",
@@ -33266,7 +33310,7 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		     "BTREE_DELETE: Successfully executed delete "
 		     "object %d|%d|%d, class_oid %d|%d|%d, "
 		     "mvcc_info=%llu|%llu and key=%s, slotid=%d, "
-		     "%s page=%d|%d in index (%d, %d|%d). "
+		     "%s page=%d|%d, lsa=%lld|%d in index (%d, %d|%d). "
 		     "Object was removed.\n",
 		     delete_helper->object_info.oid.volid,
 		     delete_helper->object_info.oid.pageid,
@@ -33274,7 +33318,9 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		     delete_helper->object_info.class_oid.volid,
 		     delete_helper->object_info.class_oid.pageid,
 		     delete_helper->object_info.class_oid.slotid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.insert_mvccid,
+		     (unsigned long long int)
 		     delete_helper->object_info.mvcc_info.delete_mvccid,
 		     delete_helper->printed_key != NULL ?
 		     delete_helper->printed_key : "(unknown)",
@@ -33386,6 +33432,12 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       assert_release (false);
       return ER_FAILED;
     }
+
+#if !defined (NDEBUG)
+  (void) btree_check_valid_record (thread_p, btid_int, &overflow_record,
+				   BTREE_OVERFLOW_NODE, NULL);
+#endif /* !NDEBUG */
+
   if (overflow_record.length == BTREE_OBJECT_FIXED_SIZE (btid_int))
     {
       /* Only one object. */
@@ -33548,6 +33600,11 @@ btree_leaf_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
 	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT);
+
+#if !defined (NDEBUG)
+  (void) btree_check_valid_record (thread_p, btid_int, leaf_record,
+				   BTREE_LEAF_NODE, NULL);
+#endif /* NDEBUG */
 
   /* Remove object from leaf record. */
   if (offset_to_object == 0)
@@ -33729,6 +33786,12 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  assert_release (false);
 	  return ER_FAILED;
 	}
+
+#if !defined (NDEBUG)
+      (void) btree_check_valid_record (thread_p, btid_int, &record,
+				       BTREE_LEAF_NODE, NULL);
+#endif /* !NDEBUG */
+
       error_code =
 	btree_read_record (thread_p, btid_int, *leaf_page, &record, NULL,
 			   &leaf_rec_info, BTREE_LEAF_NODE, &dummy_clear_key,
@@ -33768,6 +33831,17 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		     delete_helper->object_info.oid.slotid,
 		     delete_helper->printed_key != NULL ?
 		     delete_helper->printed_key : "(unknown)");
+      if (delete_helper->log_operations)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "BTREE_DELETE: Could not find object %d|%d|%d "
+			 "in key=%s to vacuum it.",
+			 delete_helper->object_info.oid.volid,
+			 delete_helper->object_info.oid.pageid,
+			 delete_helper->object_info.oid.slotid,
+			 delete_helper->printed_key != NULL ?
+			 delete_helper->printed_key : "(unknown)");
+	}
       return NO_ERROR;
     }
   /* Object was found. */
@@ -33784,6 +33858,10 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+#if !defined (NDEBUG)
+      (void) btree_check_valid_record (thread_p, btid_int, &record,
+				       BTREE_OVERFLOW_NODE, NULL);
+#endif /* !NDEBUG */
     }
   else
     {
@@ -34008,6 +34086,12 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  assert_release (false);
 	  return ER_FAILED;
 	}
+
+#if !defined (NDEBUG)
+      (void) btree_check_valid_record (thread_p, btid_int, &leaf_record,
+				       BTREE_LEAF_NODE, NULL);
+#endif /* !NDEBUG */
+
       error_code =
 	btree_read_record (thread_p, btid_int, *leaf_page, &leaf_record, NULL,
 			   &leaf_rec_info, BTREE_LEAF_NODE, &dummy_clear_key,
@@ -34069,6 +34153,10 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+#if !defined (NDEBUG)
+      (void) btree_check_valid_record (thread_p, btid_int, &overflow_record,
+				       BTREE_OVERFLOW_NODE, NULL);
+#endif /* !NDEBUG */
     }
   else
     {
