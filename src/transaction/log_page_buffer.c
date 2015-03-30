@@ -2225,6 +2225,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   TSCTIMEVAL tv_diff;
   UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
+  bool log_csect_entered = false;
 
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
@@ -2241,6 +2242,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
        *       consequences are possible.
        */
       LOG_CS_ENTER_READ_MODE (thread_p);
+      log_csect_entered = true;
     }
 
   /* TODO: Can we use a latch free structure here? */
@@ -2262,7 +2264,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
       stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
     }
 
-  if (!VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
+  if (log_csect_entered)
     {
       /* TODO: Avoid any locks for vacuum workers. Investigate if any unwanted
        *       consequences are possible.
@@ -2308,6 +2310,8 @@ LOG_PAGE *
 logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 			   LOG_PAGE * log_pgptr)
 {
+  bool log_csect_entered = false;
+
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
   assert (LOG_CS_OWN (thread_p));
@@ -2324,6 +2328,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
        * became flawed.
        */
       LOG_CS_ENTER_READ_MODE (thread_p);
+      log_csect_entered = true;
     }
 
   if (logpb_is_page_in_archive (pageid)
@@ -2402,7 +2407,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	}
     }
 
-  if (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
+  if (log_csect_entered)
     {
       LOG_CS_EXIT (thread_p);
     }
@@ -2410,7 +2415,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   return log_pgptr;
 
 error:
-  if (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
+  if (log_csect_entered)
     {
       LOG_CS_EXIT (thread_p);
     }
