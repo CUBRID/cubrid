@@ -22363,7 +22363,27 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
       assert (ts_p != NULL);
 
       y = m = d = h = mi = s = ms = 0;
-      (void) db_timestamp_decode_ses (ts_p, &db_date, &db_time);
+
+      if (is_timezone > 0)
+	{
+	  TZ_REGION tz_region;
+	  tz_id_to_region (&tz_id, &tz_region);
+	  error_status =
+	    db_timestamp_decode_w_reg (ts_p, &tz_region, &db_date, &db_time);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  error_status = db_timestamp_decode_ses (ts_p, &db_date, &db_time);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
       db_date_decode (&db_date, &m, &d, &y);
       db_time_decode (&db_time, &h, &mi, &s);
 
