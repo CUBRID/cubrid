@@ -4808,6 +4808,13 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     {
       (void) csect_enter (NULL, CSECT_MVCC_ACTIVE_TRANS, INF_WAIT);
 
+      /* reflect accumulated statistics to B-trees */
+      if (committed
+	  && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
+	{
+	  assert (false);
+	}
+
       curr_mvcc_info->transaction_lowest_active_mvccid = MVCCID_NULL;
 
       csect_exit (thread_p, CSECT_MVCC_ACTIVE_TRANS);
@@ -6318,7 +6325,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   int num_oids, num_nulls, num_keys;
 
-  if (oid_delta == 0 && null_delta == 0 && null_delta == 0)
+  if (oid_delta == 0 && key_delta == 0 && null_delta == 0)
     {
       return NO_ERROR;
     }
