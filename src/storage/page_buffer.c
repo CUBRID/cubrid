@@ -5886,6 +5886,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	  || request_mode == PGBUF_LATCH_WRITE);
   assert (condition == PGBUF_UNCONDITIONAL_LATCH
 	  || condition == PGBUF_CONDITIONAL_LATCH);
+  assert (is_latch_wait != NULL);
+
+  *is_latch_wait = false;
 
   buf_is_dirty = bufptr->dirty;
 
