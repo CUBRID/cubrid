@@ -683,6 +683,10 @@ do_create_serial_internal (MOP * serial_object,
     }
 
 end:
+  if (obj_tmpl != NULL && ret_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
   AU_ENABLE (au_save);
   return error;
 }

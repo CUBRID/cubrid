@@ -4160,7 +4160,36 @@ locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush,
 static void
 locator_mflush_end (LOCATOR_MFLUSH_CACHE * mflush)
 {
+  LOCATOR_MFLUSH_TEMP_OID *mop_toid;
+  LOCATOR_MFLUSH_TEMP_OID *next_mop_toid;
+
   assert (mflush != NULL);
+
+  if (mflush->mop_toids != NULL)
+    {
+      mop_toid = mflush->mop_toids;
+      while (mop_toid != NULL)
+	{
+	  next_mop_toid = mop_toid->next;
+
+	  free_and_init (mop_toid);
+	  mop_toid = next_mop_toid;
+	}
+      mflush->mop_toids = NULL;
+    }
+
+  if (mflush->mop_uoids != NULL)
+    {
+      mop_toid = mflush->mop_uoids;
+      while (mop_toid != NULL)
+	{
+	  next_mop_toid = mop_toid->next;
+
+	  free_and_init (mop_toid);
+	  mop_toid = next_mop_toid;
+	}
+      mflush->mop_uoids = NULL;
+    }
 
   if (mflush->copy_area != NULL)
     {
@@ -4372,6 +4401,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      free_and_init (mop_toid);
 	      mop_toid = next_mop_toid;
 	    }
+	  mflush->mop_toids = NULL;
+
 	  mop_toid = mflush->mop_uoids;
 	  while (mop_toid != NULL)
 	    {
@@ -4384,6 +4415,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      free_and_init (mop_toid);
 	      mop_toid = next_mop_toid;
 	    }
+	  mflush->mop_uoids = NULL;
 
 	  return error_code;
 	}
@@ -4419,6 +4451,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  free_and_init (mop_toid);
 	  mop_toid = next_mop_toid;
 	}
+      mflush->mop_toids = NULL;
 
       /* Notify the workspace about the changes that were made to objects
        * belonging to partitioned classes. In the case of a partition change,
@@ -4532,6 +4565,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  free_and_init (mop_toid);
 	  mop_toid = next_mop_toid;
 	}
+      mflush->mop_uoids = NULL;
 
       /* Adjust class_of attribute from _db_partition catalog class for
        * each partitioned class that has been flushed. This is
