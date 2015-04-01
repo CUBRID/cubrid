@@ -1231,17 +1231,11 @@ void
 er_final (bool do_global_final)
 {
   FILE *fh;
+  THREAD_ENTRY *th_entry;
 
-  if (do_global_final == false)
+  th_entry = thread_get_thread_entry_info ();
+  if (th_entry != NULL)
     {
-      THREAD_ENTRY *th_entry;
-
-      th_entry = thread_get_thread_entry_info ();
-      if (th_entry == NULL)
-	{
-	  return;
-	}
-
       if (th_entry->er_Msg != NULL)
 	{
 	  er_stack_clearall ();
@@ -1262,7 +1256,8 @@ er_final (bool do_global_final)
 	  th_entry->er_Msg = NULL;
 	}
     }
-  else
+
+  if (do_global_final)
     {
       int i;
 

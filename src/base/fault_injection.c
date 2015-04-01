@@ -84,12 +84,11 @@ FI_TEST_CODE *fi_Groups[FI_GROUP_MAX + 1] = {
 };
 
 /*
- * fi_set -
+ * fi_thread_init -
  *
  * return: NO_ERROR or ER_FAILED
  *
- *   code(in):
- *   state(in):
+ *   thread_p(in):
  */
 int
 fi_thread_init (THREAD_ENTRY * thread_p)
@@ -139,7 +138,38 @@ fi_thread_init (THREAD_ENTRY * thread_p)
 }
 
 /*
- * fi_set -
+ * fi_thread_final -
+ *
+ * return: NO_ERROR or ER_FAILED
+ *
+ *   thread_p(in):
+ */
+int
+fi_thread_final (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (thread_p == NULL)
+    {
+      assert (thread_p != NULL);
+
+      return ER_FAILED;
+    }
+
+  if (thread_p->fi_test_array != NULL)
+    {
+      free_and_init (thread_p->fi_test_array);
+    }
+#endif
+
+  return NO_ERROR;
+}
+
+/*
+ * fi_code_item -
  *
  * return: NO_ERROR or ER_FAILED
  *

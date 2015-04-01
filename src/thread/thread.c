@@ -1341,6 +1341,10 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 
   db_destroy_private_heap (entry_p, entry_p->private_heap_id);
 
+#if !defined(NDEBUG)
+  fi_thread_final (entry_p);
+#endif
+
   /* transaction entries */
   for (i = 0; i < THREAD_TS_COUNT; i++)
     {

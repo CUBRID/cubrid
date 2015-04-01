@@ -2468,6 +2468,7 @@ extern void logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern void logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p,
 						 const LOG_LSA * undo_lsa);
 extern void logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_find_tran_index (THREAD_ENTRY * thread_p, TRANID trid);
 #if defined (ENABLE_UNUSED_FUNCTION)

@@ -94,6 +94,7 @@ struct fi_test_item
 };
 
 extern int fi_thread_init (THREAD_ENTRY * thread_p);
+extern int fi_thread_final (THREAD_ENTRY * thread_p);
 extern int fi_set (THREAD_ENTRY * thread_p, FI_TEST_CODE code, int state);
 extern int fi_set_force (THREAD_ENTRY * thread_p, FI_TEST_CODE code,
 			 int state);

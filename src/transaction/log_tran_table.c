@@ -672,15 +672,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	      assert (tdes->cs_topop.name == css_Csect_name_tdes);
 #endif
 
-	      logtb_clear_tdes (thread_p, tdes);
-	      logtb_tran_free_update_stats (&tdes->log_upd_stats);
-	      csect_finalize_critical_section (&tdes->cs_topop);
-	      if (tdes->topops.max != 0)
-		{
-		  free_and_init (tdes->topops.stack);
-		  tdes->topops.max = 0;
-		  tdes->topops.last = -1;
-		}
+	      logtb_finalize_tdes (thread_p, tdes);
 	    }
 	}
 
@@ -1988,6 +1980,28 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 		logtb_tran_btid_hash_cmp_func);
   tdes->log_upd_stats.classes_cos_hash =
     mht_create ("Tran_classes_cos", 101, oid_hash, oid_compare_equals);
+}
+
+/*
+ * logtb_finalize_tdes - finalize the transaction descriptor
+ *
+ * return: nothing.
+ *
+ *   thread_p(in):
+ *   tdes(in/out): Transaction descriptor
+ */
+void
+logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  logtb_clear_tdes (thread_p, tdes);
+  logtb_tran_free_update_stats (&tdes->log_upd_stats);
+  csect_finalize_critical_section (&tdes->cs_topop);
+  if (tdes->topops.max != 0)
+    {
+      free_and_init (tdes->topops.stack);
+      tdes->topops.max = 0;
+      tdes->topops.last = -1;
+    }
 }
 
 /*

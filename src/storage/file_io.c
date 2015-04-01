@@ -3580,14 +3580,6 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
   (void) fileio_traverse_permanent_volume (thread_p, fileio_dismount_volume,
 					   &ignore_arg);
 
-  for (i = 0; i <= (num_perm_vols - 1) / FILEIO_VOLINFO_INCREMENT; i++)
-    {
-      if (vol_header_p->volinfo)
-	{
-	  free_and_init (vol_header_p->volinfo[i]);
-	}
-    }
-
   vol_header_p->max_perm_vols = 0;
   vol_header_p->next_perm_volid = 0;
 
@@ -3596,19 +3588,20 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
   (void) fileio_traverse_temporary_volume (thread_p, fileio_dismount_volume,
 					   &ignore_arg);
 
-  for (i = vol_header_p->num_volinfo_array - 1;
-       i > (vol_header_p->num_volinfo_array - 1
-	    - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) /
-	    FILEIO_VOLINFO_INCREMENT); i--)
-    {
-      if (vol_header_p->volinfo)
-	{
-	  free_and_init (vol_header_p->volinfo[i]);
-	}
-    }
-
   vol_header_p->max_temp_vols = 0;
   vol_header_p->next_temp_volid = LOG_MAX_DBVOLID;
+
+  if (vol_header_p->volinfo != NULL)
+    {
+      for (i = 0; i <= (VOLID_MAX - 1) / FILEIO_VOLINFO_INCREMENT; i++)
+	{
+	  if (vol_header_p->volinfo[i] != NULL)
+	    {
+	      free_and_init (vol_header_p->volinfo[i]);
+	    }
+
+	}
+    }
 
   free_and_init (vol_header_p->volinfo);
 
