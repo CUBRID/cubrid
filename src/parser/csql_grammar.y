@@ -127,9 +127,8 @@ extern int yybuffer_pos;
 #define COLUMN_CONSTRAINT_SHARED		(0x10)
 #define COLUMN_CONSTRAINT_DEFAULT		(0x20)
 #define COLUMN_CONSTRAINT_AUTO_INCREMENT	(0x40)
-
 #define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
-
+#define COLUMN_CONSTRAINT_COMMENT       (0x80)
 
 #ifdef PARSER_DEBUG
 #define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
@@ -661,8 +660,9 @@ int g_original_buffer_len;
 %type <number> opt_with_rollup
 %type <number> opt_table_type
 %type <number> opt_or_replace
-%type <number> column_constraint_def
-%type <number> constraint_list
+%type <number> column_constraint_and_comment_def
+%type <number> constraint_list_and_column_comment
+%type <number> opt_constraint_list_and_opt_column_comment
 %type <number> opt_full
 %type <number> of_analytic
 %type <number> of_analytic_first_last
@@ -9624,9 +9624,8 @@ attr_def_one
 			parser_save_attr_def_one (node);
 
 		DBG_PRINT}}
-	  constraint_list
-	  opt_comment_spec
-	  opt_attr_ordering_info								%dprec 2
+	  opt_constraint_list_and_opt_column_comment
+	  opt_attr_ordering_info
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -9636,43 +9635,7 @@ attr_def_one
 			  }
 			if (node != NULL)
 			  {
-			    node->info.attr_def.comment = $5;
-			    node->info.attr_def.ordering_info = $6;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| identifier
-	  data_type
-	  opt_comment_spec
-	  opt_attr_ordering_info 									%dprec 1
-		{{
-
-			PT_NODE *dt;
-			PT_TYPE_ENUM typ;
-			PT_NODE *node = parser_new_node (this_parser, PT_ATTR_DEF);
-
-			if (node)
-			  {
-			    node->type_enum = typ = TO_NUMBER (CONTAINER_AT_0 ($2));
-			    node->data_type = dt = CONTAINER_AT_1 ($2);
-			    node->info.attr_def.attr_name = $1;
-			    if (typ == PT_TYPE_CHAR && dt)
-			      node->info.attr_def.size_constraint = dt->info.data_type.precision;
-			    if (typ == PT_TYPE_OBJECT && dt && dt->type_enum == PT_TYPE_VARCHAR)
-			      {
-				node->type_enum = dt->type_enum;
-				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
-						       PT_NAME_INFO_EXTERNAL);
-			      }
-			    if (node->info.attr_def.attr_type != PT_SHARED)
-			      {
-			        node->info.attr_def.attr_type = parser_attr_type;
-			      }
-			    node->info.attr_def.comment = $3;
-			    node->info.attr_def.ordering_info = $4;
+			    node->info.attr_def.ordering_info = $5;
 			  }
 
 			$$ = node;
@@ -9728,8 +9691,15 @@ opt_attr_ordering_info
 		DBG_PRINT}}
 	;
 
-constraint_list
-	: constraint_list column_constraint_def
+opt_constraint_list_and_opt_column_comment
+	: /* empty */
+		{ $$ = 0; }
+	| constraint_list_and_column_comment
+		{ $$ = $1; }
+	;
+
+constraint_list_and_column_comment
+	: constraint_list_and_column_comment column_constraint_and_comment_def
 		{{
 			unsigned char mask = $1;
 			unsigned char new_bit = $2;
@@ -9743,7 +9713,7 @@ constraint_list
 			if (((mask & new_bit) ^ new_bit) == 0)
 			  {
 			    PT_ERROR (this_parser, pt_top(this_parser),
-				      "Multiple definitions exist for a constraint");
+				      "Multiple definitions exist for a constraint or comment");
 			  }
 			else if ((new_bit & COLUMN_CONSTRAINT_SHARED_DEFAULT_AI)
 				  && ((merged & COLUMN_CONSTRAINT_SHARED_DEFAULT_AI)
@@ -9763,13 +9733,13 @@ constraint_list
 
 			$$ = merged;
 		}}
-	| column_constraint_def
+	| column_constraint_and_comment_def
 		{{
 			$$ = $1;
 		}}
 	;
 
-column_constraint_def
+column_constraint_and_comment_def
 	: column_unique_constraint_def
 		{{
 			$$ = COLUMN_CONSTRAINT_UNIQUE;
@@ -9797,6 +9767,10 @@ column_constraint_def
 	| column_ai_constraint_def
 		{{
 			$$ = COLUMN_CONSTRAINT_AUTO_INCREMENT;
+		}}
+	| column_comment_def
+		{{
+			$$ = COLUMN_CONSTRAINT_COMMENT;
 		}}
 	;
 
@@ -10180,6 +10154,16 @@ column_default_constraint_def
 		DBG_PRINT}}
 	;
 
+column_comment_def
+	: COMMENT comment_value
+		{{
+
+			PT_NODE *attr_node;
+			attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.comment = $2;
+
+		DBG_PRINT}}
+	;
 
 transaction_mode_list
 	: transaction_mode_list ',' transaction_mode			%dprec 1
