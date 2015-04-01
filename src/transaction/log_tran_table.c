@@ -246,6 +246,8 @@ logtb_allocate_tdes_area (int num_indices)
   area = (LOG_ADDR_TDESAREA *) malloc (area_size);
   if (area == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, area_size);
       return NULL;
     }
 
@@ -5896,12 +5898,17 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void *
 logtb_global_unique_stat_alloc (void)
 {
-  GLOBAL_UNIQUE_STATS *unique_stat =
-    (GLOBAL_UNIQUE_STATS *) malloc (sizeof (GLOBAL_UNIQUE_STATS));
-  if (unique_stat != NULL)
+  GLOBAL_UNIQUE_STATS *unique_stat;
+
+  unique_stat = (GLOBAL_UNIQUE_STATS *) malloc (sizeof (GLOBAL_UNIQUE_STATS));
+  if (unique_stat == NULL)
     {
-      pthread_mutex_init (&unique_stat->mutex, NULL);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (GLOBAL_UNIQUE_STATS));
+      return NULL;
     }
+
+  pthread_mutex_init (&unique_stat->mutex, NULL);
   return (void *) unique_stat;
 }
 
