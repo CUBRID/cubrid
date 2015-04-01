@@ -262,7 +262,8 @@ typedef enum
   HEAP_OPERATION_NONE = 0,
   HEAP_OPERATION_INSERT,
   HEAP_OPERATION_DELETE,
-  HEAP_OPERATION_UPDATE
+  HEAP_OPERATION_UPDATE,
+  HEAP_OPERATION_UPDATE_IN_PLACE
 } HEAP_OPERATION_TYPE;
 
 /* heap operation information structure */
@@ -280,7 +281,6 @@ struct heap_operation_context
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
-  bool force_non_mvcc;		/* force a non-mvcc operation */
 
   /* overflow transient data */
   RECDES map_recdes;		/* built record descriptor during multipage insert */
@@ -812,7 +812,8 @@ extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context,
 					HFID * hfid_p, OID * oid_p,
 					OID * class_oid_p,
 					RECDES * recdes_p,
-					HEAP_SCANCACHE * scancache_p);
+					HEAP_SCANCACHE * scancache_p,
+					bool in_place);
 extern int heap_insert_logical (THREAD_ENTRY * thread_p,
 				HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p,

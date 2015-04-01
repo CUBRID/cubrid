@@ -644,9 +644,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
     }
 
   heap_create_update_context (&update_context, hfid, oid, WS_OID (classop),
-			      Diskrec, NULL);
-  update_context.force_non_mvcc = true;
-
+			      Diskrec, NULL, true);
   if (heap_update_logical (NULL, &update_context) != NO_ERROR)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,

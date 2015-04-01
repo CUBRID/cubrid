@@ -5774,9 +5774,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	      /* Cache object has been updated, we need update the value again */
 	      heap_create_update_context (&update_context, &real_hfid, oid,
 					  &real_class_oid, recdes,
-					  local_scan_cache);
-	      update_context.force_non_mvcc = true;
-
+					  local_scan_cache, true);
 	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -6148,9 +6146,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	}
 
       heap_create_update_context (&update_context, hfid, oid, class_oid,
-				  recdes, scan_cache);
-      update_context.force_non_mvcc = true;
-
+				  recdes, scan_cache, true);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  /*
@@ -6218,9 +6214,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	      OR_PUT_OID (rep_dir_offset, &rep_dir);
 
 	      heap_create_update_context (&update_context, hfid, oid,
-					  class_oid, recdes, scan_cache);
-	      update_context.force_non_mvcc = true;
-
+					  class_oid, recdes, scan_cache,
+					  true);
 	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  /*
@@ -6558,7 +6553,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	  /* in MVCC update heap and then indexes */
 	  heap_create_update_context (&update_context, hfid, oid, class_oid,
-				      recdes, local_scan_cache);
+				      recdes, local_scan_cache, false);
 	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	    {
 	      /*
@@ -6677,9 +6672,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  HEAP_OPERATION_CONTEXT update_context;
 
 	  heap_create_update_context (&update_context, hfid, oid, class_oid,
-				      recdes, local_scan_cache);
-	  update_context.force_non_mvcc = true;
-
+				      recdes, local_scan_cache, true);
 	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	    {
 	      /*
