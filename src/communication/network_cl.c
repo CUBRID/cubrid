@@ -1896,6 +1896,15 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 	  error = css_receive_data_from_server (rc, &reply, &size);
 	  if (error != NO_ERROR || reply == NULL)
 	    {
+	      /* This is not an real assertion but DEBUGGING SUPPORT.
+	       * Sometimes when a server crash happens, we are unable to trace 
+	       * if a client causes it. Because these errors are usually returned 
+	       * when a server crashes, raises an assertion for debugging.
+	       */
+	      assert (error != ERROR_WHEN_READING_SIZE
+		      && error != SERVER_WAS_NOT_FOUND
+		      && error != SERVER_ABORTED);
+
 	      COMPARE_AND_FREE_BUFFER (replybuf, reply);
 	      return set_server_error (error);
 	    }
