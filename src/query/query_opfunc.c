@@ -11679,16 +11679,16 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
       if (func_p->domain == NULL)
 	{
-	  pr_clear_value (&dbval);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto exit;
 	}
 
       /* coerce operand */
       if (tp_value_coerce (&dbval, &dbval, func_p->domain) !=
 	  DOMAIN_COMPATIBLE)
 	{
-	  pr_clear_value (&dbval);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto exit;
 	}
 
       func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
@@ -11726,8 +11726,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
       if (pr_type_p == NULL)
 	{
-	  pr_clear_value (&dbval);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto exit;
 	}
 
       dbval_size = pr_data_writeval_disk_size (&dbval);
@@ -11738,22 +11738,22 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	  if ((*(pr_type_p->data_writeval)) (&buf, &dbval) != NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, disk_repr_p);
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 	}
       else
 	{
-	  pr_clear_value (&dbval);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto exit;
 	}
 
-      if (qfile_add_item_to_list (thread_p, disk_repr_p,
-				  dbval_size, func_p->list_id) != NO_ERROR)
+      if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size,
+				  func_p->list_id) != NO_ERROR)
 	{
 	  db_private_free_and_init (thread_p, disk_repr_p);
-	  pr_clear_value (&dbval);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto exit;
 	}
       db_private_free_and_init (thread_p, disk_repr_p);
 
@@ -11786,9 +11786,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 					 &tp_Double_domain);
 	      assert_release (error != NO_ERROR);
 
-	      pr_clear_value (&dbval);
-
-	      return error;
+	      goto exit;
 	    }
 
 	  ntile_bucket = DB_GET_DOUBLE (&dbval);
@@ -11796,10 +11794,10 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	  /* boundary check */
 	  if (ntile_bucket < 1.0 || ntile_bucket > DB_INT32_MAX)
 	    {
-	      pr_clear_value (&dbval);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_NTILE_INVALID_BUCKET_NUMBER, 0);
-	      return ER_FAILED;
+	      error = ER_NTILE_INVALID_BUCKET_NUMBER;
+	      goto exit;
 	    }
 
 	  /* we're sure the operand is not null */
@@ -11869,8 +11867,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	      if (tp_value_coerce (&dbval, &dbval, func_p->domain)
 		  != DOMAIN_COMPATIBLE)
 		{
-		  pr_clear_value (&dbval);
-		  return ER_FAILED;
+		  error = ER_FAILED;
+		  goto exit;
 		}
 	    }
 
@@ -11882,8 +11880,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 				    DB_DEFAULT_PRECISION,
 				    DB_DEFAULT_SCALE) != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 	}
       else
@@ -11897,8 +11895,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value,
 			       result_domain) != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 	  copy_opr = false;
 	}
@@ -11969,8 +11967,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
       if (tp_value_coerce (&dbval, &dbval, tmp_domain_p) != DOMAIN_COMPATIBLE)
 	{
-	  pr_clear_value (&dbval);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto exit;
 	}
 
       if (func_p->curr_cnt < 1)
@@ -11982,8 +11980,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 				    DB_DEFAULT_PRECISION,
 				    DB_DEFAULT_SCALE) != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 
 	  /* func_p->value contains SUM(X^2) */
@@ -11992,16 +11990,16 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 				    DB_DEFAULT_PRECISION,
 				    DB_DEFAULT_SCALE) != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 
 	  /* calculate X^2 */
 	  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val,
 				    tmp_domain_p) != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 
 	  (void) pr_clear_value (func_p->value);
@@ -12010,8 +12008,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
 	  if (pr_type_p == NULL)
 	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 
 	  (*(pr_type_p->setval)) (func_p->value, &dbval, true);
@@ -12022,24 +12020,24 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val,
 				    tmp_domain_p) != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 
 	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value,
 			       tmp_domain_p) != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
 	      pr_clear_value (&sqr_val);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 
 	  if (qdata_add_dbval (func_p->value2, &sqr_val, func_p->value2,
 			       tmp_domain_p) != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
 	      pr_clear_value (&sqr_val);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto exit;
 	    }
 
 	  pr_clear_value (&sqr_val);
@@ -12068,7 +12066,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 		{
 		  assert (er_errid () != NO_ERROR);
 
-		  return ER_FAILED;
+		  goto exit;
 		}
 
 	      if ((peek_value_p == NULL)
@@ -12076,7 +12074,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_QPROC_INVALID_DATATYPE, 0);
-		  return ER_FAILED;
+		  error = ER_QPROC_INVALID_DATATYPE;
+		  goto exit;
 		}
 
 	      percentile_info_p->cur_group_percentile =
@@ -12087,7 +12086,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE, 1,
 			  percentile_info_p->cur_group_percentile);
-		  return ER_FAILED;
+		  error = ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE;
+		  goto exit;
 		}
 	    }
 
@@ -12175,9 +12175,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
 			      qdump_function_type_string (func_p->function),
 			      "DOUBLE, DATETIME, TIME");
-
-		      pr_clear_value (&dbval);
-		      return ER_FAILED;
+		      goto exit;
 		    }
 
 		  /* update domain */
@@ -12197,7 +12195,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	    {
 	      assert (er_errid () != NO_ERROR);
 
-	      return ER_FAILED;
+	      goto exit;
 	    }
 
 	  if ((peek_value_p == NULL)
@@ -12207,7 +12205,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP, 0);
-	      return ER_FAILED;
+	      error = ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP;
+	      goto exit;
 	    }
 	}
 
@@ -12216,15 +12215,14 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       error = db_value_coerce (&dbval, func_p->value, func_p->domain);
       if (error != NO_ERROR)
 	{
-	  pr_clear_value (&dbval);
-	  return error;
+	  goto exit;
 	}
       break;
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      pr_clear_value (&dbval);
-      return ER_FAILED;
+      error = ER_QPROC_INVALID_XASLNODE;
+      goto exit;
     }
 
   if (copy_opr)
@@ -12235,8 +12233,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       pr_type_p = PR_TYPE_FROM_ID (dbval_type);
       if (pr_type_p == NULL)
 	{
-	  pr_clear_value (&dbval);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto exit;
 	}
 
       (*(pr_type_p->setval)) (func_p->value, opr_dbval_p, true);
@@ -12247,7 +12245,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 exit:
   pr_clear_value (&dbval);
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
@@ -12271,9 +12269,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
   DB_VALUE xavgval, xavg_1val, x2avgval;
   DB_VALUE xavg2val, varval, sqr_val, dval;
   double dtmp;
-  QFILE_TUPLE_RECORD tuple_record = {
-    NULL, 0
-  };
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   TP_DOMAIN *tmp_domain_ptr = NULL;
 
   DB_MAKE_NULL (&sqr_val);
