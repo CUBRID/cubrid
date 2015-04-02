@@ -91,8 +91,7 @@ typedef void *CSS_THREAD_ARG;
 
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
-#define thread_rc_track_is_on(thread_p) (false)
-#define thread_rc_track_is_off(thread_p) (true)
+#define thread_rc_track_need_to_trace(thread_p) (false)
 #define thread_rc_track_enter(thread_p) (-1)
 #define thread_rc_track_exit(thread_p, idx) (NO_ERROR)
 #define thread_rc_track_amount_pgbuf(thread_p) (0)
@@ -503,8 +502,7 @@ extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p,
 extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
 			     int tran_index);
 
-extern bool thread_rc_track_is_on (THREAD_ENTRY * thread_p);
-extern bool thread_rc_track_is_off (THREAD_ENTRY * thread_p);
+extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_exit (THREAD_ENTRY * thread_p, int id);
 extern int thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p);

@@ -16182,7 +16182,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #if !defined (NDEBUG)
 	      amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
 	      amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-	      if (thread_rc_track_is_on (thread_p))
+	      if (thread_rc_track_need_to_trace (thread_p))
 		{
 		  if (list_id && list_id->type_list.type_cnt != 0)
 		    {
@@ -16235,7 +16235,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #if !defined (NDEBUG)
   amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
   amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-  if (thread_rc_track_is_on (thread_p))
+  if (thread_rc_track_need_to_trace (thread_p))
     {
       if (list_id && list_id->type_list.type_cnt != 0)
 	{

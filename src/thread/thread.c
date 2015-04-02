@@ -261,6 +261,7 @@ static void thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 static int thread_check_kill_tran_auth (THREAD_ENTRY * thread_p,
 					int tran_id, bool * has_authoriation);
 static INT32 thread_rc_track_threshold_amount (int rc_idx);
+static bool thread_rc_track_is_enabled (THREAD_ENTRY * thread_p);
 
 #if !defined(NDEBUG)
 static void
@@ -4967,12 +4968,12 @@ thread_rc_track_free (THREAD_ENTRY * thread_p, int id)
 }
 
 /*
- * thread_rc_track_is_on () - check if is enable
+ * thread_rc_track_is_enabled () - check if is enabled
  *   return:
  *   thread_p(in):
  */
-bool
-thread_rc_track_is_on (THREAD_ENTRY * thread_p)
+static bool
+thread_rc_track_is_enabled (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)
     {
@@ -4990,30 +4991,27 @@ thread_rc_track_is_on (THREAD_ENTRY * thread_p)
       return false;
     }
 
-  /* If it reaches the threshold, cubrid stop tracking and clean thread_p->track.
-   * See thread_rc_track_meter.*/
-  if (thread_p->track == NULL)
-    {
-      return false;
-    }
-
   return true;
 }
 
 /*
- * thread_rc_track_is_off () - check if is not enable
+ * thread_rc_track_need_to_trace () - check if is track valid
  *   return:
  *   thread_p(in):
  */
 bool
-thread_rc_track_is_off (THREAD_ENTRY * thread_p)
+thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p)
 {
-  if (thread_rc_track_is_on (thread_p))
+  if (thread_p == NULL)
     {
-      return false;
+      thread_p = thread_get_thread_entry_info ();
     }
 
-  return true;
+  assert_release (thread_p != NULL);
+
+  /* If it reaches the threshold, cubrid stop tracking and clean thread_p->track.
+   * See thread_rc_track_meter.*/
+  return thread_rc_track_is_enabled (thread_p) && thread_p->track != NULL;
 }
 
 /*
@@ -5033,7 +5031,7 @@ thread_rc_track_enter (THREAD_ENTRY * thread_p)
 
   assert_release (thread_p != NULL);
 
-  if (thread_rc_track_is_on (thread_p))
+  if (thread_rc_track_is_enabled (thread_p))
     {
       track = thread_rc_track_alloc (thread_p);
       assert_release (track != NULL);
@@ -5063,10 +5061,10 @@ thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
     }
 
   assert_release (thread_p != NULL);
-  assert_release (id == thread_p->track_depth);
 
-  if (thread_rc_track_is_on (thread_p))
+  if (thread_rc_track_need_to_trace (thread_p))
     {
+      assert_release (id == thread_p->track_depth);
       assert_release (id >= 0);
 
       ret = thread_rc_track_check (thread_p, id);
