@@ -365,10 +365,10 @@ AC_ARG_ENABLE([debug],
 	[enable_debug=$enableval],
 	[enable_debug=no])
 AS_IF([test "$enable_debug" = "yes"],
-	[CFLAGS="$CFLAGS -ggdb -fno-inline"
-	CXXFLAGS="$CXXFLAGS -ggdb -fno-inline"],
-	[CFLAGS="$CFLAGS -ggdb -O2 -DNDEBUG -finline-functions"
-	CXXFLAGS="$CXXFLAGS -ggdb -O2 -DNDEBUG -finline-functions"])
+	[CFLAGS="$CFLAGS -ggdb -fno-inline -fno-omit-frame-pointer"
+	CXXFLAGS="$CXXFLAGS -ggdb -fno-inline -fno-omit-frame-pointer"],
+	[CFLAGS="$CFLAGS -ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer"
+	CXXFLAGS="$CXXFLAGS -ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer"])
 AM_CONDITIONAL([BUILD_DEBUG], [test "$enable_debug" = "yes"])
 
 AC_ARG_ENABLE([profile],
