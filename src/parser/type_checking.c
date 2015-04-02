@@ -18840,21 +18840,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 
 	return 1;
       }
+
     case PT_UTC_DATE:
       {
-	DB_VALUE timezone;
-	DB_BIGINT timezone_milis;
-	DB_DATETIME db_datetime;
-	DB_DATETIME *tmp_datetime;
+	DB_DATE date;
+	DB_TIMESTAMP *timestamp;
+	int year, month, day, hour, minute, second;
 
-	/* extract the timezone part */
-	db_sys_timezone (&timezone);
-	timezone_milis = DB_GET_INT (&timezone) * 60000;
-	tmp_datetime = db_get_datetime (&parser->sys_datetime);
-	db_add_int_to_datetime (tmp_datetime, timezone_milis, &db_datetime);
-
-	DB_MAKE_ENCODED_DATE (result, &db_datetime.date);
-
+	timestamp = db_get_timestamp (&parser->sys_epochtime);
+	tz_timestamp_decode_no_leap_sec (*timestamp, &year, &month,
+					 &day, &hour, &minute, &second);
+	date = julian_encode (month + 1, day, year);
+	DB_MAKE_ENCODED_DATE (result, &date);
 	return 1;
       }
 

@@ -2246,25 +2246,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_UTC_DATE:
       {
-	DB_VALUE timezone;
-	DB_BIGINT timezone_milis;
-	DB_DATETIME db_datetime;
-	DB_DATE db_date;
+	DB_DATE date;
+	int year, month, day, hour, minute, second;
 
-	/* extract the timezone part */
-	if (db_sys_timezone (&timezone) != NO_ERROR)
-	  {
-	    goto error;
-	  }
-	timezone_milis = DB_GET_INT (&timezone) * 60000;
-	if (db_add_int_to_datetime (&vd->sys_datetime, timezone_milis,
-				    &db_datetime) != NO_ERROR)
-	  {
-	    goto error;
-	  }
-
-	db_date = db_datetime.date;
-	DB_MAKE_ENCODED_DATE (arithptr->value, &db_date);
+	tz_timestamp_decode_no_leap_sec (vd->sys_epochtime, &year, &month,
+					 &day, &hour, &minute, &second);
+	date = julian_encode (month + 1, day, year);
+	DB_MAKE_ENCODED_DATE (arithptr->value, &date);
 	break;
       }
 
