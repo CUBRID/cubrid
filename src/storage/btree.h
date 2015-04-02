@@ -680,7 +680,6 @@ extern void btree_rv_keyval_dump (FILE * fp, int length, void *data);
 extern int btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
 extern int btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int btree_rv_logical_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 extern int btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
 						     LOG_RCV * recv);

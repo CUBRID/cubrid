@@ -797,7 +797,7 @@ struct rvfun RV_fun[] = {
 
   {RVBT_MVCC_NOTIFY_VACUUM,
    "RVBT_MVCC_NOTIFY_VACUUM",
-   btree_rv_logical_nop,
+   btree_rv_nop,
    btree_rv_nop,
    NULL, NULL},
 

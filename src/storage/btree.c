@@ -19421,23 +19421,6 @@ btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 }
 
 /*
- * btree_rv_logical_nop () - Called on undo recovery for logical operation
- *			     that do nothing.
- *
- * return	 : NO_ERROR.
- * thread_p (in) : Thread entry.
- * recv (in)	 : Recovery data.
- *
- * NOTE: Unlike btree_rv_nop, this function doesn't have to set any page
- *	 dirty (actually recv->pgptr is NULL).
- */
-int
-btree_rv_logical_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv)
-{
-  return NO_ERROR;
-}
-
-/*
  * btree_multicol_key_is_null () -
  *   return: Return true if DB_VALUE is a NULL multi-column
  *           key and false otherwise.
