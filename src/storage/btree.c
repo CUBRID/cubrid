@@ -28276,19 +28276,18 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   int key_count = 0;		/* Node key count. */
   BTREE_NODE_TYPE node_type;	/* Node type. */
   BTREE_NODE_HEADER *node_header = NULL;	/* Node header. */
-  VPID new_page_vpid1, new_page_vpid2;	/* VPID's of newly allocated pages
-					 * for split. Both can be used if
-					 * the root is split, only first is
-					 * used if non-root node is split.
+  /* VPID's of newly allocated pages for split. Both can be used if the root
+   * is split, only first is used if non-root node is split.
+   */
+  VPID new_page_vpid1 = VPID_INITIALIZER, new_page_vpid2 = VPID_INITIALIZER;
+  VPID child_vpid = VPID_INITIALIZER;	/* VPID of child (based on the
+					 * direction set by key).
 					 */
-  VPID child_vpid;		/* VPID of child (based on the
-				 * direction set by key).
-				 */
-  VPID *crt_vpid;		/* VPID pointer for current node. */
-  VPID advance_vpid;		/* VPID to advance to (hinted by
-				 * split functions).
-				 */
-  PAGE_PTR child_page;		/* Page pointer of child node. */
+  VPID *crt_vpid = NULL;	/* VPID pointer for current node. */
+  VPID advance_vpid = VPID_INITIALIZER;	/* VPID to advance to (hinted
+					 * by split functions).
+					 */
+  PAGE_PTR child_page = NULL;	/* Page pointer of child node. */
   PAGE_PTR new_page1 = NULL, new_page2 = NULL;	/* Page pointers to newly
 						 * allocated pages. Both can
 						 * be used if root is split,
@@ -28297,15 +28296,15 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 						 */
   PAGEID_STRUCT pageid_struct;	/* Recovery structure used by split. */
   PGSLOTID child_slotid;	/* Slot ID that points to child node. */
-  bool is_new_key_possible;	/* Set to true if insert operation can add
-				 * new keys to b-tree (and not just data in
-				 * existing keys).
-				 */
-  bool need_split;		/* Set to true if split is required. */
-  bool need_update_max_key_len;	/* Set to true if the node max key
-				 * length must be updated to the length
-				 * of new key.
-				 */
+  bool is_new_key_possible = false;	/* Set to true if insert operation can
+					 * add new keys to b-tree (and not
+					 * just data in existing keys).
+					 */
+  bool need_split = false;	/* Set to true if split is required. */
+  bool need_update_max_key_len = false;	/* Set to true if the node max key
+					 * length must be updated to the
+					 * length of new key.
+					 */
   bool is_system_op_started = false;	/* Set to true when a system operations
 					 * is started. Set to false when it is
 					 * ended. Used to properly end system

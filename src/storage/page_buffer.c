@@ -1988,7 +1988,8 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
       /* this is a redundant call */
       return NO_ERROR;
     }
-  else if (bufptr->latch_mode != PGBUF_LATCH_READ)
+  else if (bufptr->latch_mode != PGBUF_LATCH_READ
+	   && bufptr->latch_mode != PGBUF_LATCH_FLUSH)
     {
       assert_release (false);
       return ER_FAILED;
@@ -2045,6 +2046,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
   if (holder->fix_count == bufptr->fcnt)
     {
       /* check for waiters for promotion */
+      assert (bufptr->latch_mode == PGBUF_LATCH_READ);
       if (bufptr->next_wait_thrd != NULL
 	  && bufptr->next_wait_thrd->wait_for_latch_promote)
 	{
@@ -6540,15 +6542,40 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 
   if (request_mode == PGBUF_LATCH_FLUSH)
     {
-      /* put cur_thrd_entry to the top of the BCB waiting queue */
-      cur_thrd_entry->next_wait_thrd = bufptr->next_wait_thrd;
-      bufptr->next_wait_thrd = cur_thrd_entry;
+      /* put cur_thrd_entry to the top of the BCB waiting queue, but not
+       * before a promoter.
+       */
+      if (bufptr->next_wait_thrd != NULL
+	  && bufptr->next_wait_thrd->wait_for_latch_promote)
+	{
+	  /* Put cur_thrd_entry after promoter. */
+	  THREAD_ENTRY *second_waiter =
+	    bufptr->next_wait_thrd->next_wait_thrd;
+
+	  /* Safe guard: there is only one promoter. */
+	  assert (second_waiter == NULL
+		  || !second_waiter->wait_for_latch_promote);
+
+	  cur_thrd_entry->next_wait_thrd = second_waiter;
+	  bufptr->next_wait_thrd->next_wait_thrd = cur_thrd_entry;
+	}
+      else
+	{
+	  /* put cur_thrd_entry first in list. */
+	  cur_thrd_entry->next_wait_thrd = bufptr->next_wait_thrd;
+	  bufptr->next_wait_thrd = cur_thrd_entry;
+	}
     }
   else
     {
       if (as_promote)
 	{
 	  /* place cur_thrd_entry as first in BCB waiting queue */
+
+	  /* Safe guard: there can be only one promoter. */
+	  assert (bufptr->next_wait_thrd == NULL
+		  || !bufptr->next_wait_thrd->wait_for_latch_promote);
+
 	  cur_thrd_entry->next_wait_thrd = bufptr->next_wait_thrd;
 	  bufptr->next_wait_thrd = cur_thrd_entry;
 	}
