@@ -34828,7 +34828,7 @@ btree_overflow_record_replace_object (THREAD_ENTRY * thread_p,
   RECORD_MOVE_DATA (overflow_record, offset_to_replaced_object,
 		    offset_to_replaced_object + object_fixed_size);
   /* Redo logging. */
-  delete_helper->rv_redo_data_ptr =
+  rv_redo_data_ptr =
     log_rv_pack_redo_record_changes (rv_redo_data_ptr,
 				     offset_to_replaced_object,
 				     object_fixed_size, 0, NULL);
