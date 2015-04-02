@@ -364,7 +364,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Sunucu %1$s kapatma bildirilir. \n Bu işlem birkaç dakika sürebilir. Lütfen bekleyiniz.
 19 Sunucu %1$s bulunamadı.
 20 Master %1$d dakika aşağı gidiyor\n
-21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
+21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Çıktı dosyası '%1$s' açılamadı\n

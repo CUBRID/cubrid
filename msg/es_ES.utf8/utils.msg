@@ -364,7 +364,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Servidor %1$s notificado del cierre.\nEsto puede durar unos minutos. Por favor espere.
 19 Server %1$s no encontrado.
 20 Maestro apagando en %1$d minutos\n
-21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
+21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 No se puede abrir archivo de salida '%1$s'\n

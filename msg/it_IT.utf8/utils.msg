@@ -364,7 +364,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %1$s notificato di arresto.\nQuesta operazione potrebbe richiedere alcuni minuti. Si prega di attendere.
 19 Server %1$s non trovato.
 20 Chiusura Master in %1$d minuti\n
-21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
+21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Impossibile aprire il file di output '%1$s'\n

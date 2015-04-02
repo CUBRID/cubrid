@@ -364,7 +364,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 服务 %1$s 被通知要关闭.\n这可能会占用几分钟. 请等待.
 19 服务 %1$s 没有找到.
 20 Master将在 %1$d 分钟内停止\n
-21 完成心跳故障转移. 请稍候, 直到所有 cub_servers 的进程完全关闭后再进行操作.\n
+21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 无法打开输出文件 '%1$s'\n

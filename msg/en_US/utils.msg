@@ -364,7 +364,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %1$s notified of shutdown.\nThis may take several minutes. Please wait.
 19 Server %1$s not found.
 20 Master going down in %1$d minutes\n
-21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
+21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB

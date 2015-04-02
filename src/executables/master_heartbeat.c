@@ -1369,7 +1369,11 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 	}
       else
 	{
-	  kill (proc->pid, SIGKILL);
+	  assert (proc->pid > 0);
+	  if (proc->pid > 0)
+	    {
+	      kill (proc->pid, SIGKILL);
+	    }
 	}
       proc = proc->next;
     }
@@ -2671,9 +2675,11 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
       for (proc = hb_Resource->procs; proc; proc = proc_next)
 	{
 	  assert (proc->state == HB_PSTATE_DEREGISTERED);
+	  assert (proc->pid > 0);
+
 	  proc_next = proc->next;
 
-	  if (!(kill (proc->pid, 0) && errno == ESRCH))
+	  if (proc->pid > 0 && (kill (proc->pid, 0) == 0 || errno != ESRCH))
 	    {
 	      snprintf (error_string, LINE_MAX, "(pid: %d, args:%s)",
 			proc->pid, proc->args);
@@ -2707,11 +2713,13 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
   for (proc = hb_Resource->procs; proc; proc = proc_next)
     {
       assert (proc->state == HB_PSTATE_DEREGISTERED);
+      assert (proc->pid > 0);
+
       proc_next = proc->next;
 
       if (proc->type != HB_PTYPE_SERVER)
 	{
-	  if (kill (proc->pid, 0) == 0 || error != ESRCH)
+	  if (proc->pid > 0 && (kill (proc->pid, 0) == 0 || error != ESRCH))
 	    {
 	      kill (proc->pid, SIGKILL);
 
@@ -2728,7 +2736,7 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
 	}
       else
 	{
-	  if (kill (proc->pid, 0) && errno == ESRCH)
+	  if (proc->pid <= 0 || (kill (proc->pid, 0) && errno == ESRCH))
 	    {
 	      hb_Resource->num_procs--;
 	      hb_remove_proc (proc);
@@ -2888,7 +2896,8 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
 
   if (proc->being_shutdown)
     {
-      if (kill (proc_arg->pid, 0) && errno == ESRCH)
+      assert (proc_arg->pid > 0);
+      if (proc_arg->pid <= 0 || (kill (proc_arg->pid, 0) && errno == ESRCH))
 	{
 	  proc->being_shutdown = false;
 	}
@@ -3071,8 +3080,8 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
     }
   else
     {
-      error = kill (proc->pid, SIGTERM);
-      if (error && errno == ESRCH)
+      assert (proc->pid > 0);
+      if (proc->pid <= 0 || (kill (proc->pid, SIGTERM) && errno == ESRCH))
 	{
 	  hb_Resource->num_procs--;
 	  hb_remove_proc (proc);
@@ -3131,7 +3140,8 @@ hb_resource_demote_start_shutdown_server_proc (void)
       if (proc->server_hang)
 	{
 	  /* terminate a hang server process immediately */
-	  if (!(kill (proc->pid, 0) && errno == ESRCH))
+	  assert (proc->pid > 0);
+	  if (proc->pid > 0 && (kill (proc->pid, 0) == 0 || errno != ESRCH))
 	    {
 	      kill (proc->pid, SIGKILL);
 	    }
@@ -3204,8 +3214,8 @@ hb_resource_demote_kill_server_proc (void)
 	  || proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
 	{
 	  assert (proc->type == HB_PTYPE_SERVER);
-
-	  if (!(kill (proc->pid, 0) && errno == ESRCH))
+	  assert (proc->pid > 0);
+	  if (proc->pid > 0 && (kill (proc->pid, 0) == 0 || errno != ESRCH))
 	    {
 	      snprintf (error_string, LINE_MAX, "(pid: %d, args:%s)",
 			proc->pid, proc->args);
@@ -3461,6 +3471,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 	}
     }
 
+  assert (proc->pid > 0);
   error = kill (proc->pid, 0);
   if (error)
     {
@@ -3593,7 +3604,11 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
     {
       if (++(proc_arg->retries) > proc_arg->max_retries)
 	{
-	  kill (proc->pid, SIGKILL);
+	  assert (proc->pid > 0);
+	  if (proc->pid > 0)
+	    {
+	      kill (proc->pid, SIGKILL);
+	    }
 	  retry = false;
 	}
     }
@@ -3964,6 +3979,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
       pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
+
   proc->conn = NULL;
   proc->sfd = INVALID_SOCKET;
 
@@ -4044,9 +4060,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   gettimeofday (&proc_arg->ftime, NULL);
 
   proc->state = HB_PSTATE_DEAD;
-  proc->sfd = INVALID_SOCKET;
   proc->server_hang = false;
-  proc->pid = 0;
   LSA_SET_NULL (&proc->prev_eof);
   LSA_SET_NULL (&proc->curr_eof);
 
@@ -4190,6 +4204,8 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 	  hb_Resource->num_procs++;
 	}
 
+      assert (proc->pid > 0);
+
 #if defined (HB_VERBOSE_DEBUG)
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
 			   "hbp_proc_register. (sizeof(hbp_proc_register):%d, \n"
@@ -4256,7 +4272,8 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 
   if (sig)
     {
-      if (proc->pid && kill (proc->pid, 0) == 0)
+      assert (proc->pid > 0);
+      if (proc->pid > 0 && (kill (proc->pid, 0) == 0 || errno != ESRCH))
 	{
 	  snprintf (error_string, sizeof (error_string),
 		    "process does not respond for a long time. kill pid %d signal %d.",
@@ -5318,6 +5335,14 @@ hb_resource_cleanup (void)
   pthread_mutex_lock (&hb_Resource->lock);
 
   hb_resource_shutdown_all_ha_procs ();
+
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
+    {
+      if (proc->conn && proc->pid > 0)
+	{
+	  kill (proc->pid, SIGKILL);
+	}
+    }
 
   hb_remove_all_procs (hb_Resource->procs);
   hb_Resource->procs = NULL;

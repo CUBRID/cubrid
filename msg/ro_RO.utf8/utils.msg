@@ -374,7 +374,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Serverul %1$s a primit notificarea de oprire.\nAceastă acţiune poate dura cateva miute. Vă rugăm aşteptaţi.
 19 Serverul %1$s nu a fost găsit.
 20 Procesul principal (master) se va opri în %1$d minute\n
-21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
+21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Fişierul de ieşire '%1$s' nu a putut fi deschis.\n

@@ -364,7 +364,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 サーバー%1$sはシャットダウンされます。\nこの作業は何分かかる恐れがあります。しばらくお待ちください。
 19 サーバー%1$sが発見できません。
 20 マスターサーバーは%1$d分内にシャットダウンされます。\n
-21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
+21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 出力ファイル「%1$s」が開けられません。\n
