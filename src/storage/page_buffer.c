@@ -2063,6 +2063,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 
       /* we're the single holder of the read latch, do an in-place promotion */
       bufptr->latch_mode = PGBUF_LATCH_WRITE;
+      holder->perf_stat.hold_has_write_latch = 1;
       /* NOTE: no need to set the promoted flag as long as we don't wait */
       pthread_mutex_unlock (&bufptr->BCB_mutex);
     }
@@ -2090,6 +2091,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
       else
 	{
 	  int fix_count = holder->fix_count;
+	  PGBUF_HOLDER_STAT perf_stat = holder->perf_stat;
 
 	  bufptr->fcnt -= fix_count;
 	  holder->fix_count = 0;
@@ -2142,6 +2144,15 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 	    }
 	  holder->fix_count = fix_count;
 	  holder->bufptr = bufptr;
+	  holder->perf_stat = perf_stat;
+	  if (bufptr->latch_mode == PGBUF_LATCH_WRITE)
+	    {
+	      holder->perf_stat.hold_has_write_latch = 1;
+	    }
+	  else if (bufptr->latch_mode == PGBUF_LATCH_READ)
+	    {
+	      holder->perf_stat.hold_has_read_latch = 1;
+	    }
 #if !defined(NDEBUG)
 	  sprintf (holder->fixed_at, "%s:%d ", caller_file, caller_line);
 	  holder->fixed_at_size = strlen (holder->fixed_at);
@@ -5727,18 +5738,6 @@ pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	  goto exit_on_error;
 	}
     }
-  else
-    {
-      if (holder->perf_stat.dirtied_by_holder == 1
-	  && holder->perf_stat.hold_has_write_latch == 1
-	  && holder->perf_stat.hold_has_read_latch)
-	{
-	  /* assume that the most recent unfix is paired with latest WRITE fix;
-	   * this could lead to statistics of READ with DIRTY_HOLDER */
-	  holder->perf_stat.hold_has_write_latch = 0;
-	  holder->perf_stat.dirtied_by_holder = 0;
-	}
-    }
 
   assert (err == NO_ERROR);
 
@@ -6269,7 +6268,7 @@ do_block:
 	{
 	  holder->perf_stat.hold_has_write_latch = 1;
 	}
-      else
+      else if (request_mode == PGBUF_LATCH_READ)
 	{
 	  holder->perf_stat.hold_has_read_latch = 1;
 	}
