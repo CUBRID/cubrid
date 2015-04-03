@@ -194,7 +194,8 @@ struct btree_scan
   bool clear_cur_key;		/* clear flag for current key value */
 
   BTREE_KEYRANGE key_range;	/* key range information */
-  FILTER_INFO *key_filter;	/* key filter information */
+  FILTER_INFO *key_filter;	/* key filter information pointer */
+  FILTER_INFO key_filter_storage;	/* key filter information storage */
 
   bool use_desc_index;		/* use descending index */
 

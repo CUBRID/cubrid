@@ -16870,8 +16870,15 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid,
 	}
     }
   /* Initialize key filter */
-  bts->key_filter = filter;	/* Valid pointer or NULL */
-
+  if (filter)			/* Valid pointer or NULL */
+    {
+      bts->key_filter_storage = *filter;
+      bts->key_filter = &bts->key_filter_storage;
+    }
+  else
+    {
+      bts->key_filter = NULL;
+    }
   /* Reset key_range_max_value_equal */
   bts->key_range_max_value_equal = false;
 
