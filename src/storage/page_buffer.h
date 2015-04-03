@@ -185,7 +185,7 @@ typedef enum
 /* public page latch mode */
 typedef enum
 {
-  PGBUF_NO_LATCH = 10,
+  PGBUF_NO_LATCH = 0,
   PGBUF_LATCH_READ,
   PGBUF_LATCH_WRITE,
   PGBUF_LATCH_FLUSH,
@@ -282,7 +282,7 @@ extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
 extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p,
 				    const VPID * req_vpid,
 				    const PAGE_FETCH_MODE fetch_mode,
-				    const int requestmode,
+				    const PGBUF_LATCH_MODE requestmode,
 				    PGBUF_WATCHER * req_watcher,
 				    const char *caller_file, int caller_line);
 
@@ -363,7 +363,7 @@ extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
 extern int pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p,
 				      const VPID * req_vpid,
 				      const PAGE_FETCH_MODE fetch_mode,
-				      const int requestmode,
+				      const PGBUF_LATCH_MODE requestmode,
 				      PGBUF_WATCHER * watcher_object);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \

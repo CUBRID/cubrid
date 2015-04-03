@@ -338,7 +338,7 @@ struct pgbuf_holder_info
   int rank;			/* rank of page (PGBUF_ORDERED_RANK) */
   int watch_count;		/* number of watchers on this holder */
   PGBUF_WATCHER *watcher[PGBUF_MAX_PAGE_WATCHERS];	/* pointers to all watchers to this holder */
-  int latch_mode;		/* aggregate latch mode of all watchers */
+  PGBUF_LATCH_MODE latch_mode;	/* aggregate latch mode of all watchers */
   PAGE_TYPE ptype;		/* page type (should be HEAP or OVERFLOW) */
 };
 
@@ -408,8 +408,8 @@ struct pgbuf_bcb
   VPID vpid;			/* Volume and page identifier of resident page */
   int ipool;			/* Buffer pool index */
   int fcnt;			/* Fix count */
-  int latch_mode;		/* page latch mode */
-  int zone;			/* BCB zone */
+  PGBUF_LATCH_MODE latch_mode;	/* page latch mode */
+  PGBUF_ZONE zone;			/* BCB zone */
 #if defined(SERVER_MODE)
   THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
 #endif				/* SERVER_MODE */
@@ -753,7 +753,7 @@ static int pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p,
 #if !defined(NDEBUG)
 static int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p,
 				     PGBUF_BCB * bufptr,
-				     int request_mode,
+				     PGBUF_LATCH_MODE request_mode,
 				     int buf_lock_acquired,
 				     PGBUF_LATCH_CONDITION condition,
 				     bool * is_latch_wait,
@@ -765,13 +765,13 @@ static int pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p,
 					 const char *caller_file,
 					 int caller_line);
 static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-			    int request_mode, int request_fcnt,
+			    PGBUF_LATCH_MODE request_mode, int request_fcnt,
 			    bool as_promote, const char *caller_file,
 			    int caller_line);
 #else /* NDEBUG */
 static int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p,
 				     PGBUF_BCB * bufptr,
-				     int request_mode,
+				     PGBUF_LATCH_MODE request_mode,
 				     int buf_lock_acquired,
 				     PGBUF_LATCH_CONDITION condition,
 				     bool * is_latch_wait);
@@ -779,7 +779,7 @@ static int pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p,
 					 PGBUF_BCB * bufptr,
 					 int holder_status);
 static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-			    int request_mode, int request_fcnt,
+			    PGBUF_LATCH_MODE request_mode, int request_fcnt,
 			    bool as_promote);
 #endif /* NDEBUG */
 static PGBUF_BCB *pgbuf_search_hash_chain (PGBUF_BUFFER_HASH *
@@ -946,14 +946,16 @@ static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
 static void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 					       PAGE_PTR pgptr,
 					       PGBUF_WATCHER * watcher,
-					       const int latch_mode,
+					       const PGBUF_LATCH_MODE
+					       latch_mode,
 					       const char *caller_file,
 					       const int caller_line);
 #else
 static void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 					       PAGE_PTR pgptr,
 					       PGBUF_WATCHER * watcher,
-					       const int latch_mode);
+					       const PGBUF_LATCH_MODE
+					       latch_mode);
 #endif
 static PGBUF_HOLDER *pgbuf_get_holder (THREAD_ENTRY * thread_p,
 				       PAGE_PTR pgptr);
@@ -2110,13 +2112,11 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 
 	  /* register as first blocker */
 #if !defined(NDEBUG)
-	  if (pgbuf_block_bcb
-	      (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count, true,
-	       caller_file, caller_line) != NO_ERROR)
+	  if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count,
+			       true, caller_file, caller_line) != NO_ERROR)
 #else /* NDEBUG */
-	  if (pgbuf_block_bcb
-	      (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count,
-	       true) != NO_ERROR)
+	  if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count,
+			       true) != NO_ERROR)
 #endif /* NDEBUG */
 	    {
 	      *pgptr_p = NULL;	/* we didn't get a new latch */
@@ -5861,14 +5861,16 @@ exit_on_error:
 #if !defined(NDEBUG)
 static int
 pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-			  int request_mode, int buf_lock_acquired,
+			  PGBUF_LATCH_MODE request_mode,
+			  int buf_lock_acquired,
 			  PGBUF_LATCH_CONDITION condition,
 			  bool * is_latch_wait, const char *caller_file,
 			  int caller_line)
 #else /* NDEBUG */
 static int
 pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-			  int request_mode, int buf_lock_acquired,
+			  PGBUF_LATCH_MODE request_mode,
+			  int buf_lock_acquired,
 			  PGBUF_LATCH_CONDITION condition,
 			  bool * is_latch_wait)
 #endif				/* NDEBUG */
@@ -6239,12 +6241,11 @@ do_block:
 #endif /* SERVER_MODE */
 
 #if !defined(NDEBUG)
-      if (pgbuf_block_bcb
-	  (thread_p, bufptr, request_mode, request_fcnt, false, caller_file,
-	   caller_line) != NO_ERROR)
+      if (pgbuf_block_bcb (thread_p, bufptr, request_mode, request_fcnt,
+			   false, caller_file, caller_line) != NO_ERROR)
 #else /* NDEBUG */
-      if (pgbuf_block_bcb
-	  (thread_p, bufptr, request_mode, request_fcnt, false) != NO_ERROR)
+      if (pgbuf_block_bcb (thread_p, bufptr, request_mode, request_fcnt,
+			   false) != NO_ERROR)
 #endif /* NDEBUG */
 	{
 	  return ER_FAILED;
@@ -6512,12 +6513,13 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #if !defined(NDEBUG)
 static int
 pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-		 int request_mode, int request_fcnt, bool as_promote,
-		 const char *caller_file, int caller_line)
+		 PGBUF_LATCH_MODE request_mode, int request_fcnt,
+		 bool as_promote, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 static int
 pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-		 int request_mode, int request_fcnt, bool as_promote)
+		 PGBUF_LATCH_MODE request_mode, int request_fcnt,
+		 bool as_promote)
 #endif				/* NDEBUG */
 {
 #if defined(SERVER_MODE)
@@ -6960,8 +6962,8 @@ er_set_return:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_PAGE_TIMEOUT, 8,
 	      thrd_entry->tran_index, client_user_name, client_host_name,
 	      client_pid,
-	      (save_request_latch_mode ==
-	       PGBUF_LATCH_READ ? "READ" : "WRITE"), bufptr->vpid.volid,
+	      (save_request_latch_mode == PGBUF_LATCH_READ
+	       ? "READ" : "WRITE"), bufptr->vpid.volid,
 	      bufptr->vpid.pageid, NULL);
     }
   else
@@ -10896,14 +10898,14 @@ pgbuf_compare_hold_vpid_for_sort (const void *p1, const void *p2)
 int
 pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 			 const PAGE_FETCH_MODE fetch_mode,
-			 const int request_mode,
+			 const PGBUF_LATCH_MODE request_mode,
 			 PGBUF_WATCHER * req_watcher,
 			 const char *caller_file, int caller_line)
 #else /* NDEBUG */
 int
 pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 			   const PAGE_FETCH_MODE fetch_mode,
-			   const int request_mode,
+			   const PGBUF_LATCH_MODE request_mode,
 			   PGBUF_WATCHER * req_watcher)
 #endif				/* NDEBUG */
 {
@@ -11697,7 +11699,7 @@ static void
 pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 				   PAGE_PTR pgptr,
 				   PGBUF_WATCHER * watcher,
-				   const int latch_mode,
+				   const PGBUF_LATCH_MODE latch_mode,
 				   const char *caller_file,
 				   const int caller_line)
 #else
@@ -11705,7 +11707,7 @@ static void
 pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 				   PAGE_PTR pgptr,
 				   PGBUF_WATCHER * watcher,
-				   const int latch_mode)
+				   const PGBUF_LATCH_MODE latch_mode)
 #endif
 {
 #if !defined(NDEBUG)
@@ -11859,7 +11861,7 @@ pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_watcher,
 {
   PGBUF_HOLDER *holder;
   PAGE_PTR page_ptr;
-  int latch_mode;
+  PGBUF_LATCH_MODE latch_mode;
 
   assert (old_watcher != NULL);
   assert (PGBUF_IS_CLEAN_WATCHER (new_watcher));
