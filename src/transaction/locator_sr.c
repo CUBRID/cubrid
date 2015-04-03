@@ -6062,30 +6062,15 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        */
       if (old_classname != NULL && old_classname != classname)
 	{
-	  char *copy_old_classname = NULL;
-
 	  assert (old_classname != NULL);
 	  assert (strlen (old_classname) < 255);
 
 	  /* Different names, the class was renamed.
 	   */
-	  copy_old_classname = strdup (old_classname);
-	  if (copy_old_classname == NULL)
-	    {
-	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code,
-		      1, (size_t) (strlen (old_classname) + 1));
-	      goto error;
-	    }
-	  assert (copy_old_classname != NULL);
-	  assert (strlen (copy_old_classname) < 255);
-
 	  error_code = log_add_to_modified_class_list (thread_p,
-						       copy_old_classname,
-						       oid);
+						       old_classname, oid);
 	  if (error_code != NO_ERROR)
 	    {
-	      free_and_init (copy_old_classname);
 	      goto error;
 	    }
 	}

@@ -5200,7 +5200,15 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      t->m_classname = classname;
+      t->m_classname = strdup (classname);
+      if (t->m_classname == NULL)
+	{
+	  free_and_init (t);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, strlen (classname));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
       COPY_OID (&t->m_class_oid, class_oid);
       LSA_SET_NULL (&t->m_last_modified_lsa);
 

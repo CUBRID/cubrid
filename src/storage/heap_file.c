@@ -25317,8 +25317,11 @@ heap_mark_class_as_modified (THREAD_ENTRY * thread_p, OID * oid_p, int chn,
     }
   if (log_add_to_modified_class_list (thread_p, classname, oid_p) != NO_ERROR)
     {
+      free_and_init (classname);
       return ER_FAILED;
     }
+
+  free_and_init (classname);
 
   if (csect_enter (thread_p, CSECT_HEAP_CHNGUESS, INF_WAIT) != NO_ERROR)
     {
