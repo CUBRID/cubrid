@@ -4788,41 +4788,41 @@ obj_lock (MOP op, int for_write)
   int error = NO_ERROR;
   DB_FETCH_MODE class_purpose;
 
-  /* if its a temporary object, just ignore the requst */
-  if (!op->is_temp)
+  if (op->is_temp)
     {
-      class_purpose = ((for_write)
-		       ? DB_FETCH_CLREAD_INSTWRITE :
-		       DB_FETCH_CLREAD_INSTREAD);
-      if (locator_is_class (op, class_purpose))
+      /* if it is a temporary object, just ignore the request */
+      return NO_ERROR;
+    }
+
+  class_purpose = ((for_write)
+		   ? DB_FETCH_CLREAD_INSTWRITE : DB_FETCH_CLREAD_INSTREAD);
+  if (locator_is_class (op, class_purpose))
+    {
+      if (for_write)
 	{
-	  if (for_write)
-	    {
-	      error = au_fetch_class (op, NULL, AU_FETCH_UPDATE, AU_ALTER);
-	    }
-	  else
-	    {
-	      error = au_fetch_class (op, NULL, AU_FETCH_READ, AU_SELECT);
-	    }
+	  error = au_fetch_class (op, NULL, AU_FETCH_UPDATE, AU_ALTER);
 	}
       else
 	{
-	  if (for_write)
-	    {
-	      error =
-		au_fetch_instance (op, NULL, AU_FETCH_UPDATE,
-				   LC_FETCH_MVCC_VERSION, AU_UPDATE);
-	    }
-	  else
-	    {
-	      /* get dirty version, since need to lock the object */
-	      error = au_fetch_instance (op, NULL, AU_FETCH_READ,
-					 LC_FETCH_DIRTY_VERSION, AU_SELECT);
-	    }
+	  error = au_fetch_class (op, NULL, AU_FETCH_READ, AU_SELECT);
+	}
+    }
+  else
+    {
+      if (for_write)
+	{
+	  error = au_fetch_instance (op, NULL, AU_FETCH_UPDATE,
+				     LC_FETCH_MVCC_VERSION, AU_UPDATE);
+	}
+      else
+	{
+	  /* get dirty version, since need to lock the object */
+	  error = au_fetch_instance (op, NULL, AU_FETCH_READ,
+				     LC_FETCH_DIRTY_VERSION, AU_SELECT);
 	}
     }
 
-  return (error);
+  return error;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

@@ -5267,7 +5267,7 @@ adjust_partition_range (DB_OBJLIST * objs)
 	{
 	  break;
 	}
-      if (!subclass->partition_of)
+      if (subclass->partition_of == NULL)
 	{
 	  continue;
 	}
@@ -5433,7 +5433,7 @@ adjust_partition_size (MOP class_)
   DB_OBJLIST *subs;
   int au_save, partcnt;
 
-  if (!class_)
+  if (class_ == NULL)
     {
       return -1;
     }
@@ -5443,7 +5443,7 @@ adjust_partition_size (MOP class_)
       return error;
     }
 
-  if (!smclass->partition_of)
+  if (smclass->partition_of == NULL)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5462,7 +5462,7 @@ adjust_partition_size (MOP class_)
 	{
 	  goto fail_end;
 	}
-      if (!subclass->partition_of)
+      if (subclass->partition_of == NULL)
 	{
 	  continue;
 	}
@@ -5531,7 +5531,7 @@ do_get_partition_size (MOP class_)
   DB_VALUE pattr, psize;
   int au_save;
 
-  if (!class_)
+  if (class_ == NULL)
     {
       return -1;
     }
@@ -5541,7 +5541,7 @@ do_get_partition_size (MOP class_)
       return error;
     }
 
-  if (!smclass->partition_of)
+  if (smclass->partition_of == NULL)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5592,17 +5592,20 @@ do_get_partition_keycol (char *keycol, MOP class_)
   int au_save;
   char *keyname_str;
 
-  if (!class_ || !keycol)
+  if (class_ == NULL|| keycol == NULL)
     {
       return -1;
     }
+
+  *keycol = '\0';
+
   error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  if (!smclass->partition_of)
+  if (smclass->partition_of == NULL)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5660,7 +5663,7 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
   int no_partitions = 0;
   int i;
 
-  if (!class_ || !name_list)
+  if (class_ == NULL || name_list == NULL)
     {
       return -1;
     }
@@ -5671,7 +5674,7 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
       goto exit;
     }
 
-  if (!smclass->partition_of)
+  if (smclass->partition_of == NULL)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);

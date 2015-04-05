@@ -1482,7 +1482,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	    {
 	      vclass = db_get_object (&elem_value);
 	      /*
-	       * PR8478 showed we need to guarantee that if this vclass
+	       * we need to guarantee that if this vclass
 	       * exists and it's not yet in the workspace, we must fetch
 	       * it in. Otherwise, db_decode_object() can fail.
 	       */

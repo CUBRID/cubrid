@@ -4979,7 +4979,7 @@ pt_spec_in_domain (PT_NODE * cls, PT_NODE * lst)
 
   while (lst && lst->node_type == PT_NAME)
     {
-      /* This is a fix to PR7234. BEWARE! Do not use and assume
+      /* BEWARE! Do not use and assume
        * that cls->info.spec.entity_name is a PT_NAME node because
        * the code in sq.g class_specification() and elsewhere uses
        * cls->info.spec.entity_name to hold a list of PT_SPEC nodes.
@@ -5737,6 +5737,7 @@ pt_expand_external_path (PARSER_CONTEXT * parser,
     {
       return NULL;
     }
+
   if (attr->type_enum == PT_TYPE_OBJECT
       && !PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_EXTERNAL))
     {
@@ -5804,6 +5805,7 @@ pt_expand_external_path (PARSER_CONTEXT * parser,
 #endif /* ENABLE_UNUSED_FUNCTION */
 	}
     }
+
   return in_node;
 }
 
@@ -5842,13 +5844,15 @@ pt_is_correlation_name (PARSER_CONTEXT * parser,
     {
       return NULL;
     }
+
   for (specs = scope; specs; specs = specs->next)
     {
       if (specs->node_type != PT_SPEC)
 	{
 	  PT_INTERNAL_ERROR (parser, "resolution");
-	  return 0;
+	  return NULL;
 	}
+
       if (specs->info.spec.range_var
 	  && ((nam->info.name.meta_class != PT_META_CLASS)
 	      || (specs->info.spec.meta_class == PT_META_CLASS))
@@ -5879,7 +5883,8 @@ pt_is_correlation_name (PARSER_CONTEXT * parser,
 	    }
 	}
     }
-  return 0;
+
+  return NULL;
 }
 
 /*
@@ -5899,7 +5904,7 @@ pt_find_entity (PARSER_CONTEXT * parser, const PT_NODE * scope, UINTPTR id)
       if (spec->node_type != PT_SPEC)
 	{
 	  PT_INTERNAL_ERROR (parser, "resolution");
-	  return 0;
+	  return NULL;
 	}
       if (spec->info.spec.id == id)
 	{
@@ -5928,22 +5933,24 @@ pt_find_path_entity (PARSER_CONTEXT * parser, PT_NODE * scope,
 {
   PT_NODE *spec, *path_spec;
   UINTPTR id = match->info.spec.id;
+
   for (spec = scope; spec; spec = spec->next)
     {
       if (spec->node_type != PT_SPEC)
 	{
 	  PT_INTERNAL_ERROR (parser, "resolution");
-	  return 0;
+	  return NULL;
 	}
+
       path_spec = pt_find_entity (parser, spec->info.spec.path_entities, id);
       if (path_spec)
 	{
 	  return path_spec;
 	}
     }
+
   return NULL;
 }
-
 
 /*
  * pt_is_on_list () - check whether name node p is equal to
@@ -5961,20 +5968,21 @@ static PT_NODE *
 pt_is_on_list (PARSER_CONTEXT * parser, const PT_NODE * p,
 	       const PT_NODE * list)
 {
-  if (!p)
+  if (p == NULL)
     {
-      return 0;
+      return NULL;
     }
   if (p->node_type != PT_NAME)
     {
-      return 0;
+      return NULL;
     }
+
   while (list)
     {
       if (list->node_type != PT_NAME)
 	{
 	  PT_INTERNAL_ERROR (parser, "resolution");
-	  return 0;		/* this is an error */
+	  return NULL;		/* this is an error */
 	}
 
       if (pt_str_compare (p->info.name.original, list->info.name.original,
@@ -5984,7 +5992,8 @@ pt_is_on_list (PARSER_CONTEXT * parser, const PT_NODE * p,
 	}
       list = list->next;
     }
-  return 0;			/* no match */
+
+  return NULL;			/* no match */
 }
 
 /*
@@ -6003,20 +6012,23 @@ pt_name_list_union (PARSER_CONTEXT * parser, PT_NODE * list,
 		    PT_NODE * additions)
 {
   PT_NODE *result, *temp;
-  if (!list)
+
+  if (list == NULL)
     {
       return additions;
     }
-  if (!additions)
+  if (additions == NULL)
     {
       return list;
     }
+
   result = list;
   while (additions)
     {
       temp = additions;
       additions = additions->next;
       temp->next = NULL;
+
       if (!pt_is_on_list (parser, temp, list))
 	{
 	  list = parser_append_node (temp, list);
@@ -6047,15 +6059,22 @@ pt_name_list_diff (PARSER_CONTEXT * parser, PT_NODE * list,
 {
   PT_NODE *result = NULL;
   PT_NODE *temp;
-  if (!list)
-    return NULL;
-  if (!deletions)
-    return list;
+
+  if (list == NULL)
+    {
+      return NULL;
+    }
+  if (deletions == NULL)
+    {
+      return list;
+    }
+
   while (list)
     {
       temp = list;
       list = list->next;
       temp->next = NULL;
+
       if (!pt_is_on_list (parser, temp, deletions))
 	{
 	  result = parser_append_node (temp, result);
@@ -6065,10 +6084,11 @@ pt_name_list_diff (PARSER_CONTEXT * parser, PT_NODE * list,
 	  parser_free_node (parser, temp);
 	}
     }
+
   parser_free_tree (parser, deletions);
+
   return result;
 }
-
 
 /*
  * pt_make_flat_name_list () - create a list of its name and all of its
@@ -6084,11 +6104,8 @@ pt_name_list_diff (PARSER_CONTEXT * parser, PT_NODE * list,
  */
 
 static PT_NODE *
-pt_make_subclass_list (PARSER_CONTEXT * parser,
-		       DB_OBJECT * db,
-		       int line_num,
-		       int col_num,
-		       UINTPTR id,
+pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
+		       int line_num, int col_num, UINTPTR id,
 		       PT_MISC_TYPE meta_class, MHT_TABLE * names_mht)
 {
   PT_NODE *temp;
@@ -6100,22 +6117,24 @@ pt_make_subclass_list (PARSER_CONTEXT * parser,
   DB_VALUE pname;
   int partition_skip;
   int au_save;
-  if (!parser)
+
+  if (parser == NULL)
     {
-      return 0;
+      return NULL;
     }
+
   /* get the name of THIS class and put it in a PT_NAME node */
-  if (!db)
+  if (db == NULL)
     {
-      return 0;
+      return NULL;
     }
+
   classname = db_get_class_name (db);
-  if (!classname)
+  if (classname == NULL)
     {
       PT_INTERNAL_ERROR (parser, "resolution");
-      return 0;
+      return NULL;
     }				/* not a class name (error) */
-
 
   /* Check to see if this classname is already known, and
    * only add a (name) node if we have never seen it before.
@@ -6123,7 +6142,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser,
    * check its subclasses (see dbl below) in order to maintain
    * the correct ordering of classnames found via our depth-first search.
    */
-  if (!names_mht || !mht_get (names_mht, classname))
+  if (names_mht == NULL || !mht_get (names_mht, classname))
     {
       result = pt_name (parser, classname);
       result->line_number = line_num;
@@ -6165,9 +6184,9 @@ pt_make_subclass_list (PARSER_CONTEXT * parser,
    */
   if (names_mht == NULL && dbl)
     {
-      if ((names_mht = mht_create ("Pt_Names_Hash_Table", PT_NAMES_HASH_SIZE,
-				   mht_4strhash,
-				   mht_compare_strings_are_equal)) != NULL)
+      names_mht = mht_create ("Pt_Names_Hash_Table", PT_NAMES_HASH_SIZE,
+			      mht_4strhash, mht_compare_strings_are_equal);
+      if (names_mht != NULL)
 	{
 	  ismymht = true;
 	  /* Have to stick the first name node created above into the hash */
@@ -6261,7 +6280,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
   DB_OBJECT *db;		/* a temp for class object */
   const char *class_name = NULL;	/* a temp to extract name from class */
   PT_NODE *e_node;
-  /* check brain damage */
+
   if (!spec)
     {
       return 0;
@@ -6282,7 +6301,8 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
       return spec->info.spec.flat_entity_list;
     }
 
-  if ((name = spec->info.spec.entity_name) == 0)
+  name = spec->info.spec.entity_name;
+  if (name == 0)
     {
       /* is a derived table */
       PT_INTERNAL_ERROR (parser, "resolution");

@@ -6857,7 +6857,7 @@ or_packed_value_size (DB_VALUE * value,
     }
 
   /* Values must as a unit be aligned to a word boundary.  We can't do this
-   * inside the writeval function becaue that may be used to place data inside
+   * inside the writeval function because that may be used to place data inside
    * disk structures that don't have alignment requirements.
    */
   if (include_domain)

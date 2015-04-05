@@ -1680,7 +1680,7 @@ col_delete (COL * col, long colindex)
  *     That makes this function eligible to cheaply move stack
  *     variables into a collection.
  *
- *     PR9043: when attempting to insert a duplicate value in a SET
+ *     when attempting to insert a duplicate value in a SET
  *     returns SET_DUPLICATE_VALUE which is > 0
  *
  */

@@ -18,13 +18,14 @@
  */
 
 /*
- * mvcc_snapshot.h - Multi-Version Concurency Control system (at Server).
+ * mvcc.h - Multi-Version Concurency Control system (at Server).
  *
  */
-#ifndef _MVCC_SNAPSHOT_H_
-#define _MVCC_SNAPSHOT_H_
+#ifndef _MVCC_H_
+#define _MVCC_H_
 
 #ident "$Id$"
+
 #include "thread.h"
 #include "storage_common.h"
 
@@ -143,7 +144,7 @@
  */
 #define MVCC_SHOULD_TEST_CHN(thread_p, rec_header_p) \
   (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID) \
-    || MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header_p))
+   || MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header_p))
 
 /* Check if given CHN is up-to-date according to MVCC header:
  * 1. Given CHN must be non-NULL.
@@ -284,4 +285,4 @@ extern bool mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
 				  MVCC_SNAPSHOT * snapshot);
 extern bool mvcc_id_precedes (MVCCID id1, MVCCID id2);
 extern bool mvcc_id_follow_or_equal (MVCCID id1, MVCCID id2);
-#endif /* _MVCC_SNAPSHOT_H_ */
+#endif /* _MVCC_H_ */
