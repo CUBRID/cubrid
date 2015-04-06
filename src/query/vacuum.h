@@ -87,6 +87,12 @@ extern bool vacuum_Master_is_process_log_phase;
 /* number of log pages in each vacuum block */
 #define VACUUM_LOG_BLOCK_PAGES_DEFAULT 31
 
+/* pretch log modes :
+ * 0 : vacuum master thread is performing prefetch in a shared buffer
+ * 1 : each vacuum worker performs pretech in its own buffer */
+#define VACUUM_PREFETCH_LOG_MODE_MASTER 0
+#define VACUUM_PREFETCH_LOG_MODE_WORKERS 1
+
 /* VACUUM_WORKER_STATE - State of vacuum workers */
 typedef enum vacuum_worker_state VACUUM_WORKER_STATE;
 enum vacuum_worker_state
@@ -124,6 +130,10 @@ struct vacuum_worker
 
   char *undo_data_buffer;	/* Buffer to save log undo data */
   int undo_data_buffer_capacity;	/* Capacity of log undo data buffer */
+
+#if defined (SERVER_MODE)
+  char *prefetch_log_buffer;	/* buffer for prefetching log pages */
+#endif				/* SERVER_MODE */
 };
 
 #if defined (SERVER_MODE)

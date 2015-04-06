@@ -594,6 +594,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_VACUUM_PREFETCH_LOG_NBUFFERS "vacuum_prefetch_log_pages"
 #define PRM_NAME_VACUUM_PREFETCH_LOG_BUFFER_SIZE "vacuum_prefetch_log_buffer_size"
+#define PRM_NAME_VACUUM_PREFETCH_LOG_MODE "vacuum_prefetch_log_mode"
 
 #define PRM_NAME_PB_NEIGHBOR_FLUSH_NONDIRTY "data_buffer_neighbor_flush_nondirty"
 #define PRM_NAME_PB_NEIGHBOR_FLUSH_PAGES "data_buffer_neighbor_flush_pages"
@@ -1979,6 +1980,15 @@ static unsigned int prm_vacuum_prefetch_log_nbuffers_flag = 0;
 /* buffers for all vacuum workers + 1 for job queue */
 static int prm_vacuum_prefetch_log_nbuffers_lower =
   (VACUUM_MAX_WORKER_COUNT + 1) * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
+
+int PRM_VACUUM_PREFETCH_LOG_MODE = VACUUM_PREFETCH_LOG_MODE_WORKERS;
+static int prm_vacuum_prefetch_log_mode_default =
+  VACUUM_PREFETCH_LOG_MODE_WORKERS;
+static unsigned int prm_vacuum_prefetch_log_mode_flag = 0;
+static int prm_vacuum_prefetch_log_mode_lower =
+  VACUUM_PREFETCH_LOG_MODE_MASTER;
+static int prm_vacuum_prefetch_log_mode_upper =
+  VACUUM_PREFETCH_LOG_MODE_WORKERS;
 
 bool PRM_PB_NEIGHBOR_FLUSH_NONDIRTY = false;
 static unsigned int prm_pb_neighbor_flush_nondirty_flag = 0;
@@ -4772,6 +4782,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_log_pages,
    (DUP_PRM_FUNC) prm_log_pages_to_size},
+  {PRM_NAME_VACUUM_PREFETCH_LOG_MODE,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_vacuum_prefetch_log_mode_flag,
+   (void *) &prm_vacuum_prefetch_log_mode_default,
+   (void *) &PRM_VACUUM_PREFETCH_LOG_MODE,
+   (void *) &prm_vacuum_prefetch_log_mode_upper,
+   (void *) &prm_vacuum_prefetch_log_mode_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_NAME_PB_NEIGHBOR_FLUSH_NONDIRTY,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
    PRM_BOOLEAN,
