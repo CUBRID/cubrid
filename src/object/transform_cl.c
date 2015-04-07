@@ -4068,16 +4068,13 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   vars = read_var_table (buf, tf_Metaclass_class.mc_n_variable);
   if (vars == NULL)
     {
-      or_abort (buf);
-      return NULL;
+      goto on_error;
     }
 
   class_ = *class_ptr = classobj_make_class (NULL);
   if (class_ == NULL)
     {
-      free_var_table (vars);
-      or_abort (buf);
-      return NULL;
+      goto on_error;
     }
 
   class_->att_ids = or_get_int (buf, &rc);
@@ -4137,10 +4134,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
     classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE), class_->att_count);
   if (class_->att_count && class_->attributes == NULL)
     {
-      db_ws_free (class_);
-      free_var_table (vars);
-      or_abort (buf);
-      return NULL;
+      goto on_error;
     }
   classobj_initialize_attributes (class_->attributes);
 
@@ -4149,10 +4143,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 				   class_->shared_count);
   if (class_->shared_count && class_->shared == NULL)
     {
-      db_ws_free (class_);
-      free_var_table (vars);
-      or_abort (buf);
-      return NULL;
+      goto on_error;
     }
   classobj_initialize_attributes (class_->shared);
 
@@ -4161,10 +4152,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 				   class_->class_attribute_count);
   if (class_->class_attribute_count && class_->class_attributes == NULL)
     {
-      db_ws_free (class_);
-      free_var_table (vars);
-      or_abort (buf);
-      return NULL;
+      goto on_error;
     }
   classobj_initialize_attributes (class_->class_attributes);
 
@@ -4172,10 +4160,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
     classobj_alloc_threaded_array (sizeof (SM_METHOD), class_->method_count);
   if (class_->method_count && class_->methods == NULL)
     {
-      db_ws_free (class_);
-      free_var_table (vars);
-      or_abort (buf);
-      return NULL;
+      goto on_error;
     }
   classobj_initialize_methods (class_->methods);
 
@@ -4184,10 +4169,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 				   class_->class_method_count);
   if (class_->class_method_count && class_->class_methods == NULL)
     {
-      db_ws_free (class_);
-      free_var_table (vars);
-      or_abort (buf);
-      return NULL;
+      goto on_error;
     }
   classobj_initialize_methods (class_->class_methods);
 
@@ -4312,6 +4294,22 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   free_var_table (vars);
 
   return (class_);
+
+on_error:
+
+  if (vars != NULL)
+    {
+      free_var_table (vars);
+    }
+
+  if (class_ != NULL)
+    {
+      classobj_free_class (class_);
+    }
+
+  *class_ptr = NULL;
+
+  return NULL;
 }
 
 
