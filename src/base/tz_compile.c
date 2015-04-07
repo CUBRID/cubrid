@@ -494,6 +494,8 @@ static int tz_data_partial_clone (char **timezone_names,
 static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
 static int tzc_extend (TZ_DATA * tzd, bool * write_checksum);
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
+static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule,
+					 const int year);
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
@@ -4247,6 +4249,42 @@ comp_func_raw_ds_rulesets (const void *arg1, const void *arg2)
 }
 
 /*
+ * get_day_of_week_for_raw_rule - Returns the day in which the ds_rule applies
+ *			  
+ * Returns: the day
+ * rule(in): daylight saving rule
+ * year(in): year in which to apply rule
+ */
+static int
+get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year)
+{
+  int ds_rule_day;
+  int ds_rule_month = rule->in_month;
+
+  if (rule->change_on.type == TZ_DS_TYPE_FIXED)
+    {
+      ds_rule_day = rule->change_on.day_of_month;
+    }
+  else
+    {
+      int ds_rule_weekday, day_month_bound;
+      bool before = (rule->change_on.type
+		     == TZ_DS_TYPE_VAR_SMALLER) ? true : false;
+
+      ds_rule_weekday = rule->change_on.day_of_week;
+      day_month_bound = rule->change_on.day_of_month;
+
+      ds_rule_day = tz_get_first_weekday_around_date (year,
+						      ds_rule_month,
+						      ds_rule_weekday,
+						      day_month_bound,
+						      before);
+    }
+
+  return ds_rule_day;
+}
+
+/*
  * comp_func_raw_ds_rules - comparison function between daylight saving
  *			  rules, used when optimizing TZ raw data.
  * Returns: -1 if arg1 < arg2, 0 if arg1 = arg2, 1 if arg1 > arg2
@@ -4259,6 +4297,7 @@ static int
 comp_func_raw_ds_rules (const void *arg1, const void *arg2)
 {
   TZ_RAW_DS_RULE *rule1, *rule2;
+  int day1, day2;
 
   assert (arg1 != NULL && arg2 != NULL);
 
@@ -4274,7 +4313,15 @@ comp_func_raw_ds_rules (const void *arg1, const void *arg2)
       return 1;
     }
 
-  return 0;
+  if (rule1->in_month != rule2->in_month)
+    {
+      return rule1->in_month < rule2->in_month ? -1 : 1;
+    }
+
+  day1 = get_day_of_week_for_raw_rule (rule1, rule1->from_year);
+  day2 = get_day_of_week_for_raw_rule (rule2, rule2->from_year);
+
+  return day1 < day2 ? -1 : 1;
 }
 
 /*

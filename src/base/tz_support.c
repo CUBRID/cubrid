@@ -2644,7 +2644,7 @@ tz_str_to_seconds (const char *str, int *seconds, const char **str_next,
  *
  * Returns: error code
  * ds_rule(in): daylight saving rule
- * year(in): current year to appply rule
+ * year(in): current year to apply rule
  * ds_rule_julian_date(out): julian date
  *
  */
@@ -2698,7 +2698,7 @@ tz_get_ds_change_julian_date (const TZ_DS_RULE * ds_rule, const int year,
  * src_julian_date(in): julian date for which we search a rule
  * src_year(in): year of date
  * src_month(in): month of date
- * ds_rule_id(out): fount rule
+ * ds_rule_id(out): found rule
  */
 static int
 tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
@@ -2709,6 +2709,7 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
   int er_status = NO_ERROR;
   TZ_DS_RULE *curr_ds_rule;
   full_date_t smallest_date_diff = -1;
+  int year_to_apply_rule = 0;
 
   *ds_rule_id = -1;
 
@@ -2744,29 +2745,21 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	  continue;
 	}
 
-      er_status = tz_get_ds_change_julian_date (curr_ds_rule, src_year,
+      if (src_year <= curr_ds_rule->to_year)
+	{
+	  year_to_apply_rule = src_year;
+	}
+      else
+	{
+	  year_to_apply_rule = src_year - 1;
+	}
+
+      er_status = tz_get_ds_change_julian_date (curr_ds_rule,
+						year_to_apply_rule,
 						&ds_rule_julian_date);
       if (er_status != NO_ERROR)
 	{
 	  goto exit;
-	}
-
-      if (ds_rule_julian_date == -1)
-	{
-	  /* not found a rule for this year, search for preceding year */
-	  er_status = tz_get_ds_change_julian_date (curr_ds_rule,
-						    src_year - 1,
-						    &ds_rule_julian_date);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto exit;
-	    }
-	  if (ds_rule_julian_date == -1)
-	    {
-	      er_status = ER_TZ_INTERNAL_ERROR;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
-	      goto exit;
-	    }
 	}
 
       date_diff = FULL_DATE (src_julian_date, 0)
