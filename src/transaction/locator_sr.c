@@ -11978,6 +11978,7 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 
   while (isallvalid != DISK_ERROR)
     {
+      copy_rec.data = NULL;
       code = heap_next (thread_p, &root_hfid, oid_Root_class_oid, &oid,
 			&copy_rec, &scan, COPY);
       if (code != S_SUCCESS)
