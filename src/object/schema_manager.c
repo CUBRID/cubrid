@@ -5625,27 +5625,39 @@ sm_att_fk_constrained (MOP classop, const char *name)
  * sm_class_has_unique_constraint() - Returns whether the class has UNIQUE
  *				      constraint.
  *   return: true if has unique constraint, false otherwise.
+ *   classobj(in): SM_CLASS *
  *   classop(in): class object
  *   check_subclasses(in): true if need to check all hierarchy
  */
 bool
-sm_class_has_unique_constraint (MOP classop, bool check_subclasses)
+sm_class_has_unique_constraint (MOBJ classobj, MOP classop,
+				bool check_subclasses)
 {
   SM_CLASS *class_ = NULL;
   DB_OBJLIST *subclass = NULL;
   bool rc;
 
-  if (au_fetch_class_by_classmop (classop, &class_, AU_FETCH_READ, AU_SELECT)
-      != NO_ERROR)
+  assert (classobj != NULL || classop != NULL);
+
+  if (classobj != NULL)
     {
-      return false;
+      class_ = (SM_CLASS *) classobj;
+    }
+  else
+    {
+      if (au_fetch_class_by_classmop (classop, &class_, AU_FETCH_READ,
+				      AU_SELECT) != NO_ERROR)
+	{
+	  return false;
+	}
     }
 
   rc = classobj_has_class_unique_constraint (class_->constraints);
   for (subclass = class_->users; !rc && subclass != NULL;
        subclass = subclass->next)
     {
-      rc = sm_class_has_unique_constraint (subclass->op, check_subclasses);
+      rc = sm_class_has_unique_constraint (NULL, subclass->op,
+					   check_subclasses);
     }
 
   return rc;

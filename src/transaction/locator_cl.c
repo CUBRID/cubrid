@@ -5036,7 +5036,7 @@ locator_mflush (MOP mop, void *mf)
 	  hfid = mflush->hfid;
 	  has_index = sm_has_indexes (mflush->class_obj);
 	  has_unique_index =
-	    sm_class_has_unique_constraint (mflush->class_mop, true);
+	    sm_class_has_unique_constraint (mflush->class_obj, NULL, true);
 	}
     }
   else if (object == NULL)
@@ -5122,7 +5122,7 @@ locator_mflush (MOP mop, void *mf)
 	    }
 	  hfid = mflush->hfid;
 	  has_unique_index =
-	    sm_class_has_unique_constraint (mflush->class_mop, true);
+	    sm_class_has_unique_constraint (mflush->class_obj, NULL, true);
 	}
     }
 

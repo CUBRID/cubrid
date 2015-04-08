@@ -8514,7 +8514,7 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 	    }
 
 	  if (!*has_unique
-	      && sm_class_has_unique_constraint (class_obj,
+	      && sm_class_has_unique_constraint (NULL, class_obj,
 						 spec->info.spec.only_all ==
 						 PT_ALL))
 	    {
