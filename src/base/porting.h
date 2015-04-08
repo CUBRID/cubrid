@@ -716,6 +716,8 @@ extern "C"
 	(InterlockedCompareExchange(ptr, swap_val, cmp_val) == cmp_val)
 #define ATOMIC_INC_32(ptr, amount) \
 	(InterlockedExchangeAdd(ptr, amount) + amount)
+#define MEMORY_BARRIER() \
+	MemoryBarrier()
 
 #if defined (_WIN64)
 #define ATOMIC_TAS_64(ptr, new_val) \
@@ -771,6 +773,9 @@ extern "C"
 
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
+
+#define MEMORY_BARRIER() \
+	__sync_synchronize()
 
 #else				/* HAVE_GCC_ATOMIC_BUILTINS */
 /*

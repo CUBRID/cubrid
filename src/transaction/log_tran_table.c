@@ -5159,11 +5159,9 @@ logtb_allocate_mvcc_info (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-#if defined(HAVE_ATOMIC_BUILTINS)
   while (!ATOMIC_CAS_32 (&mvcc_table->mvcc_info_free_list_lock, 0, 1))
     {
     }
-#endif
 
   if (mvcc_table->free_list == NULL)
     {
@@ -5173,9 +5171,8 @@ logtb_allocate_mvcc_info (THREAD_ENTRY * thread_p)
   curr_mvcc_info = mvcc_table->free_list;
   mvcc_table->free_list = curr_mvcc_info->next;
 
-#if defined(HAVE_ATOMIC_BUILTINS)
+  MEMORY_BARRIER ();
   *(volatile int *) (&mvcc_table->mvcc_info_free_list_lock) = 0;
-#endif
 
   /* no need to init MVCC info - already cleared */
   curr_mvcc_info->next = curr_mvcc_info->prev = NULL;
@@ -5303,18 +5300,15 @@ logtb_release_mvcc_info (THREAD_ENTRY * thread_p)
   curr_mvcc_info->prev = NULL;
 
   /* add curr_mvcc_info into free area using spin lock */
-#if defined(HAVE_ATOMIC_BUILTINS)
   while (!ATOMIC_CAS_32 (&mvcc_table->mvcc_info_free_list_lock, 0, 1))
     {
     }
-#endif
 
   curr_mvcc_info->next = mvcc_table->free_list;
   mvcc_table->free_list = curr_mvcc_info;
 
-#if defined(HAVE_ATOMIC_BUILTINS)
+  MEMORY_BARRIER ();
   *(volatile int *) (&mvcc_table->mvcc_info_free_list_lock) = 0;
-#endif
 
   tdes->mvcc_info = NULL;
 
