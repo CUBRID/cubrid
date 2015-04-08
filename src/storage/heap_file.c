@@ -24923,6 +24923,7 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p,
   int sp_success;
   OID next_version;
   OID partition_oid;
+  OID rec_buffer[2];
 
   assert (rcv->length == 2 * OR_OID_SIZE + OR_INT_SIZE);
 
@@ -24952,9 +24953,12 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p,
 	{
 	  return ER_FAILED;
 	}
-      if (or_mvcc_get_header (&peek_recdes, &mvcc_rec_header) != NO_ERROR)
+      if (peek_recdes.type != REC_MVCC_NEXT_VERSION)
 	{
-	  return ER_FAILED;
+	  if (or_mvcc_get_header (&peek_recdes, &mvcc_rec_header) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
     }
   else
@@ -24965,6 +24969,36 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p,
 	  return ER_FAILED;
 	}
     }
+
+  if (peek_recdes.type == REC_MVCC_NEXT_VERSION)
+    {
+      assert (peek_recdes.length == 2 * OR_OID_SIZE);
+
+      COPY_OID (&rec_buffer[0], &next_version);
+      COPY_OID (&rec_buffer[1], &partition_oid);
+
+      recdes.type = peek_recdes.type;
+      recdes.area_size = 2 * OR_OID_SIZE;
+      recdes.length = 2 * OR_OID_SIZE;
+      recdes.data = (char *) rec_buffer;
+
+      sp_success = spage_update (thread_p, rcv->pgptr, slotid, &recdes);
+      if (sp_success != SP_SUCCESS)
+	{
+	  /* Unable to recover update for object */
+	  if (sp_success != SP_ERROR)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_GENERIC_ERROR, 0);
+	    }
+	  return er_errid ();
+	}
+
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+      return NO_ERROR;
+    }
+
+  assert (peek_recdes.type != REC_MVCC_NEXT_VERSION);
 
   old_mvcc_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.
 							 mvcc_flag);
@@ -25044,6 +25078,7 @@ heap_rv_mvcc_redo_remove_partition_link (THREAD_ENTRY * thread_p,
   int sp_success;
   OID next_version;
   OID partition_oid;
+  OID rec_buffer[2];
 
   /* Read bigone */
   is_bigone = (bool) OR_GET_INT (rcv->data + offset);
@@ -25083,9 +25118,13 @@ heap_rv_mvcc_redo_remove_partition_link (THREAD_ENTRY * thread_p,
 	{
 	  return ER_FAILED;
 	}
-      if (or_mvcc_get_header (&peek_recdes, &mvcc_rec_header) != NO_ERROR)
+
+      if (peek_recdes.type != REC_MVCC_NEXT_VERSION)
 	{
-	  return ER_FAILED;
+	  if (or_mvcc_get_header (&peek_recdes, &mvcc_rec_header) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
     }
   else
@@ -25096,6 +25135,36 @@ heap_rv_mvcc_redo_remove_partition_link (THREAD_ENTRY * thread_p,
 	  return ER_FAILED;
 	}
     }
+
+  if (peek_recdes.type == REC_MVCC_NEXT_VERSION)
+    {
+      assert (peek_recdes.length == 2 * OR_OID_SIZE);
+
+      COPY_OID (&rec_buffer[0], &next_version);
+      COPY_OID (&rec_buffer[1], &partition_oid);
+
+      recdes.type = peek_recdes.type;
+      recdes.area_size = 2 * OR_OID_SIZE;
+      recdes.length = 2 * OR_OID_SIZE;
+      recdes.data = (char *) rec_buffer;
+
+      sp_success = spage_update (thread_p, rcv->pgptr, slotid, &recdes);
+      if (sp_success != SP_SUCCESS)
+	{
+	  /* Unable to recover update for object */
+	  if (sp_success != SP_ERROR)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_GENERIC_ERROR, 0);
+	    }
+	  return er_errid ();
+	}
+
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+      return NO_ERROR;
+    }
+
+  assert (peek_recdes.type != REC_MVCC_NEXT_VERSION);
 
   old_mvcc_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.
 							 mvcc_flag);
