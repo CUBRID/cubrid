@@ -9782,7 +9782,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int mvcc_reev_class_cnt = 0, mvcc_reev_class_idx = 0;
   bool scan_open = false;
   bool should_delete = false;
-  int actual_op_type = SINGLE_ROW_UPDATE, current_op_type = SINGLE_ROW_UPDATE;
+  int current_op_type = SINGLE_ROW_UPDATE;
   bool btid_dup_key_locked = false;
   PRUNING_CONTEXT *pcontext = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
@@ -9963,7 +9963,14 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      should_delete = DB_GET_INT (valp);
 	      if (should_delete)
 		{
-		  current_op_type = SINGLE_ROW_DELETE;
+		  if (op_type == SINGLE_ROW_UPDATE)
+		    {
+		      current_op_type = SINGLE_ROW_DELETE;
+		    }
+		  else
+		    {
+		      current_op_type = MULTI_ROW_DELETE;
+		    }
 		}
 	    }
 
