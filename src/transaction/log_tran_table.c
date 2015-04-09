@@ -6464,6 +6464,10 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
     thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   GLOBAL_UNIQUE_STATS *stats = NULL;
 
+  if (!log_Gl.unique_stats_table.initialized)
+    {
+      return NO_ERROR;
+    }
   lf_hash_create_iterator (&it, t_entry,
 			   &log_Gl.unique_stats_table.unique_stats_hash);
   for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL;

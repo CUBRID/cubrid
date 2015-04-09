@@ -6649,6 +6649,13 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
       return error_code;
     }
 
+  error_code = logtb_initialize_global_unique_stats_table (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      fileio_dismount_all (thread_p);
+      return error_code;
+    }
+
   /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
