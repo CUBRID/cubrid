@@ -24857,6 +24857,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p,
 	       * positions of objects).
 	       */
 	      start_reading_leaf_record = true;
+	      was_page_refixed = false;
 	      /* Safe guard: overflow page must be unfixed. */
 	      assert (overflow_page == NULL);
 	      break;		/* switch (satisfies_delete) */
