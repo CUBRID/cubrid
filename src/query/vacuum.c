@@ -7785,12 +7785,11 @@ vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid,
   if (is_not_vacuumed_and_lost (thread_p, rec_header))
     {
       OID cls_oid;
-      if (class_oid == NULL)
+      if (class_oid == NULL || OID_ISNULL (class_oid))
 	{
-	  if (heap_get_class_oid_with_lock (thread_p, &cls_oid, oid,
-					    SNAPSHOT_TYPE_NONE, NULL_LOCK,
-					    NULL) == NULL)
+	  if (heap_get_class_oid (thread_p, &cls_oid, oid) != S_SUCCESS)
 	    {
+	      ASSERT_ERROR ();
 	      return DISK_ERROR;
 	    }
 	  class_oid = &cls_oid;

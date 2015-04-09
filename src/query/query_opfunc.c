@@ -9662,9 +9662,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p,
     }
 
   instance_oid_p = DB_PULL_OID (val_p);
-  if (heap_get_class_oid_with_lock (thread_p, &class_oid, instance_oid_p,
-				    SNAPSHOT_TYPE_NONE, NULL_LOCK, NULL)
-      == NULL)
+  if (heap_get_class_oid (thread_p, &class_oid, instance_oid_p) != S_SUCCESS)
     {
       return ER_FAILED;
     }

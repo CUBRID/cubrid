@@ -1146,8 +1146,8 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
       DB_MAKE_OBJECT (&curval, NULL);
       if (PRIM_GETMEM (att->domain->type, att->domain, mem, &curval))
 	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  ASSERT_ERROR_AND_SET (rc);
+	  return rc;
 	}
       current = DB_GET_OBJECT (&curval);
     }
@@ -1189,6 +1189,11 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
 	    {
 	      WS_SET_DELETED (current);
 	    }
+	  else if (status == LC_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (rc);
+	      return rc;
+	    }
 	}
     }
 
@@ -1209,8 +1214,8 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
 	    {
 	      if (PRIM_SETMEM (att->domain->type, att->domain, mem, NULL))
 		{
-		  assert (er_errid () != NO_ERROR);
-		  return er_errid ();
+		  ASSERT_ERROR_AND_SET (rc);
+		  return rc;
 		}
 	      OBJ_CLEAR_BOUND_BIT (op->object, att->storage_order);
 	    }
@@ -4712,6 +4717,9 @@ obj_isinstance (MOP obj)
 		    }
 		  else if (status != LC_ERROR)
 		    {
+		      /* TODO:
+		       * Unsafe function. Error is lost here.
+		       */
 		      is_instance = 1;
 		    }
 		}

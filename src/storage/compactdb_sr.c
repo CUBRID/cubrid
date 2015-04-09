@@ -91,6 +91,8 @@ static int
 process_value (DB_VALUE * value)
 {
   int return_value = 0;
+  OID update_oid = OID_INITIALIZER;
+  SCAN_CODE scan_code;
 
   switch (DB_VALUE_TYPE (value))
     {
@@ -106,11 +108,25 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	if (heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid,
-					  SNAPSHOT_TYPE_MVCC,
-					  NULL_LOCK, NULL) == NULL)
+	/* TODO: Find a better function here. */
+	scan_code =
+	  heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid,
+					SNAPSHOT_TYPE_MVCC, NULL_LOCK,
+					&update_oid);
+	if (scan_code == S_ERROR)
+	  {
+	    ASSERT_ERROR_AND_SET (return_value);
+	    break;
+	  }
+	else if (scan_code != S_SUCCESS)
 	  {
 	    OID_SET_NULL (ref_oid);
+	    return_value = 1;
+	    break;
+	  }
+	else if (!OID_EQ (ref_oid, &update_oid))
+	  {
+	    COPY_OID (ref_oid, &update_oid);
 	    return_value = 1;
 	    break;
 	  }
@@ -128,12 +144,6 @@ process_value (DB_VALUE * value)
 		ref_class_oid.volid, ref_class_oid.pageid,
 		ref_class_oid.slotid);
 #endif
-
-	if (!heap_does_exist (NULL, &ref_class_oid, ref_oid))
-	  {
-	    OID_SET_NULL (ref_oid);
-	    return_value = 1;
-	  }
 
 	break;
       }
@@ -165,11 +175,21 @@ process_set (DB_SET * set)
   SET_ITERATOR *it;
   DB_VALUE *element_value;
   int return_value = 0;
+  int error_code;
 
   it = set_iterate (set);
   while ((element_value = set_iterator_value (it)) != NULL)
     {
-      return_value += process_value (element_value);
+      error_code = process_value (element_value);
+      if (error_code > 0)
+	{
+	  return_value += error_code;
+	}
+      else if (error_code != NO_ERROR)
+	{
+	  set_iterator_free (it);
+	  return error_code;
+	}
       set_iterator_next (it);
     }
   set_iterator_free (it);
@@ -237,11 +257,17 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
   for (i = 0, value = attr_info->values;
        i < attr_info->num_values; i++, value++)
     {
-      if (process_value (&value->dbvalue))
+      error_code = process_value (&value->dbvalue);
+      if (error_code > 0)
 	{
 	  value->state = HEAP_WRITTEN_ATTRVALUE;
 	  atts_id[updated_n_attrs_id] = value->attrid;
 	  updated_n_attrs_id++;
+	}
+      else if (error_code != NO_ERROR)
+	{
+	  db_private_free (thread_p, atts_id);
+	  return error_code;
 	}
     }
 

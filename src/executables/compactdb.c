@@ -59,8 +59,8 @@ static RECDES *Diskrec = NULL;
 
 static int compactdb_start (bool verbose_flag);
 static void process_class (DB_OBJECT * class_, bool verbose_flag);
-static void process_object (DESC_OBJ * desc_obj, OID * obj_oid,
-			    bool verbose_flag);
+static int process_object (DESC_OBJ * desc_obj, OID * obj_oid,
+			   bool verbose_flag);
 static int process_set (DB_SET * set);
 static int process_value (DB_VALUE * value);
 static DB_OBJECT *is_class (OID * obj_oid, OID * class_oid);
@@ -366,11 +366,9 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
 		  total_objects++;
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
 		  if (desc_disk_to_obj (class_, class_ptr, &recdes,
-					desc_obj) == NO_ERROR)
-		    {
-		      process_object (desc_obj, &obj->oid, verbose_flag);
-		    }
-		  else
+					desc_obj) != NO_ERROR
+		      || process_object (desc_obj, &obj->oid, verbose_flag)
+		      != NO_ERROR)
 		    {
 		      failed_objects++;
 		    }
@@ -412,13 +410,13 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
 
 /*
  * process_object - process one object. update instance if needed
- *    return: void
+ *    return: error code
  *    desc_obj(in): object data
  *    obj_oid(in): object oid
  *    recdes(in): record descriptor
  *    verbose_flag(in)
  */
-static void
+static int
 process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
 {
   SM_CLASS *class_ptr;
@@ -427,6 +425,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
   OID *class_oid;
   int v = 0;
   int update_flag = 0;
+  int error_code = NO_ERROR;
 
   class_ptr = desc_obj->class_;
   class_oid = ws_oid (desc_obj->classop);
@@ -442,7 +441,16 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
   while (attribute)
     {
       value = &desc_obj->values[v++];
-      update_flag += process_value (value);
+      error_code = process_value (value);
+      if (error_code > 0)
+	{
+	  update_flag += error_code;
+	}
+      else if (error_code != NO_ERROR)
+	{
+	  /* Error. */
+	  return error_code;
+	}
       attribute = (SM_ATTRIBUTE *) attribute->header.next;
     }
 
@@ -454,6 +462,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
 				COMPACTDB_MSG_UPDATING));
       disk_update_instance (desc_obj->classop, desc_obj, obj_oid);
     }
+  return NO_ERROR;
 }
 
 
@@ -466,6 +475,8 @@ static int
 process_value (DB_VALUE * value)
 {
   int return_value = 0;
+  OID update_oid = OID_INITIALIZER;
+  SCAN_CODE scan_code;
 
   switch (DB_VALUE_TYPE (value))
     {
@@ -490,11 +501,25 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	if (heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid,
-					  SNAPSHOT_TYPE_MVCC,
-					  NULL_LOCK, NULL) == NULL)
+	/* TODO: Find a better function here. */
+	scan_code =
+	  heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid,
+					SNAPSHOT_TYPE_MVCC, NULL_LOCK,
+					&update_oid);
+	if (scan_code == S_ERROR)
+	  {
+	    ASSERT_ERROR_AND_SET (return_value);
+	    break;
+	  }
+	else if (scan_code != S_SUCCESS)
 	  {
 	    OID_SET_NULL (ref_oid);
+	    return_value = 1;
+	    break;
+	  }
+	else if (!OID_EQ (ref_oid, &update_oid))
+	  {
+	    COPY_OID (ref_oid, &update_oid);
 	    return_value = 1;
 	    break;
 	  }
@@ -513,12 +538,6 @@ process_value (DB_VALUE * value)
 		ref_class_oid.volid, ref_class_oid.pageid,
 		ref_class_oid.slotid);
 #endif
-
-	if (!heap_does_exist (NULL, &ref_class_oid, ref_oid))
-	  {
-	    OID_SET_NULL (ref_oid);
-	    return_value = 1;
-	  }
 
 	break;
       }
@@ -543,7 +562,6 @@ process_value (DB_VALUE * value)
   return return_value;
 }
 
-
 /*
  * process_set - process one set
  *    return: whether the object should be updated.
@@ -555,11 +573,21 @@ process_set (DB_SET * set)
   SET_ITERATOR *it;
   DB_VALUE *element_value;
   int return_value = 0;
+  int error_code;
 
   it = set_iterate (set);
   while ((element_value = set_iterator_value (it)) != NULL)
     {
-      return_value += process_value (element_value);
+      error_code = process_value (element_value);
+      if (error_code > 0)
+	{
+	  return_value += error_code;
+	}
+      else if (error_code != NO_ERROR)
+	{
+	  set_iterator_free (it);
+	  return error_code;
+	}
       set_iterator_next (it);
     }
   set_iterator_free (it);

@@ -3119,6 +3119,7 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 	  if (DB_VALUE_TYPE (&element) == DB_TYPE_OID)
 	    {
 	      oid_p = DB_PULL_OID (&element);
+	      /* TODO: Do we need to check scan code here? */
 	      (void) heap_get_class_oid_with_lock (thread_p, &class_oid,
 						   oid_p, SNAPSHOT_TYPE_MVCC,
 						   NULL_LOCK, NULL);

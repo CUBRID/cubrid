@@ -5041,8 +5041,7 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
 	    }
 	  else if (status == LC_ERROR)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      ASSERT_ERROR_AND_SET (error);
 	    }
 	}
       goto end;

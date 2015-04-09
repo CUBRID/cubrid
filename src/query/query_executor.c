@@ -13777,10 +13777,10 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      ACCESS_SPEC_TYPE *specp;
 
-	      if (heap_get_class_oid_with_lock (thread_p, &class_oid_buf, oid,
-						SNAPSHOT_TYPE_NONE,
-						NULL_LOCK, NULL) == NULL)
+	      if (heap_get_class_oid (thread_p, &class_oid_buf, oid)
+		  != S_SUCCESS)
 		{
+		  ASSERT_ERROR ();
 		  goto exit_on_error;
 		}
 

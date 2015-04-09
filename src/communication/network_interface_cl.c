@@ -471,7 +471,9 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
       ptr = or_unpack_int (ptr, &does_exist);
       ptr = or_unpack_oid (ptr, &class_);
       if (does_exist == LC_EXIST && class_oid)
-	COPY_OID (class_oid, &class_);
+	{
+	  COPY_OID (class_oid, &class_);
+	}
     }
   else if (fetch_copyarea != NULL)
     {

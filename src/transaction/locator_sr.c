@@ -2296,7 +2296,7 @@ locator_find_lockset_missing_class_oids (THREAD_ENTRY * thread_p,
        */
       if (heap_get_class_oid_with_lock (thread_p, &class_oid, &reqobjs[i].oid,
 					SNAPSHOT_TYPE_MVCC, NULL_LOCK,
-					NULL) == NULL)
+					NULL) != S_SUCCESS)
 	{
 	  /*
 	   * Unable to find the class of the object. Remove the object from
@@ -2662,7 +2662,6 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
   SCAN_OPERATION_TYPE operation_type;
   OID updated_oid, *p_oid = oid;
   bool object_locked = false;
-  LOCK class_lock;
 
   if (class_oid == NULL)
     {
@@ -2702,13 +2701,27 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 	  assert (0);
 	}
 
-      if (heap_get_class_oid_with_lock
-	  (thread_p, class_oid, oid, snapshot_type, lock,
-	   &updated_oid) == NULL)
+      scan =
+	heap_get_class_oid_with_lock (thread_p, class_oid, oid, snapshot_type,
+				      lock, &updated_oid);
+      if (scan != S_SUCCESS)
 	{
 	  /* Unable to find the class of the object.. return */
 	  *fetch_area = NULL;
-	  return ER_FAILED;
+
+	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
+	    {
+	      error_code = ER_HEAP_UNKNOWN_OBJECT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3,
+		      oid->volid, oid->pageid, oid->slotid);
+	      return error_code;
+	    }
+	  else
+	    {
+	      assert (scan == S_ERROR);
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
 	}
 
       /* prepare for getting the current OID (no snapshot) without lock */
@@ -2986,7 +2999,7 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn,
        */
       if (heap_get_class_oid_with_lock (thread_p, class_oid, oid,
 					SNAPSHOT_TYPE_MVCC, NULL_LOCK,
-					NULL) == NULL)
+					NULL) != S_SUCCESS)
 	{
 	  /*
 	   * Unable to find out the class identifier.
@@ -4252,6 +4265,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   SNAPSHOT_TYPE snapshot_type;
   bool check_oid_heap = true;
   bool object_locked = false;
+  SCAN_CODE scan_code = S_SUCCESS;
 
   if (need_fetching && fetch_area != NULL)
     {
@@ -4291,9 +4305,15 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
        * from disk
        */
       class_chn = CHN_UNKNOWN_ATCLIENT;
-      if (heap_get_class_oid_with_lock
-	  (thread_p, class_oid, oid, snapshot_type, lock,
-	   &updated_oid) == NULL)
+      scan_code =
+	heap_get_class_oid_with_lock (thread_p, class_oid, oid, snapshot_type,
+				      lock, &updated_oid);
+      if (scan_code == S_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return LC_ERROR;
+	}
+      else if (scan_code != S_SUCCESS)
 	{
 	  /* Unable to find the class of the object.. return */
 	  return LC_DOESNOT_EXIST;
@@ -4301,68 +4321,46 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 
       /* fetch current version without lock */
       fetch_version_type = LC_FETCH_CURRENT_VERSION;
-
-      if (lock != NULL_LOCK)
-	{
-	  object_locked = true;
-
-	  if (!OID_EQ (class_oid, oid_Root_class_oid))
-	    {
-	      /* in case of instances, the heap for OID was already checked */
-	      check_oid_heap = false;
-	    }
-	}
     }
-
-  /* Obtain the desired lock, if not already acquired */
-  if (lock != NULL_LOCK && object_locked == false)
+  else if (heap_is_mvcc_disabled_for_class (class_oid))
     {
-      if (heap_mvcc_lock_object (thread_p, oid, class_oid, lock,
-				 snapshot_type, &updated_oid) != NO_ERROR)
+      /* Non-MVCC class, just lock and check object exists. */
+      if (lock != NULL_LOCK
+	  && (lock_object (thread_p, oid, class_oid, lock, LK_UNCOND_LOCK)
+	      != LK_GRANTED))
 	{
-	  return LC_DOESNOT_EXIST;
+	  ASSERT_ERROR ();
+	  return LC_ERROR;
 	}
-
-      object_locked = true;
-      if (!OID_EQ (class_oid, oid_Root_class_oid))
-	{
-	  /* in case of instances, the heap for OID was already checked */
-	  check_oid_heap = false;
-	}
-    }
-
-  if (check_oid_heap)
-    {
-      /* 
-       * Need to check heap of OID and heap of class OID.
-       */
       if (!heap_does_exist (thread_p, class_oid, oid))
 	{
-	  if (object_locked)
+	  if (lock != NULL_LOCK)
 	    {
-	      lock_unlock_object (thread_p, OID_ISNULL (&updated_oid)
-				  ? oid : &updated_oid, class_oid, lock,
-				  false);
+	      lock_unlock_object (thread_p, oid, class_oid, lock, false);
 	    }
 	  return LC_DOESNOT_EXIST;
 	}
+      /* Fall through to fetch if needed. */
     }
-  else if (!OID_EQ (class_oid, oid_Root_class_oid))
+  else
     {
-      /* The heap for oid was already checked. Need to check class OID heap.
+      /* MVCC class, call heap_mvcc_lock_object (it also verifies object
+       * exists).
        */
-      if (!heap_does_exist (thread_p, oid_Root_class_oid, class_oid))
+      scan_code =
+	heap_mvcc_lock_object (thread_p, oid, class_oid, lock, snapshot_type,
+			       &updated_oid);
+      if (scan_code == S_ERROR)
 	{
-	  if (object_locked)
-	    {
-	      lock_unlock_object (thread_p, OID_ISNULL (&updated_oid)
-				  ? oid : &updated_oid, class_oid, lock,
-				  false);
-	    }
+	  ASSERT_ERROR ();
+	  return LC_ERROR;
+	}
+      else if (scan_code != S_SUCCESS)
+	{
 	  return LC_DOESNOT_EXIST;
 	}
+      /* Fall through to fetch if needed. */
     }
-
 
   /* The object exist. Prefetch the object if that operation is desirable */
   if (need_fetching && fetch_area != NULL)
@@ -4381,11 +4379,20 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  original_oid = NULL;
 	}
 
-      (void) xlocator_fetch (thread_p, p_oid, NULL_CHN, original_oid,
-			     NULL_LOCK, fetch_version_type, class_oid,
-			     class_chn, prefetching, fetch_area);
+      if (xlocator_fetch (thread_p, p_oid, NULL_CHN, original_oid, NULL_LOCK,
+			  fetch_version_type, class_oid, class_chn,
+			  prefetching, fetch_area) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  if (lock != NULL_LOCK)
+	    {
+	      lock_unlock_object (thread_p, p_oid, class_oid, lock, false);
+	    }
+	  return LC_ERROR;
+	}
     }
 
+  /* Success */
   return LC_EXIST;
 }
 
@@ -6482,10 +6489,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  /* make sure we use the correct class oid - we could be dealing
 	   * with a classoid resulted from a unique btid pruning
 	   */
-	  if (heap_get_class_oid_with_lock (thread_p, class_oid, oid,
-					    SNAPSHOT_TYPE_NONE,
-					    NULL_LOCK, NULL) == NULL)
+	  if (heap_get_class_oid (thread_p, class_oid, oid) != S_SUCCESS)
 	    {
+	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
 	    }
 
@@ -11460,9 +11466,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	       * check to make sure that the OID is one of the OIDs from our
 	       * list of classes.
 	       */
-	      if (heap_get_class_oid_with_lock
-		  (thread_p, &cl_oid, &oid_area[i], SNAPSHOT_TYPE_MVCC,
-		   NULL_LOCK, NULL) == NULL)
+	      if (heap_get_class_oid (thread_p, &cl_oid, &oid_area[i])
+		  != S_SUCCESS)
 		{
 		  (void) heap_scancache_end (thread_p, &isid.scan_cache);
 		  goto error;

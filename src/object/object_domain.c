@@ -3960,6 +3960,9 @@ tp_domain_check_class (TP_DOMAIN * domain)
 	      domain->class_mop = NULL;
 	      change = 1;
 	    }
+	  /* TODO:
+	   * Unsafe function. Error is not checked.
+	   */
 	}
     }
 #endif /* !SERVER_MODE */

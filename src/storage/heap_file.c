@@ -10971,7 +10971,6 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 
       doesexist = spage_is_slot_exist (pg_watcher.pgptr, oid->slotid);
       rectype = spage_get_record_type (pg_watcher.pgptr, oid->slotid);
-      pgbuf_ordered_unfix (thread_p, &pg_watcher);
 
       /*
        * Check the class
@@ -10991,18 +10990,17 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 	       * Caller does not know the class of the object. Get the class
 	       * identifier from disk
 	       */
-	      SNAPSHOT_TYPE snapshot_type =
-		((class_oid !=
-		  NULL) ? SNAPSHOT_TYPE_MVCC : SNAPSHOT_TYPE_NONE);
-
-	      if (heap_get_class_oid_with_lock (thread_p, class_oid, oid,
-						snapshot_type,
-						NULL_LOCK, NULL) == NULL)
+	      if (heap_get_class_oid_from_page (thread_p, pg_watcher.pgptr,
+						class_oid) != NO_ERROR)
 		{
+		  assert_release (false);
 		  doesexist = false;
 		  goto exit_on_end;
 		}
+	      assert (!OID_ISNULL (class_oid));
 	    }
+
+	  pgbuf_ordered_unfix (thread_p, &pg_watcher);
 
 	  /* If doesexist is true, then check its class */
 	  if (!OID_IS_ROOTOID (class_oid))
@@ -11025,6 +11023,11 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
     }
 
 exit_on_end:
+
+  if (pg_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &pg_watcher);
+    }
 
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
 
@@ -11388,6 +11391,23 @@ exit_on_error:
 }
 
 /*
+ * heap_get_class_oid () - Get class for object. This function doesn't follow
+ *			   MVCC versions. Caller must know to use right
+ *			   version for this.
+ *
+ * return	   : Scan code.
+ * thread_p (in)   : Thread entry.
+ * class_oid (out) : Output class OID.
+ * oid (in)	   : Object OID.
+ */
+SCAN_CODE
+heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
+{
+  return heap_get_with_class_oid (thread_p, class_oid, oid, NULL, NULL,
+				  S_SELECT, PEEK, NULL);
+}
+
+/*
  * heap_get_class_oid_with_lock () - Find class oid of given instance
  *   return: OID *(class_oid on success and NULL on failure)
  *   class_oid(out): The Class oid of the instance
@@ -11397,21 +11417,18 @@ exit_on_error:
  *
  * Note: Find the class identifier of the given instance.
  */
-OID *
+SCAN_CODE
 heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
 			      const OID * oid, SNAPSHOT_TYPE snapshot_type,
 			      LOCK lock_mode, OID * updated_oid)
 {
   HEAP_SCANCACHE scan_cache;
-  DISK_ISVALID oid_valid;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
   SCAN_OPERATION_TYPE scan_operation_type;
+  SCAN_CODE scan_code = S_SUCCESS;
 
-  if (class_oid == NULL)
-    {
-      assert (false);
-      return NULL;
-    }
+  assert (class_oid != NULL);
+  assert (HEAP_ISVALID_OID (oid) != DISK_INVALID);
 
   OID_SET_NULL (class_oid);
   if (updated_oid != NULL)
@@ -11444,7 +11461,8 @@ heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
       scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (scan_cache.mvcc_snapshot == NULL)
 	{
-	  return NULL;
+	  ASSERT_ERROR ();
+	  return S_ERROR;
 	}
     }
   else if (snapshot_type == SNAPSHOT_TYPE_DIRTY)
@@ -11454,55 +11472,41 @@ heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
       scan_cache.mvcc_snapshot = &mvcc_snapshot_dirty;
     }
 
-  if (heap_get_with_class_oid (thread_p, class_oid, oid, NULL, &scan_cache,
-			       scan_operation_type, PEEK, updated_oid)
-      != S_SUCCESS)
+  scan_code =
+    heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, NULL,
+					   &scan_cache, scan_operation_type,
+					   PEEK, NULL_CHN, NULL, updated_oid);
+  /* End scan cache before anything else. */
+  heap_scancache_end (thread_p, &scan_cache);
+
+  /* Check scan code. */
+  if (scan_code != S_SUCCESS)
     {
+      assert (scan_code != S_ERROR || er_errid () != NO_ERROR);
       OID_SET_NULL (class_oid);
-      class_oid = NULL;
+      return scan_code;
     }
   else
     {
-      oid_valid = HEAP_ISVALID_OID (class_oid);
-      if (oid_valid != DISK_VALID)
+      assert (HEAP_ISVALID_OID (class_oid) != DISK_INVALID);
+      if (lock_mode != NULL_LOCK
+	  && heap_is_mvcc_disabled_for_class (class_oid))
 	{
-	  if (oid_valid != DISK_ERROR)
+	  /* If MVCC is disabled for class, object was not locked.
+	   * Lock it now.
+	   */
+	  if (lock_object (thread_p, oid, class_oid, lock_mode,
+			   LK_UNCOND_LOCK) != LK_GRANTED)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
-		      oid->slotid);
-	    }
-	  OID_SET_NULL (class_oid);
-	  class_oid = NULL;
-	}
-      else
-	{
-	  if (lock_mode != NULL_LOCK)
-	    {
-	      /* If MVCC is disabled for class, object was not locked.
-	       * Lock it now.
-	       */
-	      if (heap_is_mvcc_disabled_for_class (class_oid))
-		{
-		  /* oid is a class - need to lock the class */
-		  heap_scancache_end (thread_p, &scan_cache);
-		  if (lock_object (thread_p, oid, class_oid, lock_mode,
-				   LK_UNCOND_LOCK) != LK_GRANTED)
-		    {
-		      /* Acquire lock in case of classes
-		       * Unable to acquired lock
-		       */
-		      return NULL;
-		    }
-		  return class_oid;
-		}
+	      /* Lock failed. */
+	      ASSERT_ERROR ();
+	      return S_ERROR;
 	    }
 	}
     }
 
-  heap_scancache_end (thread_p, &scan_cache);
-
-  return class_oid;
+  /* Class OID obtained successfully. */
+  return S_SUCCESS;
 }
 
 /*
@@ -13504,7 +13508,9 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid,
 					1) * sizeof (OR_PARTITION));
   if (partitions == NULL)
     {
-      error = ER_FAILED;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      (subclasses_count + 1) * sizeof (OR_PARTITION));
       goto cleanup;
     }
 
@@ -13512,6 +13518,7 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid,
 					       parts_count, partitions);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto cleanup;
     }
 
@@ -23785,8 +23792,10 @@ heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p,
  *   lock_mode(in): lock mode
  *   snapshot_type(in): snapshot type
  *   locked_oid(out): locked oid
+ *
+ * NOTE: Class must be known and MVCC enabled.
  */
-int
+SCAN_CODE
 heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 		       LOCK lock_mode, SNAPSHOT_TYPE snapshot_type,
 		       OID * locked_oid)
@@ -23794,29 +23803,16 @@ heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
   SCAN_OPERATION_TYPE scan_operation_type = S_SELECT;
-  int ret;
+  SCAN_CODE scan_code;
   bool scan_cache_started = false;
 
-  assert (oid != NULL && class_oid != NULL && !OID_ISNULL (class_oid));
+  assert (oid != NULL);
+  assert (class_oid != NULL && !heap_is_mvcc_disabled_for_class (class_oid));
 
   OID_SET_NULL (locked_oid);
   if (lock_mode == NULL_LOCK)
     {
-      return NO_ERROR;
-    }
-
-  if (OID_IS_ROOTOID (class_oid))
-    {
-      /* Acquire lock in case of classes
-       * Unable to acquired lock
-       */
-      if (lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK) !=
-	  LK_GRANTED)
-	{
-	  goto exit_on_error;
-	}
-
-      return NO_ERROR;
+      return S_SUCCESS;
     }
 
   if (lock_mode <= S_LOCK)
@@ -23848,23 +23844,25 @@ heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
       scan_cache.mvcc_snapshot = &mvcc_snapshot_dirty;
     }
 
-  if (heap_mvcc_lock_and_get_object_version (thread_p, oid, NULL, NULL,
-					     &scan_cache, scan_operation_type,
-					     true, NULL_CHN, NULL,
-					     locked_oid) != S_SUCCESS)
+  scan_code =
+    heap_mvcc_lock_and_get_object_version (thread_p, oid, NULL, NULL,
+					   &scan_cache, scan_operation_type,
+					   true, NULL_CHN, NULL, locked_oid);
+  if (scan_code == S_ERROR)
     {
+      ASSERT_ERROR ();
       goto exit_on_error;
     }
 
   heap_scancache_end (thread_p, &scan_cache);
-  return NO_ERROR;
+  return scan_code;
 
 exit_on_error:
   if (scan_cache_started)
     {
       heap_scancache_end (thread_p, &scan_cache);
     }
-  return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return S_ERROR;
 }
 
 /*
