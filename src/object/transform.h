@@ -95,6 +95,7 @@ typedef struct tf_ct_class
 #define META_PAGE_METHFILE		9
 #define META_PAGE_REPATTRIBUTE		10
 #define META_PAGE_QUERY_SPEC		11
+#define META_PAGE_PARTITION		12
 
 /*
  * Metaclass names
@@ -113,6 +114,7 @@ typedef struct tf_ct_class
 #define META_REPRESENTATION_NAME	"sqlx_representation"
 #define META_REPATTRIBUTE_NAME		"sqlx_repattribute"
 #define META_QUERY_SPEC_NAME		"sqlx_query_spec"
+#define META_PARTITION_NAME		"sqlx_partition"
 
 /* catalog classes */
 #define CT_CLASS_NAME              "_db_class"
@@ -194,6 +196,7 @@ extern META_CLASS tf_Metaclass_attribute;
 extern META_CLASS tf_Metaclass_domain;
 extern META_CLASS tf_Metaclass_repattribute;
 extern META_CLASS tf_Metaclass_query_spec;
+extern META_CLASS tf_Metaclass_partition;
 
 #if !defined(CS_MODE)
 extern CT_CLASS ct_Class;
@@ -208,6 +211,7 @@ extern CT_CLASS ct_Resolution;
 extern CT_CLASS ct_Queryspec;
 extern CT_CLASS ct_Index;
 extern CT_CLASS ct_Indexkey;
+extern CT_CLASS ct_Partition;
 extern CT_CLASS *ct_Classes[];
 #endif /* !CS_MODE */
 

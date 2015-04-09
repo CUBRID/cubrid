@@ -4567,13 +4567,6 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	}
       mflush->mop_uoids = NULL;
 
-      /* Adjust class_of attribute from _db_partition catalog class for
-       * each partitioned class that has been flushed. This is
-       * needed because in MVCC every update in _db_class produces new
-       * OID. However, we assume that this is a temporary solution. The
-       * correct one must integrate _db_partiton class in catalog classes
-       * structure and unlink it from each partition schema 
-       */
       for (i = 0; error_code == NO_ERROR && i < mflush->mobjs->num_objs; i++)
 	{
 	  obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
@@ -4581,8 +4574,15 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      && (obj->operation == LC_FLUSH_UPDATE
 		  || obj->operation == LC_FLUSH_UPDATE_PRUNE))
 	    {
+	      SM_CLASS *smclass = NULL;
+	      int save;
 	      MOP mop = ws_mop (&obj->oid, sm_Root_class_mop);
-	      error_code = sm_adjust_partitions_parent (mop, true);
+
+	      AU_DISABLE (save);
+	      /* fetch to update catalog representation directory */
+	      error_code = au_fetch_class (mop, &smclass, AU_FETCH_READ,
+					   AU_SELECT);
+	      AU_ENABLE (save);
 	    }
 	}
 
@@ -5689,7 +5689,7 @@ locator_flush_all_instances (MOP class_mop, bool decache)
   if (!locator_is_root (class_mop))
     {
       SM_CLASS *class_ = (SM_CLASS *) class_obj;
-      if (class_->partition_of != NULL && class_->users != NULL)
+      if (class_->partition != NULL && class_->users != NULL)
 	{
 	  is_partitioned = true;
 	  class_list.next = class_->users;
@@ -7247,7 +7247,7 @@ locator_add_to_oidset_when_temp_oid (MOP mop, void *data)
   if (class_mop != NULL)
     {
       SM_CLASS *class_ = (SM_CLASS *) class_mop->object;
-      if (class_->partition_of != NULL && class_->users != NULL)
+      if (class_->partition != NULL && class_->users != NULL)
 	{
 	  /* do not assign permanent OIDs to objects inserted into partitioned
 	   * classes yet because we don't know in which partition they will

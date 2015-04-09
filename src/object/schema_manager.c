@@ -537,6 +537,8 @@ static int update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 					    const BTID * btid,
 					    const char *old_name,
 					    const char *new_name);
+static int flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat);
+
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -3104,7 +3106,7 @@ sm_is_partitioned_class (MOP op)
       AU_DISABLE (save);
       if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
 	{
-	  result = (class_->partition_of != NULL);
+	  result = (class_->partition != NULL);
 	}
       AU_ENABLE (save);
     }
@@ -3128,7 +3130,7 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type,
 {
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subcls;
-  DB_VALUE pname, pattr, psize, attrname;
+  DB_VALUE psize, attrname;
   int au_save, pcnt, i;
   MOP *subobjs = NULL;
   int error;
@@ -3146,7 +3148,7 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type,
       AU_ENABLE (au_save);
       return error;
     }
-  if (!smclass->partition_of)
+  if (!smclass->partition)
     {
       AU_ENABLE (au_save);
       return NO_ERROR;
@@ -3167,17 +3169,12 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type,
       return NO_ERROR;
     }
 
-  db_make_null (&pname);
-  db_make_null (&pattr);
   db_make_null (&psize);
   db_make_null (&attrname);
 
-  if (db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname) != NO_ERROR)
-    {
-      goto partition_failed;
-    }
   *partition_type =
-    (DB_IS_NULL (&pname) ? DB_PARTITIONED_CLASS : DB_PARTITION_CLASS);
+    (smclass->partition->pname == NULL ?
+     DB_PARTITIONED_CLASS : DB_PARTITION_CLASS);
 
   if (keyattr || partitions)
     {
@@ -3203,16 +3200,13 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type,
 	    }
 	}
 
-      if (db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr)
+      if (set_get_element_nocopy (smclass->partition->values, 0, &attrname)
 	  != NO_ERROR)
 	{
 	  goto partition_failed;
 	}
-      if (set_get_element (pattr.data.set, 0, &attrname) != NO_ERROR)
-	{
-	  goto partition_failed;
-	}
-      if (set_get_element (pattr.data.set, 1, &psize) != NO_ERROR)
+      if (set_get_element_nocopy (smclass->partition->values, 1, &psize)
+	  != NO_ERROR)
 	{
 	  goto partition_failed;
 	}
@@ -3229,6 +3223,14 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type,
 	      goto partition_failed;
 	    }
 	  strncpy (keyattr, p, DB_MAX_IDENTIFIER_LENGTH);
+	  if (strlen (p) < DB_MAX_IDENTIFIER_LENGTH)
+	    {
+	      keyattr[strlen (p)] = 0;
+	    }
+	  else
+	    {
+	      keyattr[DB_MAX_IDENTIFIER_LENGTH] = 0;
+	    }
 	}
 
       if (partitions)
@@ -3248,7 +3250,7 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type,
 		{
 		  goto partition_failed;
 		}
-	      if (!subcls->partition_of)
+	      if (subcls->partition == NULL)
 		{
 		  continue;
 		}
@@ -3261,26 +3263,14 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type,
 
   AU_ENABLE (au_save);
 
-  pr_clear_value (&pname);
-  pr_clear_value (&pattr);
-  pr_clear_value (&psize);
-  pr_clear_value (&attrname);
-
   return NO_ERROR;
 
 partition_failed:
-
   AU_ENABLE (au_save);
-
   if (subobjs)
     {
       free_and_init (subobjs);
     }
-
-  pr_clear_value (&pname);
-  pr_clear_value (&pattr);
-  pr_clear_value (&psize);
-  pr_clear_value (&attrname);
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
 
@@ -4720,7 +4710,7 @@ sm_is_partition (MOP classmop, MOP supermop)
       return error;
     }
 
-  if (class_->partition_of != NULL && class_->users == NULL)
+  if (class_->partition != NULL && class_->users == NULL)
     {
       if (class_->inheritance != NULL && class_->inheritance->op == supermop)
 	{
@@ -5413,7 +5403,7 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
       return NULL;
     }
 
-  if (class_->partition_of && class_->users == NULL)
+  if (class_->partition != NULL && class_->users == NULL)
     {
       /* this is a partition, we can only use local indexes */
       force_local_index = true;
@@ -5426,8 +5416,7 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
        * partitioning hierarchy. In this case, we want to use any global/local
        * index if class_ points to the partitioned class and only local
        * indexes if class_ points to a partition */
-      if ((class_->inheritance || class_->users)
-	  && class_->partition_of == NULL)
+      if ((class_->inheritance || class_->users) && class_->partition == NULL)
 	{
 	  /* never use an unique index upon a class hierarchy */
 	  return NULL;
@@ -8809,34 +8798,13 @@ retain_former_ids (SM_TEMPLATE * flat)
   /* Does this class have a previous representation ? */
   if (flat->current != NULL)
     {
-      DB_VALUE pname;
       bool is_partition = false;
       int error = NO_ERROR;
-      int save;
 
-      /* for db_is_deleted(...->partition_of), since SM_CLASS->partition_of
-       * always points to catalog class '_db_partition', for this class
-       * we need to skip the function check_authorization(), otherwise we
-       * get an error '-157'.
-       */
-      AU_DISABLE (save);
-      if (flat->current->partition_of != NULL
-	  && !db_is_deleted (flat->current->partition_of))
+      if (flat->current->partition)
 	{
-	  db_make_null (&pname);
-	  error = db_get (flat->current->partition_of, PARTITION_ATT_PNAME,
-			  &pname);
-
-	  if (error != NO_ERROR)
-	    {
-	      pr_clear_value (&pname);
-	      AU_ENABLE (save);
-	      return error;
-	    }
-	  is_partition = (DB_IS_NULL (&pname) ? false : true);
-	  pr_clear_value (&pname);
+	  is_partition = (flat->current->partition->pname != NULL);
 	}
-      AU_ENABLE (save);
 
       /* Check each new inherited class attribute.  These attribute will not
          have an assigned id and their class MOPs will not match */
@@ -9401,7 +9369,6 @@ flatten_template (SM_TEMPLATE * def, MOP deleted_class,
 
   /* remember this, CAN'T PASS THIS AS AN ARGUMENT to classobj_make_template */
   flat->current = def->current;
-  flat->partition_of = def->partition_of;
 
   /* copy the super class list filtering out the deleted class if any */
   if (deleted_class != NULL)
@@ -9455,6 +9422,11 @@ flatten_template (SM_TEMPLATE * def, MOP deleted_class,
 	{
 	  error = flatten_components (def, flat, ID_CLASS, auto_res);
 	}
+    }
+
+  if (flatten_partition_info (def, flat) != NO_ERROR)
+    {
+      goto memory_error;
     }
 
   /* Flatten the properties (primarily for constraints).
@@ -11877,7 +11849,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	}
     }
 
-  if (is_partitioned && flat != NULL && flat->partition_of == NULL)
+  if (is_partitioned && flat != NULL && flat->partition == NULL)
     {
       /* this class is not partitioned anymore, clear the partitioning key
        * flag from the attribute
@@ -16257,7 +16229,7 @@ sm_is_global_only_constraint (MOP classmop,
   if (has_partition == true
       && (template_ == NULL || (template_->inheritance == NULL
 				&& template_->partition_parent_atts == NULL)
-	  || template_->partition_of != NULL))
+	  || template_->partition != NULL))
     {
       *is_global = 0;
       return NO_ERROR;
@@ -16275,191 +16247,6 @@ sm_is_global_only_constraint (MOP classmop,
 
   *is_global = 1;
   return NO_ERROR;
-}
-
-/*
- * sm_adjust_partitions_parent() - Adjusts class_of attribute from _db_partition
- *				    catalog class
- *   return: Error code
- *   class_mop(in): MOP of the parent class (partitioned class) of the
- *		    partitions to be adjusted
- *   flush(in): true if after adjust we must flush changes
- */
-int
-sm_adjust_partitions_parent (MOP class_mop, bool flush)
-{
-  int error_code = NO_ERROR;
-  int au_save;
-  MOP class_cat = NULL, class_entry = NULL;
-  DB_VALUE val;
-  char *name = NULL;
-  DB_OBJLIST *obj = NULL;
-  SM_CLASS *smclass = NULL, *subclass = NULL;
-  bool has_changes = false;
-
-  AU_DISABLE (au_save);
-
-  DB_MAKE_NULL (&val);
-
-  if (class_mop == NULL)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-
-  if (WS_IS_DELETED (class_mop)
-      || !OID_IS_ROOTOID (ws_oid (class_mop->class_mop)))
-    {
-      goto end;
-    }
-
-  error_code = au_fetch_class (class_mop, &smclass, AU_FETCH_READ, AU_SELECT);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  if (smclass->partition_of == NULL || smclass->users == NULL)
-    {
-      goto end;
-    }
-
-  /* get classes list table from catalog */
-  class_cat = sm_find_class (CT_CLASS_NAME);
-  if (class_cat == NULL)
-    {
-      goto error;
-    }
-
-  /* search entry in catalog for our partitioned class using its name */
-  name = (char *) sm_ch_name ((MOBJ) smclass);
-  db_make_varchar (&val, PARTITION_VARCHAR_LEN, name, strlen (name),
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  class_entry = db_find_unique (class_cat, CLASS_ATT_NAME, &val);
-  if (class_entry == NULL)
-    {
-      goto error;
-    }
-  pr_clear_value (&val);
-
-  /* iterate through partitions and update parent link */
-  for (obj = smclass->users; obj != NULL; obj = obj->next)
-    {
-      /* fetch partition */
-      error_code =
-	au_fetch_class (obj->op, &subclass, AU_FETCH_READ, AU_SELECT);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      /* if we don't have partition info then skip */
-      if (subclass->partition_of == NULL)
-	{
-	  continue;
-	}
-
-      error_code =
-	db_get (subclass->partition_of, PARTITION_ATT_CLASSOF, &val);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      if (DB_IS_NULL (&val))
-	{
-	  /* something wrong happened - we expect class_of field from
-	   * _db_partition tuple to contain the OID of _db_class tuple
-	   */
-	  goto error;
-	}
-
-      if (!OID_EQ (ws_oid (DB_GET_OBJECT (&val)), ws_oid (class_entry)))
-	{
-	  /* update parent link of partition info entry */
-	  pr_clear_value (&val);
-	  db_make_object (&val, class_entry);
-	  error_code =
-	    db_put_internal (subclass->partition_of, PARTITION_ATT_CLASSOF,
-			     &val);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  has_changes = true;
-	}
-      pr_clear_value (&val);
-    }
-
-  error_code = db_get (smclass->partition_of, PARTITION_ATT_CLASSOF, &val);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  if (DB_IS_NULL (&val))
-    {
-      /* something wrong happened - we expect class_of field from
-       * _db_partition tuple to contain the OID of _db_class tuple
-       */
-      goto error;
-    }
-
-  if (!OID_EQ (ws_oid (DB_GET_OBJECT (&val)), ws_oid (class_entry)))
-    {
-      /* update parent link of partitioned table info entry */
-      pr_clear_value (&val);
-      db_make_object (&val, class_entry);
-      error_code =
-	db_put_internal (smclass->partition_of, PARTITION_ATT_CLASSOF, &val);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-      has_changes = true;
-    }
-  pr_clear_value (&val);
-
-  if (flush && has_changes)
-    {
-      MOP db_part_cat = smclass->partition_of->class_mop;
-
-      /* load _db_partition catalog class */
-      if (db_part_cat == NULL)
-	{
-	  db_part_cat = sm_get_class (smclass->partition_of);
-	}
-
-      /* flush all instances of _db_partition */
-      error_code = locator_flush_all_instances (db_part_cat, DONT_DECACHE);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-end:
-
-  AU_ENABLE (au_save);
-
-  return NO_ERROR;
-
-error:
-
-  AU_ENABLE (au_save);
-
-  pr_clear_value (&val);
-
-  if (error_code == NO_ERROR)
-    {
-      error_code = er_errid ();
-      if (error_code == NO_ERROR)
-	{
-	  error_code = ER_FAILED;
-	}
-    }
-
-  return error_code;
 }
 
 /*
@@ -16690,7 +16477,6 @@ error_exit:
     }
   goto end;
 }
-
 /*
  * sm_cleanup_partition_links () - This function performs partition link cleanup
  *			  for the specified classes.
@@ -16718,3 +16504,32 @@ sm_cleanup_partition_links (MOP op, SM_CLASS * class_, OID * partitions,
 
   return error;
 }
+
+/*
+ * flatten_partition info() - Flatten partition info structure. Currently, it
+ *			    can not be a list.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   def(in): schema template
+ *   flat(out): flattened template
+ */
+
+static int
+flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat)
+{
+  if (def->partition == NULL)
+    {
+      flat->partition = NULL;
+    }
+  else
+    {
+      flat->partition = classobj_copy_partition_info (def->partition);
+      if (flat->partition == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+    }
+
+  return NO_ERROR;
+}
+

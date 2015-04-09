@@ -39,12 +39,6 @@
 #define UNIQUE_PARTITION_SAVEPOINT_INDEX "pARTITIONiNDEX"
 #define UNIQUE_PARTITION_SAVEPOINT_ALTER "pARTITIONaLTER"
 #define PARTITION_CATALOG_CLASS "_db_partition"
-#define PARTITION_ATT_CLASSOF "class_of"
-#define PARTITION_ATT_PNAME "pname"
-#define PARTITION_ATT_PTYPE "ptype"
-#define PARTITION_ATT_PEXPR "pexpr"
-#define PARTITION_ATT_PVALUES "pvalues"
-#define PARTITION_ATT_PCOMMENT "comment"
 #define PARTITION_VARCHAR_LEN (DB_MAX_IDENTIFIER_LENGTH)
 #define CLASS_ATT_NAME "class_name"
 #define CLASS_IS_PARTITION "partition_of"
@@ -92,7 +86,8 @@ extern int do_check_partitioned_class (DB_OBJECT * classop, int check_map,
 				       char *keyattr);
 extern int do_get_partition_keycol (char *keycol, MOP class_);
 extern int do_get_partition_size (MOP class_);
-extern int do_drop_partition_list (MOP class_, PT_NODE * name_list);
+extern int do_drop_partition_list (MOP class_, PT_NODE * name_list,
+				   DB_CTMPL * tmpl);
 
 extern int do_add_queries (PARSER_CONTEXT * parser,
 			   DB_CTMPL * ctemplate, const PT_NODE * queries);

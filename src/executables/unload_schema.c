@@ -173,7 +173,7 @@ static void emit_domain_def (DB_DOMAIN * domains);
 static int emit_autoincrement_def (DB_ATTRIBUTE * attribute);
 static void emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier);
 static void emit_methfile_def (DB_METHFILE * methfile);
-static void emit_partition_parts (MOP parts, int partcnt);
+static void emit_partition_parts (SM_PARTITION * partition_info, int partcnt);
 static void emit_partition_info (MOP clsobj);
 static int emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set);
 static int emit_stored_procedure (void);
@@ -3071,89 +3071,66 @@ emit_methfile_def (DB_METHFILE * methfile)
  *    partcnt(in): relative position of 'parts'
  */
 static void
-emit_partition_parts (MOP parts, int partcnt)
+emit_partition_parts (SM_PARTITION * partition_info, int partcnt)
 {
-  DB_VALUE ptype, pname, pval, ele, comment;
-  int save, setsize, i1;
+  DB_VALUE ele;
+  int setsize, i1;
 
-  if (parts != NULL)
+  if (partition_info == NULL)
     {
-      DB_MAKE_NULL (&ptype);
-      DB_MAKE_NULL (&pname);
-      DB_MAKE_NULL (&pval);
-      DB_MAKE_NULL (&comment);
-      if (partcnt > 0)
-	{
-	  fprintf (output_file, ",\n ");
-	}
+      return;
+    }
 
-      AU_DISABLE (save);
+  if (partcnt > 0)
+    {
+      fprintf (output_file, ",\n ");
+    }
 
-      if (db_get (parts, PARTITION_ATT_PTYPE, &ptype) == NO_ERROR
-	  && db_get (parts, PARTITION_ATT_PNAME, &pname) == NO_ERROR
-	  && db_get (parts, PARTITION_ATT_PVALUES, &pval) == NO_ERROR)
-	{
-	  fprintf (output_file, "PARTITION %s%s%s ",
-		   PRINT_IDENTIFIER (DB_PULL_STRING (&pname)));
+  fprintf (output_file, "PARTITION %s%s%s ",
+	   PRINT_IDENTIFIER (partition_info->pname));
 
-	  switch (DB_GET_INT (&ptype))
+  switch (partition_info->partition_type)
+    {
+    case PT_PARTITION_RANGE:
+      fprintf (output_file, " VALUES LESS THAN ");
+      if (!set_get_element_nocopy (partition_info->values, 1, &ele))
+	{			/* 0:MIN, 1:MAX */
+	  if (DB_IS_NULL (&ele))
 	    {
-	    case PT_PARTITION_RANGE:
-	      fprintf (output_file, " VALUES LESS THAN ");
-	      if (!set_get_element (pval.data.set, 1, &ele))
-		{		/* 0:MIN, 1:MAX */
-		  if (DB_IS_NULL (&ele))
-		    {
-		      fprintf (output_file, "MAXVALUE");
-		    }
-		  else
-		    {
-		      fprintf (output_file, "(");
-		      desc_value_fprint (output_file, &ele);
-		      fprintf (output_file, ")");
-		    }
-		}
-	      break;
-	    case PT_PARTITION_LIST:
-	      fprintf (output_file, " VALUES IN (");
-	      setsize = set_size (pval.data.set);
-
-	      for (i1 = 0; i1 < setsize; i1++)
-		{
-		  if (i1 > 0)
-		    {
-		      fprintf (output_file, ", ");
-		    }
-
-		  if (!set_get_element (pval.data.set, i1, &ele))
-		    {
-		      desc_value_fprint (output_file, &ele);
-		    }
-		}
-
+	      fprintf (output_file, "MAXVALUE");
+	    }
+	  else
+	    {
+	      fprintf (output_file, "(");
+	      desc_value_fprint (output_file, &ele);
 	      fprintf (output_file, ")");
-	      break;
-	    }
-
-	  if (db_get (parts, PARTITION_ATT_PCOMMENT, &comment) == NO_ERROR)
-	    {
-	      if (!DB_IS_NULL (&comment))
-		{
-		  fprintf (output_file, " COMMENT '%s'",
-			   DB_PULL_STRING (&comment));
-		}
 	    }
 	}
-      else
+      break;
+    case PT_PARTITION_LIST:
+      fprintf (output_file, " VALUES IN (");
+      setsize = set_size (partition_info->values);
+
+      for (i1 = 0; i1 < setsize; i1++)
 	{
-	  /* FIXME */
+	  if (i1 > 0)
+	    {
+	      fprintf (output_file, ", ");
+	    }
+
+	  if (!set_get_element_nocopy (partition_info->values, i1, &ele))
+	    {
+	      desc_value_fprint (output_file, &ele);
+	    }
 	}
 
-      AU_ENABLE (save);
-      pr_clear_value (&ptype);
-      pr_clear_value (&pname);
-      pr_clear_value (&pval);
-      pr_clear_value (&comment);
+      fprintf (output_file, ")");
+      break;
+    }
+
+  if (partition_info->comment != NULL)
+    {
+      fprintf (output_file, " COMMENT '%s'", partition_info->comment);
     }
 }
 
@@ -3165,104 +3142,86 @@ emit_partition_parts (MOP parts, int partcnt)
 static void
 emit_partition_info (MOP clsobj)
 {
-  DB_VALUE ptype, ele, pexpr, pattr;
-  int save, partcnt = 0;
+  DB_VALUE ele;
+  int partcnt = 0;
   char *ptr, *ptr2;
   const char *name;
   SM_CLASS *class_, *subclass;
   DB_OBJLIST *user;
   char *pexpr_str = NULL;
 
-  if (clsobj != NULL)
+  if (clsobj == NULL)
     {
-      DB_MAKE_NULL (&ptype);
-      DB_MAKE_NULL (&pexpr);
-      DB_MAKE_NULL (&pattr);
+      return;
+    }
 
-      AU_DISABLE (save);
+  name = db_get_class_name (clsobj);
+  if (au_fetch_class (clsobj, &class_, AU_FETCH_READ,
+		      AU_SELECT) != NO_ERROR)
+    {
+      return;
+    }
 
-      name = db_get_class_name (clsobj);
-      if (au_fetch_class (clsobj, &class_, AU_FETCH_READ,
-			  AU_SELECT) != NO_ERROR)
+  fprintf (output_file, "\nALTER CLASS %s%s%s ", PRINT_IDENTIFIER (name));
+  fprintf (output_file, "\nPARTITION BY ");
+
+  if (class_->partition->expr != NULL)
+    {
+      switch (class_->partition->partition_type)
 	{
-	  goto end;
+	case PT_PARTITION_HASH:
+	  fprintf (output_file, "HASH ( ");
+	  break;
+	case PT_PARTITION_RANGE:
+	  fprintf (output_file, "RANGE ( ");
+	  break;
+	case PT_PARTITION_LIST:
+	  fprintf (output_file, "LIST ( ");
+	  break;
 	}
 
-      fprintf (output_file, "\nALTER CLASS %s%s%s ", PRINT_IDENTIFIER (name));
-      fprintf (output_file, "\nPARTITION BY ");
-
-      if (db_get (class_->partition_of, PARTITION_ATT_PTYPE,
-		  &ptype) == NO_ERROR
-	  && db_get (class_->partition_of, PARTITION_ATT_PEXPR,
-		     &pexpr) == NO_ERROR && !DB_IS_NULL (&pexpr)
-	  && (pexpr_str = DB_GET_STRING (&pexpr))
-	  && db_get (class_->partition_of, PARTITION_ATT_PVALUES,
-		     &pattr) == NO_ERROR)
+      ptr = strstr (class_->partition->expr, "SELECT ");
+      if (ptr)
 	{
-	  switch (DB_GET_INT (&ptype))
+	  ptr2 = strstr (ptr + 7, " FROM ");
+	  if (ptr2)
 	    {
-	    case PT_PARTITION_HASH:
-	      fprintf (output_file, "HASH ( ");
-	      break;
-	    case PT_PARTITION_RANGE:
-	      fprintf (output_file, "RANGE ( ");
-	      break;
-	    case PT_PARTITION_LIST:
-	      fprintf (output_file, "LIST ( ");
-	      break;
+	      *ptr2 = 0;
+	      fprintf (output_file, ptr + 7);
+	      fprintf (output_file, " ) \n ");
 	    }
+	}
 
-	  ptr = strstr (pexpr_str, "SELECT ");
-	  if (ptr)
+      if (class_->partition->partition_type == PT_PARTITION_HASH)
+	{
+	  if (!set_get_element_nocopy (class_->partition->values, 1, &ele))
 	    {
-	      ptr2 = strstr (ptr + 7, " FROM ");
-	      if (ptr2)
-		{
-		  *ptr2 = 0;
-		  fprintf (output_file, ptr + 7);
-		  fprintf (output_file, " ) \n ");
-		}
-	    }
-
-	  if (DB_GET_INT (&ptype) == PT_PARTITION_HASH)
-	    {
-	      if (!set_get_element (pattr.data.set, 1, &ele))
-		{
-		  fprintf (output_file, " PARTITIONS %d", db_get_int (&ele));
-		}
-	    }
-	  else
-	    {
-	      fprintf (output_file, " ( ");
-	      for (user = class_->users; user != NULL; user = user->next)
-		{
-		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
-				      AU_SELECT) == NO_ERROR)
-		    {
-		      if (subclass->partition_of)
-			{
-			  emit_partition_parts (subclass->partition_of,
-						partcnt);
-			  partcnt++;
-			}
-		    }
-		}
-	      fprintf (output_file, " ) ");
+	      fprintf (output_file, " PARTITIONS %d", db_get_int (&ele));
 	    }
 	}
       else
 	{
-	  /* FIXME */
+	  fprintf (output_file, " ( ");
+	  for (user = class_->users; user != NULL; user = user->next)
+	    {
+	      if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
+				  AU_SELECT) == NO_ERROR)
+		{
+		  if (subclass->partition)
+		    {
+		      emit_partition_parts (subclass->partition, partcnt);
+		      partcnt++;
+		    }
+		}
+	    }
+	  fprintf (output_file, " ) ");
 	}
-      fprintf (output_file, ";\n");
-
-    end:
-      AU_ENABLE (save);
-
-      pr_clear_value (&ptype);
-      pr_clear_value (&pexpr);
-      pr_clear_value (&pattr);
     }
+  else
+    {
+      /* FIXME */
+    }
+  fprintf (output_file, ";\n");
 }
 
 /*

@@ -402,12 +402,12 @@ struct qo_node
 #define QO_NODE_IS_CLASS_HIERARCHY(node)  \
   (QO_NODE_INFO(node) != NULL	\
    && (QO_NODE_INFO_N(node) > 1	\
-       || (QO_NODE_INFO_SMCLASS(node)->partition_of != NULL  \
+       || (QO_NODE_INFO_SMCLASS(node)->partition != NULL  \
 	   && QO_NODE_INFO_SMCLASS(node)->users != NULL)))
 
 #define QO_NODE_IS_CLASS_PARTITIONED(node)  \
   (QO_NODE_INFO(node) != NULL	\
-   && QO_NODE_INFO_SMCLASS(node)->partition_of != NULL	\
+   && QO_NODE_INFO_SMCLASS(node)->partition != NULL	\
    && QO_NODE_INFO_SMCLASS(node)->users != NULL)
 
 struct qo_segment

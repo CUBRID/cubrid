@@ -175,10 +175,10 @@ static char *obj_print_describe_attribute (MOP class_p,
 					   OBJ_PRINT_TYPE prt_type,
 					   bool force_print_collation);
 static char *obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
-						 MOP parts,
+						 SM_PARTITION * parts,
 						 OBJ_PRINT_TYPE prt_type);
 static char *obj_print_describe_partition_info (PARSER_CONTEXT * parser,
-						MOP partinfo);
+						SM_PARTITION * partinfo);
 static char *obj_print_describe_constraint (PARSER_CONTEXT * parser,
 					    SM_CLASS * class_p,
 					    SM_CLASS_CONSTRAINT *
@@ -786,12 +786,13 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
  */
 
 static char *
-obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts,
+obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
+				    SM_PARTITION * parts,
 				    OBJ_PRINT_TYPE prt_type)
 {
-  DB_VALUE ptype, pname, pval, ele, comment;
+  DB_VALUE ele;
   PARSER_VARCHAR *buffer;
-  int save, setsize, i;
+  int setsize, i;
 
   if (parts == NULL)
     {
@@ -800,80 +801,57 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts,
 
   buffer = NULL;
 
-  DB_MAKE_NULL (&ptype);
-  DB_MAKE_NULL (&pname);
-  DB_MAKE_NULL (&pval);
   DB_MAKE_NULL (&ele);
-  DB_MAKE_NULL (&comment);
 
-  AU_DISABLE (save);
+  buffer = pt_append_nulstring (parser, buffer, "PARTITION ");
+  buffer = obj_print_identifier (parser, buffer, parts->pname, prt_type);
 
-  if (db_get (parts, PARTITION_ATT_PTYPE, &ptype) == NO_ERROR
-      && db_get (parts, PARTITION_ATT_PNAME, &pname) == NO_ERROR
-      && db_get (parts, PARTITION_ATT_PVALUES, &pval) == NO_ERROR)
+  switch (parts->partition_type)
     {
-      buffer = pt_append_nulstring (parser, buffer, "PARTITION ");
-      buffer =
-	obj_print_identifier (parser, buffer, DB_GET_STRING (&pname),
-			      prt_type);
-
-      switch (db_get_int (&ptype))
-	{
-	case PT_PARTITION_HASH:
-	  break;
-	case PT_PARTITION_RANGE:
-	  buffer = pt_append_nulstring (parser, buffer, " VALUES LESS THAN ");
-	  if (!set_get_element (pval.data.set, 1, &ele))
-	    {			/* 0:MIN, 1: MAX */
-	      if (DB_IS_NULL (&ele))
-		{
-		  buffer = pt_append_nulstring (parser, buffer, "MAXVALUE");
-		}
-	      else
-		{
-		  buffer = pt_append_nulstring (parser, buffer, "(");
-		  buffer = describe_value (parser, buffer, &ele);
-		  buffer = pt_append_nulstring (parser, buffer, ")");
-		}
-	    }
-	  break;
-	case PT_PARTITION_LIST:
-	  buffer = pt_append_nulstring (parser, buffer, " VALUES IN (");
-	  setsize = set_size (pval.data.set);
-	  for (i = 0; i < setsize; i++)
+    case PT_PARTITION_HASH:
+      break;
+    case PT_PARTITION_RANGE:
+      buffer = pt_append_nulstring (parser, buffer, " VALUES LESS THAN ");
+      if (!set_get_element (parts->values, 1, &ele))
+	{			/* 0:MIN, 1: MAX */
+	  if (DB_IS_NULL (&ele))
 	    {
-	      if (i > 0)
-		{
-		  buffer = pt_append_nulstring (parser, buffer, ", ");
-		}
-	      if (set_get_element (pval.data.set, i, &ele) == NO_ERROR)
-		{
-		  buffer = describe_value (parser, buffer, &ele);
-		}
+	      buffer = pt_append_nulstring (parser, buffer, "MAXVALUE");
 	    }
-	  buffer = pt_append_nulstring (parser, buffer, ")");
-	  break;
-	}
-
-      if (db_get (parts, PARTITION_ATT_PCOMMENT, &comment) == NO_ERROR)
-	{
-	  const char *comment_str = (char *) DB_GET_STRING (&comment);
-	  if (comment_str != NULL && comment_str[0] != '\0')
+	  else
 	    {
-	      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
-	      buffer = pt_append_nulstring (parser, buffer, comment_str);
-	      buffer = pt_append_nulstring (parser, buffer, "'");
+	      buffer = pt_append_nulstring (parser, buffer, "(");
+	      buffer = describe_value (parser, buffer, &ele);
+	      buffer = pt_append_nulstring (parser, buffer, ")");
 	    }
 	}
+      break;
+    case PT_PARTITION_LIST:
+      buffer = pt_append_nulstring (parser, buffer, " VALUES IN (");
+      setsize = set_size (parts->values);
+      for (i = 0; i < setsize; i++)
+	{
+	  if (i > 0)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  if (set_get_element (parts->values, i, &ele) == NO_ERROR)
+	    {
+	      buffer = describe_value (parser, buffer, &ele);
+	    }
+	}
+      buffer = pt_append_nulstring (parser, buffer, ")");
+      break;
     }
 
-  AU_ENABLE (save);
+  if (parts->comment != NULL && parts->comment[0] != '\0')
+    {
+      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
+      buffer = pt_append_nulstring (parser, buffer, parts->comment);
+      buffer = pt_append_nulstring (parser, buffer, "'");
+    }
 
-  pr_clear_value (&ptype);
-  pr_clear_value (&pname);
-  pr_clear_value (&pval);
   pr_clear_value (&ele);
-  pr_clear_value (&comment);
 
   return ((char *) pt_get_varchar_bytes (buffer));
 }
@@ -887,12 +865,12 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts,
  */
 
 static char *
-obj_print_describe_partition_info (PARSER_CONTEXT * parser, MOP partinfo)
+obj_print_describe_partition_info (PARSER_CONTEXT * parser,
+				   SM_PARTITION * partinfo)
 {
-  DB_VALUE ptype, ele, pexpr, pattr;
+  DB_VALUE ele;
   PARSER_VARCHAR *buffer;
   char line[SM_MAX_IDENTIFIER_LENGTH + 1], *ptr, *ptr2, *tmp;
-  int save;
 
   if (partinfo == NULL)
     {
@@ -900,60 +878,45 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser, MOP partinfo)
     }
 
   buffer = NULL;
-  DB_MAKE_NULL (&ptype);
-  DB_MAKE_NULL (&pexpr);
-  DB_MAKE_NULL (&pattr);
-
-  AU_DISABLE (save);
 
   buffer = pt_append_nulstring (parser, buffer, "PARTITION BY ");
-  if (db_get (partinfo, PARTITION_ATT_PTYPE, &ptype) == NO_ERROR
-      && db_get (partinfo, PARTITION_ATT_PEXPR, &pexpr) == NO_ERROR
-      && db_get (partinfo, PARTITION_ATT_PVALUES, &pattr) == NO_ERROR)
+
+  switch (partinfo->partition_type)
     {
-      switch (DB_GET_INTEGER (&ptype))
-	{
-	case PT_PARTITION_HASH:
-	  buffer = pt_append_nulstring (parser, buffer, "HASH (");
-	  break;
-	case PT_PARTITION_RANGE:
-	  buffer = pt_append_nulstring (parser, buffer, "RANGE (");
-	  break;
-	case PT_PARTITION_LIST:
-	  buffer = pt_append_nulstring (parser, buffer, "LIST (");
-	  break;
-	}
+    case PT_PARTITION_HASH:
+      buffer = pt_append_nulstring (parser, buffer, "HASH (");
+      break;
+    case PT_PARTITION_RANGE:
+      buffer = pt_append_nulstring (parser, buffer, "RANGE (");
+      break;
+    case PT_PARTITION_LIST:
+      buffer = pt_append_nulstring (parser, buffer, "LIST (");
+      break;
+    }
 
-      tmp = DB_GET_STRING (&pexpr);
-      assert (tmp != NULL);
+  tmp = partinfo->expr;
+  assert (tmp != NULL);
 
-      ptr = tmp ? strstr (tmp, "SELECT ") : NULL;
-      if (ptr)
+  ptr = tmp ? strstr (tmp, "SELECT ") : NULL;
+  if (ptr)
+    {
+      ptr2 = strstr (ptr + 7, " FROM ");
+      if (ptr2)
 	{
-	  ptr2 = strstr (ptr + 7, " FROM ");
-	  if (ptr2)
-	    {
-	      *ptr2 = 0;
-	      buffer = pt_append_nulstring (parser, buffer, ptr + 7);
-	      buffer = pt_append_nulstring (parser, buffer, ") ");
-	    }
-	}
-
-      if (DB_GET_INTEGER (&ptype) == PT_PARTITION_HASH)
-	{
-	  if (set_get_element (pattr.data.set, 1, &ele) == NO_ERROR)
-	    {
-	      sprintf (line, "PARTITIONS %d", DB_GET_INTEGER (&ele));
-	      buffer = pt_append_nulstring (parser, buffer, line);
-	    }
+	  *ptr2 = 0;
+	  buffer = pt_append_nulstring (parser, buffer, ptr + 7);
+	  buffer = pt_append_nulstring (parser, buffer, ") ");
 	}
     }
 
-  AU_ENABLE (save);
-
-  pr_clear_value (&ptype);
-  pr_clear_value (&pexpr);
-  pr_clear_value (&pattr);
+  if (partinfo->partition_type == PT_PARTITION_HASH)
+    {
+      if (set_get_element (partinfo->values, 1, &ele) == NO_ERROR)
+	{
+	  sprintf (line, "PARTITIONS %d", DB_GET_INTEGER (&ele));
+	  buffer = pt_append_nulstring (parser, buffer, line);
+	}
+    }
 
   return ((char *) pt_get_varchar_bytes (buffer));
 }
@@ -1933,7 +1896,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      if (au_fetch_class
 		  (user->op, &subclass, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 		{
-		  if (subclass->partition_of)
+		  if (subclass->partition != NULL)
 		    {
 		      part_count++;
 		    }
@@ -2325,7 +2288,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	}
 
       info->partition = NULL;	/* initialize */
-      if (class_->partition_of != NULL
+      if (class_->partition != NULL
 	  && !do_is_partitioned_subclass (NULL, sm_ch_name ((MOBJ) class_),
 					  NULL))
 	{
@@ -2342,7 +2305,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	  memset (strs, 0, buf_size);
 
 	  description =
-	    obj_print_describe_partition_info (parser, class_->partition_of);
+	    obj_print_describe_partition_info (parser, class_->partition);
 	  strs[0] = obj_print_copy_string (description);
 	  i = 1;
 
@@ -2351,21 +2314,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	   */
 	  if (prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
 	    {
-	      DB_VALUE ptype;
-	      int save;
-
-	      AU_DISABLE (save);
-	      DB_MAKE_NULL (&ptype);
-	      if (db_get (class_->partition_of, PARTITION_ATT_PTYPE, &ptype)
-		  != NO_ERROR)
-		{
-		  AU_ENABLE (save);
-		  goto error_exit;
-		}
-	      AU_ENABLE (save);
-	      is_print_partition =
-		(DB_GET_INTEGER (&ptype) != PT_PARTITION_HASH);
-	      pr_clear_value (&ptype);
+	      is_print_partition = (class_->partition->partition_type
+				    != PT_PARTITION_HASH);
 	    }
 
 	  if (is_print_partition)
@@ -2375,12 +2325,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
 				      AU_SELECT) == NO_ERROR)
 		    {
-		      if (subclass->partition_of)
+		      if (subclass->partition)
 			{
 			  description =
 			    obj_print_describe_partition_parts (parser,
 								subclass->
-								partition_of,
+								partition,
 								prt_type);
 			  strs[i++] = obj_print_copy_string (description);
 			}

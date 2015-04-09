@@ -6941,10 +6941,9 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   SM_CLASS *smclass, *subcls;
   SM_ATTRIBUTE *keyattr = NULL;
   DB_OBJLIST *objs;
-  int au_save, i, setsize;
-  bool au_disable_flag = false;
+  int i, setsize;
   int orig_cnt = 0, name_cnt = 0, parts_cnt = 0, chkflag = 0;
-  DB_VALUE ptype, pname, pattr, attname, *psize;
+  DB_VALUE *psize;
   char *class_name, *part_name;
   DB_VALUE minele, maxele, *minval = NULL, *maxval = NULL;
   DB_VALUE *parts_val, *partmin = NULL, *partmax = NULL;
@@ -6957,7 +6956,6 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   PT_NODE *column_dt = NULL;
   PARSER_CONTEXT *tmp_parser = NULL;
   PT_NODE **statements = NULL;
-  DB_VALUE pexpr;
   const char *expr_sql = NULL;
   int error = NO_ERROR;
 
@@ -6968,14 +6966,9 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       return;
     }
 
-  DB_MAKE_NULL (&ptype);
-  DB_MAKE_NULL (&pname);
-  DB_MAKE_NULL (&pattr);
-  DB_MAKE_NULL (&attname);
   DB_MAKE_NULL (&minele);
   DB_MAKE_NULL (&maxele);
   DB_MAKE_NULL (&null_val);
-  DB_MAKE_NULL (&pexpr);
 
   class_name = (char *) stmt->info.alter.entity_name->info.name.original;
   cmd = stmt->info.alter.code;
@@ -7062,7 +7055,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
   /* get partition information : count, name, type */
   if (au_fetch_class (dbobj, &smclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR
-      || smclass->partition_of == NULL)
+      || smclass->partition == NULL)
     {
       PT_ERRORmf (parser,
 		  stmt->info.alter.entity_name,
@@ -7071,20 +7064,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       return;
     }
 
-  AU_DISABLE (au_save);
-  au_disable_flag = true;
-  DB_MAKE_NULL (&ptype);
-  DB_MAKE_NULL (&pattr);
-  DB_MAKE_NULL (&attname);
-  DB_MAKE_NULL (&pexpr);
-  if (db_get (smclass->partition_of, PARTITION_ATT_PTYPE, &ptype))
-    {
-      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
-      goto check_end;		/* get partition type */
-    }
-
-  if (DB_GET_INT (&ptype) != PT_PARTITION_HASH)
+  if (smclass->partition->partition_type != PT_PARTITION_HASH)
     {
       tmp_parser = parser_create_parser ();
       if (tmp_parser == NULL)
@@ -7095,15 +7075,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	}
 
       /* get partition expr */
-      if (db_get (smclass->partition_of, PARTITION_ATT_PEXPR, &pexpr)
-	  != NO_ERROR)
-	{
-	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
-	  goto check_end;
-	}
-
-      expr_sql = DB_GET_STRING (&pexpr);
+      expr_sql = smclass->partition->expr;
 
       /* compile the select statement and get the correct data_type */
       statements = parser_parse_string (tmp_parser, expr_sql);
@@ -7147,10 +7119,6 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 						select.list->type_enum)));
 	}
 
-
-      pr_clear_value (&pexpr);
-      DB_MAKE_NULL (&pexpr);
-
       parser_free_parser (tmp_parser);
       tmp_parser = NULL;
     }
@@ -7162,7 +7130,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     case PT_ADD_PARTITION:
     case PT_REORG_PARTITION:
     case PT_PROMOTE_PARTITION:
-      if (ptype.data.i == PT_PARTITION_HASH)
+      if (smclass->partition->partition_type == PT_PARTITION_HASH)
 	{
 	  chkflag = 1;
 	}
@@ -7173,7 +7141,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
     case PT_ADD_HASHPARTITION:	/* HASH */
     case PT_COALESCE_PARTITION:
-      if (ptype.data.i != PT_PARTITION_HASH)
+      if (smclass->partition->partition_type != PT_PARTITION_HASH)
 	{
 	  chkflag = 1;
 	}
@@ -7196,7 +7164,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   for (objs = smclass->users; objs; objs = objs->next)
     {
       if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ,
-			  AU_SELECT) != NO_ERROR || !subcls->partition_of)
+			  AU_SELECT) != NO_ERROR || !subcls->partition)
 	{
 	  continue;		/* not partitioned or no authority */
 	}
@@ -7205,38 +7173,25 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
       DB_MAKE_NULL (&minele);
       DB_MAKE_NULL (&maxele);
-      DB_MAKE_NULL (&pname);
-      DB_MAKE_NULL (&pattr);
 
       if (psize == NULL)
 	{			/* RANGE or LIST */
-	  if (db_get (subcls->partition_of, PARTITION_ATT_PNAME, &pname)
-	      || (part_name = DB_GET_STRING (&pname)) == NULL)
-	    {			/* get partition type */
-	    invalid_partition_info_fail:
-	      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
-	    out_of_mem:
-	      pr_clear_value (&pname);
-	      pr_clear_value (&pattr);
-	      pr_clear_value (&minele);
-	      pr_clear_value (&maxele);
-	      goto check_end;
+	  if (subcls->partition == NULL || subcls->partition->pname == NULL)
+	    {
+	      /* get partition type */
+	      goto invalid_partition_info_fail;
 	    }
 
-	  if (db_get (subcls->partition_of, PARTITION_ATT_PVALUES, &pattr))
+	  if (smclass->partition->partition_type == DB_PARTITION_RANGE
+	      && cmd != PT_DROP_PARTITION && cmd != PT_PROMOTE_PARTITION)
 	    {
-	      goto invalid_partition_info_fail;	/* get partition key values */
-	    }
-
-	  if (ptype.data.i == PT_PARTITION_RANGE && cmd != PT_DROP_PARTITION
-	      && cmd != PT_PROMOTE_PARTITION)
-	    {
-	      if (set_get_element (pattr.data.set, 0, &minele) != NO_ERROR)
+	      if (set_get_element_nocopy (subcls->partition->values, 0,
+					  &minele) != NO_ERROR)
 		{
 		  goto invalid_partition_info_fail;	/* RANGE MIN */
 		}
-	      if (set_get_element (pattr.data.set, 1, &maxele) != NO_ERROR)
+	      if (set_get_element_nocopy (subcls->partition->values, 1,
+					  &maxele) != NO_ERROR)
 		{
 		  goto invalid_partition_info_fail;	/* RANGE MAX */
 		}
@@ -7252,47 +7207,41 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	    {
 	      if (!names->partition_pruned
 		  && !intl_identifier_casecmp (names->info.name.original,
-					       part_name))
+					       subcls->partition->pname))
 		{
 		  chkflag = 1;
 		  names->partition_pruned = 1;	/* existence marking */
-		  names->info.name.db_object =
-		    ((cmd == PT_ANALYZE_PARTITION)
-		     ? objs->op : subcls->partition_of);
+		  names->info.name.db_object = objs->op;
 
-		  if (ptype.data.i == PT_PARTITION_RANGE
+		  if (smclass->partition->partition_type == DB_PARTITION_RANGE
 		      && cmd == PT_REORG_PARTITION)
 		    {
 		      partition_range_min_max (&maxval, &maxele, RANGE_MAX);
 		      partition_range_min_max (&minval, &minele, RANGE_MIN);
 		    }
 
-		  if (ptype.data.i == PT_PARTITION_LIST
+		  if (smclass->partition->partition_type == DB_PARTITION_LIST
 		      && cmd == PT_REORG_PARTITION)
 		    {
-		      setsize = set_size (pattr.data.set);
+		      setsize = set_size (subcls->partition->values);
 		      for (i = 0; i < setsize; i++)
 			{	/* in-list old value */
-			  if (set_get_element (pattr.data.set,
-					       i, &minele) != NO_ERROR)
+			  if (set_get_element_nocopy
+			      (subcls->partition->values, i,
+			       &minele) != NO_ERROR)
 			    {
 			      goto invalid_partition_info_fail;
 			    }
 
 			  if (db_value_list_add (&inlist_tail, &minele))
 			    {
-			    out_of_mem_fail:
-			      PT_ERRORm (parser, stmt,
-					 MSGCAT_SET_PARSER_SEMANTIC,
-					 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-			      goto out_of_mem;
+			      goto out_of_mem_fail;
 			    }
 
 			  if (inlist_head == NULL)
 			    {
 			      inlist_head = inlist_tail;
 			    }
-			  pr_clear_value (&minele);
 			}
 		    }
 		}
@@ -7300,13 +7249,13 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 	  if (chkflag == 0)
 	    {
-	      if (ptype.data.i == PT_PARTITION_LIST)
+	      if (smclass->partition->partition_type == DB_PARTITION_LIST)
 		{
-		  setsize = set_size (pattr.data.set);
+		  setsize = set_size (subcls->partition->values);
 		  for (i = 0; i < setsize; i++)
 		    {		/* out-list value */
-		      if (set_get_element (pattr.data.set,
-					   i, &minele) != NO_ERROR)
+		      if (set_get_element_nocopy (subcls->partition->values,
+						  i, &minele) != NO_ERROR)
 			{
 			  goto invalid_partition_info_fail;
 			}
@@ -7320,11 +7269,10 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 			{
 			  outlist_head = outlist_tail;
 			}
-		      pr_clear_value (&minele);
 		    }
 		}
 	      else
-		if (ptype.data.i == PT_PARTITION_RANGE
+		if (smclass->partition->partition_type == DB_PARTITION_RANGE
 		    && cmd == PT_REORG_PARTITION)
 		{
 		  /* for non-continuous or overlap ranges check */
@@ -7350,15 +7298,12 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	    {
 	      if (!parts->partition_pruned
 		  && !intl_identifier_casecmp (parts->info.parts.name->info.
-					       name.original, part_name))
+					       name.original,
+					       subcls->partition->pname))
 		{
 		  parts->partition_pruned = 1;	/* existence marking */
 		}
 	    }
-	  pr_clear_value (&pname);
-	  pr_clear_value (&pattr);
-	  pr_clear_value (&minele);
-	  pr_clear_value (&maxele);
 	}
     }
 
@@ -7382,7 +7327,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     {				/* checks duplicated definition */
       for (parts = part_list; parts; parts = parts->next)
 	{
-	  if (ptype.data.i != (int) parts->info.parts.type)
+	  if (smclass->partition->partition_type
+	      != (int) parts->info.parts.type)
 	    {
 	      PT_ERRORmf (parser, stmt,
 			  MSGCAT_SET_PARSER_SEMANTIC,
@@ -7394,7 +7340,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  /* next part */
 	  next_parts = parts->next;
 	  if (next_parts != NULL
-	      && ptype.data.i != (int) next_parts->info.parts.type)
+	      && smclass->partition->partition_type !=
+	      (int) next_parts->info.parts.type)
 	    {
 	      PT_ERRORmf (parser, stmt,
 			  MSGCAT_SET_PARSER_SEMANTIC,
@@ -7421,7 +7368,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		}
 	    }
 
-	  if (ptype.data.i == PT_PARTITION_RANGE)
+	  if (smclass->partition->partition_type == PT_PARTITION_RANGE)
 	    {
 	      /* corece the partition value */
 	      val = parts->info.parts.values;
@@ -7613,7 +7560,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	    }
 	}
 
-      if (ptype.data.i == PT_PARTITION_RANGE)
+      if (smclass->partition->partition_type == PT_PARTITION_RANGE)
 	{
 	  if (cmd == PT_ADD_PARTITION)
 	    {
@@ -7760,11 +7707,6 @@ check_end:
       column_dt = NULL;
     }
 
-  pr_clear_value (&ptype);
-  pr_clear_value (&pname);
-  pr_clear_value (&attname);
-  pr_clear_value (&pexpr);
-
   if (maxval)
     {
       pr_free_ext_value (maxval);
@@ -7801,10 +7743,21 @@ check_end:
       free_and_init (p);
     }
 
-  if (au_disable_flag == true)
-    {
-      AU_ENABLE (au_save);
-    }
+  return;
+
+out_of_mem_fail:
+  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+	     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+  goto out_of_mem;
+
+invalid_partition_info_fail:
+  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+	     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
+
+out_of_mem:
+  pr_clear_value (&minele);
+  pr_clear_value (&maxele);
+  goto check_end;
 }
 
 /*

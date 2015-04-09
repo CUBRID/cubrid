@@ -6351,7 +6351,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return error;
 	}
-      if (smclass->partition_of != NULL && smclass->users == NULL)
+      if (smclass->partition != NULL && smclass->users == NULL)
 	{
 	  /* Triggers must be created on the partitioned table, not on a
 	   * specific partition

@@ -211,7 +211,8 @@ typedef struct db_value_slist DB_VALUE_SLIST;
 struct db_value_slist
 {
   struct db_value_slist *next;
-  MOP partition_of;		/* mop for partition info */
+  SM_PARTITION *partition;	/* partition info */
+  MOP class_obj;		/* class object */
   DB_VALUE *min;		/* min range for partition */
   DB_VALUE *max;		/* max range for partition */
 };
@@ -435,10 +436,6 @@ static int do_redistribute_partitions_data (const char *class_name,
 					    int promoted_count,
 					    bool should_update,
 					    bool should_insert);
-static int insert_partition_catalog (PARSER_CONTEXT * parser,
-				     DB_CTMPL * clstmpl, PT_NODE * node,
-				     PT_NODE * entity, char *base_obj,
-				     char *cata_obj, DB_VALUE * minval);
 static SM_FUNCTION_INFO *compile_partition_expression (PARSER_CONTEXT *
 						       parser,
 						       PT_NODE * entity_name,
@@ -450,7 +447,7 @@ static PT_NODE *pt_replace_names_index_expr (PARSER_CONTEXT * parser,
 					     PT_NODE * node, void *void_arg,
 					     int *continue_walk);
 static int adjust_partition_range (DB_OBJLIST * objs);
-static int adjust_partition_size (MOP class_);
+static int adjust_partition_size (MOP class_, DB_CTMPL * tmpl);
 
 static const char *get_attr_name (PT_NODE * attribute);
 static int do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
@@ -487,6 +484,12 @@ static int do_check_fk_constraints_internal (DB_CTMPL * ctemplate,
 static int get_index_type_qualifiers (MOP obj, bool * is_reverse,
 				      bool * is_unique,
 				      const char *index_name);
+static SM_PARTITION *pt_node_to_partition_info (PARSER_CONTEXT * parser,
+						PT_NODE * node,
+						PT_NODE * entity_name,
+						char *class_name,
+						char *partition_name,
+						DB_VALUE * minval);
 
 /*
  * Function Group :
@@ -515,7 +518,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const char *new_name, *old_name, *domain;
   const char *property_type;
   DB_CTMPL *ctemplate = NULL;
-  DB_OBJECT *vclass, *sup_class, *partition_obj = NULL;
+  DB_OBJECT *vclass, *sup_class;
   int error = NO_ERROR;
   DB_ATTRIBUTE *found_attr, *def_attr;
   DB_METHOD *found_mthd;
@@ -1348,16 +1351,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       partition_savepoint = true;
 
       error = do_alter_partitioning_pre (parser, alter, &pinfo);
-      if (ctemplate->partition_of == NULL
-	  && ctemplate->current->partition_of != NULL)
-	{
-	  /* delete this object after ctemplate object is finished */
-	  partition_obj = ctemplate->current->partition_of;
-	}
-      else
-	{
-	  partition_obj = NULL;
-	}
       break;
 
     case PT_RENAME_CONSTRAINT:
@@ -1464,18 +1457,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       /* root class template has been edited and finished, update the
        * references in the pinfo object
        */
-      if (partition_obj != NULL)
-	{
-	  /* delete it here */
-	  int save;
-	  AU_DISABLE (save);
-	  error = obj_delete (partition_obj);
-	  AU_ENABLE (save);
-	  if (error != NO_ERROR)
-	    {
-	      goto alter_partition_fail;
-	    }
-	}
       pinfo.root_op = vclass;
       pinfo.root_tmpl = NULL;
       error = do_alter_partitioning_post (parser, alter, &pinfo);
@@ -3967,8 +3948,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  org_hashsize = do_get_partition_size (pinfo->root_op);
 	  if (org_hashsize < 0)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      error = org_hashsize;
 	      goto end_create;
 	    }
 	  new_hashsize
@@ -4038,6 +4018,22 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	    }
 
 	  newpci->temp->partition_parent_atts = smclass->attributes;
+
+	  hash_parts->info.parts.name->info.name.original
+	    = strstr (newpci->pname, PARTITIONED_SUB_CLASS_TAG)
+	    + strlen (PARTITIONED_SUB_CLASS_TAG);
+	  hash_parts->info.parts.values = NULL;
+
+	  newpci->temp->partition =
+	    pt_node_to_partition_info (parser, hash_parts, NULL, class_name,
+				       newpci->pname, NULL);
+	  if (newpci->temp->partition == NULL)
+	    {
+	      error = er_errid ();
+	      dbt_abort_class (newpci->temp);
+	      goto end_create;
+	    }
+
 	  newpci->obj = dbt_finish_class (newpci->temp);
 	  if (newpci->obj == NULL)
 	    {
@@ -4068,17 +4064,6 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      goto end_create;
 	    }
 
-	  hash_parts->info.parts.name->info.name.original
-	    = strstr (newpci->pname, PARTITIONED_SUB_CLASS_TAG)
-	    + strlen (PARTITIONED_SUB_CLASS_TAG);
-	  hash_parts->info.parts.values = NULL;
-
-	  error = insert_partition_catalog (parser, NULL, hash_parts, NULL,
-					    class_name, newpci->pname, NULL);
-	  if (error != NO_ERROR)
-	    {
-	      goto end_create;
-	    }
 	  if (part_add == PT_PARTITION_HASH)
 	    {
 	      hash_parts->next = NULL;
@@ -4145,14 +4130,41 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  if (alter->info.alter.code == PT_REORG_PARTITION
 	      && parts->partition_pruned)
 	    {			/* reused partition */
-	      error = insert_partition_catalog (parser, NULL, parts, NULL,
-						class_name, newpci->pname,
-						NULL);
-	      if (error != NO_ERROR)
+	      newpci->obj = ws_find_class (newpci->pname);
+	      if (newpci->obj == NULL)
 		{
-		  goto end_create;	/* reorg partition info update */
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
 		}
-	      error = NO_ERROR;
+
+	      newpci->temp = dbt_edit_class (newpci->obj);
+	      if (newpci->temp == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
+		}
+
+	      newpci->temp->partition =
+		pt_node_to_partition_info (parser, parts, NULL, class_name,
+					   newpci->pname, NULL);
+	      if (newpci->temp->partition == NULL)
+		{
+		  error = er_errid ();
+		  dbt_abort_class (newpci->temp);
+		  goto end_create;
+		}
+
+	      newpci->obj = dbt_finish_class (newpci->temp);
+	      if (newpci->obj == NULL)
+		{
+		  dbt_abort_class (newpci->temp);
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
+		}
+
 	      continue;
 	    }
 
@@ -4177,41 +4189,6 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	    }
 
 	  newpci->temp->partition_parent_atts = smclass->attributes;
-	  newpci->obj = dbt_finish_class (newpci->temp);
-
-	  if (newpci->obj == NULL)
-	    {
-	      dbt_abort_class (newpci->temp);
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      goto end_create;
-	    }
-	  else if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
-	    {
-	      /* The class doesn't exist. We are creating the class. */
-	      er_clear ();
-	    }
-
-	  sm_set_class_collation (newpci->obj, smclass->collation_id);
-
-	  if (reuse_oid)
-	    {
-	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_REUSE_OID,
-					 1);
-	      if (error != NO_ERROR)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
-		  goto end_create;
-		}
-	    }
-	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
-	      || locator_flush_class (newpci->obj) != NO_ERROR)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      goto end_create;
-	    }
 
 	  /* RANGE-MIN VALUE search */
 	  minval = NULL;
@@ -4260,21 +4237,67 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      /* set in pt_check_alter_partition */
 	      minval = pt_value_to_db (parser, alter_info);
 	    }
-	  parts->info.parts.name->info.name.db_object = newpci->obj;
-	  error = insert_partition_catalog (parser, NULL, parts, NULL,
-					    class_name, newpci->pname,
-					    minval);
-	  if (error != NO_ERROR)
+
+	  newpci->temp->partition =
+	    pt_node_to_partition_info (parser, parts, NULL, class_name,
+				       newpci->pname, minval);
+	  if (newpci->temp->partition == NULL)
 	    {
+	      error = er_errid ();
+	      dbt_abort_class (newpci->temp);
 	      goto end_create;
 	    }
+
+	  newpci->obj = dbt_finish_class (newpci->temp);
+
+	  if (newpci->obj == NULL)
+	    {
+	      dbt_abort_class (newpci->temp);
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	      goto end_create;
+	    }
+	  else if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      /* The class doesn't exist. We are creating the class. */
+	      er_clear ();
+	    }
+
+	  parts->info.parts.name->info.name.db_object = newpci->obj;
+
+	  sm_set_class_collation (newpci->obj, smclass->collation_id);
+
+	  if (reuse_oid)
+	    {
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_REUSE_OID,
+					 1);
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
+		}
+	    }
+	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
+	      || locator_flush_class (newpci->obj) != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	      goto end_create;
+	    }
+
 	  error = NO_ERROR;
 	}
     }
 
   if (part_add != -1)
-    {				/* partition size update */
-      adjust_partition_size (pinfo->root_op);
+    {
+      /* partition size update */
+      error = adjust_partition_size (pinfo->root_op, pinfo->root_tmpl);
+      if (error != NO_ERROR)
+	{
+	  goto end_create;
+	}
 
       if (alter->info.alter.code == PT_REORG_PARTITION
 	  && part_add == PT_PARTITION_RANGE)
@@ -4286,16 +4309,58 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	    {
 	      goto end_create;
 	    }
-	  adjust_partition_range (smclass->users);
+	  error = adjust_partition_range (smclass->users);
+	  if (error != NO_ERROR)
+	    {
+	      goto end_create;
+	    }
 	}
     }
   else
-    {				/* set parent's partition info */
+    {
+      /* set parent's partition info */
+      DB_CTMPL *root_tmpl = NULL;
+      bool abort_template = false;
+
       db_make_int (&partsize, part_cnt);
-      error =
-	insert_partition_catalog (parser, pinfo->root_tmpl, alter_info,
-				  entity_name, class_name, class_name,
-				  &partsize);
+
+      if (pinfo->root_tmpl != NULL)
+	{
+	  root_tmpl = pinfo->root_tmpl;
+	}
+      else
+	{
+	  root_tmpl = dbt_edit_class (pinfo->root_op);
+	  if (root_tmpl == NULL)
+	    {
+	      error = er_errid ();
+	      goto end_create;
+	    }
+	  abort_template = true;
+	}
+
+      root_tmpl->partition =
+	pt_node_to_partition_info (parser, alter_info, entity_name,
+				   class_name, class_name, &partsize);
+      if (root_tmpl->partition == NULL)
+	{
+	  error = er_errid ();
+	  if (abort_template == true)
+	    {
+	      dbt_abort_class (root_tmpl);
+	    }
+	  goto end_create;
+	}
+
+      if (abort_template == true)
+	{
+	  if (dbt_finish_class (root_tmpl) == NULL)
+	    {
+	      dbt_abort_class (root_tmpl);
+	      error = er_errid ();
+	      goto end_create;
+	    }
+	}
     }
 
 end_create:
@@ -4371,325 +4436,6 @@ compile_partition_expression (PARSER_CONTEXT * parser, PT_NODE * entity_name,
   parser_free_node (parser, spec);
 
   return part_expr;
-}
-
-/*
- * insert_partition_catalog() -
- *   return: Error code
- *   parser(in): Parser context
- *   clstmpl(in/out): Template of sm_class
- *   node(in): Parser tree of an partition class
- *   base_obj(in): Partition class name
- *   cata_obj(in): Catalog class name
- *   minval(in):
- *
- * Note:
- */
-static int
-insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
-			  PT_NODE * node, PT_NODE * entity_name,
-			  char *base_obj, char *cata_obj, DB_VALUE * minval)
-{
-  MOP partcata, classcata, newpart, newclass;
-  DB_OTMPL *otmpl;
-  DB_CTMPL *ctmpl;
-  DB_VALUE val, *ptval, *hashsize;
-  PT_NODE *parts;
-  char *query, *query_str = NULL, *p;
-  DB_COLLECTION *dbc = NULL;
-  int save;
-  bool au_disable_flag = false;
-  size_t buf_size;
-
-  AU_DISABLE (save);
-  au_disable_flag = true;
-
-  classcata = sm_find_class (CT_CLASS_NAME);
-  if (classcata == NULL)
-    {
-      goto fail_return;
-    }
-  db_make_varchar (&val, PARTITION_VARCHAR_LEN, base_obj, strlen (base_obj),
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  newclass = db_find_unique (classcata, CLASS_ATT_NAME, &val);
-  if (newclass == NULL)
-    {
-      goto fail_return;
-    }
-  pr_clear_value (&val);
-
-  partcata = sm_find_class (PARTITION_CATALOG_CLASS);
-  if (partcata == NULL)
-    {
-      goto fail_return;
-    }
-  otmpl = dbt_create_object_internal (partcata);
-  if (otmpl == NULL)
-    {
-      goto fail_return;
-    }
-  db_make_object (&val, newclass);
-  if (dbt_put_internal (otmpl, PARTITION_ATT_CLASSOF, &val) < 0)
-    {
-      goto fail_return;
-    }
-  pr_clear_value (&val);
-
-  if (node->node_type == PT_PARTITION)
-    {
-      db_make_null (&val);
-    }
-  else
-    {
-      p = (char *) node->info.parts.name->info.name.original;
-      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p),
-		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
-    }
-  if (dbt_put_internal (otmpl, PARTITION_ATT_PNAME, &val) < 0)
-    {
-      goto fail_return;
-    }
-  pr_clear_value (&val);
-
-  if (node->node_type == PT_PARTITION)
-    {
-      db_make_int (&val, node->info.partition.type);
-    }
-  else
-    {
-      db_make_int (&val, node->info.parts.type);
-    }
-  if (dbt_put_internal (otmpl, PARTITION_ATT_PTYPE, &val) < 0)
-    {
-      goto fail_return;
-    }
-  pr_clear_value (&val);
-
-  if (node->node_type == PT_PARTITION)
-    {
-      unsigned int save_custom;
-
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_CHARSET_COLLATE_FULL;
-      query = parser_print_tree_with_quotes (parser,
-					     node->info.partition.expr);
-      parser->custom_print = save_custom;
-      if (query == NULL)
-	{
-	  goto fail_return;
-	}
-
-      buf_size =
-	strlen (query) + strlen (base_obj) + 7 /* strlen("SELECT ") */  +
-	6 /* strlen(" FROM ") */  +
-	2 /* [] */  +
-	1 /* terminating null */ ;
-      query_str = (char *) malloc (buf_size);
-      if (query_str == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, buf_size);
-	  goto fail_return;
-	}
-      sprintf (query_str, "SELECT %s FROM [%s]", query, base_obj);
-      db_make_varchar (&val, PARTITION_VARCHAR_LEN, query_str,
-		       strlen (query_str), LANG_SYS_CODESET,
-		       LANG_SYS_COLLATION);
-    }
-  else
-    {
-      db_make_null (&val);
-    }
-  if (dbt_put_internal (otmpl, PARTITION_ATT_PEXPR, &val) < 0)
-    {
-      goto fail_return;
-    }
-  pr_clear_value (&val);
-  if (query_str)
-    {
-      free_and_init (query_str);
-    }
-
-  dbc = set_create_sequence (0);
-  if (dbc == NULL)
-    {
-      goto fail_return;
-    }
-  if (node->node_type == PT_PARTITION)
-    {
-      DB_VALUE expr;
-      SM_FUNCTION_INFO *part_expr = NULL;
-
-      p = (char *) node->info.partition.keycol->info.name.original;
-      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p),
-		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      set_add_element (dbc, &val);
-      if (node->info.partition.type == PT_PARTITION_HASH)
-	{
-	  hashsize = pt_value_to_db (parser, node->info.partition.hashsize);
-	  set_add_element (dbc, hashsize);
-	}
-      else
-	{
-	  set_add_element (dbc, minval);
-	}
-
-      /* Now compile the partition expression and add it to the end of the
-       * collection
-       */
-      part_expr = compile_partition_expression (parser, entity_name, node);
-      if (part_expr == NULL)
-	{
-	  goto fail_return;
-	}
-      db_make_char (&expr, part_expr->expr_stream_size,
-		    part_expr->expr_stream, part_expr->expr_stream_size,
-		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      set_add_element (dbc, &expr);
-
-      /* Notice that we're not calling pr_clear_value on expr here because
-       * memory allocated for expr_stream is deallocated by
-       * 'sm_free_function_index_info'
-       */
-      sm_free_function_index_info (part_expr);
-      db_ws_free (part_expr);
-      part_expr = NULL;
-    }
-  else
-    {
-      if (node->info.parts.type == PT_PARTITION_RANGE)
-	{
-	  if (minval == NULL)
-	    {
-	      db_make_null (&val);
-	      set_add_element (dbc, &val);
-	    }
-	  else
-	    {
-	      set_add_element (dbc, minval);
-	    }
-	}
-      if (node->info.parts.values == NULL)
-	{			/* RANGE-MAXVALUE */
-	  db_make_null (&val);
-	  set_add_element (dbc, &val);
-	}
-      else
-	{
-	  for (parts = node->info.parts.values; parts; parts = parts->next)
-	    {
-	      ptval = pt_value_to_db (parser, parts);
-	      if (ptval == NULL)
-		{
-		  goto fail_return;
-		}
-	      set_add_element (dbc, ptval);
-	    }
-	}
-    }
-  db_make_sequence (&val, dbc);
-  if (dbt_put_internal (otmpl, PARTITION_ATT_PVALUES, &val) < 0)
-    {
-      goto fail_return;
-    }
-
-  if (node->node_type == PT_PARTITION)
-    {
-      db_make_null (&val);
-    }
-  else
-    {
-      if (node->info.parts.comment != NULL)
-	{
-	  assert (node->info.parts.comment->node_type == PT_VALUE);
-	  p =
-	    (char *) node->info.parts.comment->info.value.data_value.str->
-	    bytes;
-	  db_make_string (&val, p);
-	}
-      else
-	{
-	  db_make_null (&val);
-	}
-    }
-  if (dbt_put_internal (otmpl, PARTITION_ATT_PCOMMENT, &val) < 0)
-    {
-      goto fail_return;
-    }
-
-  newpart = dbt_finish_object (otmpl);
-  if (newpart == NULL)
-    {
-      goto fail_return;
-    }
-
-  /* SM_CLASS's partition_of update */
-  if (clstmpl)
-    {
-      clstmpl->partition_of = newpart;
-    }
-  else
-    {
-      SM_CLASS *superclass = NULL;
-      MOP superclass_op;
-
-      newclass = sm_find_class (cata_obj);
-      if (newclass == NULL)
-	{
-	  goto fail_return;
-	}
-      ctmpl = dbt_edit_class (newclass);
-      if (ctmpl == NULL)
-	{
-	  goto fail_return;
-	}
-      if (ctmpl->partition_of != NULL)
-	{
-	  /* delete old partition information if any */
-	  if (obj_delete (ctmpl->partition_of) != NO_ERROR)
-	    {
-	      dbt_abort_class (ctmpl);
-	      goto fail_return;
-	    }
-	}
-      ctmpl->partition_of = newpart;
-
-      superclass_op = sm_find_class (base_obj);
-      if (superclass_op == NULL)
-	{
-	  goto fail_return;
-	}
-      if (au_fetch_class
-	  (superclass_op, &superclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
-	{
-	  goto fail_return;
-	}
-      ctmpl->partition_parent_atts = superclass->attributes;
-
-      if (dbt_finish_class (ctmpl) == NULL)
-	{
-	  dbt_abort_class (ctmpl);
-	  goto fail_return;
-	}
-    }
-
-  AU_ENABLE (save);
-  au_disable_flag = false;
-  set_free (dbc);
-  return NO_ERROR;
-
-fail_return:
-  if (au_disable_flag == true)
-    {
-      AU_ENABLE (save);
-    }
-  if (dbc != NULL)
-    {
-      set_free (dbc);
-    }
-
-  assert (er_errid () != NO_ERROR);
-  return er_errid ();
 }
 
 /*
@@ -4785,7 +4531,7 @@ do_get_partition_parent (DB_OBJECT * const classop, MOP * const parentop)
       goto error_exit;
     }
 
-  if (smclass->partition_of == NULL)
+  if (smclass->partition == NULL)
     {
       /* not a partitioned class */
       goto end;
@@ -4833,8 +4579,8 @@ do_is_partitioned_subclass (int *is_partitioned,
 {
   MOP classop;
   SM_CLASS *smclass;
-  DB_VALUE pname, pattr, attrname;
-  int au_save, ret = 0;
+  DB_VALUE attrname;
+  int ret = 0;
 
   if (!classname)
     {
@@ -4851,23 +4597,13 @@ do_is_partitioned_subclass (int *is_partitioned,
       return 0;
     }
 
-  AU_DISABLE (au_save);
-
   if (au_fetch_class (classop, &smclass, AU_FETCH_READ, AU_SELECT)
-      != NO_ERROR || !smclass->partition_of)
+      != NO_ERROR || !smclass->partition)
     {
-      AU_ENABLE (au_save);
       return 0;
     }
 
-  db_make_null (&pname);
-  if (db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname) != NO_ERROR)
-    {
-      AU_ENABLE (au_save);
-      return 0;
-    }
-
-  if (!DB_IS_NULL (&pname))
+  if (smclass->partition->pname != NULL)
     {
       ret = 1;			/* partitioned sub-class */
     }
@@ -4883,23 +4619,23 @@ do_is_partitioned_subclass (int *is_partitioned,
 	  char *p = NULL;
 
 	  keyattr[0] = 0;
-	  db_make_null (&pattr);
 
-	  if (db_get (smclass->partition_of, PARTITION_ATT_PVALUES,
-		      &pattr) == NO_ERROR
-	      && set_get_element (pattr.data.set, 0, &attrname) == NO_ERROR
+	  if (set_get_element_nocopy (smclass->partition->values, 0,
+				      &attrname) == NO_ERROR
 	      && !DB_IS_NULL (&attrname) && (p = DB_GET_STRING (&attrname)))
 	    {
 	      strncpy (keyattr, p, DB_MAX_IDENTIFIER_LENGTH);
-
-	      pr_clear_value (&pattr);
-	      pr_clear_value (&attrname);
+	      if (strlen (p) < DB_MAX_IDENTIFIER_LENGTH)
+		{
+		  keyattr[strlen (p)] = 0;
+		}
+	      else
+		{
+		  keyattr[DB_MAX_IDENTIFIER_LENGTH] = 0;
+		}
 	    }
 	}
     }
-
-  pr_clear_value (&pname);
-  AU_ENABLE (au_save);
 
   return ret;
 }
@@ -4919,24 +4655,22 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag,
 {
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subclass;
-  int au_save;
-  MOP delobj, delpart;
+  MOP delobj;
   int error = NO_ERROR;
 
   CHECK_MODIFICATION_ERROR ();
 
   if (!class_)
     {
-      return -1;
+      return ER_FAILED;
     }
 
-  AU_DISABLE (au_save);
   error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
       goto fail_return;
     }
-  if (!smclass->partition_of)
+  if (!smclass->partition)
     {
       goto fail_return;
     }
@@ -4957,9 +4691,8 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag,
 	{
 	  goto fail_return;
 	}
-      if (subclass->partition_of)
+      if (subclass->partition)
 	{
-	  delpart = subclass->partition_of;
 	  delobj = objs->op;
 	  objs = objs->next;
 	  if (drop_sub_flag)
@@ -4970,11 +4703,6 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag,
 		  goto fail_return;
 		}
 	    }
-	  error = obj_delete (delpart);
-	  if (error != NO_ERROR)
-	    {
-	      goto fail_return;
-	    }
 	}
       else
 	{
@@ -4982,16 +4710,9 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag,
 	}
     }
 
-  error = obj_delete (smclass->partition_of);
-  if (error != NO_ERROR)
-    {
-      goto fail_return;
-    }
-
   error = NO_ERROR;
 
 fail_return:
-  AU_ENABLE (au_save);
   return error;
 }
 
@@ -5008,18 +4729,16 @@ do_rename_partition (MOP old_class, const char *newname)
 {
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subclass;
-  int au_save, newlen;
+  int newlen;
   int error;
   char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
 
   if (!old_class || !newname)
     {
-      return -1;
+      return ER_FAILED;
     }
 
   newlen = strlen (newname);
-
-  AU_DISABLE (au_save);
 
   error = au_fetch_class (old_class, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
@@ -5030,7 +4749,7 @@ do_rename_partition (MOP old_class, const char *newname)
   for (objs = smclass->users; objs; objs = objs->next)
     {
       if ((au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT)
-	   == NO_ERROR) && subclass->partition_of)
+	   == NO_ERROR) && subclass->partition)
 	{
 	  ptr = strstr ((char *) sm_ch_name ((MOBJ) subclass),
 			PARTITIONED_SUB_CLASS_TAG);
@@ -5060,7 +4779,6 @@ do_rename_partition (MOP old_class, const char *newname)
     }
 
 end_rename:
-  AU_ENABLE (au_save);
 
   return error;
 }
@@ -5247,19 +4965,16 @@ adjust_partition_range (DB_OBJLIST * objs)
 {
   DB_OBJLIST *subs;
   SM_CLASS *subclass;
-  DB_VALUE ptype, pexpr, pattr, minval, maxval, seqval, *wrtval;
+  DB_VALUE minval, maxval, seqval, *wrtval;
   int error = NO_ERROR;
-  int au_save;
   char check_flag = 1;
   DB_VALUE_SLIST *ranges = NULL, *rfind, *new_range, *prev_range;
   DB_COLLECTION *dbc = NULL;
+  SM_TEMPLATE *tmpl = NULL;
 
-  db_make_null (&ptype);
-  db_make_null (&pattr);
   db_make_null (&minval);
   db_make_null (&maxval);
 
-  AU_DISABLE (au_save);
   for (subs = objs; subs; subs = subs->next)
     {
       error = au_fetch_class (subs->op, &subclass, AU_FETCH_READ, AU_SELECT);
@@ -5267,49 +4982,32 @@ adjust_partition_range (DB_OBJLIST * objs)
 	{
 	  break;
 	}
-      if (subclass->partition_of == NULL)
+      if (!subclass->partition)
 	{
 	  continue;
 	}
 
       if (check_flag)
 	{			/* RANGE check */
-	  error = db_get (subclass->partition_of, PARTITION_ATT_PTYPE,
-			  &ptype);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	  if (ptype.data.i != PT_PARTITION_RANGE)
+	  if (subclass->partition->partition_type != PT_PARTITION_RANGE)
 	    {
 	      break;
 	    }
 	  check_flag = 0;
 	}
 
-      error = db_get (subclass->partition_of, PARTITION_ATT_PVALUES, &pattr);
-      if (error != NO_ERROR)
+      if (subclass->partition->expr != NULL)
 	{
-	  break;
-	}
-      error = db_get (subclass->partition_of, PARTITION_ATT_PEXPR, &pexpr);
-      if (error != NO_ERROR)
-	{
-	  break;
-	}
-      if (!DB_IS_NULL (&pexpr))
-	{
-	  pr_clear_value (&pattr);
-	  pr_clear_value (&pexpr);
 	  continue;		/* reorg deleted partition */
 	}
-
-      error = set_get_element (pattr.data.set, 0, &minval);
+      error =
+	set_get_element_nocopy (subclass->partition->values, 0, &minval);
       if (error != NO_ERROR)
 	{
 	  break;
 	}
-      error = set_get_element (pattr.data.set, 1, &maxval);
+      error =
+	set_get_element_nocopy (subclass->partition->values, 1, &maxval);
       if (error != NO_ERROR)
 	{
 	  break;
@@ -5322,13 +5020,11 @@ adjust_partition_range (DB_OBJLIST * objs)
 		  sizeof (DB_VALUE_SLIST));
 	  break;
 	}
-      new_range->partition_of = subclass->partition_of;
+      new_range->partition = subclass->partition;
+      new_range->class_obj = subs->op;
       new_range->min = db_value_copy (&minval);
       new_range->max = db_value_copy (&maxval);
       new_range->next = NULL;
-      pr_clear_value (&minval);
-      pr_clear_value (&maxval);
-      pr_clear_value (&pattr);
 
       if (ranges == NULL)
 	{
@@ -5389,10 +5085,41 @@ adjust_partition_range (DB_OBJLIST * objs)
 	      set_add_element (dbc, wrtval);
 	      set_add_element (dbc, rfind->max);
 	      db_make_sequence (&seqval, dbc);
-	      error = db_put_internal (rfind->partition_of,
-				       PARTITION_ATT_PVALUES, &seqval);
+
+	      tmpl = dbt_edit_class (rfind->class_obj);
+	      if (tmpl == NULL)
+		{
+		  set_free (dbc);
+		  error = ER_FAILED;
+		  break;
+		}
+
+	      if (tmpl->partition->values != NULL)
+		{
+		  /* free previous set */
+		  set_free (tmpl->partition->values);
+		  tmpl->partition->values = NULL;
+		}
+
+	      tmpl->partition->values = db_seq_copy (dbc);
+	      if (tmpl->partition->values == NULL)
+		{
+		  set_free (dbc);
+		  dbt_abort_class (tmpl);
+		  error = ER_FAILED;
+		  break;
+		}
+
+	      if (dbt_finish_class (tmpl) == NULL)
+		{
+		  set_free (dbc);
+		  dbt_abort_class (tmpl);
+		  error = ER_FAILED;
+		  break;
+		}
 	      set_free (dbc);
 	    }
+
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -5409,11 +5136,7 @@ adjust_partition_range (DB_OBJLIST * objs)
       free_and_init (rfind);
       rfind = prev_range;
     }
-  pr_clear_value (&ptype);
-  pr_clear_value (&pattr);
-  pr_clear_value (&minval);
-  pr_clear_value (&maxval);
-  AU_ENABLE (au_save);
+
   return error;
 }
 
@@ -5421,29 +5144,33 @@ adjust_partition_range (DB_OBJLIST * objs)
  * adjust_partition_size() -
  *   return: Error code
  *   class(in):
+ *   tmpl (in): partitioned class template
  *
  * Note:
  */
 static int
-adjust_partition_size (MOP class_)
+adjust_partition_size (MOP class_, DB_CTMPL * tmpl)
 {
   int error = NO_ERROR;
   SM_CLASS *smclass, *subclass;
-  DB_VALUE pattr, keyname, psize;
+  DB_VALUE psize;
   DB_OBJLIST *subs;
-  int au_save, partcnt;
+  int partcnt;
 
   if (class_ == NULL)
     {
-      return -1;
+      error = ER_INVALID_PARTITION_REQUEST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
     }
+
   error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  if (smclass->partition_of == NULL)
+  if (smclass->partition == NULL || tmpl == NULL)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5451,69 +5178,38 @@ adjust_partition_size (MOP class_)
     }
 
   db_make_null (&psize);
-  db_make_null (&pattr);
-  db_make_null (&keyname);
 
-  AU_DISABLE (au_save);
   for (subs = smclass->users, partcnt = 0; subs; subs = subs->next)
     {
       error = au_fetch_class (subs->op, &subclass, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
 	{
-	  goto fail_end;
+	  return error;
 	}
-      if (subclass->partition_of == NULL)
+      if (!subclass->partition)
 	{
 	  continue;
 	}
       partcnt++;
     }
 
-  error = db_lock_write (smclass->partition_of);
+  error = set_get_element_nocopy (tmpl->partition->values, 1, &psize);
   if (error != NO_ERROR)
     {
-      goto fail_end;
+      return error;
     }
 
-  error = db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr);
-  if (error != NO_ERROR)
-    {
-      goto fail_end;
-    }
-  error = set_get_element (pattr.data.set, 0, &keyname);
-  if (error != NO_ERROR)
-    {
-      goto fail_end;
-    }
-  error = set_get_element (pattr.data.set, 1, &psize);
-  if (error != NO_ERROR)
-    {
-      goto fail_end;
-    }
   if (psize.data.i != partcnt)
     {
       psize.data.i = partcnt;
-      error = set_put_element (pattr.data.set, 1, &psize);
+      error = set_put_element (tmpl->partition->values, 1, &psize);
       if (error != NO_ERROR)
 	{
-	  goto fail_end;
-	}
-      error =
-	db_put_internal (smclass->partition_of, PARTITION_ATT_PVALUES,
-			 &pattr);
-      if (error != NO_ERROR)
-	{
-	  goto fail_end;
+	  return error;
 	}
     }
-  error = NO_ERROR;
 
-fail_end:
-  pr_clear_value (&keyname);
-  pr_clear_value (&psize);
-  pr_clear_value (&pattr);
-  AU_ENABLE (au_save);
-  return error;
+  return NO_ERROR;
 }
 
 /*
@@ -5528,12 +5224,11 @@ do_get_partition_size (MOP class_)
 {
   int error = NO_ERROR;
   SM_CLASS *smclass;
-  DB_VALUE pattr, psize;
-  int au_save;
+  DB_VALUE psize;
 
   if (class_ == NULL)
     {
-      return -1;
+      return ER_FAILED;
     }
   error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
@@ -5541,7 +5236,7 @@ do_get_partition_size (MOP class_)
       return error;
     }
 
-  if (smclass->partition_of == NULL)
+  if (!smclass->partition)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5549,29 +5244,18 @@ do_get_partition_size (MOP class_)
     }
 
   db_make_null (&psize);
-  db_make_null (&pattr);
 
-  AU_DISABLE (au_save);
-  error = db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr);
+  error = set_get_element_nocopy (smclass->partition->values, 1, &psize);
   if (error != NO_ERROR)
     {
-      goto fail_end;
-    }
-  error = set_get_element (pattr.data.set, 1, &psize);
-  if (error != NO_ERROR)
-    {
-      goto fail_end;
+      return error;
     }
   error = psize.data.i;
   if (error == 0)
     {
-      error = -1;
+      error = ER_FAILED;
     }
 
-fail_end:
-  pr_clear_value (&psize);
-  pr_clear_value (&pattr);
-  AU_ENABLE (au_save);
   return error;
 }
 
@@ -5588,13 +5272,14 @@ do_get_partition_keycol (char *keycol, MOP class_)
 {
   int error = NO_ERROR;
   SM_CLASS *smclass;
-  DB_VALUE pattr, keyname;
-  int au_save;
+  DB_VALUE keyname;
   char *keyname_str;
 
   if (class_ == NULL|| keycol == NULL)
     {
-      return -1;
+      error = ER_INVALID_PARTITION_REQUEST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
     }
 
   *keycol = '\0';
@@ -5605,7 +5290,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
       return error;
     }
 
-  if (smclass->partition_of == NULL)
+  if (!smclass->partition)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5613,59 +5298,49 @@ do_get_partition_keycol (char *keycol, MOP class_)
     }
 
   db_make_null (&keyname);
-  db_make_null (&pattr);
 
-  AU_DISABLE (au_save);
-  error = db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr);
+  error = set_get_element_nocopy (smclass->partition->values, 0, &keyname);
   if (error != NO_ERROR)
     {
-      goto fail_end;
-    }
-  error = set_get_element (pattr.data.set, 0, &keyname);
-  if (error != NO_ERROR)
-    {
-      goto fail_end;
+      return error;
     }
 
   if (DB_IS_NULL (&keyname))
     {
-      goto fail_end;
+      return error;
     }
+
   keyname_str = DB_PULL_STRING (&keyname);
   strncpy (keycol, keyname_str, DB_MAX_IDENTIFIER_LENGTH);
   error = NO_ERROR;
 
-fail_end:
-  pr_clear_value (&keyname);
-  pr_clear_value (&pattr);
-  AU_ENABLE (au_save);
   return error;
 }
 
 /*
- * do_get_partition_keycol() -
+ * do_drop_partition_list() -
  *   return: Error code
  *   class(in):
  *   name_list(in):
+ *   tmpl (in): partitioned class template
  *
  * Note:
  */
 int
-do_drop_partition_list (MOP class_, PT_NODE * name_list)
+do_drop_partition_list (MOP class_, PT_NODE * name_list, DB_CTMPL * tmpl)
 {
   PT_NODE *names;
   int error = NO_ERROR;
   char subclass_name[DB_MAX_IDENTIFIER_LENGTH];
   SM_CLASS *smclass, *subclass;
-  int au_save;
-  MOP delpart, classcata;
+  MOP classcata;
   OID *partitions = NULL;
   int no_partitions = 0;
   int i;
 
   if (class_ == NULL || name_list == NULL)
     {
-      return -1;
+      return ER_FAILED;
     }
 
   error = au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT);
@@ -5674,7 +5349,7 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
       goto exit;
     }
 
-  if (smclass->partition_of == NULL)
+  if (smclass->partition == NULL)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5738,22 +5413,13 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
 	{
 	  goto exit;
 	}
-      if (subclass->partition_of)
+      if (subclass->partition)
 	{
-	  delpart = subclass->partition_of;
 	  error = sm_delete_class_mop (classcata, false);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit;
 	    }
-	  AU_DISABLE (au_save);
-	  error = obj_delete (delpart);
-	  if (error != NO_ERROR)
-	    {
-	      AU_ENABLE (au_save);
-	      goto exit;
-	    }
-	  AU_ENABLE (au_save);
 	}
       else
 	{
@@ -5763,8 +5429,18 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
 	}
     }
 
-  adjust_partition_range (smclass->users);
-  adjust_partition_size (class_);
+  error = adjust_partition_range (smclass->users);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error = adjust_partition_size (class_, tmpl);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
   error = NO_ERROR;
 
 exit:
@@ -5936,7 +5612,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	      goto cleanup;
 	    }
 
-	  if (subclass->partition_of == NULL)
+	  if (subclass->partition == NULL)
 	    {
 	      assert (false);
 	      error = ER_FAILED;
@@ -6001,7 +5677,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	      goto cleanup;
 	    }
 
-	  if (subclass->partition_of == NULL)
+	  if (subclass->partition == NULL)
 	    {
 	      /* not partitioned */
 	      continue;
@@ -6225,7 +5901,7 @@ do_alter_partitioning_pre (PARSER_CONTEXT * parser,
       error =
 	do_drop_partition_list (pinfo->root_op,
 				alter->info.alter.alter_clause.partition.
-				name_list);
+				name_list, pinfo->root_tmpl);
       break;
     case PT_PROMOTE_PARTITION:
       error = do_promote_partition_list (parser, alter, pinfo);
@@ -6391,7 +6067,7 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
       return error;
     }
 
-  if (class_->partition_of == NULL)
+  if (class_->partition == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
       return ER_FAILED;
@@ -6418,7 +6094,7 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
 	{
 	  goto error_return;
 	}
-      if (subclass->partition_of == NULL)
+      if (subclass->partition == NULL)
 	{
 	  /* not a partition */
 	  obj = obj_next;
@@ -6465,7 +6141,8 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
   /* keep the promoted names in the partition alter context */
   pinfo->promoted_names = names;
   pinfo->promoted_count = names_count;
-  pinfo->root_tmpl->partition_of = NULL;
+  classobj_free_partition_info (pinfo->root_tmpl->partition);
+  pinfo->root_tmpl->partition = NULL;
 
   return NO_ERROR;
 
@@ -6602,7 +6279,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
       return error;
     }
 
-  if (class_->partition_of == NULL)
+  if (class_->partition == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
       return ER_FAILED;
@@ -6662,7 +6339,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
 	}
     }
 
-  error = adjust_partition_size (pinfo->root_op);
+  error = adjust_partition_size (pinfo->root_op, pinfo->root_tmpl);
   if (error != NO_ERROR)
     {
       goto error_return;
@@ -7084,7 +6761,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      return error;
 	    }
 
-	  if (subclass->partition_of == NULL)
+	  if (subclass->partition == NULL)
 	    {
 	      /* not partitioned */
 	      continue;
@@ -7149,7 +6826,7 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
       return error;
     }
 
-  if (!smclass->partition_of)
+  if (!smclass->partition)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -7165,7 +6842,7 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
 	{
 	  return error;
 	}
-      if (!smsubclass->partition_of)
+      if (!smsubclass->partition)
 	{
 	  continue;
 	}
@@ -7232,7 +6909,8 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
        */
       int au_save = 0;
       assert (pinfo->root_tmpl != NULL);
-      pinfo->root_tmpl->partition_of = NULL;
+      classobj_free_partition_info (pinfo->root_tmpl->partition);
+      pinfo->root_tmpl->partition = NULL;
     }
   else
     {
@@ -7243,8 +6921,18 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
 	{
 	  goto exit;
 	}
-      adjust_partition_range (smclass->users);
-      adjust_partition_size (pinfo->root_op);
+
+      error = adjust_partition_range (smclass->users);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      error = adjust_partition_size (pinfo->root_op, pinfo->root_tmpl);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
     }
 
   error = sm_cleanup_partition_links (pinfo->root_op, smclass, partitions,
@@ -7318,7 +7006,6 @@ static int
 do_promote_partition (SM_CLASS * class_)
 {
   MOP subclass_mop = NULL;
-  MOP delpart = NULL;
   int error = NO_ERROR, au_save = 0;
   SM_CLASS *current = NULL;
   DB_CTMPL *ctemplate = NULL;
@@ -7327,7 +7014,7 @@ do_promote_partition (SM_CLASS * class_)
 
   CHECK_1ARG_ERROR (class_);
 
-  if (class_->partition_of == NULL)
+  if (class_->partition == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
       return ER_PARTITION_NOT_EXIST;
@@ -7340,10 +7027,6 @@ do_promote_partition (SM_CLASS * class_)
       return er_errid ();
     }
 
-  /* delpart is an OID pointing into _db_partition which needs to be
-   * deleted when we complete the promotion process
-   */
-  delpart = class_->partition_of;
   ctemplate = dbt_edit_class (subclass_mop);
   if (ctemplate == NULL)
     {
@@ -7419,14 +7102,13 @@ do_promote_partition (SM_CLASS * class_)
   ctemplate->query_spec = NULL;
   ctemplate->instance_attributes = NULL;
   ctemplate->shared_attributes = NULL;
-  ctemplate->partition_of = NULL;
   ctemplate->partition_parent_atts = NULL;
   ctemplate->triggers = NULL;
+  classobj_free_partition_info (ctemplate->partition);
+  ctemplate->partition = NULL;
 
   if (ctemplate->properties != NULL)
     {
-      /* remove the partition information from properties */
-      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PARTITION);
       if (has_pk)
 	{
 	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PRIMARY_KEY);
@@ -7449,12 +7131,6 @@ do_promote_partition (SM_CLASS * class_)
       return error;
     }
 
-  /* delete the tuple from _db_partition which indicates to this
-   * partition
-   */
-  AU_DISABLE (au_save);
-  error = obj_delete (delpart);
-  AU_ENABLE (au_save);
   return error;
 }
 
@@ -8623,7 +8299,7 @@ do_check_fk_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
       return ER_FAILED;
     }
 
-  if (ctemplate->partition_of != NULL)
+  if (ctemplate->partition != NULL)
     {
       is_partitioned = true;
     }
@@ -10318,7 +9994,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
       goto exit;
     }
 
-  if (ctemplate->current->users != NULL && ctemplate->partition_of != NULL)
+  if (ctemplate->current->users != NULL && ctemplate->partition != NULL)
     {
       DB_OBJLIST *user_list = NULL;
 
@@ -10405,33 +10081,6 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
     }
   /* set NULL, avoid 'abort_class' in case of error */
   ctemplate = NULL;
-
-  /* TODO : workaround code to force class templates for partitions
-   * it seems that after the 'dbt_finish_class' on the super-class, the
-   * representations are not properly updated on the server - function
-   * 'heap_object_upgrade_domain' seems to use for partition class the
-   * previous representation before the change as 'last_representation'
-   * instead of the updated representation */
-  if (has_partitions)
-    {
-      ctemplate = dbt_edit_class (class_obj);
-      if (ctemplate == NULL)
-	{
-	  pt_record_error (parser, parser->statement_number - 1,
-			   alter->line_number, alter->column_number,
-			   er_msg (), NULL);
-	  error = er_errid ();
-	  goto exit;
-	}
-      class_obj = dbt_finish_class (ctemplate);
-      if (class_obj == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  goto exit;
-	}
-      ctemplate = NULL;
-    }
 
   if (attr_chg_prop.constr_info != NULL)
     {
@@ -11808,7 +11457,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 
   /* partitions: */
   attr_chg_properties->p[P_IS_PARTITION_COL] = 0;
-  if (ctemplate->partition_of)
+  if (ctemplate->partition)
     {
       char keycol[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 
@@ -14269,7 +13918,7 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 
   /* check if class has subclasses : 'users' of class may be subclass, but
    * also partitions of class */
-  if (ctemplate->current->users != NULL && ctemplate->partition_of == NULL)
+  if (ctemplate->current->users != NULL && ctemplate->partition == NULL)
     {
       attr_chg_prop->class_has_subclass = true;
     }
@@ -15677,4 +15326,223 @@ get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique,
     }
 
   return error_code;
+}
+
+/*
+ * pt_node_to_partition_info() -
+ *   return: Error code
+ *   parser(in): Parser context
+ *   node(in): Parser tree of an partition class
+ *   entity_name(in):
+ *   class_name(in): class name
+ *   partition_name(in): partition name
+ *   minval(in):
+ *
+ * Note:
+ */
+static SM_PARTITION *
+pt_node_to_partition_info (PARSER_CONTEXT * parser,
+			   PT_NODE * node,
+			   PT_NODE * entity_name,
+			   char *class_name, char *partition_name,
+			   DB_VALUE * minval)
+{
+  DB_VALUE val, *ptval, *hashsize;
+  PT_NODE *parts;
+  char *query, *query_str = NULL, *p;
+  DB_COLLECTION *dbc = NULL;
+  size_t buf_size;
+  SM_PARTITION *partition = NULL;
+
+  partition = classobj_make_partition_info ();
+  if (partition == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (SM_PARTITION));
+      return NULL;
+    }
+
+  if (node->node_type == PT_PARTITION)
+    {
+      partition->pname = NULL;
+    }
+  else
+    {
+      partition->pname =
+	ws_copy_string ((char *) node->info.parts.name->info.name.original);
+      if (partition->pname == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  strlen ((char *) node->info.parts.name->info.name.original));
+	  return NULL;
+	}
+    }
+
+  if (node->node_type == PT_PARTITION)
+    {
+      partition->partition_type = node->info.partition.type;
+    }
+  else
+    {
+      partition->partition_type = node->info.parts.type;
+    }
+
+  if (node->node_type == PT_PARTITION)
+    {
+      unsigned int save_custom;
+
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+      query = parser_print_tree_with_quotes (parser,
+					     node->info.partition.expr);
+      parser->custom_print = save_custom;
+      if (query == NULL)
+	{
+	  goto fail_return;
+	}
+
+      buf_size =
+	strlen (query) + strlen (class_name) + 7 /* strlen("SELECT ") */  +
+	6 /* strlen(" FROM ") */  +
+	2 /* [] */  +
+	1 /* terminating null */ ;
+      query_str = (char *) malloc (buf_size);
+      if (query_str == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, buf_size);
+	  goto fail_return;
+	}
+      sprintf (query_str, "SELECT %s FROM [%s]", query, class_name);
+      partition->expr = ws_copy_string (query_str);
+      if (partition->expr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, strlen (query_str));
+	  goto fail_return;
+	}
+    }
+  else
+    {
+      partition->expr = NULL;
+    }
+  if (query_str)
+    {
+      free_and_init (query_str);
+    }
+
+  dbc = set_create_sequence (0);
+  if (dbc == NULL)
+    {
+      goto fail_return;
+    }
+  if (node->node_type == PT_PARTITION)
+    {
+      DB_VALUE expr;
+      SM_FUNCTION_INFO *part_expr = NULL;
+
+      p = (char *) node->info.partition.keycol->info.name.original;
+      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      set_add_element (dbc, &val);
+      if (node->info.partition.type == PT_PARTITION_HASH)
+	{
+	  hashsize = pt_value_to_db (parser, node->info.partition.hashsize);
+	  set_add_element (dbc, hashsize);
+	}
+      else
+	{
+	  set_add_element (dbc, minval);
+	}
+
+      /* Now compile the partition expression and add it to the end of the
+       * collection
+       */
+      part_expr = compile_partition_expression (parser, entity_name, node);
+      if (part_expr == NULL)
+	{
+	  goto fail_return;
+	}
+      db_make_char (&expr, part_expr->expr_stream_size,
+		    part_expr->expr_stream, part_expr->expr_stream_size,
+		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      set_add_element (dbc, &expr);
+
+      /* Notice that we're not calling pr_clear_value on expr here because
+       * memory allocated for expr_stream is deallocated by
+       * 'sm_free_function_index_info'
+       */
+      sm_free_function_index_info (part_expr);
+      db_ws_free (part_expr);
+      part_expr = NULL;
+    }
+  else
+    {
+      if (node->info.parts.type == PT_PARTITION_RANGE)
+	{
+	  if (minval == NULL)
+	    {
+	      db_make_null (&val);
+	      set_add_element (dbc, &val);
+	    }
+	  else
+	    {
+	      set_add_element (dbc, minval);
+	    }
+	}
+      if (node->info.parts.values == NULL)
+	{			/* RANGE-MAXVALUE */
+	  db_make_null (&val);
+	  set_add_element (dbc, &val);
+	}
+      else
+	{
+	  for (parts = node->info.parts.values; parts; parts = parts->next)
+	    {
+	      ptval = pt_value_to_db (parser, parts);
+	      if (ptval == NULL)
+		{
+		  goto fail_return;
+		}
+	      set_add_element (dbc, ptval);
+	    }
+	}
+    }
+
+  partition->values = db_seq_copy (dbc);
+
+  if (node->node_type != PT_PARTITION)
+    {
+      if (node->info.parts.comment != NULL)
+	{
+	  assert (node->info.parts.comment->node_type == PT_VALUE);
+	  p =
+	    (char *) node->info.parts.comment->info.value.data_value.str->
+	    bytes;
+	  partition->comment = ws_copy_string (p);
+	  if (partition->comment == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (p));
+	      goto fail_return;
+	    }
+	}
+    }
+
+  set_free (dbc);
+  return partition;
+
+fail_return:
+  if (dbc != NULL)
+    {
+      set_free (dbc);
+    }
+  classobj_free_partition_info (partition);
+  if (query_str != NULL)
+    {
+      free_and_init (query_str);
+    }
+
+  assert (er_errid () != NO_ERROR);
+  return NULL;
 }

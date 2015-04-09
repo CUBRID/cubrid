@@ -1947,7 +1947,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
       return error;
     }
 
-  if (owner != template_->op)
+  if (owner != template_->op && template_->partition == NULL)
     {
       /* it is inherited. */
       ERROR2 (error, ER_SM_INHERITED, constraint_name,

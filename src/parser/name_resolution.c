@@ -5130,8 +5130,8 @@ pt_get_resolution (PARSER_CONTEXT * parser,
 	  /* if yes, set the resolution and the resolved name */
 	  in_node->info.name.resolved =
 	    savespec->info.spec.range_var->info.name.original;
-	  in_node->info.name.partition_of =
-	    savespec->info.spec.range_var->info.name.partition_of;
+	  in_node->info.name.partition =
+	    savespec->info.spec.range_var->info.name.partition;
 
 	  savespec = pt_unwhacked_spec (parser, scope, savespec);
 
@@ -6114,9 +6114,8 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
   DB_OBJLIST *dbl;		/* list of subclass objects */
   bool ismymht = false;		/* Am I the one who created it? */
   SM_CLASS *smclass;
-  DB_VALUE pname;
   int partition_skip;
-  int au_save;
+
 
   if (parser == NULL)
     {
@@ -6150,22 +6149,17 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
       result->info.name.db_object = db;
       result->info.name.spec_id = id;
       result->info.name.meta_class = meta_class;
-      result->info.name.partition_of = NULL;
-      AU_DISABLE (au_save);
+      result->info.name.partition = NULL;
+
       if ((au_fetch_class (db, &smclass, AU_FETCH_READ, AU_SELECT) ==
-	   NO_ERROR) && smclass->partition_of)
+	   NO_ERROR))
 	{
-	  if (db_get (smclass->partition_of,
-		      PARTITION_ATT_PNAME, &pname) == NO_ERROR)
+	  if (smclass->partition != NULL && smclass->partition->pname == NULL)
 	    {
-	      if (DB_IS_NULL (&pname))
-		result->info.name.partition_of = smclass->partition_of;
-	      else
-		pr_clear_value (&pname);
+	      result->info.name.partition = smclass->partition;
 	    }
 	}
 
-      AU_ENABLE (au_save);
       if (names_mht)
 	{
 	  mht_put (names_mht, classname, (void *) true);
@@ -6202,23 +6196,16 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
   while (dbl)
     {
       partition_skip = 0;
-      AU_DISABLE (au_save);
+
       if (au_fetch_class (dbl->op, &smclass,
-			  AU_FETCH_READ, AU_SELECT) == NO_ERROR
-	  && smclass->partition_of)
+			  AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
-	  if (db_get (smclass->partition_of,
-		      PARTITION_ATT_PNAME, &pname) == NO_ERROR)
+	  if (smclass->partition != NULL && smclass->partition->pname != NULL)
 	    {
-	      if (!DB_IS_NULL (&pname))
-		{
-		  partition_skip = 1;	/* partitioned sub class */
-		  pr_clear_value (&pname);
-		}
+	      partition_skip = 1;	/* partitioned sub class */
 	    }
 	}
 
-      AU_ENABLE (au_save);
       if (!partition_skip)
 	{
 	  /* here is the recursion */
@@ -6314,60 +6301,42 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
     {
       DB_OBJECT *classop;
       SM_CLASS *class_;
-      DB_VALUE pname;
-      int au_save;
 
       class_name = name->info.name.original;
       classop = db_find_class (class_name);
       if (classop != NULL)
 	{
-	  AU_DISABLE (au_save);
 	  if (au_fetch_class (classop, &class_,
 			      AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	    {
-	      if (class_->partition_of != NULL)
+	      if (class_->partition != NULL)
 		{
-		  if (db_get (class_->partition_of, PARTITION_ATT_PNAME,
-			      &pname) == NO_ERROR)
+		  if (class_->partition->pname == NULL)
 		    {
-		      if (DB_IS_NULL (&pname))
-			{	/* parent partition class */
-			  name->info.name.partition_of = class_->partition_of;
-			}
-		      else
-			{
-			  if (spec_parent
-			      && spec_parent->node_type != PT_SELECT
-			      && spec_parent->node_type != PT_CREATE_INDEX
-			      && spec_parent->node_type != PT_DROP_INDEX
-			      && spec_parent->node_type != PT_ALTER_INDEX
-			      && spec_parent->node_type != PT_MERGE
-			      && spec_parent->node_type != PT_DELETE
-			      && spec_parent->node_type != PT_UPDATE
-			      && spec_parent->node_type != PT_INSERT)
-			    {
-			      /* partition not allowed */
-			      AU_ENABLE (au_save);
-			      PT_ERRORm (parser, spec,
-					 MSGCAT_SET_PARSER_SEMANTIC,
-					 MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
-			      pr_clear_value (&pname);
-			      return NULL;
-			    }
-			}
-
-		      pr_clear_value (&pname);
+		      /* parent partition class */
+		      name->info.name.partition = class_->partition;
 		    }
 		  else
 		    {
-		      AU_ENABLE (au_save);
-		      PT_INTERNAL_ERROR (parser, "partition resolution");
-		      return NULL;
+		      if (spec_parent
+			  && spec_parent->node_type != PT_SELECT
+			  && spec_parent->node_type != PT_CREATE_INDEX
+			  && spec_parent->node_type != PT_DROP_INDEX
+			  && spec_parent->node_type != PT_ALTER_INDEX
+			  && spec_parent->node_type != PT_MERGE
+			  && spec_parent->node_type != PT_DELETE
+			  && spec_parent->node_type != PT_UPDATE
+			  && spec_parent->node_type != PT_INSERT)
+			{
+			  /* partition not allowed */
+			  PT_ERRORm (parser, spec,
+				     MSGCAT_SET_PARSER_SEMANTIC,
+				     MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+			  return NULL;
+			}
 		    }
 		}
 	    }
-
-	  AU_ENABLE (au_save);
 	}
       else
 	{
@@ -6397,7 +6366,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	  result->info.name.db_object = db;
 	  result->info.name.spec_id = spec->info.spec.id;
 	  result->info.name.meta_class = spec->info.spec.meta_class;
-	  result->info.name.partition_of = name->info.name.partition_of;
+	  result->info.name.partition = name->info.name.partition;
 	  return result;	/* there can be no except part */
 	}
 
@@ -9801,7 +9770,7 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
       return NULL;
     }
 
-  if (class_->partition_of == NULL)
+  if (class_->partition == NULL)
     {
       /* no partition information */
       PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC,

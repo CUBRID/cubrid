@@ -271,6 +271,10 @@ static int catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
 static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p,
 				     OID * entry_class_oid,
 				     OID * entry_new_oid);
+static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p,
+					       OR_BUF * buf_p,
+					       OR_VALUE * value_p);
+
 /*
  * catcls_allocate_entry () -
  *   return:
@@ -1337,6 +1341,15 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL,
 			       vars[ORC_COMMENT_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_CLASS_COMMENT_LENGTH);
+
+  /* partition information */
+  error =
+    catcls_get_subset (thread_p, buf_p, vars[ORC_PARTITION_INDEX].length,
+		       &attrs[22], catcls_get_or_value_from_partition);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (vars)
     {
@@ -5989,4 +6002,93 @@ catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * catcls_get_or_value_from_partition () -
+ *   return: error code
+ *
+ *   thread_p (in):
+ *   buf(in):
+ *   value(in):
+ */
+static int
+catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
+				    OR_VALUE * value_p)
+{
+  OR_VALUE *attrs;
+  DB_VALUE *attr_val_p;
+  OR_VARINFO *vars = NULL;
+  int size;
+  int error = NO_ERROR;
+
+  error = catcls_expand_or_value_by_def (value_p, &ct_Partition);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  attrs = value_p->sub.value;
+
+  /** variable offset **/
+  size = tf_Metaclass_partition.mc_n_variable;
+  vars = or_get_var_table (buf_p, size, catcls_unpack_allocator);
+  if (vars == NULL)
+    {
+      size_t msize = size * sizeof (OR_VARINFO);
+
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
+      goto error;
+    }
+
+  /* type */
+  (*(tp_Integer.data_readval)) (buf_p, &attrs[1].value, NULL, -1, true, NULL,
+				0);
+
+  /* name */
+  attr_val_p = &attrs[2].value;
+  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL,
+			       vars[ORC_PARTITION_NAME_INDEX].length, true,
+			       NULL, 0);
+  db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
+
+  /* expr */
+  attr_val_p = &attrs[3].value;
+  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL,
+			       vars[ORC_PARTITION_EXPR_INDEX].length, true,
+			       NULL, 0);
+  db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
+
+  /* values */
+  attr_val_p = &attrs[4].value;
+  error = or_get_value (buf_p, attr_val_p, NULL,
+			vars[ORC_PARTITION_VALUES_INDEX].length, true);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* comment */
+  attr_val_p = &attrs[5].value;
+  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL,
+			       vars[ORC_PARTITION_COMMENT_INDEX].length, true,
+			       NULL, 0);
+  db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
+
+  if (vars)
+    {
+      free_and_init (vars);
+    }
+
+  return NO_ERROR;
+
+error:
+
+  if (vars)
+    {
+      free_and_init (vars);
+    }
+
+  return error;
 }

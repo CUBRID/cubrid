@@ -139,6 +139,16 @@ struct or_index
   BTID btid;			/* btree ID */
 };
 
+typedef struct or_partition OR_PARTITION;
+struct or_partition
+{
+  OID class_oid;		/* class OID */
+  HFID class_hfid;		/* class HFID */
+  int partition_type;		/* partition type (range, list, hash) */
+  REPR_ID rep_id;		/* class representation id */
+  DB_SEQ *values;		/* values for range and list partition types */
+};
+
 typedef struct or_classrep OR_CLASSREP;
 struct or_classrep
 {
@@ -173,17 +183,6 @@ struct or_class
   OID statistics;		/* object containing statistics */
 };
 
-typedef struct or_partition OR_PARTITION;
-struct or_partition
-{
-  OID db_part_oid;		/* OID of the record from _db_partition class */
-  OID class_oid;		/* class OID */
-  HFID class_hfid;		/* class HFID */
-  int partition_type;		/* partition type (range, list, hash) */
-  REPR_ID rep_id;		/* class representation id */
-  DB_SEQ *values;		/* values for range and list partition types */
-};
-
 extern void or_class_rep_dir (RECDES * record, OID * rep_dir_p);
 extern void or_class_hfid (RECDES * record, HFID * hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -203,7 +202,8 @@ extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
 extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep,
 					      RECDES * record);
 extern int or_class_get_partition_info (RECDES * record,
-					OID * partition_info,
+					OR_PARTITION * partition_info,
+					int *has_partition_info,
 					REPR_ID * repr_id);
 const char *or_get_constraint_comment (RECDES * record,
 				       const char *constraint_name);

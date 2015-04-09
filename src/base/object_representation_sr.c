@@ -1016,18 +1016,23 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 
   if (!found)
     {
-      OID partition_info;
+      OR_PARTITION partition_info;
       REPR_ID repr_id;
+      int has_partition_info = 0;
 
       /* check if we are dealing with a partition class in which the unique
        * constraint stands as a local index and each partition has it's own btree
        */
-      if (or_class_get_partition_info (&record, &partition_info, &repr_id)
-	  != NO_ERROR)
+      if (or_class_get_partition_info (&record, &partition_info, &repr_id,
+				       &has_partition_info) != NO_ERROR)
 	{
 	  goto error;
 	}
-      if (!OID_ISNULL (&partition_info) && partition_local_index != NULL)
+      if (has_partition_info == 1 && partition_info.values != NULL)
+	{
+	  set_free (partition_info.values);
+	}
+      if (has_partition_info == 1 && partition_local_index != NULL)
 	{
 	  *partition_local_index = 1;
 	}
@@ -2574,6 +2579,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	}
     }
 
+
   /* find the beginning of the "set_of(attribute)" attribute inside the class */
   attset = start + OR_VAR_OFFSET (start, ORC_ATTRIBUTES_INDEX);
 
@@ -2941,6 +2947,7 @@ error_cleanup:
     {
       free_and_init (rep->class_attrs);
     }
+
   free_and_init (rep);
 
   return NULL;
@@ -3497,100 +3504,70 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
  *				    descriptor of a class record
  * return : error code or NO_ERROR
  * record (in) : record descriptor
- * partition_info (in/out) : partition information
+ * partition_info (in/out):  partition information
  * repr_id (in/out):  representation id from record
+ * has_partition_info (out): whether this class has partition information or not
  *
  * Note: This function extracts the partition information from a class record.
- * Partition information is represented by the OID of the tuple from the
- * _db_partition class in which we can find the actual partition info.
- * This OID is stored in the class properties sequence
  *
  * If the class is not a partition or is not a partitioned class,
- * partition_info will be returned as a NULL OID
+ * has_partition_info will have the value zero.
  */
 int
-or_class_get_partition_info (RECDES * record, OID * partition_info,
-			     REPR_ID * repr_id)
+or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info,
+			     REPR_ID * repr_id, int *has_partition_info)
 {
   int error = NO_ERROR;
-  int i = 0, nparts = 0;
-  char *subset = NULL;
-  DB_SET *setref = NULL;
-  DB_VALUE value;
-  nparts = 0;
+  char *partition_ptr = NULL, *ptr = NULL;
+  OR_BUF buf;
+  DB_VALUE val;
 
-  if (partition_info == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
+  assert (record != NULL);
+  assert (partition_info != NULL);
+  assert (repr_id != NULL);
+  assert (has_partition_info != NULL);
 
-  if (repr_id != NULL)
-    {
-      *repr_id = or_rep_id (record);
-    }
+  *has_partition_info = 0;
+  *repr_id = or_rep_id (record);
 
-  OID_SET_NULL (partition_info);
-
-  if (OR_VAR_IS_NULL (record->data, ORC_PROPERTIES_INDEX))
+  if (OR_VAR_IS_NULL (record->data, ORC_PARTITION_INDEX))
     {
       return NO_ERROR;
     }
 
-  subset = (char *) (record->data) +
-    OR_VAR_OFFSET (record->data, ORC_PROPERTIES_INDEX);
+  partition_ptr = (char *) (record->data) +
+    OR_VAR_OFFSET (record->data, ORC_PARTITION_INDEX);
 
-  or_unpack_setref (subset, &setref);
-  if (setref == NULL)
+  partition_ptr += OR_SET_ELEMENT_OFFSET (partition_ptr, 0);
+
+  /* set ptr to the beginning of the fixed attributes */
+  ptr = partition_ptr + OR_VAR_TABLE_SIZE (ORC_PARTITION_VAR_ATT_COUNT);
+
+  partition_info->partition_type = OR_GET_INT (ptr);
+
+  or_init (&buf, partition_ptr +
+		 OR_VAR_TABLE_ELEMENT_OFFSET (partition_ptr,
+					      ORC_PARTITION_VALUES_INDEX),
+	   OR_VAR_TABLE_ELEMENT_LENGTH (partition_ptr,
+					ORC_PARTITION_VALUES_INDEX));
+  if (or_get_value (&buf, &val, NULL,
+		    CAST_BUFLEN (buf.endptr - buf.ptr), true) != NO_ERROR)
     {
       return ER_FAILED;
     }
-
-  nparts = set_size (setref);
-  for (i = 0; i < nparts; i += 2)
+  partition_info->values = db_seq_copy (DB_GET_SEQUENCE (&val));
+  if (partition_info->values == NULL)
     {
-      const char *prop_name = NULL;
-      error = set_get_element_nocopy (setref, i, &value);
-      if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_STRING)
-	{
-	  /* internal storage error */
-	  assert (false);
-	  set_free (setref);
-	  return ER_FAILED;
-	}
-
-      prop_name = DB_PULL_STRING (&value);
-      if (prop_name == NULL)
-	{
-	  /* internal storage error */
-	  assert (false);
-	  set_free (setref);
-	  return ER_FAILED;
-	}
-
-      if (strcmp (prop_name, SM_PROPERTY_PARTITION) != 0)
-	{
-	  continue;
-	}
-      error = set_get_element_nocopy (setref, i + 1, &value);
-      if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_OID)
-	{
-	  /* internal storage error */
-	  assert (false);
-	  set_free (setref);
-	  return ER_FAILED;
-	}
-      COPY_OID (partition_info, DB_GET_OID (&value));
-      if (OID_ISNULL (partition_info))
-	{
-	  /* if it exists in the schema then it shouldn't be NULL */
-	  set_free (setref);
-	  return ER_FAILED;
-	}
-      break;
+      pr_clear_value (&val);
+      return ER_FAILED;
     }
 
-  set_free (setref);
+  pr_clear_value (&val);
+
+  or_class_hfid (record, &partition_info->class_hfid);
+  partition_info->rep_id = *repr_id;
+  *has_partition_info = 1;
+
   return NO_ERROR;
 }
 

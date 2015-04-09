@@ -555,9 +555,6 @@ partition_pruning_context_to_cache_entry (PRUNING_CONTEXT * pinfo)
   old_heap_id = db_change_private_heap (pinfo->thread_p, 0);
   for (i = 0; i < entry_p->count; i++)
     {
-      COPY_OID (&entry_p->partitions[i].db_part_oid,
-		&pinfo->partitions[i].db_part_oid);
-
       COPY_OID (&entry_p->partitions[i].class_oid,
 		&pinfo->partitions[i].class_oid);
 

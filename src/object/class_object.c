@@ -184,6 +184,7 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints,
 static int classobj_check_function_constraint_info (DB_SEQ * constraint_seq,
 						    bool *
 						    has_function_constraint);
+static int classobj_partition_info_size (SM_PARTITION * partition_info);
 
 /*
  * classobj_area_init - Initialize the area for schema templates.
@@ -6608,6 +6609,30 @@ classobj_query_spec_size (SM_QUERY_SPEC * query_spec)
   return (size);
 }
 
+/*
+ * classobj_partition_info_size () - Calculates the amount of storage used by
+ *                     a sm_partition structure
+ *   return: byte size of query_spec
+ *   partition_info(in): sm_partition structure
+ */
+
+static int
+classobj_partition_info_size (SM_PARTITION * partition_info)
+{
+  int size;
+  DB_VALUE val;
+
+  size = sizeof (SM_PARTITION);
+  size += strlen (partition_info->comment) + 1;
+  size += strlen (partition_info->pname) + 1;
+  size += strlen (partition_info->expr) + 1;
+
+  db_make_sequence (&val, partition_info->values);
+  size += or_packed_value_size (&val, 1, 1, 0);
+
+  return (size);
+}
+
 /* SM_TEMPLATE */
 /*
  * classobj_free_template() - Frees a class template and any associated memory.
@@ -6644,6 +6669,8 @@ classobj_free_template (SM_TEMPLATE * template_ptr)
 		(LFREEER) classobj_free_method_file);
   ws_list_free ((DB_LIST *) template_ptr->query_spec,
 		(LFREEER) classobj_free_query_spec);
+  ws_list_free ((DB_LIST *) template_ptr->partition,
+		(LFREEER) classobj_free_partition_info);
   ws_free_string (template_ptr->loader_commands);
   ws_free_string (template_ptr->name);
 
@@ -6709,8 +6736,8 @@ classobj_make_template (const char *name, MOP op, SM_CLASS * class_)
   template_ptr->properties = NULL;
   template_ptr->super_id_map = NULL;
   template_ptr->triggers = NULL;
-  template_ptr->partition_of = NULL;
   template_ptr->partition_parent_atts = NULL;
+  template_ptr->partition = NULL;
 
   if (name != NULL)
     {
@@ -6724,7 +6751,6 @@ classobj_make_template (const char *name, MOP op, SM_CLASS * class_)
   if (class_ != NULL)
     {
       template_ptr->class_type = class_->class_type;
-      template_ptr->partition_of = class_->partition_of;
 
       if (classobj_copy_attlist (class_->ordered_attributes, op, 1,
 				 &template_ptr->attributes))
@@ -6812,6 +6838,15 @@ classobj_make_template (const char *name, MOP op, SM_CLASS * class_)
 	      goto memory_error;
 	    }
 	}
+      if (class_->partition != NULL)
+	{
+	  template_ptr->partition =
+	    classobj_copy_partition_info (class_->partition);
+	  if (template_ptr->partition == NULL)
+	    {
+	      goto memory_error;
+	    }
+	}
 
       /* Formerly cl_make_id_map(class), forget what that was supposed
          to do.  This isn't currently used. */
@@ -6859,7 +6894,7 @@ classobj_make_template_like (const char *name, SM_CLASS * class_)
 
   existing_name = sm_ch_name ((MOBJ) class_);
 
-  if (class_->partition_of != NULL)
+  if (class_->partition != NULL)
     {
       /* It is possible to support this but the code has not been written yet.
        */
@@ -7297,6 +7332,7 @@ classobj_make_class (const char *name)
   class_->query_spec = NULL;
   class_->loader_commands = NULL;
   class_->resolutions = NULL;
+  class_->partition = NULL;
 
   class_->fixed_count = 0;
   class_->variable_count = 0;
@@ -7322,7 +7358,6 @@ classobj_make_class (const char *name)
   class_->virtual_query_cache = NULL;
   class_->triggers = NULL;
   class_->constraints = NULL;
-  class_->partition_of = NULL;
   class_->comment = NULL;
 
   if (name != NULL)
@@ -7363,6 +7398,7 @@ classobj_free_class (SM_CLASS * class_)
   ws_list_free_and_init (class_->method_files, classobj_free_method_file);
   ws_list_free_and_init (class_->query_spec, classobj_free_query_spec);
   ws_list_free_and_init (class_->resolutions, classobj_free_resolution);
+  ws_list_free_and_init (class_->partition, classobj_free_partition_info);
 
   classobj_free_threaded_array_and_init (class_->attributes,
 					 classobj_clear_attribute);
@@ -7450,6 +7486,10 @@ classobj_class_size (SM_CLASS * class_)
   size +=
     ws_list_total ((DB_LIST *) class_->query_spec,
 		   (LTOTALER) classobj_query_spec_size);
+
+  size +=
+    ws_list_total ((DB_LIST *) class_->partition,
+		   (LTOTALER) classobj_partition_info_size);
 
   if (class_->loader_commands != NULL)
     {
@@ -7973,7 +8013,6 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
   class_->fixed_count = fixed_count;
   class_->variable_count = variable_count;
   class_->fixed_size = fixed_size;
-  class_->partition_of = flat->partition_of;
 
   /* install attribute/method lists */
   classobj_free_threaded_array ((DB_LIST *) class_->attributes,
@@ -8046,6 +8085,11 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
     }
   class_->triggers = flat->triggers;
   flat->triggers = NULL;
+
+  ws_list_free ((DB_LIST *) class_->partition,
+		(LFREEER) classobj_free_partition_info);
+  class_->partition = flat->partition;
+  flat->partition = NULL;
 
   /* Cache constraints into both the class constraint list & the attribute
    * constraint lists.
@@ -9153,4 +9197,129 @@ structure_error:
 
   assert (er_errid () != NO_ERROR);
   return er_errid ();
+}
+
+/* SM_PARTITION */
+/*
+ * classobj_make_partition_info () - Allocate and initialize a sm_partition
+ *			      structure.
+ *   return: new partition structure
+ */
+
+SM_PARTITION *
+classobj_make_partition_info (void)
+{
+  SM_PARTITION *partition_info;
+
+  partition_info = (SM_PARTITION *) db_ws_alloc (sizeof (SM_PARTITION));
+
+  if (partition_info == NULL)
+    {
+      return NULL;
+    }
+
+  partition_info->partition_type = -1;
+  partition_info->values = NULL;
+  partition_info->pname = NULL;
+  partition_info->comment = NULL;
+  partition_info->expr = NULL;
+  partition_info->next = NULL;
+
+  return (partition_info);
+}
+
+/*
+ * classobj_free_partition_info () - free a sm_partition structure.
+ *   return:
+ *   partition_info (in):
+ */
+void
+classobj_free_partition_info (SM_PARTITION * partition_info)
+{
+  if (partition_info == NULL)
+    {
+      return;
+    }
+  
+  if (partition_info->comment != NULL)
+    {
+      ws_free_string (partition_info->comment);
+    }
+  if (partition_info->pname != NULL)
+    {
+      ws_free_string (partition_info->pname);
+    }
+  if (partition_info->expr != NULL)
+    {
+      ws_free_string (partition_info->expr);
+    }
+  if (partition_info->values != NULL)
+    {
+      set_free (partition_info->values);
+    }
+  db_ws_free (partition_info);
+}
+
+/*
+ * classobj_copy_partition_info () - Copy a SM_PARTITION structure.
+ *   return: new structure
+ *   partition_info(in):
+ */
+
+SM_PARTITION *
+classobj_copy_partition_info (SM_PARTITION * partition_info)
+{
+  SM_PARTITION *new_partition_info;
+
+  new_partition_info = classobj_make_partition_info ();
+  if (new_partition_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (SM_PARTITION));
+      goto error;
+    }
+
+  new_partition_info->partition_type = partition_info->partition_type;
+
+  if (partition_info->comment != NULL)
+    {
+      new_partition_info->comment = ws_copy_string (partition_info->comment);
+      if (new_partition_info->comment == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  if (partition_info->expr != NULL)
+    {
+      new_partition_info->expr = ws_copy_string (partition_info->expr);
+      if (new_partition_info->expr == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  if (partition_info->pname != NULL)
+    {
+      new_partition_info->pname = ws_copy_string (partition_info->pname);
+      if (new_partition_info->pname == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  if (partition_info->values != NULL)
+    {
+      new_partition_info->values = db_seq_copy (partition_info->values);
+      if (new_partition_info->values == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  return new_partition_info;
+
+error:
+  classobj_free_partition_info (new_partition_info);
+  return NULL;
 }

@@ -207,6 +207,11 @@ static int get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration,
 			    int expected);
 static int tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list);
 
+static int partition_info_to_disk (OR_BUF * buf,
+				   SM_PARTITION * partition_info);
+static SM_PARTITION *disk_to_partition_info (OR_BUF * buf);
+static int partition_info_size (SM_PARTITION * partition_info);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tf_find_temporary_oids - walks over the memory representation of an
@@ -3673,6 +3678,12 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
 
   offset += string_disk_size (class_->comment);
 
+  or_put_offset (buf, offset);
+
+  offset +=
+    substructure_set_size ((DB_LIST *) class_->partition,
+			   (LSIZER) partition_info_size);
+
   /* end of object */
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -3792,6 +3803,11 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   put_property_list (buf, class_->properties);
 
   put_string (buf, class_->comment);
+
+  put_substructure_set (buf, (DB_LIST *) class_->partition,
+			(LWRITER) partition_info_to_disk,
+			&tf_Metaclass_partition.mc_classoid,
+			tf_Metaclass_partition.mc_repid);
 }
 
 
@@ -3903,6 +3919,9 @@ tf_class_size (MOBJ classobj)
   size += property_list_size (class_->properties);
 
   size += string_disk_size (class_->comment);
+
+  size += substructure_set_size ((DB_LIST *) class_->partition,
+				 (LSIZER) partition_info_size);
 
   return (size);
 }
@@ -4237,18 +4256,10 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   /* variable 15 */
   class_->comment = get_string (buf, vars[ORC_COMMENT_INDEX].length);
 
-  /* partition_of object */
-  class_->partition_of = NULL;
-  if (class_->properties)
-    {
-      if (classobj_get_prop (class_->properties,
-			     SM_PROPERTY_PARTITION, &value) > 0)
-	{
-	  class_->partition_of = db_get_object (&value);
-	  classobj_drop_prop (class_->properties, SM_PROPERTY_PARTITION);
-	  pr_clear_value (&value);
-	}
-    }
+  /* variable 16 */
+  class_->partition = (SM_PARTITION *)
+    get_substructure_set (buf, (LREADER) disk_to_partition_info,
+			  vars[ORC_PARTITION_INDEX].length);
 
   /* build the ordered instance/shared instance list */
   classobj_fixup_loaded_class (class_);
@@ -4568,22 +4579,6 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
 
   class_ = (SM_CLASS *) classobj;
 
-  /* DISK save of partition information via properties */
-  if (((SM_CLASS_HEADER *) classobj)->ch_type != SM_META_ROOT
-      && class_->partition_of)
-    {
-
-      db_make_object (&partval, class_->partition_of);
-
-      if (!class_->properties)
-	{
-	  class_->properties = classobj_make_prop ();
-	  prop_free = 1;
-	}
-      classobj_put_prop (class_->properties, SM_PROPERTY_PARTITION, &partval);
-      pr_clear_value (&partval);
-    }
-
   header = (SM_CLASS_HEADER *) classobj;
   if (header->ch_type != SM_META_ROOT)
     {
@@ -4670,10 +4665,8 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
 
   /* restore properties */
   if (((SM_CLASS_HEADER *) classobj)->ch_type != SM_META_ROOT
-      && class_->partition_of)
+      && class_->partition)
     {
-      classobj_drop_prop (class_->properties, SM_PROPERTY_PARTITION);
-
       if (prop_free)
 	{
 	  classobj_free_prop (class_->properties);
@@ -4930,3 +4923,150 @@ tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes)
   return (error);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * partition_to_disk - Write the disk representation of partition information
+ *    return: NO_ERROR or error code
+ *    buf(in/out): translation buffer
+ *    partition_info(in):
+ */
+static int
+partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info)
+{
+  char *start;
+  int offset;
+  DB_VALUE val;
+
+  start = buf->ptr;
+  /* VARIABLE OFFSET TABLE */
+  offset = tf_Metaclass_partition.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_partition.mc_n_variable);
+
+  db_make_sequence (&val, partition_info->values);
+
+  or_put_offset (buf, offset);
+  offset += string_disk_size (partition_info->pname);
+
+  or_put_offset (buf, offset);
+  offset += string_disk_size (partition_info->expr);
+
+  or_put_offset (buf, offset);
+  offset += or_packed_value_size (&val, 1, 1, 0);
+
+  or_put_offset (buf, offset);
+  offset += string_disk_size (partition_info->comment);
+
+  or_put_offset (buf, offset);
+  buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  /* ATTRIBUTES */
+  or_put_int (buf, partition_info->partition_type);
+
+  put_string (buf, partition_info->pname);
+  put_string (buf, partition_info->expr);
+
+  or_put_value (buf, &val, 1, 1, 0);
+
+  put_string (buf, partition_info->comment);
+
+  if (start + offset != buf->ptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
+    }
+
+  return NO_ERROR;
+}
+
+
+/*
+ * partition_info_size - Calculates the disk size of a sm_partition structure.
+ *    return: disk size
+ *    partition_info(in):
+ */
+static int
+partition_info_size (SM_PARTITION * partition_info)
+{
+  int size;
+  DB_VALUE val;
+
+  size = tf_Metaclass_partition.mc_fixed_size +
+    OR_VAR_TABLE_SIZE (tf_Metaclass_partition.mc_n_variable);
+  size += string_disk_size (partition_info->pname);
+  size += string_disk_size (partition_info->expr);
+  size += string_disk_size (partition_info->comment);
+
+  db_make_sequence (&val, partition_info->values);
+  size += or_packed_value_size (&val, 1, 1, 0);
+
+  return (size);
+}
+
+
+/*
+ * disk_to_partition_info - Reads the disk representation of partition
+ * information and creates the memory representation.
+ *    return: new sm_partition structure
+ *    buf(in/out): translation buffer
+ */
+static SM_PARTITION *
+disk_to_partition_info (OR_BUF * buf)
+{
+  SM_PARTITION *partition_info = NULL;
+  OR_VARINFO *vars;
+  DB_VALUE val;
+  int error = NO_ERROR;
+
+  vars = read_var_table (buf, tf_Metaclass_partition.mc_n_variable);
+  if (vars == NULL)
+    {
+      or_abort (buf);
+      return NULL;
+    }
+  
+  assert (vars != NULL);
+
+  partition_info = classobj_make_partition_info ();
+  if (partition_info == NULL)
+    {
+      or_abort (buf);
+    }
+  else
+    {
+      partition_info->partition_type = or_get_int (buf, &error);
+      if (error != NO_ERROR)
+	{
+	  free_var_table (vars);
+	  classobj_free_partition_info (partition_info);
+	  return NULL;
+	}
+
+      partition_info->pname =
+	get_string (buf, vars[ORC_PARTITION_NAME_INDEX].length);
+      partition_info->expr =
+	get_string (buf, vars[ORC_PARTITION_EXPR_INDEX].length);
+
+      error = or_get_value (buf, &val, NULL,
+			    vars[ORC_PARTITION_VALUES_INDEX].length, true);
+      if (error != NO_ERROR)
+	{
+	  free_var_table (vars);
+	  classobj_free_partition_info (partition_info);
+	  return NULL;
+	}
+      partition_info->values = db_seq_copy (DB_GET_SEQUENCE (&val));
+      if (partition_info->values == NULL)
+	{
+	  free_var_table (vars);
+	  pr_clear_value (&val);
+	  classobj_free_partition_info (partition_info);
+	  return NULL;
+	}
+
+      partition_info->comment =
+	get_string (buf, vars[ORC_PARTITION_COMMENT_INDEX].length);
+    }
+
+  pr_clear_value (&val);
+  free_var_table (vars);
+  return (partition_info);
+}

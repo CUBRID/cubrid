@@ -223,6 +223,7 @@ static META_ATTRIBUTE class_atts[] = {
   {"triggers", DB_TYPE_SET, 1, "object", 0, 0, NULL},
   {"properties", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
   {"comment", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
+  {"partition", DB_TYPE_SET, 1, META_PARTITION_NAME, 1, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 META_CLASS tf_Metaclass_class =
@@ -238,6 +239,21 @@ static META_ATTRIBUTE query_spec_atts[] = {
 META_CLASS tf_Metaclass_query_spec =
   { META_QUERY_SPEC_NAME, {META_PAGE_QUERY_SPEC, 0, META_VOLUME}, 0, 0, 0,
 &query_spec_atts[0]
+};
+
+/* PARTITION */
+static META_ATTRIBUTE partition_atts[] = {
+  {"ptype", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
+  {"pname", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
+  {"pexpr", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
+  {"pvalues", DB_TYPE_SEQUENCE, 0, NULL, 0, 0, NULL},
+  {"comment", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
+  {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
+};
+
+META_CLASS tf_Metaclass_partition =
+  { META_PARTITION_NAME, {META_PAGE_PARTITION, 0, META_VOLUME}, 0, 0, 0,
+&partition_atts[0]
 };
 
 /* ROOT */
@@ -269,6 +285,7 @@ static META_CLASS *Meta_classes[] = {
   &tf_Metaclass_domain,
   &tf_Metaclass_repattribute,
   &tf_Metaclass_query_spec,
+  &tf_Metaclass_partition,
   NULL
 };
 
@@ -296,7 +313,8 @@ static CT_ATTR ct_class_atts[] = {
   {"meth_files", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"query_specs", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"indexes", NULL_ATTRID, DB_TYPE_SEQUENCE},
-  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
+  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"partition", NULL_ATTRID, DB_TYPE_SEQUENCE}
 };
 
 static CT_ATTR ct_attribute_atts[] = {
@@ -395,6 +413,15 @@ static CT_ATTR ct_indexkey_atts[] = {
   {"func", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
+static CT_ATTR ct_partition_atts[] = {
+  {"index_of", NULL_ATTRID, DB_TYPE_OBJECT},
+  {"ptype", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"pname", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"pexpr", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"pvalues", NULL_ATTRID, DB_TYPE_SEQUENCE},
+  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
+};
+
 #define NULL_OID_INITIALIZER    {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
 
 CT_CLASS ct_Class = {
@@ -460,6 +487,13 @@ CT_CLASS ct_Queryspec = {
   ct_queryspec_atts
 };
 
+CT_CLASS ct_Partition = {
+  CT_PARTITION_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_partition_atts) / sizeof (ct_partition_atts[0])),
+  ct_partition_atts
+};
+
 CT_CLASS ct_Resolution = {
   NULL,
   NULL_OID_INITIALIZER,
@@ -492,6 +526,7 @@ CT_CLASS *ct_Classes[] = {
   &ct_Queryspec,
   &ct_Index,
   &ct_Indexkey,
+  &ct_Partition,
   NULL
 };
 

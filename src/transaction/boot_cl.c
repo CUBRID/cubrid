@@ -2077,6 +2077,14 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
+  sprintf (domain_string, "sequence of %s", CT_PARTITION_NAME);
+
+  error_code = smt_add_attribute (def, "partition", domain_string, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
@@ -5324,16 +5332,19 @@ boot_define_view_partition (void)
     }
 
   sprintf (stmt,
-	   "SELECT [p].[class_of].[class_name] AS [class_name], [p].[pname] AS [partition_name],"
-	   " CONCAT([p].[class_of].[class_name], '__p__', [p].[pname]) AS [partition_class_name],"
+	   "SELECT [pp].[super_class_name] AS [class_name], [p].[pname] AS [partition_name],"
+	   " CONCAT([pp].[super_class_name], '__p__', [p].[pname]) AS [partition_class_name],"
 	   " CASE WHEN [p].[ptype] = 0 THEN 'HASH'"
 	   " WHEN [p].[ptype] = 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type],"
 	   " TRIM(SUBSTRING([pi].[pexpr] FROM 8 FOR (POSITION(' FROM ' IN [pi].[pexpr])-8)))"
 	   " AS [partition_expression], [p].[pvalues] AS [partition_values],"
 	   " [p].[comment] AS [comment]"
-	   " FROM [%s] [p], (select * from [%s] [sp] where [sp].[class_of] = "
-	   " [p].[class_of] AND [sp].[pname] is null) [pi]"
-	   " WHERE [p].[pname] is not null AND"
+	   " FROM [%s] [p],"
+	   " (select * from [%s] [sc], [%s] [sp] where [sc].[class_name] = [sp].[class_of].[class_name]) [pp],"
+	   " (select [tt].[ss].[pexpr] as [pexpr], [ss].[class_name] AS [class_name]"
+	   "  from [%s] [ss], TABLE ([ss].[partition]) AS [tt]([ss])) [pi]"
+	   " WHERE [pp].[class_name] = [p].[class_of].[class_name] AND"
+	   " [pi].[class_name] = [pp].[super_class_name] AND"
 	   " (CURRENT_USER = 'DBA' OR"
 	   " {[p].[class_of].[owner].[name]} SUBSETEQ ("
 	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
@@ -5347,7 +5358,9 @@ boot_define_view_partition (void)
 	   "  WHERE [u].[name] = CURRENT_USER) AND"
 	   "  [au].[auth_type] = 'SELECT'))",
 	   CT_PARTITION_NAME,
+	   CTV_SUPER_CLASS_NAME,
 	   CT_PARTITION_NAME,
+	   CT_CLASS_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);

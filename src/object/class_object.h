@@ -825,6 +825,19 @@ struct sm_query_spec
   const char *specification;
 };
 
+/* Partition information */
+typedef struct sm_partition SM_PARTITION;
+
+struct sm_partition
+{
+  struct sm_partition *next;	/* currently not used, always NULL */
+  const char *pname;		/* partition name */
+  int partition_type;		/* partition type (range, list, hash) */
+  DB_SEQ *values;		/* values for range and list partition types */
+  const char *expr;		/* partition expression */
+  const char *comment;
+};
+
 typedef struct sm_class SM_CLASS;
 typedef struct sm_template *SMT;
 typedef struct sm_template SM_TEMPLATE;
@@ -882,9 +895,9 @@ struct sm_class
   struct parser_context *virtual_query_cache;
   struct tr_schema_cache *triggers;	/* Trigger cache */
   SM_CLASS_CONSTRAINT *constraints;	/* Constraint cache */
-  MOP partition_of;		/* Partition information */
   const char *comment;		/* table comment */
   SM_CLASS_CONSTRAINT *fk_ref;	/* fk ref cache */
+  SM_PARTITION *partition;	/* partition information */
 
   unsigned int flags;
   unsigned int virtual_cache_schema_id;
@@ -931,9 +944,9 @@ struct sm_template
 
   void *triggers;		/* flattened trigger cache */
 
-  MOP partition_of;
   DB_ATTRIBUTE *partition_parent_atts;	/* partition parent class attributes
 					   (if creating partition child class) */
+  SM_PARTITION *partition;
 };
 
 
@@ -1045,7 +1058,6 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_PROPERTY_REVERSE_INDEX "*RI"
 #define SM_PROPERTY_VID_KEY "*V_KY"
 #define SM_PROPERTY_PRIMARY_KEY "*P"
-#define SM_PROPERTY_PARTITION "*PT"
 #define SM_PROPERTY_FOREIGN_KEY "*FK"
 
 #define SM_PROPERTY_NUM_INDEX_FAMILY         6
@@ -1354,4 +1366,8 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 				       SM_FUNCTION_INFO * func_index_info);
 extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
 extern void classobj_initialize_methods (SM_METHOD * methods);
+extern SM_PARTITION *classobj_make_partition_info (void);
+extern void classobj_free_partition_info (SM_PARTITION * partition_info);
+extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION *
+						   partition_info);
 #endif /* _CLASS_OBJECT_H_ */

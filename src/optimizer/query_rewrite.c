@@ -6800,7 +6800,7 @@ qo_is_partition_attr (PT_NODE * node)
   if (node->node_type == PT_NAME
       && node->info.name.meta_class == PT_NORMAL && node->info.name.spec_id)
     {
-      if (node->info.name.partition_of)
+      if (node->info.name.partition)
 	{
 	  return 1;
 	}
