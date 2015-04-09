@@ -6378,10 +6378,35 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  && (parser->set_host_var == 1 || typ != DB_TYPE_NULL))
 	{
 	  /* if the host var DB_VALUE was initialized before,
-	     use its domain for regu varaible */
-	  regu->domain =
-	    pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM)
-					 pt_db_to_type_enum (typ));
+	     use its domain for regu variable */
+	  TP_DOMAIN *domain;
+	  if (TP_IS_CHAR_TYPE (typ))
+	    {
+	      domain =
+		pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM)
+					     pt_db_to_type_enum (typ));
+	      regu->domain = tp_domain_copy (domain, false);
+	      if (regu->domain != NULL)
+		{
+		  regu->domain->codeset = DB_GET_STRING_CODESET (val);
+		  regu->domain->collation_id = DB_GET_STRING_COLLATION (val);
+		  regu->domain = tp_domain_cache (regu->domain);
+		  if (regu->domain == NULL)
+		    {
+		      goto error_exit;
+		    }
+		}
+	      else
+		{
+		  goto error_exit;
+		}
+	    }
+	  else
+	    {
+	      regu->domain =
+		pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM)
+					     pt_db_to_type_enum (typ));
+	    }
 	}
 
       if (regu->domain == NULL && node->expected_domain)
@@ -6446,6 +6471,9 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
 
   return regu;
+
+error_exit:
+  return NULL;
 }
 
 /*
