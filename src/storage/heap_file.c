@@ -8326,6 +8326,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
   OID current_class_oid;
   OID partition_class_oid;
   HEAP_SCANCACHE partition_scancache;
+  bool is_watcher_replaced = false;
 
   PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
 		      HEAP_SCAN_ORDERED_HFID (scan_cache));
@@ -8424,6 +8425,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
       /* switch to local page watcher */
       pgbuf_replace_watcher (thread_p, &current_scan_cache->page_watcher,
 			     &home_page_watcher);
+      is_watcher_replaced = true;
     }
 
   /* Always get class_oid to check MVCC is enabled for class. */
@@ -8675,8 +8677,8 @@ start_current_version:
 						 current_scan_cache,
 						 ispeeking);
 	  ev_res =
-	    eval_data_filter (thread_p, &current_oid, &temp_recdes, NULL,
-			      scan_reev_data->data_filter);
+	    eval_data_filter (thread_p, &current_oid, &temp_recdes,
+			      scan_cache, scan_reev_data->data_filter);
 	  ev_res =
 	    update_logical_result (thread_p, ev_res,
 				   (int *) scan_reev_data->qualification,
@@ -9111,8 +9113,7 @@ get_record:
 end:
   if (home_page_watcher.pgptr != NULL)
     {
-      if (current_scan_cache != NULL
-	  && current_scan_cache->cache_last_fix_page)
+      if (is_watcher_replaced)
 	{
 	  /* Save the page to scan_cache. */
 	  pgbuf_replace_watcher (thread_p, &home_page_watcher,

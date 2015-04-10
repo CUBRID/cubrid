@@ -5534,9 +5534,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (!scan_id->mvcc_select_lock_needed)
 	{
 	  ev_res = eval_data_filter (thread_p, p_current_oid, &recdes,
-				     (scan_id->scan_op_type == S_SELECT) ?
-				     (&hsidp->scan_cache) : NULL,
-				     &data_filter);
+				     &hsidp->scan_cache, &data_filter);
 	  if (ev_res == V_ERROR)
 	    {
 	      return S_ERROR;
@@ -6383,8 +6381,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       /* evaluate the predicates to see if the object qualifies */
       ev_res =
 	eval_data_filter (thread_p, isidp->curr_oidp, &recdes,
-			  (scan_id->scan_op_type == S_SELECT) ?
-			  (&isidp->scan_cache) : NULL, data_filter);
+			  &isidp->scan_cache, data_filter);
       if (isidp->key_pred.regu_list != NULL)
 	{
 	  FILTER_INFO key_filter;
