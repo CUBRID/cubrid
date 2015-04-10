@@ -6623,10 +6623,18 @@ classobj_partition_info_size (SM_PARTITION * partition_info)
   DB_VALUE val;
 
   size = sizeof (SM_PARTITION);
-  size += strlen (partition_info->comment) + 1;
-  size += strlen (partition_info->pname) + 1;
-  size += strlen (partition_info->expr) + 1;
-
+  if (partition_info->comment)
+    {
+      size += strlen (partition_info->comment) + 1;
+    }
+  if (partition_info->pname)
+    {
+      size += strlen (partition_info->pname) + 1;
+    }
+  if (partition_info->expr)
+    {
+      size += strlen (partition_info->expr) + 1;
+    }
   db_make_sequence (&val, partition_info->values);
   size += or_packed_value_size (&val, 1, 1, 0);
 
@@ -9240,7 +9248,7 @@ classobj_free_partition_info (SM_PARTITION * partition_info)
     {
       return;
     }
-  
+
   if (partition_info->comment != NULL)
     {
       ws_free_string (partition_info->comment);
