@@ -23249,8 +23249,13 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	      assert (false);
 	      return ER_FAILED;
 	    }
-	  if (!MVCCID_IS_VALID (mvccid)
-	      || !mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id))
+	  if (!MVCCID_IS_VALID (mvccid))
+	    {
+	      assert (false);
+	      return ER_FAILED;
+	    }
+	  if (!mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id)
+	      && !log_is_in_crash_recovery ())
 	    {
 	      assert (false);
 	      return ER_FAILED;
@@ -23265,7 +23270,8 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	      return ER_FAILED;
 	    }
 	  if (mvccid != MVCCID_NULL
-	      && !mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id))
+	      && !mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id)
+	      && !log_is_in_crash_recovery ())
 	    {
 	      assert (false);
 	      return ER_FAILED;
