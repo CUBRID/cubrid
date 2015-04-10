@@ -26354,7 +26354,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p,
     {
     case BTREE_KEY_BETWEEN:
       /* Still in current page. Current slotid cannot be 1. */
-      assert (bts->slot_id > 1);
+      assert (search_key.slotid > 1);
       /* Fall through to advance to previous key. Search function returned
        * the first bigger key.
        */
