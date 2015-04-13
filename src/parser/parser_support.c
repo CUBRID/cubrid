@@ -9807,24 +9807,27 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser,
  *				      VIEW
  *
  *    SELECT * FROM
- *      (SELECT IF( QS.class_of.class_name = '',
- *		    (SELECT COUNT(*) FROM <view_name> LIMIT 1),
- *		    QS.class_of.class_name  )
- *		  AS  View_ ,
- *	        QS.spec AS Create_View
- *		FROM _db_query_spec QS
- *		WHERE QS.class_of.class_name=<view_name>)
+ *      (SELECT IF( VC.vclass_name = '',
+ *                  (SELECT COUNT(*) FROM <view_name> LIMIT 1),
+ *                  VC.vclass_name )
+ *                AS View_,
+ *              IF( VC.comment IS NULL or VC.comment = '',
+ *                  VC.vclass_def,
+ *                  VC.vclass_def + ' COMMENT=''' + VC.comment + '''' )
+ *                AS Create_View
+ *              FROM db_vclass VC
+ *              WHERE VC.vclass_name=<view_name>)
  *     show_create_view;
  *
- *  Note : The first column in query (name of view = QS.class_of.class_name)
- *	   is wrapped with IF, in order to accomodate a dummy query, which has
- *	   the role to trigger the apropiate error if the view doesn't exist
- *	   or the user doesn't have the privilege to SELECT it; the condition
- *	   in IF expression (QS.class_of.class_name = '') is supposed to
- *	   always evaluate to false (class name cannot be empty), in order for
- *	   the query to always print what it is supposed to (view name);
- *	   second purpose of the condition is to avoid optimisation (otherwise
- *	   the IF will evalute to <QS.class_of.class_name>)
+ *  Note : The first column in query (name of view = VC.vclass_name) is wrapped
+ *         with IF, in order to accomodate a dummy query, which has the role to
+ *         trigger the apropiate error if the view doesn't exist or the user
+ *         doesn't have the privilege to SELECT it; the condition in IF
+ *         expression (VC.vclass_name = '') is supposed to always evaluate to
+ *         false (class name cannot be empty), in order for the query to always
+ *         print what it is supposed to (view name); second purpose of the
+ *         condition is to avoid optimisation (otherwise the IF will evalute to
+ *         <VC.vclass_name>)
  *
  *   return: newly build node (PT_NODE), NULL if construnction fails
  *   parser(in): Parser context
@@ -9852,9 +9855,9 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
 
   /* ------ SELECT list    ------- */
   {
-    /* View name : IF( QS.class_of.class_name = '',
+    /* View name : IF( VC.vclass_name = '',
      *                 (SELECT COUNT(*) FROM <view_name> LIMIT 1),
-     *                  QS.class_of.class_name  )
+     *                 VC.vclass_name  )
      *             AS View
      */
     PT_NODE *if_true_node = NULL;
@@ -9863,32 +9866,61 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
     PT_NODE *view_field = NULL;
 
     if_true_node = pt_make_dummy_query_check_table (parser, lower_view_name);
-    if_false_node =
-      pt_make_dotted_identifier (parser, "QS.class_of.class_name");
-    pred =
-      pt_make_pred_name_string_val (parser, PT_EQ, "QS.class_of.class_name",
-				    "");
+    if_false_node = pt_make_dotted_identifier (parser, "VC.vclass_name");
+    pred = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", "");
+
     view_field =
       pt_make_if_with_expressions (parser, pred, if_true_node, if_false_node,
 				   "View");
     node->info.query.q.select.list =
       parser_append_node (view_field, node->info.query.q.select.list);
   }
-  /* QS.spec AS "Create View" */
-  pt_add_name_col_to_sel_list (parser, node, "QS.spec", "Create View");
+
+  {
+    /* Create View: IF( VC.comment IS NULL or VC.comment = '',
+     *                  VC.vclass_def,
+     *                  VC.vclass_def + ' COMMENT=''' + VC.comment + '''' )
+     *                AS Create_View
+     */
+    PT_NODE *if_true_node = NULL;
+    PT_NODE *if_false_node = NULL;
+    PT_NODE *pred = NULL;
+    PT_NODE *comment_node = NULL;
+    PT_NODE *create_view_field = NULL;
+    PT_NODE *lhs = NULL, *rhs = NULL;
+
+    if_true_node = pt_make_dotted_identifier (parser, "VC.vclass_def");
+
+    lhs = pt_make_pred_name_string_val (parser, PT_PLUS, "VC.vclass_def",
+					" comment='");
+    rhs = pt_make_pred_name_string_val (parser, PT_PLUS, "VC.comment", "'");
+    if_false_node = parser_make_expression (parser, PT_PLUS, lhs, rhs, NULL);
+
+    comment_node = pt_make_dotted_identifier (parser, "VC.comment");
+    lhs = parser_make_expression (parser, PT_IS_NULL, comment_node, NULL,
+				  NULL);
+    rhs = pt_make_pred_name_string_val (parser, PT_EQ, "VC.comment", "");
+    pred = parser_make_expression (parser, PT_OR, lhs, rhs, NULL);
+
+    create_view_field =
+      pt_make_if_with_expressions (parser, pred, if_true_node, if_false_node,
+				   "Create View");
+
+    node->info.query.q.select.list =
+      parser_append_node (create_view_field, node->info.query.q.select.list);
+  }
 
   /* ------ SELECT ... FROM   ------- */
-  from_item = pt_add_table_name_to_from_list (parser, node,
-					      "_db_query_spec", "QS",
+  from_item = pt_add_table_name_to_from_list (parser, node, "db_vclass", "VC",
 					      DB_AUTH_SELECT);
 
   /* ------ SELECT ... WHERE   ------- */
   {
     PT_NODE *where_item = NULL;
-
     where_item =
-      pt_make_pred_name_string_val (parser, PT_EQ, "QS.class_of.class_name",
+      pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name",
 				    lower_view_name);
+
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);
     node->info.query.q.select.where =
