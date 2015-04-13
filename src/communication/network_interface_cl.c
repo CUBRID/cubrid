@@ -7770,6 +7770,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
   char *request = NULL, *reply = NULL, *ptr = NULL, *reply_buffer = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int get_xasl_header = stream->xasl_header != NULL;
+  XASL_ID *result = NULL;
 
   INIT_XASL_NODE_HEADER (stream->xasl_header);
 
@@ -7832,6 +7833,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
 	{
 	  /* NULL XASL_ID will be returned when cache not found */
 	  OR_UNPACK_XASL_ID (ptr, stream->xasl_id);
+	  result = stream->xasl_id;
 
 	  if (get_xasl_header && reply_buffer != NULL
 	      && reply_buffer_size != 0)
@@ -7840,14 +7842,6 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
 	      OR_UNPACK_XASL_NODE_HEADER (ptr, stream->xasl_header);
 	    }
 	}
-      else
-	{
-	  stream->xasl_id = NULL;
-	}
-    }
-  else
-    {
-      stream->xasl_id = NULL;
     }
 
   if (request != NULL)
@@ -7860,7 +7854,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
       free_and_init (reply_buffer);
     }
 
-  return stream->xasl_id;
+  return result;
 #else /* CS_MODE */
   XASL_ID *p;
 
