@@ -1483,7 +1483,9 @@ static int
 css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
   CSS_JOB_ENTRY *job;
-  int n, type, rv, status, timeout;
+  int n, type, rv, status;
+  int css_peer_alive_timeout, poll_timeout;
+  int max_num_loop, num_loop;
   int prefetchlogdb_max_thread_count = 0;
   SOCKET fd;
   struct pollfd po[1] = { {0, 0, 0} };
@@ -1502,13 +1504,21 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   prefetchlogdb_max_thread_count =
     prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
 
+  css_peer_alive_timeout = 5000;
+  poll_timeout = 100;
+  max_num_loop = css_peer_alive_timeout / poll_timeout;
+  num_loop = 0;
+
   status = NO_ERRORS;
   /* check if socket has error or client is down */
   while (thread_p->shutdown == false && conn->stop_talk == false)
     {
       /* check the connection */
-      if (css_check_conn (conn) != NO_ERROR)
+      if (conn->status != CONN_OPEN)
 	{
+	  er_log_debug (ARG_FILE_LINE,
+			"css_connection_handler_thread: "
+			"conn->status is not CONN_OPEN.");
 	  status = CONNECTION_CLOSED;
 	  break;
 	}
@@ -1516,15 +1526,21 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
       po[0].fd = fd;
       po[0].events = POLLIN;
       po[0].revents = 0;
-      timeout = 5000;
-      n = poll (po, 1, timeout);
+      n = poll (po, 1, poll_timeout);
       if (n == 0)
 	{
+	  if (num_loop < max_num_loop)
+	    {
+	      num_loop++;
+	      continue;
+	    }
+	  num_loop = 0;
+
 #if !defined (WINDOWS)
 	  /* 0 means it timed out and no fd is changed. */
 	  if (CHECK_CLIENT_IS_ALIVE ())
 	    {
-	      if (css_peer_alive (fd, timeout) == false)
+	      if (css_peer_alive (fd, css_peer_alive_timeout) == false)
 		{
 		  er_log_debug (ARG_FILE_LINE,
 				"css_connection_handler_thread: "
@@ -1548,6 +1564,8 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	}
       else if (n < 0)
 	{
+	  num_loop = 0;
+
 	  if (errno == EINTR)
 	    {
 	      continue;
@@ -1563,6 +1581,8 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	}
       else
 	{
+	  num_loop = 0;
+
 	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
 	      status = ERROR_ON_READ;
@@ -1752,7 +1772,6 @@ css_block_all_active_conn (unsigned short stop_phase)
 	{
 	  conn->stop_talk = true;
 	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
-	  thread_sleep (10);	/* 10 msec */
 	}
 
 #if defined(SERVER_MODE)
@@ -1975,7 +1994,6 @@ css_init (char *server_name, int name_length, int port_id)
 #if !defined(WINDOWS)
 shutdown:
 #endif
-
   /* stop threads */
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 

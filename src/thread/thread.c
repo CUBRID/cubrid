@@ -859,11 +859,11 @@ loop:
 		    }
 		}
 	    }
-	  thread_sleep (10);	/* 10 msec */
 	}
     }
 
-  thread_sleep (10);		/* 10 msec */
+  thread_sleep (50);		/* 50 msec */
+
   lock_force_timeout_lock_wait_transactions (stop_phase);
 
   /* Signal for blocked on job queue */
@@ -899,7 +899,7 @@ loop:
 	  /* exit process after some tries */
 	  _exit (0);
 	}
-      thread_sleep (1000);	/* 1000 msec */
+
       goto loop;
     }
 

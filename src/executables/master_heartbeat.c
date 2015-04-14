@@ -61,6 +61,16 @@
 #define HB_INFO_STR_MAX         8192
 #define SERVER_DEREG_MAX_POLL_COUNT 10
 
+#define ENTER_FUNC() 	\
+do {			\
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : enter", __func__);		\
+} while(0);
+
+#define EXIT_FUNC() 	\
+do {			\
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : exit", __func__);		\
+} while(0);
+
 typedef struct hb_deactivate_info HB_DEACTIVATE_INFO;
 struct hb_deactivate_info
 {
@@ -799,7 +809,7 @@ hb_cluster_is_received_heartbeat_from_all (void)
   unsigned int heartbeat_confirm_time;
 
   heartbeat_confirm_time =
-    prm_get_integer_value (PRM_ID_HA_HEARTBEAT_INTERVAL_IN_MSECS) * 2;
+    prm_get_integer_value (PRM_ID_HA_HEARTBEAT_INTERVAL_IN_MSECS);
 
   gettimeofday (&now, NULL);
 
@@ -832,6 +842,8 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
   HB_CLUSTER_JOB_ARG *clst_arg;
   HB_NODE_ENTRY *node;
   char hb_info_str[HB_INFO_STR_MAX];
+
+  ENTER_FUNC ();
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
@@ -924,14 +936,16 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	  clst_arg->ping_check_count = 0;
 
 	  error = hb_cluster_job_queue (HB_CJOB_CHECK_PING, job_arg,
-					HB_JOB_TIMER_IMMEDIATELY);
+					HB_JOB_TIMER_WAIT_100_MILLISECOND);
 	  assert (error == NO_ERROR);
 	}
       else
 	{
+	  SLEEP_MILISEC (0, HB_JOB_TIMER_WAIT_100_MILLISECOND);
+
 	  if (hb_cluster_is_received_heartbeat_from_all () == true)
 	    {
-	      failover_wait_time = HB_JOB_TIMER_WAIT_A_SECOND;
+	      failover_wait_time = HB_JOB_TIMER_WAIT_500_MILLISECOND;
 	    }
 	  else
 	    {
@@ -993,6 +1007,8 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
   HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? &(arg->cluster_job_arg) : NULL;
   HB_PING_HOST_ENTRY *ping_host;
 
+  ENTER_FUNC ();
+
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
   if (clst_arg == NULL || hb_Cluster->num_ping_hosts == 0
@@ -1048,7 +1064,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
 
 	  error =
 	    hb_cluster_job_queue (HB_CJOB_CHECK_PING, arg,
-				  HB_JOB_TIMER_WAIT_A_SECOND);
+				  HB_JOB_TIMER_IMMEDIATELY);
 	  assert (error == NO_ERROR);
 
 	  return;
@@ -1060,7 +1076,10 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
    * So, we can determine this node's next job (failover or failback).
    */
 
+  hb_cluster_request_heartbeat_to_all ();
+
   pthread_mutex_unlock (&hb_Cluster->lock);
+
   if (hb_Cluster->state == HB_NSTATE_MASTER)
     {
       /* If this node is Master, do failback */
@@ -1074,7 +1093,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
       /* If this node is Slave, do failover */
       if (hb_cluster_is_received_heartbeat_from_all () == true)
 	{
-	  failover_wait_time = HB_JOB_TIMER_WAIT_A_SECOND;
+	  failover_wait_time = HB_JOB_TIMER_WAIT_500_MILLISECOND;
 	}
       else
 	{
@@ -1091,6 +1110,8 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
     {
       free_and_init (arg);
     }
+
+  EXIT_FUNC ();
 
   return;
 
@@ -1119,6 +1140,8 @@ ping_check_cancel:
       free_and_init (arg);
     }
 
+  EXIT_FUNC ();
+
   return;
 }
 
@@ -1135,6 +1158,8 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   int error, rv;
   int num_master;
   char hb_info_str[HB_INFO_STR_MAX];
+
+  ENTER_FUNC ();
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
@@ -1201,6 +1226,8 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
   HB_NODE_ENTRY *node;
   HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? &(arg->cluster_job_arg) : NULL;
   char hb_info_str[HB_INFO_STR_MAX];
+
+  ENTER_FUNC ();
 
   if (arg == NULL || clst_arg == NULL)
     {
@@ -1312,6 +1339,8 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
   pid_t *pids = NULL;
   size_t size;
   bool emergency_kill_enabled = false;
+
+  ENTER_FUNC ();
 
   pthread_mutex_lock (&hb_Cluster->lock);
 
@@ -1830,11 +1859,13 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 	node = hb_return_node_by_name_except_me (hbp_header->orig_host_name);
 	if (node)
 	  {
-	    if (node->state != (unsigned short) state)
+	    if (node->state == HB_NSTATE_MASTER
+		&& node->state != (unsigned short) state)
 	      {
-		node->state = (unsigned short) state;
 		is_state_changed = true;
 	      }
+
+	    node->state = (unsigned short) state;
 	    node->heartbeat_gap = MAX (0, (node->heartbeat_gap - 1));
 	    gettimeofday (&node->last_recv_hbtime, NULL);
 	  }
@@ -2849,7 +2880,7 @@ hb_resource_job_cleanup_all (HB_JOB_ARG * arg)
   pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 
   error = hb_resource_job_queue (HB_RJOB_CONFIRM_CLEANUP_ALL, job_arg,
-				 HB_JOB_TIMER_WAIT_A_SECOND);
+				 HB_JOB_TIMER_WAIT_500_MILLISECOND);
 
   if (error != NO_ERROR)
     {

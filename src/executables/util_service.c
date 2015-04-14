@@ -1379,11 +1379,12 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_manager (command_type, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_HEARTBEAT),
-			  PROPERTY_ON) == 0)
+
+	      if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
+
 	      (void) process_master (command_type);
 
 	      status = are_all_services_stopped (0, process_window_service) ?
