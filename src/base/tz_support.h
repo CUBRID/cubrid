@@ -122,6 +122,8 @@ struct tz_region
   };
 };
 
+typedef DB_BIGINT full_date_t;
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -171,9 +173,11 @@ extern "C"
 			       int *sec, const char **str_next);
   extern int tz_str_to_seconds (const char *str, int *sec,
 				const char **str_next, const bool is_offset);
-  extern int tz_get_ds_change_julian_date (const TZ_DS_RULE * ds_rule,
-					   const int year,
-					   int *ds_rule_julian_date);
+  extern int tz_get_ds_change_julian_date_diff (const int src_julian_date,
+						const TZ_DS_RULE * ds_rule,
+						const int year,
+						int *ds_rule_julian_date,
+						full_date_t * date_diff);
   extern int tz_create_datetimetz (const DB_DATETIME * dt,
 				   const char *tz_str,
 				   const int tz_size,

@@ -3010,8 +3010,8 @@ tzc_check_ds_ruleset (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_rule_set,
 	      continue;
 	    }
 
-	  if (tz_get_ds_change_julian_date (ds_rule, year,
-					    &ds_change_julian_date)
+	  if (tz_get_ds_change_julian_date_diff (0, ds_rule, year,
+						 &ds_change_julian_date, NULL)
 	      != NO_ERROR)
 	    {
 	      return ER_FAILED;

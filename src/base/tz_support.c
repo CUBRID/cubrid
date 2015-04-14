@@ -70,7 +70,6 @@ struct tz_decode_info
   };
 };
 
-typedef DB_BIGINT full_date_t;
 
 #define FULL_DATE(jul_date, time_sec) ((full_date_t) jul_date * 86400ll \
 				       + (full_date_t) time_sec)
@@ -2640,17 +2639,22 @@ tz_str_to_seconds (const char *str, int *seconds, const char **str_next,
 
 /*
  * tz_get_ds_change_julian_date () - Computes the exact date when a daylight
- *				     saving rule applies in year
- *
+ *				     saving rule applies in year and
+ *                                   the difference between the src_julian_date
+ *                                   and the computed date
  * Returns: error code
+ * src_julian_date(in): source julian date
  * ds_rule(in): daylight saving rule
  * year(in): current year to apply rule
  * ds_rule_julian_date(out): julian date
- *
+ * date_diff(out): date difference between the two dates
  */
 int
-tz_get_ds_change_julian_date (const TZ_DS_RULE * ds_rule, const int year,
-			      int *ds_rule_julian_date)
+tz_get_ds_change_julian_date_diff (const int src_julian_date,
+				   const TZ_DS_RULE * ds_rule,
+				   const int year,
+				   int *ds_rule_julian_date,
+				   full_date_t * date_diff)
 {
   int ds_rule_day;
   int ds_rule_month = ds_rule->in_month;
@@ -2684,6 +2688,12 @@ tz_get_ds_change_julian_date (const TZ_DS_RULE * ds_rule, const int year,
 
   *ds_rule_julian_date = julian_encode (1 + ds_rule_month,
 					1 + ds_rule_day, year);
+
+  if (date_diff != NULL)
+    {
+      *date_diff = FULL_DATE (src_julian_date, 0)
+	- FULL_DATE (*ds_rule_julian_date, 0);
+    }
 
   return NO_ERROR;
 }
@@ -2754,16 +2764,30 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	  year_to_apply_rule = src_year - 1;
 	}
 
-      er_status = tz_get_ds_change_julian_date (curr_ds_rule,
-						year_to_apply_rule,
-						&ds_rule_julian_date);
+      er_status = tz_get_ds_change_julian_date_diff (src_julian_date,
+						     curr_ds_rule,
+						     year_to_apply_rule,
+						     &ds_rule_julian_date,
+						     &date_diff);
       if (er_status != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      date_diff = FULL_DATE (src_julian_date, 0)
-	- FULL_DATE (ds_rule_julian_date, 0);
+      if (date_diff < 0)
+	{
+	  er_status = tz_get_ds_change_julian_date_diff (src_julian_date,
+							 curr_ds_rule,
+							 year_to_apply_rule -
+							 1,
+							 &ds_rule_julian_date,
+							 &date_diff);
+	  if (er_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
       if (date_diff >= DATE_DIFF_MATCH_SAFE_THRESHOLD_SEC
 	  && (smallest_date_diff == -1 || date_diff < smallest_date_diff))
 	{
@@ -3087,6 +3111,7 @@ detect_dst:
       bool rule_matched = false;
       bool is_in_leap_interval = false;
       bool check_prev_year = true;
+      int year_to_apply_rule = 0;
 
       assert (curr_ds_id + ds_ruleset->index_start < tzd->ds_rule_count);
       curr_ds_rule = &(tzd->ds_rules[curr_ds_id + ds_ruleset->index_start]);
@@ -3107,15 +3132,25 @@ detect_dst:
 	  continue;
 	}
 
-      err_status = tz_get_ds_change_julian_date (curr_ds_rule, src_year,
-						 &ds_rule_julian_date);
+      if (src_year <= curr_ds_rule->to_year)
+	{
+	  year_to_apply_rule = src_year;
+	}
+      else
+	{
+	  year_to_apply_rule = src_year - 1;
+	}
+
+      err_status = tz_get_ds_change_julian_date_diff (src_julian_date,
+						      curr_ds_rule,
+						      year_to_apply_rule,
+						      &ds_rule_julian_date,
+						      &date_diff);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      date_diff = FULL_DATE (src_julian_date, 0)
-	- FULL_DATE (ds_rule_julian_date, 0);
       if (date_diff >= DATE_DIFF_MATCH_SAFE_THRESHOLD_SEC)
 	{
 	  /* a date difference of at two days */
@@ -3266,16 +3301,15 @@ detect_dst:
       else if (curr_ds_rule->from_year < src_year
 	       && check_prev_year == true && date_diff < 0)
 	{
-	  err_status = tz_get_ds_change_julian_date (curr_ds_rule,
-						     src_year - 1,
-						     &ds_rule_julian_date);
+	  err_status = tz_get_ds_change_julian_date_diff (src_julian_date,
+							  curr_ds_rule,
+							  src_year - 1,
+							  &ds_rule_julian_date,
+							  &date_diff);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
 	    }
-
-	  date_diff = FULL_DATE (src_julian_date, 0)
-	    - FULL_DATE (ds_rule_julian_date, 0);
 
 	  assert (date_diff >= 0);
 	  rule_matched = true;
