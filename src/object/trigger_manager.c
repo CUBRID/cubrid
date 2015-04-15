@@ -35,6 +35,7 @@
 #include "work_space.h"
 #include "schema_manager.h"
 #include "object_accessor.h"
+#include "object_print.h"
 #include "set_object.h"
 #include "authenticate.h"
 #include "db.h"
@@ -6909,7 +6910,8 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp)
 
       if (trigger->comment != NULL && trigger->comment[0] != '\0')
 	{
-	  fprintf (fp, " COMMENT '%s'", trigger->comment);
+	  fprintf (fp, " ");
+	  help_fprint_describe_comment (fp, trigger->comment);
 	}
 
       fprintf (fp, ";\n");

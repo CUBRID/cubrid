@@ -39,6 +39,7 @@
 #include "authenticate.h"
 #include "set_object.h"
 #include "object_accessor.h"
+#include "object_print.h"
 #include "parser.h"
 #include "trigger_manager.h"
 #include "schema_manager.h"
@@ -8240,7 +8241,12 @@ classobj_print (SM_CLASS * class_)
 	      fprintf (stdout, "    Properties : ");
 	      classobj_print_props (att->properties);
 	    }
-	  fprintf (stdout, "    Comment '%s'\n", att->comment);
+	  if (att->comment != NULL)
+	    {
+	      fprintf (stdout, "    ");
+	      help_fprint_describe_comment (stdout, att->comment);
+	    }
+	  fprintf (stdout, "\n");
 	}
     }
   if (class_->class_attributes != NULL)
@@ -8263,7 +8269,12 @@ classobj_print (SM_CLASS * class_)
 	      fprintf (stdout, "    Properties : ");
 	      classobj_print_props (att->properties);
 	    }
-	  fprintf (stdout, "    Comment '%s'\n", att->comment);
+	  if (att->comment != NULL)
+	    {
+	      fprintf (stdout, "    ");
+	      help_fprint_describe_comment (stdout, att->comment);
+	    }
+	  fprintf (stdout, "\n");
 	}
     }
   if (class_->methods != NULL)

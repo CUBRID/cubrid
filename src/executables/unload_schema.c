@@ -51,6 +51,7 @@
 #include "set_object.h"
 #include "jsp_cl.h"
 #include "class_object.h"
+#include "object_print.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -840,8 +841,8 @@ export_serial (FILE * outfp)
 	}
       if (DB_IS_NULL (&values[SERIAL_COMMENT]) == false)
 	{
-	  fprintf (outfp, "\t comment '%s'",
-		   DB_PULL_STRING (&values[SERIAL_COMMENT]));
+	  fprintf (outfp, "\t comment ");
+	  desc_value_fprint (outfp, &values[SERIAL_COMMENT]);
 	}
       fprintf (outfp, ";\n");
       fprintf (outfp,
@@ -1207,9 +1208,11 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	    }
 	}
 
-      if (class_ != NULL && class_->comment != NULL)
+      if (class_ != NULL && class_->comment != NULL
+	  && class_->comment[0] != '\0')
 	{
-	  fprintf (output_file, " COMMENT '%s'", class_->comment);
+	  fprintf (output_file, " ");
+	  help_fprint_describe_comment (output_file, class_->comment);
 	}
 
       fprintf (output_file, ";\n");
@@ -2483,9 +2486,10 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
     }
 
   /* emit comment */
-  if (attribute->comment != NULL)
+  if (attribute->comment != NULL && attribute->comment[0] != '\0')
     {
-      fprintf (output_file, " COMMENT '%s'", attribute->comment);
+      fprintf (output_file, " ");
+      help_fprint_describe_comment (output_file, attribute->comment);
     }
 }
 
@@ -2566,7 +2570,8 @@ emit_unique_def (DB_OBJECT * class_)
 
 	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
 	    {
-	      fprintf (output_file, " COMMENT '%s'", constraint->comment);
+	      fprintf (output_file, " ");
+	      help_fprint_describe_comment (output_file, constraint->comment);
 	    }
 
 	  ++num_printed;
@@ -2810,7 +2815,8 @@ emit_index_def (DB_OBJECT * class_)
 	}
       if (constraint->comment != NULL && constraint->comment[0] != '\0')
 	{
-	  fprintf (output_file, " COMMENT '%s'", constraint->comment);
+	  fprintf (output_file, " ");
+	  help_fprint_describe_comment (output_file, constraint->comment);
 	}
       fprintf (output_file, ";\n");
     }
@@ -3128,9 +3134,10 @@ emit_partition_parts (SM_PARTITION * partition_info, int partcnt)
       break;
     }
 
-  if (partition_info->comment != NULL)
+  if (partition_info->comment != NULL && partition_info->comment[0] != '\0')
     {
-      fprintf (output_file, " COMMENT '%s'", partition_info->comment);
+      fprintf (output_file, " ");
+      help_fprint_describe_comment (output_file, partition_info->comment);
     }
 }
 
@@ -3156,8 +3163,7 @@ emit_partition_info (MOP clsobj)
     }
 
   name = db_get_class_name (clsobj);
-  if (au_fetch_class (clsobj, &class_, AU_FETCH_READ,
-		      AU_SELECT) != NO_ERROR)
+  if (au_fetch_class (clsobj, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
     {
       return;
     }
@@ -3283,8 +3289,8 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 
       if (!DB_IS_NULL (&arg_comment_val))
 	{
-	  fprintf (output_file, " COMMENT '%s'",
-		   DB_PULL_STRING (&arg_comment_val));
+	  fprintf (output_file, " COMMENT ");
+	  desc_value_fprint (output_file, &arg_comment_val);
 	}
 
       if (i < arg_cnt - 1)
@@ -3381,8 +3387,8 @@ emit_stored_procedure (void)
 
       if (!DB_IS_NULL (&comment_val))
 	{
-	  fprintf (output_file, " COMMENT '%s'",
-		   DB_PULL_STRING (&comment_val));
+	  fprintf (output_file, " COMMENT ");
+	  desc_value_fprint (output_file, &comment_val);
 	}
 
       fprintf (output_file, ";\n");
@@ -3480,7 +3486,8 @@ emit_foreign_key (DB_OBJLIST * classes)
 
 	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
 	    {
-	      fprintf (output_file, " COMMENT '%s'", constraint->comment);
+	      fprintf (output_file, " ");
+	      help_fprint_describe_comment (output_file, constraint->comment);
 	    }
 
 	  (void) fprintf (output_file, ";\n\n");

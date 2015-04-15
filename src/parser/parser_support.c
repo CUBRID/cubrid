@@ -9743,9 +9743,14 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   /* comment */
   if (class_schema->comment != NULL && class_schema->comment[0] != '\0')
     {
-      buffer = pt_append_nulstring (parser, buffer, " COMMENT='");
-      buffer = pt_append_nulstring (parser, buffer, class_schema->comment);
-      buffer = pt_append_nulstring (parser, buffer, "'");
+      DB_VALUE comment_value;
+      DB_MAKE_NULL (&comment_value);
+      DB_MAKE_STRING (&comment_value, class_schema->comment);
+
+      buffer = pt_append_nulstring (parser, buffer, " COMMENT=");
+      buffer = describe_value (parser, buffer, &comment_value);
+
+      pr_clear_value (&comment_value);
     }
 
   if (class_schema != NULL)

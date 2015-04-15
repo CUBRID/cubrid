@@ -764,9 +764,10 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 
   if (attribute_p->comment != NULL && attribute_p->comment[0] != '\0')
     {
-      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
-      buffer = pt_append_nulstring (parser, buffer, attribute_p->comment);
-      buffer = pt_append_nulstring (parser, buffer, "'");
+      buffer = pt_append_nulstring (parser, buffer, " ");
+      buffer =
+	pt_append_nulstring (parser, buffer,
+			     describe_comment (parser, attribute_p->comment));
     }
 
   /* let the higher level display routine do this */
@@ -846,9 +847,10 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
 
   if (parts->comment != NULL && parts->comment[0] != '\0')
     {
-      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
-      buffer = pt_append_nulstring (parser, buffer, parts->comment);
-      buffer = pt_append_nulstring (parser, buffer, "'");
+      buffer = pt_append_nulstring (parser, buffer, " ");
+      buffer = pt_append_nulstring (parser, buffer,
+				    describe_comment (parser,
+						      parts->comment));
     }
 
   pr_clear_value (&ele);
@@ -1182,9 +1184,11 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 
   if (constraint_p->comment != NULL && constraint_p->comment[0] != '\0')
     {
-      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
-      buffer = pt_append_nulstring (parser, buffer, constraint_p->comment);
-      buffer = pt_append_nulstring (parser, buffer, "'");
+      buffer = pt_append_nulstring (parser, buffer, " ");
+      buffer =
+	pt_append_nulstring (parser, buffer,
+			     describe_comment (parser,
+					       constraint_p->comment));
     }
 
   return ((char *) pt_get_varchar_bytes (buffer));
@@ -1459,9 +1463,10 @@ obj_print_describe_class_trigger (PARSER_CONTEXT * parser,
 
   if (trigger->comment != NULL && trigger->comment[0] != '\0')
     {
-      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
-      buffer = pt_append_nulstring (parser, buffer, trigger->comment);
-      buffer = pt_append_nulstring (parser, buffer, "'");
+      buffer = pt_append_nulstring (parser, buffer, " ");
+      buffer =
+	pt_append_nulstring (parser, buffer,
+			     describe_comment (parser, trigger->comment));
     }
 
   return buffer;
@@ -1748,9 +1753,9 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      if (has_comment)
 		{
 		  snprintf (name_buf, max_name_size,
-			    "%-20s COMMENT '%s'",
+			    "%-20s %s",
 			    (char *) sm_ch_name ((MOBJ) class_),
-			    class_->comment);
+			    describe_comment (parser, class_->comment));
 		}
 	      else
 		{
@@ -1763,10 +1768,10 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      if (has_comment)
 		{
 		  snprintf (name_buf, max_name_size,
-			    "%-20s COLLATE %s COMMENT '%s'",
+			    "%-20s COLLATE %s %s",
 			    sm_ch_name ((MOBJ) class_),
 			    lang_get_collation_name (class_->collation_id),
-			    class_->comment);
+			    describe_comment (parser, class_->comment));
 		}
 	      else
 		{
@@ -3093,9 +3098,11 @@ help_fprint_obj (FILE * fp, MOP obj)
 		  fprintf (fp, "%s\n", tinfo->action);
 		}
 
-	      if (tinfo->comment)
+	      if (tinfo->comment != NULL && tinfo->comment[0] != '\0')
 		{
-		  fprintf (fp, " COMMENT '%s'\n", tinfo->comment);
+		  fprintf (fp, " ");
+		  help_fprint_describe_comment (fp, tinfo->comment);
+		  fprintf (fp, "\n");
 		}
 
 	      help_free_trigger (tinfo);
@@ -4564,6 +4571,66 @@ help_sprint_value (const DB_VALUE * value, char *buffer, int max_length)
   parser_free_parser (parser);
 
   return length;
+}
+
+/*
+ * describe_comment() - Return the description string of a comment.
+ *   return: a pointer to description string of a comment
+ *   comment(in) : a comment string to be described
+ */
+char *
+describe_comment (PARSER_CONTEXT * parser, const char *comment)
+{
+  DB_VALUE comment_value;
+  PARSER_VARCHAR *buffer = NULL;
+
+  assert (parser != NULL);
+  assert (comment != NULL);
+
+  DB_MAKE_NULL (&comment_value);
+  DB_MAKE_STRING (&comment_value, comment);
+
+  buffer = pt_append_nulstring (parser, buffer, "COMMENT ");
+  if (comment != NULL && comment[0] != '\0')
+    {
+      buffer = describe_value (parser, buffer, &comment_value);
+    }
+  else
+    {
+      buffer = pt_append_nulstring (parser, buffer, "''");
+    }
+
+  pr_clear_value (&comment_value);
+
+  return ((char *) pt_get_varchar_bytes (buffer));
+}
+
+/*
+ * help_fprint_describe_comment() - Print description of a comment to a file.
+ *   return: N/A
+ *   comment(in) : a comment string to be printed
+ */
+void
+help_fprint_describe_comment (FILE * fp, const char *comment)
+{
+  PARSER_CONTEXT *parser;
+  char *desc = NULL;
+
+  assert (fp != NULL);
+  assert (comment != NULL);
+
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return;
+    }
+
+  desc = describe_comment (parser, comment);
+
+  assert (desc != NULL);
+  fprintf (fp, "%.*s", strlen (desc), desc);
+
+  parser_free_parser (parser);
 }
 
 #if defined(CUBRID_DEBUG)

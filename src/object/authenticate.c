@@ -6959,8 +6959,9 @@ au_export_users (FILE * outfp)
 	  /* export comment */
 	  if (comment != NULL && comment[0] != '\0')
 	    {
-	      fprintf (outfp, "ALTER USER [%s] COMMENT '%s';\n",
-		       uname, comment);
+	      fprintf (outfp, "ALTER USER [%s] ", uname);
+	      help_fprint_describe_comment (outfp, comment);
+	      fprintf (outfp, ";\n");
 	    }
 	}
 
