@@ -17855,7 +17855,7 @@ date_to_char (const DB_VALUE * src_value,
 	      break;
 
 	    case DT_TZH:
-	      if (tzh >= 0)
+	      if ((tzh >= 0)&&(tzm >= 0))
 		{
 		  sprintf (&result_buf[i], "%c%02d\n", '+', tzh);
 		}
@@ -17868,16 +17868,29 @@ date_to_char (const DB_VALUE * src_value,
 	      break;
 
 	    case DT_TZM:
-	      if (tzm >= 0)
+	      if (!has_tzh)
 		{
-		  sprintf (&result_buf[i], "%c%02d\n", '+', tzm);
+		  if (tzm >= 0)
+		    {
+		      sprintf (&result_buf[i], "%c%02d\n", '+', tzm);
+		    }
+		  else
+		    {
+		      tzm = -tzm;
+		      sprintf (&result_buf[i], "%c%02d\n", '-', tzm);
+		    }
+		  i += 3;
 		}
 	      else
 		{
-		  tzm = -tzm;
-		  sprintf (&result_buf[i], "%c%02d\n", '-', tzm);
+		  if (tzm < 0)
+		    {
+		      tzm = -tzm;
+		    }
+		  sprintf (&result_buf[i], "%02d\n", tzm);
+		  result_size--;
+		  i += 2;
 		}
-	      i += 3;
 	      break;
 
 	    default:
@@ -22561,6 +22574,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
   char hours_or_minutes[4];
   int tzh = 0, tzm = 0;
   bool is_valid_tz = false;
+  bool has_tzh = false;
 
   assert (date_lang != NULL);
 
@@ -23100,12 +23114,13 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
 		  strcat (res, tzd);
 		  break;
 		case 'H':
-		  if (tzh >= 0)
+		  has_tzh = true;
+		  if ((tzh >= 0)&&(tzm >= 0))
 		    {
-		      sprintf (hours_or_minutes, "%02d", tzh);
+		      sprintf (hours_or_minutes, "%c%02d", '+', tzh);
 		    }
 		  else
-		    {
+		    {		      
 		      sprintf (hours_or_minutes, "%c%02d", '-', -tzh);
 		    }
 		  strcat (res, hours_or_minutes);
@@ -23113,11 +23128,25 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
 		case 'M':
 		  if (tzm >= 0)
 		    {
-		      sprintf (hours_or_minutes, "%02d", tzm);
+		      if (!has_tzh)
+			{
+			  sprintf (hours_or_minutes, "%c%02d", '+', tzm);
+			}
+		      else
+			{
+			  sprintf (hours_or_minutes, "%02d", tzm);
+			}
 		    }
 		  else
 		    {
-		      sprintf (hours_or_minutes, "%c%02d", '-', -tzm);
+		      if (!has_tzh)
+			{
+			  sprintf (hours_or_minutes, "%c%02d", '-', -tzm);
+			}
+		      else
+			{
+			  sprintf (hours_or_minutes, "%02d", -tzm);
+			}
 		    }
 		  strcat (res, hours_or_minutes);
 		  break;
