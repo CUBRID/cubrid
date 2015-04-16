@@ -4743,7 +4743,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_TZ_LEAP_SECOND_SUPPORT,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_leap_second_support_flag,
    (void *) &prm_tz_leap_second_support_default,

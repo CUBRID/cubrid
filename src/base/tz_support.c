@@ -399,18 +399,12 @@ tz_unload (void)
  * tz_get_leapsec_support() - returns true if leap-seconds
  * are activated and false if not
  */
-
 static bool
 tz_get_leapsec_support (void)
 {
-  static bool leapsec_support_init = false;
-  static bool leapsec_support;
+  bool leapsec_support;
 
-  if (leapsec_support_init == false)
-    {
-      leapsec_support = prm_get_bool_value (PRM_ID_TZ_LEAP_SECOND_SUPPORT);
-      leapsec_support_init = true;
-    }
+  leapsec_support = prm_get_bool_value (PRM_ID_TZ_LEAP_SECOND_SUPPORT);
 
   return leapsec_support;
 }
