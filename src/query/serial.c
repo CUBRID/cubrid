@@ -307,6 +307,8 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   int ret = NO_ERROR, granted;
   const char *oid_str = NULL;
   SERIAL_CACHE_ENTRY *entry;
+  bool is_cache_mutex_locked = false;
+  bool is_oid_locked = false;
 #if defined (SERVER_MODE)
   int rc;
 #endif /* SERVER_MODE */
@@ -336,7 +338,11 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   else
     {
       /* used serial cache */
+      granted = LK_NOTGRANTED;
+
+    try_again:
       rc = pthread_mutex_lock (&serial_Cache_pool.cache_pool_mutex);
+      is_cache_mutex_locked = true;
 
       entry = (SERIAL_CACHE_ENTRY *) mht_get (serial_Cache_pool.ht, oid_p);
       if (entry != NULL)
@@ -344,8 +350,7 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	  ret = serial_get_next_cached_value (thread_p, entry, num_alloc);
 	  if (ret != NO_ERROR)
 	    {
-	      pthread_mutex_unlock (&serial_Cache_pool.cache_pool_mutex);
-	      return ret;
+	      goto exit;
 	    }
 	  pr_clone_value (&entry->cur_val, result_num);
 	}
@@ -358,9 +363,35 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
 	  if (ret == NO_ERROR)
 	    {
-	      granted = lock_object (thread_p, oid_p,
-				     &serial_Cache_pool.db_serial_class_oid,
-				     X_LOCK, LK_UNCOND_LOCK);
+	      if (is_oid_locked == false)
+		{
+		  granted = lock_object (thread_p, oid_p,
+					 &serial_Cache_pool.
+					 db_serial_class_oid, X_LOCK,
+					 LK_COND_LOCK);
+
+		  if (granted != LK_GRANTED)
+		    {
+		      /* release mutex, get OID lock, and restart */
+		      pthread_mutex_unlock (&serial_Cache_pool.
+					    cache_pool_mutex);
+		      is_cache_mutex_locked = false;
+		      granted = lock_object (thread_p, oid_p,
+					     &serial_Cache_pool.
+					     db_serial_class_oid, X_LOCK,
+					     LK_UNCOND_LOCK);
+		      if (granted == LK_GRANTED)
+			{
+			  is_oid_locked = true;
+			  goto try_again;
+			}
+		    }
+		  else
+		    {
+		      is_oid_locked = true;
+		    }
+		}
+
 	      if (granted != LK_GRANTED)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -370,15 +401,21 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 		{
 		  ret = xserial_get_next_value_internal (thread_p, result_num,
 							 oid_p, num_alloc);
+		  assert (is_oid_locked == true);
 		  (void) lock_unlock_object (thread_p, oid_p,
 					     &serial_Cache_pool.
 					     db_serial_class_oid, X_LOCK,
 					     true);
+		  is_oid_locked = false;
 		}
 	    }
 	}
 
-      pthread_mutex_unlock (&serial_Cache_pool.cache_pool_mutex);
+      if (is_cache_mutex_locked == true)
+	{
+	  pthread_mutex_unlock (&serial_Cache_pool.cache_pool_mutex);
+	  is_cache_mutex_locked = false;
+	}
     }
 
   if (ret == NO_ERROR && is_auto_increment == GENERATE_AUTO_INCREMENT)
@@ -387,6 +424,21 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       /* Note that we ignore an error during updating current insert id. */
       (void) xsession_set_cur_insert_id (thread_p, result_num,
 					 force_set_last_insert_id);
+    }
+
+exit:
+  if (is_cache_mutex_locked)
+    {
+      pthread_mutex_unlock (&serial_Cache_pool.cache_pool_mutex);
+      is_cache_mutex_locked = false;
+    }
+
+  if (is_oid_locked)
+    {
+      (void) lock_unlock_object (thread_p, oid_p,
+				 &serial_Cache_pool.db_serial_class_oid,
+				 X_LOCK, true);
+      is_oid_locked = false;
     }
 
   return ret;
