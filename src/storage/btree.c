@@ -16174,8 +16174,6 @@ end:
 
   *pg_vpid = P_vpid;
 
-  assert_release (stat_info_p->height == 0
-		  || stat_info_p->height == depth + 1);
   assert_release (root_level == depth + 1);
 
   stat_info_p->height = root_level;
