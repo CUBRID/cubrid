@@ -219,6 +219,8 @@ locator_fetch (OID * oidp, int chn, LOCK lock,
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  assert (oidp->volid >= 0 && oidp->pageid >= 0 && oidp->slotid >= 0);
+
   ptr = or_pack_oid (request, oidp);
   ptr = or_pack_int (ptr, chn);
   ptr = or_pack_lock (ptr, lock);
