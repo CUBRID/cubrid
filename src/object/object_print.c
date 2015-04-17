@@ -873,6 +873,7 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser,
   DB_VALUE ele;
   PARSER_VARCHAR *buffer;
   char line[SM_MAX_IDENTIFIER_LENGTH + 1], *ptr, *ptr2, *tmp;
+  char col_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 
   if (partinfo == NULL)
     {
@@ -905,8 +906,9 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser,
       ptr2 = strstr (ptr + 7, " FROM ");
       if (ptr2)
 	{
-	  *ptr2 = 0;
-	  buffer = pt_append_nulstring (parser, buffer, ptr + 7);
+	  strncpy (col_name, ptr + 7, CAST_STRLEN (ptr2 - (ptr + 7)));
+	  col_name[CAST_STRLEN (ptr2 - (ptr + 7))] = 0;
+	  buffer = pt_append_nulstring (parser, buffer, col_name);
 	  buffer = pt_append_nulstring (parser, buffer, ") ");
 	}
     }
@@ -2314,7 +2316,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	  strs[0] = obj_print_copy_string (description);
 	  i = 1;
 
-	  /* Show create table will not print the sub partiton for hash 
+	  /* Show create table will not print the sub partition for hash 
 	   * partition table.
 	   */
 	  if (prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
