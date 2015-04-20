@@ -13080,6 +13080,10 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
   if (num_indexes > 0)
     {
       error = sm_update_statistics (template_->op, STATS_WITH_SAMPLING);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
     }
 
   classobj_free_template (flat);
