@@ -4392,11 +4392,16 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  aggregate_list->opr_dbtype =
 	    pt_node_to_db_type (tree->info.function.arg_list);
 
-	  if (info->out_list && info->value_list && info->regu_list)
+	  if (info->out_list && info->value_list && info->regu_list
+	      && aggregate_list->function != PT_CUME_DIST
+	      && aggregate_list->function != PT_PERCENT_RANK)
 	    {
 	      /* handle the buildlist case.
 	       * append regu to the out_list, and create a new value
-	       * to append to the value_list  */
+	       * to append to the value_list  
+	       * Note: cume_dist() and percent_rank() need not these operations
+	       * since they have particular regu type.
+	       */
 
 	      pt_val = parser_new_node (parser, PT_VALUE);
 	      if (pt_val == NULL)
@@ -27371,6 +27376,8 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser,
 
   regu->type = TYPE_REGU_VAR_LIST;
   regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
+  /* for cume_dist and percent_rank, regu_variable should be hidden */
+  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
   arg_list = tree->info.function.arg_list;
   orderby_list = tree->info.function.order_by;
   assert (arg_list != NULL && orderby_list != NULL);

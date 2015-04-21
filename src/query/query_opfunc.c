@@ -13268,7 +13268,8 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
   SORT_NULLS s_nulls;
   DB_DOMAIN *dom;
 
-  assert (agg_p != NULL && agg_p->sort_list != NULL);
+  assert (agg_p != NULL && agg_p->sort_list != NULL
+	  && agg_p->operand.type == TYPE_REGU_VAR_LIST);
 
   regu_var_list = agg_p->operand.value.regu_var_list;
   info_p = &agg_p->info.dist_percent;

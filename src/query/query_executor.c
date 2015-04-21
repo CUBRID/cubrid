@@ -22677,7 +22677,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 
 		default:
 		  assert (agg_p->operand.type == TYPE_CONSTANT
-			  || agg_p->operand.type == TYPE_DBVAL);
+			  || agg_p->operand.type == TYPE_DBVAL
+			  || agg_p->operand.type == TYPE_INARITH);
 
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
