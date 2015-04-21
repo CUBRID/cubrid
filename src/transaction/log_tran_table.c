@@ -4042,6 +4042,9 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
   int error_code = NO_ERROR, idx;
   PRUNING_CONTEXT context;
   LOG_TRAN_CLASS_COS *entry = NULL, *new_entry = NULL;
+  OR_CLASSREP *classrepr = NULL;
+  int classrepr_cacheindex = -1;
+  bool clear_pcontext = false;
 
   entry = (LOG_TRAN_CLASS_COS *) data;
   if (entry->count_state != COS_TO_LOAD)
@@ -4049,18 +4052,31 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
       return NO_ERROR;
     }
 
-  partition_init_pruning_context (&context);
-
-  /* In case of partitioned class load statistics for each partition */
-  error_code =
-    partition_load_pruning_context (thread_p, &entry->class_oid,
-				    DB_PARTITIONED_CLASS, &context);
-  if (error_code != NO_ERROR)
+  /* get class representation to find partition information */
+  classrepr =
+    heap_classrepr_get (thread_p, &entry->class_oid, NULL, NULL_REPRID,
+			&classrepr_cacheindex);
+  if (classrepr == NULL)
     {
       goto cleanup;
     }
 
-  if (context.count > 0)
+  if (classrepr->has_partition_info > 0)
+    {
+      partition_init_pruning_context (&context);
+      clear_pcontext = true;
+
+      /* In case of partitioned class load statistics for each partition */
+      error_code =
+	partition_load_pruning_context (thread_p, &entry->class_oid,
+					DB_PARTITIONED_CLASS, &context);
+      if (error_code != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+  if (classrepr->has_partition_info > 0 && context.count > 0)
     {
       for (idx = 0; idx < context.count; idx++)
 	{
@@ -4099,7 +4115,14 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
   entry->count_state = COS_LOADED;
 
 cleanup:
-  partition_clear_pruning_context (&context);
+  if (clear_pcontext == true)
+    {
+      partition_clear_pruning_context (&context);
+    }
+  if (classrepr != NULL)
+    {
+      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+    }
 
   return error_code;
 }

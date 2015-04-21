@@ -3301,6 +3301,8 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
   BTID local_btid;
   PRUNING_CONTEXT pcontext;
   bool clear_pcontext = false;
+  OR_CLASSREP *classrepr = NULL;
+  int classrepr_cacheindex = -1;
 
   DB_MAKE_NULL (&val);
   OID_SET_NULL (&unique_oid);
@@ -3316,19 +3318,32 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 
   if (!is_null)
     {
-      (void) partition_init_pruning_context (&pcontext);
-      clear_pcontext = true;
-      ret = partition_load_pruning_context (thread_p, pk_cls_oid,
-					    DB_PARTITIONED_CLASS, &pcontext);
-      if (ret != NO_ERROR)
+      /* get class representation to find partition information */
+      classrepr =
+	heap_classrepr_get (thread_p, pk_cls_oid, NULL, NULL_REPRID,
+			    &classrepr_cacheindex);
+      if (classrepr == NULL)
 	{
 	  goto exit_on_error;
+	}
+
+      if (classrepr->has_partition_info > 0)
+	{
+	  (void) partition_init_pruning_context (&pcontext);
+	  clear_pcontext = true;
+	  ret = partition_load_pruning_context (thread_p, pk_cls_oid,
+						DB_PARTITIONED_CLASS,
+						&pcontext);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	}
 
       BTID_COPY (&local_btid, pk_btid);
       COPY_OID (&part_oid, pk_cls_oid);
 
-      if (pcontext.partitions != NULL)
+      if (classrepr->has_partition_info > 0 && pcontext.partitions != NULL)
 	{
 	  ret = partition_prune_unique_btid (&pcontext, keyval,
 					     &part_oid, &class_hfid,
@@ -3361,6 +3376,10 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
     {
       partition_clear_pruning_context (&pcontext);
     }
+  if (classrepr != NULL)
+    {
+      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+    }
 
   return ret;
 
@@ -3369,6 +3388,10 @@ exit_on_error:
   if (clear_pcontext == true)
     {
       partition_clear_pruning_context (&pcontext);
+    }
+  if (classrepr != NULL)
+    {
+      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
     }
   return (ret == NO_ERROR
 	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;

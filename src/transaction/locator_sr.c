@@ -4578,6 +4578,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
   int error_code = NO_ERROR;
   PRUNING_CONTEXT pcontext;
   bool clear_pcontext = false;
+  OR_CLASSREP *classrepr = NULL;
+  int classrepr_cacheindex = -1;
 
   DB_MAKE_NULL (&dbvalue);
 
@@ -4629,22 +4631,35 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 
       if (!is_null)
 	{
-	  (void) partition_init_pruning_context (&pcontext);
-	  clear_pcontext = true;
-	  error_code = partition_load_pruning_context (thread_p,
-						       &index->fk->
-						       ref_class_oid,
-						       DB_PARTITIONED_CLASS,
-						       &pcontext);
-	  if (error_code != NO_ERROR)
+	  /* get class representation to find partition information */
+	  classrepr =
+	    heap_classrepr_get (thread_p, &index->fk->ref_class_oid, NULL,
+				NULL_REPRID, &classrepr_cacheindex);
+	  if (classrepr == NULL)
 	    {
+	      error_code = ER_FAILED;
 	      goto error;
+	    }
+	  if (classrepr->has_partition_info > 0)
+	    {
+	      (void) partition_init_pruning_context (&pcontext);
+	      clear_pcontext = true;
+	      error_code = partition_load_pruning_context (thread_p,
+							   &index->fk->
+							   ref_class_oid,
+							   DB_PARTITIONED_CLASS,
+							   &pcontext);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
 	    }
 
 	  BTID_COPY (&local_btid, &index->fk->ref_class_pk_btid);
 	  COPY_OID (&part_oid, &index->fk->ref_class_oid);
 
-	  if (pcontext.partitions != NULL)
+	  if (classrepr->has_partition_info > 0
+	      && pcontext.partitions != NULL)
 	    {
 	      error_code =
 		partition_prune_unique_btid (&pcontext, key_dbvalue,
@@ -4697,6 +4712,10 @@ error:
   if (clear_pcontext == true)
     {
       partition_clear_pruning_context (&pcontext);
+    }
+  if (classrepr != NULL)
+    {
+      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
     }
   heap_attrinfo_end (thread_p, &index_attrinfo);
   return error_code;

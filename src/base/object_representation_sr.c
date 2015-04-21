@@ -1016,23 +1016,10 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 
   if (!found)
     {
-      OR_PARTITION partition_info;
-      REPR_ID repr_id;
-      int has_partition_info = 0;
-
       /* check if we are dealing with a partition class in which the unique
        * constraint stands as a local index and each partition has it's own btree
        */
-      if (or_class_get_partition_info (&record, &partition_info, &repr_id,
-				       &has_partition_info) != NO_ERROR)
-	{
-	  goto error;
-	}
-      if (has_partition_info == 1 && partition_info.values != NULL)
-	{
-	  set_free (partition_info.values);
-	}
-      if (has_partition_info == 1 && partition_local_index != NULL)
+      if (or_rep->has_partition_info > 0 && partition_local_index != NULL)
 	{
 	  *partition_local_index = 1;
 	}
@@ -2929,6 +2916,15 @@ or_get_current_representation (RECDES * record, int do_indexes)
       rep->needs_indexes = 1;
     }
 
+  if (OR_VAR_IS_NULL (record->data, ORC_PARTITION_INDEX))
+    {
+      rep->has_partition_info = 0;
+    }
+  else
+    {
+      rep->has_partition_info = 1;
+    }
+
   return rep;
 
 error_cleanup:
@@ -2981,6 +2977,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
   char *repset, *disk_rep, *attset, *repatt, *dptr;
   int rep_count, i, n_fixed, n_variable, offset, start, id;
   char *fixed = NULL;
+  int has_partition_info = 0;
 
   if (repid == NULL_REPRID)
     {
@@ -3176,6 +3173,15 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       rep->needs_indexes = 1;
     }
 
+  if (OR_VAR_IS_NULL (record->data, ORC_PARTITION_INDEX))
+    {
+      rep->has_partition_info = 0;
+    }
+  else
+    {
+      rep->has_partition_info = 1;
+    }
+
   return rep;
 }
 
@@ -3195,6 +3201,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
   OR_CLASSREP *rep, **rep_arr = NULL;
   char *repset = NULL, *disk_rep, *attset, *repatt, *dptr, *fixed = NULL;
   int old_rep_count = 0, i, j, offset, start, n_variable, n_fixed;
+  int has_partition_info = 0;
 
   if (count)
     {
@@ -3380,6 +3387,15 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
       else
 	{
 	  rep->needs_indexes = 1;
+	}
+
+      if (OR_VAR_IS_NULL (record->data, ORC_PARTITION_INDEX))
+	{
+	  rep->has_partition_info = 0;
+	}
+      else
+	{
+	  rep->has_partition_info = 1;
 	}
     }
 

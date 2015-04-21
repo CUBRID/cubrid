@@ -3579,21 +3579,43 @@ partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid,
   PRUNING_CONTEXT context;
   int i;
   OID *oids = NULL;
+  OR_CLASSREP *classrepr = NULL;
+  int classrepr_cacheindex = -1;
+  bool clear_pcontext = false;
 
   assert_release (class_oid != NULL);
   assert_release (partition_oids != NULL);
   assert_release (count != NULL);
 
-  partition_init_pruning_context (&context);
-
-  error = partition_load_pruning_context (thread_p, class_oid,
-					  DB_PARTITIONED_CLASS, &context);
-  if (error != NO_ERROR)
+  /* get class representation to find partition information */
+  classrepr =
+    heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID,
+			&classrepr_cacheindex);
+  if (classrepr == NULL)
     {
       goto cleanup;
     }
 
-  if (context.count == 0)
+  if (classrepr->has_partition_info > 0)
+    {
+      partition_init_pruning_context (&context);
+      clear_pcontext = true;
+
+      error = partition_load_pruning_context (thread_p, class_oid,
+					      DB_PARTITIONED_CLASS, &context);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      if (context.count == 0)
+	{
+	  *count = 0;
+	  *partition_oids = NULL;
+	  goto cleanup;
+	}
+    }
+  else
     {
       *count = 0;
       *partition_oids = NULL;
@@ -3615,7 +3637,14 @@ partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid,
   *partition_oids = oids;
 
 cleanup:
-  partition_clear_pruning_context (&context);
+  if (clear_pcontext == true)
+    {
+      partition_clear_pruning_context (&context);
+    }
+  if (classrepr != NULL)
+    {
+      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+    }
   if (error != NO_ERROR)
     {
       if (oids != NULL)

@@ -169,6 +169,7 @@ struct or_classrep
   int n_indexes;		/* number of indexes */
 
   unsigned needs_indexes:1;	/* flag indicating if indexes were not loaded */
+  unsigned has_partition_info:1;	/* flag indicating if class has partition info */
 };
 
 typedef struct or_class OR_CLASS;
