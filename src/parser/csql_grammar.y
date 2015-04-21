@@ -19208,18 +19208,14 @@ collation_spec
 	;
 
 class_comment_spec
-	: COMMENT opt_equalsign CHAR_STRING
+	: COMMENT opt_equalsign char_string_literal
 		{{
-			PT_NODE *node;
-			
-			node = parser_new_node (this_parser, PT_VALUE);
+			PT_NODE *node = $3;
 			
 			if (node)
 			  {
 			    node->type_enum = PT_TYPE_VARCHAR;
-			    node->info.value.string_type = ' ';
-			    node->info.value.data_value.str =
-			      pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+
 			    if (node->info.value.data_value.str->length > 
 			        SM_MAX_CLASS_COMMENT_LENGTH)
 			      {
@@ -19254,18 +19250,14 @@ opt_comment_spec
 	;
 
 comment_value
-	: CHAR_STRING
+	: char_string_literal
 		{{
-			PT_NODE *node;
-			
-			node = parser_new_node (this_parser, PT_VALUE);
+			PT_NODE *node = $1;
 			
 			if (node)
 			  {
 			    node->type_enum = PT_TYPE_VARCHAR;
-			    node->info.value.string_type = ' ';
-			    node->info.value.data_value.str =
-			      pt_append_bytes (this_parser, NULL, $1, strlen ($1));
+
 			    if (node->info.value.data_value.str->length > 
 			        SM_MAX_COMMENT_LENGTH)
 			      {
