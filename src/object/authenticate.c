@@ -621,8 +621,11 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
 	   */
 	  if (*set != NULL)
 	    {
-	      db_fetch_set (*set, DB_FETCH_READ, 0);
-	      set_filter (*set);
+	      error = db_fetch_set (*set, DB_FETCH_READ, 0);
+	      if (error == NO_ERROR)
+		{
+		  error = set_filter (*set);
+		}
 	      /*
 	       * shoudl be detecting the filtered elements and marking the
 	       * object dirty if possible
@@ -1990,6 +1993,10 @@ au_add_user (const char *name, int *exists)
 		  AU_ENABLE (save);
 		  return NULL;
 		}
+
+	      /* clear error */
+	      er_clear ();
+
 	      user = au_make_user (name);
 	      if (user != NULL)
 		{
@@ -3632,44 +3639,61 @@ drop_grant_entry (DB_SET * grants, int index)
 static int
 get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 {
-  int error;
+  int error = NO_ERROR;
   DB_VALUE value;
-  DB_SET *grants;
+  DB_SET *grants = NULL;
   MOP grantor, gowner, class_;
   int gsize, i, j, existing, cache;
+  bool need_pop_er_stack = false;
+
+  assert (grant_ptr != NULL);
 
   *grant_ptr = NULL;
+
+  error = er_stack_push ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  need_pop_er_stack = true;
 
   error = obj_get (auth, "grants", &value);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
-
-  grants = NULL;
 
   if (DB_VALUE_TYPE (&value) != DB_TYPE_SEQUENCE
       || DB_IS_NULL (&value) || db_get_set (&value) == NULL)
     {
       error = ER_AU_CORRUPTED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return error;
+
+      goto end;
     }
 
   if (!filter)
     {
-      return NO_ERROR;
+      goto end;
     }
 
   grants = db_get_set (&value);
   gsize = set_size (grants);
+
+  /* there might be errors */
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   for (i = 0; i < gsize; i += GRANT_ENTRY_LENGTH)
     {
       error = set_get_element (grants, GRANT_ENTRY_SOURCE (i), &value);
       if (error != NO_ERROR)
 	{
-	  break;
+	  goto end;
 	}
 
       grantor = NULL;
@@ -3688,7 +3712,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 	  error = set_get_element (grants, GRANT_ENTRY_CLASS (i), &value);
 	  if (error != NO_ERROR)
 	    {
-	      break;
+	      goto end;
 	    }
 
 	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
@@ -3721,7 +3745,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 					   &value);
 		  if (error != NO_ERROR)
 		    {
-		      break;
+		      goto end;
 		    }
 
 		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
@@ -3731,11 +3755,6 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 		    }
 		}
 
-	      if (error != NO_ERROR)
-		{
-		  break;
-		}
-
 	      if (existing == -1)
 		{
 		  /*
@@ -3743,7 +3762,12 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 		   * use the current one
 		   */
 		  db_make_object (&value, gowner);
-		  set_put_element (grants, GRANT_ENTRY_SOURCE (i), &value);
+		  error =
+		    set_put_element (grants, GRANT_ENTRY_SOURCE (i), &value);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
 		}
 	      else
 		{
@@ -3751,13 +3775,31 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 		   * update the previous entry with the extra bits
 		   * and delete the current entry
 		   */
-		  set_get_element (grants, GRANT_ENTRY_CACHE (i), &value);
+		  error =
+		    set_get_element (grants, GRANT_ENTRY_CACHE (i), &value);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+
 		  cache = db_get_int (&value);
-		  set_get_element (grants, GRANT_ENTRY_CACHE (existing),
-				   &value);
+		  error =
+		    set_get_element (grants, GRANT_ENTRY_CACHE (existing),
+				     &value);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+
 		  db_make_int (&value, db_get_int (&value) | cache);
-		  set_put_element (grants, GRANT_ENTRY_CACHE (existing),
-				   &value);
+		  error =
+		    set_put_element (grants, GRANT_ENTRY_CACHE (existing),
+				     &value);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+
 		  drop_grant_entry (grants, i);
 		  gsize -= GRANT_ENTRY_LENGTH;
 		}
@@ -3765,10 +3807,24 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 	}
     }
 
+end:
+
   if (error != NO_ERROR && grants != NULL)
     {
       set_free (grants);
       grants = NULL;
+    }
+
+  if (need_pop_er_stack)
+    {
+      if (error == NO_ERROR)
+	{
+	  (void) er_stack_pop ();
+	}
+      else
+	{
+	  er_stack_clear ();
+	}
     }
 
   *grant_ptr = grants;
@@ -3827,17 +3883,27 @@ static int
 update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
 {
   int error = NO_ERROR;
-  DB_SET *groups;
+  DB_SET *groups = NULL;
   int i, save, card;
   DB_VALUE value;
   MOP group, auth;
   unsigned int *bits;
+  bool is_member = false;
+  bool need_pop_er_stack = false;
 
   /*
    * must disable here because we may be updating the cache of the system
    * objects and we need to read them in order to update etc.
    */
   AU_DISABLE (save);
+
+  error = er_stack_push ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  need_pop_er_stack = true;
 
   bits = &cache->data[Au_cache_index];
 
@@ -3849,70 +3915,131 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
       /* This shouldn't happen - assign it to the DBA */
       error = ER_AU_CLASS_WITH_NO_OWNER;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+      goto end;
     }
-  else if (au_is_dba_group_member (Au_user))
+
+  is_member = au_is_dba_group_member (Au_user);
+  if (is_member)
     {
       *bits = AU_FULL_AUTHORIZATION;
+
+      goto end;
     }
-  else if (ws_is_same_object (Au_user, sm_class->owner))
+
+  /* there might be errors */
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (ws_is_same_object (Au_user, sm_class->owner))
     {
       /* might want to allow grant/revoke on self */
       *bits = AU_FULL_AUTHORIZATION;
+
+      goto end;
     }
-  else if (au_get_set (Au_user, "groups", &groups) != NO_ERROR)
+
+  if (au_get_set (Au_user, "groups", &groups) != NO_ERROR)
     {
       error = ER_AU_ACCESS_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "groups",
 	      AU_USER_CLASS_NAME);
+
+      goto end;
+    }
+
+  db_make_object (&value, sm_class->owner);
+
+  is_member = set_ismember (groups, &value);
+
+  /* there might be errors */
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (is_member)
+    {
+      /* we're a member of the owning group */
+      *bits = AU_FULL_AUTHORIZATION;
+    }
+  else if (au_get_object (Au_user, "authorization", &auth) != NO_ERROR)
+    {
+      error = ER_AU_ACCESS_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "authorization",
+	      AU_USER_CLASS_NAME);
     }
   else
     {
-      db_make_object (&value, sm_class->owner);
-      if (set_ismember (groups, &value))
+      /* apply local grants */
+      error = apply_grants (auth, classop, bits);
+      if (error != NO_ERROR)
 	{
-	  /* we're a member of the owning group */
-	  *bits = AU_FULL_AUTHORIZATION;
+	  goto end;
 	}
-      else if (au_get_object (Au_user, "authorization", &auth) != NO_ERROR)
+
+      /* apply grants from all groups */
+      card = set_cardinality (groups);
+
+      /* there might be errors */
+      error = er_errid ();
+      if (error != NO_ERROR)
 	{
-	  error = ER_AU_ACCESS_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "authorization",
-		  AU_USER_CLASS_NAME);
+	  goto end;
 	}
-      else
+
+      for (i = 0; i < card; i++)
 	{
-	  /* apply local grants */
-	  error = apply_grants (auth, classop, bits);
-	  if (error == NO_ERROR)
+	  /* will have to handle deleted groups here ! */
+	  error = au_set_get_obj (groups, i, &group);
+	  if (error != NO_ERROR)
 	    {
-	      /* apply grants from all groups */
-	      card = set_cardinality (groups);
-	      for (i = 0; i < card; i++)
+	      goto end;
+	    }
+
+	  if (ws_is_same_object (group, Au_dba_user))
+	    {
+	      /* someones on the DBA member list, give them power */
+	      *bits = AU_FULL_AUTHORIZATION;
+	    }
+	  else
+	    {
+	      error = au_get_object (group, "authorization", &auth);
+	      if (error != NO_ERROR)
 		{
-		  /* will have to handle deleted groups here ! */
-		  error = au_set_get_obj (groups, i, &group);
-		  if (error == NO_ERROR)
-		    {
-		      if (ws_is_same_object (group, Au_dba_user))
-			{
-			  /* someones on the DBA member list, give them power */
-			  *bits = AU_FULL_AUTHORIZATION;
-			}
-		      else
-			{
-			  error = au_get_object (group, "authorization",
-						 &auth);
-			  if (error == NO_ERROR)
-			    {
-			      /* abort on errors ?? */
-			      (void) apply_grants (auth, classop, bits);
-			    }
-			}
-		    }
+		  goto end;
+		}
+
+	      error = apply_grants (auth, classop, bits);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
 		}
 	    }
 	}
+    }
+
+end:
+
+  if (groups != NULL)
+    {
       set_free (groups);
+    }
+
+  if (need_pop_er_stack)
+    {
+      if (error == NO_ERROR)
+	{
+	  (void) er_stack_pop ();
+	}
+      else
+	{
+	  er_stack_clear ();
+	}
     }
 
   AU_ENABLE (save);

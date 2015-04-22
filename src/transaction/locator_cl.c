@@ -1348,7 +1348,9 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
 	  lock = lock_Conv[lock][current_lock];
 	  assert (lock != NA_LOCK);
 
-	  if (current_lock == NULL_LOCK || lock != current_lock)
+	  /* Object instances are not locked for read in MVCC */
+	  if ((class_mop == sm_Root_class_mop || lock > S_LOCK)
+	      && (current_lock == NULL_LOCK || lock != current_lock))
 	    {
 	      error_code = ER_FAILED;
 	      if (er_errid () == 0)
