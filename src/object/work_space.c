@@ -1087,6 +1087,16 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 	{
 	  return NULL;
 	}
+
+      /* In this case, we need to set the class_mop.
+       * Or we may fail to get mop->object when fetch dirty version.
+       * See xlocator_fetch, locator_cache and locator_cache_have_object
+       */
+      if (mop->class_mop == NULL)
+	{
+	  mop->class_mop = class_mop;
+	}
+
       db_make_object (keys, mop);
       break;
     case DB_TYPE_OID:
