@@ -10682,6 +10682,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   DB_LOGICAL ev_res;
   OR_CLASSREP *classrepr = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  BTID btid_info;
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
@@ -10783,11 +10784,10 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       if ((n_attr_ids == 1
 	   && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL,
 					   &attr_info) != NO_ERROR)
-	  || (key = heap_attrinfo_generate_key (thread_p, n_attr_ids,
-						attr_ids, atts_prefix_length,
-						&attr_info,
-						&peek, &dbvalue,
-						aligned_buf, NULL)) == NULL)
+	  || (key = heap_attrvalue_get_key (thread_p, index_id,
+					    &attr_info,
+					    &peek, &btid_info, &dbvalue,
+					    aligned_buf, NULL, NULL)) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
 	    {
