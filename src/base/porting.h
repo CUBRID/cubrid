@@ -58,6 +58,12 @@ extern "C"
 #define INLINE
 #endif
 
+#if defined (__GNUC__) && defined (__GNUC_MINOR__) && defined (__GNUC_PATCHLEVEL__)
+#define CUB_GCC_VERSION (__GNUC__ * 10000 \
+			 + __GNUC_MINOR__ * 100 \
+			 + __GNUC_PATCHLEVEL__)
+#endif
+
 #if defined (WINDOWS)
 #define IMPORT_VAR 	__declspec(dllimport)
 #define EXPORT_VAR 	__declspec(dllexport)
@@ -774,8 +780,20 @@ extern "C"
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
 
+/* There is a gcc bug of __sync_synchronize in x86-64 when gcc version
+ * less than 4.4. we can replace __sync_synchronize as mfence instruction.
+ * see detail in https://gcc.gnu.org/bugzilla/show_bug.cgi?id=36793
+ */
+#if defined (X86) && defined (CUB_GCC_VERSION) && (CUB_GCC_VERSION < 40400)
+#define MEMORY_BARRIER() \
+  do { \
+    asm volatile("mfence" ::: "memory"); \
+    __sync_synchronize(); \
+  } while (0)
+#else
 #define MEMORY_BARRIER() \
 	__sync_synchronize()
+#endif
 
 #else				/* HAVE_GCC_ATOMIC_BUILTINS */
 /*
