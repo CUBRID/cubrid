@@ -3011,9 +3011,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "FROM _db_class C "
 		   "WHERE C.collation_id = %d "
 		   "AND NOT (C.class_name IN "
-		   "(SELECT CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "(SELECT P.class_of.class_name "
 		   "FROM _db_partition P WHERE "
-		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "P.class_of.class_name "
 		   " = C.class_name AND P.pname IS NOT NULL))",
 		   db_coll->coll_id);
 
@@ -3082,9 +3082,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "_db_index_key IK, _db_domain D "
 		   "where D.object_of = A AND D.collation_id = %d AND "
 		   "NOT (A.class_of.class_name IN (SELECT "
-		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "P.class_of.class_name "
 		   "FROM _db_partition P WHERE "
-		   "CONCAT (P.class_of.class_name, '__p__', P.pname) = "
+		   "P.class_of.class_name = "
 		   "A.class_of.class_name AND P.pname IS NOT NULL))"
 		   "AND A.attr_name = IK.key_attr_name AND IK in I.key_attrs "
 		   "AND I.is_foreign_key = 1 AND I.class_of = A.class_of",
@@ -3166,9 +3166,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "FROM _db_domain D,_db_attribute A "
 		   "WHERE D.object_of = A AND D.collation_id = %d "
 		   "AND NOT (A.class_of.class_name IN "
-		   "(SELECT CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "(SELECT P.class_of.class_name "
 		   "FROM _db_partition P WHERE "
-		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "P.class_of.class_name "
 		   " = A.class_of.class_name AND P.pname IS NOT NULL)) "
 		   "ORDER BY A.class_of.class_name", db_coll->coll_id);
 
@@ -3496,9 +3496,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "index_of.class_of.class_name FROM "
 		   "_db_index_key WHERE LOCATE ('%s', func) > 0 "
 		   "AND NOT (index_of.class_of.class_name IN "
-		   "(SELECT CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "(SELECT P.class_of.class_name "
 		   "FROM _db_partition P WHERE "
-		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "P.class_of.class_name "
 		   " = index_of.class_of.class_name "
 		   "AND P.pname IS NOT NULL)) ", db_coll->coll_name);
 
