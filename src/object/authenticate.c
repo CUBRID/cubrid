@@ -5900,6 +5900,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
 	     AU_FETCHMODE fetchmode, FETCH_BY fetch_by)
 {
   int error = NO_ERROR;
+  bool is_class;
   MOP classmop = NULL;
   SM_CLASS *class_ = NULL;
 
@@ -5916,15 +5917,34 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
   classmop = NULL;
   class_ = NULL;
 
-  if (fetch_by == BY_CLASS_MOP
-      || locator_is_class (op, ((fetchmode == AU_FETCH_READ)
-				? DB_FETCH_READ : DB_FETCH_WRITE)))
+  if (fetch_by == BY_CLASS_MOP)
     {
+      /* already know classmop */
       classmop = op;
     }
   else
     {
-      classmop = ws_class_mop (op);
+      er_stack_push ();
+
+      is_class = locator_is_class (op, ((fetchmode == AU_FETCH_READ)
+					? DB_FETCH_READ : DB_FETCH_WRITE));
+
+      error = er_errid ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      er_stack_pop ();
+
+      if (is_class)
+	{
+	  classmop = op;
+	}
+      else
+	{
+	  classmop = ws_class_mop (op);
+	}
     }
 
   /* the locator_fetch_class_of_instance doesn't seem to be working right now */
