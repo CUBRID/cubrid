@@ -72,6 +72,13 @@
    + BTREE_MAX_ALIGN /* Alignment */ \
    + n /* Key disk length. */)
 
+/* Maximum size of new fence key. */
+#define LEAF_FENCE_MAX_SIZE(n) \
+  (LEAF_RECORD_SIZE \
+   + OR_OID_SIZE /* OID marker for fence key */ \
+   + BTREE_MAX_ALIGN /* Alignment */ \
+   + n /* Key disk length. */)
+
 /* Maximum Non_Leaf Entry Size */
 #define NON_LEAF_ENTRY_MAX_SIZE(n) \
   (NON_LEAF_RECORD_SIZE + BTREE_MAX_ALIGN + n)

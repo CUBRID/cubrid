@@ -13172,17 +13172,25 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
   RECDES rec;
   BTREE_NODE_HEADER *header = NULL;
   BTREE_NODE_TYPE node_type;
-  INT16 slot_id;
-  int ent_size;
-  int key_cnt, key_len, offset;
-  INT16 tot_rec, sum, max_split_size;
-  int i, mid_size;
-  bool m_clear_key, n_clear_key;
+  INT16 slot_id = NULL_SLOTID;
+  int new_ent_size = 0, new_fence_size = 0;
+  int key_cnt = 0, key_len = 0, max_key_len = 0, offset = 0;
+  INT16 tot_rec = 0;
+  int i = 0, mid_size = 0;
+  bool m_clear_key = false, n_clear_key = false;
   DB_VALUE *mid_key = NULL, *next_key = NULL, *prefix_key = NULL, *tmp_key;
-  bool key_read, found;
+  bool is_key_added_to_left = false, found = false;
   NON_LEAF_REC nleaf_pnt;
   LEAF_REC leaf_pnt;
   BTREE_SEARCH_KEY_HELPER search_key;
+  int stop_at = 0, start_with = 0;
+  int left_fence_size = 0;
+  int right_fence_size = 0;
+  int left_size = 0;
+  int left_max_size = 0;
+  int left_min_size = 0;
+  int right_max_size = 0;
+  int record_size = 0;
 
   key_cnt = btree_node_number_of_keys (page_ptr);
   if (key_cnt <= 0)
@@ -13209,8 +13217,6 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
   key_len = btree_get_disk_size_of_key (key);
   key_len = BTREE_GET_KEY_LEN_IN_PAGE (key_len);
 
-  key_read = false;
-
   /* find the slot position of the key if it is to be located in the page */
   if (node_type == BTREE_LEAF_NODE)
     {
@@ -13234,136 +13240,204 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
       slot_id = NULL_SLOTID;
     }
 
-  /* first find out the size of the data on the page, don't count the
-   * header record.
+  /* Start splitting records into left and right nodes. The algorithm
+   * must consider next rules:
+   * 1. The size of split records should be done as close as possible to the
+   *    size indicated by split_info. Split info is not applied to page
+   *    header and fences.
+   * 2. Left and right nodes should have enough space for new data
+   *    required by insert, and also for new fences. This applies only to
+   *    leaf nodes.
+   * 3. After split & insert, both nodes must have at least one non-fence
+   *    record.
    */
-  for (i = 1, tot_rec = 0; i <= key_cnt; i++)
+
+  /* Compute maximum page size considering headers. */
+  left_max_size = BTREE_NODE_MAX_SPLIT_SIZE (page_ptr);
+  right_max_size = left_max_size;
+
+  /* Compute total record size. Filter out fences here. */
+  start_with = 1;
+  if (btree_is_fence_key (page_ptr, start_with))
     {
-      tot_rec += spage_get_space_for_record (page_ptr, i);
-    }
-  max_split_size = BTREE_NODE_MAX_SPLIT_SIZE (page_ptr);
+      assert (node_type == BTREE_LEAF_NODE);
+      left_fence_size = spage_get_space_for_record (page_ptr, start_with);
 
-  if (node_type == BTREE_LEAF_NODE && !found)
-    {				/* take key length into consideration */
-      ent_size = LEAF_ENTRY_MAX_SIZE (key_len);
-
-      tot_rec += ent_size;
-
-      mid_size = MIN (max_split_size - ent_size,
-		      btree_split_find_pivot (tot_rec,
-					      &(header->split_info)));
-      for (i = 1, sum = 0; i < slot_id && sum < mid_size; i++)
-	{
-	  sum += spage_get_space_for_record (page_ptr, i);
-	}
-
-      if (sum < mid_size)
-	{
-	  int len;
-
-	  /* new key insert into left node */
-	  sum += ent_size;
-	  key_read = true;
-
-	  for (; sum < mid_size && i <= key_cnt; i++)
-	    {
-	      len = spage_get_space_for_record (page_ptr, i);
-	      if (sum + len >= mid_size)
-		{
-		  break;
-		}
-
-	      sum += len;
-	    }
-	}
-      else
-	{
-	  while (sum < ent_size)
-	    {
-	      if (i == slot_id)
-		{
-		  /* new key insert into left node */
-		  sum += ent_size;
-		  key_read = true;
-		}
-	      else
-		{
-		  sum += spage_get_space_for_record (page_ptr, i);
-		  i++;
-		}
-	    }
-	}
-    }
-  else
-    {				/* consider only the length of the records in the page */
-      mid_size = btree_split_find_pivot (tot_rec, &(header->split_info));
-      for (i = 1, sum = 0;
-	   sum < mid_size && sum < max_split_size && i <= key_cnt; i++)
-	{
-	  sum += spage_get_space_for_record (page_ptr, i);
-	}
+      /* Left fence will be included in left leaf. Subtract its size from
+       * the maximum size allowed.
+       */
+      left_max_size -= left_fence_size;
+      start_with++;
     }
 
-  *mid_slot = i - 1;
+  stop_at = key_cnt;
+  if (btree_is_fence_key (page_ptr, stop_at))
+    {
+      assert (node_type == BTREE_LEAF_NODE);
+      right_fence_size = spage_get_space_for_record (page_ptr, stop_at);
 
-  /* We used to have a check here to make sure that the key could be
-   * inserted into one of the pages after the split operation.  It must
-   * always be the case that the key can be inserted into one of the
-   * pages after split because keys can be no larger than
-   * BTREE_MAX_KEYLEN_INPAGE
-   * and the determination of the splitpoint above
-   * should always guarantee that both pages have at least that much
-   * free (usually closer to half the page, certainly more than 2 *
-   * BTREE_MAX_KEYLEN_INPAGE.
-   */
+      /* Right fence will be included in right leaf. Subtract its size from
+       * the maximum size allowed.
+       */
+      right_max_size -= right_fence_size;
+      stop_at--;
+    }
 
   if (node_type == BTREE_LEAF_NODE)
     {
-      /* adjust right-end split point */
-      if (*mid_slot >= (key_cnt - 1))
+      if (found)
 	{
-	  if (slot_id > key_cnt)
-	    {
-	      /* Keys are probably inserted incrementally. Move just one
-	       * record in next page to make room for a fence key.
-	       */
-	      *mid_slot = key_cnt - 1;
-	    }
-	  else
-	    {
-	      *mid_slot = key_cnt - 2;
-	    }
+	  /* New object is added to existing key. */
+	  new_ent_size = BTREE_OBJECT_FIXED_SIZE (btid);
+	}
+      else
+	{
+	  /* New key will be inserted into leaves. */
+	  new_ent_size = LEAF_ENTRY_MAX_SIZE (key_len);
 	}
 
-      /* adjust left-end split point */
-      /* new key will be inserted at right page,
-       * so adjust to prevent empty(or only fence) left
+      /* Until we know where new entity belongs, we must reserve enough
+       * space in both left and right leaf.
        */
-      if (*mid_slot <= 1)
-	{
-	  *mid_slot = 2;
-	}
+      left_max_size -= new_ent_size;
+      right_max_size -= new_ent_size;
+
+      /* New fences are added to both leaves: an upper fence for left leaf and
+       * lower fence for right leaf. We don't know their size yet, but we
+       * can estimate the largest size using node maximum key length.
+       */
+      /* TODO: Fences currently optimize only midxkey key types. Save storage
+       *       by not using fence keys when they are not required.
+       */
+      max_key_len = MAX (key_len, header->max_key_len);
+      new_fence_size = LEAF_FENCE_MAX_SIZE (max_key_len);
+
+      /* Adjust maximum size for both leaves. */
+      left_max_size -= new_fence_size;
+      right_max_size -= new_fence_size;
     }
   else
     {
-      /* adjust right-end split point */
-      if (*mid_slot == key_cnt)
-	{
-	  *mid_slot = key_cnt - 1;
-	}
+      /* New key is not added to non-leaf. */
+      new_ent_size = 0;
 
-      /* adjust left-end split point */
-      /* new key will be inserted at right page,
-       * so adjust to prevent empty left
-       */
-      if (*mid_slot == 0)
+      /* No fences in non-leaf. */
+      new_fence_size = 0;
+    }
+
+  /* First find out the size of the data on the page, don't count the
+   * header record or fences.
+   */
+  for (i = start_with, tot_rec = 0; i <= stop_at; i++)
+    {
+      tot_rec += spage_get_space_for_record (page_ptr, i);
+    }
+  tot_rec += new_ent_size;
+
+  /* Compute mid_size, the desired size of left node according to split info.
+   */
+  mid_size = btree_split_find_pivot (tot_rec, &(header->split_info));
+
+  /* Split records and new entity considering mid_size, left_max_size, and
+   * right_max_size.
+   * Since we work with left node, translate right_max_size into left_min_size
+   * by subtracting from total records size.
+   */
+  left_min_size = tot_rec - right_max_size;
+  /* Safe guard. */
+  assert (left_min_size < left_max_size);
+
+  /* Find the last slot ID belonging to left node (and save it in the mid_slot
+   * pointer).
+   */
+  for (i = start_with, left_size = 0; true; i++)
+    {
+      if (node_type == BTREE_LEAF_NODE && i == slot_id)
 	{
-	  *mid_slot = 1;
+	  /* New entity belongs to left leaf. Ignore it for non-leaf. */
+	  is_key_added_to_left = true;
+	  left_size += new_ent_size;
+
+	  /* Adjust leaf sizes now that we know the key belongs to left leaf.
+	   */
+	  left_max_size += new_ent_size;
+	  right_max_size += new_ent_size;
+	  left_min_size -= new_ent_size;
+	}
+      record_size = spage_get_space_for_record (page_ptr, i);
+      if (left_size < left_min_size)
+	{
+	  /* Right node is too large. Keep adding records to left node. */
+	  left_size += record_size;
+	  continue;
+	}
+      /* Add new record to left and check its new size. */
+      left_size += record_size;
+      if (left_size > MIN (left_max_size, mid_size))
+	{
+	  /* We reached the desired size, or the maximum size allowed for left
+	   * node. Stop one record before this.
+	   */
+	  *mid_slot = i - 1;
+#if !defined (NDEBUG)
+	  /* Update left_size for debug checks. */
+	  left_size -= spage_get_space_for_record (page_ptr, i);
+#endif /* !NDEBUG */
+	  break;
+	}
+      if (i == stop_at)
+	{
+	  /* All non-fence records have been processed. Stop. */
+	  *mid_slot = i;
+	  break;
 	}
     }
 
-  assert (*mid_slot != 0);
+  /* Adjust mid_slot according to rule #3. */
+  if (*mid_slot == (start_with - 1)
+      && (node_type == BTREE_NON_LEAF_NODE || !is_key_added_to_left))
+    {
+      /* There are no records in the left node. Adjust mid_slot. */
+      (*mid_slot)++;
 
+#if !defined (NDEBUG)
+      /* Update left_size for debug checks. */
+      left_size += spage_get_space_for_record (page_ptr, *mid_slot);
+#endif /* !NDEBUG */
+    }
+  if (*mid_slot == stop_at
+      && (node_type == BTREE_NON_LEAF_NODE || is_key_added_to_left))
+    {
+      /* There are no records in the right leaf. Adjust mid_slot. */
+      (*mid_slot)--;
+#if !defined (NDEBUG)
+      /* Update left_size for debug checks. */
+      left_size -= spage_get_space_for_record (page_ptr, *mid_slot);
+#endif /* !NDEBUG */
+    }
+
+  /* Safe guard: Rule #2. */
+  assert (left_size <= left_max_size);
+  assert (left_size >= left_min_size);
+  assert (tot_rec - left_size <= right_max_size);
+  assert (left_size + (is_key_added_to_left ? new_ent_size : 0)
+	  + new_fence_size <= BTREE_NODE_MAX_SPLIT_SIZE (page_ptr));
+  assert (tot_rec - left_size + (!is_key_added_to_left ? new_ent_size : 0)
+	  + new_fence_size <= BTREE_NODE_MAX_SPLIT_SIZE (page_ptr));
+
+  /* Safe guard: Rules #3. */
+  /* Left node will have at least one non-fence record. */
+  assert (*mid_slot >= start_with
+	  || (*mid_slot == (start_with - 1) && node_type == BTREE_LEAF_NODE
+	      && is_key_added_to_left));
+  /* Right node will have at least one non-fence record. */
+  assert (*mid_slot < stop_at
+	  || (*mid_slot == stop_at && node_type == BTREE_LEAF_NODE
+	      && !is_key_added_to_left));
+
+  /* TODO: Optimize memory usage. We don't need to allocated/deallocate all
+   *       DB_VALUE types and their content in all cases.
+   */
   mid_key = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE));
   if (mid_key == NULL)
     {
@@ -13372,10 +13446,13 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 
   db_make_null (mid_key);
 
-  if (*mid_slot != key_cnt && *mid_slot == (slot_id - 1) && key_read)
+  if (*mid_slot == (slot_id - 1) && is_key_added_to_left && !found)
     {
       /* the new key is the split key */
       PR_TYPE *pr_type;
+
+      /* Safe guard. */
+      assert (*mid_slot != key_cnt);
 
       if (node_type == BTREE_LEAF_NODE)
 	{
