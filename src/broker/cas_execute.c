@@ -1428,7 +1428,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
     {
-      srv_handle->num_result_set = 1;
+      srv_handle->has_result_set = true;
 
       if (srv_handle->is_holdable == true)
 	{
@@ -1442,7 +1442,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache,
 		    &srv_handle->use_query_cache);
 
-  if (srv_handle->auto_commit_mode == TRUE && srv_handle->num_result_set == 0)
+  if (srv_handle->auto_commit_mode == TRUE && !srv_handle->has_result_set)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -1774,7 +1774,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
       if (has_stmt_result_set (q_result->stmt_type) == true)
 	{
-	  srv_handle->num_result_set++;
+	  srv_handle->has_result_set = true;
 
 	  if (srv_handle->is_holdable == true)
 	    {
@@ -1791,7 +1791,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
 
-  if (srv_handle->auto_commit_mode == TRUE && srv_handle->num_result_set == 0)
+  if (srv_handle->auto_commit_mode == TRUE && !srv_handle->has_result_set)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -1988,7 +1988,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
-  srv_handle->num_result_set = 1;
+  srv_handle->has_result_set = true;
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
@@ -8799,7 +8799,7 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt,
   srv_handle->q_result = q_result;
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->num_q_result = 1;
-  srv_handle->num_result_set = 1;
+  srv_handle->has_result_set = true;
   srv_handle->cur_result_index = 1;
   srv_handle->sql_stmt = NULL;
 
@@ -9549,7 +9549,7 @@ create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result,
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
   srv_handle->num_q_result = 1;
-  srv_handle->num_result_set = 1;
+  srv_handle->has_result_set = true;
   srv_handle->max_row = q_result->tuple_count;
 
   return srv_h_id;
@@ -10173,10 +10173,8 @@ has_stmt_result_set (char stmt_type)
 static bool
 check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 {
-  srv_handle->num_result_set--;
-
   if (srv_handle->auto_commit_mode == TRUE
-      && srv_handle->num_result_set == 0
+      && srv_handle->cur_result_index == srv_handle->num_q_result
       && srv_handle->forward_only_cursor == TRUE
       && srv_handle->is_updatable == FALSE
       && (srv_handle->q_result == NULL

@@ -176,7 +176,7 @@ struct t_srv_handle
   int *classes_chn;
   int cur_result_index;
   int num_q_result;
-  int num_result_set;
+  bool has_result_set;
 #endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   int num_markers;
   int max_col_size;

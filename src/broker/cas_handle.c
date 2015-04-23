@@ -385,7 +385,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
     }
 
   srv_handle->cur_result = NULL;
-  srv_handle->num_result_set = 0;
+  srv_handle->has_result_set = false;
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
