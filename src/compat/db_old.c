@@ -615,7 +615,7 @@ db_get_attribute_domain (MOP obj, const char *name)
       if (att != NULL)
 	{
 	  domain = att->domain;
-	  sm_filter_domain (domain);
+	  sm_filter_domain (domain, NULL);
 	}
     }
 

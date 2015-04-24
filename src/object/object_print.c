@@ -436,7 +436,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
     }
 
   /* filter first, usually not necessary but this is visible */
-  sm_filter_domain (domain);
+  sm_filter_domain (domain, NULL);
 
   for (temp_domain = domain; temp_domain != NULL;
        temp_domain = temp_domain->next)

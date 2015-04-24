@@ -1149,7 +1149,7 @@ db_attribute_domain (DB_ATTRIBUTE * attribute)
       domain = attribute->domain;
 
       /* always filter the domain before returning to the higher levels */
-      sm_filter_domain (domain);
+      sm_filter_domain (domain, NULL);
     }
 
   return (domain);
@@ -1641,7 +1641,7 @@ db_method_return_domain (DB_METHOD * method)
       method->signatures->value != NULL)
     {
       domain = method->signatures->value->domain;
-      sm_filter_domain (domain);
+      sm_filter_domain (domain, NULL);
     }
 
   return (domain);
@@ -1675,7 +1675,7 @@ db_method_arg_domain (DB_METHOD * method, int arg)
 	  if (method->signatures->value != NULL)
 	    {
 	      domain = method->signatures->value->domain;
-	      sm_filter_domain (domain);
+	      sm_filter_domain (domain, NULL);
 	    }
 	}
       else
@@ -1686,7 +1686,7 @@ db_method_arg_domain (DB_METHOD * method, int arg)
 	      if (marg->index == arg)
 		{
 		  domain = marg->domain;
-		  sm_filter_domain (domain);
+		  sm_filter_domain (domain, NULL);
 		}
 	    }
 	}

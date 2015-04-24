@@ -423,7 +423,7 @@ extern int tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
 extern int tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
-extern int tp_domain_filter_list (TP_DOMAIN * dlist);
+extern int tp_domain_filter_list (TP_DOMAIN * dlist, int *list_changes);
 
 extern int tp_domain_size (const TP_DOMAIN * domain);
 

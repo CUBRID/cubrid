@@ -897,10 +897,11 @@ smt_edit_class_mop (MOP op, DB_AUTH db_auth_type)
 	{
 	  /* cleanup the class and flush out the run-time information prior to
 	     editing */
-	  sm_clean_class (op, class_);
-
-	  template_ =
-	    classobj_make_template (sm_get_ch_name (op), op, class_);
+	  if (sm_clean_class (op, class_) == NO_ERROR)
+	    {
+	      template_ =
+		classobj_make_template (sm_get_ch_name (op), op, class_);
+	    }
 	}
     }
 

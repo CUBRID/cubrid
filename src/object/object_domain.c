@@ -614,7 +614,7 @@ static TP_DOMAIN *tp_is_domain_cached (TP_DOMAIN * dlist,
 #if !defined (SERVER_MODE)
 static void tp_swizzle_oid (TP_DOMAIN * domain);
 #endif /* SERVER_MODE */
-static int tp_domain_check_class (TP_DOMAIN * domain);
+static int tp_domain_check_class (TP_DOMAIN * domain, int *change);
 static const TP_DOMAIN *tp_domain_find_compatible (const TP_DOMAIN * src,
 						   const TP_DOMAIN * dest);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3932,19 +3932,27 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 /*
  * tp_domain_check_class - Work function for tp_domain_filter_list and
  * sm_filter_domain.
- *    return: non-zero if the domain was modified
+ *    return: error code
  *    domain(in): domain to examine
+ *    change(out): non-zero if the domain was modified
  * Note:
  *    Check the class in a domain and if it was deleted, downgrade the
  *    domain to "object".
  */
 static int
-tp_domain_check_class (TP_DOMAIN * domain)
+tp_domain_check_class (TP_DOMAIN * domain, int *change)
 {
-  int change = 0;
+  int error = NO_ERROR;
 #if !defined (SERVER_MODE)
   int status;
+#endif /* !SERVER_MODE */
 
+  if (change != NULL)
+    {
+      *change = 0;
+    }
+
+#if !defined (SERVER_MODE)
   if (!db_on_server)
     {
       if (domain != NULL && domain->type == tp_Type_object
@@ -3958,24 +3966,30 @@ tp_domain_check_class (TP_DOMAIN * domain)
 	    {
 	      WS_SET_DELETED (domain->class_mop);
 	      domain->class_mop = NULL;
-	      change = 1;
+	      if (change != NULL)
+		{
+		  *change = 1;
+		}
 	    }
-	  /* TODO:
-	   * Unsafe function. Error is not checked.
-	   */
+	  else if (status == LC_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      error = er_errid ();
+	    }
 	}
     }
 #endif /* !SERVER_MODE */
 
-  return change;
+  return error;
 }
 
 
 /*
  * tp_domain_filter_list - filter out any domain references to classes that
  * have been deleted or are otherwise invalid from domain list
- *    return: non-zero if changes were made
- *    dlist():  domain list
+ *    return: error code
+ *    dlist(in):  domain list
+ *    list_changes(out) : non-zero if changes were made
  * Note:
  *    The semantic for deleted classes is that the domain reverts
  *    to the root "object" domain, thereby allowing all object references.
@@ -3985,17 +3999,28 @@ tp_domain_check_class (TP_DOMAIN * domain)
  *    "object" domain present.
  */
 int
-tp_domain_filter_list (TP_DOMAIN * dlist)
+tp_domain_filter_list (TP_DOMAIN * dlist, int *list_changes)
 {
   TP_DOMAIN *d, *prev, *next;
-  int has_object, changes;
+  int has_object, changes, set_changes, domain_change;
+  int error;
 
   has_object = changes = 0;
+  if (list_changes != NULL)
+    {
+      *list_changes = 0;
+    }
 
   for (d = dlist, prev = NULL, next = NULL; d != NULL; d = next)
     {
       next = d->next;
-      if (tp_domain_check_class (d))
+      error = tp_domain_check_class (d, &domain_change);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (domain_change)
 	{
 	  /* domain reverted to "object" */
 	  if (!has_object)
@@ -4013,7 +4038,7 @@ tp_domain_filter_list (TP_DOMAIN * dlist)
 	      prev->next = next;
 	      d->next = NULL;
 	      tp_domain_free (d);
-	      changes = 1;
+	      changes |= 1;
 	    }
 	}
       else
@@ -4027,13 +4052,24 @@ tp_domain_filter_list (TP_DOMAIN * dlist)
 		   && d->setdomain != NULL)
 	    {
 	      /* recurse on set domain list */
-	      changes = tp_domain_filter_list (d->setdomain);
+	      error = tp_domain_filter_list (d->setdomain, &set_changes);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      changes |= set_changes;
 	    }
 	  prev = d;
 	}
     }
 
-  return changes;
+  if (list_changes != NULL)
+    {
+      *list_changes = changes;
+    }
+
+  return NO_ERROR;
 }
 
 /*

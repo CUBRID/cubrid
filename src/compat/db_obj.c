@@ -829,7 +829,7 @@ db_attdesc_domain (DB_ATTDESC * desc)
 	  if (domain != NULL)
 	    {
 	      /* always filter the domain before returning to the higher levels */
-	      sm_filter_domain (domain);
+	      sm_filter_domain (domain, NULL);
 	    }
 	}
     }

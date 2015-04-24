@@ -3390,22 +3390,23 @@ sm_destroy_representations (MOP op)
  *    class to ensure that the change is made persistent.
  *    Making the change persistent doesn't really improve much since we
  *    always have to do a filter pass when the class is fetched.
- *   return: non-zero if changes were made
+ *   return: error code
  *   domain(in): domain list for attribute or method arg
+ *   changes(out): non-zero if changes were made
  */
 
 int
-sm_filter_domain (TP_DOMAIN * domain)
+sm_filter_domain (TP_DOMAIN * domain, int *changes)
 {
-  int changes = 0;
+  int error = NO_ERROR;
 
   if (domain != NULL)
     {
-      changes = tp_domain_filter_list (domain);
+      error = tp_domain_filter_list (domain, changes);
       /* if changes, could get write lock on owning_class here */
     }
 
-  return changes;
+  return error;
 }
 
 /*
@@ -3616,7 +3617,7 @@ sm_check_class_domain (TP_DOMAIN * domain, MOP class_)
          SINCE THIS IS CALLED FOR EVERY ATTRIBUTE UPDATE, WE MUST EITHER
          CACHE THIS INFORMATION OR PERFORM IT ONCE WHEN THE CLASS
          IS FETCHED */
-      (void) sm_filter_domain (domain);
+      (void) sm_filter_domain (domain, NULL);
 
       /* wildcard case */
       if (domain->class_mop == NULL)
@@ -3774,17 +3775,29 @@ sm_clean_class (MOP classmop, SM_CLASS * class_)
   for (att = class_->attributes; att != NULL;
        att = (SM_ATTRIBUTE *) att->header.next)
     {
-      sm_filter_domain (att->domain);
+      error = sm_filter_domain (att->domain, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
   for (att = class_->shared; att != NULL;
        att = (SM_ATTRIBUTE *) att->header.next)
     {
-      sm_filter_domain (att->domain);
+      error = sm_filter_domain (att->domain, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
   for (att = class_->class_attributes; att != NULL;
        att = (SM_ATTRIBUTE *) att->header.next)
     {
-      sm_filter_domain (att->domain);
+      error = sm_filter_domain (att->domain, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   if (!class_->post_load_cleanup)
@@ -5187,7 +5200,7 @@ sm_get_att_domain (MOP op, const char *name, TP_DOMAIN ** domain)
 
   if ((error = find_attribute_op (op, name, &class_, &att)) == NO_ERROR)
     {
-      sm_filter_domain (att->domain);
+      sm_filter_domain (att->domain, NULL);
       *domain = att->domain;
     }
 
@@ -5311,7 +5324,7 @@ sm_att_class (MOP classop, const char *name)
   attclass = NULL;
   if (find_attribute_op (classop, name, &class_, &att) == NO_ERROR)
     {
-      sm_filter_domain (att->domain);
+      sm_filter_domain (att->domain, NULL);
       if (att->domain != NULL && att->domain->type == tp_Type_object)
 	{
 	  attclass = att->domain->class_mop;
@@ -5362,7 +5375,7 @@ sm_att_info (MOP classop, const char *name, int *idp,
 	    {
 	      *sharedp = 1;
 	    }
-	  sm_filter_domain (att->domain);
+	  sm_filter_domain (att->domain, NULL);
 	  *idp = att->id;
 	  *domainp = att->domain;
 	}

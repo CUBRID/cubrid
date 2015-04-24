@@ -197,7 +197,7 @@ extern DB_OBJLIST *sm_fetch_all_objects (DB_OBJECT * op,
 					 DB_FETCH_MODE purpose);
 
 /* Domain maintenance */
-extern int sm_filter_domain (TP_DOMAIN * domain);
+extern int sm_filter_domain (TP_DOMAIN * domain, int *changes);
 extern int sm_check_class_domain (TP_DOMAIN * domain, MOP class_);
 extern int sm_check_object_domain (TP_DOMAIN * domain, MOP object);
 extern int sm_coerce_object_domain (TP_DOMAIN * domain, MOP object,
