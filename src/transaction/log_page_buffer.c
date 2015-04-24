@@ -6334,6 +6334,7 @@ logpb_create_volume_info (const char *db_fullname)
 int
 logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
 {
+  VOLID volid = LOG_DBFIRST_VOLID;	/* Current volume identifier */
   VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
   char next_vol_fullname[PATH_MAX];	/* Next volume name       */
   int error_code = NO_ERROR;
@@ -6367,22 +6368,25 @@ logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
 
   strcpy (next_vol_fullname, log_Db_fullname);
 
-  for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;
-       next_volid = fileio_find_next_perm_volume (thread_p, next_volid))
+  do
     {
-      if (logpb_add_volume (NULL, next_volid, next_vol_fullname,
-			    DISK_PERMVOL_GENERIC_PURPOSE) != next_volid)
+      if (logpb_add_volume (NULL, volid, next_vol_fullname,
+			    DISK_PERMVOL_GENERIC_PURPOSE) != volid)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
 	}
 
-      if (disk_get_link (thread_p, next_volid, next_vol_fullname) == NULL)
+      if (disk_get_link (thread_p, volid, &next_volid, next_vol_fullname) ==
+	  NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+
+      volid = next_volid;
     }
+  while (volid != NULL_VOLID);
 
   return error_code;
 
@@ -11353,8 +11357,9 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 
 	  if (volid != NULL_VOLID)
 	    {
-	      error_code = disk_set_link (thread_p, LOG_DBCOPY_VOLID,
-					  to_volname, false, DISK_FLUSH);
+	      error_code =
+		disk_set_link (thread_p, LOG_DBCOPY_VOLID, fromfile_volid,
+			       to_volname, false, DISK_FLUSH);
 	      if (error_code != NO_ERROR)
 		{
 		  fileio_dismount (thread_p, to_vdes);
@@ -11844,8 +11849,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       if (volid != LOG_DBFIRST_VOLID)
 	{
 	  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
-	  error_code = disk_set_link (thread_p, prev_volid, to_volname, false,
-				      DISK_FLUSH);
+	  error_code = disk_set_link (thread_p, prev_volid, volid, to_volname,
+				      false, DISK_FLUSH);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;

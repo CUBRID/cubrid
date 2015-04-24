@@ -127,6 +127,13 @@ struct disk_recv_mtab_bits_with
   DISK_PAGE_TYPE page_type;	/* page type */
 };
 
+typedef struct disk_recv_link_perm_volume DISK_RECV_LINK_PERM_VOLUME;
+struct disk_recv_link_perm_volume
+{				/* Recovery for links */
+  INT16 next_volid;
+  char next_vol_fullname[1];	/* Actually more than one */
+};
+
 typedef struct disk_recv_change_creation DISK_RECV_CHANGE_CREATION;
 struct disk_recv_change_creation
 {				/* Recovery for changes */
@@ -2180,6 +2187,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 
   /* Initialize variable length fields */
 
+  vhdr->next_volid = NULL_VOLID;
   vhdr->offset_to_vol_fullname = vhdr->offset_to_next_vol_fullname =
     vhdr->offset_to_vol_remarks = 0;
   vhdr->var_fields[vhdr->offset_to_vol_fullname] = '\0';
@@ -2240,7 +2248,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 			vhdr->page_alloctb_page1 + vhdr->page_alloctb_npages -
 			1, vhdr->sys_lastpage + 1, vol_purpose) != NO_ERROR
       || (vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE && volid > 0
-	  && disk_set_link (thread_p, prev_volid, vol_fullname, true,
+	  && disk_set_link (thread_p, prev_volid, volid, vol_fullname, true,
 			    DISK_FLUSH) != NO_ERROR))
     {
       /* Problems setting the map allocation tables, release the header page,
@@ -2966,7 +2974,8 @@ error:
  *                            permanent volume
  *   return: NO_ERROR
  *   volid(in): Volume identifier
- *   next_volext_fullname(in): New volume label/name
+ *   next_volid (in): next volume identifier
+ *   next_volext_fullname(in): next volume label/name
  *   logchange(in): Whether or not to log the change
  *   flush(in):
  *
@@ -2975,13 +2984,14 @@ error:
  */
 int
 disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
-	       const char *next_volext_fullname, bool logchange,
-	       DISK_FLUSH_TYPE flush)
+	       INT16 next_volid, const char *next_volext_fullname,
+	       bool logchange, DISK_FLUSH_TYPE flush)
 {
   DISK_VAR_HEADER *vhdr;
   LOG_DATA_ADDR addr;
   VPID vpid;
-
+  DISK_RECV_LINK_PERM_VOLUME *undo_recv;
+  DISK_RECV_LINK_PERM_VOLUME *redo_recv;
 
   addr.vfid = NULL;
   addr.offset = 0;
@@ -3005,13 +3015,40 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
   /* Do I need to log anything ? */
   if (logchange == true)
     {
+      size_t undo_size, redo_size;
+
+      undo_size = (sizeof (*undo_recv)
+		   + (int) strlen (disk_vhdr_get_next_vol_fullname (vhdr)));
+      undo_recv = (DISK_RECV_LINK_PERM_VOLUME *) malloc (undo_size);
+      if (undo_recv == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, undo_size);
+	  goto error;
+	}
+
+      redo_size = sizeof (*redo_recv) + (int) strlen (next_volext_fullname);
+      redo_recv = (DISK_RECV_LINK_PERM_VOLUME *) malloc (redo_size);
+      if (redo_recv == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, redo_size);
+	  free_and_init (undo_recv);
+	  goto error;
+	}
+
+      undo_recv->next_volid = vhdr->next_volid;
+      (void) strcpy (undo_recv->next_vol_fullname,
+		     disk_vhdr_get_next_vol_fullname (vhdr));
+
+      redo_recv->next_volid = next_volid;
+      (void) strcpy (redo_recv->next_vol_fullname, next_volext_fullname);
+
       log_append_undoredo_data (thread_p, RVDK_LINK_PERM_VOLEXT, &addr,
-				(int)
-				strlen (disk_vhdr_get_next_vol_fullname
-					(vhdr)) + 1,
-				(int) strlen (next_volext_fullname) + 1,
-				disk_vhdr_get_next_vol_fullname (vhdr),
-				next_volext_fullname);
+				undo_size, redo_size, undo_recv, redo_recv);
+
+      free_and_init (undo_recv);
+      free_and_init (redo_recv);
     }
   else
     {
@@ -3019,13 +3056,11 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
     }
 
   /* Modify the header */
+  vhdr->next_volid = next_volid;
   if (disk_vhdr_set_next_vol_fullname (vhdr, next_volext_fullname) !=
       NO_ERROR)
     {
-      (void) disk_verify_volume_header (thread_p, addr.pgptr);
-
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-      return ER_FAILED;
+      goto error;
     }
 
   /* Forcing the log here to be safer, especially in the case of
@@ -3052,6 +3087,16 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
   addr.pgptr = NULL;
 
   return NO_ERROR;
+
+error:
+
+  assert (addr.pgptr != NULL);
+
+  (void) disk_verify_volume_header (thread_p, addr.pgptr);
+
+  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+
+  return ER_FAILED;
 }
 
 /*
@@ -3142,17 +3187,21 @@ disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hfid)
  *                          extension
  *   return: next_volext_fullname or NULL in case of error
  *   volid(in): Volume identifier
+ *   next_volid(out): Next volume identifier
  *   next_volext_fullname(out): Next volume extension
  *
  * Note: If there is none, next_volext_fullname is set to null string
  */
 char *
-disk_get_link (THREAD_ENTRY * thread_p, INT16 volid,
+disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid,
 	       char *next_volext_fullname)
 {
   DISK_VAR_HEADER *vhdr;
   PAGE_PTR pgptr = NULL;
   VPID vpid;
+
+  assert (next_volid != NULL);
+  assert (next_volext_fullname != NULL);
 
   vpid.volid = volid;
   vpid.pageid = DISK_VOLHEADER_PAGE;
@@ -3168,6 +3217,7 @@ disk_get_link (THREAD_ENTRY * thread_p, INT16 volid,
 
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
+  *next_volid = vhdr->next_volid;
   strncpy (next_volext_fullname, disk_vhdr_get_next_vol_fullname (vhdr),
 	   DB_MAX_PATH_LENGTH);
 
@@ -6065,6 +6115,9 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
       goto exit_on_error;
     }
 
+  db_make_int (out_values[idx], vhdr->next_volid);
+  idx++;
+
   error = db_make_string_copy (out_values[idx],
 			       (char *) (vhdr->var_fields +
 					 vhdr->offset_to_next_vol_fullname));
@@ -6130,8 +6183,8 @@ disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
 		  vhdr->volid, disk_vhdr_get_vol_fullname (vhdr),
 		  disk_purpose_to_string (vhdr->purpose),
 		  disk_vhdr_get_vol_remarks (vhdr));
-  (void) fprintf (fp, " NEXT_VOL_FULLNAME = %s\n",
-		  disk_vhdr_get_next_vol_fullname (vhdr));
+  (void) fprintf (fp, " NEXT_VID = %d, NEXT_VOL_FULLNAME = %s\n",
+		  vhdr->next_volid, disk_vhdr_get_next_vol_fullname (vhdr));
   (void) fprintf (fp, " LAST SYSTEM PAGE = %d\n", vhdr->sys_lastpage);
   (void) fprintf (fp, " SECTOR: SIZE IN PAGES = %10d, TOTAL = %10d,",
 		  vhdr->sect_npgs, vhdr->total_sects);
@@ -7126,10 +7179,14 @@ int
 disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   DISK_VAR_HEADER *vhdr;
+  DISK_RECV_LINK_PERM_VOLUME *link;
   int ret = NO_ERROR;
 
   vhdr = (DISK_VAR_HEADER *) rcv->pgptr;
-  ret = disk_vhdr_set_next_vol_fullname (vhdr, rcv->data);
+  link = (DISK_RECV_LINK_PERM_VOLUME *) rcv->data;
+
+  vhdr->next_volid = link->next_volid;
+  ret = disk_vhdr_set_next_vol_fullname (vhdr, link->next_vol_fullname);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
@@ -7145,7 +7202,12 @@ disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 void
 disk_rv_dump_link (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (fp, "Next_Volextension = %s\n", (char *) data);
+  DISK_RECV_LINK_PERM_VOLUME *link;
+
+  link = (DISK_RECV_LINK_PERM_VOLUME *) data;
+
+  fprintf (fp, "Next_Volid = %d, Next_Volextension = %s\n",
+	   link->next_volid, link->next_vol_fullname);
 }
 
 /*

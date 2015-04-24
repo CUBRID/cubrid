@@ -113,7 +113,8 @@ metadata_of_volume_header (void)
     {"Num_used_index_pages", "int"},
     {"Checkpoint_lsa", "varchar(64)"},
     {"Boot_hfid", "varchar(64)"},
-    {"Full_name", "varchar(64)"},
+    {"Full_name", "varchar(255)"},
+    {"Next_volume_id", "int"},
     {"Next_vol_full_name", "varchar(255)"},
     {"Remarks", "varchar(64)"}
   };

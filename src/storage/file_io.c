@@ -11118,8 +11118,8 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 	      goto error;
 	    }
 
-	  if (disk_set_link (thread_p, prev_volid, to_vol_label_p, false,
-			     DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+	  if (disk_set_link (thread_p, prev_volid, volid, to_vol_label_p,
+			     false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
 	    {
 	      fileio_dismount (thread_p, prev_vdes);
 	      goto error;

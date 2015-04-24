@@ -1946,6 +1946,7 @@ boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
   char *vlabel;
   RECDES recdes;
   VOLID prev_volid = NULL_VOLID;
+  VOLID next_volid = NULL_VOLID;
   char next_vol_fullname[PATH_MAX];
 
   if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
@@ -1991,7 +1992,7 @@ boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
   vol_fd = fileio_get_volume_descriptor (boot_Db_parm->hfid.vfid.volid);
   (void) fileio_synchronize (thread_p, vol_fd, vlabel);
 
-  if (disk_get_link (thread_p, volid, next_vol_fullname) == NULL)
+  if (disk_get_link (thread_p, volid, &next_volid, next_vol_fullname) == NULL)
     {
       error = er_errid ();
       goto end;
@@ -2003,8 +2004,8 @@ boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
       goto end;
     }
 
-  error = disk_set_link (thread_p, prev_volid, next_vol_fullname, false,
-			 DISK_FLUSH);
+  error = disk_set_link (thread_p, prev_volid, next_volid, next_vol_fullname,
+			 false, DISK_FLUSH);
   if (error != NO_ERROR)
     {
       goto end;
@@ -2293,6 +2294,8 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
 				  void *args)
 {
   VOLID num_vols = 0;
+  VOLID curr_volid = LOG_DBFIRST_VOLID;
+  char *curr_vol_fullname;
   VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
   char next_vol_fullname[PATH_MAX];	/* Next volume name       */
   int error_code = NO_ERROR;
@@ -2308,31 +2311,35 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
 
       /* First the primary volume, then the rest of the volumes */
       num_vols = 0;
-      strcpy (next_vol_fullname, boot_Db_full_name);
+      curr_vol_fullname = next_vol_fullname;
+      strcpy (curr_vol_fullname, boot_Db_full_name);
 
       /*
        * Do not assume that all the volumes are mounted. This function may be
        * called to mount the volumes. Thus, request to current volume for the
        * next volume instead of going directly through the volume identifier.
        */
-      for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;
-	   next_volid = fileio_find_next_perm_volume (thread_p, next_volid))
+      do
 	{
 	  num_vols++;
-	  if (next_volid != volid)
+	  if (curr_volid != volid)
 	    {
-	      error_code = (*fun) (thread_p, next_volid, next_vol_fullname,
+	      error_code = (*fun) (thread_p, curr_volid, curr_vol_fullname,
 				   args);
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
 		}
 	    }
-	  if (disk_get_link (thread_p, next_volid, next_vol_fullname) == NULL)
+	  if (disk_get_link (thread_p, curr_volid, &next_volid,
+			     next_vol_fullname) == NULL)
 	    {
 	      return ER_FAILED;
 	    }
+
+	  curr_volid = next_volid;
 	}
+      while (curr_volid != NULL_VOLID);
 
       if (use_volinfo == true)
 	{
@@ -2513,6 +2520,7 @@ static int
 boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
 {
   VOLID num_vols = 0;
+  VOLID volid = LOG_DBFIRST_VOLID;	/* Current volume identifier */
   VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
   char next_vol_fullname[PATH_MAX];	/* Next volume name       */
   const char *vlabel;
@@ -2530,12 +2538,11 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
    * called to mount the volumes. Thus, request to current volume for the
    * next volume instead of going directly through the volume identifier.
    */
-  for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;
-       next_volid = fileio_find_next_perm_volume (thread_p, next_volid))
+  do
     {
       num_vols++;
       /* Have to make sure a label exists, before we try to use it below */
-      vlabel = fileio_get_volume_label (next_volid, PEEK);
+      vlabel = fileio_get_volume_label (volid, PEEK);
       if (vlabel == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2553,11 +2560,15 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_NOT_A_VOLUME, 1,
 		  vlabel);
 	}
-      if (disk_get_link (thread_p, next_volid, next_vol_fullname) == NULL)
+      if (disk_get_link (thread_p, volid, &next_volid, next_vol_fullname) ==
+	  NULL)
 	{
 	  return ER_GENERIC_ERROR;
 	}
+
+      volid = next_volid;
     }
+  while (volid != NULL_VOLID);
 
   if (num_vols != boot_Db_parm->nvols)
     {

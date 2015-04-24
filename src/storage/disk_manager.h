@@ -155,6 +155,7 @@ struct disk_var_header
 				   recovery process of this volume */
   HFID boot_hfid;		/* System Heap file for booting purposes and
 				   multi volumes */
+  INT16 next_volid;		/* next volume identifier * */
   INT16 offset_to_vol_fullname;	/* Offset to vol_fullname */
   INT16 offset_to_next_vol_fullname;	/* Offset to next vol_fullname */
   INT16 offset_to_vol_remarks;	/* Offset to vol_remarks */
@@ -233,7 +234,7 @@ extern int disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid,
 			      const LOG_LSA * new_chkptlsa,
 			      bool logchange, DISK_FLUSH_TYPE flush_page);
 extern int disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
-			  const char *next_volext_fullname,
+			  INT16 next_volid, const char *next_volext_fullname,
 			  bool logchange, DISK_FLUSH_TYPE flush);
 extern int disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
 				const LOG_LSA * log_chkpt_lsa);
@@ -278,7 +279,7 @@ extern INT32 disk_get_maxcontiguous_numpages (THREAD_ENTRY * thread_p,
 extern HFID *disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid,
 				 HFID * hfid);
 extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid,
-			    char *next_volext_fullname);
+			    INT16 * next_volid, char *next_volext_fullname);
 extern INT32 disk_get_max_numpages (THREAD_ENTRY * thread_p,
 				    DISK_VOLPURPOSE vol_purpose);
 extern DISK_ISVALID disk_check (THREAD_ENTRY * thread_p, INT16 volid,
