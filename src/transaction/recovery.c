@@ -874,8 +874,14 @@ struct rvfun RV_fun[] = {
    btree_rv_undo_delete_index,
    btree_rv_redo_delete_index,
    NULL,
-   NULL}
+   NULL},
 
+  {RVHF_PARTITION_LINK_FLAG,
+   "RVHF_PARTITION_LINK_FLAG",
+   heap_rv_undoredo_partition_link_flag,
+   heap_rv_undoredo_partition_link_flag,
+   NULL,
+   NULL}
 };
 
 /*

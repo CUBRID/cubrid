@@ -6307,7 +6307,8 @@ locator_remove_class (MOP class_mop)
   insts_hfid = sm_ch_heap (class_obj);
   if (insts_hfid->vfid.fileid != NULL_FILEID)
     {
-      error_code = heap_destroy_newly_created (insts_hfid);
+      error_code = heap_destroy_newly_created (insts_hfid,
+					       &class_mop->oid_info.oid);
       if (error_code != NO_ERROR)
 	{
 	  goto error;

@@ -138,7 +138,8 @@ extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
 #endif
-extern int heap_destroy_newly_created (const HFID * hfid);
+extern int heap_destroy_newly_created (const HFID * hfid,
+				       const OID * class_oid);
 extern int heap_reclaim_addresses (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);

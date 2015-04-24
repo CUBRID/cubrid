@@ -45,6 +45,7 @@ LF_TRAN_SYSTEM catalog_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM sessions_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM free_sort_list_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM global_unique_stats_Ts = LF_TRAN_SYSTEM_INITIALIZER;
+LF_TRAN_SYSTEM partition_link_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 
 static bool tran_systems_initialized = false;
 
@@ -419,6 +420,10 @@ lf_initialize_transaction_systems (int max_threads)
     {
       goto error;
     }
+  if (lf_tran_system_init (&partition_link_Ts, max_threads) != NO_ERROR)
+    {
+      goto error;
+    }
 
   tran_systems_initialized = true;
   return NO_ERROR;
@@ -441,6 +446,7 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&sessions_Ts);
   lf_tran_system_destroy (&free_sort_list_Ts);
   lf_tran_system_destroy (&global_unique_stats_Ts);
+  lf_tran_system_destroy (&partition_link_Ts);
 
   tran_systems_initialized = false;
 }

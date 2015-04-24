@@ -290,6 +290,9 @@ struct heap_hdr_stats
 				 * duplicated pages.
 				 */
 
+  int has_partition_link;	/* true if the class has at least one
+				 * partition link
+				 */
   int reserve1_for_future;	/* Nothing reserved for future             */
   int reserve2_for_future;	/* Nothing reserved for future             */
 };
@@ -566,6 +569,11 @@ static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area =
   { 0, NULL, NULL, 0, 0, 0, NULL, PTHREAD_MUTEX_INITIALIZER };
 
 static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
+
+static HEAP_PARTITION_LINK_CACHE heap_Partition_link_cache_area =
+  {LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER,
+   LF_FREELIST_INITIALIZER};
+static HEAP_PARTITION_LINK_CACHE *heap_Partition_link_cache = NULL;
 
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
@@ -1176,6 +1184,23 @@ static void heap_log_update_physical (THREAD_ENTRY * thread_p,
 				      PAGE_PTR page_p, VFID * vfid_p,
 				      OID * oid_p, RECDES * old_recdes_p,
 				      RECDES * new_recdes_p, bool is_mvcc_op);
+
+static void *heap_partition_link_entry_alloc (void);
+static int heap_partition_link_entry_free (void *unique_stat);
+static int heap_partition_link_entry_init (void *unique_stat);
+static int heap_partition_link_entry_key_copy (void *src, void *dest);
+static unsigned int heap_partition_link_entry_key_hash (void *key,
+							      int
+							      hash_table_size);
+static int heap_partition_link_entry_key_compare (void *k1, void *k2);
+static int heap_get_partition_link_from_cache (THREAD_ENTRY * thread_p,
+					       OID * class_oid);
+static int heap_update_partition_link_flag (THREAD_ENTRY * thread_p,
+					    HFID * hfid, int set_flag);
+static int heap_get_partition_link_flag (THREAD_ENTRY * thread_p, HFID * hfid,
+					 int * partition_link);
+static int heap_delete_from_partition_link_cache (THREAD_ENTRY * thread_p,
+						  OID * class_oid);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -5220,6 +5245,12 @@ heap_manager_initialize (void)
       return ret;
     }
 
+  ret = heap_partition_link_cache_initialize ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
   return ret;
 }
 
@@ -5250,6 +5281,8 @@ heap_manager_finalize (void)
     {
       return ret;
     }
+
+  heap_partition_link_cache_finalize ();
 
   return ret;
 }
@@ -5414,6 +5447,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
 
   heap_hdr.estimates.full_search_vpid.volid = hfid->vfid.volid;
   heap_hdr.estimates.full_search_vpid.pageid = hfid->hpgid;
+  heap_hdr.has_partition_link = 0;
 
   recdes.area_size = recdes.length = sizeof (HEAP_HDR_STATS);
   recdes.type = REC_HOME;
@@ -5763,6 +5797,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   heap_hdr->estimates.last_vpid = last_vpid;
+  heap_hdr->has_partition_link = 0;
 
   addr.pgptr = hdr_pgptr;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
@@ -5872,6 +5907,7 @@ xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid,
  * xheap_destroy () - Destroy a heap file
  *   return: int
  *   hfid(in): Object heap file identifier.
+ *   class_oid(in):
  *
  * Note: Destroy the heap file associated with the given heap identifier.
  */
@@ -5909,12 +5945,14 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid)
  * xheap_destroy_newly_created () - Destroy heap if it is a newly created heap
  *   return: NO_ERROR
  *   hfid(in): Object heap file identifier.
+ *   class_oid(in): class OID
  *
  * Note: Destroy the heap file associated with the given heap
  * identifier if it is a newly created heap file.
  */
 int
-xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
+xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid,
+			     const OID * class_oid)
 {
   VFID vfid;
   FILE_TYPE file_type;
@@ -5923,7 +5961,12 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
   file_type = file_get_type (thread_p, &(hfid->vfid));
   if (file_type == FILE_HEAP_REUSE_SLOTS)
     {
-      return xheap_destroy (thread_p, hfid);
+      ret = xheap_destroy (thread_p, hfid);
+      if (ret == NO_ERROR)
+	{
+	  ret = heap_delete_from_partition_link_cache (thread_p, class_oid);
+	}
+      return ret;
     }
 
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
@@ -5946,6 +5989,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
     }
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
+  ret = heap_delete_from_partition_link_cache (thread_p, class_oid);
 
   return ret;
 }
@@ -6288,6 +6332,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   /* initialize full_search_vpid */
   heap_hdr.estimates.full_search_vpid.volid = hfid->vfid.volid;
   heap_hdr.estimates.full_search_vpid.pageid = hfid->hpgid;
+  heap_hdr.has_partition_link = 0;
 
   best = 0;
 
@@ -24526,7 +24571,7 @@ heap_remove_partition_links (THREAD_ENTRY * thread_p, OID * class_oid,
 			     OID * oid_list, int no_oids)
 {
   int error = NO_ERROR;
-  int i = 0;
+  int i = 0, j = 0;
   RECDES recdes;
   HFID hfid, class_hfid;
   OID inst_oid;
@@ -24540,7 +24585,10 @@ heap_remove_partition_links (THREAD_ENTRY * thread_p, OID * class_oid,
   PGSLOTID slotid;
   bool is_scan_end = false;
   int has_partition_info;
+  int has_partition_link = 0;
 
+  PGBUF_INIT_WATCHER (&curr_page_watcher, PGBUF_ORDERED_RANK_UNDEFINED,
+		      PGBUF_ORDERED_NULL_HFID);
   part_info.values = NULL;
 
   error = heap_class_get_partition_info (thread_p, class_oid, &part_info,
@@ -24582,12 +24630,41 @@ heap_remove_partition_links (THREAD_ENTRY * thread_p, OID * class_oid,
 	  goto exit;
 	}
 
+      /* search the partition class OID in the list of dropped partitions */
+      for (j = 0; j < no_oids; j++)
+	{
+	  if (OID_EQ (&subclasses[i], &oid_list[j]))
+	    {
+	      break;
+	    }
+	}
+      if (j < no_oids)
+	{
+	  /* partition is in the list of dropped partitions, so it will be
+	   * removed anyway. No need to scan it.
+	   */
+	  continue;
+	}
+
       /* read values of the single record in heap */
       error = heap_get_hfid_from_class_oid (thread_p, &subclasses[i], &hfid);
       if (error != NO_ERROR || HFID_IS_NULL (&hfid))
 	{
 	  error = ER_FAILED;
 	  goto exit;
+	}
+
+      error = heap_get_partition_link_flag (thread_p, &hfid,
+					    &has_partition_link);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      if (has_partition_link == 0)
+	{
+	  /* skip this partition, it does not have partition links */
+	  continue;
 	}
 
       PGBUF_INIT_WATCHER (&curr_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
@@ -28035,6 +28112,18 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
       goto error;
     }
 
+  if (!OID_ISNULL (&context->partition_link))
+    {
+      if (heap_get_partition_link_from_cache (thread_p, &context->class_oid)
+	  != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3,
+		  context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  rc = ER_FAILED;
+	  goto error;
+	}
+    }
+
 error:
 
   /* unfix or keep home page */
@@ -28058,6 +28147,458 @@ error:
 #endif /* ENABLE_SYSTEMTAP */
 
   return rc;
+}
+
+/*
+ * heap_partition_link_entry_alloc() - allocate a new structure for
+ *		  the partition link cache
+ *   returns: new pointer or NULL on error
+ */
+static void *
+heap_partition_link_entry_alloc (void)
+{
+  HEAP_PARTITION_LINK_CACHE_ENTRY *new_entry =
+    (HEAP_PARTITION_LINK_CACHE_ENTRY *) malloc
+				     (sizeof (HEAP_PARTITION_LINK_CACHE_ENTRY));
+  pthread_mutex_init (&new_entry->mutex, NULL);
+
+  return (void *) new_entry;
+}
+
+/*
+ * heap_partition_link_entry_free () - free a partition link cache
+ *   returns: error code or NO_ERROR
+ *   entry(in): entry to free (HEAP_HFID_TABLE_ENTRY)
+ */
+static int
+heap_partition_link_entry_free (void *entry)
+{
+  if (entry != NULL)
+    {
+      pthread_mutex_destroy (&((HEAP_PARTITION_LINK_CACHE_ENTRY *) entry)
+								       ->mutex);
+      free (entry);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
+/*
+ * heap_partition_link_entry_init () - initialize a partition link cache entry
+ *   returns: error code or NO_ERROR
+ *   entry(in): partition link cache entry
+ */
+static int
+heap_partition_link_entry_init (void *entry)
+{
+  HEAP_PARTITION_LINK_CACHE_ENTRY *entry_p =
+    (HEAP_PARTITION_LINK_CACHE_ENTRY *) entry;
+
+  if (entry_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* initialize fields */
+  OID_SET_NULL (&entry_p->class_oid);
+  entry_p->partition_link_flag = 0;
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_partition_link_entry_key_copy () - copy a partition link key
+ *   returns: error code or NO_ERROR
+ *   src(in): source
+ *   dest(in): destination
+ */
+static int
+heap_partition_link_entry_key_copy (void *src, void *dest)
+{
+  if (src == NULL || dest == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  COPY_OID ((OID *) dest, (OID *) src);
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * heap_partition_link_entry_key_hash () - hashing function for the
+ *				    partition link hash table
+ *   return: int
+ *   key(in): Session key
+ *   hash_table_size(in): Memory Hash Table Size
+ *
+ * Note: Generate a hash number for the given key for the given hash table
+ *	 size.
+ */
+static unsigned int
+heap_partition_link_entry_key_hash (void *key, int hash_table_size)
+{
+  return ((int) OID_PSEUDO_KEY ((OID *) key)) % hash_table_size;
+}
+
+/*
+ * heap_partition_link_entry_key_compare () - Compare two global unique
+ *					     statistics keys (OIDs)
+ *   return: int (true or false)
+ *   k1  (in) : First OID key
+ *   k2 (in) : Second OID key
+ */
+static int
+heap_partition_link_entry_key_compare (void *k1, void *k2)
+{
+  OID *key1, *key2;
+
+  key1 = (OID *) k1;
+  key2 = (OID *) k2;
+
+  if (k1 == NULL || k2 == NULL)
+    {
+      /* should not happen */
+      assert (false);
+      return 0;
+    }
+
+  if (OID_EQ (key1, key2))
+    {
+      /* equal */
+      return 0;
+    }
+  else
+    {
+      /* not equal */
+      return 1;
+    }
+}
+
+/*
+ * heap_partition_link_cache_initialize () - Creates and initializes global
+ *                            structure for global partition link hash table
+ *   return: error code
+ *   thread_p  (in) : 
+ */
+int
+heap_partition_link_cache_initialize (void)
+{
+  int ret = NO_ERROR;
+  LF_ENTRY_DESCRIPTOR *edesc = NULL;
+
+  if (heap_Partition_link_cache != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  edesc = &heap_Partition_link_cache_area.partition_link_descriptor;
+
+  edesc->of_local_next = offsetof (HEAP_PARTITION_LINK_CACHE_ENTRY, stack);
+  edesc->of_next = offsetof (HEAP_PARTITION_LINK_CACHE_ENTRY, next);
+  edesc->of_del_tran_id = offsetof (HEAP_PARTITION_LINK_CACHE_ENTRY, del_id);
+  edesc->of_key = offsetof (HEAP_PARTITION_LINK_CACHE_ENTRY, class_oid);
+  edesc->of_mutex = offsetof (HEAP_PARTITION_LINK_CACHE_ENTRY, mutex);
+  edesc->mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE |
+    LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  edesc->f_alloc = heap_partition_link_entry_alloc;
+  edesc->f_free = heap_partition_link_entry_free;
+  edesc->f_init = heap_partition_link_entry_init;
+  edesc->f_uninit = NULL;
+  edesc->f_key_copy = heap_partition_link_entry_key_copy;
+  edesc->f_key_cmp = heap_partition_link_entry_key_compare;
+  edesc->f_hash = heap_partition_link_entry_key_hash;
+  edesc->f_duplicate = NULL;
+
+  /* initialize freelist */
+  ret =
+    lf_freelist_init (&heap_Partition_link_cache_area.partition_link_free_list,
+		      1, 100, edesc, &partition_link_Ts);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  /* initialize hash table */
+  ret =
+    lf_hash_init (&heap_Partition_link_cache_area.partition_link_hash,
+		  &heap_Partition_link_cache_area.partition_link_free_list,
+		  HEAP_PARTITION_LINK_HASH_SIZE, edesc);
+  if (ret != NO_ERROR)
+    {
+      lf_hash_destroy (&heap_Partition_link_cache_area.partition_link_hash);
+      return ret;
+    }
+
+  heap_Partition_link_cache = &heap_Partition_link_cache_area;
+
+  return ret;
+}
+
+/*
+ * heap_partition_link_cache_finalize () - Finalize partition link hash table
+ *   return: error code
+ *   thread_p  (in) : 
+ */
+void
+heap_partition_link_cache_finalize (void)
+{
+  if (heap_Partition_link_cache != NULL)
+    {
+      /* destroy hash and freelist */
+      lf_hash_destroy (&heap_Partition_link_cache->partition_link_hash);
+      lf_freelist_destroy (&heap_Partition_link_cache->partition_link_free_list);
+
+      heap_Partition_link_cache = NULL;
+    }
+}
+
+/*
+ * heap_delete_from_partition_link_cache () - deletes the entry associated with
+ *					the given class OID from the partition
+ *					link hash
+ *   return: error code
+ *   thread_p  (in) :
+ *   class_oid (in) : the class OID for which the entry will be deleted
+ */
+static int
+heap_delete_from_partition_link_cache (THREAD_ENTRY * thread_p,
+				       OID * class_oid)
+{
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_PARTITION_LINK_HASH);
+  int error = NO_ERROR;
+
+  error =
+    lf_hash_delete (t_entry, &heap_Partition_link_cache->partition_link_hash,
+		    class_oid, NULL);
+
+  return error;
+}
+
+/*
+ * heap_get_partition_link_from_cache() - returns the partition link flag of the
+ *			      class with the given class OID. If the entry does
+ *			      not exist, it will be inserted and the flag is
+ *			      updated on disk
+ *   return: error code
+ *   thread_p  (in) :
+ *   class OID (in) : the class OID for which the entry will be returned 
+ */
+static int
+heap_get_partition_link_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  int error_code = NO_ERROR;
+  HFID hfid;
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_PARTITION_LINK_HASH);
+  HEAP_PARTITION_LINK_CACHE_ENTRY *entry = NULL;
+
+  assert (class_oid != NULL);
+
+  error_code =
+    lf_hash_find_or_insert (t_entry,
+			    &heap_Partition_link_cache->partition_link_hash,
+			    class_oid, (void **) &entry);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  assert (entry != NULL);
+
+  if (entry->partition_link_flag == 0)
+    {
+      /* entry has been inserted, we need to update the flag */
+      error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      /* mark that this partition has at least one partition flag */
+      error_code = heap_update_partition_link_flag (thread_p, &hfid, 1);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      entry->partition_link_flag = 1;
+    }
+  pthread_mutex_unlock (&entry->mutex);
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_update_partition_link_flag () - Update the partition link flag for a
+ *				      given HFID. This persistent flag marks if
+ *				      the class has at least one partition link
+ *
+ *   return: error code
+ *   hfid(in): Object heap file identifier
+ *   set_flag(in): value of the flag (0 or 1)
+ *
+ */
+static int
+heap_update_partition_link_flag (THREAD_ENTRY * thread_p, HFID * hfid,
+				 int set_flag)
+{
+  VPID vpid;			/* Volume and page identifiers */
+  LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
+  RECDES hdr_recdes;		/* Record descriptor to point to
+				 * space statistics
+				 */
+  HEAP_HDR_STATS *heap_hdr;	/* Heap header */
+  PGBUF_WATCHER hdr_page_watcher;
+  int save_partition_link_flag;
+
+  PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+
+  /*
+   * Get the heap header in exclusive mode since it is going to be changed.
+   *
+   * Note: to avoid any possibilities of deadlocks, I should not have any locks
+   *       on the heap at this moment.
+   *       That is, we must assume that locking the header of the heap in
+   *       exclusive mode, the rest of the heap is locked.
+   */
+
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+
+  addr_hdr.vfid = &hfid->vfid;
+  addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+
+  if (log_start_system_op (thread_p) == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			 &hdr_page_watcher) != NO_ERROR)
+    {
+      /* something went wrong. Unable to fetch header page */
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      return ER_FAILED;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr, PAGE_HEAP);
+
+  if (spage_get_record (hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			&hdr_recdes, PEEK) != S_SUCCESS)
+    {
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      return ER_FAILED;
+    }
+
+  heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
+  addr_hdr.pgptr = hdr_page_watcher.pgptr;
+
+  /* update the partition link flag in the header page */
+  save_partition_link_flag = heap_hdr->has_partition_link;
+  heap_hdr->has_partition_link = set_flag;
+
+  log_append_undoredo_data (thread_p, RVHF_PARTITION_LINK_FLAG, &addr_hdr,
+			    sizeof (int), sizeof (int),
+			    &save_partition_link_flag, &set_flag);
+  pgbuf_ordered_set_dirty_and_free (thread_p, &hdr_page_watcher);
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_get_partition_link_flag () - Get the partition link flag for a
+ *				      given HFID. This persistent flag marks if
+ *				      the class has at least one partition link
+ *
+ *   return: error code
+ *   hfid(in): Object heap file identifier
+ *   partition_link(out): value of the flag (0 or 1)
+ *
+ */
+static int
+heap_get_partition_link_flag (THREAD_ENTRY * thread_p, HFID * hfid,
+			      int * partition_link)
+{
+  VPID vpid;			/* Volume and page identifiers */
+  RECDES hdr_recdes;		/* Record descriptor to point to
+				 * space statistics
+				 */
+  HEAP_HDR_STATS *heap_hdr;	/* Heap header */
+  PGBUF_WATCHER hdr_page_watcher;
+
+  assert (partition_link != NULL);
+
+  *partition_link = 0;
+  PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+
+  if (pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			 &hdr_page_watcher) != NO_ERROR)
+    {
+      /* something went wrong. Unable to fetch header page */
+      return ER_FAILED;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr, PAGE_HEAP);
+
+  if (spage_get_record (hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			&hdr_recdes, PEEK) != S_SUCCESS)
+    {
+      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
+      return ER_FAILED;
+    }
+
+  heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
+
+  /* read the partition link flag in the header page */
+  *partition_link = heap_hdr->has_partition_link;
+
+  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_rv_undoredo_partition_link_flag () - Undo/Redo the set of a partition
+ *					    link flag.
+ *   return: int
+ *   rcv(in): Recovery structure
+ */
+int
+heap_rv_undoredo_partition_link_flag (THREAD_ENTRY * thread_p,
+				      LOG_RCV * rcv)
+{
+  int offset = 0;
+  int set_flag;
+  RECDES hdr_recdes;
+  HEAP_HDR_STATS * heap_hdr = NULL;
+
+  assert (rcv->length == OR_INT_SIZE);
+
+  set_flag = OR_GET_INT (rcv->data + offset);
+  offset += OR_INT_SIZE;
+
+  assert (offset == rcv->length);
+
+  if (spage_get_record (rcv->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			&hdr_recdes, PEEK) != S_SUCCESS)
+    {
+      return ER_FAILED;
+    }
+  heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
+  heap_hdr->has_partition_link = set_flag;
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
 }
 
 /*

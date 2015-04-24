@@ -160,6 +160,28 @@ struct heap_scanrange
   HEAP_SCANCACHE scan_cache;	/* Current cached information from previous scan */
 };
 
+typedef struct heap_partition_link_cache HEAP_PARTITION_LINK_CACHE;
+struct heap_partition_link_cache
+{
+  LF_HASH_TABLE partition_link_hash;	/* key is OID */
+  LF_ENTRY_DESCRIPTOR partition_link_descriptor; /* used by partition_link_hash */
+  LF_FREELIST partition_link_free_list; /* used by partition_link_hash */
+};
+
+typedef struct heap_partition_link_cache_entry HEAP_PARTITION_LINK_CACHE_ENTRY;
+struct heap_partition_link_cache_entry
+{
+  OID class_oid;		/* key - OID */
+  HEAP_PARTITION_LINK_CACHE_ENTRY *stack;	/* used in freelist */
+  HEAP_PARTITION_LINK_CACHE_ENTRY *next;	/* used in hash table */
+  pthread_mutex_t mutex;	/* state mutex */
+  UINT64 del_id;		/* delete transaction ID (for lock free) */
+
+  int partition_link_flag;      /* value - partition link flag */	
+};
+
+#define HEAP_PARTITION_LINK_HASH_SIZE 1000
+
 typedef enum
 {
   HEAP_READ_ATTRVALUE,
@@ -823,4 +845,8 @@ extern int heap_delete_logical (THREAD_ENTRY * thread_p,
 				HEAP_OPERATION_CONTEXT * context);
 extern int heap_update_logical (THREAD_ENTRY * thread_p,
 				HEAP_OPERATION_CONTEXT * context);
+extern int heap_partition_link_cache_initialize (void);
+extern void heap_partition_link_cache_finalize (void);
+extern int heap_rv_undoredo_partition_link_flag (THREAD_ENTRY * thread_p,
+						 LOG_RCV * rcv);
 #endif /* _HEAP_FILE_H_ */

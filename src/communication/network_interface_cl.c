@@ -1779,13 +1779,13 @@ heap_destroy (const HFID * hfid)
  * NOTE:
  */
 int
-heap_destroy_newly_created (const HFID * hfid)
+heap_destroy_newly_created (const HFID * hfid, const OID * class_oid)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (OR_HFID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -1793,7 +1793,8 @@ heap_destroy_newly_created (const HFID * hfid)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_pack_hfid (request, hfid);
+  ptr = or_pack_hfid (request, hfid);
+  ptr = or_pack_oid (ptr, class_oid);
 
   req_error = net_client_request (NET_SERVER_HEAP_DESTROY_WHEN_NEW,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
@@ -1811,7 +1812,7 @@ heap_destroy_newly_created (const HFID * hfid)
 
   ENTER_SERVER ();
 
-  success = xheap_destroy_newly_created (NULL, hfid);
+  success = xheap_destroy_newly_created (NULL, hfid, class_oid);
 
   EXIT_SERVER ();
 

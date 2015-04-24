@@ -197,7 +197,8 @@ extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid,
 			 const OID * class_oid, bool reuse_oid);
 extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid);
 extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p,
-					const HFID * hfid);
+					const HFID * hfid,
+					const OID * class_oid);
 
 extern TRAN_STATE xtran_server_commit (THREAD_ENTRY * thrd, bool retain_lock);
 extern TRAN_STATE xtran_server_abort (THREAD_ENTRY * thrd);
