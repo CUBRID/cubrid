@@ -13420,10 +13420,9 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
   assert (left_size <= left_max_size);
   assert (left_size >= left_min_size);
   assert (tot_rec - left_size <= right_max_size);
-  assert (left_size + (is_key_added_to_left ? new_ent_size : 0)
-	  + new_fence_size <= BTREE_NODE_MAX_SPLIT_SIZE (page_ptr));
-  assert (tot_rec - left_size + (!is_key_added_to_left ? new_ent_size : 0)
-	  + new_fence_size <= BTREE_NODE_MAX_SPLIT_SIZE (page_ptr));
+  assert (left_size + new_fence_size <= BTREE_NODE_MAX_SPLIT_SIZE (page_ptr));
+  assert (tot_rec - left_size + new_fence_size
+	  <= BTREE_NODE_MAX_SPLIT_SIZE (page_ptr));
 
   /* Safe guard: Rules #3. */
   /* Left node will have at least one non-fence record. */
