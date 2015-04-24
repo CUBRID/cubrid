@@ -3260,9 +3260,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 		}
 	      log_recovery_resetlog (thread_p, &lsa, true, end_redo_lsa);
 	      *did_incom_recovery = true;
-	      log_Gl.mvcc_table.highest_completed_mvccid =
+	      log_Gl.mvcc_table.current_trans_status.bit_area_start_mvccid =
 		log_Gl.hdr.mvcc_next_id;
-	      MVCCID_BACKWARD (log_Gl.mvcc_table.highest_completed_mvccid);
 	      return;
 	    }
 	  else
@@ -3519,9 +3518,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	}
     }
 
-  log_Gl.mvcc_table.highest_completed_mvccid = log_Gl.hdr.mvcc_next_id;
-  MVCCID_BACKWARD (log_Gl.mvcc_table.highest_completed_mvccid);
-
+  log_Gl.mvcc_table.current_trans_status.bit_area_start_mvccid
+    = log_Gl.hdr.mvcc_next_id;
   return;
 }
 
@@ -3893,7 +3891,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  mvccid = mvcc_undoredo->mvccid;
 
 		  /* Check if MVCC next ID must be updated */
-		  if (!mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id))
+		  if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
 		    {
 		      log_Gl.hdr.mvcc_next_id = mvccid;
 		      MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
@@ -4125,7 +4123,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  mvccid = mvcc_redo->mvccid;
 
 		  /* Check if MVCC next ID must be updated */
-		  if (!mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id))
+		  if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
 		    {
 		      log_Gl.hdr.mvcc_next_id = mvccid;
 		      MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
@@ -4793,7 +4791,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      mvccid = mvcc_undo->mvccid;
 
 	      /* Check if MVCC next ID must be updated */
-	      if (!mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id))
+	      if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
 		{
 		  log_Gl.hdr.mvcc_next_id = mvccid;
 		  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
@@ -4879,8 +4877,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   log_zip_free (undo_unzip_ptr);
   log_zip_free (redo_unzip_ptr);
 
-  log_Gl.mvcc_table.highest_completed_mvccid = log_Gl.hdr.mvcc_next_id;
-  MVCCID_BACKWARD (log_Gl.mvcc_table.highest_completed_mvccid);
+  log_Gl.mvcc_table.current_trans_status.bit_area_start_mvccid
+    = log_Gl.hdr.mvcc_next_id;
 
   /* Add to vacuum data recovered block buffer. */
   vacuum_rv_finish_vacuum_data_recovery (thread_p, is_chkpt_block_incomplete,
@@ -5522,11 +5520,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 				log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
 		  /* Remove the transaction from the recovery process */
-		  if (tdes->mvcc_info != NULL)
-		    {
-		      /* Clear MVCCID */
-		      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-		    }
+
+		  /* Clear MVCCID */
+		  tdes->mvccinfo.id = MVCCID_NULL;
 
 		  (void) log_complete (thread_p, tdes, LOG_ABORT,
 				       LOG_DONT_NEED_NEWTRID);
@@ -5556,11 +5552,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  /*
 		   * Remove the transaction from the recovery process
 		   */
-		  if (tdes->mvcc_info != NULL)
-		    {
-		      /* Clear MVCCID */
-		      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-		    }
+
+		  /* Clear MVCCID */
+		  tdes->mvccinfo.id = MVCCID_NULL;
 
 		  (void) log_complete (thread_p, tdes, LOG_ABORT,
 				       LOG_DONT_NEED_NEWTRID);
@@ -5595,11 +5589,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			}
 		      else
 			{
-			  if (tdes->mvcc_info != NULL)
-			    {
-			      /* Clear MVCCID */
-			      tdes->mvcc_info->mvcc_id = MVCCID_NULL;
-			    }
+			  /* Clear MVCCID */
+			  tdes->mvccinfo.id = MVCCID_NULL;
+
 			  (void) log_complete (thread_p, tdes, LOG_ABORT,
 					       LOG_DONT_NEED_NEWTRID);
 			  if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
@@ -6899,7 +6891,7 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
   VACUUM_LOG_BLOCKID log_hdr_blockid;
 
   assert (mvccid != MVCCID_NULL);
-  assert (mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id));
+  assert (MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id));
 
   if (vacuum_get_log_blockid (mvcc_op_lsa->pageid) <= recover_after_blockid)
     {
@@ -6979,13 +6971,13 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 	       */
 	      if (LSA_LT (&log_Gl.hdr.mvcc_op_log_lsa, mvcc_op_lsa))
 		{
-		  if (mvcc_id_precedes (log_Gl.hdr.last_block_oldest_mvccid,
+		  if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_oldest_mvccid,
 					*last_block_oldest_mvccid))
 		    {
 		      *last_block_oldest_mvccid =
 			log_Gl.hdr.last_block_oldest_mvccid;
 		    }
-		  if (mvcc_id_precedes (*last_block_newest_mvccid,
+		  if (MVCC_ID_PRECEDES (*last_block_newest_mvccid,
 					log_Gl.hdr.last_block_newest_mvccid))
 		    {
 		      *last_block_newest_mvccid =
@@ -6994,13 +6986,13 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 		}
 	      else
 		{
-		  assert (!mvcc_id_precedes (*last_block_oldest_mvccid,
+		  assert (!MVCC_ID_PRECEDES (*last_block_oldest_mvccid,
 					     log_Gl.hdr.
 					     last_block_oldest_mvccid));
 		  *last_block_oldest_mvccid =
 		    log_Gl.hdr.last_block_oldest_mvccid;
 
-		  assert (!mvcc_id_precedes (log_Gl.hdr.
+		  assert (!MVCC_ID_PRECEDES (log_Gl.hdr.
 					     last_block_newest_mvccid,
 					     *last_block_newest_mvccid));
 		  *last_block_newest_mvccid =
@@ -7077,11 +7069,11 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
        */
       LSA_COPY (last_mvcc_op_lsa, mvcc_op_lsa);
 
-      if (mvcc_id_precedes (mvccid, *last_block_oldest_mvccid))
+      if (MVCC_ID_PRECEDES (mvccid, *last_block_oldest_mvccid))
 	{
 	  *last_block_oldest_mvccid = mvccid;
 	}
-      if (mvcc_id_precedes (*last_block_newest_mvccid, mvccid))
+      if (MVCC_ID_PRECEDES (*last_block_newest_mvccid, mvccid))
 	{
 	  *last_block_newest_mvccid = mvccid;
 	}

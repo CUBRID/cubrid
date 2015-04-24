@@ -13705,7 +13705,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  curr_mvcc_info = tdes->mvcc_info;
+  curr_mvcc_info = &tdes->mvccinfo;
 
   if (logtb_get_new_subtransaction_mvccid (thread_p, curr_mvcc_info)
       != NO_ERROR)
@@ -13981,7 +13981,6 @@ exit:
 
 exit_on_error:
 
-  logtb_complete_sub_mvcc (thread_p, tdes);
   if (scan_cache_inited == true)
     {
       (void) heap_scancache_end (thread_p, &scan_cache);
@@ -29527,7 +29526,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	}
 
       /* Temporary disable count optimization. To enable it just remove these
-       * lines and also restore the condition in pt_find_lck_classes
+       * lines and also restore the condition in pt_find_lck_classes and also
+       * enable load global statistics in logtb_get_mvcc_snapshot_data.
        */
       if (agg_ptr->function == PT_COUNT_STAR)
 	{
@@ -29551,7 +29551,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	      *is_scan_needed = true;
 	      break;
 	    }
-	  if (tdes->mvcc_info->mvcc_snapshot.valid)
+	  if (tdes->mvccinfo.snapshot.valid)
 	    {
 	      if (class_cos->count_state != COS_LOADED)
 		{

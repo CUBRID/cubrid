@@ -32,10 +32,10 @@
 #include "vacuum.h"
 
 #define MVCC_IS_REC_INSERTER_ACTIVE(thread_p, rec_header_p) \
-  (logtb_is_active_mvccid (thread_p, (rec_header_p)->mvcc_ins_id))
+  (mvcc_is_active_id (thread_p, (rec_header_p)->mvcc_ins_id))
 
 #define MVCC_IS_REC_DELETER_ACTIVE(thread_p, rec_header_p) \
-  (logtb_is_active_mvccid (thread_p, (rec_header_p)->delid_chn.mvcc_del_id))
+  (mvcc_is_active_id (thread_p, (rec_header_p)->delid_chn.mvcc_del_id))
 
 #define MVCC_IS_REC_INSERTER_IN_SNAPSHOT(thread_p, rec_header_p, snapshot) \
   (mvcc_is_id_in_snapshot (thread_p, (rec_header_p)->mvcc_ins_id, (snapshot)))
@@ -44,10 +44,10 @@
   (mvcc_is_id_in_snapshot (thread_p, (rec_header_p)->delid_chn.mvcc_del_id, (snapshot)))
 
 #define MVCC_IS_REC_INSERTED_SINCE_MVCCID(rec_header_p, mvcc_id) \
-  (!mvcc_id_precedes ((rec_header_p)->mvcc_ins_id, (mvcc_id)))
+  (!MVCC_ID_PRECEDES ((rec_header_p)->mvcc_ins_id, (mvcc_id)))
 
 #define MVCC_IS_REC_DELETED_SINCE_MVCCID(rec_header_p, mvcc_id) \
-  (!mvcc_id_precedes ((rec_header_p)->delid_chn.mvcc_del_id, (mvcc_id)))
+  (!MVCC_ID_PRECEDES ((rec_header_p)->delid_chn.mvcc_del_id, (mvcc_id)))
 
 
 /* Used by mvcc_chain_satisfies_vacuum to avoid handling the same OID twice */
@@ -67,6 +67,10 @@ static INLINE bool mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p,
 					   MVCC_SNAPSHOT * snapshot)
   __attribute__ ((ALWAYS_INLINE));
 
+static INLINE bool mvcc_is_active_id (THREAD_ENTRY * thread_p,
+				      MVCCID mvccid)
+  __attribute__ ((ALWAYS_INLINE));
+
 /*
  * mvcc_is_id_in_snapshot () - check whether mvcc id is in snapshot -
  *                             is mvcc id active from snapshot point of view?
@@ -80,31 +84,166 @@ mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvcc_id,
 			MVCC_SNAPSHOT * snapshot)
 {
   unsigned int i;
+  MVCCID position;
+  UINT64 *p_area;
 
   assert (snapshot != NULL);
 
-  if (mvcc_id_precedes (mvcc_id, snapshot->lowest_active_mvccid))
+  if (MVCC_ID_PRECEDES (mvcc_id, snapshot->lowest_active_mvccid))
     {
-      /* mvcc id is not active */
+      /* MVCC id is not active */
       return false;
     }
 
-  if (mvcc_id_follow_or_equal (mvcc_id, snapshot->highest_completed_mvccid))
+  if (MVCC_ID_FOLLOW_OR_EQUAL (mvcc_id, snapshot->highest_completed_mvccid))
     {
-      /* mvcc id is active */
+      /* MVCC id is active */
       return true;
     }
 
-  /* TO DO - handle subtransactions */
-  for (i = 0; i < snapshot->cnt_active_ids; i++)
+  if (snapshot->bit_area_length > 0
+      && mvcc_id >= snapshot->bit_area_start_mvccid)
     {
-      if (MVCCID_IS_EQUAL (mvcc_id, snapshot->active_ids[i]))
+      position = mvcc_id - snapshot->bit_area_start_mvccid;
+      p_area = MVCC_GET_BITAREA_ELEMENT_PTR (snapshot->bit_area, position);
+      if (((*p_area) & MVCC_BITAREA_MASK (position)) == 0)
+	{
+	  /* active transaction found */
+	  return true;
+	}
+    }
+
+  for (i = 0; i < snapshot->long_tran_mvccids_length; i++)
+    {
+      /* long transactions - rare case */
+      if (MVCCID_IS_EQUAL (mvcc_id, snapshot->long_tran_mvccids[i]))
 	{
 	  return true;
 	}
     }
 
   return false;
+}
+
+/*
+ * mvcc_is_active_id - check whether given mvccid is active
+ *
+ * return: bool
+ *
+ *   thread_p(in): thread entry
+ *   id(in): MVCC id
+ *
+ * Note: Check whether an active transaction is active by searching transactions
+ *  status into current history position. The data from current history position
+ *  is atomically checked (See logtb_get_mvcc_snapshot_data comments).
+ */
+STATIC_INLINE bool
+mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  MVCC_INFO *curr_mvcc_info = NULL, *elem = NULL;
+  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
+  MVCC_INFO *mvccinfo = NULL;
+  int try_count = 0;
+  UINT64 *p_area;
+  int local_bit_area_length;
+  MVCCID position, local_bit_area_start_mvccid;
+  bool is_active;
+  unsigned int i;
+  MVCC_TRANS_STATUS *trans_status;
+  int index;
+  unsigned int trans_status_version;
+
+  assert (tdes != NULL && mvccid != MVCCID_NULL);
+
+  curr_mvcc_info = &tdes->mvccinfo;
+  if (MVCC_ID_PRECEDES (mvccid,
+			curr_mvcc_info->recent_snapshot_lowest_active_mvccid))
+    {
+      return false;
+    }
+
+  if (logtb_is_current_mvccid (thread_p, mvccid))
+    {
+      return true;
+    }
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+start_check_active:
+  index = ATOMIC_INC_32 (&mvcc_table->trans_status_history_position, 0);
+  trans_status = mvcc_table->trans_status_history + index;
+  trans_status_version = ATOMIC_INC_32 (&trans_status->version, 0);
+
+  local_bit_area_start_mvccid =
+    ATOMIC_INC_64 (&trans_status->bit_area_start_mvccid, 0LL);
+  local_bit_area_length = ATOMIC_INC_32 (&trans_status->bit_area_length, 0);
+
+#else
+  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  local_bit_area_length = trans_status->bit_area_length;
+  if (local_bit_area_length == 0)
+    {
+      return false;
+    }
+  local_bit_area_start_mvccid =
+    mvcc_table->current_trans_status->bit_area_start_mvccid;
+#endif
+
+  /* no one can change active transactions while I'm in CS */
+  if (MVCC_ID_PRECEDES (mvccid, local_bit_area_start_mvccid))
+    {
+      is_active = false;
+      /* check long time transactions */
+      if (trans_status->long_tran_mvccids_length > 0
+	  && trans_status->long_tran_mvccids != NULL)
+	{
+	  /* called rarely - has long transactions */
+	  for (i = 0; i < trans_status->long_tran_mvccids_length; i++)
+	    {
+	      if (trans_status->long_tran_mvccids[i] == mvccid)
+		{
+		  break;
+		}
+	    }
+	  if (i < trans_status->long_tran_mvccids_length)
+	    {
+	      /* MVCCID of long transaction found */
+	      is_active = true;
+	    }
+	}
+    }
+  else if (local_bit_area_length == 0)
+    {
+      /* mvccid > highest completed MVCCID */
+      is_active = true;
+    }
+  else
+    {
+      is_active = true;
+      position = mvccid - local_bit_area_start_mvccid;
+      if (position < local_bit_area_length)
+	{
+	  p_area =
+	    MVCC_GET_BITAREA_ELEMENT_PTR (trans_status->bit_area, position);
+	  if (((*p_area) & MVCC_BITAREA_MASK (position)) != 0)
+	    {
+	      /* committed transaction found */
+	      is_active = false;
+	    }
+	}
+    }
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+  if (trans_status_version != ATOMIC_INC_32 (&trans_status->version, 0))
+    {
+      /* The transaction status version overwritten, need to read again */
+      goto start_check_active;
+    }
+#else
+  (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+#endif
+
+  return is_active;
 }
 
 /*
@@ -579,50 +718,4 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
 	  return false;
 	}
     }
-}
-
-/*
- * mvcc_id_precedes - compare MVCC ids
- *
- * return: true, if id1 precede id2, false otherwise
- *
- *   id1(in): first MVCC id to compare
- *   id2(in): the second MVCC id to compare
- *
- */
-bool
-mvcc_id_precedes (MVCCID id1, MVCCID id2)
-{
-  int difference;
-
-  if (!MVCCID_IS_NORMAL (id1) || !MVCCID_IS_NORMAL (id2))
-    {
-      return (id1 < id2);
-    }
-
-  difference = (int) (id1 - id2);
-  return (difference < 0);
-}
-
-/*
- * mvcc_id_follow_or_equal - compare MVCC ids
- *
- * return: true, if id1 follow or equal id2, false otherwise
- *
- *   id1(in): first MVCC id to compare
- *   id2(in): the second MVCC id to compare
- *
- */
-bool
-mvcc_id_follow_or_equal (MVCCID id1, MVCCID id2)
-{
-  int difference;
-
-  if (!MVCCID_IS_NORMAL (id1) || !MVCCID_IS_NORMAL (id2))
-    {
-      return (id1 >= id2);
-    }
-
-  difference = (int) (id1 - id2);
-  return (difference >= 0);
 }

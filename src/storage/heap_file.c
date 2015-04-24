@@ -9143,7 +9143,8 @@ end:
 	  || (mvcc_reev_data != NULL
 	      && mvcc_reev_data->filter_result != V_TRUE)))
     {
-      lock_unlock_object (thread_p, &current_oid, class_oid, lock, false);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &current_oid,
+					       class_oid, lock);
     }
 
   if (current_scan_cache && current_scan_cache != scan_cache)
@@ -22290,7 +22291,8 @@ end:
 	{
 	  /* release acquired lock */
 	  assert (satisfies_delete_result == DELETE_RECORD_DELETED);
-	  lock_unlock_object (thread_p, oid, class_oid, lock, false);
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid,
+						   lock);
 	  record_locked = false;
 	}
 

@@ -763,7 +763,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   save_volid = btid->vfid.volid;
 
   /* Initialize the fields of sorting argument structures */
-  sort_args->lowest_active_mvccid = logtb_get_lowest_active_mvccid (thread_p);
+  sort_args->lowest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
   sort_args->unique_pk = unique_pk;
   sort_args->not_null_flag = not_null_flag;
   sort_args->hfids = hfids;

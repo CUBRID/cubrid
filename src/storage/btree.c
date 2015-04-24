@@ -3256,7 +3256,7 @@ btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp,
   if (new_has_insid)
     {
       assert (MVCCID_IS_VALID (mvcc_info->insert_mvccid)
-	      && mvcc_id_precedes (mvcc_info->insert_mvccid,
+	      && MVCC_ID_PRECEDES (mvcc_info->insert_mvccid,
 				   log_Gl.hdr.mvcc_next_id));
       /* Add insert MVCCID */
       if (or_put_mvccid (&buffer, mvcc_info->insert_mvccid) != NO_ERROR)
@@ -3269,7 +3269,7 @@ btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp,
   if (new_has_delid)
     {
       assert (mvcc_info->delete_mvccid == MVCCID_NULL
-	      || mvcc_id_precedes (mvcc_info->delete_mvccid,
+	      || MVCC_ID_PRECEDES (mvcc_info->delete_mvccid,
 				   log_Gl.hdr.mvcc_next_id));
       /* Add delete MVCCID */
       if (or_put_mvccid (&buffer, mvcc_info->delete_mvccid) != NO_ERROR)
@@ -23328,7 +23328,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	      assert (false);
 	      return ER_FAILED;
 	    }
-	  if (!mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id)
+	  if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id)
 	      && !log_is_in_crash_recovery ())
 	    {
 	      assert (false);
@@ -23344,7 +23344,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	      return ER_FAILED;
 	    }
 	  if (mvccid != MVCCID_NULL
-	      && !mvcc_id_precedes (mvccid, log_Gl.hdr.mvcc_next_id)
+	      && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id)
 	      && !log_is_in_crash_recovery ())
 	    {
 	      assert (false);

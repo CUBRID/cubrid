@@ -282,7 +282,7 @@ MVCCID vacuum_Global_oldest_active_mvccid;
  */
 #define VACUUM_LOG_BLOCK_CAN_VACUUM(entry, mvccid) \
   (VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry) \
-   && mvcc_id_precedes (VACUUM_DATA_ENTRY_NEWEST_MVCCID (entry), mvccid) \
+   && MVCC_ID_PRECEDES (VACUUM_DATA_ENTRY_NEWEST_MVCCID (entry), mvccid) \
    && entry->start_lsa.pageid + 1 < log_Gl.append.prev_lsa.pageid)
 
 /*
@@ -2523,7 +2523,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   assert (block_data.blockid >= 0);
   assert (MVCCID_IS_VALID (oldest_mvccid));
   assert (MVCCID_IS_VALID (newest_mvccid));
-  assert (!mvcc_id_precedes (newest_mvccid, oldest_mvccid));
+  assert (!MVCC_ID_PRECEDES (newest_mvccid, oldest_mvccid));
 
   /* Set start lsa for block */
   LSA_COPY (&block_data.start_lsa, start_lsa);
@@ -2611,7 +2611,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 #endif
 
   vacuum_Global_oldest_active_mvccid =
-    logtb_get_lowest_active_mvccid (thread_p);
+    logtb_get_oldest_active_mvccid (thread_p);
 
   if (vacuum_Data == NULL
       || (vacuum_Data->n_table_entries <= 0
@@ -2880,9 +2880,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
       worker->state = VACUUM_WORKER_STATE_EXECUTE;
 
 #if !defined (NDEBUG)
-      if (mvcc_id_follow_or_equal (mvccid, threshold_mvccid)
-	  || mvcc_id_precedes (mvccid, data->oldest_mvccid)
-	  || mvcc_id_precedes (data->newest_mvccid, mvccid))
+      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid)
+	  || MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid)
+	  || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
 	{
 	  /* threshold_mvccid or mvccid or block data may be invalid */
 	  assert (0);
@@ -4686,7 +4686,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
 	  vacuum_Data->last_blockid = entry->blockid;
 
-	  if (mvcc_id_precedes (vacuum_Data->newest_mvccid,
+	  if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid,
 				entry->newest_mvccid))
 	    {
 	      vacuum_Data->newest_mvccid = entry->newest_mvccid;
@@ -4815,7 +4815,7 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 
   /* Get vacuum_Global_oldest_active_mvccid. */
   vacuum_Global_oldest_active_mvccid =
-    logtb_get_lowest_active_mvccid (thread_p);
+    logtb_get_oldest_active_mvccid (thread_p);
 
   /* Initialize log_page_p. */
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, MAX_ALIGNMENT);
@@ -4925,12 +4925,12 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 				   &dummy_log_data, &mvccid, NULL, NULL,
 				   &vacuum_info, NULL, true);
       if (chkpt_entry.oldest_mvccid == MVCCID_NULL
-	  || mvcc_id_precedes (mvccid, chkpt_entry.oldest_mvccid))
+	  || MVCC_ID_PRECEDES (mvccid, chkpt_entry.oldest_mvccid))
 	{
 	  chkpt_entry.oldest_mvccid = mvccid;
 	}
       if (chkpt_entry.newest_mvccid == MVCCID_NULL
-	  || mvcc_id_precedes (chkpt_entry.newest_mvccid, mvccid))
+	  || MVCC_ID_PRECEDES (chkpt_entry.newest_mvccid, mvccid))
 	{
 	  chkpt_entry.newest_mvccid = mvccid;
 	}
@@ -5354,7 +5354,7 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
   /* Update vacuum_Data->newest_mvccid */
   for (i = prev_n_table_entries; i < vacuum_Data->n_table_entries; i++)
     {
-      if (mvcc_id_precedes (vacuum_Data->newest_mvccid,
+      if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid,
 			    VACUUM_DATA_GET_ENTRY (i)->newest_mvccid))
 	{
 	  vacuum_Data->newest_mvccid =
@@ -5775,7 +5775,7 @@ vacuum_rv_redo_append_block_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		     VACUUM_DATA_GET_ENTRY (i)->newest_mvccid,
 		     VACUUM_DATA_GET_ENTRY (i)->blockid);
 
-      if (mvcc_id_precedes (vacuum_Data->newest_mvccid,
+      if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid,
 			    VACUUM_DATA_ENTRY_NEWEST_MVCCID
 			    (VACUUM_DATA_GET_ENTRY (i))))
 	{
@@ -5873,7 +5873,7 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
    * transaction. Oldest MVCCID should always be smaller or equal to any
    * unvacuumed MVCCID's!
    */
-  if (mvcc_id_precedes (vacuum_Global_oldest_active_mvccid,
+  if (MVCC_ID_PRECEDES (vacuum_Global_oldest_active_mvccid,
 			log_header_oldest_mvccid))
     {
       oldest_mvccid = vacuum_Global_oldest_active_mvccid;
@@ -5886,7 +5886,7 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
   /* Now compare with entries in vacuum data. */
   for (i = 0; i < vacuum_Data->n_table_entries; i++)
     {
-      if (mvcc_id_precedes (VACUUM_DATA_ENTRY_OLDEST_MVCCID
+      if (MVCC_ID_PRECEDES (VACUUM_DATA_ENTRY_OLDEST_MVCCID
 			    (VACUUM_DATA_GET_ENTRY (i)), oldest_mvccid))
 	{
 	  oldest_mvccid =
@@ -5906,7 +5906,7 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
       /* If oldest MVCCID is changed, it should always become greater, not
        * smaller.
        */
-      assert (mvcc_id_precedes (vacuum_Data->oldest_mvccid, oldest_mvccid));
+      assert (MVCC_ID_PRECEDES (vacuum_Data->oldest_mvccid, oldest_mvccid));
 
       vacuum_Data->oldest_mvccid = oldest_mvccid;
       vacuum_cleanup_dropped_files (thread_p);
@@ -6141,7 +6141,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	      save_mvccid = page->dropped_files[mid].mvccid;
 	      page->dropped_files[mid].mvccid = mvccid;
 
-	      assert_release (mvcc_id_follow_or_equal (mvccid, save_mvccid));
+	      assert_release (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, save_mvccid));
 
 	      if (postpone_ref_lsa != NULL)
 		{
@@ -6790,7 +6790,7 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
       /* Check entries for cleaning. Start from the end of the array */
       for (i = page_count - 1; i >= 0; i--)
 	{
-	  if (mvcc_id_precedes (page->dropped_files[i].mvccid,
+	  if (MVCC_ID_PRECEDES (page->dropped_files[i].mvccid,
 				vacuum_Data->oldest_mvccid))
 	    {
 	      /* Remove entry */
@@ -6969,7 +6969,7 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 	  /* Found matching entry.
 	   * Compare the given MVCCID with the MVCCID of dropped file.
 	   */
-	  if (mvcc_id_precedes (mvccid, dropped_file->mvccid))
+	  if (MVCC_ID_PRECEDES (mvccid, dropped_file->mvccid))
 	    {
 	      /* The record must belong to the dropped file */
 	      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
@@ -7442,9 +7442,9 @@ vacuum_verify_vacuum_data_debug (void)
       /* Check entry oldest/newest MVCCID are included in the interval formed
        * by vacuum data aggregated oldest/newest MVCID.
        */
-      assert (!mvcc_id_precedes (entry->oldest_mvccid,
+      assert (!MVCC_ID_PRECEDES (entry->oldest_mvccid,
 				 vacuum_Data->oldest_mvccid));
-      assert (!mvcc_id_precedes (vacuum_Data->newest_mvccid,
+      assert (!MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid,
 				 entry->newest_mvccid));
 
       /* Check start_lsa matched blockid. */

@@ -60,6 +60,9 @@
 #define MAX_NTRANS \
   (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS)
 
+/* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
+#define TRANS_STATUS_HISTORY_MAX_SIZE 2048
+
 #if defined(SERVER_MODE)
 #define LOG_CS_ENTER(thread_p) \
         csect_enter((thread_p), CSECT_LOG, INF_WAIT)
@@ -236,6 +239,10 @@
 #define LOG_FIND_TDES(tran_index) \
   (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
    ? log_Gl.trantable.all_tdes[(tran_index)] : NULL)
+
+#define LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID(tran_index) \
+  (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
+  ? (log_Gl.mvcc_table.transaction_lowest_active_mvccids + tran_index) : NULL)
 
 #define LOG_FIND_CURRENT_TDES(thrd) \
   LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX ((thrd)))
@@ -897,7 +904,7 @@ typedef struct log_tdes LOG_TDES;
 struct log_tdes
 {
 /* Transaction descriptor */
-  MVCC_INFO *mvcc_info;		/* MVCC info */
+  MVCC_INFO mvccinfo;		/* MVCC info */
 
   int tran_index;		/* Index onto transaction table          */
   TRANID trid;			/* Transaction identifier                */
@@ -1060,20 +1067,63 @@ struct trantable
 #define TRANTABLE_INITIALIZER \
   {0, 0, 0, 0, 0, 0, 0, NULL, NULL}
 
+/*
+ * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
+ * MVCCID bit 1 means committed transaction. This structure keep also lowest
+ * active MVCCIDs used by VACUUM for MVCCID threshold computation. Also, MVCCIDs
+ * of long time transactions MVCCIDs are kept in this structure.
+ */
+typedef struct mvcc_trans_status MVCC_TRANS_STATUS;
+struct mvcc_trans_status
+{
+  /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
+  UINT64 *bit_area;
+  /* first MVCCID whose status is stored in bit area */
+  MVCCID bit_area_start_mvccid;
+  /* the area length expressed in bits */
+  unsigned int bit_area_length;
+
+  /* long time transaction mvccid array */
+  MVCCID *long_tran_mvccids;
+  /* long time transactions mvccid array length */
+  unsigned int long_tran_mvccids_length;
+
+  volatile unsigned int version;
+};
+
+#define MVCC_STATUS_INITIALIZER {NULL, MVCCID_FIRST, 0, NULL, 0, 0}
+
 typedef struct mvcctable MVCCTABLE;
 struct mvcctable
 {
-  MVCC_INFO *head_writers;	/* head of writer list */
-  MVCC_INFO *tail_writers;	/* tail of writer list */
-  MVCC_INFO *head_null_mvccids;	/* head of null MVCC id list */
-  MVCC_INFO_BLOCK *block_list;	/* MVCC info block list */
-  MVCC_INFO *free_list;		/* MVCC info free list */
-  int mvcc_info_free_list_lock;	/* MVCC info free list spin lock */
-  MVCCID highest_completed_mvccid;	/* highest committed or aborted mvccid */
+  /* current transaction status */
+  MVCC_TRANS_STATUS current_trans_status;
+
+  /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
+  volatile MVCCID *transaction_lowest_active_mvccids;
+
+  /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
+  MVCC_TRANS_STATUS *trans_status_history;
+  /* the position in transaction status history array */
+  volatile int trans_status_history_position;
+
+  /* protect against getting new MVCCIDs concurrently */
+#if defined(HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t new_mvccid_lock;
+#endif
+
+  /* protect against current transaction status modifications */
+  pthread_mutex_t active_trans_mutex;
 };
 
+#if defined(HAVE_ATOMIC_BUILTINS)
 #define MVCCTABLE_INITIALIZER \
-  {NULL, NULL, NULL, NULL, NULL, 0, MVCCID_NULL}
+  {MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER,	\
+   PTHREAD_MUTEX_INITIALIZER}
+#else
+#define MVCCTABLE_INITIALIZER \
+  {MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER}
+#endif
 
 /*
  * This structure encapsulates various information and metrics related
@@ -2555,7 +2605,7 @@ extern char *logpb_backup_level_info_to_string (char *buf, int buf_size,
 extern void logpb_get_nxio_lsa (LOG_LSA * lsa_p);
 extern const char *logpb_perm_status_to_string (enum LOG_PSTATUS val);
 
-extern MVCCID logtb_get_lowest_active_mvccid (THREAD_ENTRY * thread_p);
+extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
 
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY *
 						       thread_p);
@@ -2565,15 +2615,12 @@ extern int logtb_get_new_mvccid (THREAD_ENTRY * thread_p,
 				 MVCC_INFO * curr_mvcc_info);
 extern int logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
 						MVCC_INFO * curr_mvcc_info);
-extern int logtb_allocate_mvcc_info (THREAD_ENTRY * thread_p);
-extern int logtb_release_mvcc_info (THREAD_ENTRY * thread_p);
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
 extern int xlogtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
-extern bool logtb_is_active_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p,
 				       MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);

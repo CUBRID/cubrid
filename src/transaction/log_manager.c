@@ -1486,8 +1486,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
     }
 
-  log_Gl.mvcc_table.highest_completed_mvccid = log_Gl.hdr.mvcc_next_id;
-  MVCCID_BACKWARD (log_Gl.mvcc_table.highest_completed_mvccid);
+  log_Gl.mvcc_table.current_trans_status.bit_area_start_mvccid
+    = log_Gl.hdr.mvcc_next_id;
 
   /*
    * Was the database system shut down or was it involved in a crash ?

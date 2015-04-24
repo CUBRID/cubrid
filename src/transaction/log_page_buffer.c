@@ -3647,8 +3647,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p,
       assert (LOG_IS_MVCC_OPERATION (rcvindex));
 
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      if (tdes == NULL || tdes->mvcc_info == NULL
-	  || !MVCCID_IS_VALID (tdes->mvcc_info->mvcc_id))
+      if (tdes == NULL || !MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
@@ -3656,16 +3655,16 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  if (tdes->mvcc_info->count_sub_ids > 0
-	      && tdes->mvcc_info->is_sub_active)
+	  if (tdes->mvccinfo.count_sub_ids > 0
+	      && tdes->mvccinfo.is_sub_active)
 	    {
-	      assert (tdes->mvcc_info->mvcc_sub_ids != NULL);
-	      *mvccid_p = tdes->mvcc_info->mvcc_sub_ids[tdes->mvcc_info->
-							count_sub_ids - 1];
+	      assert (tdes->mvccinfo.sub_ids != NULL);
+	      *mvccid_p = tdes->mvccinfo.sub_ids[tdes->mvccinfo.
+						 count_sub_ids - 1];
 	    }
 	  else
 	    {
-	      *mvccid_p = tdes->mvcc_info->mvcc_id;
+	      *mvccid_p = tdes->mvccinfo.id;
 	    }
 	}
     }
@@ -4443,7 +4442,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
 	{
 	  /* Same block, update the oldest and the newest met MVCCID's */
 	  if (log_Gl.hdr.last_block_newest_mvccid == MVCCID_NULL
-	      || mvcc_id_precedes (log_Gl.hdr.last_block_newest_mvccid,
+	      || MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid,
 				   mvccid))
 	    {
 	      /* A newer MVCCID was found */
@@ -4451,7 +4450,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
 	    }
 
 	  if (log_Gl.hdr.last_block_oldest_mvccid == MVCCID_NULL
-	      || mvcc_id_precedes (mvccid,
+	      || MVCC_ID_PRECEDES (mvccid,
 				   log_Gl.hdr.last_block_oldest_mvccid))
 	    {
 	      /* An older MVCCID was found */

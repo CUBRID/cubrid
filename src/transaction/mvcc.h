@@ -156,31 +156,67 @@
    && (!MVCC_SHOULD_TEST_CHN (thread_p, rec_header_p) \
        || chn == MVCC_GET_CHN (rec_header_p)))
 
-#define MVCC_SET_SNAPSHOT_DATA(snapshot, fnc, low_act_mvccid, \
-			       high_comp_mvccid, act_ids, cnt_act_ids, \
-			       is_valid) \
-  do \
-    { \
-      (snapshot)->snapshot_fnc = fnc; \
-      (snapshot)->lowest_active_mvccid = low_act_mvccid; \
-      (snapshot)->highest_completed_mvccid = high_comp_mvccid; \
-      (snapshot)->active_ids = act_ids; \
-      (snapshot)->cnt_active_ids = cnt_act_ids; \
-      (snapshot)->valid = is_valid; \
-    } \
-  while (0)
+#define MVCC_GET_BITAREA_ELEMENT_PTR(bitareaptr, position) \
+  ((UINT64 *)(bitareaptr) + ((position) >> 6))
+#define MVCC_BITAREA_MASK(position) ((1ULL << ((position) & 0x3F)))
 
-/* clear MVCC snapshot data - do not free active_ids since they are reused */
+/* clear MVCC snapshot data */
 #define MVCC_CLEAR_SNAPSHOT_DATA(snapshot) \
   do \
     { \
       (snapshot)->snapshot_fnc = NULL; \
       (snapshot)->lowest_active_mvccid = MVCCID_NULL; \
       (snapshot)->highest_completed_mvccid = MVCCID_NULL; \
-      (snapshot)->cnt_active_ids = 0; \
+      (snapshot)->bit_area_start_mvccid = MVCCID_NULL;  \
+      (snapshot)->bit_area_length = 0;  \
+      (snapshot)->long_tran_mvccids_length = 0; \
       (snapshot)->valid = false; \
     } \
   while (0)
+
+/* clear MVCC snapshot data */
+#define MVCC_INIT_SNAPSHOT_DATA(snapshot) \
+  do \
+    { \
+      (snapshot)->snapshot_fnc = NULL; \
+      (snapshot)->lowest_active_mvccid = MVCCID_NULL; \
+      (snapshot)->highest_completed_mvccid = MVCCID_NULL; \
+      (snapshot)->bit_area = NULL; \
+      (snapshot)->long_tran_mvccids = NULL;  \
+      (snapshot)->bit_area_start_mvccid = MVCCID_NULL;  \
+      (snapshot)->bit_area_length = 0;  \
+      (snapshot)->long_tran_mvccids_length = 0; \
+      (snapshot)->valid = false; \
+    } \
+    while (0)
+
+/* clear MVCC snapshot data */
+#define MVCC_INIT_MVCC_INFO(mvccinfo) \
+  do \
+    { \
+      MVCC_INIT_SNAPSHOT_DATA (&(mvccinfo)->snapshot);  \
+      (mvccinfo)->id = MVCCID_NULL;	\
+      (mvccinfo)->recent_snapshot_lowest_active_mvccid = MVCCID_NULL; \
+      (mvccinfo)->sub_ids = NULL; \
+      (mvccinfo)->max_sub_ids = 0;  \
+      (mvccinfo)->count_sub_ids = 0;	\
+      (mvccinfo)->is_sub_active = false;  \
+    } \
+    while (0)
+
+#define MVCC_CLEAR_MVCC_INFO(mvccinfo) \
+  do \
+    { \
+      MVCC_CLEAR_SNAPSHOT_DATA (&(mvccinfo)->snapshot);  \
+      (mvccinfo)->id = MVCCID_NULL;	\
+      (mvccinfo)->recent_snapshot_lowest_active_mvccid = MVCCID_NULL; \
+      (mvccinfo)->count_sub_ids = 0;	\
+      (mvccinfo)->is_sub_active = false;  \
+    } \
+    while (0)
+
+#define MVCC_ID_PRECEDES(id1, id2) ((id1) < (id2))
+#define MVCC_ID_FOLLOW_OR_EQUAL(id1, id2) ((id1) >= (id2))
 
 typedef struct mvcc_snapshot MVCC_SNAPSHOT;
 
@@ -189,54 +225,42 @@ typedef bool (*MVCC_SNAPSHOT_FUNC) (THREAD_ENTRY * thread_p,
 				    MVCC_SNAPSHOT * snapshot);
 struct mvcc_snapshot
 {
-  MVCC_SNAPSHOT_FUNC snapshot_fnc;
-
   MVCCID lowest_active_mvccid;	/* lowest active id */
+  MVCCID highest_completed_mvccid;	/* highest mvccid in snapshot */
 
-  MVCCID highest_completed_mvccid;	/* highest committed id */
+  UINT64 *bit_area;		/* bit area */
+  MVCCID *long_tran_mvccids;	/* long time active MVCCID array */
 
-  MVCCID *active_ids;		/* active ids */
+  MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
-  unsigned int cnt_active_ids;	/* count active ids */
+  MVCCID bit_area_start_mvccid;	/* bit area start MVCCID */
+  int bit_area_length;		/* bit area length */
 
-  bool valid;
+  unsigned int long_tran_mvccids_length;	/* long time MVCCID array length */
+
+  bool valid;			/* true, if the snapshot is valid */
 };
 
 /* MVCC INFO - such structure is attached to each active transaction */
 typedef struct mvcc_info MVCC_INFO;
 struct mvcc_info
 {
-  MVCC_SNAPSHOT mvcc_snapshot;	/* MVCC Snapshot */
-  MVCCID mvcc_id;		/* MVCC ID - increase with each transaction
-				 * that modified data
-				 */
-  /* transaction_lowest_active_mvccid - the lowest active mvcc id when we
-   * start the current transaction
-   */
-  MVCCID transaction_lowest_active_mvccid;
+  MVCC_SNAPSHOT snapshot;	/* MVCC Snapshot */
 
-  /* recent_snapshot_lowest_active_mvccid - the lowest active mvcc id computed
+  /* MVCC ID - increase with each transaction that modified data */
+  MVCCID id;
+
+  /* recent_snapshot_lowest_active_mvccid - the lowest active MVCCID computed
    * for the most recent snapshot of current transaction. This field help to
-   * know faster whether an mvcc id is active or not. Thus, mvccid older than
+   * know faster whether an MVCCID is active or not. Thus, mvccid older than
    * this field are not active anymore
    */
   MVCCID recent_snapshot_lowest_active_mvccid;
-  MVCC_INFO *next, *prev;	/* link to the next/previous active mvcc info */
 
-  MVCCID *mvcc_sub_ids;		/* MVCC sub-transaction ID array */
+  MVCCID *sub_ids;		/* MVCC sub-transaction ID array */
   int max_sub_ids;		/* allocated MVCC sub-transaction ids */
   int count_sub_ids;		/* count sub-transaction ids */
   bool is_sub_active;		/* true in case that sub-transaction is running */
-};
-
-/* MVCC INFO BLOCK Structure */
-typedef struct mvcc_info_block MVCC_INFO_BLOCK;
-struct mvcc_info_block
-{
-  MVCC_INFO *block;		/* mvcc info block - each block contains
-				 * NUM_TOTAL_TRAN_INDICES entries
-				 */
-  MVCC_INFO_BLOCK *next_block;	/* next mvcc info block */
 };
 
 typedef enum mvcc_satisfies_delete_result MVCC_SATISFIES_DELETE_RESULT;
@@ -283,6 +307,5 @@ extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY
 extern bool mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
 				  MVCC_REC_HEADER * rec_header,
 				  MVCC_SNAPSHOT * snapshot);
-extern bool mvcc_id_precedes (MVCCID id1, MVCCID id2);
-extern bool mvcc_id_follow_or_equal (MVCCID id1, MVCCID id2);
+
 #endif /* _MVCC_H_ */
