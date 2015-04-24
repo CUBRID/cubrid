@@ -9414,6 +9414,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    PT_NODE *current_user_val = NULL;
 
 		    user = db_get_user_and_host_name ();
+		    if (user == NULL)
+		      {
+			assert (er_errid () != NO_ERROR);
+			PT_INTERNAL_ERROR (parser, "get user name");
+
+			return NULL;
+		      }
+
 		    current_user_val = parser_new_node (parser, PT_VALUE);
 		    if (current_user_val == NULL)
 		      {
