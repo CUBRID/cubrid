@@ -34342,7 +34342,10 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p,
   assert (node_type == BTREE_LEAF_NODE || node_type == BTREE_OVERFLOW_NODE);
   assert (node_type == BTREE_LEAF_NODE
 	  || (overflow_page != NULL && overflow_record != NULL));
-  assert (offset_to_object >= 0 && offset_to_object < leaf_record->length);
+  assert (offset_to_object >= 0
+	  && offset_to_object < (node_type ==
+				 BTREE_LEAF_NODE ? leaf_record->
+				 length : overflow_record->length));
   assert (BTREE_MVCC_INFO_HAS_DELID (BTREE_DELETE_MVCC_INFO (delete_helper)));
 
   /* Undoing MVCC delete should consider one rule for unique index: the
