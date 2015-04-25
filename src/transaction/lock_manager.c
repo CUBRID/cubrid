@@ -11469,6 +11469,7 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
 {
   LK_RES *res_ptr;
   char *classname, *btname;
+  OID *oid_rr;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -11484,11 +11485,21 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
       break;
 
     case LOCK_RESOURCE_CLASS:
-      classname = heap_get_class_name (thread_p, &res_ptr->key.oid);
-      if (classname != NULL)
+      oid_rr = oid_get_rep_read_tran_oid ();
+      if (oid_rr != NULL && OID_EQ (&res_ptr->key.oid, oid_rr))
 	{
-	  fprintf (log_fp, ", table=%s", classname);
-	  free_and_init (classname);
+	  /* This is the generic object for RR transactions */
+	  fprintf (log_fp,
+		   ", Generic object for Repeatable Read consistency");
+	}
+      else
+	{
+	  classname = heap_get_class_name (thread_p, &res_ptr->key.oid);
+	  if (classname != NULL)
+	    {
+	      fprintf (log_fp, ", table=%s", classname);
+	      free_and_init (classname);
+	    }
 	}
       break;
 
