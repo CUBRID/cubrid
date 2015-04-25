@@ -28018,8 +28018,9 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
     }
   assert (*root_page != NULL);
   assert (root_header != NULL);
-  assert (BTREE_IS_SAME_DB_TYPE (DB_VALUE_DOMAIN_TYPE (key),
-				 btid_int->key_type->type->id));
+  assert (insert_helper->is_null
+	  || BTREE_IS_SAME_DB_TYPE (DB_VALUE_DOMAIN_TYPE (key),
+				    btid_int->key_type->type->id));
 
   insert_helper->is_root = true;
 
