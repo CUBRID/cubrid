@@ -124,12 +124,15 @@ process_value (DB_VALUE * value)
 	    return_value = 1;
 	    break;
 	  }
-	else if (!OID_EQ (ref_oid, &update_oid))
+#if 0
+	/* TODO: Fix compactdb before re-enabling this code. */
+	else if (!OID_ISNULL (&update_oid) && !OID_EQ (ref_oid, &update_oid))
 	  {
 	    COPY_OID (ref_oid, &update_oid);
 	    return_value = 1;
 	    break;
 	  }
+#endif
 
 	if (is_class (ref_oid, &ref_class_oid))
 	  {
