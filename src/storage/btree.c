@@ -27590,8 +27590,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  /* Set an error code. */
 	  error_code = ER_CANNOT_GET_LOCK;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	  return error_code;
 	}
+      return error_code;
     }
   /* Lock successful. */
   /* Key will be checked again just to make sure object was not deleted or
