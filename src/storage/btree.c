@@ -883,8 +883,6 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p,
 	{ \
 	  pgbuf_unfix_and_init (NULL, bts->C_page); \
 	} \
-      /* No current key. */ \
-      btree_scan_clear_key (bts); \
     } while (false)
 
 /* BTREE_FIND_FK_OBJECT -
