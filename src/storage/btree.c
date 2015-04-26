@@ -261,23 +261,6 @@
 #define BTREE_GET_CLASS_OID(buf, class_oid_ptr) \
   OR_GET_OID (buf, class_oid_ptr)
 
-/* The size of an object in cases it has fixed size (includes all required
- * info).
- * In case of unique: OID, class OID, insert and delete MVCCID.
- * In case of non-unique: OID, insert and delete MVCCID.
- *
- * Fixed size is used when:
- * 1. object is saved in overflow page.
- * 2. object is non-first in leaf record.
- * 3. object is first in a leaf record that has overflow pages.
- */
-#define BTREE_OBJECT_FIXED_SIZE(btree_info) \
-  (BTREE_IS_UNIQUE ((btree_info)->unique_pk) ? \
-   2 * OR_OID_SIZE + 2 * OR_MVCCID_SIZE : OR_OID_SIZE + 2 * OR_MVCCID_SIZE)
-/* Maximum possible size for one b-tree object including all its information.
- */
-#define BTREE_OBJECT_MAX_SIZE (2 * OR_OID_SIZE + 2 * OR_MVCCID_SIZE)
-
 /* Initialize OR_BUF to process a b-tree record. */
 #define BTREE_RECORD_OR_BUF_INIT(buf, btree_rec) \
   do \
@@ -30220,7 +30203,6 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p,
 				 * maximum size is reached, next
 				 * object is inserted in overflows.
 				 */
-  int oid_size = OR_OID_SIZE;	/* OID+class OID size */
   int error_code = NO_ERROR;	/* Error code. */
   PAGE_PTR overflow_page = NULL;	/* Fixed overflow page. */
   PAGE_PTR local_inserted_page = NULL;	/* Store page where OID is inserted
@@ -30245,8 +30227,6 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p,
 
   if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
-      /* Add class OID size too. */
-      oid_size += OR_OID_SIZE;
       /* Append OID means this is not first and must be fixed size. */
       BTREE_MVCC_INFO_SET_FIXED_SIZE (&btree_obj->mvcc_info);
     }
@@ -30266,8 +30246,7 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p,
   n_objects =
     btree_record_get_num_oids (thread_p, btid_int, leaf_record,
 			       offset_after_key, BTREE_LEAF_NODE);
-  n_objects_limit =
-    CEIL_PTVDIV (BTREE_MAX_OIDLEN_INPAGE, oid_size + 2 * OR_MVCCID_SIZE);
+  n_objects_limit = BTREE_MAX_OIDCOUNT_IN_LEAF_RECORD (btid_int);
   /* Is inserting another object possible? */
   if (n_objects < n_objects_limit)
     {

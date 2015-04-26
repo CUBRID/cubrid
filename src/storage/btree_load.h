@@ -104,11 +104,28 @@
   || (btid)->root_pageid == NULL_PAGEID)
 #endif
 
+/* The size of an object in cases it has fixed size (includes all required
+ * info).
+ * In case of unique: OID, class OID, insert and delete MVCCID.
+ * In case of non-unique: OID, insert and delete MVCCID.
+ *
+ * Fixed size is used when:
+ * 1. object is saved in overflow page.
+ * 2. object is non-first in leaf record.
+ * 3. object is first in a leaf record that has overflow pages.
+ */
+#define BTREE_OBJECT_FIXED_SIZE(btree_info) \
+  (BTREE_IS_UNIQUE ((btree_info)->unique_pk) ? \
+   2 * OR_OID_SIZE + 2 * OR_MVCCID_SIZE : OR_OID_SIZE + 2 * OR_MVCCID_SIZE)
+/* Maximum possible size for one b-tree object including all its information.
+ */
+#define BTREE_OBJECT_MAX_SIZE (2 * OR_OID_SIZE + 2 * OR_MVCCID_SIZE)
+
 /*
  * Overflow key related defines
  */
 
-/* We never want to store keys larger than an eighth of the pagesize
+/* We never want to store keys larger than an eighth of the page size
  * directly on the btree page since this will make the btree too deep.
  * Large keys are automatically stored on overflow pages.  With prefix
  * keys this shouldn't be much of a problem anyway (when we get them
@@ -117,6 +134,13 @@
 #define BTREE_MAX_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 8))
 /* in MVCC BTREE_MAX_OIDLEN_INPAGE include MVCC fields too */
 #define BTREE_MAX_OIDLEN_INPAGE ((int)(DB_PAGESIZE / 8))
+
+/* Maximum number of objects that surely fit given size including all info. */
+#define BTREE_MAX_OIDCOUNT_IN_SIZE(btid, size) \
+  ((int) (size) / BTREE_OBJECT_FIXED_SIZE (btid))
+/* Maximum number of objects for a leaf record */
+#define BTREE_MAX_OIDCOUNT_IN_LEAF_RECORD(btid) \
+  (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OIDLEN_INPAGE))
 
 extern int btree_node_number_of_keys (PAGE_PTR page_ptr);
 extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
