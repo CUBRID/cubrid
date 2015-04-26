@@ -40,8 +40,8 @@
  * Constants related to b+tree structure
  */
 
-#define PEEK_KEY_VALUE 0
-#define COPY_KEY_VALUE 1
+#define PEEK_KEY_VALUE PEEK
+#define COPY_KEY_VALUE COPY
 
 /* The revision level of the the Btree should be incremented whenever there
  * is a disk representation change for the Btree structure.

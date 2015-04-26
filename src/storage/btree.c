@@ -26052,7 +26052,8 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   return btree_read_record (thread_p, &bts->btid_int, bts->C_page,
 			    &bts->key_record, &bts->cur_key,
 			    &bts->leaf_rec_info, bts->node_type,
-			    &bts->clear_cur_key, &bts->offset, COPY, bts);
+			    &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE,
+			    bts);
 }
 
 /*
