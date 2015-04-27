@@ -7446,7 +7446,7 @@ mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 	  PT_NODE *values = node->info.insert.value_clauses;
 	  PT_NODE *select = values->info.node_list.list;
 
-	  if (select->node_type == PT_SELECT)
+	  if (select != NULL && select->node_type == PT_SELECT)
 	    {
 	      PT_NODE *assignments = node->info.insert.odku_assignments;
 
