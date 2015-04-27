@@ -13376,7 +13376,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 
   /* Adjust mid_slot according to rule #3. */
   if (*mid_slot == (start_with - 1)
-      && (node_type == BTREE_NON_LEAF_NODE || !is_key_added_to_left))
+      && (node_type == BTREE_NON_LEAF_NODE || !is_key_added_to_left || found))
     {
       /* There are no records in the left node. Adjust mid_slot. */
       (*mid_slot)++;
@@ -13387,7 +13387,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 #endif /* !NDEBUG */
     }
   if (*mid_slot == stop_at
-      && (node_type == BTREE_NON_LEAF_NODE || is_key_added_to_left))
+      && (node_type == BTREE_NON_LEAF_NODE || is_key_added_to_left || found))
     {
       /* There are no records in the right leaf. Adjust mid_slot. */
       (*mid_slot)--;
