@@ -1742,8 +1742,8 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
 static int
 validate_trigger (TR_TRIGGER * trigger)
 {
-  DB_OBJECT *object_p;
   MOBJ obj;
+  TR_TRIGGER new_trigger;
 
   /*
    * should have a quicker lock check mechanism, could call
@@ -1761,14 +1761,15 @@ validate_trigger (TR_TRIGGER * trigger)
   if (trigger->chn != WS_CHN (obj))
     {
       /* cache coherency numbers have changed, recache */
-      object_p = trigger->object;	/* have to save this */
-      tr_clear_trigger (trigger);
 
-      if (object_to_trigger (object_p, trigger))
+      if (object_to_trigger (trigger->object, &new_trigger))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+
+      tr_clear_trigger (trigger);
+      *trigger = new_trigger;
 
       if (compile_trigger_activity (trigger, trigger->condition, 1))
 	{
