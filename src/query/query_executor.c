@@ -9960,7 +9960,19 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      should_delete = DB_GET_INT (valp);
+
+              /* We may get NULL as an expr value.
+               * See pt_to_merge_update_query(...).
+               */
+              if (DB_IS_NULL (valp))
+                {
+                  should_delete = false;
+                }
+              else
+                {
+                  should_delete = DB_GET_INT (valp);
+                }
+
 	      if (should_delete)
 		{
 		  if (op_type == SINGLE_ROW_UPDATE)

@@ -8032,7 +8032,17 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
 
       if (has_delete)
 	{
-	  should_delete = DB_GET_INT (&dbvals[upd_cls_cnt]);
+          /* We may get NULL as an expr value.
+           * See pt_to_merge_update_query(...).
+           */
+          if (DB_IS_NULL (&dbvals[upd_cls_cnt]))
+            {
+              should_delete = false;
+            }
+          else
+            {
+              should_delete = DB_GET_INT (&dbvals[upd_cls_cnt]);
+            }
 	}
 
       /* perform update for current tuples */
