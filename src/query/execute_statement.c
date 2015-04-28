@@ -13009,18 +13009,6 @@ cleanup:
 
   do_clear_insert_values (parser, statement);
 
-  /* set NULL on labeled value */
-  if (into_label != NULL && error != NO_ERROR)
-    {
-      DB_VALUE *db_val = pt_find_value_of_label (into_label);
-      
-      if (db_val != NULL)
-	{
-	  assert (DB_VALUE_TYPE (db_val) == DB_TYPE_OBJECT);
-	  DB_MAKE_OBJECT (db_val, (DB_OBJECT *) NULL);
-	}
-    }
-
   /* restore flags */
   statement->info.insert.spec->info.spec.flag = flag;
 
