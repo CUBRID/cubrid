@@ -6978,6 +6978,15 @@ boot_decoy_entries_finalize (void)
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_FREE_SORT_LIST);
   lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_GLOBAL_UNIQUE_STATS);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_PARTITION_LINK_HASH);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);
+  lf_tran_destroy_entry (t_entry);
 }
 #endif
 

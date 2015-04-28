@@ -50,6 +50,15 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if !defined(SERVER_MODE)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)   0
+#define pthread_mutex_trylock(a)   0
+#define pthread_mutex_unlock(a)
+static int rv;
+#endif /* not SERVER_MODE */
+
 #define SESSIONS_HASH_SIZE 1000
 #define MAX_SESSION_VARIABLES_COUNT 20
 #define MAX_PREPARED_STATEMENTS_COUNT 20

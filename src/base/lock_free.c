@@ -35,6 +35,15 @@
 #include "error_code.h"
 #include "memory_alloc.h"
 
+#if !defined(SERVER_MODE)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)   0
+#define pthread_mutex_trylock(a)   0
+#define pthread_mutex_unlock(a)
+static int rv;
+#endif /* not SERVER_MODE */
+
 /*
  * Global lock free transaction systems systems
  */

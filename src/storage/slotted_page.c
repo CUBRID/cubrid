@@ -46,6 +46,15 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
+#if !defined(SERVER_MODE)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)   0
+#define pthread_mutex_trylock(a)   0
+#define pthread_mutex_unlock(a)
+static int rv;
+#endif /* not SERVER_MODE */
+
 #define SPAGE_SEARCH_NEXT       1
 #define SPAGE_SEARCH_PREV       -1
 

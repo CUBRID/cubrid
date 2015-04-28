@@ -28165,6 +28165,13 @@ heap_partition_link_entry_alloc (void)
   HEAP_PARTITION_LINK_CACHE_ENTRY *new_entry =
     (HEAP_PARTITION_LINK_CACHE_ENTRY *) malloc
 				     (sizeof (HEAP_PARTITION_LINK_CACHE_ENTRY));
+  if (new_entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (HEAP_PARTITION_LINK_CACHE_ENTRY));
+      return NULL;
+    }
+
   pthread_mutex_init (&new_entry->mutex, NULL);
 
   return (void *) new_entry;
