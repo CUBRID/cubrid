@@ -5381,15 +5381,20 @@ disk_isvalid_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid)
   PAGE_PTR hdr_pgptr = NULL;
   VPID vpid;
   DISK_ISVALID valid;
+  bool old_check_interrupt;
+
+  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
-      return DISK_INVALID;
+      valid = DISK_INVALID;
+      goto error;
     }
 
   if (pageid == DISK_VOLHEADER_PAGE)
     {
-      return DISK_VALID;
+      valid = DISK_VALID;
+      goto error;
     }
 
   vpid.volid = volid;
@@ -5405,7 +5410,8 @@ disk_isvalid_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid)
 			 PGBUF_UNCONDITIONAL_LATCH);
   if (hdr_pgptr == NULL)
     {
-      return DISK_ERROR;
+      valid = DISK_ERROR;
+      goto error;
     }
 
   (void) disk_verify_volume_header (thread_p, hdr_pgptr);
@@ -5422,6 +5428,9 @@ disk_isvalid_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid)
   (void) disk_verify_volume_header (thread_p, hdr_pgptr);
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+
+error:
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
 
   return valid;
 }

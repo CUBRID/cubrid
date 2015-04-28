@@ -28136,7 +28136,10 @@ error:
     }
   else
     {
-      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+      if (context->home_page_watcher_p->pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+	}
     }
 
   /* unfix pages */
