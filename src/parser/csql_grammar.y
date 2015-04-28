@@ -19019,7 +19019,14 @@ primitive_type
 
 			    if (charset_node == NULL && coll_node == NULL)
 			      {
-				charset = LANG_SYS_CODESET;
+				if (list_cs == -1)
+				  {
+				    charset = LANG_SYS_CODESET;
+				  }
+				else
+				  {
+				    charset = list_cs;
+				  }
 				coll_id = LANG_GET_BINARY_COLLATION (list_cs);
 				dt->info.data_type.has_cs_spec = false;
 				dt->info.data_type.has_coll_spec = false;
