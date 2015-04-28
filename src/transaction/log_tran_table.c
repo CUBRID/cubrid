@@ -6698,6 +6698,9 @@ logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p)
  *	    then the found entry is returned. Otherwise a new entry will be
  *	    created and inserted into hash. If load_at_creation is true then the
  *	    statistics will be loaded from btree header.
+ *
+ *    NOTE: !!! DO NOT CALL THIS FUNCTION IF YOU HAVE A LATCH ON THE BTREE
+ *          HEADER. THIS CAN CAUSE A DEADLOCK BETWEEN THE LATCH AND THE MUTEX !!!
  */
 static GLOBAL_UNIQUE_STATS *
 logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
@@ -6710,6 +6713,15 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
   int num_oids, num_nulls, num_keys;
 
   assert (btid != NULL);
+
+#if !defined(NDEBUG)
+  {
+    VPID root_vpid;
+    root_vpid.pageid = btid->root_pageid;
+    root_vpid.volid = btid->vfid.volid;
+    assert (!pgbuf_is_page_fixed_by_thread (thread_p, &root_vpid));
+  }
+#endif
 
   error_code =
     lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid,
@@ -7018,6 +7030,15 @@ logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
   LF_TRAN_ENTRY *t_entry =
     thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   int error = NO_ERROR;
+
+#if !defined(NDEBUG)
+  {
+    VPID root_vpid;
+    root_vpid.pageid = btid->root_pageid;
+    root_vpid.volid = btid->vfid.volid;
+    assert (!pgbuf_is_page_fixed_by_thread (thread_p, &root_vpid));
+  }
+#endif
 
   error =
     lf_hash_delete (t_entry, &log_Gl.unique_stats_table.unique_stats_hash,

@@ -521,5 +521,7 @@ extern int pgbuf_get_condition_for_ordered_fix (const VPID * vpid_new_page,
 extern void pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher,
 				      const char *caller_file,
 				      const int caller_line, bool add);
+extern bool pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p,
+					   VPID * vpid_p);
 #endif
 #endif /* _PAGE_BUFFER_H_ */

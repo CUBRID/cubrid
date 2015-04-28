@@ -12015,6 +12015,34 @@ pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file,
 		"%s:%d", p, caller_line);
     }
 }
+
+/*
+ * pgbuf_is_page_fixed_by_thread () - 
+ *   return: true if page is already fixed, false otherwise
+ *   thread_p(in): thread entry
+ *   vpid_p(in): virtual page id
+ */
+bool
+pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, VPID * vpid_p)
+{
+  int thrd_index;
+  PGBUF_HOLDER_ANCHOR *thrd_holder_info;
+  PGBUF_HOLDER *thrd_holder;
+  assert (vpid_p != NULL);
+
+  /* walk holders and try to find page */
+  thrd_index = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+  for (thrd_holder = thrd_holder_info->thrd_hold_list; thrd_holder != NULL;
+       thrd_holder = thrd_holder->next_holder)
+    {
+      if (VPID_EQ (&thrd_holder->bufptr->vpid, vpid_p))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
 #endif
 
 /*

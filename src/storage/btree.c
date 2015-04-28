@@ -5976,13 +5976,14 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   return btid;
 
 error:
-  if (btree_id_complete)
-    {
-      logtb_delete_global_unique_stats (thread_p, btid);
-    }
   if (page_ptr)
     {
       pgbuf_unfix_and_init (thread_p, page_ptr);
+    }
+
+  if (btree_id_complete)
+    {
+      logtb_delete_global_unique_stats (thread_p, btid);
     }
 
   if (is_file_created)
@@ -6059,25 +6060,26 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
 	{
 	  unique_stats->deleted = true;
 	}
+    }
 
+  pgbuf_unfix_and_init (thread_p, P);
+
+  if (unique_pk)
+    {
+      /* get and remove statistics entry */
       ret =
 	logtb_get_global_unique_stats (thread_p, btid, &num_oids, &num_nulls,
 				       &num_keys);
       if (ret != NO_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, P);
 	  return ret;
 	}
-
       ret = logtb_delete_global_unique_stats (thread_p, btid);
       if (ret != NO_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, P);
 	  return ret;
 	}
     }
-
-  pgbuf_unfix_and_init (thread_p, P);
 
   /* This is used by unique indexes at recovery to remove the entry from global
    * hash, and at rollback to restore statistics in global hash. However, a
@@ -22162,6 +22164,8 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   OR_BUF or_buf;
   TP_DOMAIN *key_type;
   int num_oids = 0, num_nulls = 0, num_keys = 0;
+  bool fetch_unique_stats = false;
+  int unique_stats_idx = -1;
 
   /* get root header point */
   root_vpid.pageid = btid_p->root_pageid;
@@ -22173,14 +22177,14 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   if (root_page_ptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto cleanup;
+      goto error;
     }
 
   root_header = btree_get_root_header (root_page_ptr);
   if (root_header == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto cleanup;
+      goto error;
     }
 
   /* scan index header into out_values */
@@ -22188,14 +22192,14 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   idx++;
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto error;
     }
 
   error = db_make_string_copy (out_values[idx], index_name);
   idx++;
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto error;
     }
 
   (void) btid_to_string (buf, sizeof (buf), btid_p);
@@ -22203,7 +22207,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   idx++;
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto error;
     }
 
   (void) vpid_to_string (buf, sizeof (buf), &root_header->node.prev_vpid);
@@ -22211,7 +22215,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   idx++;
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto error;
     }
 
   (void) vpid_to_string (buf, sizeof (buf), &root_header->node.next_vpid);
@@ -22219,7 +22223,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   idx++;
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto error;
     }
 
   root_level = root_header->node.node_level;
@@ -22233,22 +22237,11 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
 
   if (root_header->unique_pk)
     {
-      error =
-	logtb_get_global_unique_stats (thread_p, btid_p, &num_oids,
-				       &num_nulls, &num_keys);
-      if (error != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      db_make_int (out_values[idx], num_oids);
-      idx++;
-
-      db_make_int (out_values[idx], num_nulls);
-      idx++;
-
-      db_make_int (out_values[idx], num_keys);
-      idx++;
+      /* unique stats fetching must not be done under header page latch;
+         reserve space in buffer and defer fetching after page unfix */
+      fetch_unique_stats = true;
+      unique_stats_idx = idx;
+      idx += 3;
     }
   else
     {
@@ -22271,7 +22264,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   idx++;
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto error;
     }
 
   db_make_int (out_values[idx], root_header->unique_pk);
@@ -22282,7 +22275,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   idx++;
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto error;
     }
 
   or_init (&or_buf, root_header->packed_key_domain, -1);
@@ -22293,19 +22286,40 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
   idx++;
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto error;
     }
 
   assert (idx == out_cnt);
-
-cleanup:
 
   if (root_page_ptr != NULL)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
     }
 
-  return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
+  if (fetch_unique_stats)
+    {
+      error = logtb_get_global_unique_stats (thread_p, btid_p, &num_oids,
+					     &num_nulls, &num_keys);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      db_make_int (out_values[unique_stats_idx], num_oids);
+      db_make_int (out_values[unique_stats_idx + 1], num_nulls);
+      db_make_int (out_values[unique_stats_idx + 2], num_keys);
+    }
+
+  return S_SUCCESS;
+
+error:
+
+  if (root_page_ptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, root_page_ptr);
+    }
+
+  return S_ERROR;
 }
 
 /*
