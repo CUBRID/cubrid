@@ -263,7 +263,8 @@ extern int file_preserve_temporary (THREAD_ENTRY * thread_p,
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_destroy_without_reuse (THREAD_ENTRY * thread_p,
 				       const VFID * vfid);
-extern int file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid,
+				 OID * class_oid);
 extern bool file_does_marked_as_deleted (THREAD_ENTRY * thread_p,
 					 const VFID * vfid);
 extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);

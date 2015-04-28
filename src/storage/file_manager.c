@@ -4529,19 +4529,24 @@ exit_on_error:
 /*
  * file_mark_as_deleted () - Mark a file as deleted
  *   return:
+ *   thread_p(in):
  *   vfid(in): Complete file identifier
+ *   class_oid(in): class OID
  *
  * Note: The given file is marked as deleted. None of its pages are
  *       deallocated. The deallocation of its pages is done when the file is
  *       destroyed (space reclaimed).
  */
 int
-file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
+file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid,
+		      OID * class_oid)
 {
   PAGE_PTR fhdr_pgptr = NULL;
   LOG_DATA_ADDR addr;
   VPID vpid;
-  INT16 deleted = true;
+  int deleted = 1;
+  char buffer[OR_INT_SIZE + OR_OID_SIZE + MAX_ALIGNMENT];
+  char *buffer_p = NULL;
 
   addr.vfid = vfid;
 
@@ -4563,8 +4568,14 @@ file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   addr.pgptr = fhdr_pgptr;
   addr.offset = FILE_HEADER_OFFSET;
-  log_append_postpone (thread_p, RVFL_MARKED_DELETED, &addr, sizeof (deleted),
-		       &deleted);
+
+  buffer_p = PTR_ALIGN (buffer, MAX_ALIGNMENT);
+
+  OR_PUT_INT (buffer_p, deleted);
+  OR_PUT_OID (buffer_p + OR_INT_SIZE, class_oid);
+
+  log_append_postpone (thread_p, RVFL_MARKED_DELETED, &addr,
+		       OR_INT_SIZE + OR_OID_SIZE, buffer_p);
 
   pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
 
@@ -13782,19 +13793,44 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int rv;
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
+  int offset = 0;
+  OID class_oid;
 
   (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+  OID_SET_NULL (&class_oid);
 
-  assert (rcv->length == 2 || rcv->length == 4);
-  if (rcv->length == 2)
+  assert (rcv->length == 2 || rcv->length == 4
+	  || rcv->length == OR_INT_SIZE + OR_OID_SIZE);
+
+  if (rcv->length == OR_INT_SIZE + OR_OID_SIZE)
     {
-      isdeleted = *(INT16 *) rcv->data;
+      /* the file has been deleted */
+      isdeleted = (INT16) OR_GET_INT (rcv->data);
+      offset += OR_INT_SIZE;
+
+      assert (offset < rcv->length);
+
+      OR_GET_OID (rcv->data + offset, &class_oid);
+      offset += OR_OID_SIZE;
+
+      assert (offset == rcv->length);
     }
   else
     {
-      /* As safe guard, In old log of RB-8.4.3 or before, the function
-       * file_mark_as_deleted() writes 4 bytes as isdeleted flag. */
-      isdeleted = (INT16) (*((INT32 *) rcv->data));
+      /* the file will no longer be deleted - rollback
+       * the is no need to save the class OID in this case, since the entry
+       * will not be removed from the class OID->HFID cache
+       */
+      if (rcv->length == 2)
+	{
+	  isdeleted = *(INT16 *) rcv->data;
+	}
+      else
+	{
+	  /* As safe guard, In old log of RB-8.4.3 or before, the function
+	   * file_mark_as_deleted() writes 4 bytes as isdeleted flag. */
+	  isdeleted = (INT16) (*((INT32 *) rcv->data));
+	}
     }
 
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
@@ -13815,6 +13851,11 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	}
     }
   pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
+
+  if (!OID_ISNULL (&class_oid))
+    {
+      (void) heap_delete_hfid_from_cache (thread_p, &class_oid);
+    }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 

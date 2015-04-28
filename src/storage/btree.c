@@ -5883,7 +5883,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   is_file_created = true;
 
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid,
+  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   alignment = BTREE_MAX_ALIGN;
@@ -5970,7 +5970,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
    * since that was included in the system operation which just got
    * committed, we need to do it again in case of rollback.
    */
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid,
+  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   return btid;
@@ -6126,7 +6126,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
 
   btid->root_pageid = NULL_PAGEID;
 
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid,
+  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
   ret = file_destroy (thread_p, &btid->vfid);

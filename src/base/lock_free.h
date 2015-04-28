@@ -244,6 +244,7 @@ extern LF_TRAN_SYSTEM sessions_Ts;
 extern LF_TRAN_SYSTEM free_sort_list_Ts;
 extern LF_TRAN_SYSTEM global_unique_stats_Ts;
 extern LF_TRAN_SYSTEM partition_link_Ts;
+extern LF_TRAN_SYSTEM hfid_table_Ts;
 
 extern int lf_initialize_transaction_systems (int max_threads);
 extern void lf_destroy_transaction_systems (void);

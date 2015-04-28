@@ -902,7 +902,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 
   file_created = 1;
 
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid,
+  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   /*
@@ -1179,7 +1179,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
    * since that was included in the system operation which just got
    * committed, we need to do it again in case of rollback.
    */
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid,
+  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   LOG_CS_ENTER (thread_p);

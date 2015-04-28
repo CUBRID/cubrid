@@ -182,6 +182,28 @@ struct heap_partition_link_cache_entry
 
 #define HEAP_PARTITION_LINK_HASH_SIZE 1000
 
+typedef struct heap_hfid_table HEAP_HFID_TABLE;
+struct heap_hfid_table
+{
+  LF_HASH_TABLE hfid_hash;	/* class OID->HFID cache hash table */
+  LF_ENTRY_DESCRIPTOR hfid_hash_descriptor;	/* used by hfid_hash */
+  LF_FREELIST hfid_hash_freelist;	/* used by hfid_hash */
+};
+
+#define HEAP_HFID_HASH_SIZE 1000
+
+/* entry for class OID->HFID lock free hashtable */
+typedef struct heap_hfid_table_entry HEAP_HFID_TABLE_ENTRY;
+struct heap_hfid_table_entry
+{
+  OID class_oid;		/* key - OID */
+  HEAP_HFID_TABLE_ENTRY *stack;	/* used in freelist */
+  HEAP_HFID_TABLE_ENTRY *next;	/* used in hash table */
+  UINT64 del_id;		/* delete transaction ID (for lock free) */
+
+  HFID hfid;			/* value - HFID */
+};
+
 typedef enum
 {
   HEAP_READ_ATTRVALUE,
@@ -849,4 +871,10 @@ extern int heap_partition_link_cache_initialize (void);
 extern void heap_partition_link_cache_finalize (void);
 extern int heap_rv_undoredo_partition_link_flag (THREAD_ENTRY * thread_p,
 						 LOG_RCV * rcv);
+
+extern int heap_initialize_hfid_table (void);
+extern void heap_finalize_hfid_table (void);
+extern int heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p,
+					OID * class_oid);
+
 #endif /* _HEAP_FILE_H_ */

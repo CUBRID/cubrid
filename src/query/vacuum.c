@@ -451,6 +451,7 @@ struct vacuum_dropped_files_rcv_data
 {
   VFID vfid;
   MVCCID mvccid;
+  OID class_oid;
 };
 
 #define VACUUM_DEFAULT_PAGE_BUFFER_SIZE  4000
@@ -6417,9 +6418,11 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
  * return	 : Void.
  * thread_p (in) : Thread entry.
  * vfid (in)	 : Dropped file identifier.
+ * class_oid(in) : class OID
  */
 void
 vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid,
+			     const OID * class_oid,
 			     bool pospone_or_undo)
 {
   LOG_DATA_ADDR addr;
@@ -6433,6 +6436,14 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid,
   /* Initialize recovery data */
   VFID_COPY (&rcv_data.vfid, vfid);
   rcv_data.mvccid = MVCCID_NULL;	/* Not really used here */
+  if (class_oid != NULL)
+    {
+      COPY_OID (&rcv_data.class_oid, class_oid);
+    }
+  else
+    {
+      OID_SET_NULL (&rcv_data.class_oid);
+    }
 
   addr.offset = -1;
   addr.pgptr = NULL;
@@ -6626,6 +6637,7 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   int error = NO_ERROR;
   LOG_RCV new_rcv;
   VACUUM_DROPPED_FILES_RCV_DATA new_rcv_data;
+  OID * class_oid;
 #if defined (SERVER_MODE)
   INT32 my_version, prev_version, workers_min_version;
 #endif
@@ -6650,6 +6662,7 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   VFID_COPY (&new_rcv_data.vfid,
 	     &((VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data)->vfid);
   new_rcv_data.mvccid = log_Gl.hdr.mvcc_next_id;
+  OID_SET_NULL (&new_rcv_data.class_oid);
 
   assert (!VFID_ISNULL (&new_rcv_data.vfid));
   assert (MVCCID_IS_VALID (new_rcv_data.mvccid));
@@ -6699,6 +6712,13 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 		 "VACUUM: All workers have been notified, min_version=%d",
 		 workers_min_version);
 #endif /* SERVER_MODE */
+  
+  /* vacuum is notified of the file drop, it is safe to remove from cache */
+  class_oid = &((VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data)->class_oid;
+  if (!OID_ISNULL (class_oid))
+    {
+      (void) heap_delete_hfid_from_cache (thread_p, class_oid);
+    }
 
   /* Success */
   return NO_ERROR;

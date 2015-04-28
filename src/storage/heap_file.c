@@ -575,6 +575,13 @@ static HEAP_PARTITION_LINK_CACHE heap_Partition_link_cache_area =
    LF_FREELIST_INITIALIZER};
 static HEAP_PARTITION_LINK_CACHE *heap_Partition_link_cache = NULL;
 
+static HEAP_HFID_TABLE heap_Hfid_table_area =
+  { LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER,
+  LF_FREELIST_INITIALIZER
+};
+
+static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
+
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
 					     const VPID * vpid_ptr,
@@ -1201,6 +1208,19 @@ static int heap_get_partition_link_flag (THREAD_ENTRY * thread_p, HFID * hfid,
 					 int * partition_link);
 static int heap_delete_from_partition_link_cache (THREAD_ENTRY * thread_p,
 						  OID * class_oid);
+
+static void *heap_hfid_table_entry_alloc (void);
+static int heap_hfid_table_entry_free (void *unique_stat);
+static int heap_hfid_table_entry_init (void *unique_stat);
+static int heap_hfid_table_entry_key_copy (void *src, void *dest);
+static unsigned int heap_hfid_table_entry_key_hash (void *key,
+						    int hash_table_size);
+static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
+static int heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid,
+				     HFID * hfid);
+static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p,
+					    const OID * class_oid,
+					    HFID * hfid);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -5251,6 +5271,9 @@ heap_manager_initialize (void)
       return ret;
     }
 
+  /* Initialize class OID->HFID cache */
+  ret = heap_initialize_hfid_table ();
+
   return ret;
 }
 
@@ -5283,6 +5306,8 @@ heap_manager_finalize (void)
     }
 
   heap_partition_link_cache_finalize ();
+
+  heap_finalize_hfid_table ();
 
   return ret;
 }
@@ -5350,7 +5375,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
 			  reuse_oid) != NULL)
 	    {
 	      /* A heap has been reused */
-	      vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
+	      vacuum_log_add_dropped_file (thread_p, &hfid->vfid, NULL,
 					   VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 	      return hfid;
 	    }
@@ -5380,7 +5405,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
       return NULL;
     }
 
-  vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
+  vacuum_log_add_dropped_file (thread_p, &hfid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, NEW_PAGE, PGBUF_LATCH_WRITE,
@@ -5912,12 +5937,13 @@ xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid,
  * Note: Destroy the heap file associated with the given heap identifier.
  */
 int
-xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid)
+xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid,
+	       const OID * class_oid)
 {
   VFID vfid;
   int ret;
 
-  vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
+  vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid,
 			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false,
@@ -5961,7 +5987,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid,
   file_type = file_get_type (thread_p, &(hfid->vfid));
   if (file_type == FILE_HEAP_REUSE_SLOTS)
     {
-      ret = xheap_destroy (thread_p, hfid);
+      ret = xheap_destroy (thread_p, hfid, class_oid);
       if (ret == NO_ERROR)
 	{
 	  ret = heap_delete_from_partition_link_cache (thread_p, class_oid);
@@ -5969,20 +5995,20 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid,
       return ret;
     }
 
-  vacuum_log_add_dropped_file (thread_p, &hfid->vfid,
+  vacuum_log_add_dropped_file (thread_p, &hfid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false,
 			  PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      ret = file_mark_as_deleted (thread_p, &vfid);
+      ret = file_mark_as_deleted (thread_p, &vfid, class_oid);
       if (ret != NO_ERROR)
 	{
 	  return ret;
 	}
     }
 
-  ret = file_mark_as_deleted (thread_p, &hfid->vfid);
+  ret = file_mark_as_deleted (thread_p, &hfid->vfid, class_oid);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -19625,30 +19651,8 @@ heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid,
 			      HFID * hfid)
 {
   int error_code = NO_ERROR;
-  RECDES recdes;
-  HEAP_SCANCACHE scan_cache;
 
-  if (class_oid == NULL || hfid == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  error_code = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK,
-		NULL_CHN) != S_SUCCESS)
-    {
-      heap_scancache_end (thread_p, &scan_cache);
-      return ER_FAILED;
-    }
-
-  or_class_hfid (&recdes, hfid);
-
-  error_code = heap_scancache_end (thread_p, &scan_cache);
+  error_code = heap_get_hfid_from_cache (thread_p, class_oid, hfid);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -23765,7 +23769,6 @@ heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p,
 {
   HFID class_hfid;
 
-  /* TODO: this is an access on a page, to replace with OID->HFID cache */
   heap_get_hfid_from_class_oid (thread_p, class_oid, &class_hfid);
   (void) heap_scancache_quick_start_with_class_hfid (thread_p, scan_cache,
 						     &class_hfid);
@@ -23821,7 +23824,6 @@ heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p,
 {
   HFID class_hfid;
 
-  /* TODO: this is an access on a page, to replace with OID->HFID cache */
   heap_get_hfid_from_class_oid (thread_p, class_oid, &class_hfid);
   (void) heap_scancache_quick_start_internal (scan_cache, &class_hfid);
   scan_cache->page_latch = X_LOCK;
@@ -28814,4 +28816,330 @@ error:
 #endif /* ENABLE_SYSTEMTAP */
 
   return rc;
+}
+
+/*
+ * heap_get_hfid_from_class_record () - get HFID from class record for the
+ *				      given OID.
+ *   return: error_code
+ *   class_oid(in): class oid
+ *   hfid(out):  the resulting hfid
+ */
+static int
+heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p,
+				 const OID * class_oid, HFID * hfid)
+{
+  int error_code = NO_ERROR;
+  RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+
+  if (class_oid == NULL || hfid == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+
+  if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK,
+		NULL_CHN) != S_SUCCESS)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      return ER_FAILED;
+    }
+
+  or_class_hfid (&recdes, hfid);
+
+  error_code = heap_scancache_end (thread_p, &scan_cache);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return error_code;
+}
+
+/*
+ * heap_hfid_table_entry_alloc() - allocate a new structure for
+ *		  the class OID->HFID hash
+ *   returns: new pointer or NULL on error
+ */
+static void *
+heap_hfid_table_entry_alloc (void)
+{
+  HEAP_HFID_TABLE_ENTRY *new_entry =
+    (HEAP_HFID_TABLE_ENTRY *) malloc (sizeof (HEAP_HFID_TABLE_ENTRY));
+  return (void *) new_entry;
+}
+
+/*
+ * logtb_global_unique_stat_free () - free a hfid_table entry
+ *   returns: error code or NO_ERROR
+ *   entry(in): entry to free (HEAP_HFID_TABLE_ENTRY)
+ */
+static int
+heap_hfid_table_entry_free (void *entry)
+{
+  if (entry != NULL)
+    {
+      free (entry);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
+/*
+ * heap_hfid_table_entry_init () - initialize a hfid_table entry
+ *   returns: error code or NO_ERROR
+ *   entry(in): hfid_table entry
+ */
+static int
+heap_hfid_table_entry_init (void *entry)
+{
+  HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
+
+  if (entry_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* initialize fields */
+  OID_SET_NULL (&entry_p->class_oid);
+  entry_p->hfid.vfid.fileid = NULL_FILEID;
+  entry_p->hfid.vfid.volid = NULL_VOLID;
+  entry_p->hfid.hpgid = NULL_PAGEID;
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_hfid_table_entry_key_copy () - copy a hfid_table key
+ *   returns: error code or NO_ERROR
+ *   src(in): source
+ *   dest(in): destination
+ */
+static int
+heap_hfid_table_entry_key_copy (void *src, void *dest)
+{
+  if (src == NULL || dest == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  COPY_OID ((OID *) dest, (OID *) src);
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * heap_hfid_table_entry_key_hash () - hashing function for the class OID->HFID
+ *				    hash table
+ *   return: int
+ *   key(in): Session key
+ *   hash_table_size(in): Memory Hash Table Size
+ *
+ * Note: Generate a hash number for the given key for the given hash table
+ *	 size.
+ */
+static unsigned int
+heap_hfid_table_entry_key_hash (void *key, int hash_table_size)
+{
+  return ((int) OID_PSEUDO_KEY ((OID *) key)) % hash_table_size;
+}
+
+/*
+ * heap_hfid_table_entry_key_compare () - Compare two global unique
+ *					     statistics keys (OIDs)
+ *   return: int (true or false)
+ *   k1  (in) : First OID key
+ *   k2 (in) : Second OID key
+ */
+static int
+heap_hfid_table_entry_key_compare (void *k1, void *k2)
+{
+  OID *key1, *key2;
+
+  key1 = (OID *) k1;
+  key2 = (OID *) k2;
+
+  if (k1 == NULL || k2 == NULL)
+    {
+      /* should not happen */
+      assert (false);
+      return 0;
+    }
+
+  if (OID_EQ (key1, key2))
+    {
+      /* equal */
+      return 0;
+    }
+  else
+    {
+      /* not equal */
+      return 1;
+    }
+}
+
+/*
+ * heap_initialize_hfid_table () - Creates and initializes global structure
+ *				    for global class OID->HFID hash table
+ *   return: error code
+ *   thread_p  (in) : 
+ */
+int
+heap_initialize_hfid_table (void)
+{
+  int ret = NO_ERROR;
+  LF_ENTRY_DESCRIPTOR *edesc = NULL;
+
+  if (heap_Hfid_table != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  edesc = &heap_Hfid_table_area.hfid_hash_descriptor;
+
+  edesc->of_local_next = offsetof (HEAP_HFID_TABLE_ENTRY, stack);
+  edesc->of_next = offsetof (HEAP_HFID_TABLE_ENTRY, next);
+  edesc->of_del_tran_id = offsetof (HEAP_HFID_TABLE_ENTRY, del_id);
+  edesc->of_key = offsetof (HEAP_HFID_TABLE_ENTRY, class_oid);
+  edesc->of_mutex = 0;
+  edesc->mutex_flags = LF_EM_NOT_USING_MUTEX;
+  edesc->f_alloc = heap_hfid_table_entry_alloc;
+  edesc->f_free = heap_hfid_table_entry_free;
+  edesc->f_init = heap_hfid_table_entry_init;
+  edesc->f_uninit = NULL;
+  edesc->f_key_copy = heap_hfid_table_entry_key_copy;
+  edesc->f_key_cmp = heap_hfid_table_entry_key_compare;
+  edesc->f_hash = heap_hfid_table_entry_key_hash;
+  edesc->f_duplicate = NULL;
+
+  /* initialize freelist */
+  ret =
+    lf_freelist_init (&heap_Hfid_table_area.hfid_hash_freelist, 1,
+		      100, edesc, &hfid_table_Ts);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  /* initialize hash table */
+  ret =
+    lf_hash_init (&heap_Hfid_table_area.hfid_hash,
+		  &heap_Hfid_table_area.hfid_hash_freelist,
+		  HEAP_HFID_HASH_SIZE, edesc);
+  if (ret != NO_ERROR)
+    {
+      lf_hash_destroy (&heap_Hfid_table_area.hfid_hash);
+      return ret;
+    }
+
+  heap_Hfid_table = &heap_Hfid_table_area;
+
+  return ret;
+}
+
+/*
+ * heap_finalize_hfid_table () - Finalize class OID->HFID hash table
+ *   return: error code
+ *   thread_p  (in) : 
+ */
+void
+heap_finalize_hfid_table (void)
+{
+  if (heap_Hfid_table != NULL)
+    {
+      /* destroy hash and freelist */
+      lf_hash_destroy (&heap_Hfid_table->hfid_hash);
+      lf_freelist_destroy (&heap_Hfid_table->hfid_hash_freelist);
+
+      heap_Hfid_table = NULL;
+    }
+}
+
+/*
+ * heap_delete_hfid_from_cache () - deletes the entry associated with
+ *					the given class OID from the hfid table
+ *   return: error code
+ *   thread_p  (in) :
+ *   class_oid (in) : the class OID for which the entry will be deleted
+ */
+int
+heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
+  int error = NO_ERROR;
+
+  error =
+    lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_get_hfid_from_cache () - returns the HFID of the
+ *			      class with the given class OID
+ *   return: error code
+ *   thread_p  (in) :
+ *   class OID (in) : the class OID for which the entry will be returned
+ *   hfid      (out): 
+ *
+ *   Note: if the entry is not found, one will be inserted and the HFID is
+ *	retrieved from the class record.
+ */
+static int
+heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid,
+			  HFID * hfid)
+{
+  int error_code = NO_ERROR;
+  LF_TRAN_ENTRY *t_entry =
+    thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
+  HEAP_HFID_TABLE_ENTRY *entry = NULL;
+
+  assert (class_oid != NULL);
+
+  error_code =
+    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, class_oid,
+			    (void **) &entry);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  assert (entry != NULL);
+
+  if (entry->hfid.hpgid == NULL_PAGEID
+      || entry->hfid.vfid.fileid == NULL_FILEID
+      || entry->hfid.vfid.volid == NULL_VOLID)
+    {
+      /* this is either a newly inserted entry or one with incomplete
+       * information that is currently being filled by another transaction.
+       * We need to retrieve the HFID from the class record. We do not care
+       * that we are overwriting the information, since it must be always the
+       * same (the HFID never changes for the same class OID).
+       */
+      error_code = heap_get_hfid_from_class_record (thread_p, class_oid,
+						    &entry->hfid);
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      HFID_COPY (hfid, &entry->hfid);
+    }
+  else
+    {
+      HFID_SET_NULL (hfid);
+    }
+
+  (void) lf_tran_end (t_entry);
+  return error_code;
 }

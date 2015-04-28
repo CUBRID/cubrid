@@ -167,7 +167,8 @@ LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &partition_link_Ts, 0}
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &partition_link_Ts, 0},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0}
 };
 
 extern void boot_client_all_finalize (bool is_er_final);

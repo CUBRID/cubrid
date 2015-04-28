@@ -1760,7 +1760,7 @@ heap_destroy (const HFID * hfid)
 
   ENTER_SERVER ();
 
-  success = xheap_destroy (NULL, hfid);
+  success = xheap_destroy (NULL, hfid, NULL);
 
   EXIT_SERVER ();
 

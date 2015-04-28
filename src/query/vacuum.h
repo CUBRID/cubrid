@@ -334,6 +334,7 @@ extern int vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p,
 						LOG_RCV * rcv);
 extern void vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p,
 					 const VFID * vfid,
+					 const OID * class_oid,
 					 bool postpone_or_undo);
 extern int vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p,
 						 LOG_RCV * rcv);
