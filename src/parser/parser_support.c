@@ -6846,10 +6846,13 @@ pt_fixup_column_type (PT_NODE * col)
 	case PT_TYPE_VARNCHAR:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	  fixed_precision = col->info.value.data_value.str->length;
-	  if (fixed_precision == 0)
+	  if (col->info.value.data_value.str != NULL)
 	    {
-	      fixed_precision = 1;
+	      fixed_precision = col->info.value.data_value.str->length;
+	      if (fixed_precision == 0)
+		{
+		  fixed_precision = 1;
+		}
 	    }
 	  break;
 
@@ -6858,18 +6861,24 @@ pt_fixup_column_type (PT_NODE * col)
 	  switch (col->info.value.string_type)
 	    {
 	    case 'B':
-	      fixed_precision = col->info.value.data_value.str->length;
-	      if (fixed_precision == 0)
+	      if (col->info.value.data_value.str != NULL)
 		{
-		  fixed_precision = 1;
+		  fixed_precision = col->info.value.data_value.str->length;
+		  if (fixed_precision == 0)
+		    {
+		      fixed_precision = 1;
+		    }
 		}
 	      break;
 
 	    case 'X':
-	      fixed_precision = col->info.value.data_value.str->length;
-	      if (fixed_precision == 0)
+	      if (col->info.value.data_value.str != NULL)
 		{
-		  fixed_precision = 1;
+		  fixed_precision = col->info.value.data_value.str->length;
+		  if (fixed_precision == 0)
+		    {
+		      fixed_precision = 1;
+		    }
 		}
 	      break;
 
