@@ -4453,7 +4453,7 @@ do_check_partitioned_class (DB_OBJECT * classop, int check_map, char *keyattr)
 {
   int error = NO_ERROR;
   int is_partition = 0;
-  char attr_name[DB_MAX_IDENTIFIER_LENGTH];
+  char attr_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 
   if (classop == NULL)
     {

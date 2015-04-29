@@ -2297,9 +2297,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	}
 
       info->partition = NULL;	/* initialize */
-      if (class_->partition != NULL
-	  && !do_is_partitioned_subclass (NULL, sm_ch_name ((MOBJ) class_),
-					  NULL))
+      if (class_->partition != NULL && class_->partition->pname == NULL)
 	{
 	  bool is_print_partition = true;
 

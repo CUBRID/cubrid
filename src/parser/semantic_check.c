@@ -5162,7 +5162,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   DB_METHOD *db_mthd;
   int is_meta;
   int is_partitioned = 0, ss_partition, trigger_involved = 0;
-  char keyattr[DB_MAX_IDENTIFIER_LENGTH];
+  char keyattr[DB_MAX_IDENTIFIER_LENGTH + 1];
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   DB_OBJECT *dom_cls;
   char *drop_name_list = NULL;
