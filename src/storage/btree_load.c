@@ -3551,6 +3551,14 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	{
 	  continue;
 	}
+      if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
+	  && MVCC_GET_INSID (&mvcc_header) < sort_args->lowest_active_mvccid)
+	{
+	  /* Insert MVCCID is now visible to everyone. Clear it to avoid
+	   * unnecessary vacuuming.
+	   */
+	  MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
+	}
 
       if (sort_args->filter)
 	{
