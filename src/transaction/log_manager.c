@@ -1486,8 +1486,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
     }
 
-  log_Gl.mvcc_table.current_trans_status.bit_area_start_mvccid
-    = log_Gl.hdr.mvcc_next_id;
+  logtb_reset_bit_area_start_mvccid ();
 
   /*
    * Was the database system shut down or was it involved in a crash ?

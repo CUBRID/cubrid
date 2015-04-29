@@ -2685,4 +2685,5 @@ extern char *log_rv_pack_redo_record_changes (char *ptr,
 					      int old_data_size,
 					      int new_data_size,
 					      char *new_data);
+extern void logtb_reset_bit_area_start_mvccid (void);
 #endif /* _LOG_IMPL_H_ */

@@ -3260,8 +3260,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 		}
 	      log_recovery_resetlog (thread_p, &lsa, true, end_redo_lsa);
 	      *did_incom_recovery = true;
-	      log_Gl.mvcc_table.current_trans_status.bit_area_start_mvccid =
-		log_Gl.hdr.mvcc_next_id;
+
+	      logtb_reset_bit_area_start_mvccid ();
 	      return;
 	    }
 	  else
@@ -3518,8 +3518,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	}
     }
 
-  log_Gl.mvcc_table.current_trans_status.bit_area_start_mvccid
-    = log_Gl.hdr.mvcc_next_id;
+  logtb_reset_bit_area_start_mvccid ();
+
   return;
 }
 
@@ -4877,8 +4877,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   log_zip_free (undo_unzip_ptr);
   log_zip_free (redo_unzip_ptr);
 
-  log_Gl.mvcc_table.current_trans_status.bit_area_start_mvccid
-    = log_Gl.hdr.mvcc_next_id;
+  logtb_reset_bit_area_start_mvccid ();
 
   /* Add to vacuum data recovered block buffer. */
   vacuum_rv_finish_vacuum_data_recovery (thread_p, is_chkpt_block_incomplete,
