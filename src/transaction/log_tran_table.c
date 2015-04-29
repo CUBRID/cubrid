@@ -395,26 +395,27 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
     }
 #endif
 
-  /* reallocate transaction_lowest_active_mvccids */
+  /* reallocate transaction_lowest_active_mvccids, if already initialized */
   mvcc_table = &log_Gl.mvcc_table;
-  mvcc_table->transaction_lowest_active_mvccids =
-    (MVCCID *) realloc ((void *) mvcc_table->
-			transaction_lowest_active_mvccids,
-			total_indices * sizeof (MVCCID));
-  if (mvcc_table->transaction_lowest_active_mvccids == NULL)
+  if (mvcc_table->transaction_lowest_active_mvccids != NULL)
     {
-      free_and_init (area);
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, total_indices * sizeof (MVCCID));
+      mvcc_table->transaction_lowest_active_mvccids =
+	(MVCCID *) realloc ((void *) mvcc_table->
+			    transaction_lowest_active_mvccids,
+			    total_indices * sizeof (MVCCID));
+      if (mvcc_table->transaction_lowest_active_mvccids == NULL)
+	{
+	  free_and_init (area);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, total_indices * sizeof (MVCCID));
 
-      goto error;
+	  goto error;
+	}
     }
 
   if (qmgr_allocate_tran_entries (thread_p, total_indices) != NO_ERROR)
     {
-      free ((void *) mvcc_table->transaction_lowest_active_mvccids);
-      mvcc_table->transaction_lowest_active_mvccids = NULL;
       free_and_init (area);
       error_code = ER_FAILED;
       goto error;
