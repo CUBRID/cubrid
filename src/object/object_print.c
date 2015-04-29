@@ -1611,6 +1611,8 @@ obj_print_make_class_help (void)
   new_p->query_spec = NULL;
   new_p->object_id = NULL;
   new_p->triggers = NULL;
+  new_p->constraints = NULL;
+  new_p->partition = NULL;
   new_p->comment = NULL;
 
   return new_p;
