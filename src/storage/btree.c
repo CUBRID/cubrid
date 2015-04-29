@@ -32338,28 +32338,51 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		  ASSERT_ERROR ();
 		  goto error;
 		}
-
-	      /* Refresh header & key count. */
-	      node_header = btree_get_node_header (*crt_page);
-	      if (node_header == NULL)
-		{
-		  assert_release (false);
-		  error_code = ER_FAILED;
-		  goto error;
-		}
-	      assert (node_header->node_level > 1);
-	      key_count = btree_node_number_of_keys (*crt_page);
+	      /* Nodes have been merged into root. Repeat loop in case we can
+	       * merge root again.
+	       */
+	      *advance_to_page = *crt_page;
+	      *crt_page = NULL;
+	      return NO_ERROR;
 	    }
 	}
-      /* Unfix pages if merge was not executed. */
-      if (left_page != NULL)
+      /* Root was not merged. */
+      /* Advance to one of the children. */
+      error_code =
+	btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key,
+				   &search_key->slotid, &child_vpid);
+      if (error_code != NO_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, left_page);
+	  ASSERT_ERROR ();
+	  goto error;
 	}
-      if (right_page != NULL)
+      assert (search_key->slotid == 1 || search_key->slotid == 2);
+      pgbuf_unfix_and_init (thread_p, *crt_page);
+      if (search_key->slotid == 1)
 	{
+	  *crt_page = left_page;
+	  left_page = NULL;
 	  pgbuf_unfix_and_init (thread_p, right_page);
 	}
+      else
+	{
+	  *crt_page = right_page;
+	  right_page = NULL;
+	  pgbuf_unfix_and_init (thread_p, left_page);
+	}
+      /* We advanced to one of the children. Proceed to check non-leaf node. */
+
+      /* Get node header. */
+      node_header = btree_get_node_header (*crt_page);
+      if (node_header == NULL)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      /* This cannot be a leaf node. */
+      assert (node_header->node_level > 1);
+      /* Get key count. */
+      key_count = btree_node_number_of_keys (*crt_page);
     }
   assert (left_page == NULL);
   assert (right_page == NULL);
