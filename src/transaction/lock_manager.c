@@ -2085,9 +2085,11 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   int unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 20 + 4;
   char *ptr;
   int rv;
+  bool is_classname_alloced = false;
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
   int compat1, compat2;
+  OID *oid_rr;
 
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
@@ -2199,8 +2201,18 @@ set_error:
     {
     case LOCK_RESOURCE_ROOT_CLASS:
     case LOCK_RESOURCE_CLASS:
-      classname =
-	heap_get_class_name (thread_p, &entry_ptr->res_head->key.oid);
+      oid_rr = oid_get_rep_read_tran_oid ();
+      if (oid_rr != NULL && OID_EQ (&entry_ptr->res_head->key.oid, oid_rr))
+	{
+	  classname = "Generic object for Repeatable Read consistency";
+	  is_classname_alloced = false;
+	}
+      else
+	{
+	  classname = heap_get_class_name (thread_p,
+					   &entry_ptr->res_head->key.oid);
+	  is_classname_alloced = true;
+	}
       if (classname != NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2209,7 +2221,10 @@ set_error:
 		  client_user_name, client_host_name, client_pid,
 		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode),
 		  classname, waitfor_client_users);
-	  free_and_init (classname);
+	  if (is_classname_alloced)
+	    {
+	      free_and_init (classname);
+	    }
 	}
       else
 	{
