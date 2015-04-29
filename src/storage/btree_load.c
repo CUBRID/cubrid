@@ -700,7 +700,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   void *buf_info = NULL;
   void *func_unpack_info = NULL;
   VPID *ret_vpid;
-  bool btree_id_complete = false;
+  bool btree_id_complete = false, has_fk;
   OID *notification_class_oid;
 #if !defined(NDEBUG)
   int track_id;
@@ -841,10 +841,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   attr_offset = cur_class * sort_args->n_attrs;
 
   /* Start scancache */
+  has_fk = (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid));
   if (heap_scancache_start (thread_p, &sort_args->hfscan_cache,
 			    &sort_args->hfids[cur_class],
 			    &sort_args->class_ids[cur_class],
-			    true, false, NULL) != NO_ERROR)
+			    !has_fk, false, NULL) != NO_ERROR)
     {
       goto error;
     }
