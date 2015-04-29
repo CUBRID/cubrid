@@ -1994,6 +1994,7 @@ static int btree_record_remove_object (THREAD_ENTRY * thread_p,
 				       int offset_to_object,
 				       LOG_DATA_ADDR * addr);
 static int btree_overflow_remove_object (THREAD_ENTRY * thread_p,
+					 DB_VALUE * key,
 					 BTID_INT * btid_int,
 					 BTREE_DELETE_HELPER * delete_helper,
 					 PAGE_PTR * overflow_page,
@@ -27955,6 +27956,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 {
   BTREE_INSERT_HELPER *insert_helper = (BTREE_INSERT_HELPER *) other_args;
   BTREE_ROOT_HEADER *root_header = NULL;
+  OID *notification_class_oid;
   int error_code;
   int key_len;
   int increment;
@@ -28265,11 +28267,18 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 	    }
 
 	  /* Notification. */
+	  if (!OID_ISNULL (BTREE_INSERT_CLASS_OID (insert_helper)))
+	    {
+	      notification_class_oid = BTREE_INSERT_CLASS_OID (insert_helper);
+	    }
+	  else
+	    {
+	      notification_class_oid = &btid_int->topclass_oid;
+	    }
 	  BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, key,
 						       BTREE_INSERT_OID
 						       (insert_helper),
-						       BTREE_INSERT_CLASS_OID
-						       (insert_helper),
+						       notification_class_oid,
 						       btid, NULL);
 
 	  /* Change the root header. */
@@ -30373,11 +30382,21 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p,
   if (overflow_page == NULL)
     {
       /* Could not find free space for object. Create overflow page. */
+      OID *notification_class_oid;
+
+      if (!OID_ISNULL (&btree_obj->class_oid))
+	{
+	  notification_class_oid = &btree_obj->class_oid;
+	}
+      else
+	{
+	  notification_class_oid = &btid_int->topclass_oid;
+	}
 
       /* Notification */
       BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key,
 						    &btree_obj->oid,
-						    &btree_obj->class_oid,
+						    notification_class_oid,
 						    btid_int->sys_btid);
       error_code =
 	btree_key_append_object_as_new_overflow (thread_p, btid_int, leaf,
@@ -33021,7 +33040,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     {
       /* Object belongs to overflow. */
       error_code =
-	btree_overflow_remove_object (thread_p, btid_int, delete_helper,
+	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper,
 				      &found_page, prev_found_page,
 				      *leaf_page, &leaf_record, search_key,
 				      offset_to_object);
@@ -33442,6 +33461,7 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
+ * key (in)		    : Key value.
  * btid_int (in)	    : B-tree info.
  * delete_helper (in)	    : B-tree delete helper.
  * overflow_page (in)	    : Overflow page (can be set to NULL).
@@ -33453,7 +33473,8 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
  * offset_to_object (in)    : Offset to object being removed.
  */
 static int
-btree_overflow_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key,
+			      BTID_INT * btid_int,
 			      BTREE_DELETE_HELPER * delete_helper,
 			      PAGE_PTR * overflow_page, PAGE_PTR prev_page,
 			      PAGE_PTR leaf_page, RECDES * leaf_record,
@@ -33461,6 +33482,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 			      int offset_to_object)
 {
   int error_code = NO_ERROR;	/* Error code. */
+  OID *notification_class_oid;
   RECDES overflow_record;	/* Overflow record. */
   /* Buffer to copy overflow record data. */
   char overflow_record_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -33544,11 +33566,18 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  goto error;
 	}
       /* Notification. */
-      BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, NULL,
+      if (!OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper)))
+	{
+	  notification_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
+	}
+      else
+	{
+	  notification_class_oid = &btid_int->topclass_oid;
+	}
+      BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key,
 						    BTREE_DELETE_OID
 						    (delete_helper),
-						    BTREE_DELETE_CLASS_OID
-						    (delete_helper),
+						    notification_class_oid,
 						    btid_int->sys_btid);
 
       FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);

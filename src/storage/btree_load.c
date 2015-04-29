@@ -701,6 +701,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   void *func_unpack_info = NULL;
   VPID *ret_vpid;
   bool btree_id_complete = false;
+  OID *notification_class_oid;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -1127,12 +1128,21 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
       file_created = 1;
     }
 
+
   if (!VFID_ISNULL (&load_args->btid->ovfid))
     {
       /* notification */
+      if (!OID_ISNULL (&class_oids[0]))
+	{
+	  notification_class_oid = &class_oids[0];
+	}
+      else
+	{
+	  notification_class_oid = &btid_int.topclass_oid;
+	}
       BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, NULL, NULL,
-						   &class_oids[0], btid,
-						   bt_name);
+						   notification_class_oid,
+						   btid, bt_name);
     }
 
   if (sort_args->filter)
