@@ -7366,7 +7366,13 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 		}
 	    }
 	}
-      assert (first_update_obj != -1 && last_update_obj != -1);
+      if (last_update_obj == -1)
+	{
+	  /* this is not exactly an error case, but we somehow managed to
+	     generate a multi-update flush with no updated objects */
+	  error_code = NO_ERROR;
+	  goto error;
+	}
 
       /*
        * Flush objects
