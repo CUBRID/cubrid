@@ -9841,72 +9841,69 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_BETWEEN:
 	case PT_NOT_BETWEEN:
-	  {
-	    /* between and rage operators are written like:
-	       PT_BETWEEN(arg1, PT_BETWEEN_AND(arg2,arg3))
-	       We convert it to PT_BETWEEN(arg1, arg2, arg2) to be able to
-	       decide the correct common type of all arguments and we will
-	       convert it back once we apply the correct casts */
-	    if (arg2->node_type == PT_EXPR
-		&& pt_is_between_range_op (arg2->info.expr.op))
-	      {
-		arg2->info.expr.arg1 = node->info.expr.arg2;
-		arg2->info.expr.arg2 = node->info.expr.arg3;
-		node->info.expr.arg2 = arg2;
-		node->info.expr.arg3 = NULL;
-	      }
-	    break;
-	  }
+	  /* between and rage operators are written like:
+	   * PT_BETWEEN(arg1, PT_BETWEEN_AND(arg2,arg3))
+	   * We convert it to PT_BETWEEN(arg1, arg2, arg2) to be able to
+	   * decide the correct common type of all arguments and we will
+	   * convert it back once we apply the correct casts 
+	   */
+	  if (arg2->node_type == PT_EXPR
+	      && pt_is_between_range_op (arg2->info.expr.op))
+	    {
+	      arg2->info.expr.arg1 = node->info.expr.arg2;
+	      arg2->info.expr.arg2 = node->info.expr.arg3;
+	      node->info.expr.arg2 = arg2;
+	      node->info.expr.arg3 = NULL;
+	    }
+	  break;
+
 	case PT_LIKE:
 	case PT_NOT_LIKE:
-	  {
-	    /* convert PT_LIKE(arg1, arg2, arg3) back to
-	       PT_LIKE(arg1, PT_LIKE_ESCAPE(arg2, arg3))
+	  /* convert PT_LIKE(arg1, arg2, arg3) back to
+	   * PT_LIKE(arg1, PT_LIKE_ESCAPE(arg2, arg3))
+	   * A better approach would be to modify the parser to output
+	   * PT_LIKE(arg1, arg2, arg3) directly. 
+	   */
+	  if (arg2->node_type == PT_EXPR
+	      && arg2->info.expr.op == PT_LIKE_ESCAPE)
+	    {
 
-	       A better approach would be to modify the parser to output
-	       PT_LIKE(arg1, arg2, arg3) directly. */
+	      arg2->info.expr.arg1 = node->info.expr.arg2;
+	      arg2->info.expr.arg2 = node->info.expr.arg3;
+	      node->info.expr.arg2 = arg2;
+	      node->info.expr.arg3 = NULL;
+	    }
+	  break;
 
-	    if (arg2->node_type == PT_EXPR
-		&& arg2->info.expr.op == PT_LIKE_ESCAPE)
-	      {
-
-		arg2->info.expr.arg1 = node->info.expr.arg2;
-		arg2->info.expr.arg2 = node->info.expr.arg3;
-		node->info.expr.arg2 = arg2;
-		node->info.expr.arg3 = NULL;
-	      }
-	    break;
-	  }
 	case PT_RAND:
 	case PT_RANDOM:
-	  {
-	    /* to keep mysql compatibility we should consider a NULL argument
-	       as the value 0. This is the only place where we can perform
-	       this check */
-	    arg1 = node->info.expr.arg1;
-	    if (arg1 && arg1->type_enum == PT_TYPE_NULL
-		&& arg1->node_type == PT_VALUE)
-	      {
-		arg1->type_enum = arg1_type = PT_TYPE_INTEGER;
-		db_make_int (&arg1->info.value.db_value, 0);
-	      }
-	    break;
-	  }
+	  /* to keep mysql compatibility we should consider a NULL argument
+	   * as the value 0. This is the only place where we can perform
+	   * this check 
+	   */
+	  arg1 = node->info.expr.arg1;
+	  if (arg1 && arg1->type_enum == PT_TYPE_NULL
+	      && arg1->node_type == PT_VALUE)
+	    {
+	      arg1->type_enum = arg1_type = PT_TYPE_INTEGER;
+	      db_make_int (&arg1->info.value.db_value, 0);
+	    }
+	  break;
+
 	case PT_DRAND:
 	case PT_DRANDOM:
-	  {
-	    /* to keep mysql compatibility we should consider a NULL argument
-	       as the value 0. This is the only place where we can perform
-	       this check */
-	    arg1 = node->info.expr.arg1;
-	    if (arg1 && arg1->type_enum == PT_TYPE_NULL
-		&& arg1->node_type == PT_VALUE)
-	      {
-		arg1->type_enum = arg1_type = PT_TYPE_DOUBLE;
-		db_make_double (&arg1->info.value.db_value, 0);
-	      }
-	    break;
-	  }
+	  /* to keep mysql compatibility we should consider a NULL argument
+	   * as the value 0. This is the only place where we can perform
+	   * this check 
+	   */
+	  arg1 = node->info.expr.arg1;
+	  if (arg1 && arg1->type_enum == PT_TYPE_NULL
+	      && arg1->node_type == PT_VALUE)
+	    {
+	      arg1->type_enum = arg1_type = PT_TYPE_DOUBLE;
+	      db_make_double (&arg1->info.value.db_value, 0);
+	    }
+	  break;
 
 	case PT_EXTRACT:
 	  if (arg1_type == PT_TYPE_MAYBE)
@@ -10082,6 +10079,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      node->type_enum = PT_TYPE_NONE;
 	    }
 	  break;
+
 	case PT_COALESCE:
 	  if (common_type != PT_TYPE_NONE
 	      && arg1_type != PT_TYPE_NA && arg1_type != PT_TYPE_NULL
@@ -10092,6 +10090,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 				  arg2->data_type);
 	    }
 	  break;
+
 	case PT_TIMEDIFF:
 	  if (PT_IS_DATE_TIME_TYPE (arg1_type)
 	      && PT_IS_DATE_TIME_TYPE (arg2_type))
