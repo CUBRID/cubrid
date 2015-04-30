@@ -5275,7 +5275,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
   DB_VALUE keyname;
   char *keyname_str;
 
-  if (class_ == NULL|| keycol == NULL)
+  if (class_ == NULL || keycol == NULL)
     {
       error = ER_INVALID_PARTITION_REQUEST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -10119,36 +10119,44 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		  const char *att_names[2];
 		  PT_NODE *att_old_name =
 		    alter->info.alter.alter_clause.attr_mthd.attr_old_name;
-		  assert (att_old_name->node_type == PT_NAME);
-		  att_names[0] = att_old_name->info.name.original;
-		  att_names[1] = NULL;
 
-		  assert (alter->info.alter.alter_clause.attr_mthd.
-			  attr_old_name->node_type == PT_NAME);
-		  error = sm_drop_constraint (class_mop,
-					      saved_constr->constraint_type,
-					      saved_constr->name, att_names,
-					      false, false);
-
-		  if (error != NO_ERROR)
+		  if (att_old_name != NULL)
 		    {
-		      goto exit;
-		    }
+		      assert (att_old_name->node_type == PT_NAME);
+		      att_names[0] = att_old_name->info.name.original;
+		      att_names[1] = NULL;
 
-		  error = sm_add_constraint (class_mop,
-					     saved_constr->constraint_type,
-					     saved_constr->name,
-					     (const char **) saved_constr->
-					     att_names,
-					     saved_constr->asc_desc,
-					     saved_constr->prefix_length,
-					     false,
-					     saved_constr->filter_predicate,
-					     saved_constr->func_index_info,
-					     saved_constr->comment);
-		  if (error != NO_ERROR)
-		    {
-		      goto exit;
+		      assert (alter->info.alter.alter_clause.attr_mthd.
+			      attr_old_name->node_type == PT_NAME);
+		      error = sm_drop_constraint (class_mop,
+						  saved_constr->
+						  constraint_type,
+						  saved_constr->name,
+						  att_names, false, false);
+
+		      if (error != NO_ERROR)
+			{
+			  goto exit;
+			}
+
+		      error = sm_add_constraint (class_mop,
+						 saved_constr->
+						 constraint_type,
+						 saved_constr->name,
+						 (const char **)
+						 saved_constr->att_names,
+						 saved_constr->asc_desc,
+						 saved_constr->prefix_length,
+						 false,
+						 saved_constr->
+						 filter_predicate,
+						 saved_constr->
+						 func_index_info,
+						 saved_constr->comment);
+		      if (error != NO_ERROR)
+			{
+			  goto exit;
+			}
 		    }
 		}
 	    }
@@ -15372,8 +15380,10 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser,
 	ws_copy_string ((char *) node->info.parts.name->info.name.original);
       if (partition->pname == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  strlen ((char *) node->info.parts.name->info.name.original));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1,
+		  strlen ((char *) node->info.parts.name->info.name.
+			  original));
 	  return NULL;
 	}
     }
