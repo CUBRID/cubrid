@@ -49,6 +49,7 @@
 #include "query_manager.h"
 #include "xserver_interface.h"
 #include "btree_load.h"
+#include "boot_sr.h"
 
 #if defined(CUBRID_DEBUG)
 #include "disk_manager.h"
@@ -409,7 +410,7 @@ struct pgbuf_bcb
   int ipool;			/* Buffer pool index */
   int fcnt;			/* Fix count */
   PGBUF_LATCH_MODE latch_mode;	/* page latch mode */
-  PGBUF_ZONE zone;			/* BCB zone */
+  PGBUF_ZONE zone;		/* BCB zone */
 #if defined(SERVER_MODE)
   THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
 #endif				/* SERVER_MODE */
@@ -942,6 +943,9 @@ static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
 					      int *flushed_pages);
 static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
 
+static int pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p,
+					PAGE_PTR * pgptr, VPID * groupid,
+					bool do_unfix);
 #if !defined(NDEBUG)
 static void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 					       PAGE_PTR pgptr,
@@ -10916,9 +10920,11 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
   int curr_request_mode;
   PAGE_FETCH_MODE curr_fetch_mode;
   PGBUF_HOLDER_INFO ordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
-  PGBUF_HOLDER_INFO unordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
   PGBUF_HOLDER_INFO req_page_holder_info;
   bool req_page_has_watcher;
+  bool req_page_has_group;
+  int er_status_get_hfid = NO_ERROR;
+  VPID req_page_groupid;
 #if defined(PGBUF_ORDERED_DEBUG)
   static unsigned int global_ordered_fix_id = 0;
   unsigned int ordered_fix_id;
@@ -10934,6 +10940,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
   assert (req_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
 #endif
 
+  req_page_has_watcher = false;
   if (req_watcher->pgptr != NULL)
     {
       assert_release (false);
@@ -10942,7 +10949,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
     }
 
   ret_pgptr = NULL;
-  req_page_has_watcher = true;
 
   /* set or promote current page rank  */
   if (VPID_EQ (&req_watcher->group_id, req_vpid))
@@ -10952,6 +10958,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
   else
     {
       req_watcher->curr_rank = req_watcher->initial_rank;
+    }
+
+  req_page_has_group = VPID_ISNULL (&req_watcher->group_id) ? false : true;
+  if (req_page_has_group == false)
+    {
+      VPID_SET_NULL (&req_page_groupid);
     }
 
   VPID_COPY (&req_page_holder_info.group_id, &req_watcher->group_id);
@@ -10982,15 +10994,30 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	    {
 	      assert (PGBUF_IS_ORDERED_PAGETYPE
 		      (holder->bufptr->iopage_buffer->iopage.prv.ptype));
+
+	      if (req_page_has_group == false
+		  && pgbuf_get_page_ptype (thread_p, ret_pgptr) == PAGE_HEAP)
+		{
+		  er_status =
+		    pgbuf_get_groupid_and_unfix (thread_p, &ret_pgptr,
+						 &req_page_groupid, false);
+		  if (er_status != NO_ERROR)
+		    {
+		      er_status_get_hfid = er_status;
+		      goto exit;
+		    }
+		  assert (!VPID_ISNULL (&req_page_groupid));
+		  VPID_COPY (&req_watcher->group_id, &req_page_groupid);
+		}
 #if !defined(NDEBUG)
 	      pgbuf_add_watch_instance_internal (holder, ret_pgptr,
-						 req_watcher,
-						 request_mode,
+						 req_watcher, request_mode,
 						 caller_file, caller_line);
 #else
 	      pgbuf_add_watch_instance_internal (holder, ret_pgptr,
 						 req_watcher, request_mode);
 #endif
+	      req_page_has_watcher = true;
 	      goto exit;
 	    }
 	}
@@ -10998,7 +11025,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
       assert_release (false);
 
       er_status = ER_FAILED_ASSERTION;
-      req_page_has_watcher = false;
       goto exit;
     }
   else
@@ -11126,12 +11152,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	      assert (pg_watcher->curr_rank >= PGBUF_ORDERED_HEAP_HDR
 		      && pg_watcher->curr_rank <
 		      PGBUF_ORDERED_RANK_UNDEFINED);
-	      if (VPID_ISNULL (&pg_watcher->group_id)
-		  || VPID_ISNULL (&req_watcher->group_id))
-		{
-		  assert (VPID_EQ (&pg_watcher->group_id,
-				   &req_watcher->group_id));
-		}
+	      assert (!VPID_ISNULL (&pg_watcher->group_id));
 #endif
 	      if (page_rank == PGBUF_ORDERED_RANK_UNDEFINED)
 		{
@@ -11220,10 +11241,18 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	  VPID_COPY (&(ordered_holders_info[saved_pages_cnt].vpid),
 		     &(holder->bufptr->vpid));
 
-	  diff =
-	    pgbuf_compare_hold_vpid_for_sort (&req_page_holder_info,
-					      &ordered_holders_info
-					      [saved_pages_cnt]);
+	  if (req_page_has_group == true)
+	    {
+	      diff =
+		pgbuf_compare_hold_vpid_for_sort (&req_page_holder_info,
+						  &ordered_holders_info
+						  [saved_pages_cnt]);
+	    }
+	  else
+	    {
+	      /* page needs to be unfixed */
+	      diff = -1;
+	    }
 
 	  if (diff < 0)
 	    {
@@ -11363,8 +11392,68 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 				    true);
 #endif
 	}
-
       holder = next_holder;
+    }
+
+  /* the following code assumes that if the class OID is deleted, after the
+   * requested page is unlatched, the HFID page is not reassigned to an ordinary
+   * page; in such case, a page deadlock may occur in worst case.
+   *
+   * Example of scenario when such situation may occur :
+   * We assume an existing latch on VPID1 (0, 90)
+   * 1. Fix requested page VPID2 (0, 100), get class_oid from page 
+   * 2. Unfix requested page
+   * 3. Get HFID from schema : 
+   *  < between 2 and 3, other threads drop  the class, and HFID page is reused,
+   *    along with current page which may be allocated to the HFID of another
+   *    class >
+   * 4. Still assuming that HFID is valid, this thread starts latching pages:
+   *    In order VPID1, VPID2
+   *    At the same time, another thread, starts latching pages VPID1 and VPID2,
+   *    but since this later thread knows that VPID2 is a HFID, will use
+   *    the order VPID2, VPID1.
+   *
+   */
+  if (req_page_has_group == false)
+    {
+#if !defined(NDEBUG)
+      /* all previous pages with watcher have been unfixed */
+      holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+      while (holder != NULL)
+	{
+	  assert (holder->watch_count == 0);
+	  holder = holder->thrd_link;
+	}
+      pgptr = pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode,
+			       PGBUF_UNCONDITIONAL_LATCH,
+			       caller_file, caller_line);
+#else
+      pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode,
+				 PGBUF_UNCONDITIONAL_LATCH);
+#endif
+      if (pgptr != NULL)
+	{
+	  if (pgbuf_get_page_ptype (thread_p, pgptr) == PAGE_HEAP)
+	    {
+	      er_status = pgbuf_get_groupid_and_unfix (thread_p, &pgptr,
+						       &req_page_groupid,
+						       true);
+	      if (er_status != NO_ERROR)
+		{
+		  er_status_get_hfid = er_status;
+		  /* continue (re-latch old pages) */
+		}
+	    }
+	}
+      else
+	{
+	  /* continue */
+	  er_status_get_hfid = er_errid ();
+	  if (er_status_get_hfid == NO_ERROR)
+	    {
+	      er_status_get_hfid = ER_FAILED;
+	    }
+	}
     }
 
 #if defined(PGBUF_ORDERED_DEBUG)
@@ -11377,15 +11466,42 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 #endif
 
   /* add requested page, watch instance is added after page is fixed */
-  VPID_COPY (&(ordered_holders_info[saved_pages_cnt].group_id),
-	     &req_watcher->group_id);
-  ordered_holders_info[saved_pages_cnt].rank = req_watcher->curr_rank;
+  if (req_page_has_group)
+    {
+      VPID_COPY (&(ordered_holders_info[saved_pages_cnt].group_id),
+		 &req_watcher->group_id);
+    }
+  else
+    {
+      assert (!VPID_ISNULL (&req_page_groupid));
+      VPID_COPY (&req_watcher->group_id, &req_page_groupid);
+      VPID_COPY (&(ordered_holders_info[saved_pages_cnt].group_id),
+		 &req_page_groupid);
+    }
   VPID_COPY (&(ordered_holders_info[saved_pages_cnt].vpid), req_vpid);
+  if (req_page_has_group)
+    {
+      ordered_holders_info[saved_pages_cnt].rank = req_watcher->curr_rank;
+    }
+  else
+    {
+      if (VPID_EQ
+	  (&(ordered_holders_info[saved_pages_cnt].group_id), req_vpid))
+	{
+	  ordered_holders_info[saved_pages_cnt].rank = PGBUF_ORDERED_HEAP_HDR;
+	}
+      else
+	{
+	  /* leave rank set by user */
+	  ordered_holders_info[saved_pages_cnt].rank = req_watcher->curr_rank;
+	}
+    }
 
-  saved_pages_cnt++;
+  if (req_page_has_group == true || er_status_get_hfid == NO_ERROR)
+    {
+      saved_pages_cnt++;
+    }
 
-  memcpy (unordered_holders_info, ordered_holders_info,
-	  saved_pages_cnt * sizeof (ordered_holders_info[0]));
   if (saved_pages_cnt > 1)
     {
       qsort (ordered_holders_info, saved_pages_cnt,
@@ -11499,6 +11615,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	      pgbuf_add_watch_instance_internal (holder, pgptr,
 						 req_watcher, request_mode);
 #endif
+	      req_page_has_watcher = true;
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
@@ -11603,6 +11720,13 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
     }
 
 exit:
+  if (er_status_get_hfid != NO_ERROR && er_status == NO_ERROR)
+    {
+      er_status = er_status_get_hfid;
+    }
+
+  assert (er_status != NO_ERROR || !VPID_ISNULL (&(req_watcher->group_id)));
+
   if (ret_pgptr != NULL && er_status != NO_ERROR)
     {
       if (req_page_has_watcher)
@@ -11613,6 +11737,67 @@ exit:
 	{
 	  pgbuf_unfix_and_init (thread_p, ret_pgptr);
 	}
+    }
+
+  return er_status;
+}
+
+
+/*
+ * pgbuf_get_groupid_and_unfix () - retrieves group identifier of page and
+ *				    performs unlatch if requested.
+ *   return: error code
+ *   pgptr(in): page (already latched); only heap page allowed
+ *   groupid(out): group identifer (VPID of HFID)
+ *   do_unfix(in): if true, it unfixes the page.
+ *
+ * Note : helper function of ordered fix.
+ */
+static int
+pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr,
+			     VPID * groupid, bool do_unfix)
+{
+  OID cls_oid;
+  HFID hfid;
+  int er_status = NO_ERROR;
+  int thrd_idx;
+
+  assert (pgptr != NULL && *pgptr != NULL);
+  assert (groupid != NULL);
+
+  VPID_SET_NULL (groupid);
+
+  thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+
+  /* get class oid and hfid */
+  er_status = heap_get_class_oid_from_page (thread_p, *pgptr, &cls_oid);
+
+  if (do_unfix == true)
+    {
+      /* release requested page to avoid deadlocks with catalog pages */
+      pgbuf_unfix_and_init (thread_p, *pgptr);
+    }
+
+  if (er_status != NO_ERROR)
+    {
+      return er_status;
+    }
+
+  assert (do_unfix == false || *pgptr == NULL);
+
+  if (OID_IS_ROOTOID (&cls_oid))
+    {
+      boot_find_root_heap (&hfid);
+    }
+  else
+    {
+      er_status = heap_get_hfid_from_class_oid (thread_p, &cls_oid, &hfid);
+    }
+
+  if (er_status == NO_ERROR)
+    {
+      groupid->volid = hfid.vfid.volid;
+      groupid->pageid = hfid.hpgid;
     }
 
   return er_status;

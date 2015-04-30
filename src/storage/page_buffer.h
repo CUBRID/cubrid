@@ -110,6 +110,14 @@ extern const VPID vpid_Null_vpid;
       } \
   } while (0)
 
+#define PGBUF_WATCHER_COPY_GROUP(w_dst,w_src) \
+  do { \
+    assert ((w_src) != NULL); \
+    assert ((w_dst) != NULL); \
+    assert (!VPID_ISNULL (&((w_src)->group_id))); \
+    VPID_COPY (&((w_dst)->group_id), &((w_src)->group_id)); \
+  } while (0)
+
 #define PGBUF_WATCHER_RESET_RANK(w,rank) \
   do { \
     (w)->initial_rank = (rank); \

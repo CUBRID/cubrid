@@ -7940,6 +7940,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
       forward_vpid.volid = forward_oid.volid;
       forward_vpid.pageid = forward_oid.pageid;
 
+      PGBUF_WATCHER_COPY_GROUP (&fwd_page_watcher, &home_page_watcher);
       /* try to fix forward page conditionally */
       error_code = pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE,
 				      PGBUF_LATCH_READ, &fwd_page_watcher);
@@ -9408,6 +9409,7 @@ try_again:
 	}
 
       /* Try to latch forward_page. */
+      PGBUF_WATCHER_COPY_GROUP (fwd_page_watcher, home_page_watcher);
       ret =
 	pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE,
 			   latch_mode, fwd_page_watcher);
@@ -9476,6 +9478,7 @@ try_again:
        */
       PGBUF_WATCHER_RESET_RANK (fwd_page_watcher,
 				PGBUF_ORDERED_HEAP_OVERFLOW);
+      PGBUF_WATCHER_COPY_GROUP (fwd_page_watcher, home_page_watcher);
       ret =
 	pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE,
 			   latch_mode, fwd_page_watcher);
@@ -21752,6 +21755,7 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
       /* Fetch the page of relocated (forwarded/new home) record */
       vpid.volid = forward_oid.volid;
       vpid.pageid = forward_oid.pageid;
+      PGBUF_WATCHER_COPY_GROUP (&fwd_pg_watcher, home_pg_watcher);
       ret = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
 			       &fwd_pg_watcher);
       if (ret != NO_ERROR)
@@ -25488,6 +25492,8 @@ heap_fix_forward_page (THREAD_ENTRY * thread_p,
   forward_vpid.volid = forward_oid.volid;
 
   /* fix forward page */
+  PGBUF_WATCHER_COPY_GROUP (context->forward_page_watcher_p,
+			    context->home_page_watcher_p);
   rc =
     pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		       context->forward_page_watcher_p);
@@ -26283,6 +26289,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
       /* fix overflow page */
       overflow_vpid.pageid = overflow_oid.pageid;
       overflow_vpid.volid = overflow_oid.volid;
+      PGBUF_WATCHER_COPY_GROUP (context->overflow_page_watcher_p,
+				context->home_page_watcher_p);
       rc = pgbuf_ordered_fix (thread_p, &overflow_vpid, OLD_PAGE,
 			      PGBUF_LATCH_WRITE,
 			      context->overflow_page_watcher_p);
