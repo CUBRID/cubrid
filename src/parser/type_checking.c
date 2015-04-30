@@ -9877,19 +9877,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	case PT_RAND:
 	case PT_RANDOM:
-	  /* to keep mysql compatibility we should consider a NULL argument
-	   * as the value 0. This is the only place where we can perform
-	   * this check 
-	   */
-	  arg1 = node->info.expr.arg1;
-	  if (arg1 && arg1->type_enum == PT_TYPE_NULL
-	      && arg1->node_type == PT_VALUE)
-	    {
-	      arg1->type_enum = arg1_type = PT_TYPE_INTEGER;
-	      db_make_int (&arg1->info.value.db_value, 0);
-	    }
-	  break;
-
 	case PT_DRAND:
 	case PT_DRANDOM:
 	  /* to keep mysql compatibility we should consider a NULL argument
@@ -9900,8 +9887,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (arg1 && arg1->type_enum == PT_TYPE_NULL
 	      && arg1->node_type == PT_VALUE)
 	    {
-	      arg1->type_enum = arg1_type = PT_TYPE_DOUBLE;
-	      db_make_double (&arg1->info.value.db_value, 0);
+	      arg1->type_enum = arg1_type = PT_TYPE_INTEGER;
+	      db_make_int (&arg1->info.value.db_value, 0);
 	    }
 	  break;
 
