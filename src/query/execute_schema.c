@@ -10128,31 +10128,29 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 
 		      assert (alter->info.alter.alter_clause.attr_mthd.
 			      attr_old_name->node_type == PT_NAME);
-		      error = sm_drop_constraint (class_mop,
-						  saved_constr->
-						  constraint_type,
-						  saved_constr->name,
-						  att_names, false, false);
+		      error =
+			sm_drop_constraint (class_mop,
+					    saved_constr->constraint_type,
+					    saved_constr->name,
+					    att_names, false, false);
 
 		      if (error != NO_ERROR)
 			{
 			  goto exit;
 			}
 
-		      error = sm_add_constraint (class_mop,
-						 saved_constr->
-						 constraint_type,
-						 saved_constr->name,
-						 (const char **)
-						 saved_constr->att_names,
-						 saved_constr->asc_desc,
-						 saved_constr->prefix_length,
-						 false,
-						 saved_constr->
-						 filter_predicate,
-						 saved_constr->
-						 func_index_info,
-						 saved_constr->comment);
+		      error =
+			sm_add_constraint (class_mop,
+					   saved_constr->constraint_type,
+					   saved_constr->name,
+					   (const char **)
+					   saved_constr->att_names,
+					   saved_constr->asc_desc,
+					   saved_constr->prefix_length,
+					   false,
+					   saved_constr->filter_predicate,
+					   saved_constr->func_index_info,
+					   saved_constr->comment);
 		      if (error != NO_ERROR)
 			{
 			  goto exit;
