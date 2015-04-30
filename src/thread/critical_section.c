@@ -571,8 +571,9 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
     }
 
 #if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, &(cs_ptr->cs_index),
-			 RC_CS, MGR_DEF);
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__,
+			 THREAD_TRACK_CSECT_ENTER_AS_WRITER,
+			 &(cs_ptr->cs_index), RC_CS, MGR_DEF);
 #endif /* NDEBUG */
 
   cs_ptr->total_enter++;
@@ -835,8 +836,9 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
     }
 
 #if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, &(cs_ptr->cs_index),
-			 RC_CS, MGR_DEF);
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__,
+			 THREAD_TRACK_CSECT_ENTER_AS_READER,
+			 &(cs_ptr->cs_index), RC_CS, MGR_DEF);
 #endif /* NDEBUG */
 
   cs_ptr->total_enter++;
@@ -1093,8 +1095,9 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
     }
 
 #if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, -1,
-			 &(cs_ptr->cs_index), RC_CS, MGR_DEF);
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__,
+			 THREAD_TRACK_CSECT_DEMOTE, &(cs_ptr->cs_index),
+			 RC_CS, MGR_DEF);
 #endif /* NDEBUG */
 
   cs_ptr->total_enter++;
@@ -1388,7 +1391,8 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
     }
 
 #if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, &(cs_ptr->cs_index),
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__,
+			 THREAD_TRACK_CSECT_PROMOTE, &(cs_ptr->cs_index),
 			 RC_CS, MGR_DEF);
 #endif /* NDEBUG */
 
@@ -1625,8 +1629,9 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p,
     }
 
 #if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, -1,
-			 &(cs_ptr->cs_index), RC_CS, MGR_DEF);
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__,
+			 THREAD_TRACK_CSECT_EXIT, &(cs_ptr->cs_index), RC_CS,
+			 MGR_DEF);
 #endif /* NDEBUG */
 
   error_code = pthread_mutex_lock (&cs_ptr->lock);

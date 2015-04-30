@@ -212,6 +212,16 @@ static THREAD_DAEMON *thread_Daemons = NULL;
 #define THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT	      1024
 #define THREAD_RC_TRACK_CS_THRESHOLD_AMOUNT	      1024
 
+#define THREAD_METER_DEMOTED_READER_FLAG	      0x40
+#define THREAD_METER_MAX_ENTER_COUNT		      0x3F
+
+#define THREAD_METER_IS_DEMOTED_READER(rlock) \
+	(rlock & THREAD_METER_DEMOTED_READER_FLAG)
+#define THREAD_METER_STRIP_DEMOTED_READER_FLAG(rlock) \
+	(rlock & ~THREAD_METER_DEMOTED_READER_FLAG)
+#define THREAD_METER_WITH_DEMOTED_READER_FLAG(rlock) \
+	(rlock | THREAD_METER_DEMOTED_READER_FLAG)
+
 #define THREAD_RC_TRACK_ASSERT(thread_p, outfp, cond) \
   do \
     { \
@@ -269,9 +279,13 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
 			  const char *caller_file, int caller_line,
 			  int amount, void *ptr);
 static void
-thread_rc_track_meter_assert_CS (THREAD_ENTRY * thread_p,
-				 THREAD_RC_METER * meter, int amount,
-				 void *ptr);
+thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p,
+					       THREAD_RC_METER * meter,
+					       int amount, void *ptr);
+static void
+thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p,
+					  THREAD_RC_METER * meter,
+					  int enter_mode, void *ptr);
 #endif /* !NDEBUG */
 
 extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
@@ -4789,7 +4803,7 @@ thread_rc_track_alloc (THREAD_ENTRY * thread_p)
 {
   int i, j;
 #if !defined(NDEBUG)
-  int k, max_tracked_res;
+  int max_tracked_res;
   THREAD_TRACKED_RESOURCE *tracked_res_chunk = NULL, *tracked_res_ptr = NULL;
 #endif /* !NDEBUG */
   THREAD_RC_TRACK *new_track;
@@ -4874,15 +4888,14 @@ thread_rc_track_alloc (THREAD_ENTRY * thread_p)
 		  new_track->meter[i][j].m_sub_line_no = -1;
 #if !defined(NDEBUG)
 		  new_track->meter[i][j].m_hold_buf[0] = '\0';
+		  new_track->meter[i][j].m_rwlock_buf[0] = '\0';
 		  new_track->meter[i][j].m_hold_buf_size = 0;
 
 		  /* init Critical Section hold_buf */
 		  if (i == RC_CS)
 		    {
-		      for (k = 0; k < ONE_K; k++)
-			{
-			  new_track->meter[i][j].m_hold_buf[k] = '\0';
-			}
+		      memset (new_track->meter[i][j].m_hold_buf, 0, ONE_K);
+		      memset (new_track->meter[i][j].m_rwlock_buf, 0, ONE_K);
 		    }
 
 		  /* Initialize tracked resources */
@@ -5160,21 +5173,21 @@ thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p)
 
 #if !defined(NDEBUG)
 /*
- * thread_rc_track_meter_assert_CS () -
+ * thread_rc_track_meter_assert_csect_dependency () -
  *   return:
  *   meter(in):
  */
 static void
-thread_rc_track_meter_assert_CS (THREAD_ENTRY * thread_p,
-				 THREAD_RC_METER * meter, int amount,
-				 void *ptr)
+thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p,
+					       THREAD_RC_METER * meter,
+					       int amount, void *ptr)
 {
   int cs_idx;
   int i;
 
-  assert_release (meter != NULL);
-  assert_release (amount != 0);
-  assert_release (ptr != NULL);
+  assert (meter != NULL);
+  assert (amount != 0);
+  assert (ptr != NULL);
 
   cs_idx = *((int *) ptr);
 
@@ -5233,6 +5246,174 @@ thread_rc_track_meter_assert_CS (THREAD_ENTRY * thread_p,
 	}
     }
 }
+
+/*
+ * thread_rc_track_meter_assert_csect_usage () -  assert enter mode of critical
+ * 	section with the existed lock state for each thread.
+ *   return:
+ *   meter(in):
+ *   enter_mode(in):
+ *   ptr(in):
+ */
+static void
+thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p,
+					  THREAD_RC_METER * meter,
+					  int enter_mode, void *ptr)
+{
+  int cs_idx;
+  int i;
+  unsigned char enter_count;
+
+  assert (meter != NULL);
+  assert (ptr != NULL);
+
+  cs_idx = *((int *) ptr);
+
+  /* TODO - skip out too many CS */
+  if (cs_idx >= ONE_K)
+    {
+      return;
+    }
+
+  assert (cs_idx >= 0);
+  assert (cs_idx < ONE_K);
+
+  switch (enter_mode)
+    {
+    case THREAD_TRACK_CSECT_ENTER_AS_READER:
+      if (meter->m_rwlock_buf[cs_idx] >= 0)
+	{
+	  if (THREAD_METER_IS_DEMOTED_READER (meter->m_rwlock_buf[cs_idx]))
+	    {
+	      enter_count =
+		THREAD_METER_STRIP_DEMOTED_READER_FLAG (meter->
+							m_rwlock_buf[cs_idx]);
+	      assert (enter_count < THREAD_METER_MAX_ENTER_COUNT);
+
+	      /* demoted-reader can re-enter as reader again */
+	      meter->m_rwlock_buf[cs_idx]++;
+	    }
+	  else
+	    {
+	      /* enter as reader first time or reader re-enter */
+	      meter->m_rwlock_buf[cs_idx]++;
+
+	      /* reader re-enter is not allowed. */
+	      THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter,
+					    meter->m_rwlock_buf[cs_idx] <= 1);
+	    }
+	}
+      else
+	{
+	  enter_count = -meter->m_rwlock_buf[cs_idx];
+	  assert (enter_count < THREAD_METER_MAX_ENTER_COUNT);
+
+	  /* I am a writer already. re-enter as reader,
+	   * treat as re-enter as writer */
+	  meter->m_rwlock_buf[cs_idx]--;
+	}
+      break;
+
+    case THREAD_TRACK_CSECT_ENTER_AS_WRITER:
+      if (meter->m_rwlock_buf[cs_idx] <= 0)
+	{
+	  enter_count = -meter->m_rwlock_buf[cs_idx];
+	  assert (enter_count < THREAD_METER_MAX_ENTER_COUNT);
+
+	  /* enter as writer first time or writer re-enter */
+	  meter->m_rwlock_buf[cs_idx]--;
+	}
+      else
+	{
+	  /* I am a reader or demoted-reader already. re-enter as writer
+	   * is not allowed */
+	  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, false);
+	}
+      break;
+
+    case THREAD_TRACK_CSECT_PROMOTE:
+      /* If I am not a reader or demoted-reader, promote is not allowed */
+      THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter,
+				    meter->m_rwlock_buf[cs_idx] > 0);
+
+      enter_count =
+	THREAD_METER_STRIP_DEMOTED_READER_FLAG (meter->m_rwlock_buf[cs_idx]);
+      assert (enter_count != 0);
+
+      if (enter_count == 1)
+	{
+	  /* promote reader or demoted-reader to writer */
+	  meter->m_rwlock_buf[cs_idx] = -1;
+	}
+      else
+	{
+	  /* In the middle of citical session, promote is not allowed.
+	   * only when demote-reader re-enter as reader can go to here. */
+	  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, false);
+	}
+      break;
+
+    case THREAD_TRACK_CSECT_DEMOTE:
+      /* if I am not a writer, demote is not allowed */
+      THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter,
+				    meter->m_rwlock_buf[cs_idx] < 0);
+
+      if (meter->m_rwlock_buf[cs_idx] == -1)
+	{
+	  /* demote writer to demoted-reader */
+	  enter_count = 1;
+	  meter->m_rwlock_buf[cs_idx] =
+	    THREAD_METER_WITH_DEMOTED_READER_FLAG (enter_count);
+	}
+      else
+	{
+	  /* In the middle of citical session, demote is not allowed */
+	  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, false);
+	}
+      break;
+
+    case THREAD_TRACK_CSECT_EXIT:
+      /* without entered before, exit is not allowed. */
+      THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter,
+				    meter->m_rwlock_buf[cs_idx] != 0);
+
+      if (meter->m_rwlock_buf[cs_idx] > 0)
+	{
+	  if (THREAD_METER_IS_DEMOTED_READER (meter->m_rwlock_buf[cs_idx]))
+	    {
+	      enter_count =
+		THREAD_METER_STRIP_DEMOTED_READER_FLAG (meter->
+							m_rwlock_buf[cs_idx]);
+	      assert (enter_count != 0);
+
+	      enter_count--;
+	      if (enter_count != 0)
+		{
+		  /* still keep demoted-reader flag */
+		  meter->m_rwlock_buf[cs_idx] =
+		    THREAD_METER_WITH_DEMOTED_READER_FLAG (enter_count);
+		}
+	      else
+		{
+		  meter->m_rwlock_buf[cs_idx] = 0;
+		}
+	    }
+	  else
+	    {
+	      /* reader exit */
+	      meter->m_rwlock_buf[cs_idx]--;
+	    }
+	}
+      else
+	{			/* (meter->m_rwlock_buf[cs_idx] < 0 */
+	  meter->m_rwlock_buf[cs_idx]++;
+	}
+      break;
+    default:
+      assert (false);
+      break;
+    }
+}
 #endif
 
 /*
@@ -5247,6 +5428,7 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 {
   THREAD_RC_TRACK *track;
   THREAD_RC_METER *meter;
+  int enter_mode = -1;
 
   if (thread_p == NULL)
     {
@@ -5275,6 +5457,34 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
       && 0 <= rc_idx && rc_idx < RC_LAST
       && 0 <= mgr_idx && mgr_idx < MGR_LAST)
     {
+      if (rc_idx == RC_CS)
+	{
+	  enter_mode = amount;
+
+	  /* recover the amount for RC_CS */
+	  switch (enter_mode)
+	    {
+	    case THREAD_TRACK_CSECT_ENTER_AS_READER:
+	      amount = 1;
+	      break;
+	    case THREAD_TRACK_CSECT_ENTER_AS_WRITER:
+	      amount = 1;
+	      break;
+	    case THREAD_TRACK_CSECT_PROMOTE:
+	      amount = 1;
+	      break;
+	    case THREAD_TRACK_CSECT_DEMOTE:
+	      amount = -1;
+	      break;
+	    case THREAD_TRACK_CSECT_EXIT:
+	      amount = -1;
+	      break;
+	    default:
+	      assert_release (false);
+	      break;
+	    }
+	}
+
       /* check iff is tracking one */
       if (rc_idx == RC_VMEM)
 	{
@@ -5401,8 +5611,12 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 
       if (rc_idx == RC_CS)
 	{
-	  (void) thread_rc_track_meter_assert_CS (thread_p, meter, amount,
-						  ptr);
+	  (void) thread_rc_track_meter_assert_csect_dependency (thread_p,
+								meter, amount,
+								ptr);
+
+	  (void) thread_rc_track_meter_assert_csect_usage (thread_p, meter,
+							   enter_mode, ptr);
 	}
 #endif
     }
@@ -5456,6 +5670,19 @@ thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 	    }
 	  fprintf (outfp, "\n");
 	  fprintf (outfp, "            +--- hold_buf_size = %d\n",
+		   meter->m_hold_buf_size);
+
+	  fprintf (outfp, "            +--- read/write lock = ");
+	  for (i = 0; i < meter->m_hold_buf_size; i++)
+	    {
+	      if (meter->m_rwlock_buf[i] != '\0')
+		{
+		  fprintf (outfp, "[%d]:%d ", i,
+			   (int) meter->m_rwlock_buf[i]);
+		}
+	    }
+	  fprintf (outfp, "\n");
+	  fprintf (outfp, "            +--- read/write lock size = %d\n",
 		   meter->m_hold_buf_size);
 	}
 

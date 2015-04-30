@@ -186,6 +186,16 @@ enum
 enum
 { MGR_DEF = 0, MGR_LAST };
 
+/* resource track critical section enter mode */
+enum
+{
+  THREAD_TRACK_CSECT_ENTER_AS_READER = 1,
+  THREAD_TRACK_CSECT_ENTER_AS_WRITER,
+  THREAD_TRACK_CSECT_PROMOTE,
+  THREAD_TRACK_CSECT_DEMOTE,
+  THREAD_TRACK_CSECT_EXIT
+};
+
 #if !defined (NDEBUG)
 #define THREAD_TRACKED_RES_CALLER_FILE_MAX_SIZE	    20
 /* THREAD_TRACKED_RESOURCE - Used to track allocated resources.
@@ -214,6 +224,7 @@ struct thread_resource_meter
   INT32 m_sub_line_no;
 #if !defined(NDEBUG)
   char m_hold_buf[ONE_K];	/* used specially for each meter */
+  char m_rwlock_buf[ONE_K];	/* the rwlock for each thread in CS */
   INT32 m_hold_buf_size;
 
   THREAD_TRACKED_RESOURCE *m_tracked_res;
