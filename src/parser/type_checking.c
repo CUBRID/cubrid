@@ -208,6 +208,14 @@ typedef struct expression_definition
   EXPRESSION_SIGNATURE overloads[MAX_OVERLOADS];
 } EXPRESSION_DEFINITION;
 
+/* collation for a parse tree node */
+typedef enum collation_result
+{
+  ERROR_COLLATION = -1,
+  NO_COLLATION = 0,
+  HAS_COLLATION = 1
+} COLLATION_RESULT;
+
 static PT_TYPE_ENUM pt_infer_common_type (const PT_OP_TYPE op,
 					  PT_TYPE_ENUM * arg1,
 					  PT_TYPE_ENUM * arg2,
@@ -335,10 +343,32 @@ static bool pt_check_const_fold_op_w_args (PT_OP_TYPE op,
 					   TP_DOMAIN * domain);
 static bool pt_is_range_or_comp (PT_OP_TYPE op);
 static bool pt_is_op_w_collation (const PT_OP_TYPE op);
-static int pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
-						      PT_NODE * node,
-						      PT_COLL_INFER *
-						      coll_infer);
+static COLLATION_RESULT
+pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
+					   const PT_NODE * node,
+					   PT_COLL_INFER * coll_infer);
+static COLLATION_RESULT pt_get_collation_of_collection (PARSER_CONTEXT *
+							parser,
+							const PT_NODE * node,
+							PT_COLL_INFER *
+							coll_infer,
+							const bool
+							is_inner_collection,
+							bool *
+							is_first_element);
+static PT_NODE *pt_coerce_node_collection_of_collection (PARSER_CONTEXT *
+							 parser,
+							 PT_NODE * node,
+							 const int coll_id,
+							 const INTL_CODESET
+							 codeset,
+							 bool force_mode,
+							 bool
+							 use_collate_modifier,
+							 PT_TYPE_ENUM
+							 wrap_type_for_maybe,
+							 PT_TYPE_ENUM
+							 wrap_type_collection);
 static PT_NODE *pt_coerce_node_collation (PARSER_CONTEXT * parser,
 					  PT_NODE * node, const int coll_id,
 					  const INTL_CODESET codeset,
@@ -22787,7 +22817,8 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
 	{
 	  PT_COLL_INFER coll_infer_dummy;
 	  /* collation and codeset of wrapped CAST, but get coercibility
-	   * from original node */
+	   * from original node
+	   */
 	  pt_get_collation_info (node->info.expr.arg1, &coll_infer_dummy);
 	  coll_infer->coerc_level = coll_infer_dummy.coerc_level;
 
@@ -22869,21 +22900,25 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
  * pt_get_collation_info_for_collection_type () - get the collation info of a
  *	    parse tree node with collection type
  *
- *   return:  0 = node doesn't have collation;
- *	      1 = node has collation
- *	     -1 = node has multiple component types with collation and
- *		  collations are not compatible
+ *   return:  NO_COLLATION = node doesn't have collation;
+ *	      HAS_COLLATION = node has collation
+ *	      ERROR_COLLATION = node has multiple component types with 
+ *	      collation and collations are not compatible
  *
+ *   parser(in)
  *   node(in): a parse tree node
  *   coll_infer(out): collation inference data
  *
  */
-static int
+static COLLATION_RESULT
 pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
-					   PT_NODE * node,
+					   const PT_NODE * node,
 					   PT_COLL_INFER * coll_infer)
 {
   bool has_collation = false;
+  bool is_collection_of_collection = false;
+  bool first_element = true;
+  int status_inner_collection;
 
   assert (node != NULL);
   assert (coll_infer != NULL);
@@ -22898,40 +22933,85 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     {
       coll_infer->coerc_level = PT_COLLATION_FULLY_COERC;
       coll_infer->can_force_cs = true;
-      return 1;
+      return HAS_COLLATION;
     }
 
   assert (PT_IS_COLLECTION_TYPE (node->type_enum));
 
   if (node->data_type != NULL)
     {
-      PT_NODE *dt_node = node->data_type;
+      const PT_NODE *current_set_node = node;
 
-      /* check all collatable types of collection */
-      do
+      /* if node is a collection of collection, advance to the first element
+       * of it
+       */
+      if ((node->node_type == PT_FUNCTION)
+	  && (node->info.function.arg_list != NULL))
 	{
-	  if (PT_HAS_COLLATION (dt_node->type_enum))
+	  if (((node->info.function.function_type == F_TABLE_SET)
+	       || (node->info.function.function_type == F_TABLE_MULTISET)
+	       || (node->info.function.function_type == F_TABLE_SEQUENCE))
+	      && (node->info.function.arg_list->node_type == PT_SELECT))
 	    {
-	      if ((!LANG_IS_COERCIBLE_COLL (coll_infer->coll_id)
-		   || coll_infer->codeset != LANG_COERCIBLE_CODESET)
-		  && (coll_infer->coll_id
-		      != dt_node->info.data_type.collation_id
-		      || coll_infer->codeset
-		      != dt_node->info.data_type.units))
+	      current_set_node =
+		node->info.function.arg_list->info.query.q.select.list;
+	      is_collection_of_collection = true;
+	    }
+	  else if ((node->info.function.function_type == F_SET)
+		   || (node->info.function.function_type == F_MULTISET)
+		   || (node->info.function.function_type == F_SEQUENCE))
+	    {
+	      current_set_node = node->info.function.arg_list;
+	      is_collection_of_collection = true;
+	    }
+	}
+      else if ((node->node_type == PT_VALUE)
+	       && (PT_IS_COLLECTION_TYPE (node->type_enum)))
+	{
+	  current_set_node = node->info.value.data_value.set;
+	  is_collection_of_collection = true;
+	}
+
+      if (is_collection_of_collection)
+	{
+	  /* go through the elements of the collection and check their
+	   * collations
+	   */
+	  while (current_set_node != NULL)
+	    {
+	      status_inner_collection =
+		pt_get_collation_of_collection (parser, current_set_node,
+						coll_infer, true,
+						&first_element);
+
+	      if (status_inner_collection == HAS_COLLATION)
 		{
-		  /* error : different collations in same collection */
+		  has_collation = true;
+		}
+	      else if (status_inner_collection == ERROR_COLLATION)
+		{
 		  goto error;
 		}
+	      current_set_node = current_set_node->next;
+	    }
+	}
+      else
+	{
+	  status_inner_collection =
+	    pt_get_collation_of_collection (parser,
+					    current_set_node->data_type,
+					    coll_infer, false,
+					    &first_element);
 
-	      coll_infer->codeset =
-		(INTL_CODESET) dt_node->info.data_type.units;
-	      coll_infer->coll_id = dt_node->info.data_type.collation_id;
+	  if (status_inner_collection == HAS_COLLATION)
+	    {
 	      has_collation = true;
 	    }
-
-	  dt_node = dt_node->next;
+	  else if (status_inner_collection == ERROR_COLLATION)
+	    {
+	      goto error;
+	    }
 	}
-      while (dt_node != NULL);
     }
   else
     {
@@ -22950,14 +23030,14 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
 	      coll_infer->coerc_level = PT_COLLATION_L5_COERC;
 	      coll_infer->codeset = LANG_COERCIBLE_CODESET;
 	      coll_infer->coll_id = LANG_COERCIBLE_COLL;
-	      return 1;
+	      return HAS_COLLATION;
 	    }
 	}
     }
 
   if (!has_collation)
     {
-      return 0;
+      return NO_COLLATION;
     }
 
   if (has_collation && PT_GET_COLLATION_MODIFIER (node) != -1)
@@ -22972,13 +23052,12 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
       assert (coll_infer->codeset == lc->codeset);
 
       coll_infer->coerc_level = PT_COLLATION_NOT_COERC;
-      return 1;
+      return HAS_COLLATION;
     }
 
   switch (node->node_type)
     {
     case PT_VALUE:
-      assert (has_collation);
       assert (has_collation);
       if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
 	{
@@ -23042,17 +23121,276 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
       coll_infer->coerc_level = PT_COLLATION_NOT_COERC;
     }
 
-  return has_collation ? 1 : 0;
+  return has_collation ? HAS_COLLATION : NO_COLLATION;
 
 error:
   PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 	     MSGCAT_SEMANTIC_COLLECTION_EL_COLLATION_ERROR);
 
-  return -1;
+  return ERROR_COLLATION;
 }
 
 /*
- * pt_coerce_node_collation () - get the collation info of parse tree node
+ *  pt_get_collation_of_collection () - get the collation info of a
+ *	    parse tree node with a collection type
+ *
+ *   return:  NO_COLLATION = node doesn't have collation;
+ *	      HAS_COLLATION = node has collation
+ *	      ERROR_COLLATION = node has multiple component types with
+ *	      collation and collations are not compatible
+ *
+ *   parser(in)
+ *   node(in): a parse tree node
+ *   coll_infer(out): collation inference data
+ *   is_inner_collection(in): the node is an inner collection (inside 
+ *   another collection)
+ *   first_element(in/out): is this the first element of the outer collection  
+ *   (of all of the collections of collection)
+ *
+ */
+static COLLATION_RESULT
+pt_get_collation_of_collection (PARSER_CONTEXT * parser,
+				const PT_NODE * node,
+				PT_COLL_INFER * coll_infer,
+				const bool is_inner_collection,
+				bool * is_first_element)
+{
+  const PT_NODE *current_node;
+  bool has_collation = false;
+
+  /* check all collatable types of collection */
+  while (node != NULL)
+    {
+      if (is_inner_collection)
+	{
+	  current_node = node->data_type;
+	}
+      else
+	{
+	  current_node = node;
+	}
+
+      if (current_node != NULL)
+	{
+	  if (PT_IS_COLLECTION_TYPE (node->type_enum))
+	    {
+	      PT_COLL_INFER coll_infer_elem;
+	      int status;
+
+	      status =
+		pt_get_collation_info_for_collection_type (parser, node,
+							   &coll_infer_elem);
+
+	      if (status == HAS_COLLATION)
+		{
+		  has_collation = true;
+		}
+	      else if (status == ERROR_COLLATION)
+		{
+		  goto error;
+		}
+
+	      if (*is_first_element)
+		{
+		  coll_infer->coll_id = coll_infer_elem.coll_id;
+		  coll_infer->codeset = coll_infer_elem.codeset;
+		  *is_first_element = false;
+		}
+	      else if ((coll_infer_elem.coll_id != coll_infer->coll_id)
+		       || (coll_infer_elem.codeset != coll_infer->codeset))
+		{
+		  /* error : different collations in same collection */
+		  goto error;
+		}
+	    }
+	  else if (PT_HAS_COLLATION (current_node->type_enum))
+	    {
+	      assert (current_node->node_type == PT_DATA_TYPE);
+
+	      has_collation = true;
+	      if (*is_first_element)
+		{
+		  coll_infer->codeset =
+		    (INTL_CODESET) current_node->info.data_type.units;
+		  coll_infer->coll_id =
+		    current_node->info.data_type.collation_id;
+		  *is_first_element = false;
+		}
+	      else if ((coll_infer->coll_id
+			!= current_node->info.data_type.collation_id)
+		       || (coll_infer->codeset !=
+			   current_node->info.data_type.units))
+		{
+		  /* error : different collations in same collection */
+		  goto error;
+		}
+	    }
+	}
+      node = node->next;
+    }
+
+  return has_collation ? HAS_COLLATION : NO_COLLATION;
+
+error:
+  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+	     MSGCAT_SEMANTIC_COLLECTION_EL_COLLATION_ERROR);
+
+  return ERROR_COLLATION;
+}
+
+/*
+ *  pt_coerce_node_collection_of_collection () - changes the collation of a
+ *					       collection type parse tree node
+ *
+ *   return: parse node after coercion
+ *   parser(in)
+ *   node(in): a parse tree node
+ *   coll_id(in): collation
+ *   codeset(in): codeset
+ *   force_mode(in): true if codeset and collation have to forced
+ *   use_collate_modifier(in): true if collation coercion should be done using
+ *			       a COLLATE expression modifier
+ *   wrap_type_for_maybe(in): type to use for wrap with cast when current type
+ *			      is uncertain (PT_TYPE_MAYBE)
+ *   wrap_type_collection(in): collection type to use for wrap with cast when
+ *			       current type is uncertain; if this value is not
+ *			       of collection type, then the wrap is without
+ *			       a collection
+ */
+static PT_NODE *
+pt_coerce_node_collection_of_collection (PARSER_CONTEXT * parser,
+					 PT_NODE * node, const int coll_id,
+					 const INTL_CODESET codeset,
+					 bool force_mode,
+					 bool use_collate_modifier,
+					 PT_TYPE_ENUM wrap_type_for_maybe,
+					 PT_TYPE_ENUM wrap_type_collection)
+{
+  PT_NODE *current_set_node = NULL, *prev_node = NULL, *save_next = NULL;
+  bool is_collection_of_collection = false;
+
+  if (node->data_type != NULL)
+    {
+      /* if node is a collection of collection, advance to the first element
+       * of it
+       */
+      if ((node->node_type == PT_FUNCTION)
+	  && (node->info.function.arg_list != NULL))
+	{
+	  if (((node->info.function.function_type == F_TABLE_SET)
+	       || (node->info.function.function_type == F_TABLE_MULTISET)
+	       || (node->info.function.function_type == F_TABLE_SEQUENCE))
+	      && (node->info.function.arg_list->node_type == PT_SELECT))
+	    {
+	      current_set_node =
+		node->info.function.arg_list->info.query.q.select.list;
+	      is_collection_of_collection = true;
+	    }
+	  else if ((node->info.function.function_type == F_SET)
+		   || (node->info.function.function_type == F_MULTISET)
+		   || (node->info.function.function_type == F_SEQUENCE))
+	    {
+	      current_set_node = node->info.function.arg_list;
+	      is_collection_of_collection = true;
+	    }
+	}
+      else if ((node->node_type == PT_VALUE)
+	       && (PT_IS_COLLECTION_TYPE (node->type_enum)))
+	{
+	  current_set_node = node->info.value.data_value.set;
+	  is_collection_of_collection = true;
+	}
+
+      if (is_collection_of_collection == true)
+	{
+	  assert (current_set_node != NULL);
+	  /* change the elements of the collection by applying the new
+	   * collation to them
+	   */
+	  while (current_set_node != NULL)
+	    {
+	      save_next = current_set_node->next;
+
+	      current_set_node =
+		pt_coerce_node_collation (parser, current_set_node, coll_id,
+					  codeset, force_mode,
+					  use_collate_modifier,
+					  wrap_type_for_maybe,
+					  wrap_type_collection);
+
+	      if (current_set_node != NULL)
+		{
+		  if (prev_node == NULL)
+		    {
+		      if ((node->node_type == PT_FUNCTION)
+			  && (node->info.function.arg_list != NULL))
+			{
+			  if (((node->info.function.function_type
+				== F_TABLE_SET)
+			       || (node->info.function.function_type
+				   == F_TABLE_MULTISET)
+			       || (node->info.function.function_type
+				   == F_TABLE_SEQUENCE))
+			      && (node->info.function.arg_list->node_type
+				  == PT_SELECT))
+			    {
+			      node->info.function.arg_list->info.query.q.
+				select.list = current_set_node;
+			    }
+			  else
+			    if ((node->info.function.function_type == F_SET)
+				|| (node->info.function.function_type ==
+				    F_MULTISET)
+				|| (node->info.function.function_type ==
+				    F_SEQUENCE))
+			    {
+			      node->info.function.arg_list = current_set_node;
+			    }
+			}
+		      else
+			if ((node->node_type == PT_VALUE)
+			    && (PT_IS_COLLECTION_TYPE (node->type_enum)))
+			{
+			  node->info.value.data_value.set = current_set_node;
+			}
+		    }
+		  else
+		    {
+		      assert (prev_node != NULL);
+		      prev_node->next = current_set_node;
+		    }
+
+		  current_set_node->next = save_next;
+		}
+	      else
+		{
+		  assert (current_set_node == NULL);
+		  goto cannot_coerce;
+		}
+	      prev_node = current_set_node;
+	      current_set_node = current_set_node->next;
+	    }			/* while (current_set_node != NULL) */
+
+	  if (node->node_type == PT_VALUE)
+	    {
+	      node->info.value.db_value_is_initialized = 0;
+	      (void) pt_value_to_db (parser, node);
+	    }
+	}			/* if (is_collection_of_collection == true) */
+    }
+
+  return node;
+
+cannot_coerce:
+  if (codeset != LANG_COERCIBLE_CODESET || !LANG_IS_COERCIBLE_COLL (coll_id))
+    {
+      return NULL;
+    }
+  return node;
+}
+
+/*
+ * pt_coerce_node_collation () - changes the collation of parse tree node
  *
  *   return: parse node after coercion
  *   node(in): a parse tree node
@@ -23097,11 +23435,23 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   PT_NODE_TYPE original_node_type;
   PT_NODE *wrap_dt;
+  PT_NODE *collection_node;
   bool preset_hv_in_collection = false;
   bool is_string_literal = false;
+
   assert (node != NULL);
 
   wrap_dt = NULL;
+
+  collection_node =
+    pt_coerce_node_collection_of_collection (parser, node, coll_id, codeset,
+					     force_mode, use_collate_modifier,
+					     wrap_type_for_maybe,
+					     wrap_type_collection);
+  if (collection_node != node)
+    {
+      return collection_node;
+    }
 
   original_node_type = node->node_type;
   switch (node->node_type)
@@ -23306,8 +23656,16 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		{
 		  dt_node->info.data_type.collation_id = coll_id;
 		  dt_node->info.data_type.units = (int) codeset;
-		  dt_node->info.data_type.collation_flag =
-		    TP_DOMAIN_COLL_ENFORCE;
+		  if (!PT_IS_COLLECTION_TYPE (node->type_enum))
+		    {
+		      dt_node->info.data_type.collation_flag =
+			TP_DOMAIN_COLL_ENFORCE;
+		    }
+		  else
+		    {
+		      dt_node->info.data_type.collation_flag =
+			TP_DOMAIN_COLL_NORMAL;
+		    }
 		}
 
 	      dt_node = dt_node->next;
@@ -23708,6 +24066,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
       if (is_string_literal == true
 	  && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
 	{
+	  PT_NODE *save_next;
 	  /* a PT_VALUE node was wrapped with CAST to change the charset and
 	   * collation, but the value originated from a simple string literal
 	   * which does not allow COLLATE;
@@ -23715,9 +24074,12 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	   * introducer, and without COLLATE */
 	  assert (PT_EXPR_INFO_IS_FLAGED
 		  (node, PT_EXPR_INFO_CAST_SHOULD_FOLD));
+	  save_next = node->next;
+	  node->next = NULL;
 	  node = pt_fold_const_expr (parser, node, NULL);
 	  if (node != NULL)
 	    {
+	      node->next = save_next;
 	      node->info.value.is_collate_allowed = false;
 	      node->info.value.print_charset = true;
 	      /* print text with new charset */
@@ -23745,7 +24107,8 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		    {
 		      dt_node->info.data_type.collation_id = coll_id;
 		      dt_node->info.data_type.units = (int) codeset;
-		      if (original_node_type != PT_EXPR)
+		      if ((original_node_type != PT_EXPR)
+			  && (!PT_IS_COLLECTION_TYPE (node->type_enum)))
 			{
 			  dt_node->info.data_type.collation_flag =
 			    TP_DOMAIN_COLL_ENFORCE;
@@ -24137,11 +24500,11 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       int status = pt_get_collation_info_for_collection_type (parser, arg1,
 							      &arg1_coll_inf);
 
-      if (status == -1)
+      if (status == ERROR_COLLATION)
 	{
 	  goto error_exit;
 	}
-      else if (status == 1)
+      else if (status == HAS_COLLATION)
 	{
 	  args_w_coll_maybe++;
 	  if (arg1_coll_inf.can_force_cs == false)
@@ -24185,11 +24548,11 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       int status = pt_get_collation_info_for_collection_type (parser, arg2,
 							      &arg2_coll_inf);
 
-      if (status == -1)
+      if (status == ERROR_COLLATION)
 	{
 	  goto error_exit;
 	}
-      else if (status == 1)
+      else if (status == HAS_COLLATION)
 	{
 	  args_w_coll_maybe++;
 	  if (arg2_coll_inf.can_force_cs == false)
@@ -24231,11 +24594,11 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    pt_get_collation_info_for_collection_type (parser, arg3,
 						       &arg3_coll_inf);
 
-	  if (status == -1)
+	  if (status == ERROR_COLLATION)
 	    {
 	      goto error_exit;
 	    }
-	  else if (status == 1)
+	  else if (status == HAS_COLLATION)
 	    {
 	      args_w_coll_maybe++;
 	      if (arg3_coll_inf.can_force_cs == false)
