@@ -26254,6 +26254,12 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p,
 					      &is_range_satisfied,
 					      &is_filter_satisfied,
 					      bts->need_to_check_null);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+
 	  if (!is_range_satisfied)
 	    {
 	      /* Range is not satisfied, which means scan is ended. */
