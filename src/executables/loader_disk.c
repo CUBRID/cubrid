@@ -384,7 +384,7 @@ disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 
 	  /* set up context */
 	  heap_create_insert_context (&context, hfid, WS_OID (classop),
-				      Diskrec, NULL);
+				      Diskrec, NULL, false);
 
 	  /* oid is set here as a side effect */
 	  if (heap_insert_logical (NULL, &context) != NO_ERROR)

@@ -4319,16 +4319,16 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  return LC_DOESNOT_EXIST;
 	}
 
-     if (heap_is_mvcc_disabled_for_class (class_oid))
-       {
-	 if (!heap_does_exist (thread_p, class_oid, oid))
-	   {
-	     if (lock != NULL_LOCK)
-	       {
-		 lock_unlock_object (thread_p, oid, class_oid, lock, false);
-	       }
-	     return LC_DOESNOT_EXIST;
-	   }
+      if (heap_is_mvcc_disabled_for_class (class_oid))
+	{
+	  if (!heap_does_exist (thread_p, class_oid, oid))
+	    {
+	      if (lock != NULL_LOCK)
+		{
+		  lock_unlock_object (thread_p, oid, class_oid, lock, false);
+		}
+	      return LC_DOESNOT_EXIST;
+	    }
 	}
 
       /* fetch current version without lock */
@@ -5547,6 +5547,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
   OID null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   HEAP_OPERATION_CONTEXT context;
+  bool use_bigone_maxsize = false;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -5649,9 +5650,14 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
      REC_BIGONE is detected and handled in heap_insert_logical */
   recdes->type = REC_HOME;
 
+  /* use REC_BIGONE maximum record length only for partitioned classes
+   * and partitions.
+   */
+  use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
+
   /* prepare context */
   heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes,
-			      local_scan_cache);
+			      local_scan_cache, use_bigone_maxsize);
 
   /* execute insert */
   if (heap_insert_logical (thread_p, &context) != NO_ERROR)

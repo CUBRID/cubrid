@@ -164,11 +164,12 @@ typedef struct heap_partition_link_cache HEAP_PARTITION_LINK_CACHE;
 struct heap_partition_link_cache
 {
   LF_HASH_TABLE partition_link_hash;	/* key is OID */
-  LF_ENTRY_DESCRIPTOR partition_link_descriptor; /* used by partition_link_hash */
-  LF_FREELIST partition_link_free_list; /* used by partition_link_hash */
+  LF_ENTRY_DESCRIPTOR partition_link_descriptor;	/* used by partition_link_hash */
+  LF_FREELIST partition_link_free_list;	/* used by partition_link_hash */
 };
 
-typedef struct heap_partition_link_cache_entry HEAP_PARTITION_LINK_CACHE_ENTRY;
+typedef struct heap_partition_link_cache_entry
+  HEAP_PARTITION_LINK_CACHE_ENTRY;
 struct heap_partition_link_cache_entry
 {
   OID class_oid;		/* key - OID */
@@ -177,7 +178,7 @@ struct heap_partition_link_cache_entry
   pthread_mutex_t mutex;	/* state mutex */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
 
-  int partition_link_flag;      /* value - partition link flag */	
+  int partition_link_flag;	/* value - partition link flag */
 };
 
 #define HEAP_PARTITION_LINK_HASH_SIZE 1000
@@ -325,6 +326,7 @@ struct heap_operation_context
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
+  unsigned int flags;		/* flags */
 
   /* overflow transient data */
   RECDES map_recdes;		/* built record descriptor during multipage insert */
@@ -351,6 +353,16 @@ struct heap_operation_context
   OID res_oid;			/* object identifier (if operation generates one) */
   bool is_logical_old;		/* true if initial record was not REC_ASSIGN_ADDRESS */
 };
+
+/* HEAP_OPERATION_CONTEXT flags */
+enum
+{
+  HEAP_OP_CONTEXT_FLAG_BIGONE_MAXSIZE = 0x0001
+};
+
+#define HEAP_OP_CONTEXT_SET_FLAG(var, flag)          ((var) |= (flag))
+#define HEAP_OP_CONTEXT_CLEAR_FLAG(var, flag)        ((var) &= (flag))
+#define HEAP_OP_CONTEXT_IS_FLAG_SET(var, flag)       ((var) & (flag))
 
 typedef enum heap_update_style HEAP_UPDATE_STYLE;
 enum heap_update_style
@@ -850,7 +862,8 @@ extern int heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p,
 extern void heap_create_insert_context (HEAP_OPERATION_CONTEXT * context,
 					HFID * hfid_p, OID * class_oid_p,
 					RECDES * recdes_p,
-					HEAP_SCANCACHE * scancache_p);
+					HEAP_SCANCACHE * scancache_p,
+					bool bigone_max_size);
 extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context,
 					HFID * hfid_p, OID * oid_p,
 					OID * class_oid_p,

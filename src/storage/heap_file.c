@@ -571,8 +571,9 @@ static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area =
 static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
 
 static HEAP_PARTITION_LINK_CACHE heap_Partition_link_cache_area =
-  {LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER,
-   LF_FREELIST_INITIALIZER};
+  { LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER,
+  LF_FREELIST_INITIALIZER
+};
 static HEAP_PARTITION_LINK_CACHE *heap_Partition_link_cache = NULL;
 
 static HEAP_HFID_TABLE heap_Hfid_table_area =
@@ -1197,15 +1198,14 @@ static int heap_partition_link_entry_free (void *unique_stat);
 static int heap_partition_link_entry_init (void *unique_stat);
 static int heap_partition_link_entry_key_copy (void *src, void *dest);
 static unsigned int heap_partition_link_entry_key_hash (void *key,
-							      int
-							      hash_table_size);
+							int hash_table_size);
 static int heap_partition_link_entry_key_compare (void *k1, void *k2);
 static int heap_get_partition_link_from_cache (THREAD_ENTRY * thread_p,
 					       OID * class_oid);
 static int heap_update_partition_link_flag (THREAD_ENTRY * thread_p,
 					    HFID * hfid, int set_flag);
 static int heap_get_partition_link_flag (THREAD_ENTRY * thread_p, HFID * hfid,
-					 int * partition_link);
+					 int *partition_link);
 static int heap_delete_from_partition_link_cache (THREAD_ENTRY * thread_p,
 						  OID * class_oid);
 
@@ -6083,7 +6083,7 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   /* create context */
   heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid,
-			      &recdes, NULL);
+			      &recdes, NULL, false);
 
   /* insert */
   rc = heap_insert_logical (thread_p, &insert_context);
@@ -25274,6 +25274,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   OID_SET_NULL (&context->class_oid);
   context->recdes_p = NULL;
   context->scan_cache_p = NULL;
+  context->flags = 0;
 
   context->map_recdes.data = NULL;
   context->map_recdes.length = 0;
@@ -25632,6 +25633,8 @@ static int
 heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
 				     HEAP_OPERATION_CONTEXT * context)
 {
+  bool use_bigone_maxsize = false;
+
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT);
   assert (context->recdes_p != NULL);
@@ -25649,11 +25652,14 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
+  use_bigone_maxsize =
+    HEAP_OP_CONTEXT_IS_FLAG_SET (context->flags,
+				 HEAP_OP_CONTEXT_FLAG_BIGONE_MAXSIZE);
+
   /* Add a map record to point to the record in overflow */
   /* NOTE: MVCC information is held in overflow record */
   heap_build_forwarding_recdes (&context->map_recdes, REC_BIGONE,
-				context->ovf_oid,
-				!OID_ISNULL (&context->partition_link));
+				context->ovf_oid, use_bigone_maxsize);
 
   /* use map_recdes for page insertion */
   context->recdes_p = &context->map_recdes;
@@ -25818,7 +25824,8 @@ heap_insert_newhome (THREAD_ENTRY * thread_p,
 
   /* build insert context */
   heap_create_insert_context (&ins_context, &parent_context->hfid,
-			      &parent_context->class_oid, recdes_p, NULL);
+			      &parent_context->class_oid, recdes_p, NULL,
+			      false);
 
   /* find an insertion location */
   if (heap_get_insert_location (thread_p, &ins_context, NULL) != NO_ERROR)
@@ -27031,7 +27038,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       /* prepare insert context */
       heap_create_insert_context (&insert_context, &context->hfid,
 				  &context->class_oid, context->recdes_p,
-				  NULL);
+				  NULL, false);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
@@ -27236,7 +27243,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
       context->recdes_p->type = REC_HOME;
       heap_create_insert_context (&insert_context, &context->hfid,
 				  &context->class_oid, context->recdes_p,
-				  NULL);
+				  NULL, false);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
@@ -27498,7 +27505,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       context->recdes_p->type = REC_HOME;
       heap_create_insert_context (&insert_context, &context->hfid,
 				  &context->class_oid, context->recdes_p,
-				  NULL);
+				  NULL, false);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
@@ -27735,11 +27742,14 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *   class_oid_p(in): class OID
  *   recdes_p(in): record descriptor to insert
  *   scancache_p(in): scan cache to use (optional)
+ *   bigone_max_size(in): use maximum record size
+ *			      (reserve space for an extra OID) for REC_BIGONE
  */
 void
 heap_create_insert_context (HEAP_OPERATION_CONTEXT * context,
 			    HFID * hfid_p, OID * class_oid_p,
-			    RECDES * recdes_p, HEAP_SCANCACHE * scancache_p)
+			    RECDES * recdes_p, HEAP_SCANCACHE * scancache_p,
+			    bool bigone_max_size)
 {
   assert (context != NULL);
   assert (hfid_p != NULL);
@@ -27753,6 +27763,11 @@ heap_create_insert_context (HEAP_OPERATION_CONTEXT * context,
   context->recdes_p = recdes_p;
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_INSERT;
+  if (bigone_max_size == true)
+    {
+      HEAP_OP_CONTEXT_SET_FLAG (context->flags,
+				HEAP_OP_CONTEXT_FLAG_BIGONE_MAXSIZE);
+    }
 }
 
 /*
@@ -28127,8 +28142,9 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
       if (heap_get_partition_link_from_cache (thread_p, &context->class_oid)
 	  != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3,
-		  context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE,
+		  3, context->oid.volid, context->oid.pageid,
+		  context->oid.slotid);
 	  rc = ER_FAILED;
 	  goto error;
 	}
@@ -28172,7 +28188,7 @@ heap_partition_link_entry_alloc (void)
 {
   HEAP_PARTITION_LINK_CACHE_ENTRY *new_entry =
     (HEAP_PARTITION_LINK_CACHE_ENTRY *) malloc
-				     (sizeof (HEAP_PARTITION_LINK_CACHE_ENTRY));
+    (sizeof (HEAP_PARTITION_LINK_CACHE_ENTRY));
   if (new_entry == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -28195,8 +28211,8 @@ heap_partition_link_entry_free (void *entry)
 {
   if (entry != NULL)
     {
-      pthread_mutex_destroy (&((HEAP_PARTITION_LINK_CACHE_ENTRY *) entry)
-								       ->mutex);
+      pthread_mutex_destroy (&((HEAP_PARTITION_LINK_CACHE_ENTRY *) entry)->
+			     mutex);
       free (entry);
       return NO_ERROR;
     }
@@ -28336,8 +28352,9 @@ heap_partition_link_cache_initialize (void)
 
   /* initialize freelist */
   ret =
-    lf_freelist_init (&heap_Partition_link_cache_area.partition_link_free_list,
-		      1, 100, edesc, &partition_link_Ts);
+    lf_freelist_init (&heap_Partition_link_cache_area.
+		      partition_link_free_list, 1, 100, edesc,
+		      &partition_link_Ts);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -28371,7 +28388,8 @@ heap_partition_link_cache_finalize (void)
     {
       /* destroy hash and freelist */
       lf_hash_destroy (&heap_Partition_link_cache->partition_link_hash);
-      lf_freelist_destroy (&heap_Partition_link_cache->partition_link_free_list);
+      lf_freelist_destroy (&heap_Partition_link_cache->
+			   partition_link_free_list);
 
       heap_Partition_link_cache = NULL;
     }
@@ -28544,7 +28562,7 @@ heap_update_partition_link_flag (THREAD_ENTRY * thread_p, HFID * hfid,
  */
 static int
 heap_get_partition_link_flag (THREAD_ENTRY * thread_p, HFID * hfid,
-			      int * partition_link)
+			      int *partition_link)
 {
   VPID vpid;			/* Volume and page identifiers */
   RECDES hdr_recdes;		/* Record descriptor to point to
@@ -28594,13 +28612,12 @@ heap_get_partition_link_flag (THREAD_ENTRY * thread_p, HFID * hfid,
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_undoredo_partition_link_flag (THREAD_ENTRY * thread_p,
-				      LOG_RCV * rcv)
+heap_rv_undoredo_partition_link_flag (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int offset = 0;
   int set_flag;
   RECDES hdr_recdes;
-  HEAP_HDR_STATS * heap_hdr = NULL;
+  HEAP_HDR_STATS *heap_hdr = NULL;
 
   assert (rcv->length == OR_INT_SIZE);
 

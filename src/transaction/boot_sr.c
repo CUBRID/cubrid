@@ -6198,7 +6198,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 
   /* Prepare context */
   heap_create_insert_context (&heapop_context, &boot_Db_parm->hfid,
-			      &boot_Db_parm->rootclass_oid, &recdes, NULL);
+			      &boot_Db_parm->rootclass_oid, &recdes, NULL,
+			      false);
 
   /* Insert and fetch location */
   if (heap_insert_logical (thread_p, &heapop_context) != NO_ERROR)
