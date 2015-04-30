@@ -4437,30 +4437,35 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback,
 		{
 		  ws_decache (trigger->object);
 		  ws_clear_hints (trigger->object, false);
-		  error = au_fetch_instance_force (trigger->object, NULL,
-						   AU_FETCH_WRITE,
-						   LC_FETCH_MVCC_VERSION);
-		  if (error == NO_ERROR)
+
+		  /* check temp object is not needed */
+		  if (!OID_ISTEMP (ws_oid (trigger->object)))
 		    {
-		      /* 
-		       * The object was not deleted in fact. This is possible
-		       * when we start delete from intermediary version
-		       * (not the last one). This may happen when another
-		       * concurrent transaction has updated the trigger before me.
-		       * The current solution may be expensive, but drop trigger 
-		       * is rarely used.
-		       * A better solution would be to get & lock the last
-		       * version from beginning, not the visible one.
-		       */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_TR_TRIGGER_NOT_FOUND, 1, trigger->name);
-		      error = ER_TR_TRIGGER_NOT_FOUND;
-		    }
-		  else if (error == ER_HEAP_UNKNOWN_OBJECT)
-		    {
-		      /* clear the error - the object was successfully dropped */
-		      er_clear ();
-		      error = NO_ERROR;
+		      error = au_fetch_instance_force (trigger->object, NULL,
+						       AU_FETCH_WRITE,
+						       LC_FETCH_MVCC_VERSION);
+		      if (error == NO_ERROR)
+			{
+			  /* 
+			   * The object was not deleted in fact. This is possible
+			   * when we start delete from intermediary version
+			   * (not the last one). This may happen when another
+			   * concurrent transaction has updated the trigger before me.
+			   * The current solution may be expensive, but drop trigger 
+			   * is rarely used.
+			   * A better solution would be to get & lock the last
+			   * version from beginning, not the visible one.
+			   */
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_TR_TRIGGER_NOT_FOUND, 1, trigger->name);
+			  error = ER_TR_TRIGGER_NOT_FOUND;
+			}
+		      else if (error == ER_HEAP_UNKNOWN_OBJECT)
+			{
+			  /* clear the error - the object was successfully dropped */
+			  er_clear ();
+			  error = NO_ERROR;
+			}
 		    }
 		}
 	    }
