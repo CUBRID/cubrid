@@ -3879,10 +3879,6 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p,
   HEAP_SCANCACHE scan_cache;
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 
-#if !defined(NDEBUG)
-  assert (false);		/* should avoid */
-#endif
-
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (heap_get (thread_p, class_oid_p, &record, &scan_cache, PEEK, NULL_CHN)
       == S_SUCCESS)
@@ -4079,6 +4075,10 @@ start:
 	      && retry_count++ == 0)
 	    {
 	      goto start;
+	    }
+	  else
+	    {
+	      assert (0);
 	    }
 	}
       return NULL;
