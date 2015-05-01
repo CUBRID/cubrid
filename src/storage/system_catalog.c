@@ -263,6 +263,9 @@ struct catalog_repr_item
   PGSLOTID slot_id;		/* page slot identifier of representation */
 };
 
+#define CATALOG_REPR_ITEM_INITIALIZER \
+  { { NULL_PAGEID, NULL_VOLID }, NULL_REPRID, NULL_SLOTID }
+
 CTID catalog_Id;		/* global catalog identifier */
 static PGLENGTH catalog_Max_record_size;	/* Maximum Record Size */
 
@@ -1996,14 +1999,9 @@ static int
 catalog_get_rep_dir (THREAD_ENTRY * thread_p, OID * class_oid_p,
 		     OID * rep_dir_p, bool lookup_hash)
 {
-  CATALOG_REPR_ITEM repr_item = { {NULL_PAGEID, NULL_VOLID},
-  NULL_REPRID,
-  NULL_SLOTID
-  };
+  CATALOG_REPR_ITEM repr_item = CATALOG_REPR_ITEM_INITIALIZER;
   PAGE_PTR page_p;
-  CLS_INFO class_info = { {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID}, 0, 0, 0,
-  {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
-  };
+  CLS_INFO class_info = CLS_INFO_INITIALIZER;
 
   HEAP_SCANCACHE scan_cache;
   RECDES record = { -1, -1, REC_HOME, NULL };
@@ -2655,7 +2653,7 @@ catalog_drop_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
   RECDES record;
   OID rep_dir;
   VPID vpid;
-  CATALOG_REPR_ITEM tmp_repr_item;
+  CATALOG_REPR_ITEM tmp_repr_item = CATALOG_REPR_ITEM_INITIALIZER;
 
   OID_SET_NULL (&rep_dir);	/* init */
 
@@ -3091,7 +3089,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 			    REPR_ID repr_id, DISK_REPR * disk_repr_p,
 			    OID * rep_dir_p)
 {
-  CATALOG_REPR_ITEM repr_item;
+  CATALOG_REPR_ITEM repr_item = CATALOG_REPR_ITEM_INITIALIZER;
   CATALOG_RECORD catalog_record;
   PAGE_PTR page_p;
   PGLENGTH new_space;
@@ -3263,10 +3261,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
   VPID page_id;
   PGLENGTH new_space;
   RECDES record = { -1, -1, REC_HOME, NULL };
-  CATALOG_REPR_ITEM repr_item = { {NULL_PAGEID, NULL_VOLID},
-  NULL_REPRID,
-  NULL_SLOTID
-  };
+  CATALOG_REPR_ITEM repr_item = CATALOG_REPR_ITEM_INITIALIZER;
   int success;
 
   assert (class_info_p != NULL);
@@ -3365,10 +3360,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
   char data[CATALOG_CLS_INFO_SIZE + MAX_ALIGNMENT], *aligned_data;
   RECDES record =
     { CATALOG_CLS_INFO_SIZE, CATALOG_CLS_INFO_SIZE, REC_HOME, NULL };
-  CATALOG_REPR_ITEM repr_item = { {NULL_PAGEID, NULL_VOLID},
-  NULL_REPRID,
-  NULL_SLOTID
-  };
+  CATALOG_REPR_ITEM repr_item = CATALOG_REPR_ITEM_INITIALIZER;
   LOG_DATA_ADDR addr;
 
   assert (class_info_p != NULL);
@@ -4186,13 +4178,7 @@ catalog_fixup_missing_class_info (THREAD_ENTRY * thread_p, OID * class_oid_p)
 {
   RECDES record;
   HEAP_SCANCACHE scan_cache;
-  CLS_INFO class_info = { {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID}, 0, 0, 0,
-  {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
-  };
-
-#if !defined(NDEBUG)
-  assert (false);		/* should avoid */
-#endif
+  CLS_INFO class_info = CLS_INFO_INITIALIZER;
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
@@ -4246,10 +4232,7 @@ catalog_get_class_info (THREAD_ENTRY * thread_p, OID * class_id_p)
   char data[CATALOG_CLS_INFO_SIZE + MAX_ALIGNMENT], *aligned_data;
   RECDES record =
     { CATALOG_CLS_INFO_SIZE, CATALOG_CLS_INFO_SIZE, REC_HOME, NULL };
-  CATALOG_REPR_ITEM repr_item = { {NULL_PAGEID, NULL_VOLID},
-  NULL_REPRID,
-  NULL_SLOTID
-  };
+  CATALOG_REPR_ITEM repr_item = CATALOG_REPR_ITEM_INITIALIZER;
 
   int retry = 0;
 
@@ -4303,6 +4286,7 @@ start:
 	    }
 	  else
 	    {
+	      assert (0);
 	      return NULL;
 	    }
 	}
@@ -4699,9 +4683,7 @@ catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid_p)
   PAGE_PTR repr_page_p;
   int repr_count;
   char *repr_p;
-  CLS_INFO class_info = { {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID}, 0, 0, 0,
-  {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
-  };
+  CLS_INFO class_info = CLS_INFO_INITIALIZER;
   int i;
   DISK_ISVALID valid;
 

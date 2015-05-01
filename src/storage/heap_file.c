@@ -8363,7 +8363,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
   OID class_oid_local;		/* Used to store class_oid if provided
 				 * argument is NULL.
 				 */
-  int lock;			/* Lock mode depending on type of
+  LOCK lock;			/* Lock mode depending on type of
 				 * operation.
 				 */
   SCAN_CODE scan_code;		/* SCAN_CODE result. */
@@ -15345,8 +15345,8 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
  *                     structure contains the BTID's, the attributes and their
  *                     values.
  *   recdes(in):
- *   btid(in): Pointer to a BTID.  The value of the current BTID
- *             will be returned.
+ *   btid(out): Pointer to a BTID.  The value of the current BTID
+ *              will be returned.
  *   db_value(in): Pointer to a DB_VALUE.  This db_value will be used to
  *                 contain the set key in the case of multi-column B-trees.
  *                 It is ignored for single-column B-trees.

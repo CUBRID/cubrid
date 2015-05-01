@@ -106,6 +106,9 @@ struct cls_info
   OID ci_rep_dir;		/* representation directory record OID */
 };				/* class specific information */
 
+#define CLS_INFO_INITIALIZER \
+  { HFID_INITIALIZER, 0, 0, 0, { NULL_PAGEID, NULL_SLOTID, NULL_VOLID } }
+
 extern CTID catalog_Id;		/* global catalog identifier */
 
 extern void catalog_free_disk_attribute (DISK_ATTR * atr);

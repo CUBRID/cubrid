@@ -803,7 +803,7 @@ or_class_rep_dir (RECDES * record, OID * rep_dir_p)
  *                    a class
  *   return: void
  *   record(in): packed disk record containing class
- *   hfid(in): pointer to HFID structure to be filled in
+ *   hfid(out): pointer to HFID structure to be filled in
  *
  * Note: It is used by the catalog manager to update the class information
  *       structure when the HFID is assigned.  Since HFID's are assigned only
@@ -3562,8 +3562,8 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info,
   partition_info->partition_type = OR_GET_INT (ptr);
 
   or_init (&buf, partition_ptr +
-		 OR_VAR_TABLE_ELEMENT_OFFSET (partition_ptr,
-					      ORC_PARTITION_VALUES_INDEX),
+	   OR_VAR_TABLE_ELEMENT_OFFSET (partition_ptr,
+					ORC_PARTITION_VALUES_INDEX),
 	   OR_VAR_TABLE_ELEMENT_LENGTH (partition_ptr,
 					ORC_PARTITION_VALUES_INDEX));
   if (or_get_value (&buf, &val, NULL,

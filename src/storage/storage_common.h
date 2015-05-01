@@ -279,6 +279,8 @@ struct hfid
   VFID vfid;			/* Volume and file identifier */
   INT32 hpgid;			/* First page identifier (the header page) */
 };
+#define HFID_INITIALIZER \
+  { VFID_INITIALIZER, NULL_PAGEID }
 
 typedef struct btid BTID;	/* B+tree identifier */
 struct btid
@@ -286,7 +288,7 @@ struct btid
   VFID vfid;			/* B+tree index volume identifier */
   INT32 root_pageid;		/* Root page identifier */
 };
-#define BTID_INITILIZER \
+#define BTID_INITIALIZER \
   { VFID_INITIALIZER, NULL_PAGEID }
 
 typedef struct ehid EHID;	/* EXTENDIBLE HASHING IDENTIFIER */
