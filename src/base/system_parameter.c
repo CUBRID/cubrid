@@ -5184,6 +5184,9 @@ static int sysprm_load_and_init_internal (const char *db_name,
 					  bool check_intl_param);
 static void prm_check_environment (void);
 static int prm_check_parameters (void);
+static SYSPRM_ERR sysprm_validate_escape_char_parameters (const
+							  SYSPRM_ASSIGN_VALUE
+							  * assignment_list);
 static int prm_load_by_section (INI_TABLE * ini, const char *section,
 				bool ignore_section, bool reload,
 				const char *file, bool ha,
@@ -6453,6 +6456,66 @@ prm_check_environment (void)
     }
 }
 
+/*
+ * sysprm_validate_escape_char_parameters () - validate escape char setting
+ *
+ * return                : SYSPRM_ERR
+ * assignments_list (in) : list of assignments to validate.
+ *
+ * NOTE: To validate whether there will be conflictive settings between
+ *       PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER and PRM_ID_NO_BACKSLASH_ESCAPES.
+ *       Since both must not simultaneously be true.
+ */
+static SYSPRM_ERR
+sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE *
+					assignment_list)
+{
+  SYSPRM_PARAM *prm = NULL;
+  SYSPRM_ASSIGN_VALUE *assignment = NULL;
+  bool set_require_like_escape, set_no_backslash_escape;
+  bool is_require_like_escape, is_no_backslash_escape;
+
+  set_require_like_escape = set_no_backslash_escape = false;
+  for (assignment = assignment_list; assignment != NULL;
+       assignment = assignment->next)
+    {
+      if (assignment->prm_id == PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER)
+	{
+	  set_require_like_escape = true;
+	  is_require_like_escape = assignment->value.b;
+	}
+      else if (assignment->prm_id == PRM_ID_NO_BACKSLASH_ESCAPES)
+	{
+	  set_no_backslash_escape = true;
+	  is_no_backslash_escape = assignment->value.b;
+	}
+    }
+
+  if (!set_require_like_escape && !set_no_backslash_escape)
+    {
+      return PRM_ERR_NO_ERROR;
+    }
+
+  if (!set_no_backslash_escape)
+    {
+      prm = GET_PRM (PRM_ID_NO_BACKSLASH_ESCAPES);
+      is_no_backslash_escape = PRM_GET_BOOL (prm->value);
+    }
+
+  if (!set_require_like_escape)
+    {
+      prm = GET_PRM (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER);
+      is_require_like_escape = PRM_GET_BOOL (prm->value);
+    }
+
+  if (is_require_like_escape == true && is_no_backslash_escape == true)
+    {
+      return PRM_ERR_CANNOT_CHANGE;
+    }
+
+  return PRM_ERR_NO_ERROR;
+}
+
 #if !defined (SERVER_MODE)
 /*
  * sysprm_validate_change_parameters () - validate the parameter value changes
@@ -6627,6 +6690,11 @@ sysprm_validate_change_parameters (const char *data, bool check,
 	}
     }
   while (p);
+
+  if (err == PRM_ERR_NO_ERROR)
+    {
+      err = sysprm_validate_escape_char_parameters (assignments);
+    }
 
   if (err == PRM_ERR_NO_ERROR)
     {
