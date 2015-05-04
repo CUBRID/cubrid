@@ -1103,11 +1103,18 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
   intl_identifier_lower (serial_name, p);
   db_make_string (&val, p);
 
-  er_stack_push ();
   AU_DISABLE (save);
   mop = db_find_unique (serial_class_mop, SERIAL_ATTR_NAME, &val);
   AU_ENABLE (save);
-  er_stack_pop ();
+
+  if (er_errid () != NO_ERROR)
+    {
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+      mop = NULL;
+    }
 
   if (mop)
     {
@@ -1760,6 +1767,12 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
     {
       error = ER_AUTO_INCREMENT_SERIAL_ALREADY_EXIST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
       goto end;
     }
 
@@ -8032,17 +8045,17 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
 
       if (has_delete)
 	{
-          /* We may get NULL as an expr value.
-           * See pt_to_merge_update_query(...).
-           */
-          if (DB_IS_NULL (&dbvals[upd_cls_cnt]))
-            {
-              should_delete = false;
-            }
-          else
-            {
-              should_delete = DB_GET_INT (&dbvals[upd_cls_cnt]);
-            }
+	  /* We may get NULL as an expr value.
+	   * See pt_to_merge_update_query(...).
+	   */
+	  if (DB_IS_NULL (&dbvals[upd_cls_cnt]))
+	    {
+	      should_delete = false;
+	    }
+	  else
+	    {
+	      should_delete = DB_GET_INT (&dbvals[upd_cls_cnt]);
+	    }
 	}
 
       /* perform update for current tuples */
@@ -13013,7 +13026,7 @@ cleanup:
   if (into_label != NULL && error != NO_ERROR)
     {
       DB_VALUE *db_val = pt_find_value_of_label (into_label);
-      
+
       if (db_val != NULL)
 	{
 	  assert (DB_VALUE_TYPE (db_val) == DB_TYPE_OBJECT);
