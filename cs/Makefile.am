@@ -98,7 +98,8 @@ EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/loader.c \
 	$(EXECUTABLE_DIR)/loader_object_table.c \
 	$(EXECUTABLE_DIR)/loader_grammar.c \
-	$(EXECUTABLE_DIR)/loader_lexer.c
+	$(EXECUTABLE_DIR)/loader_lexer.c \
+	$(EXECUTABLE_DIR)/checksumdb.c
 
 COMPAT_SOURCES = \
 	$(COMPAT_DIR)/cnv.c \

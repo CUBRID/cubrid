@@ -829,63 +829,6 @@ util_get_class_oids_and_index_btid (dynamic_array * darray,
 }
 
 /*
- * util_get_table_list_from_file() -
- *   return: NO_ERROR/ER_GENERIC_ERROR
- */
-static int
-util_get_table_list_from_file (char *fname, dynamic_array * darray)
-{
-  int c, i, p;
-  char name[SM_MAX_IDENTIFIER_LENGTH];
-  FILE *fp = fopen (fname, "r");
-
-  if (fp == NULL)
-    {
-      perror (fname);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR, fname);
-      return ER_GENERIC_ERROR;
-    }
-
-  i = p = 0;
-  while (1)
-    {
-      c = fgetc (fp);
-      if (c == ' ' || c == '\t' || c == ',' || c == '\n' || c == EOF)
-	{
-	  if (p != 0)
-	    {
-	      name[p] = '\0';
-	      if (da_add (darray, name) != NO_ERROR)
-		{
-		  perror ("calloc");
-		  fclose (fp);
-		  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-		  return ER_GENERIC_ERROR;
-		}
-	      i++;
-	      p = 0;
-	    }
-	  if (c == EOF)
-	    {
-	      break;
-	    }
-	  continue;
-	}
-      name[p++] = c;
-      if (p == SM_MAX_IDENTIFIER_LENGTH)
-	{
-	  /* too long table name */
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-	  fclose (fp);
-	  return ER_GENERIC_ERROR;
-	}
-    }
-  fclose (fp);
-
-  return NO_ERROR;
-}
-
-/*
  * checkdb() - checkdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */

@@ -51,18 +51,6 @@
 
 #define UTIL_LOG_FILENAME  "cubrid_utility.log"
 
-#if defined(WINDOWS)
-#define SLEEP_MILISEC(SEC, MSEC)        Sleep((SEC) * 1000 + (MSEC))
-#else
-#define SLEEP_MILISEC(sec, msec)                        \
-        do {                                            \
-          struct timeval sleep_time_val;                \
-          sleep_time_val.tv_sec = sec;                  \
-          sleep_time_val.tv_usec = (msec) * 1000;       \
-          select(0, 0, 0, 0, &sleep_time_val);          \
-        } while(0)
-#endif
-
 static char *util_Log_filename = NULL;
 static char util_Log_filename_buf[PATH_MAX];
 static char util_Log_buffer[UTIL_LOG_BUFFER_SIZE];

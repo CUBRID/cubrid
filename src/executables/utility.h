@@ -29,6 +29,7 @@
 #include <config.h>
 #include <stdio.h>
 #include "util_func.h"
+#include "dynamic_array.h"
 
 /*
  * UTILITY MESSAGE SETS
@@ -85,7 +86,8 @@ typedef enum
   MSGCAT_UTIL_SET_DUMP_TZ = 52,
   MSGCAT_UTIL_SET_RESTORESLAVE = 53,
   MSGCAT_UTIL_SET_DELVOLDB = 54,
-  MSGCAT_UTIL_SET_VACUUMDB = 55
+  MSGCAT_UTIL_SET_VACUUMDB = 55,
+  MSGCAT_UTIL_SET_CHECKSUMDB = 56
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -680,6 +682,16 @@ typedef enum
   VACUUMDB_MSG_USAGE = 60
 } MSGCAT_VACUUMDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_CHECKSUMDB */
+typedef enum
+{
+  CHECKSUMDB_MSG_INVALID_INPUT_FILE = 1,
+  CHECKSUMDB_MSG_MUST_RUN_ON_ACTIVE = 2,
+  CHECKSUMDB_MSG_HA_NOT_SUPPORT = 58,
+  CHECKSUMDB_MSG_NOT_IN_STANDALONE = 59,
+  CHECKSUMDB_MSG_USAGE = 60
+} MSGCAT_CHECKSUMDB_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -723,6 +735,7 @@ typedef enum
   DUMP_TZ,
   RESTORESLAVE,
   VACUUMDB,
+  CHECKSUMDB,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -925,6 +938,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_DUMP_TZ			"dump_tz"
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
+#define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1514,6 +1528,26 @@ typedef struct _ha_config
 #define VACUUM_CS_MODE_S                         'C'
 #define VACUUM_CS_MODE_L                         "CS-mode"
 
+/* checksumdb option list */
+#define CHECKSUM_CHUNK_SIZE_S			'c'
+#define CHECKSUM_CHUNK_SIZE_L			"chunk-size"
+#define CHECKSUM_RESUME_S			14000
+#define CHECKSUM_RESUME_L			"resume"
+#define CHECKSUM_SLEEP_S			's'
+#define CHECKSUM_SLEEP_L			"sleep"
+#define CHECKSUM_CONT_ON_ERROR_S		14001
+#define CHECKSUM_CONT_ON_ERROR_L		"cont-on-error"
+#define CHECKSUM_INCLUDE_CLASS_FILE_S		'i'
+#define CHECKSUM_INCLUDE_CLASS_FILE_L		"include-class-file"
+#define CHECKSUM_EXCLUDE_CLASS_FILE_S		'e'
+#define CHECKSUM_EXCLUDE_CLASS_FILE_L		"exclude-class-file"
+#define CHECKSUM_TIMEOUT_S			't'
+#define CHECKSUM_TIMEOUT_L			"timeout"
+#define CHECKSUM_TABLE_NAME_S			'n'
+#define CHECKSUM_TABLE_NAME_L			"table-name"
+#define CHECKSUM_REPORT_ONLY_S			'r'
+#define CHECKSUM_REPORT_ONLY_L			"report-only"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1567,6 +1601,8 @@ extern int util_size_string_to_byte (UINT64 * size_num, const char *size_str);
 extern int util_msec_to_time_string (char *buf, size_t len, INT64 msec_num);
 extern int util_time_string_to_msec (INT64 * msec_num, char *time_str);
 extern void util_print_deprecated (const char *option);
+extern int util_get_table_list_from_file (char *fname,
+					  dynamic_array * darray);
 
 typedef struct
 {
@@ -1643,6 +1679,7 @@ extern int synccoll_force (void);
 extern int prefetchlogdb (UTIL_FUNCTION_ARG * arg_map);
 extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
 extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
+extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

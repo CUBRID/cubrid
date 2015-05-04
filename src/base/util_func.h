@@ -34,6 +34,18 @@
 #define UTIL_PID_ENVVAR_NAME         "UTIL_PID"
 #define infinity()     (HUGE_VAL)
 
+#if defined(WINDOWS)
+#define SLEEP_MILISEC(SEC, MSEC)        Sleep((SEC) * 1000 + (MSEC))
+#else
+#define SLEEP_MILISEC(sec, msec)                        \
+        do {                                            \
+          struct timeval sleep_time_val;                \
+          sleep_time_val.tv_sec = sec;                  \
+          sleep_time_val.tv_usec = (msec) * 1000;       \
+          select(0, 0, 0, 0, &sleep_time_val);          \
+        } while(0)
+#endif
+
 #define PRINT_AND_LOG_ERR_MSG(...) \
   do {\
     fprintf(stderr, __VA_ARGS__);\

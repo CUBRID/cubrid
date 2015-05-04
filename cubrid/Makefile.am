@@ -111,7 +111,8 @@ BASE_SOURCES = \
 	$(BASE_DIR)/perf.c \
 	$(BASE_DIR)/lock_free.c \
 	$(BASE_DIR)/tz_compile.c \
-	$(BASE_DIR)/tz_support.c	
+	$(BASE_DIR)/tz_support.c \
+	$(BASE_DIR)/dynamic_array.c	
 
 EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/util_common.c

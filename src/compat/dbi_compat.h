@@ -1523,8 +1523,9 @@
 #define ER_PB_ORDERED_TOO_MANY_RETRIES		    -1184
 #define ER_PB_UNEXPECTED_PAGE_REFIX		    -1185
 
-#define ER_LAST_ERROR                               -1186
+#define ER_CHKSUM_GENERIC_ERR         		    -1186
 
+#define ER_LAST_ERROR                               -1187
 
 #define DB_TRUE 1
 #define DB_FALSE 0

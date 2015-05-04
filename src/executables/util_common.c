@@ -38,6 +38,7 @@
 #include "environment_variable.h"
 #include "heartbeat.h"
 #include "log_impl.h"
+#include "class_object.h"
 #if !defined(WINDOWS)
 #include <fcntl.h>
 #endif /* !defined(WINDOWS) */
@@ -1201,4 +1202,59 @@ util_print_deprecated (const char *option)
     {
       fprintf (stderr, fmt, option);
     }
+}
+
+/*
+ * util_get_table_list_from_file() -
+ *   return: NO_ERROR/ER_GENERIC_ERROR
+ */
+int
+util_get_table_list_from_file (char *fname, dynamic_array * darray)
+{
+  int c, i, p;
+  char name[SM_MAX_IDENTIFIER_LENGTH];
+  FILE *fp = fopen (fname, "r");
+
+  if (fp == NULL)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR, fname);
+      return ER_GENERIC_ERROR;
+    }
+
+  i = p = 0;
+  while (1)
+    {
+      c = fgetc (fp);
+      if (c == ' ' || c == '\t' || c == ',' || c == '\n' || c == EOF)
+	{
+	  if (p != 0)
+	    {
+	      name[p] = '\0';
+	      if (da_add (darray, name) != NO_ERROR)
+		{
+		  fclose (fp);
+		  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+		  return ER_GENERIC_ERROR;
+		}
+	      i++;
+	      p = 0;
+	    }
+	  if (c == EOF)
+	    {
+	      break;
+	    }
+	  continue;
+	}
+      name[p++] = c;
+      if (p == SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  /* too long table name */
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  fclose (fp);
+	  return ER_GENERIC_ERROR;
+	}
+    }
+  fclose (fp);
+
+  return NO_ERROR;
 }

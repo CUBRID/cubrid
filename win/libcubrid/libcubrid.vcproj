@@ -379,6 +379,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\dynamic_array.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\encryption.c"
 					>
 				</File>

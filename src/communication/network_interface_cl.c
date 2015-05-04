@@ -11689,3 +11689,68 @@ locator_cleanup_partition_links (OID * class_oid, int no_oids, OID * oid_list)
   return success;
 #endif /* !CS_MODE */
 }
+
+int
+chksum_insert_repl_log_and_unlock_all (REPL_INFO * repl_info)
+{
+#if defined(CS_MODE)
+  int req_error, success = ER_FAILED;
+  int request_size = 0, strlen1, strlen2, strlen3, strlen4;
+  char *request = NULL, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  REPL_INFO_SBR *repl_stmt;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  switch (repl_info->repl_info_type)
+    {
+    case REPL_INFO_TYPE_SBR:
+      repl_stmt = (REPL_INFO_SBR *) repl_info->info;
+      request_size = OR_INT_SIZE	/* REPL_INFO.REPL_INFO_TYPE */
+	+ OR_INT_SIZE		/* REPL_INFO_SCHEMA.statement_type */
+	+ length_const_string (repl_stmt->name, &strlen1)
+	+ length_const_string (repl_stmt->stmt_text, &strlen2)
+	+ length_const_string (repl_stmt->db_user, &strlen3)
+	+ length_const_string (repl_stmt->sys_prm_context, &strlen4);
+
+      request = (char *) malloc (request_size);
+      if (request)
+	{
+	  ptr = or_pack_int (request, REPL_INFO_TYPE_SBR);
+	  ptr = or_pack_int (ptr, repl_stmt->statement_type);
+	  ptr = pack_const_string_with_length (ptr, repl_stmt->name, strlen1);
+	  ptr =
+	    pack_const_string_with_length (ptr, repl_stmt->stmt_text,
+					   strlen2);
+	  ptr =
+	    pack_const_string_with_length (ptr, repl_stmt->db_user, strlen3);
+	  ptr =
+	    pack_const_string_with_length (ptr, repl_stmt->sys_prm_context,
+					   strlen4);
+	  req_error =
+	    net_client_request (NET_SERVER_CHKSUM_REPL, request, request_size,
+				reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				NULL, 0);
+	  if (!req_error)
+	    {
+	      or_unpack_int (reply, &success);
+	    }
+	  free_and_init (request);
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return success;
+#else /* CS_MODE */
+  int r = ER_FAILED;
+
+  ENTER_SERVER ();
+  r = xchksum_insert_repl_log_and_unlock_all (NULL, repl_info);
+  EXIT_SERVER ();
+  return r;
+#endif /* !CS_MODE */
+}

@@ -613,4 +613,6 @@ extern int csession_drop_session_variables (DB_VALUE * variables,
 extern int cvacuum (void);
 extern int log_invalidate_mvcc_snapshot (void);
 extern int tran_lock_rep_read (LOCK lock_rr_tran);
+
+extern int chksum_insert_repl_log_and_unlock_all (REPL_INFO * repl_info);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

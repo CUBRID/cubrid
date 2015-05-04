@@ -1252,7 +1252,8 @@ $ LOADDB
 1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
 1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
 1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
-1186 Son Hata
+1186 checksumdb: %1$s (error code: %2$d).
+1187 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

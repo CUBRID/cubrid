@@ -14302,3 +14302,61 @@ locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p,
 
   return false;
 }
+
+/*
+ * xchksum_insert_repl_log_and_unlock_all -
+ *
+ * return: error code
+ *
+ *   repl_info(in):
+ *
+ * NOTE: insert replication log and release all locks
+ */
+int
+xchksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
+					REPL_INFO * repl_info)
+{
+  LOG_TDES *tdes;
+  int error = NO_ERROR;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_UNKNOWN_TRANINDEX, 1,
+	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+      return ER_LOG_UNKNOWN_TRANINDEX;
+    }
+
+  /*
+   * need to start a topop to make sure the repl log is
+   * inserted in a correct order
+   */
+  if (log_start_system_op (thread_p) == NULL)
+    {
+      return er_errid ();
+    }
+
+  repl_start_flush_mark (thread_p);
+
+  error = xrepl_set_info (thread_p, repl_info);
+
+  repl_end_flush_mark (thread_p, false);
+
+  if (error != NO_ERROR)
+    {
+      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+    }
+  else
+    {
+      /* manually append repl info */
+      log_append_repl_info (thread_p, tdes, false);
+
+      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+    }
+
+  lock_unlock_all (thread_p);
+
+  return error;
+}

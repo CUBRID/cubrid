@@ -816,6 +816,33 @@ static GETOPT_LONG ua_Vacuum_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Checksum_Option_Map[] = {
+  {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
+  {CHECKSUM_CHUNK_SIZE_S, {ARG_INTEGER}, {500}},
+  {CHECKSUM_RESUME_S, {ARG_BOOLEAN}, {0}},
+  {CHECKSUM_SLEEP_S, {ARG_INTEGER}, {100}},
+  {CHECKSUM_CONT_ON_ERROR_S, {ARG_BOOLEAN}, {0}},
+  {CHECKSUM_INCLUDE_CLASS_FILE_S, {ARG_STRING}, {0}},
+  {CHECKSUM_EXCLUDE_CLASS_FILE_S, {ARG_STRING}, {0}},
+  {CHECKSUM_TIMEOUT_S, {ARG_INTEGER}, {1000}},
+  {CHECKSUM_TABLE_NAME_S, {ARG_STRING}, {0}},
+  {CHECKSUM_REPORT_ONLY_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Checksum_Option[] = {
+  {CHECKSUM_CHUNK_SIZE_L, 1, 0, CHECKSUM_CHUNK_SIZE_S},
+  {CHECKSUM_RESUME_L, 0, 0, CHECKSUM_RESUME_S},
+  {CHECKSUM_SLEEP_L, 1, 0, CHECKSUM_SLEEP_S},
+  {CHECKSUM_CONT_ON_ERROR_L, 0, 0, CHECKSUM_CONT_ON_ERROR_S},
+  {CHECKSUM_INCLUDE_CLASS_FILE_L, 1, 0, CHECKSUM_INCLUDE_CLASS_FILE_S},
+  {CHECKSUM_EXCLUDE_CLASS_FILE_L, 1, 0, CHECKSUM_EXCLUDE_CLASS_FILE_S},
+  {CHECKSUM_TIMEOUT_L, 1, 0, CHECKSUM_TIMEOUT_S},
+  {CHECKSUM_TABLE_NAME_L, 1, 0, CHECKSUM_TABLE_NAME_S},
+  {CHECKSUM_REPORT_ONLY_L, 0, 0, CHECKSUM_REPORT_ONLY_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb",
    ua_Create_Option, ua_Create_Option_Map},
@@ -895,6 +922,8 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_RestoreSlave_Option, ua_RestoreSlave_Option_Map},
   {VACUUMDB, SA_CS, 1, UTIL_OPTION_VACUUMDB, "vacuumdb",
    ua_Vacuum_Option, ua_Vacuum_Option_Map},
+  {CHECKSUMDB, CS_ONLY, 1, UTIL_OPTION_CHECKSUMDB, "checksumdb",
+   ua_Checksum_Option, ua_Checksum_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

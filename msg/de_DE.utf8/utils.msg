@@ -72,6 +72,7 @@ $       51      gen_tz
 $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
+$       56      checksumdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Ungültige Länge oder Zeichen '%1$c' in Datenbank '%2$s'\n
@@ -182,6 +183,7 @@ Vorhandene Administratorutilities:\n\
     gen_tz\n\
     dump_tz\n\
     vacuumdb\n\
+    checksumdb\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org, besuchen\n
@@ -1189,3 +1191,25 @@ usage: %1$s vacuumdb [OPTION] database-name\n\
 valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n
+
+$set 56 MSGCAT_UTIL_SET_CHECKSUMDB
+1 Failed to load table names in %1$s.\n
+2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
+58 HA feature is not supported in this platform.\n
+59 checksumdb cannot run as standalone mode.\n
+60 \
+checksumdb: check replication integrity.\n\
+usage: %1$s checksumdb [OPTION] database-name@hostname\n\
+\n\
+valid options:\n\
+  -c, --chunk-size=NUMBER       the number of rows to select for each checksum calculation\n\
+                                default: 500 rows, minimum: 100 rows\n\
+  -s, --sleep=NUMBER            sleep time between checksum calculation; default: 100 ms\n\
+  -i, --include-class-file=FILE input FILE of table names to include\n\
+  -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
+  -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
+  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
+  -r, --report-only             report replication integrity based on checksum calculation\n\
+                                any options except --table-name will be ignored\n\
+      --resume                  resume calculating checksum\n\
+      --cont-on-error           continue on calculation error\n

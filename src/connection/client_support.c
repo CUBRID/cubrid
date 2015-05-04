@@ -47,6 +47,7 @@
 #include "transaction_cl.h"
 #include "error_manager.h"
 #include "client_support.h"
+#include "network_interface_cl.h"
 
 static void (*css_Previous_sigpipe_handler) (int sig_no) = NULL;
 /* TODO: M2 - remove css_Errno */
@@ -719,4 +720,14 @@ css_cleanup_client_queues (char *host_name)
     {
       css_remove_all_unexpected_packets (entry->conn);
     }
+}
+
+/*
+ * css_ha_server_state - return the current HA server state
+ *   return: one of HA_SERVER_STATE
+ */
+HA_SERVER_STATE
+css_ha_server_state (void)
+{
+  return boot_change_ha_mode (HA_SERVER_STATE_NA, false, 0);
 }

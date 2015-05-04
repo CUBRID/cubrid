@@ -72,6 +72,7 @@ $       51      gen_tz
 $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
+$       56      checksumdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Å©±â°¡ Àß¸øµÇ¾ú°Å³ª, Àß¸øµÈ ¹®ÀÚ '%1$c'ÀÌ(°¡) µ¥ÀÌÅÍº£ÀÌ½º ÀÌ¸§ '%2$s'¿¡ Æ÷ÇÔµÇ¾î ÀÖ½À´Ï´Ù\n
@@ -125,6 +126,7 @@ cubrid °ü¸®ÀÚ À¯Æ¿¸®Æ¼, ¹öÀü %1$s\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    checksumdb\n\
 \n\
 %4$s (Àº)´Â DBMS °ü¸® µµ±¸ÀÔ´Ï´Ù.\n\
 Ãß°¡ÀûÀÎ Á¤º¸´Â ´ÙÀ½ »çÀÌÆ®¸¦ ÂüÁ¶ÇÏ¼¼¿ä. http://www.cubrid.org\n
@@ -364,7 +366,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 ¼­¹ö %1$s´Â shutdownµË´Ï´Ù.\nÀÌ ÀÛ¾÷Àº ¸î ºÐ °É¸± ¼ö ÀÖ½À´Ï´Ù. Àá½Ã ±â´Ù¸®½Ê½Ã¿À.
 19 ¼­¹ö %1$s¸¦ Ã£À» ¼ö ¾ø½À´Ï´Ù
 20 ¸¶½ºÅÍ ¼­¹ö´Â %1$d ºÐ ³»¿¡ shutdown ÇÕ´Ï´Ù\n
-21 Heartbeat ±â´ÉÀÌ ºñÈ°¼ºÈ­ µÇ¾ú½À´Ï´Ù.Ù. ¸ðµç ¼­¹ö ÇÁ·Î¼¼½ºµéÀÇ Á¾·á°úÁ¤ÀÌ ¿Ï·áµÉ¶§ ±îÁö Àá½Ã ±â´Ù¸®½Ê½Ã¿À.\n
+21 Heartbeat ±â´ÉÀÌ ºñÈ°¼ºÈ­ µÇ¾ú½À´Ï´Ù. ¸ðµç ¼­¹ö ÇÁ·Î¼¼½ºµéÀÇ Á¾·á°úÁ¤ÀÌ ¿Ï·áµÉ¶§ ±îÁö Àá½Ã ±â´Ù¸®½Ê½Ã¿À.\n
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
@@ -1187,3 +1189,25 @@ usage: %1$s vacuumdb [OPTION] database-name\n\
 valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n
+
+$set 56 MSGCAT_UTIL_SET_CHECKSUMDB
+1 Failed to load table names in %1$s.\n
+2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
+58 HA feature is not supported in this platform.\n
+59 checksumdb cannot run as standalone mode.\n
+60 \
+checksumdb: check replication integrity.\n\
+usage: %1$s checksumdb [OPTION] database-name@hostname\n\
+\n\
+valid options:\n\
+  -c, --chunk-size=NUMBER       the number of rows to select for each checksum calculation\n\
+                                default: 500 rows, minimum: 100 rows\n\
+  -s, --sleep=NUMBER            sleep time between checksum calculation; default: 100 ms\n\
+  -i, --include-class-file=FILE input FILE of table names to include\n\
+  -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
+  -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
+  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
+  -r, --report-only             report replication integrity based on checksum calculation\n\
+                                any options except --table-name will be ignored\n\
+      --resume                  resume calculating checksum\n\
+      --cont-on-error           continue on calculation error\n

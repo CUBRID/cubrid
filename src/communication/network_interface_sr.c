@@ -11210,3 +11210,51 @@ sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid,
       free_and_init (data_reply);
     }
 }
+
+/*
+ * schksum_insert_repl_log_and_unlock_all -
+ *
+ * return: error code
+ *
+ * NOTE: insert replication log and release all locks
+ */
+void
+schksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
+					unsigned int rid, char *request,
+					int reqlen)
+{
+  int success = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  REPL_INFO repl_info = { NULL, 0, false };
+  REPL_INFO_SBR repl_stmt = { 0, NULL, NULL, NULL, NULL };
+
+  ptr = or_unpack_int (request, &repl_info.repl_info_type);
+  switch (repl_info.repl_info_type)
+    {
+    case REPL_INFO_TYPE_SBR:
+      {
+	ptr = or_unpack_int (ptr, &repl_stmt.statement_type);
+	ptr = or_unpack_string_nocopy (ptr, &repl_stmt.name);
+	ptr = or_unpack_string_nocopy (ptr, &repl_stmt.stmt_text);
+	ptr = or_unpack_string_nocopy (ptr, &repl_stmt.db_user);
+	ptr = or_unpack_string_nocopy (ptr, &repl_stmt.sys_prm_context);
+
+	repl_info.info = (char *) &repl_stmt;
+	break;
+      }
+    default:
+      success = ER_FAILED;
+      break;
+    }
+
+  if (success == NO_ERROR)
+    {
+      success = xchksum_insert_repl_log_and_unlock_all (thread_p, &repl_info);
+    }
+
+  (void) or_pack_int (reply, success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}

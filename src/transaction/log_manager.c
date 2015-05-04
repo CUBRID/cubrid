@@ -248,8 +248,6 @@ static void log_append_topope_abort_client_loose_ends (THREAD_ENTRY *
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p,
 					   LOG_TDES * tdes, bool is_commit,
 					   int with_lock);
-static void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				  bool is_commit);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p,
 					    LOG_TDES * tdes, bool is_commit);
 static void log_append_unlock_log_internal (THREAD_ENTRY * thread_p,
@@ -4975,7 +4973,7 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 }
 
-static void
+void
 log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		      bool is_commit)
 {

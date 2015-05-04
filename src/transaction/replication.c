@@ -564,6 +564,16 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 		repl_info->sys_prm_context);
   LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
 
+  if (tdes->fl_mark_repl_recidx != -1
+      && tdes->cur_repl_record >= tdes->fl_mark_repl_recidx)
+    {
+      /*
+       * statement replication does not check log conflicts, so
+       * use repl_start_flush_mark with caution.
+       */
+      repl_rec->must_flush = LOG_REPL_NEED_FLUSH;
+    }
+
   tdes->cur_repl_record++;
 
   return error;
