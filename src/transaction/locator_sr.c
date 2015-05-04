@@ -5949,7 +5949,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
 			      &new_obj_oid, recdes, has_index, op_type,
 			      insert_cache, force_count,
-			      DB_NOT_PARTITIONED_CLASS, NULL, NULL);
+			      context->pruning_type, NULL, NULL);
     }
   else
     {
