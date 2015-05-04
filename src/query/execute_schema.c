@@ -9929,7 +9929,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
   if (entity_name == NULL)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Expecting a class or virtual class name.");
       goto exit;
     }
 
@@ -10206,7 +10207,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
       error = sort_constr_info_list (&(attr_chg_prop.constr_info));
       if (error != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+		  "Sorting constraints failed.");
 	  goto exit;
 	}
 
@@ -10230,7 +10232,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
       error = sort_constr_info_list (&(attr_chg_prop.new_constr_info));
       if (error != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+		  "Sorting constraints failed.");
 	  goto exit;
 	}
 
@@ -10262,7 +10265,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		  if (class_name == NULL)
 		    {
 		      error = ER_UNEXPECTED;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+			      "Cannot get class name of mop.");
 		      goto exit;
 		    }
 
@@ -10415,7 +10419,8 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
   if (entity_name == NULL)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Expecting a class or virtual class name.");
       goto exit;
     }
 
@@ -10585,7 +10590,8 @@ do_alter_change_tbl_comment (PARSER_CONTEXT * const parser,
   if (entity_name == NULL)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Expecting a class or virtual class name.");
       goto exit;
     }
 
@@ -10820,7 +10826,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   if (found_att == NULL)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Attribute not found.");
       goto exit;
     }
 
@@ -13534,7 +13541,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser,
   query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 42);
   if (query_len > QUERY_MAX_SIZE)
     {
-      ERROR0 (error, ER_UNEXPECTED);
+      ERROR1 (error, ER_UNEXPECTED, "Too many attributes.");
       return error;
     }
 
@@ -13553,7 +13560,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser,
 		alter->info.alter.entity_name->info.name.original);
   if (n < 0)
     {
-      ERROR0 (error, ER_UNEXPECTED);
+      ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
       goto end;
     }
   remaining -= n;
@@ -13571,7 +13578,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser,
 		    hard_default);
       if (n < 0)
 	{
-	  ERROR0 (error, ER_UNEXPECTED);
+	  ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
 	  goto end;
 	}
       remaining -= n;
@@ -14015,7 +14022,8 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     {
       assert (false);
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Not all properties are checked.");
       goto exit;
     }
 
@@ -14307,7 +14315,8 @@ save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info,
   if (constr_att_name->next != NULL)
     {
       error_code = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      "Constraint name should be the last attribute.");
       goto error_exit;
     }
 
@@ -14382,7 +14391,8 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   if (class_name == NULL)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Cannot get class name of mop.");
       goto end;
     }
 
@@ -14392,7 +14402,8 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   if (n < 0 || (n == sizeof (query) / sizeof (char)))
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Building SELECT statement failed.");
       goto end;
     }
 
@@ -14429,7 +14440,8 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   if (result == NULL)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Executing internal query failed.");
       goto end;
     }
 

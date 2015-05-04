@@ -11498,7 +11498,8 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name,
       || !QSTR_IS_CHAR (idx_name_arg_type)
       || key_pos_arg_type != DB_TYPE_INTEGER)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+	      "Arguments type mismatching.");
       error = ER_UNEXPECTED;
       goto exit;
     }

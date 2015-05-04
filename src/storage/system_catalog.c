@@ -5448,7 +5448,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
       disk_repr_p = catalog_get_representation (thread_p, class_oid, repr_id);
       if (disk_repr_p == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+		  "Disk representation not found.");
 	  error = ER_UNEXPECTED;
 	  goto exit;
 	}
@@ -5459,7 +5460,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 				NULL_REPRID, &idx_cache);
   if (cls_rep == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+	      "Class representation not found.");
       error = ER_UNEXPECTED;
       goto exit_cleanup;
     }
@@ -5521,7 +5523,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 
   if (!is_btree_found)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+	      "B-Tree not found.");
       error = ER_UNEXPECTED;
       goto exit_cleanup;
     }
@@ -5646,7 +5649,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 
 	  if (!is_subcls_attr_found)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+		      "Attribute of subclass not found.");
 	      error = ER_UNEXPECTED;
 	      goto exit_cleanup;
 	    }

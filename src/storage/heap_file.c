@@ -19891,7 +19891,8 @@ heap_get_btid_from_index_name (THREAD_ENTRY * thread_p,
     {
       if (curr_index == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+		  "Bad index information in class representation.");
 	  error = ER_UNEXPECTED;
 	  goto exit_cleanup;
 	}
@@ -19945,7 +19946,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
   if (upd_scancache == NULL || attr_info == NULL || oid == NULL)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Unexpected NULL arguments.");
       goto exit;
     }
 
@@ -20247,7 +20249,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
       attr_info->read_classrepr->id >= attr_info->last_classrepr->id)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Incorrect attribute information.");
       goto exit;
     }
 

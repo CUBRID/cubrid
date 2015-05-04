@@ -8425,7 +8425,8 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
       if (curr_idx == NULL)
 	{
 	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  "Bad index information in class representation.");
 	  break;
 	}
 
@@ -8474,7 +8475,8 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
     {
       if (curr == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+		  "Bad index information in class representation.");
 	  rv = DISK_ERROR;
 	  break;
 	}

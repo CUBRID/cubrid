@@ -13833,7 +13833,8 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid,
   if (class_oid == NULL || OID_ISNULL (class_oid) || att_id < 0)
     {
       error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Unexpected argument of class OID or attribute id.");
       goto error_exit;
     }
 
@@ -13879,14 +13880,16 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid,
       if (nfailed_instances != 0)
 	{
 	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  "Some instance is not locked.");
 	  goto error_exit;
 	}
 
       if (fetch_area == NULL)
 	{
 	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  "Fetch area should not be NULL.");
 	  goto error_exit;
 	}
       mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (fetch_area);
