@@ -16711,13 +16711,12 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
-		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-		  err = er_errid ();
+		  assert (pt_has_error (parser));
+
+		  err = ER_FAILED;
 		}
 	      goto cleanup;
 	    }
@@ -16914,11 +16913,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (ins_select_stmt == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
-		  err = ER_GENERIC_ERROR;
+	          assert (pt_has_error (parser));
+
+		  err = ER_FAILED;
 		}
 	      goto exit;
 	    }
