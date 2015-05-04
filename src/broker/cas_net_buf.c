@@ -862,5 +862,7 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
 	}
     }
 
+  err_buf[buf_size - 1] = '\0';
+
   return strlen (err_buf);
 }
