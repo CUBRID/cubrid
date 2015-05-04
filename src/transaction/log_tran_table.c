@@ -4436,7 +4436,7 @@ static int
 logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
 {
   MVCCID lowest_active_mvccid, bit_area_start_mvccid,
-    highest_completed_mvccid;
+    highest_completed_mvccid, last_bit_area_start_mvccid;
   LOG_TDES *curr_tdes = NULL;
   int tran_index, error_code = NO_ERROR;
   LOG_TDES *tdes;
@@ -4449,6 +4449,9 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   volatile MVCCID *p_transaction_lowest_active_mvccid = NULL;
   int index, trans_status_version;
   MVCC_TRANS_STATUS *trans_status;
+#if defined(HAVE_ATOMIC_BUILTINS)
+  MVCC_TRANS_STATUS *current_trans_status;
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -4473,6 +4476,9 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
       /* no need to set lowest active MVCCID */
       p_transaction_lowest_active_mvccid = NULL;
     }
+#if defined(HAVE_ATOMIC_BUILTINS)
+  current_trans_status = &mvcc_table->current_trans_status;
+#endif
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 start_get_mvcc_table:
@@ -4495,24 +4501,6 @@ start_get_mvcc_table:
     {
       memcpy (snapshot->bit_area, (void *) trans_status->bit_area,
 	      MVCC_BITAREA_BITS_TO_BYTES (bit_area_length));
-    }
-
-  /* set initial value - rewritten later */
-  if (p_transaction_lowest_active_mvccid)
-    {
-#if defined(HAVE_ATOMIC_BUILTINS)
-      /* logtb_get_lowest_active_mvccid will atomically read lowest active
-       * MVCCID using read mode in this case
-       */
-      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid,
-		     bit_area_start_mvccid);
-#else
-      /* Need to guarantee lowest active MVCCID atomicity.
-       * logtb_get_lowest_active_mvccid will read lowest active MVCCID
-       * using write mode in this case
-       */
-      *p_transaction_lowest_active_mvccid = bit_area_start_mvccid;
-#endif
     }
 
   if (trans_status->long_tran_mvccids_length > 0)
@@ -4545,20 +4533,12 @@ start_get_mvcc_table:
   (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
 
-  logtb_get_highest_completed_mvccid (snapshot->bit_area,
-				      bit_area_length,
-				      bit_area_start_mvccid,
-				      &highest_completed_mvccid);
-  MVCCID_FORWARD (highest_completed_mvccid);
-
   logtb_get_lowest_active_mvccid (snapshot->bit_area, bit_area_length,
 				  bit_area_start_mvccid,
 				  snapshot->long_tran_mvccids,
 				  long_tran_mvccids_length,
 				  &lowest_active_mvccid);
-
-  /* set atomically the lowest active MVCC id - only once / transaction
-   */
+  /* set atomically the lowest active MVCC id - only once / transaction */
   if (p_transaction_lowest_active_mvccid
       && (*p_transaction_lowest_active_mvccid) != lowest_active_mvccid)
     {
@@ -4568,6 +4548,24 @@ start_get_mvcc_table:
        */
       ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid,
 		     lowest_active_mvccid);
+      last_bit_area_start_mvccid =
+	ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+      if (lowest_active_mvccid < last_bit_area_start_mvccid)
+	{
+	  /* protect against following scenario:
+	   *  - current transaction start snapshot acquisition but
+	   *  didn't set transaction_lowest_active_mvccids yet
+	   *  - many transactions commits and mvcc_table->current_trans_status.
+	   * bit_area_start_mvccid is advanced
+	   *  - vacuum starts and consider mvcc_table->current_trans_status.
+	   * bit_area_start_mvccid as threshold, since all
+	   * transaction_lowest_active_mvccids are NULL_MVCCID
+	   *  - current transaction sets its transaction_lowest_active_mvccid
+	   * (behind mvcc_table->current_trans_status.bit_area_start_mvccid)
+	   *  - vacuum can now delete rows still visible for current transaction
+	   */
+	  goto start_get_mvcc_table;
+	}
 #else
       /* Need to guarantee lowest active MVCCID atomicity.
        * logtb_get_lowest_active_mvccid will read lowest active MVCCID
@@ -4578,6 +4576,12 @@ start_get_mvcc_table:
       (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
     }
+
+  logtb_get_highest_completed_mvccid (snapshot->bit_area,
+				      bit_area_length,
+				      bit_area_start_mvccid,
+				      &highest_completed_mvccid);
+  MVCCID_FORWARD (highest_completed_mvccid);
 
   /* update lowest active mvccid computed for the most recent snapshot */
   curr_mvcc_info->recent_snapshot_lowest_active_mvccid = lowest_active_mvccid;
@@ -4785,7 +4789,7 @@ logtb_get_new_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
   (void) pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
 #if !defined(NDEBUG)
   bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
-  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_ELEMENTS
+  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS
 	  && bit_area_length >= 0);
 #endif
 #else
@@ -5109,7 +5113,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       if (bit_area_length < bit_area_cleanup_threshold)
 	{
 	  assert (current_trans_status->bit_area_length <=
-		  MVCC_BITAREA_MAXIMUM_ELEMENTS);
+		  MVCC_BITAREA_MAXIMUM_BITS);
 	  goto end_completed;
 	}
 
@@ -5942,7 +5946,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
   (void) pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
 #if !defined(NDEBUG)
   bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
-  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_ELEMENTS
+  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS
 	  && bit_area_length >= 0);
 #endif
 #else
@@ -5953,7 +5957,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
   if (!MVCCID_IS_VALID (curr_mvcc_info->id))
     {
 #if !defined(NDEBUG) && defined(HAVE_ATOMIC_BUILTINS)
-      assert (bit_area_length < (MVCC_BITAREA_MAXIMUM_ELEMENTS - 1));
+      assert (bit_area_length < (MVCC_BITAREA_MAXIMUM_BITS - 1));
 #endif
 
       id = log_Gl.hdr.mvcc_next_id;
@@ -6122,7 +6126,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (bit_area_length < bit_area_cleanup_threshold)
     {
       assert (current_trans_status->bit_area_length <=
-	      MVCC_BITAREA_MAXIMUM_ELEMENTS);
+	      MVCC_BITAREA_MAXIMUM_BITS);
       goto end_completed;
     }
 
