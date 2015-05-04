@@ -2413,7 +2413,7 @@ au_set_password_internal (MOP user, const char *password, int encode,
 		      if (pass != NULL)
 			{
 			  db_make_object (&value, pass);
-			  obj_set (user, "password", &value);
+			  error = obj_set (user, "password", &value);
 			}
 		      else
 			{
@@ -2428,7 +2428,7 @@ au_set_password_internal (MOP user, const char *password, int encode,
 		    }
 		}
 
-	      if (pass != NULL)
+	      if (error == NO_ERROR && pass != NULL)
 		{
 		  if (encode && password != NULL)
 		    {
