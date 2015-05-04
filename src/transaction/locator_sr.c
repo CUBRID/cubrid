@@ -2553,6 +2553,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
 	}
       assert (lock_mode == S_LOCK || lock_mode == X_LOCK);
     }
+
   if (heap_is_mvcc_disabled_for_class (class_oid))
     {
       if (lock_mode > NULL_LOCK)
@@ -2829,17 +2830,17 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
       nxobj.mobjs->num_objs = 0;
 
       /* Get the interested object first */
-
-      scan = locator_lock_and_return_object
-	(thread_p, &nxobj, class_oid, p_oid, chn, original_oid,
-	 object_locked ? NULL_LOCK : lock, operation_type);
-
+      scan =
+	locator_lock_and_return_object (thread_p, &nxobj, class_oid, p_oid,
+					chn, original_oid,
+					object_locked ? NULL_LOCK : lock,
+					operation_type);
       if (scan == S_SUCCESS)
 	{
 	  break;
 	}
-      /* Get the real length of current fetch/copy area */
 
+      /* Get the real length of current fetch/copy area */
       copyarea_length = nxobj.comm_area->length;
       locator_free_copy_area (nxobj.comm_area);
 
@@ -2847,7 +2848,6 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
        * If the object does not fit even when the copy area seems to be
        * large enough, increase the copy area by at least one page size.
        */
-
       if (scan == S_DOESNT_EXIST)
 	{
 	  heap_scancache_end (thread_p, &nxobj.area_scancache);
@@ -2891,7 +2891,6 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
    * Then, get the interested class, if given class coherency number is not
    * current.
    */
-
   scan =
     locator_lock_and_return_object (thread_p, &nxobj, oid_Root_class_oid,
 				    class_oid, class_chn, NULL, NULL_LOCK,
@@ -9796,8 +9795,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	}
       else
 	{
-	  assert (TP_ARE_COMPARABLE_KEY_TYPES
-		  (TP_DOMAIN_TYPE (key_domain), pr_type->id));
+	  assert (old_isnull
+		  || TP_ARE_COMPARABLE_KEY_TYPES (TP_DOMAIN_TYPE (key_domain),
+						  pr_type->id));
 	}
 
       if (use_mvcc && !OID_EQ (old_oid, new_oid))
