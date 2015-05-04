@@ -13974,8 +13974,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
 exit:
-  lock_stop_instant_lock_mode (thread_p, tran_index, true);
   logtb_complete_sub_mvcc (thread_p, tdes);
+  lock_stop_instant_lock_mode (thread_p, tran_index, true);
 
   if (err != NO_ERROR)
     {
