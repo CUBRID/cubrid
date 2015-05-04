@@ -2086,6 +2086,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
   int i, j, n_atts, atts_size;
   char *shared_cons_name = NULL;
   SM_ATTRIBUTE_FLAG constraint;
+  bool has_nulls = false;
 
   assert (template_ != NULL);
 
@@ -2112,6 +2113,37 @@ smt_add_constraint (SM_TEMPLATE * template_,
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
+    }
+
+  /* if primary key shares index with other constraint, it is neccessary to check
+   * whether the attributs do not have null value. e.g. primary key shares index with
+   * unique constraint. Because unique constraint allows null value, we can not just use
+   * the index simply. 
+   * template_->op == NULL, it means this is a create statement, the class has not yet 
+   * existed. Obviously, there is no data in the class at that time! So we skip to test
+   * NULL value for primary key.
+   */
+  if (constraint_type == DB_CONSTRAINT_PRIMARY_KEY
+      && shared_cons_name != NULL && template_->op != NULL)
+    {
+      for (i = 0; att_names[i] != NULL; i++)
+	{
+	  assert (att_names[i] != NULL);
+	  error =
+	    do_check_rows_for_null (template_->op, att_names[i], &has_nulls);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
+
+	  if (has_nulls)
+	    {
+	      error = ER_SM_ATTR_NOT_NULL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		      att_names[i]);
+	      goto error_return;
+	    }
+	}
     }
 
   atts_size = (n_atts + 1) * (int) sizeof (SM_ATTRIBUTE *);
