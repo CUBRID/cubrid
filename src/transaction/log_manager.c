@@ -5374,8 +5374,8 @@ log_map_modified_class_list (THREAD_ENTRY * thread_p,
       while (t != NULL)
 	{
 	  tdes->modified_class_list = t->m_next;
-	  free_and_init (t->m_classname);
-	  free_and_init (t);
+	  free ((char *) t->m_classname);
+	  free (t);
 	  t = tdes->modified_class_list;
 	}
     }
@@ -8181,11 +8181,12 @@ log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 	   log_header_p->last_deleted_arv_num,
 	   log_header_p->has_logging_been_skipped,
 	   (long long int) log_header_p->bkup_level0_lsa.pageid,
-	   log_header_p->bkup_level0_lsa.offset,
+	   (int) log_header_p->bkup_level0_lsa.offset,
 	   (long long int) log_header_p->bkup_level1_lsa.pageid,
-	   log_header_p->bkup_level1_lsa.offset,
+	   (int) log_header_p->bkup_level1_lsa.offset,
 	   (long long int) log_header_p->bkup_level2_lsa.pageid,
-	   log_header_p->bkup_level2_lsa.offset, log_header_p->prefix_name);
+	   (int) log_header_p->bkup_level2_lsa.offset,
+	   log_header_p->prefix_name);
 }
 
 static LOG_PAGE *
@@ -8307,6 +8308,14 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
   redo_length = redo->length;
   rcvindex = redo->data.rcvindex;
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), log_lsa, log_page_p);
+
+  if (rcvindex == RVVAC_HEAP_PAGE_VACUUM)
+    {
+      /* RVVAC_HEAP_PAGE_VACUUM redo can be dumped only if redo->data.offset
+       * is known, while length is not relevant. Replace argument.
+       */
+      redo_length = redo->data.offset;
+    }
 
   /* Print REDO(AFTER) DATA */
   fprintf (stdout, "-->> Redo (After) Data:\n");
@@ -9519,14 +9528,15 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 		   " Backw log = %3lld|%3d,\n"
 		   "     Trid = %3d, Prev tran logrec = %3lld|%3d\n"
 		   "     Type = %s",
-		   (long long int) log_lsa.pageid, log_lsa.offset,
+		   (long long int) log_lsa.pageid,
+		   (int) log_lsa.offset,
 		   (long long int) log_rec->forw_lsa.pageid,
-		   log_rec->forw_lsa.offset,
+		   (int) log_rec->forw_lsa.offset,
 		   (long long int) log_rec->back_lsa.pageid,
-		   log_rec->back_lsa.offset,
+		   (int) log_rec->back_lsa.offset,
 		   log_rec->trid,
 		   (long long int) log_rec->prev_tranlsa.pageid,
-		   log_rec->prev_tranlsa.offset, log_to_string (type));
+		   (int) log_rec->prev_tranlsa.offset, log_to_string (type));
 
 	  if (LSA_ISNULL (&log_rec->forw_lsa) && type != LOG_END_OF_LOG)
 	    {

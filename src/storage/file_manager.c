@@ -4539,7 +4539,7 @@ exit_on_error:
  */
 int
 file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid,
-		      OID * class_oid)
+		      const OID * class_oid)
 {
   PAGE_PTR fhdr_pgptr = NULL;
   LOG_DATA_ADDR addr;
@@ -13852,7 +13852,7 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
 
-  if (!OID_ISNULL (&class_oid))
+  if (isdeleted && !OID_ISNULL (&class_oid))
     {
       (void) heap_delete_hfid_from_cache (thread_p, &class_oid);
     }

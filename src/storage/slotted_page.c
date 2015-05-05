@@ -531,17 +531,17 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
   assert (page_p != NULL);
   SPAGE_VERIFY_HEADER (page_header_p);
 
+  if (space == 0 || log_is_in_crash_recovery ())
+    {
+      return NO_ERROR;
+    }
+
   if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       /* Vacuum workers do not rollback their heap changes and don't need to
        * keep track of saved space.
        */
-      assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p));
-      return NO_ERROR;
-    }
-
-  if (space == 0 || log_is_in_crash_recovery ())
-    {
+      assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p) || space < 0);
       return NO_ERROR;
     }
 

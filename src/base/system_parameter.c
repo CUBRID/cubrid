@@ -8425,6 +8425,9 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		  case PRM_ID_TIMEZONE:
 		    val = prm_get_string_value (PRM_ID_SERVER_TIMEZONE);
 		    break;
+		  default:
+		    /* do nothing */
+		    break;
 		  }
 	      }
 

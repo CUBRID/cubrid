@@ -110,6 +110,14 @@ enum vacuum_worker_state
 struct log_tdes;
 struct log_zip;
 
+/* VACUUM_HEAP_OBJECT - Required information on each object to be vacuumed. */
+typedef struct vacuum_heap_object VACUUM_HEAP_OBJECT;
+struct vacuum_heap_object
+{
+  VFID vfid;			/* File ID of heap file. */
+  OID oid;			/* Object OID. */
+};
+
 /* VACUUM_WORKER - Vacuum worker information */
 typedef struct vacuum_worker VACUUM_WORKER;
 struct vacuum_worker
@@ -125,8 +133,11 @@ struct vacuum_worker
    */
   struct log_zip *log_zip_p;	/* Zip structure used to unzip log data */
 
-  VPID *page_buffer;		/* Buffer to keep vacuumed pages */
-  int page_buffer_capacity;	/* Capacity of vacuumed pages buffer */
+  VACUUM_HEAP_OBJECT *heap_objects;	/* Heap objects collected during a
+					 * vacuum job.
+					 */
+  int heap_objects_capacity;	/* Capacity of heap objects buffer. */
+  int n_heap_objects;		/* Number of stored heap objects. */
 
   char *undo_data_buffer;	/* Buffer to save log undo data */
   int undo_data_buffer_capacity;	/* Capacity of log undo data buffer */
@@ -286,24 +297,22 @@ extern VACUUM_LOG_BLOCKID vacuum_data_get_last_blockid (THREAD_ENTRY *
 
 extern int vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
-extern int vacuum_rv_redo_remove_bigone (THREAD_ENTRY * thread_p,
-					 LOG_RCV * rcv);
-extern int vacuum_rv_undo_remove_bigone (THREAD_ENTRY * thread_p,
-					 LOG_RCV * rcv);
-extern void vacuum_rv_redo_remove_bigone_dump (FILE * fp, int length,
-					       void *data);
-extern void vacuum_rv_undo_remove_bigone_dump (FILE * fp, int length,
-					       void *data);
+extern void vacuum_rv_vacuum_heap_page_dump (FILE * fp, int length,
+					     void *data);
 extern int vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
 extern int vacuum_rv_redo_remove_data_entries (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);
 extern int vacuum_rv_redo_append_block_data (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
-extern int vacuum_rv_redo_update_block_data (THREAD_ENTRY * thread_p,
-					     LOG_RCV * rcv);
+extern int vacuum_rv_redo_start_or_end_job (THREAD_ENTRY * thread_p,
+					    LOG_RCV * rcv);
+extern void vacuum_rv_redo_start_or_end_job_dump (FILE * fp, int length,
+						  void *data);
 extern int vacuum_rv_redo_save_blocks (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
+extern int vacuum_rv_redo_udate_oldest_mvccid (THREAD_ENTRY * thread_p,
+					       LOG_RCV * rcv);
 
 extern int vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 						  bool
@@ -370,5 +379,7 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY *
 							  rec_header,
 							  int
 							  btree_node_type);
-extern bool vacuum_is_record_lost (MVCCID id);
+extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
+
+extern void vacuum_check_interrupted_jobs (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */

@@ -3847,6 +3847,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	  fileio_dismount_all (thread_p);
 	  goto error;
 	}
+      vacuum_check_interrupted_jobs (thread_p);
     }
 
   /*

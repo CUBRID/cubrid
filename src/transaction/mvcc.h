@@ -73,11 +73,7 @@
   ((header)->mvcc_flag = (flag))
 
 #define MVCC_IS_ANY_FLAG_SET(rec_header_p) \
-  (MVCC_IS_FLAG_SET (rec_header_p,  \
-		     OR_MVCC_FLAG_VALID_INSID \
-		     | OR_MVCC_FLAG_VALID_DELID \
-		     | OR_MVCC_FLAG_VALID_NEXT_VERSION \
-		     | OR_MVCC_FLAG_VALID_LONG_CHN))
+  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_MASK))
 
 #define MVCC_IS_FLAG_SET(rec_header_p, flags) \
   ((rec_header_p)->mvcc_flag & (flags))
@@ -102,11 +98,7 @@
   ((rec_header_p)->mvcc_flag |= (flag))
 
 #define MVCC_CLEAR_ALL_FLAG_BITS(rec_header_p) \
-  (MVCC_CLEAR_FLAG_BITS (rec_header_p,	\
-			 OR_MVCC_FLAG_VALID_INSID \
-			 | OR_MVCC_FLAG_VALID_DELID \
-			 | OR_MVCC_FLAG_VALID_NEXT_VERSION \
-			 | OR_MVCC_FLAG_VALID_LONG_CHN))
+  (MVCC_CLEAR_FLAG_BITS (rec_header_p, OR_MVCC_FLAG_MASK))
 
 #define MVCC_CLEAR_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag &= ~(flag))

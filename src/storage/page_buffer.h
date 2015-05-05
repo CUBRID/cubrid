@@ -511,14 +511,6 @@ extern DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
 extern void pgbuf_dump_if_any_fixed (void);
 #endif
 
-extern int pgbuf_fix_when_other_is_fixed (THREAD_ENTRY * thread_p,
-					  VPID * vpid_to_fix,
-					  VPID * vpid_fixed,
-					  PAGE_FETCH_MODE fetch_mode,
-					  PGBUF_LATCH_MODE latch_mode,
-					  PAGE_PTR * page_to_fix,
-					  PAGE_PTR * page_fixed, HFID * hfid);
-
 extern bool pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p);
 extern void pgbuf_ordered_set_dirty_and_free (THREAD_ENTRY * thread_p,
 					      PGBUF_WATCHER * pg_watcher);
@@ -532,4 +524,21 @@ extern void pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher,
 extern bool pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p,
 					   VPID * vpid_p);
 #endif
+
+#if !defined (NDEBUG)
+#define pgbuf_attach_watcher(...) \
+  pgbuf_attach_watcher_debug (__VA_ARGS__, ARG_FILE_LINE)
+
+extern void pgbuf_attach_watcher_debug (THREAD_ENTRY * thread_p,
+					PAGE_PTR pgptr,
+					PGBUF_LATCH_MODE latch_mode,
+					HFID * hfid,
+					PGBUF_WATCHER * watcher,
+					const char *file, const int line);
+#else /* NDEBUG */
+extern void pgbuf_attach_watcher (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+				  PGBUF_LATCH_MODE latch_mode, HFID * hfid,
+				  PGBUF_WATCHER * watcher);
+#endif /* NDEBUG */
+
 #endif /* _PAGE_BUFFER_H_ */

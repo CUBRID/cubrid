@@ -3837,7 +3837,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
   int rv;
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
-  int avail_time_msec, time_rem_msec = 0;
+  int avail_time_msec = 0, time_rem_msec = 0;
   struct timeval cur_time = {
     0, 0
   };
@@ -10314,75 +10314,6 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_fix_when_other_is_fixed () - Function should be called when a second
- *				      page needs to be fixed while holding
- *				      latch on the first page. A conditional
- *				      latch is attempted in order to avoid
- *				      unfixing first page. If that fails,
- *				      the first page is unfixed and an
- *				      unconditional latch if requested.
- *
- * return	       : Error code.
- * thread_p (in)       : Thread entry.
- * vpid_to_fix (in)    : VPID of page to be fixed.
- * fetch_mode (in)     : Fetch page mode.
- * latch_mode (in)     : Latch mode.
- * page_to_fix (out)   : Page to be fixed.
- * page_fixed (in/out) : Page already fixed. Will be unfixed and set to NULL
- *			 if conditional latch fails. If a NULL argument is
- *			 given, an unconditional latch is requested directly.
- *
- * NOTE: This function should be used to avoid dead-locks when trying
- *	 to obtain latch on a new page while holding latch on another page.
- */
-int
-pgbuf_fix_when_other_is_fixed (THREAD_ENTRY * thread_p, VPID * vpid_to_fix,
-			       VPID * vpid_fixed, PAGE_FETCH_MODE fetch_mode,
-			       PGBUF_LATCH_MODE latch_mode,
-			       PAGE_PTR * page_to_fix, PAGE_PTR * page_fixed,
-			       HFID * hfid)
-{
-  assert ((vpid_to_fix != NULL) && (page_to_fix != NULL)
-	  && (*page_to_fix == NULL) && (vpid_to_fix != NULL)
-	  && (hfid != NULL));
-
-  if (page_fixed == NULL
-      || *page_fixed == NULL
-      || pgbuf_get_condition_for_ordered_fix (vpid_to_fix, vpid_fixed, hfid)
-      == PGBUF_UNCONDITIONAL_LATCH)
-    {
-      /* Fix page using an unconditional latch directly */
-      *page_to_fix =
-	pgbuf_fix (thread_p, vpid_to_fix, fetch_mode, latch_mode,
-		   PGBUF_UNCONDITIONAL_LATCH);
-    }
-  else
-    {
-      /* Try conditional latch on page to fix */
-      *page_to_fix =
-	pgbuf_fix (thread_p, vpid_to_fix, fetch_mode, latch_mode,
-		   PGBUF_CONDITIONAL_LATCH);
-      if (*page_to_fix == NULL)
-	{
-	  /* If conditional latch failed, unfix other page and fix new page
-	   * using an unconditional latch.
-	   */
-	  pgbuf_unfix_and_init (thread_p, *page_fixed);
-	  *page_to_fix =
-	    pgbuf_fix (thread_p, vpid_to_fix, fetch_mode, latch_mode,
-		       PGBUF_UNCONDITIONAL_LATCH);
-	}
-    }
-  if (*page_to_fix == NULL)
-    {
-      /* Fix failed */
-      return ER_FAILED;
-    }
-  /* Fix successful */
-  return NO_ERROR;
-}
-
-/*
  * pgbuf_has_perm_pages_fixed () - 
  *
  * return	       : The number of pages fixed by the thread.
@@ -11946,6 +11877,64 @@ pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 
   snprintf (watcher->watched_at, sizeof (watcher->watched_at) - 1,
 	    "%s:%d", p, caller_line);
+#endif
+}
+
+/*
+ * pgbuf_attach_watcher () - Add a watcher to a fixed page.
+ *
+ * return	   : Void.
+ * thread_p (in)   : Thread entry.
+ * pgptr (in)	   : Fixed page pointer.
+ * latch_mode (in) : Latch mode.
+ * hfid (in)	   : Heap file identifier.
+ * watcher (out)   : Page water.
+ */
+#if !defined (NDEBUG)
+void
+pgbuf_attach_watcher_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+			    PGBUF_LATCH_MODE latch_mode, HFID * hfid,
+			    PGBUF_WATCHER * watcher,
+			    const char *caller_file, const int caller_line)
+#else /* NDEBUG */
+void
+pgbuf_attach_watcher (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+		      PGBUF_LATCH_MODE latch_mode, HFID * hfid,
+		      PGBUF_WATCHER * watcher)
+#endif				/* NDEBUG */
+{
+  PGBUF_HOLDER *holder = NULL;
+  VPID header_vpid = VPID_INITIALIZER;
+  PGBUF_ORDERED_RANK rank;
+
+  assert (pgptr != NULL);
+  assert (watcher != NULL);
+  assert (hfid != NULL && !HFID_IS_NULL (hfid));
+
+  header_vpid.volid = hfid->vfid.volid;
+  header_vpid.pageid = hfid->hpgid;
+
+  /* Set current rank based on page being heap header or not. */
+  if (VPID_EQ (&header_vpid, pgbuf_get_vpid_ptr (pgptr)))
+    {
+      rank = PGBUF_ORDERED_HEAP_HDR;
+    }
+  else
+    {
+      rank = PGBUF_ORDERED_HEAP_NORMAL;
+    }
+
+  PGBUF_INIT_WATCHER (watcher, rank, hfid);
+  watcher->curr_rank = rank;
+
+  holder = pgbuf_get_holder (thread_p, pgptr);
+  assert (holder != NULL);
+
+#if !defined (NDEBUG)
+  pgbuf_add_watch_instance_internal (holder, pgptr, watcher, latch_mode,
+				     caller_file, caller_line);
+#else
+  pgbuf_add_watch_instance_internal (holder, pgptr, watcher, latch_mode);
 #endif
 }
 

@@ -4879,13 +4879,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
   logtb_reset_bit_area_start_mvccid ();
 
-  /* Add to vacuum data recovered block buffer. */
-  vacuum_rv_finish_vacuum_data_recovery (thread_p, is_chkpt_block_incomplete,
-					 chkpt_blockid, start_redolsa,
-					 &chkpt_block_first_lsa,
-					 &chkpt_block_start_lsa,
-					 chkpt_block_oldest_mvccid,
-					 chkpt_block_newest_mvccid);
   if (!LSA_ISNULL (&last_mvcc_op_lsa))
     {
       /* Update log_Gl.hdr log block information. */
@@ -4893,6 +4886,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
       log_Gl.hdr.last_block_oldest_mvccid = last_block_oldest_mvccid;
       log_Gl.hdr.last_block_newest_mvccid = last_block_newest_mvccid;
     }
+  /* Add to vacuum data recovered block buffer. */
+  vacuum_rv_finish_vacuum_data_recovery (thread_p, is_chkpt_block_incomplete,
+					 chkpt_blockid, start_redolsa,
+					 &chkpt_block_first_lsa,
+					 &chkpt_block_start_lsa,
+					 chkpt_block_oldest_mvccid,
+					 chkpt_block_newest_mvccid);
 
   /* Now finish all postpone operations */
   log_recovery_finish_all_postpone (thread_p);

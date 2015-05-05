@@ -1782,18 +1782,23 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   log_state_string (tdes->state),
 	   log_isolation_string (tdes->isolation),
 	   tdes->wait_msecs, tdes->isloose_end,
-	   (long long int) tdes->head_lsa.pageid, tdes->head_lsa.offset,
-	   (long long int) tdes->tail_lsa.pageid, tdes->tail_lsa.offset,
-	   (long long int) tdes->posp_nxlsa.pageid, tdes->posp_nxlsa.offset,
-	   (long long int) tdes->savept_lsa.pageid, tdes->savept_lsa.offset,
-	   (long long int) tdes->undo_nxlsa.pageid, tdes->undo_nxlsa.offset,
+	   (long long int) tdes->head_lsa.pageid,
+	   (int) tdes->head_lsa.offset,
+	   (long long int) tdes->tail_lsa.pageid,
+	   (int) tdes->tail_lsa.offset,
+	   (long long int) tdes->posp_nxlsa.pageid,
+	   (int) tdes->posp_nxlsa.offset,
+	   (long long int) tdes->savept_lsa.pageid,
+	   (int) tdes->savept_lsa.offset,
+	   (long long int) tdes->undo_nxlsa.pageid,
+	   (int) tdes->undo_nxlsa.offset,
 	   tdes->client.client_type, tdes->client.db_user,
 	   tdes->client.program_name, tdes->client.login_name,
 	   tdes->client.host_name, tdes->client.process_id,
 	   (long long int) tdes->client_undo_lsa.pageid,
-	   tdes->client_undo_lsa.offset,
+	   (int) tdes->client_undo_lsa.offset,
 	   (long long int) tdes->client_posp_lsa.pageid,
-	   tdes->client_posp_lsa.offset);
+	   (int) tdes->client_posp_lsa.offset);
 
   if (tdes->topops.max != 0 && tdes->topops.last >= 0)
     {

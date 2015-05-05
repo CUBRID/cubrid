@@ -153,3 +153,111 @@ define vacuum_print_drop_file
     vacuum_drop_file_get_next_page $page $vpid
   end
 end
+
+# vacuum_copy_log_page
+# $arg0 (in)  : LOG_PAGEID
+# $arg1 (in)  : BLOCK_LOG_BUFFER *
+# $arg2 (in)  : VACUUM_WORKER *
+# $arg3 (out) : LOG_PAGE *
+#
+# Equivalent for vacuum_copy_log_page.
+# NOTE: NULL is returned if page is not prefetched.
+# NOTE: Function works only if prefetch is done by workers.
+#
+define vacuum_copy_log_page
+  set $pageid = $arg0
+  set $buffer = $arg1
+  set $worker = $arg2
+  set $arg3 = 0
+  if $pageid >= $buffer->start_page && $pageid <= $buffer->last_page
+    set $arg3 = (LOG_PAGE *) ($worker->prefetch_log_buffer + (($pageid - $buffer->start_page) * 16384))
+  end
+end
+
+# vacuum_process_log_record
+# $arg0 (in)  : LOG_PAGEID
+# $arg1 (in)  : LOG_OFFSET
+# $arg2 (in)  : BLOCK_LOG_BUFFER *
+# $arg3 (in)  : VACUUM_WORKER *
+# $arg4 (out) : LOG_RECORD_HEADER *
+# $arg5 (out) : LOG_DATA *
+# $arg6 (out) : MVCCID
+# $arg7 (out) : LOG_VACUUM_INFO *
+#
+# Process log record for vacuum
+#
+# Prerequisite:
+# vacuum_copy_log_page
+#
+define vacuum_process_log_record
+  set $pageid = $arg0
+  set $offset = $arg1
+  set $buffer = $arg2
+  set $worker = $arg3
+  vacuum_copy_log_page $pageid $buffer $worker $lp
+  set $arg4 = (LOG_RECORD_HEADER *) ($lp->area + $offset)
+  set $offset = $offset + sizeof (LOG_RECORD_HEADER)
+  if $offset >= 16368
+    set $pageid = $pageid + 1
+    vacuum_copy_log_page $pageid $buffer $worker $lp
+    set $offset = $offset - 16368
+  end
+  if $arg4->type == LOG_MVCC_UNDO_DATA
+    if $offset + sizeof (struct log_mvcc_undo) >= 16368
+      set $pageid = $pageid + 1
+      vacuum_copy_log_page $pageid $buffer $worker $lp
+      set $offset = 0
+    end
+    set $arg5 = &(((struct log_mvcc_undo *) ($lp->area + $offset))->undo.data)
+    set $arg6 = ((struct log_mvcc_undo *) ($lp->area + $offset))->mvccid
+    set $arg7 = &(((struct log_mvcc_undo *) ($lp->area + $offset))->vacuum_info)
+  else
+    if $offset + sizeof (struct log_mvcc_undoredo) >= 16368
+      set $pageid = $pageid + 1
+      vacuum_copy_log_page $pageid $buffer $worker $lp
+      set $offset = 0
+    end
+    set $arg5 = &(((struct log_mvcc_undoredo *) ($lp->area + $offset))->undoredo.data)
+    set $arg6 = ((struct log_mvcc_undoredo *) ($lp->area + $offset))->mvccid
+    set $arg7 = &(((struct log_mvcc_undoredo *) ($lp->area + $offset))->vacuum_info)
+  end
+end
+
+# vacuum_print_log_records_on_page
+# $arg0 (in) : Start LOG_PAGEID
+# $arg1 (in) : Start LOG_OFFSET
+# $arg2 (in) : BLOCK_LOG_BUFFER *
+# $arg3 (in) : VACUUM_WORKER *
+# $arg4 (in) : PAGEID
+# $arg5 (in) : VOLID
+#
+# Print all records in current block belonging to given page
+#
+# Prerequisite:
+# vacuum_copy_log_page
+# vacuum_process_log_record
+#
+define vacuum_print_log_data_on_page
+  set $log_pageid = $arg0
+  set $log_offset = $arg1
+  set $buffer = $arg2
+  set $worker = $arg3
+  set $page_id = $arg4
+  set $vol_id = $arg5
+  set $start_blockid = $log_pageid / vacuum_Data->log_block_npages
+  set $blockid = $start_blockid
+  while $blockid == $start_blockid
+    vacuum_process_log_record $log_pageid $log_offset $buffer $worker $header $log_data $mvccid $vacinfo
+    if $log_data->pageid == $page_id && $log_data->volid == $vol_id
+      p *$log_data
+      p $mvccid
+    end
+    set $log_pageid = $vacinfo->prev_mvcc_op_log_lsa.pageid
+    set $log_offset = $vacinfo->prev_mvcc_op_log_lsa.offset
+    if $log_pageid == -1
+      set $blockid = -1
+    else
+      set $blockid = $log_pageid / vacuum_Data->log_block_npages
+    end
+  end
+end

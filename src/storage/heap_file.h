@@ -381,6 +381,38 @@ typedef enum
   SNAPSHOT_TYPE_DIRTY		/* use dirty snapshot */
 } SNAPSHOT_TYPE;
 
+/* HEAP_PAGE_VACUUM_STATUS -
+ * Heap page attribute used to predict when page is no longer going to need
+ * another vacuum actions. This allows page deallocations without risking
+ * future access from vacuum workers.
+ *
+ * There are three possible states.
+ *
+ * Initial state is HEAP_PAGE_VACUUM_NONE (empty page). This state can be
+ * reached again after vacuuming in state VACUUM_PAGE_VACUUM_ONCE.
+ *
+ * After one MVCC op, state becomes HEAP_PAGE_VACUUM_ONCE.
+ *
+ * After a second MVCC op without vacuum, state becomes
+ * HEAP_PAGE_VACUUM_UNKNOWN, since future access from vacuum workers becomes
+ * unpredictable. Trying to keep track of required number vacuum accesses is
+ * not trivial and requires too much effort to handle cases that are not
+ * necessarily common.
+ *
+ * HEAP_PAGE_VACUUM_UNKNOWN can be changed only one way: When heap page max
+ * MVCCID is older than vacuum data oldest MVCCID, it means all vacuum
+ * required for that page was executed. Next MVCC op will convert the state
+ * to HEAP_PAGE_VACUUM_ONCE.
+ */
+typedef enum
+{
+  HEAP_PAGE_VACUUM_NONE,	/* Heap page is completely vacuumed. */
+  HEAP_PAGE_VACUUM_ONCE,	/* Heap page requires one vacuum action. */
+  HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of
+				 * vacuum actions.
+				 */
+} HEAP_PAGE_VACUUM_STATUS;
+
 /* Forward definition. */
 struct mvcc_reev_data;
 
@@ -731,7 +763,14 @@ extern int heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int heap_rv_mvcc_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p,
+					      LOG_RCV * rcv);
+extern int heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p,
+					  LOG_RCV * rcv);
+extern int heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p,
+					      LOG_RCV * rcv);
+extern int heap_rv_mvcc_redo_delete_newhome (THREAD_ENTRY * thread_p,
+					     LOG_RCV * rcv);
 extern int heap_rv_redo_delete_newhome (THREAD_ENTRY * thread_p,
 					LOG_RCV * rcv);
 extern int heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p,
@@ -815,14 +854,8 @@ extern int heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page,
 						 mvcc_header);
 extern OID *heap_get_serial_class_oid (THREAD_ENTRY * thread_p);
 extern bool heap_is_mvcc_disabled_for_class (const OID * class_oid);
-extern int heap_rv_mvcc_redo_delete_relocated (THREAD_ENTRY * thread_p,
-					       LOG_RCV * rcv);
-extern int heap_rv_mvcc_undo_delete_relocated (THREAD_ENTRY * thread_p,
-					       LOG_RCV * rcv);
-extern int heap_rv_mvcc_redo_delete_relocation (THREAD_ENTRY * thread_p,
-						LOG_RCV * rcv);
-extern int heap_rv_mvcc_undo_delete_relocation (THREAD_ENTRY * thread_p,
-						LOG_RCV * rcv);
+extern int heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p,
+						     LOG_RCV * rcv);
 
 extern bool heap_is_big_length (int length);
 extern int heap_get_class_oid_from_page (THREAD_ENTRY * thread_p,
@@ -889,5 +922,20 @@ extern int heap_initialize_hfid_table (void);
 extern void heap_finalize_hfid_table (void);
 extern int heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p,
 					OID * class_oid);
+
+extern void heap_page_set_vacuum_status_none (THREAD_ENTRY * thread_p,
+					      PAGE_PTR heap_page);
+extern MVCCID heap_page_get_max_mvccid (THREAD_ENTRY * thread_p,
+					PAGE_PTR heap_page);
+extern HEAP_PAGE_VACUUM_STATUS heap_page_get_vacuum_status (THREAD_ENTRY *
+							    thread_p,
+							    PAGE_PTR
+							    heap_page);
+extern bool heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p,
+					PAGE_PTR * page_ptr, HFID * hfid);
+
+extern int heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
+					       LOG_RCV * rcv);
 
 #endif /* _HEAP_FILE_H_ */

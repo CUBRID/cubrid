@@ -305,7 +305,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
 	   */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE
-	      && vacuum_is_record_lost (rec_header->mvcc_ins_id))
+	      && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
 				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
@@ -364,7 +364,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
 	   * visible to current transaction.
 	   */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  if (vacuum_is_record_lost (rec_header->delid_chn.mvcc_del_id))
+	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
 				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
@@ -526,7 +526,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	   */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE
-	      && vacuum_is_record_lost (rec_header->mvcc_ins_id))
+	      && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
 				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
@@ -573,7 +573,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	   * be updated by current transaction.
 	   */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  if (vacuum_is_record_lost (rec_header->delid_chn.mvcc_del_id))
+	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE,
 				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
@@ -656,7 +656,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
 	  /* Record is inserted by committed transaction. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE
-	      && vacuum_is_record_lost (rec_header->mvcc_ins_id))
+	      && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
 				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
@@ -702,7 +702,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
 	{
 	  /* Record was already deleted and the deleter has committed. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  if (vacuum_is_record_lost (rec_header->delid_chn.mvcc_del_id))
+	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY,
 				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,

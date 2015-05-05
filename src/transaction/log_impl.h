@@ -1546,12 +1546,11 @@ enum log_repl_flush
 
 /* Is log record for a heap MVCC operation */
 #define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
-  (((rcvindex) == RVHF_MVCC_DELETE) \
-   || ((rcvindex) == RVHF_MVCC_DELETE_RELOCATION) \
-   || ((rcvindex) == RVHF_MVCC_DELETE_RELOCATED) \
+  (((rcvindex) == RVHF_MVCC_DELETE_REC_HOME) \
    || ((rcvindex) == RVHF_MVCC_INSERT) \
-   || ((rcvindex) == RVHF_MVCC_MODIFY_RELOCATION_LINK) \
-   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM))
+   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
+   || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
+   || ((rcvindex) == RVHF_MVCC_DELETE_NO_MODIFY_HOME))
 
 /* Is log record for a b-tree MVCC operation */
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
@@ -1569,7 +1568,9 @@ enum log_repl_flush
 #define LOG_IS_VACUUM_DATA_RECOVERY(rcvindex) \
   ((rcvindex) == RVVAC_LOG_BLOCK_APPEND	\
    || (rcvindex) == RVVAC_LOG_BLOCK_REMOVE \
-   || (rcvindex) == RVVAC_LOG_BLOCK_SAVE)
+   || (rcvindex) == RVVAC_LOG_BLOCK_SAVE \
+   || (rcvindex) == RVVAC_UPDATE_OLDEST_MVCCID \
+   || (rcvindex) == RVVAC_START_OR_END_JOB)
 
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
   (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || \
