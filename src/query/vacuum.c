@@ -1555,9 +1555,22 @@ retry_prepare:
 		  assert_release (false);
 		  return ER_FAILED;
 		}
+	      helper->home_page =
+		pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE,
+			   PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	      if (helper->home_page == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
+				 "VACUUM ERROR: Failed to fix page (%d, %d).",
+				 helper->home_vpid.volid,
+				 helper->home_vpid.pageid);
+		  return error_code;
+		}
 	    }
 	}
       assert (!VFID_ISNULL (&helper->overflow_vfid));
+      assert (helper->home_page != NULL);
 
       /* Get forward OID. */
       forward_recdes.data = (char *) forward_links;
