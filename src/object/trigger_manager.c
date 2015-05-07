@@ -4748,8 +4748,11 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 	      prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	      && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	    {
-	      parser_free_parser ((PARSER_CONTEXT *) act->parser);
-	      act->parser = NULL;
+	      if (act->parser != NULL)
+		{
+		  parser_free_parser ((PARSER_CONTEXT *) act->parser);
+		  act->parser = NULL;
+		}
 	      act->exec_cnt = 0;
 	    }
 	  if (act->parser == NULL)
@@ -4952,8 +4955,11 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 	      prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	      && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	    {
-	      parser_free_parser ((PARSER_CONTEXT *) act->parser);
-	      act->parser = NULL;
+	      if (act->parser != NULL)
+		{
+		  parser_free_parser ((PARSER_CONTEXT *) act->parser);
+		  act->parser = NULL;
+		}
 	      act->exec_cnt = 0;
 	    }
 	  if (act->parser == NULL)
