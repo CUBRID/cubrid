@@ -17960,6 +17960,65 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk,
 	  break;
 
 	case REC_BIGONE:
+	  if (chk->verify_not_vacuumed)
+	    {
+	      MVCC_REC_HEADER rec_header;
+	      PAGE_PTR overflow_page;
+	      DISK_ISVALID tmp_valid;
+	      VPID overflow_vpid;
+	      OID *overflow_oid;
+
+	      /* get overflow page id */
+	      overflow_oid = (OID *) recdes.data;
+	      overflow_vpid.volid = overflow_oid->volid;
+	      overflow_vpid.pageid = overflow_oid->pageid;
+	      if (!VPID_ISNULL (&overflow_vpid))
+		{
+		  chk->not_vacuumed_res = DISK_ERROR;
+		  return DISK_ERROR;
+		}
+
+	      /* fix page and get record */
+	      overflow_page =
+		pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE,
+			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (overflow_page == NULL)
+		{
+		  chk->not_vacuumed_res = DISK_ERROR;
+		  return DISK_ERROR;
+		}
+	      if (heap_get_mvcc_rec_header_from_overflow (overflow_page,
+							  &rec_header,
+							  &recdes) !=
+		  NO_ERROR)
+		{
+		  pgbuf_unfix_and_init (thread_p, overflow_page);
+		  chk->not_vacuumed_res = DISK_ERROR;
+		  return DISK_ERROR;
+		}
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
+
+	      /* check header */
+	      tmp_valid =
+		vacuum_check_not_vacuumed_rec_header (thread_p, &oid,
+						      &class_oid, &rec_header,
+						      -1);
+	      switch (tmp_valid)
+		{
+		case DISK_VALID:
+		  break;
+		case DISK_INVALID:
+		  chk->not_vacuumed_res = DISK_INVALID;
+		  break;
+		case DISK_ERROR:
+		default:
+		  chk->not_vacuumed_res = DISK_ERROR;
+		  return DISK_ERROR;
+		  break;
+		}
+	    }
+	  break;
+
 	case REC_HOME:
 	  if (chk->verify_not_vacuumed)
 	    {
