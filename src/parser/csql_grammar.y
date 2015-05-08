@@ -19027,7 +19027,7 @@ primitive_type
 				  {
 				    charset = list_cs;
 				  }
-				coll_id = LANG_GET_BINARY_COLLATION (list_cs);
+				coll_id = LANG_GET_BINARY_COLLATION (charset);
 				dt->info.data_type.has_cs_spec = false;
 				dt->info.data_type.has_coll_spec = false;
 			      }
