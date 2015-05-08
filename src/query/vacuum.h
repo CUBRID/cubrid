@@ -147,8 +147,9 @@ struct vacuum_worker
 #endif				/* SERVER_MODE */
 };
 
-#if defined (SERVER_MODE)
 #define VACUUM_MAX_WORKER_COUNT	  50
+
+#if defined (SERVER_MODE)
 
 /* Get vacuum worker from thread entry */
 #define VACUUM_GET_VACUUM_WORKER(thread_p) \
@@ -202,7 +203,6 @@ struct vacuum_worker
       VACUUM_SET_VACUUM_WORKER (thread_p, NULL); \
     } while (0)
 #else /* SA_MODE */
-#define VACUUM_MAX_WORKER_COUNT	  1
 
 /* Get SA_MODE vacuum worker */
 #define VACUUM_GET_VACUUM_WORKER(thread_p) \
