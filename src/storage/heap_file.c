@@ -9428,7 +9428,7 @@ start_current_version:
 
 	  /* Check object is protected. */
 	  assert (MVCC_IS_REC_INSERTED_BY_ME (thread_p, &mvcc_header)
-		  || lock_get_object_lock (&current_oid, class_oid,
+		  || lock_get_object_lock (&current_oid, &current_class_oid,
 					   LOG_FIND_THREAD_TRAN_INDEX
 					   (thread_p)) >= lock);
 
@@ -9630,7 +9630,7 @@ end:
 	      && mvcc_reev_data->filter_result != V_TRUE)))
     {
       lock_unlock_object_donot_move_to_non2pl (thread_p, &current_oid,
-					       class_oid, lock);
+					       &current_class_oid, lock);
     }
 
   if (current_scan_cache && current_scan_cache != scan_cache)
