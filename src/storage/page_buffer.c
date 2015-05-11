@@ -944,6 +944,7 @@ static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
 static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
 
 static int pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p,
+					const VPID * req_vpid,
 					PAGE_PTR * pgptr, VPID * groupid,
 					bool do_unfix);
 #if !defined(NDEBUG)
@@ -10930,7 +10931,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 		  && pgbuf_get_page_ptype (thread_p, ret_pgptr) == PAGE_HEAP)
 		{
 		  er_status =
-		    pgbuf_get_groupid_and_unfix (thread_p, &ret_pgptr,
+		    pgbuf_get_groupid_and_unfix (thread_p, req_vpid,
+						 &ret_pgptr,
 						 &req_page_groupid, false);
 		  if (er_status != NO_ERROR)
 		    {
@@ -11366,7 +11368,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	{
 	  if (pgbuf_get_page_ptype (thread_p, pgptr) == PAGE_HEAP)
 	    {
-	      er_status = pgbuf_get_groupid_and_unfix (thread_p, &pgptr,
+	      er_status = pgbuf_get_groupid_and_unfix (thread_p, req_vpid,
+						       &pgptr,
 						       &req_page_groupid,
 						       true);
 	      if (er_status != NO_ERROR)
@@ -11397,39 +11400,41 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 #endif
 
   /* add requested page, watch instance is added after page is fixed */
-  if (req_page_has_group)
+  if (req_page_has_group == true || er_status_get_hfid == NO_ERROR)
     {
-      VPID_COPY (&(ordered_holders_info[saved_pages_cnt].group_id),
-		 &req_watcher->group_id);
-    }
-  else
-    {
-      assert (!VPID_ISNULL (&req_page_groupid));
-      VPID_COPY (&req_watcher->group_id, &req_page_groupid);
-      VPID_COPY (&(ordered_holders_info[saved_pages_cnt].group_id),
-		 &req_page_groupid);
-    }
-  VPID_COPY (&(ordered_holders_info[saved_pages_cnt].vpid), req_vpid);
-  if (req_page_has_group)
-    {
-      ordered_holders_info[saved_pages_cnt].rank = req_watcher->curr_rank;
-    }
-  else
-    {
-      if (VPID_EQ
-	  (&(ordered_holders_info[saved_pages_cnt].group_id), req_vpid))
+      if (req_page_has_group)
 	{
-	  ordered_holders_info[saved_pages_cnt].rank = PGBUF_ORDERED_HEAP_HDR;
+	  VPID_COPY (&(ordered_holders_info[saved_pages_cnt].group_id),
+		     &req_watcher->group_id);
 	}
       else
 	{
-	  /* leave rank set by user */
+	  assert (!VPID_ISNULL (&req_page_groupid));
+	  VPID_COPY (&req_watcher->group_id, &req_page_groupid);
+	  VPID_COPY (&(ordered_holders_info[saved_pages_cnt].group_id),
+		     &req_page_groupid);
+	}
+      VPID_COPY (&(ordered_holders_info[saved_pages_cnt].vpid), req_vpid);
+      if (req_page_has_group)
+	{
 	  ordered_holders_info[saved_pages_cnt].rank = req_watcher->curr_rank;
 	}
-    }
+      else
+	{
+	  if (VPID_EQ
+	      (&(ordered_holders_info[saved_pages_cnt].group_id), req_vpid))
+	    {
+	      ordered_holders_info[saved_pages_cnt].rank =
+		PGBUF_ORDERED_HEAP_HDR;
+	    }
+	  else
+	    {
+	      /* leave rank set by user */
+	      ordered_holders_info[saved_pages_cnt].rank =
+		req_watcher->curr_rank;
+	    }
+	}
 
-  if (req_page_has_group == true || er_status_get_hfid == NO_ERROR)
-    {
       saved_pages_cnt++;
     }
 
@@ -11678,6 +11683,7 @@ exit:
  * pgbuf_get_groupid_and_unfix () - retrieves group identifier of page and
  *				    performs unlatch if requested.
  *   return: error code
+ *   req_vpid(in): id of page for which the group is needed (for debug)
  *   pgptr(in): page (already latched); only heap page allowed
  *   groupid(out): group identifer (VPID of HFID)
  *   do_unfix(in): if true, it unfixes the page.
@@ -11685,8 +11691,8 @@ exit:
  * Note : helper function of ordered fix.
  */
 static int
-pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr,
-			     VPID * groupid, bool do_unfix)
+pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid,
+			     PAGE_PTR * pgptr, VPID * groupid, bool do_unfix)
 {
   OID cls_oid;
   HFID hfid;
@@ -11727,8 +11733,19 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr,
 
   if (er_status == NO_ERROR)
     {
-      groupid->volid = hfid.vfid.volid;
-      groupid->pageid = hfid.hpgid;
+      if (HFID_IS_NULL (&hfid))
+	{
+	  /* the requested page does not belong to a heap */
+	  er_status = ER_PB_ORDERED_NO_HEAP;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 2,
+		  req_vpid->volid, req_vpid->pageid);
+	}
+      else
+	{
+	  groupid->volid = hfid.vfid.volid;
+	  groupid->pageid = hfid.hpgid;
+	  assert (!VPID_ISNULL (groupid));
+	}
     }
 
   return er_status;

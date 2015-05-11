@@ -1525,7 +1525,9 @@
 
 #define ER_CHKSUM_GENERIC_ERR         		    -1186
 
-#define ER_LAST_ERROR                               -1187
+#define ER_PB_ORDERED_NO_HEAP         		    -1187
+
+#define ER_LAST_ERROR                               -1188
 
 #define DB_TRUE 1
 #define DB_FALSE 0

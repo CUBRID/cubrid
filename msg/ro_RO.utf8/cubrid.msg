@@ -1253,7 +1253,8 @@ $ LOADDB
 1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
 1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
 1186 checksumdb: %1$s (error code: %2$d).
-1187 Ultima eroare
+1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
+1188 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
