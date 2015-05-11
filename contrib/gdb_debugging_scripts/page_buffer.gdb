@@ -84,13 +84,14 @@ end
 
 
 # pgbuf_hash
-# $arg0 (in)  : VPID *
-# $arg1 (out) : hash value
+# $arg0 (in)  : PAGEID
+# $arg1 (in)  : VOLID
+# $arg2 (out) : hash value
 #
 # Get hash value for give VPID.
 #
 define pgbuf_hash
-  set $volid_lsb = $arg0->volid
+  set $volid_lsb = $arg1
   set $lsb_mask = 1
   set $reverse_mask = 1 << 19
   set $reverse_volid_lsb = 0
@@ -103,14 +104,15 @@ define pgbuf_hash
     set $lsb_mask = $lsb_mask << 1
     set $i=$i - 1
   end  
-  set $hash_val = $arg0->pageid ^ $reverse_volid_lsb
+  set $hash_val = $arg0 ^ $reverse_volid_lsb
   set $hash_val = $hash_val & ((1 << 20) - 1)
-  set $arg1 = $hash_val
+  set $arg2 = $hash_val
 end
 
 # pgbuf_find_page
-# $arg0 (in)  : VPID *
-# $arg1 (out) : PAGE_PTR
+# $arg0 (in)  : PAGEID
+# $arg1 (in)  : VOLID
+# $arg2 (out) : PAGE_PTR
 #
 # Find page in page buffer for give VPID.
 #
@@ -118,12 +120,12 @@ end
 # pgbuf_hash
 #
 define pgbuf_find_page
-  pgbuf_hash $arg0 $hash
+  pgbuf_hash $arg0 $arg1 $hash
   set $bcb = pgbuf_Pool.buf_hash_table[$hash].hash_next
-  set $arg1 = 0
+  set $arg2 = 0
   while $bcb != 0
-    if $bcb->vpid.volid == $arg0->volid && $bcb->vpid.pageid == $arg0->pageid
-      set $arg1 = $bcb->iopage_buffer->iopage.page
+    if $bcb->vpid.volid == $arg1 && $bcb->vpid.pageid == $arg0
+      set $arg2 = $bcb->iopage_buffer->iopage.page
       loop_break
     end
     set $bcb = $bcb->hash_next

@@ -1112,6 +1112,30 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
   assert (n_heap_objects > 0);
   assert (MVCCID_IS_NORMAL (threshold_mvccid));
 
+  /* Get page from first object. */
+  VPID_GET_FROM_OID (&helper.home_vpid, &heap_objects->oid);
+  if (was_interrupted)
+    {
+      DISK_ISVALID valid =
+	disk_isvalid_page (thread_p, helper.home_vpid.volid,
+			   helper.home_vpid.pageid);
+      if (valid == DISK_INVALID)
+	{
+	  /* Page was already deallocated in previous job run. */
+	  /* Safe guard: this was possible if there was only one object to
+	   *             be vacuumed.
+	   */
+	  assert (n_heap_objects == 1);
+	  return NO_ERROR;
+	}
+      else if (valid == DISK_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      /* Valid page. Proceed to vacuum. */
+    }
+
 #if !defined (NDEBUG)
   /* Check all objects belong to same page. */
   {
@@ -1137,7 +1161,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
   VFID_SET_NULL (&helper.overflow_vfid);
 
   /* Fix heap page. */
-  VPID_GET_FROM_OID (&helper.home_vpid, &heap_objects->oid);
   helper.home_page =
     pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 	       PGBUF_UNCONDITIONAL_LATCH);
