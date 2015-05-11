@@ -31,6 +31,7 @@
 #include "csql.h"
 #include "memory_alloc.h"
 #include "porting.h"
+#include "transaction_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -198,6 +199,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
   int *attr_lengths = NULL;
   DB_TYPE *attr_types = NULL;
   int max_attr_name_length = 0;
+  LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
   /* trivial case - no results */
   if (result == NULL
@@ -371,6 +373,15 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
   result_info.curr_stmt_type = stmt_type;
   result_info.curr_stmt_line_no = line_no;
 
+  /* 
+   * Write_results_to_stream may need to fetch instances if value type
+   * is object or set of objects. Set fetch type to current version since the
+   * snapshot has been already invalidated for current command and we don't want
+   * to acquire another one for writing command results (that will require
+   * snapshot invalidation also).
+   */
+  read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
+  db_set_read_fetch_instance_version (LC_FETCH_CURRENT_VERSION);
   if (write_results_to_stream (csql_arg, csql_Output_fp, &result_info) ==
       CSQL_FAILURE)
     {
@@ -379,6 +390,8 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
       else
 	nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
     }
+
+  db_set_read_fetch_instance_version (read_fetch_instance_version);
   /* free memories */
   if (attr_names != NULL)
     {
