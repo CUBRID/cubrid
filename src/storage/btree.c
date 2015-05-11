@@ -25636,6 +25636,18 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
       key_function = btree_key_find_and_lock_unique;
     }
 
+  if (logtb_find_current_isolation(thread_p) >= TRAN_REP_READ
+      || (find_unique_helper.lock_mode >= S_LOCK))
+    {
+      /* 
+       * Acquire snapshot in RR if not already acquired. This is needed since
+       * the transaction need to know the actual visible objects - before
+       * instance locking. In this way future commands of current transaction
+       * may correctly detect visible objects.
+       */
+      (void) logtb_get_mvcc_snapshot (thread_p);
+    }
+
   /* Find unique key and object. */
   error_code =
     btree_search_key_and_apply_functions (thread_p, btid, NULL, key,
