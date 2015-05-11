@@ -101,11 +101,6 @@
 #define FORCE_MERGE_WHEN_EMPTY \
   (MAX (DB_PAGESIZE * 0.66, MAX_MERGE_ALIGN_WASTE * 1.3))
 
-#define BTREE_IS_SAME_DB_TYPE(type1, type2)                     \
-  (((type1) == (type2))                                         \
-    || (((type1) == DB_TYPE_OBJECT || (type1) == DB_TYPE_OID)   \
-	  && ((type2) == DB_TYPE_OBJECT || (type2) == DB_TYPE_OID)))
-
 /*
  * Page header information related defines
  */
@@ -28025,8 +28020,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
   assert (*root_page != NULL);
   assert (root_header != NULL);
   assert (insert_helper->is_null
-	  || BTREE_IS_SAME_DB_TYPE (DB_VALUE_DOMAIN_TYPE (key),
-				    btid_int->key_type->type->id));
+	  || TP_ARE_COMPARABLE_KEY_TYPES (DB_VALUE_DOMAIN_TYPE (key),
+					  btid_int->key_type->type->id));
 
   insert_helper->is_root = true;
 
@@ -31848,10 +31843,6 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid,
 	}
     }
 
-  /* Safe guard: key type matches. */
-  assert (BTREE_IS_SAME_DB_TYPE (DB_VALUE_DOMAIN_TYPE (key),
-				 btid_int->key_type->type->id));
-
   if (key != NULL && DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
     {
       /* Set complete set domain. */
@@ -31861,6 +31852,11 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid,
   /* Is key NULL? */
   is_null =
     key == NULL || DB_IS_NULL (key) || btree_multicol_key_is_null (key);
+
+  /* Safe guard: key type matches. */
+  assert (is_null
+	  || TP_ARE_COMPARABLE_KEY_TYPES (DB_VALUE_DOMAIN_TYPE (key),
+					  btid_int->key_type->type->id));
 
   if (delete_helper->log_operations)
     {
