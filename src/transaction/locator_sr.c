@@ -1074,6 +1074,18 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
 	{
 	  entry->e_current.action = LC_CLASSNAME_DELETED_RENAME;
 	  renamed = LC_CLASSNAME_RESERVED_RENAME;
+
+	  /* We need to add a dummy log here.
+	   * If rename is the first clause of alter statement, there will be
+	   * no log entries between parent system savepoint and next flush.
+	   * Next flush will start a system operation which will mark the
+	   * delete action of old class name with same LSA as parent system
+	   * savepoint.
+	   * Therefore, the delete action is not removed when alter statement
+	   * is aborted and a new table with the same name may be created.
+	   */
+	  log_append_redo_data2 (thread_p, RVLOC_CLASS_RENAME, NULL, NULL, 0,
+				 0, NULL);
 	}
       else
 	{
@@ -14362,4 +14374,18 @@ xchksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
   lock_unlock_all (thread_p);
 
   return error;
+}
+
+/*
+ * locator_rv_redo_rename () - Dummy logical redo function that does nothing.
+ *
+ * return	 : NO_ERROR
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  /* Does nothing on recovery. */
+  return NO_ERROR;
 }

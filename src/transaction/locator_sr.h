@@ -161,4 +161,6 @@ extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT *
 extern int xlocator_cleanup_partition_links (THREAD_ENTRY * thread_p,
 					     OID * class_oid, int no_oids,
 					     OID * oid_list);
+
+extern int locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #endif /* _LOCATOR_SR_H_ */

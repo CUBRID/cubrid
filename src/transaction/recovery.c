@@ -40,6 +40,7 @@
 #include "large_object.h"
 #include "overflow_file.h"
 #include "boot_sr.h"
+#include "locator_sr.h"
 
 /*
  *
@@ -892,6 +893,13 @@ struct rvfun RV_fun[] = {
    "RVHF_PARTITION_LINK_FLAG",
    heap_rv_undoredo_partition_link_flag,
    heap_rv_undoredo_partition_link_flag,
+   NULL,
+   NULL},
+
+  {RVLOC_CLASS_RENAME,
+   "RVLOC_CLASS_RENAME",
+   NULL,
+   locator_rv_redo_rename,
    NULL,
    NULL}
 };
