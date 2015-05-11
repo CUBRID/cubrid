@@ -1888,6 +1888,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper != NULL);
   assert (helper->can_vacuum == VACUUM_RECORD_REMOVE);
   assert (helper->home_page != NULL);
+  assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
 
   switch (helper->record_type)
     {

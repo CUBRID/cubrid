@@ -395,18 +395,29 @@ MVCC_SATISFIES_VACUUM_RESULT
 mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 		       MVCCID oldest_mvccid)
 {
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header)
+      || MVCC_IS_REC_DELETED_SINCE_MVCCID (rec_header, oldest_mvccid))
     {
-      /* The record was not deleted */
-      if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID)
+      /* The record was not deleted or was recently deleted and cannot be
+       * vacuumed completely.
+       */
+      if (!MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (rec_header)
 	  || MVCC_IS_REC_INSERTED_SINCE_MVCCID (rec_header, oldest_mvccid))
 	{
-	  /* 1: Record is all visible, but insert MVCCID was already removed
+	  /* 1: Record is all visible, and insert MVCCID was already
+	   *    removed/replaced.
 	   * 2: Record was recently inserted and is not yet visible to all
 	   *    active transactions.
+	   * Cannot vacuum insert MVCCID.
 	   */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
+	  if (MVCC_IS_REC_DELETED_SINCE_MVCCID (rec_header, oldest_mvccid))
+	    {
+	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
+				 PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+				 PERF_SNAPSHOT_INVISIBLE);
+	    }
+	  else if (!MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (rec_header))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
 				 PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
@@ -436,31 +447,15 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
     }
   else
     {
-      /* The record was deleted */
-      if (MVCC_IS_REC_DELETED_SINCE_MVCCID (rec_header, oldest_mvccid))
-	{
-	  /* Record was recently deleted and may still be visible to some
-	   * active transactions.
-	   */
+      /* The deleter transaction has committed and the record is not
+       * visible to any running transactions.
+       */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
-			     PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
-			     PERF_SNAPSHOT_INVISIBLE);
+      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
+			 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+			 PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return VACUUM_RECORD_CANNOT_VACUUM;
-	}
-      else
-	{
-	  /* The deleter transaction has committed and the record is not
-	   * visible to any running transactions.
-	   */
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
-			     PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
-			     PERF_SNAPSHOT_VISIBLE);
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return VACUUM_RECORD_REMOVE;
-	}
+      return VACUUM_RECORD_REMOVE;
     }
 }
 
