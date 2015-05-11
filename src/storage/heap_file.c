@@ -1059,6 +1059,13 @@ static int heap_mvcc_get_partition_link_scancache (THREAD_ENTRY * thread_p,
 						   OID * partition_oid,
 						   HEAP_SCANCACHE *
 						   scancache);
+static int heap_mvcc_lock_scan_of_partition_link (THREAD_ENTRY * thread_p,
+						  OID * partition_oid_p,
+						  PGBUF_WATCHER *
+						  home_page_watcher_p,
+						  PGBUF_WATCHER *
+						  fwd_page_watcher_p,
+						  bool * unfixed_watchers);
 static SCAN_CODE heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 						   HFID * hfid,
 						   const OID * oid,
@@ -7376,7 +7383,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
 	   * during the scan of the heap. This can happen in transaction isolation
 	   * levels that release the locks of the class when the class is read.
 	   */
-	  if (lock_scan (thread_p, class_oid, is_indexscan,
+	  if (lock_scan (thread_p, class_oid, is_indexscan, LK_UNCOND_LOCK,
 			 &class_lock, &scan_cache->scanid_bit) != LK_GRANTED)
 	    {
 	      goto exit_on_error;
@@ -9029,21 +9036,34 @@ start_current_version:
 	  assert_release (false);
 	  goto error;
 	}
-      /* Advance to next version. */
-      /* heap_prepare_get_record should have output next_version to
-       * forward_oid.
-       */
-      assert (!OID_ISNULL (&forward_oid));
-      COPY_OID (&current_oid, &forward_oid);
 
       /* if a partition link is present */
       if (OID_ISNULL (&partition_class_oid) == false)
 	{
+	  bool unfixed_watchers = false;
+
+	  /* lock scan on new scan cache */
+	  if (heap_mvcc_lock_scan_of_partition_link
+	      (thread_p, &partition_class_oid, &home_page_watcher,
+	       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
+	    {
+	      goto error;
+	    }
+	  else if (unfixed_watchers)
+	    {
+	      /* we acquired lock, but we need to refix pages and read
+	         partition link again */
+	      goto start_current_version;
+	    }
+
+	  /* end current scan cache */
 	  if (current_scan_cache && current_scan_cache != scan_cache)
 	    {
 	      heap_scancache_end (thread_p, current_scan_cache);
 	      current_scan_cache = NULL;
 	    }
+
+	  /* start a scancache on new partition */
 	  if (heap_mvcc_get_partition_link_scancache (thread_p,
 						      &partition_class_oid,
 						      &partition_scancache)
@@ -9054,6 +9074,14 @@ start_current_version:
 	  current_scan_cache = &partition_scancache;
 	  COPY_OID (&current_class_oid, &partition_class_oid);
 	}
+
+      /* Advance to next version. */
+      /* heap_prepare_get_record should have output next_version to
+       * forward_oid.
+       */
+      assert (!OID_ISNULL (&forward_oid));
+      COPY_OID (&current_oid, &forward_oid);
+
       /* Not the first version. */
       is_original_oid = false;
       goto start_current_version;
@@ -9107,22 +9135,39 @@ start_current_version:
 		}
 	      else
 		{
-		  /* We must go to next version. */
-		  COPY_OID (&current_oid,
-			    &MVCC_GET_NEXT_VERSION (&mvcc_header));
-
 		  /* if a partition link is present */
 		  if (MVCC_IS_HEADER_PARTITION_OID_VALID (&mvcc_header))
 		    {
 		      OID *partition_oid = NULL;
+		      bool unfixed_watchers = false;
 
+		      /* read partition OID */
 		      partition_oid = &MVCC_GET_PARTITION_OID (&mvcc_header);
+
+		      /* lock scan on new scan cache */
+		      if (heap_mvcc_lock_scan_of_partition_link
+			  (thread_p, partition_oid, &home_page_watcher,
+			   &fwd_page_watcher,
+			   &unfixed_watchers) != LK_GRANTED)
+			{
+			  goto error;
+			}
+		      else if (unfixed_watchers)
+			{
+			  /* we acquired lock, but we need to refix pages and
+			     read partition link again */
+			  goto start_current_version;
+			}
+
+		      /* end old scancache */
 		      if (current_scan_cache
 			  && current_scan_cache != scan_cache)
 			{
 			  heap_scancache_end (thread_p, current_scan_cache);
 			  current_scan_cache = NULL;
 			}
+
+		      /* start new scancache on new partition */
 		      if (heap_mvcc_get_partition_link_scancache (thread_p,
 								  partition_oid,
 								  &partition_scancache)
@@ -9133,6 +9178,10 @@ start_current_version:
 		      current_scan_cache = &partition_scancache;
 		      COPY_OID (&current_class_oid, partition_oid);
 		    }
+
+		  /* We must go to next version. */
+		  COPY_OID (&current_oid,
+			    &MVCC_GET_NEXT_VERSION (&mvcc_header));
 		  is_original_oid = false;
 		  goto start_current_version;
 		}
@@ -9254,18 +9303,37 @@ start_current_version:
 	    }
 	  else
 	    {
-	      /* Go to next version. */
-	      COPY_OID (&current_oid, &MVCC_GET_NEXT_VERSION (&mvcc_header));
 	      if (MVCC_IS_HEADER_PARTITION_OID_VALID (&mvcc_header))
 		{
 		  OID *partition_oid = NULL;
+		  bool unfixed_watchers = false;
 
+		  /* read new partition OID */
 		  partition_oid = &MVCC_GET_PARTITION_OID (&mvcc_header);
+
+		  /* lock scan on new scan cache */
+		  if (heap_mvcc_lock_scan_of_partition_link
+		      (thread_p, partition_oid, &home_page_watcher,
+		       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
+		    {
+		      goto error;
+		    }
+		  else if (unfixed_watchers)
+		    {
+		      /* we acquired lock, but we need to refix pages and read
+		         partition link again */
+		      found_visible = false;
+		      goto start_current_version;
+		    }
+
+		  /* end old scancache */
 		  if (current_scan_cache && current_scan_cache != scan_cache)
 		    {
 		      heap_scancache_end (thread_p, current_scan_cache);
 		      current_scan_cache = NULL;
 		    }
+
+		  /* start new scancache on new partition */
 		  if (heap_mvcc_get_partition_link_scancache (thread_p,
 							      partition_oid,
 							      &partition_scancache)
@@ -9276,6 +9344,9 @@ start_current_version:
 		  current_scan_cache = &partition_scancache;
 		  COPY_OID (&current_class_oid, partition_oid);
 		}
+
+	      /* Go to next version. */
+	      COPY_OID (&current_oid, &MVCC_GET_NEXT_VERSION (&mvcc_header));
 	      is_original_oid = false;
 	      goto start_current_version;
 	    }
@@ -9315,20 +9386,38 @@ start_current_version:
 	    }
 	  else
 	    {
-	      /* Go to next version. */
-	      COPY_OID (&current_oid, &MVCC_GET_NEXT_VERSION (&mvcc_header));
-
 	      /* if a partition link is present */
 	      if (MVCC_IS_HEADER_PARTITION_OID_VALID (&mvcc_header))
 		{
 		  OID *partition_oid = NULL;
+		  bool unfixed_watchers = false;
 
+		  /* read partition OID */
 		  partition_oid = &MVCC_GET_PARTITION_OID (&mvcc_header);
+
+		  /* lock scan on new scan cache */
+		  if (heap_mvcc_lock_scan_of_partition_link
+		      (thread_p, partition_oid, &home_page_watcher,
+		       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
+		    {
+		      goto error;
+		    }
+		  else if (unfixed_watchers)
+		    {
+		      /* we acquired lock, but we need to refix pages and read
+		         partition link again */
+		      found_visible = false;
+		      goto start_current_version;
+		    }
+
+		  /* close old scancache */
 		  if (current_scan_cache && current_scan_cache != scan_cache)
 		    {
 		      heap_scancache_end (thread_p, current_scan_cache);
 		      current_scan_cache = NULL;
 		    }
+
+		  /* start new scancache */
 		  if (heap_mvcc_get_partition_link_scancache (thread_p,
 							      partition_oid,
 							      &partition_scancache)
@@ -9336,6 +9425,10 @@ start_current_version:
 		    {
 		      goto error;
 		    }
+
+		  /* Go to next version. */
+		  COPY_OID (&current_oid,
+			    &MVCC_GET_NEXT_VERSION (&mvcc_header));
 		  current_scan_cache = &partition_scancache;
 		  COPY_OID (&current_class_oid, partition_oid);
 		}
@@ -9499,19 +9592,37 @@ start_current_version:
 	   */
 	  if (MVCC_IS_HEADER_NEXT_VERSION_VALID (&mvcc_header))
 	    {
-	      COPY_OID (&current_oid, &MVCC_GET_NEXT_VERSION (&mvcc_header));
-
 	      /* if a partition link is present */
 	      if (MVCC_IS_HEADER_PARTITION_OID_VALID (&mvcc_header))
 		{
 		  OID *partition_oid = NULL;
+		  bool unfixed_watchers = false;
 
+		  /* read new partition OID */
 		  partition_oid = &MVCC_GET_PARTITION_OID (&mvcc_header);
+
+		  /* lock scan on new scan cache */
+		  if (heap_mvcc_lock_scan_of_partition_link
+		      (thread_p, partition_oid, &home_page_watcher,
+		       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
+		    {
+		      goto error;
+		    }
+		  else if (unfixed_watchers)
+		    {
+		      /* we acquired lock, but we need to refix pages and read
+		         partition link again */
+		      goto start_current_version;
+		    }
+
+		  /* close old scan cache */
 		  if (current_scan_cache && current_scan_cache != scan_cache)
 		    {
 		      heap_scancache_end (thread_p, current_scan_cache);
 		      current_scan_cache = NULL;
 		    }
+
+		  /* open new scan cache */
 		  if (heap_mvcc_get_partition_link_scancache (thread_p,
 							      partition_oid,
 							      &partition_scancache)
@@ -9519,6 +9630,10 @@ start_current_version:
 		    {
 		      goto error;
 		    }
+
+		  /* advance to next version */
+		  COPY_OID (&current_oid,
+			    &MVCC_GET_NEXT_VERSION (&mvcc_header));
 		  current_scan_cache = &partition_scancache;
 		  COPY_OID (&current_class_oid, partition_oid);
 		}
@@ -24396,6 +24511,67 @@ heap_mvcc_get_partition_link_scancache (THREAD_ENTRY * thread_p,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * heap_mvcc_lock_scan_of_partition_link () - lock a scan for partition hopping
+ *   thread_p(in): thread entry
+ *   partition_oid_p(in): partition OID
+ *   home_page_watcher_p(in): home page
+ *   fwd_page_watcher_p(in): forward page
+ *   unfixed_watchers(out): true if home/fwd page were unfixed for uncond lock
+ *   returns: lock result
+ */
+static int
+heap_mvcc_lock_scan_of_partition_link (THREAD_ENTRY * thread_p,
+				       OID * partition_oid_p,
+				       PGBUF_WATCHER * home_page_watcher_p,
+				       PGBUF_WATCHER * fwd_page_watcher_p,
+				       bool * unfixed_watchers)
+{
+  LOCK curr_lock = NULL_LOCK;
+  int scanid_bit = 0;
+  int rc;
+
+  assert (partition_oid_p != NULL);
+  assert (!OID_ISNULL (partition_oid_p));
+  assert (home_page_watcher_p != NULL);
+  assert (fwd_page_watcher_p != NULL);
+
+  if (home_page_watcher_p->pgptr == NULL && fwd_page_watcher_p->pgptr == NULL)
+    {
+      /* pages not fixed, we can just go ahead and do an unconditional lock */
+      goto unconditional_lock;
+    }
+
+  /* try a conditional lock */
+  rc = lock_scan (thread_p, partition_oid_p, false, LK_COND_LOCK, &curr_lock,
+		  &scanid_bit);
+  if (rc != LK_NOTGRANTED_DUE_TIMEOUT)
+    {
+      /* could be granted, error, aborted ...  */
+      return rc;
+    }
+
+  /* conditional lock failed; unfix pages and try unconditional */
+  if (home_page_watcher_p->pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, home_page_watcher_p);
+    }
+  if (fwd_page_watcher_p->pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, fwd_page_watcher_p);
+    }
+  if (unfixed_watchers != NULL)
+    {
+      *unfixed_watchers = true;
+    }
+
+unconditional_lock:
+  /* unconditional lock */
+  rc = lock_scan (thread_p, partition_oid_p, false, LK_UNCOND_LOCK,
+		  &curr_lock, &scanid_bit);
+  return rc;
 }
 
 /*

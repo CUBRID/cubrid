@@ -7611,7 +7611,7 @@ end:
  */
 int
 lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
-	   LOCK * current_lock, int *scanid_bit)
+	   int cond_flag, LOCK * current_lock, int *scanid_bit)
 {
 #if !defined (SERVER_MODE)
   if (lk_Standalone_has_xlock == true)
@@ -7652,7 +7652,15 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  wait_msecs = logtb_find_wait_msecs (tran_index);
+  if (cond_flag == LK_COND_LOCK)
+    {
+      wait_msecs = LK_FORCE_ZERO_WAIT;
+    }
+  else
+    {
+      assert (cond_flag == LK_UNCOND_LOCK);
+      wait_msecs = logtb_find_wait_msecs (tran_index);
+    }
   isolation = logtb_find_isolation (tran_index);
 
   /* get the class lock mode to be acquired */

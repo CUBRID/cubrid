@@ -225,7 +225,7 @@ extern int lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 				 const OID * class_oid, const BTID * btid,
 				 LOCK lock, int cond_flag, int scanid_bit);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
-		      bool is_indexscan, LOCK * current_lock,
+		      bool is_indexscan, int cond_flag, LOCK * current_lock,
 		      int *scanid_bit);
 extern int lock_classes_lock_hint (THREAD_ENTRY * thread_p,
 				   LC_LOCKHINT * lockhint);
