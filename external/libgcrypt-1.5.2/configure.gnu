@@ -4,7 +4,7 @@ opts_libgcrypt="--prefix=$PWD/.. --disable-shared --enable-static --with-pic"
 
 srcdir=''
 
-build_len="32"
+build_len="64"
 
 while test $# -ge 1; do
   case "$1" in
@@ -21,9 +21,9 @@ while test $# -ge 1; do
       srcdir=`readlink -f $srcdiropt`
       shift
       ;;
-    --enable-64bit)
+    --disable-64bit)
       opts_libgcrypt="$opts_libgcrypt"
-	  build_len="64"
+	  build_len="32"
 	  shift
       ;; 	  
     *)

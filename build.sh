@@ -257,9 +257,9 @@ function build_configure ()
 
   # set up target
   case "$build_target" in
-    i386);;
-    x86_64)
-      configure_options="--enable-64bit $configure_options" ;;
+    i386)
+      configure_options="--disable-64bit $configure_options" ;;
+    x86_64);;
     *)
       print_fatal "Build target [$build_target] is not valid target" ;;
   esac

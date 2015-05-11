@@ -46,10 +46,10 @@ AM_CONDITIONAL([BUILD_CMSERVER_FOR_AIX], [test $(uname) = "AIX"])
 
 # Checks bit model feature.
 AC_ARG_ENABLE([64bit],
-	[AS_HELP_STRING([--enable-64bit],
-		[build 64 bit code @<:@default=no (32 bit code)@:>@])],
+	[AS_HELP_STRING([--disable-64bit],
+		[Disable 64-bit support (on 64-bit platforms)])],
 	[enable_64bit=$enableval],
-	[enable_64bit=no])
+	[enable_64bit=yes])
 AM_CONDITIONAL([BUILD_64], [test "$enable_64bit" = "yes"])
 
 OBJECT_MODE=""
@@ -94,6 +94,18 @@ case $SYSTEM_TYPE in
 		;;
 esac
 export BIT_MODEL CC CXX OBJECT_MODE
+
+AS_IF([test "$GCC" = "yes" -a "$BIT_MODEL" = "-m32"],
+	[AC_MSG_CHECKING([for gcc version])
+	gcc_version=`$CC -dumpversion 2>/dev/null`
+	case "$gcc_version" in
+		[[0-3]].* | 4.[[0-2]].* | 4.3.[[0-3]])
+	    		AC_MSG_ERROR([Cannot compile 32-bit program with this gcc version ($gcc_version).]
+			[gcc 4.3.4 or higher version is required. (ref. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185)]);;
+		*)
+			AC_MSG_RESULT([$gcc_version])
+	esac
+	])
 
 LT_INIT
 AC_PROG_LIBTOOL
@@ -696,20 +708,20 @@ case "$with_cmserver" in
 		    (cd "$srcdir/cubridmanager/server" && sh ./autogen.sh)
 		  fi
 		  if test "$enable_64bit" = "yes"
-                  then
-		    build_64="--enable-64bit"
+		  then
+		    build_mode="--enable-64bit"
 		  else
-                    build_64=""
+		    build_mode="--disable-64bit"
 		  fi
-		    cm_common_libdir=`readlink -f $PWD/cm_common`
-		    cm_common_includedir=`readlink -f $srcdir/src/cm_common`
-		    cci_includedir=`readlink -f $srcdir/src/cci`
-		    cci_libdir=`readlink -f $PWD/cci`
-		    cs_libdir=`readlink -f $PWD/cs`
-		    broker_includedir=`readlink -f $srcdir/src/broker`
-		    ac_configure_args="$ac_configure_args $build_64 --prefix='$prefix' CXXFLAGS='$CXXFLAGS -I$cci_includedir -I$broker_includedir' LDFLAGS='-L$cci_libdir -L$cs_libdir' --with-cubrid-libdir=$cm_common_libdir --with-cubrid-includedir=$cm_common_includedir" AC_CONFIG_SUBDIRS([cubridmanager/server])
-		    OPTIONAL_DIR="$OPTIONAL_DIR cubridmanager/server"
-		    with_cmserver=builtin
+		  cm_common_libdir=`readlink -f $PWD/cm_common`
+		  cm_common_includedir=`readlink -f $srcdir/src/cm_common`
+		  cci_includedir=`readlink -f $srcdir/src/cci`
+		  cci_libdir=`readlink -f $PWD/cci`
+		  cs_libdir=`readlink -f $PWD/cs`
+		  broker_includedir=`readlink -f $srcdir/src/broker`
+		  ac_configure_args="$ac_configure_args $build_mode --prefix='$prefix' CXXFLAGS='$CXXFLAGS -I$cci_includedir -I$broker_includedir' LDFLAGS='-L$cci_libdir -L$cs_libdir' --with-cubrid-libdir=$cm_common_libdir --with-cubrid-includedir=$cm_common_includedir" AC_CONFIG_SUBDIRS([cubridmanager/server])
+		  OPTIONAL_DIR="$OPTIONAL_DIR cubridmanager/server"
+		  with_cmserver=builtin
 		else
 		  if test "$with_cmserver" != "check"; then
 		    AC_MSG_ERROR([there is no server in $srcdir/cubridmanager])

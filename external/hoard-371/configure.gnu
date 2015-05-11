@@ -1,7 +1,7 @@
 #!/bin/sh
 
 srcdir=''
-TARGET='linux-gcc-x86-static'
+TARGET='linux-gcc-x86-64-static'
 
 while test $# -ge 1; do
   case "$1" in
@@ -14,8 +14,8 @@ while test $# -ge 1; do
       srcdir=`readlink -f $srcdiropt`
       shift
       ;;
-    --enable-64bit)
-      TARGET='linux-gcc-x86-64-static'
+    --disable-64bit)
+      TARGET='linux-gcc-x86-static'
       shift
       ;;
     *)
