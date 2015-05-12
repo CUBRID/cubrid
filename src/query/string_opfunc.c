@@ -17855,7 +17855,7 @@ date_to_char (const DB_VALUE * src_value,
 	      break;
 
 	    case DT_TZH:
-	      if ((tzh >= 0)&&(tzm >= 0))
+	      if ((tzh >= 0) && (tzm >= 0))
 		{
 		  sprintf (&result_buf[i], "%c%02d\n", '+', tzh);
 		}
@@ -23115,12 +23115,12 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
 		  break;
 		case 'H':
 		  has_tzh = true;
-		  if ((tzh >= 0)&&(tzm >= 0))
+		  if ((tzh >= 0) && (tzm >= 0))
 		    {
 		      sprintf (hours_or_minutes, "%c%02d", '+', tzh);
 		    }
 		  else
-		    {		      
+		    {
 		      sprintf (hours_or_minutes, "%c%02d", '-', -tzh);
 		    }
 		  strcat (res, hours_or_minutes);
@@ -26882,14 +26882,9 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val,
   val_size = DB_GET_STRING_SIZE (str_val);
 
   /* size < 0 assumes a null terminated string */
-  if (val_size < 0
-      || ((val_size < DB_VALUE_PRECISION (str_val)
-	   || DB_VALUE_PRECISION (str_val) == TP_FLOATING_PRECISION_VALUE)
-	  && val_buf[val_size] == '\0'))
+  if (val_size < 0)
     {
-      /* already null terminated , safe to use it */
-      *str_out = val_buf;
-      return NO_ERROR;
+      val_size = strlen (val_buf);
     }
 
   if (val_size < pre_alloc_buf_size)
