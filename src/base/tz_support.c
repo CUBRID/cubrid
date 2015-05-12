@@ -3210,7 +3210,7 @@ detect_dst:
 	       * to take into consideration leap interval
 	       * overlap */
 	      leap_interval = 0;
-	      utc_src_offset = gmt_std_offset_sec + curr_ds_rule->save_time;
+	      utc_src_offset = gmt_std_offset_sec;
 	    }
 	  else
 	    {
