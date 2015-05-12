@@ -120,10 +120,13 @@ extern void cfg_free_dbinfo_all (DB_INFO * databases);
 extern int cfg_read_dbinfo (DB_INFO ** db_info_p);
 extern DB_INFO *cfg_find_db_list (DB_INFO * db_info_list_p, const char *name);
 extern int char_is_delim (int c, int delim);
+extern char *char_get_next (char *str_p);
 
 extern UINT64 ntohi64 (UINT64 from);
 
 extern int char_islower (int c);
 extern int char_isupper (int c);
 extern int char_isalpha (int c);
+extern int char_tolower (int c);
+
 #endif /* _CAS_DBMS_UTIL_H_ */

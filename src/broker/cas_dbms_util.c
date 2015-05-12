@@ -47,7 +47,6 @@ static const char *envvar_Root = NULL;
 #define _ENVVAR_MAX_LENGTH      255
 
 static char *cfg_pop_token (char *str_p, char **token_p);
-static char *cfg_next_char (char *str_p);
 
 void
 cfg_free_dbinfo_all (DB_INFO * databases)
@@ -175,7 +174,7 @@ cfg_read_dbinfo (DB_INFO ** db_info_p)
 
   while (fgets (line, DBINFO_MAX_LENGTH - 1, file) != NULL)
     {
-      str = cfg_next_char (line);
+      str = char_get_next (line);
       if (*str != '\0' && *str != '#')
 	{
 	  db = (DB_INFO *) malloc (sizeof (DB_INFO));
@@ -267,13 +266,13 @@ char_is_delim (int c, int delim)
 
 /* PARSING UTILITIES */
 /*
- * cfg_next_char() - Advances the given pointer until a non-whitespace character
+ * char_get_next() - Advances the given pointer until a non-whitespace character
  *               or the end of the string are encountered.
  *    return: char *
  *    str_p(in): buffer pointer
  */
-static char *
-cfg_next_char (char *str_p)
+char *
+char_get_next (char *str_p)
 {
   char *p;
   char delim[] = " ";
@@ -386,4 +385,15 @@ int
 char_isalpha (int c)
 {
   return (char_islower ((c)) || char_isupper ((c)));
+}
+
+/*
+ * char_tolower() - convert uppercase character to lowercase
+ *   return: lowercase character corresponding to the argument
+ *   c (in): the character to be converted
+ */
+int
+char_tolower (int c)
+{
+  return (char_isupper ((c)) ? ((c) - ('A' - 'a')) : (c));
 }

@@ -199,6 +199,10 @@ struct t_srv_handle
   bool is_fetch_completed;
   bool is_holdable;
   bool is_from_current_transaction;
+
+#if defined(CAS_FOR_MYSQL)
+  bool has_mysql_last_insert_id;
+#endif				/* CAS_FOR_MYSQL */
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle,

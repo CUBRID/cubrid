@@ -128,6 +128,10 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->is_pooled = as_info->cur_statement_pooling;
 #endif
 
+#if defined(CAS_FOR_MYSQL)
+  srv_handle->has_mysql_last_insert_id = false;
+#endif /* CAS_FOR_MYSQL */
+
   *new_handle = srv_handle;
   srv_handle_table[new_handle_id - 1] = srv_handle;
   if (new_handle_id > max_handle_id)

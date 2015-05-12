@@ -250,6 +250,11 @@ static void update_query_execution_count (T_APPL_SERVER_INFO * as_info_p,
 					  char stmt_type);
 static void cas_mysql_set_mysql_wait_timeout (void);
 
+const char *last_insert_id_str = "last_insert_id";
+static int last_insert_id_pos = -1;
+static int cas4m_match_last_insert_id (char *p);
+static bool cas4m_last_insert_id_in_query (char *sql);
+
 int
 ux_check_connection (void)
 {
@@ -422,6 +427,9 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       goto prepare_error;
     }
 
+  srv_handle->has_mysql_last_insert_id =
+    cas4m_last_insert_id_in_query (sql_stmt);
+
   return srv_h_id;
 
 prepare_error:
@@ -528,6 +536,13 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   MYSQL_BIND *defines;
 
   hm_qresult_end (srv_handle, FALSE);
+
+  if (srv_handle->has_mysql_last_insert_id == true
+      && _db_conn && _db_conn->insert_id == 0)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      goto execute_all_error;
+    }
 
   stmt = (MYSQL_STMT *) srv_handle->session;
   stmt_id = stmt->stmt_id;
@@ -729,6 +744,13 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
     }
 
   hm_qresult_end (srv_handle, FALSE);
+
+  if (srv_handle->has_mysql_last_insert_id == true
+      && _db_conn && _db_conn->insert_id == 0)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      goto execute_array_error;
+    }
 
   stmt = (MYSQL_STMT *) srv_handle->session;
   stmt_id = stmt->stmt_id;
@@ -3183,6 +3205,9 @@ cas_mysql_end_tran (int tran_type)
       return cas_mysql_get_errno ();
     }
 
+  /* reset last_insert_id */
+  _db_conn->insert_id = 0;
+
   switch (tran_type)
     {
     case CCI_TRAN_COMMIT:
@@ -3520,4 +3545,98 @@ cas_mysql_execute_dummy (void)
     }
 
   return 0;
+}
+
+static int
+cas4m_match_last_insert_id (char *p)
+{
+  int i;
+  char lc, rc;
+
+  rc = (char) char_tolower ((int) (*p));
+
+  if (last_insert_id_pos == -1)
+    {
+      lc = last_insert_id_str[0];
+      if (lc == rc)
+	{
+	  last_insert_id_pos = 0;
+	}
+    }
+  else
+    {
+      lc = last_insert_id_str[last_insert_id_pos + 1];
+      if (lc == rc)
+	{
+	  last_insert_id_pos++;
+	}
+      else
+	{
+	  last_insert_id_pos = -1;
+	}
+    }
+
+  if (last_insert_id_pos >= 0)
+    {
+      lc = last_insert_id_str[last_insert_id_pos + 1];
+      if (lc == '\0')
+	{
+	  last_insert_id_pos = -1;
+	  return 0;
+	}
+    }
+
+  return -1;
+}
+
+static bool
+cas4m_last_insert_id_in_query (char *sql)
+{
+  int rc = -1;
+  int index = -1;
+  int is_in_str = 0;
+  char c, *p;
+
+  last_insert_id_pos = -1;
+
+  for (p = sql; *p; p++)
+    {
+      if (is_in_str == 1)
+	{
+	  if ((*p == '\'' && *(p + 1) == '\'')
+	      || (*p == '\\' && *(p + 1) == '\''))
+	    {
+	      p++;
+	    }
+	  else if (*p == '\'')
+	    {
+	      is_in_str = 0;
+	    }
+	}
+      else
+	{
+	  if (*p == '\'')
+	    {
+	      is_in_str = 1;
+	      continue;
+	    }
+
+	  rc = cas4m_match_last_insert_id (p);
+	  if (rc == 0)
+	    {
+	      break;
+	    }
+	}
+    }
+
+  if (rc == 0 && *(p + 1))
+    {
+      c = *((char *) char_get_next (p + 1));
+      if (c == (char) '(')	/* find left parentheses */
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
