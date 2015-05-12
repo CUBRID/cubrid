@@ -1927,11 +1927,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 	}
     }
 
-  if (IS_TRIGGER_INVOLVED (*flag_p))
-    {
-      session_set_trigger_state (thread_p, true);
-    }
-
   /* Check the existance of the given XASL. If someone marked it
      to be deleted, then remove it if possible. */
   cache_clone_p = NULL;		/* mark as pop */
@@ -1957,6 +1952,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   if (ret_cache_entry_p)
     {
       *ret_cache_entry_p = xasl_cache_entry_p;
+    }
+
+  if (IS_TRIGGER_INVOLVED (*flag_p))
+    {
+      session_set_trigger_state (thread_p, true);
     }
 
 #if defined (SERVER_MODE)
@@ -2360,14 +2360,7 @@ exit_on_error:
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
     }
 
-  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
-    {
-      if (saved_is_stats_on == true)
-	{
-	  xmnt_server_start_stats (thread_p, false);
-	}
-    }
-  else if (xasl_trace == true && saved_is_stats_on == false)
+  if (xasl_trace == true && saved_is_stats_on == false)
     {
       xmnt_server_stop_stats (thread_p);
     }
@@ -2744,14 +2737,7 @@ exit_on_async_error:
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
     }
 
-  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
-    {
-      if (saved_is_stats_on == true)
-	{
-	  xmnt_server_start_stats (thread_p, false);
-	}
-    }
-  else if (xasl_trace == true && saved_is_stats_on == false)
+  if (xasl_trace == true && saved_is_stats_on == false)
     {
       xmnt_server_stop_stats (thread_p);
     }
