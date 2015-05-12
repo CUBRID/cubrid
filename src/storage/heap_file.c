@@ -9426,12 +9426,11 @@ start_current_version:
 		      goto error;
 		    }
 
-		  /* Go to next version. */
-		  COPY_OID (&current_oid,
-			    &MVCC_GET_NEXT_VERSION (&mvcc_header));
 		  current_scan_cache = &partition_scancache;
 		  COPY_OID (&current_class_oid, partition_oid);
 		}
+	      /* Go to next version. */
+	      COPY_OID (&current_oid, &MVCC_GET_NEXT_VERSION (&mvcc_header));
 	      is_original_oid = false;
 	      goto start_current_version;
 	    }
@@ -9631,12 +9630,12 @@ start_current_version:
 		      goto error;
 		    }
 
-		  /* advance to next version */
-		  COPY_OID (&current_oid,
-			    &MVCC_GET_NEXT_VERSION (&mvcc_header));
 		  current_scan_cache = &partition_scancache;
 		  COPY_OID (&current_class_oid, partition_oid);
 		}
+	      /* advance to next version */
+	      COPY_OID (&current_oid, &MVCC_GET_NEXT_VERSION (&mvcc_header));
+	      is_original_oid = false;
 	      goto start_current_version;
 	    }
 	  else
