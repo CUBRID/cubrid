@@ -168,7 +168,12 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
    */
   if (flag_abort == true)
     {
+      /* need to hide the previous error, ER_LK_UNILATERALLY_ABORTED
+       * to rollback the current transaction.
+       */
+      er_stack_push ();
       tran_server_unilaterally_abort_tran (thread_p);
+      er_stack_pop ();
     }
 
   if (errid == ER_DB_NO_MODIFICATIONS)
