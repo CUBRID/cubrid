@@ -2751,10 +2751,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 #if !defined (NDEBUG)
 		      btree_check_valid_record (NULL, load_args->btid,
 						&load_args->leaf_nleaf_recdes,
-						(load_args->
-						 overflowing ?
-						 BTREE_OVERFLOW_NODE :
-						 BTREE_LEAF_NODE), NULL);
+						BTREE_LEAF_NODE, NULL);
 #endif
 
 		      /* save first OID as current OID, to be written */
