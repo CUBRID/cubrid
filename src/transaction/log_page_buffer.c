@@ -4009,11 +4009,6 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
       node->data_header_length = sizeof (struct log_compensate);
       break;
 
-    case LOG_LCOMPENSATE:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_logical_compensate);
-      break;
-
     case LOG_DUMMY_HA_SERVER_STATE:
       assert (length == 0 && data == NULL);
       node->data_header_length = sizeof (struct log_ha_server_state);
@@ -4205,7 +4200,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
 
     case LOG_2PC_COMMIT_DECISION:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
-    case LOG_LCOMPENSATE:
     case LOG_CLIENT_NAME:
     case LOG_COMMIT_WITH_POSTPONE:
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:

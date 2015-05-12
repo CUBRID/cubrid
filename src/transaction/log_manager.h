@@ -188,10 +188,6 @@ extern void log_append_compensate (THREAD_ENTRY * thread_p,
 				   PGLENGTH offset, PAGE_PTR pgptr,
 				   int length, const void *data,
 				   LOG_TDES * tdes);
-extern void log_append_logical_compensate (THREAD_ENTRY * thread_p,
-					   LOG_RCVINDEX rcvindex,
-					   LOG_TDES * tdes,
-					   LOG_LSA * undo_nxlsa);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p,
 				     LOG_RECTYPE logrec_type,
@@ -202,6 +198,8 @@ extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
 extern LOG_LSA *log_append_savepoint (THREAD_ENTRY * thread_p,
 				      const char *savept_name);
 extern LOG_LSA *log_start_system_op (THREAD_ENTRY * thread_p);
+extern void log_start_compensate_system_op (THREAD_ENTRY * thread_p,
+					    LOG_LSA * compensate_undo_nxlsa);
 extern TRAN_STATE log_end_system_op (THREAD_ENTRY * thread_p,
 				     LOG_RESULT_TOPOP result);
 extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p,
@@ -245,6 +243,7 @@ extern int log_get_charset_from_header_page (THREAD_ENTRY * thread_p,
 					     const char *prefix_logname);
 extern int log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void log_rv_dump_char (FILE * fp, int length, void *data);
+extern void log_rv_dump_hexa (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,

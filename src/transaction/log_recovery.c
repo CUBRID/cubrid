@@ -89,9 +89,6 @@ static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id,
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id,
 				       LOG_LSA * log_lsa,
 				       LOG_PAGE * log_page_p);
-static int log_rv_analysis_lcompensate (THREAD_ENTRY * thread_p, int tran_id,
-					LOG_LSA * log_lsa,
-					LOG_PAGE * log_page_p);
 static int log_rv_analysis_client_user_undo_data (THREAD_ENTRY * thread_p,
 						  int tran_id,
 						  LOG_LSA * log_lsa);
@@ -420,6 +417,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	   * Only no-page logical operations require logical compensation.
 	   */
 	  /* Invoke Undo recovery function */
+	  LSA_COPY (&rcv->compensate_undo_nxlsa, &tdes->undo_nxlsa);
 	  error_code = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 	  if (error_code != NO_ERROR)
 	    {
@@ -498,16 +496,11 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
 	  /*
 	   * A system operation is needed since the postpone operations of an
-	   * undo log must be done at the end of the logical undo. Without this
-	   * if there is a crash, we will be in trouble since we will not be able
-	   * to undo a postpone operation.
+	   * undo log must be done at the end of the logical undo. Without
+	   * this if there is a crash, we will be in trouble since we will not
+	   * be able to undo a postpone operation.
 	   */
-	  if (log_start_system_op (thread_p) == NULL)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "log_rv_undo_record");
-	      goto end;
-	    }
+	  log_start_compensate_system_op (thread_p, &logical_undo_nxlsa);
 
 #if defined(CUBRID_DEBUG)
 	  {
@@ -540,12 +533,6 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 #endif /* CUBRID_DEBUG */
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 	  tdes->state = save_state;
-	  /*
-	   * Now add the dummy logical compensating record. This mark the end of
-	   * the logical operation.
-	   */
-	  log_append_logical_compensate (thread_p, rcvindex, tdes,
-					 &logical_undo_nxlsa);
 	}
     }
   else
@@ -1376,57 +1363,6 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id,
   compensate = (struct log_compensate *) ((char *) log_page_p->area
 					  + log_lsa->offset);
   LSA_COPY (&tdes->undo_nxlsa, &compensate->undo_nxlsa);
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_lcompensate -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *   log_page_p(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_lcompensate (THREAD_ENTRY * thread_p, int tran_id,
-			     LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
-{
-  LOG_TDES *tdes;
-  struct log_logical_compensate *logical_comp;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it and assume that the transaction was active
-   * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statement will be find reading the
-   * rest of the log
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_lcompensate");
-      return ER_FAILED;
-    }
-
-  /*
-   * Need to read the compensating record to set the next undo address
-   */
-
-  /* Read the DATA HEADER */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
-		      log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-				    sizeof (struct log_logical_compensate),
-				    log_lsa, log_page_p);
-
-  logical_comp = ((struct log_logical_compensate *)
-		  ((char *) log_page_p->area + log_lsa->offset));
-  LSA_COPY (&tdes->undo_nxlsa, &logical_comp->undo_nxlsa);
 
   return NO_ERROR;
 }
@@ -2983,11 +2919,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
     case LOG_COMPENSATE:
       (void) log_rv_analysis_compensate (thread_p, tran_id, log_lsa,
 					 log_page_p);
-      break;
-
-    case LOG_LCOMPENSATE:
-      (void) log_rv_analysis_lcompensate (thread_p, tran_id, log_lsa,
-					  log_page_p);
       break;
 
     case LOG_CLIENT_USER_UNDO_DATA:
@@ -4814,7 +4745,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	    case LOG_UNDO_DATA:
 	    case LOG_CLIENT_NAME:
-	    case LOG_LCOMPENSATE:
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
 	    case LOG_CLIENT_USER_UNDO_DATA:
@@ -5092,7 +5022,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;	/* MVCC op Undo_redo log record */
   struct log_mvcc_undo *mvcc_undo = NULL;	/* MVCC op Undo log record */
   struct log_compensate *compensate;	/* Compensating log record */
-  struct log_logical_compensate *logical_comp;	/* end of a logical undo */
   struct log_topop_result *top_result;	/* Result of top system op */
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
   LOG_RCV rcv;			/* Recovery structure */
@@ -5443,26 +5372,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    (struct log_compensate *) ((char *) log_pgptr->area +
 					       log_lsa.offset);
 		  LSA_COPY (&prev_tranlsa, &compensate->undo_nxlsa);
-		  break;
-
-		case LOG_LCOMPENSATE:
-		  /* Only for REDO .. Go to next undo record
-		   * Need to read the compensating record to set the next
-		   * undo address
-		   */
-
-		  /* Get the DATA HEADER */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER),
-				      &log_lsa, log_pgptr);
-		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						    sizeof (struct
-							    log_logical_compensate),
-						    &log_lsa, log_pgptr);
-		  logical_comp =
-		    ((struct log_logical_compensate *) ((char *) log_pgptr->
-							area +
-							log_lsa.offset));
-		  LSA_COPY (&prev_tranlsa, &logical_comp->undo_nxlsa);
 		  break;
 
 		case LOG_COMMIT_TOPOPE:
@@ -6358,17 +6267,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
       LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_compensate),
 			  &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
-      break;
-
-    case LOG_LCOMPENSATE:
-      /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-					sizeof (struct
-						log_logical_compensate),
-					&log_lsa, log_pgptr);
-
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_logical_compensate),
-			  &log_lsa, log_pgptr);
       break;
 
     case LOG_CLIENT_USER_UNDO_DATA:

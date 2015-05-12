@@ -1016,6 +1016,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   tdes->topops.stack = NULL;
   tdes->topops.max = 0;
   tdes->topops.last = -1;
+  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+  tdes->topops.compensate_level = -1;
+  LSA_SET_NULL (&tdes->topops.undo_nxlsa);
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
@@ -2047,6 +2050,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->client_undo_lsa);
   LSA_SET_NULL (&tdes->client_posp_lsa);
   tdes->topops.last = -1;
+  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+  tdes->topops.compensate_level = -1;
+  LSA_SET_NULL (&tdes->topops.undo_nxlsa);
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   if (tdes->gtrinfo.info_data != NULL)
@@ -2189,6 +2195,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->topops.stack = NULL;
   tdes->topops.last = -1;
   tdes->topops.max = 0;
+  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+  tdes->topops.compensate_level = -1;
+  LSA_SET_NULL (&tdes->topops.undo_nxlsa);
   tdes->num_unique_btrees = 0;
   tdes->max_unique_btrees = 0;
   tdes->tran_unique_stats = NULL;

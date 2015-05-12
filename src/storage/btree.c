@@ -956,6 +956,7 @@ struct btree_insert_helper
   int rv_undo_data_length;
   char *rv_redo_data;
   char *rv_redo_data_ptr;
+  LOG_LSA compensate_undo_nxlsa;
 
 #if defined (SERVER_MODE)
   OID saved_locked_oid;		/* Save locked object from unique index key.
@@ -992,6 +993,7 @@ struct btree_insert_helper
     0 /* rv_undo_data_length */, \
     NULL /* rv_redo_data */, \
     NULL /* rv_redo_data_ptr */, \
+    LSA_INITIALIZER /* compensate_undo_nxlsa */, \
     OID_INITIALIZER /* saved_locked_oid */, \
     OID_INITIALIZER /* saved_locked_class_oid */ \
   }
@@ -1020,7 +1022,8 @@ struct btree_insert_helper
     NULL /* rv_undo_data */, \
     0 /* rv_undo_data_length */, \
     NULL /* rv_redo_data */, \
-    NULL /* rv_redo_data_ptr */ \
+    NULL /* rv_redo_data_ptr */, \
+    LSA_INITIALIZER /* compensate_undo_nxlsa */ \
   }
 #endif /* SA_MODE */
 
@@ -1072,6 +1075,7 @@ struct btree_delete_helper
   int rv_undo_data_length;
   char *rv_redo_data;
   char *rv_redo_data_ptr;
+  LOG_LSA compensate_undo_nxlsa;
 };
 #define BTREE_DELETE_HELPER_INITIALIZER \
   { \
@@ -1092,7 +1096,8 @@ struct btree_delete_helper
     NULL /* rv_undo_data */, \
     0 /* rv_undo_data_length */, \
     NULL /* rv_redo_data */, \
-    NULL /* rv_redo_data_ptr */ \
+    NULL /* rv_redo_data_ptr */, \
+    LSA_INITIALIZER /* compensate_undo_nxlsa */ \
   }
 
 #define BTREE_DELETE_OID(helper) \
@@ -1865,11 +1870,13 @@ static int btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid,
 				  int op_type,
 				  BTREE_UNIQUE_STATS * unique_stat_info,
 				  int *unique, BTREE_MVCC_INFO * mvcc_info,
+				  LOG_LSA * undo_nxlsa,
 				  BTREE_OP_PURPOSE purpose);
 static int btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid,
 				       DB_VALUE * key, OID * class_oid,
 				       OID * oid,
-				       BTREE_MVCC_INFO * mvcc_info);
+				       BTREE_MVCC_INFO * mvcc_info,
+				       LOG_LSA * undo_nxlsa);
 static int btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 				      BTID_INT * btid_int, DB_VALUE * key,
 				      PAGE_PTR * root_page, bool * is_leaf,
@@ -1943,7 +1950,7 @@ static int btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid,
 				  DB_VALUE * key, OR_BUF * buffered_key,
 				  int *unique, int op_type,
 				  BTREE_UNIQUE_STATS * unique_stat_info,
-				  MVCCID match_mvccid,
+				  MVCCID match_mvccid, LOG_LSA * undo_nxlsa,
 				  BTREE_OP_PURPOSE purpose);
 static int btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid,
 				      BTID_INT * btid_int, DB_VALUE * key,
@@ -2022,10 +2029,12 @@ static int btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p,
 					   void *other_args);
 static int btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid,
 				   OR_BUF * buffered_key, OID * oid,
-				   OID * class_oid, MVCCID delete_mvccid);
+				   OID * class_oid, MVCCID delete_mvccid,
+				   LOG_LSA * undo_nxlsa);
 static int btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid,
 				     OR_BUF * buffered_key, OID * oid,
-				     OID * class_oid, MVCCID insert_mvccid);
+				     OID * class_oid, MVCCID insert_mvccid,
+				     LOG_LSA * undo_nxlsa);
 static int btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p,
 						  BTID_INT * btid_int,
 						  BTREE_DELETE_HELPER *
@@ -2620,6 +2629,9 @@ btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p,
 	}
       else
 	{
+	  assert (disk_isvalid_page (thread_p, new_overflow_vpid->volid,
+				     new_overflow_vpid->pageid)
+		  != DISK_INVALID);
 	  /* Update existing link. */
 	  ovf_link_ptr =
 	    leaf_record->data + leaf_record->length - DISK_VPID_ALIGNED_SIZE;
@@ -2642,6 +2654,8 @@ btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p,
     {
       /* Leaf record didn't have overflow link. */
       assert (!VPID_ISNULL (new_overflow_vpid));
+      assert (disk_isvalid_page (thread_p, new_overflow_vpid->volid,
+				 new_overflow_vpid->pageid) != DISK_INVALID);
 
       /* Add overflow VPID. */
       ovf_link_ptr = leaf_record->data + leaf_record->length;
@@ -3036,7 +3050,7 @@ btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  assert ((CAST_BUFLEN (buf.endptr - buf.ptr) % fixed_object_size)
 		  == 0);
 	  rec_oid_cnt +=
-	    CEIL_PTVDIV (buf.endptr - buf.ptr, fixed_object_size);
+	    CAST_BUFLEN (buf.endptr - buf.ptr) / fixed_object_size;
 	  return rec_oid_cnt;
 	}
       /* Not unique. Objects have variable size. Count them manually. */
@@ -10393,15 +10407,24 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
   /* Last object obtained. */
 
   /* Vacuum worker will need an atomic operation to deallocate page. */
-  if (need_dealloc_overflow_page == true
-      && (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT))
+  if (need_dealloc_overflow_page == true)
     {
-      if (log_start_system_op (thread_p) == NULL)
+      if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT)
 	{
-	  goto exit_on_error;
+	  if (log_start_system_op (thread_p) == NULL)
+	    {
+	      assert_release (false);
+	      goto exit_on_error;
+	    }
+	  is_system_op_started = true;
 	}
-      is_system_op_started = true;
+      else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
+	{
+	  log_start_compensate_system_op (thread_p,
+					  &delete_helper->
+					  compensate_undo_nxlsa);
+	  is_system_op_started = true;
+	}
     }
 
   /* Initialize overflow log data address. */
@@ -10568,11 +10591,23 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
   else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (leaf_page),
-			     delete_helper->leaf_addr.offset, leaf_page,
-			     rv_redo_data_length, delete_helper->rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      if (is_system_op_started)
+	{
+	  /* Logical compensation using system operation. */
+	  log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO,
+				&delete_helper->leaf_addr,
+				rv_redo_data_length,
+				delete_helper->rv_redo_data);
+	}
+      else
+	{
+	  log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
+				 pgbuf_get_vpid_ptr (leaf_page),
+				 delete_helper->leaf_addr.offset, leaf_page,
+				 rv_redo_data_length,
+				 delete_helper->rv_redo_data,
+				 LOG_FIND_CURRENT_TDES (thread_p));
+	}
     }
   else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
     {
@@ -10605,7 +10640,15 @@ exit_on_error:
 
   if (is_system_op_started)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      if (delete_helper->op_type == BTREE_OP_DELETE_UNDO_INSERT)
+	{
+	  assert_release (false);
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	}
+      else
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
     }
 
   assert_release (ret != NO_ERROR);
@@ -10714,11 +10757,10 @@ btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
   else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (leaf_page),
-			     delete_helper->leaf_addr.offset, leaf_page,
-			     rv_redo_data_length, delete_helper->rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      /* Logical compensation using system operation. */
+      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO,
+			    &delete_helper->leaf_addr,
+			    rv_redo_data_length, delete_helper->rv_redo_data);
     }
   else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
     {
@@ -10811,11 +10853,9 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
   else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (ovfl_page), ovf_addr.offset,
-			     ovfl_page, rv_redo_data_length,
-			     delete_helper->rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      /* Logical compensation using system operation. */
+      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &ovf_addr,
+			    rv_redo_data_length, delete_helper->rv_redo_data);
     }
   else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
     {
@@ -12073,6 +12113,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p,
   VPID ovfl_vpid;
   PAGE_PTR ovfl_page = NULL;
   int rv_redo_data_length = 0;
+  bool is_system_op_started = false;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -12085,6 +12126,13 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p,
   assert (insert_helper->rv_redo_data != NULL
 	  && insert_helper->rv_redo_data_ptr != NULL);
 
+  if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
+    {
+      log_start_compensate_system_op (thread_p,
+				      &insert_helper->compensate_undo_nxlsa);
+      is_system_op_started = true;
+    }
+
   /* Create overflow page. */
   ret =
     btree_start_overflow_page (thread_p, btid_int, object_info,
@@ -12094,7 +12142,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p,
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return ret;
+      goto error;
     }
 
 #if !defined (NDEBUG)
@@ -12118,7 +12166,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p,
       != SP_SUCCESS)
     {
       assert_release (false);
-      return ER_FAILED;
+      goto error;
     }
 
   if (insert_helper->log_operations)
@@ -12161,14 +12209,16 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p,
   if (insert_helper->is_relocation_for_unique)
     {
       /* Let caller handle all leaf logging. */
+      assert (insert_helper->purpose != BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
     }
   else if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (leaf_page),
-			     insert_helper->leaf_addr.offset, leaf_page,
-			     rv_redo_data_length, insert_helper->rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      /* Logical compensation using system operation. */
+      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO,
+			    &insert_helper->leaf_addr,
+			    rv_redo_data_length, insert_helper->rv_redo_data);
+      /* End system operation. */
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
     }
   else				/* BTREE_OP_INSERT_NEW_OBJECT */
     {
@@ -12185,6 +12235,21 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p,
   pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
 
   return NO_ERROR;
+
+error:
+  if (is_system_op_started)
+    {
+      /* This might be a problem since compensate was not successfully
+       * executed.
+       */
+      assert_release (false);
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+    }
+  if (ovfl_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, ovfl_page);
+    }
+  return ret;
 }
 
 /*
@@ -18224,7 +18289,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid,
   OR_BUF buf;
   PR_TYPE *pr_type;
   int ret = NO_ERROR;
-  size_t size;
+  int size;
   OID oid_and_flags;
 
   assert (key != NULL);
@@ -19278,7 +19343,8 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /* Undo insert: just delete object and all its information. */
   err =
     btree_undo_insert_object (thread_p, btid.sys_btid, &key_buf, &oid,
-			      &cls_oid, insert_mvccid);
+			      &cls_oid, insert_mvccid,
+			      &recv->compensate_undo_nxlsa);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -19328,7 +19394,7 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
   assert (MVCCID_IS_NOT_ALL_VISIBLE (delete_mvccid));
   err =
     btree_undo_mvcc_delete (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid,
-			    delete_mvccid);
+			    delete_mvccid, &recv->compensate_undo_nxlsa);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -19381,7 +19447,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /* Insert object and all its info. */
   error_code =
     btree_undo_delete_physical (thread_p, btid.sys_btid, &key, &cls_oid, &oid,
-				&mvcc_info);
+				&mvcc_info, &recv->compensate_undo_nxlsa);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -25636,7 +25702,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
       key_function = btree_key_find_and_lock_unique;
     }
 
-  if (logtb_find_current_isolation(thread_p) >= TRAN_REP_READ
+  if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ
       || (find_unique_helper.lock_mode >= S_LOCK))
     {
       /* 
@@ -27620,18 +27686,20 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
  *				   insert back object and other required
  *				   information (class OID, MVCC info).
  *
- * return	  : Error code.
- * thread_p (in)  : Thread entry.
- * btid (in)	  : B-tree identifier.
- * key (in)	  : Key value.
- * class_oid (in) : Class OID.
- * oid (in)	  : Instance OID.
- * mvcc_info (in) : B-tree MVCC information.
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid (in)	   : B-tree identifier.
+ * key (in)	   : Key value.
+ * class_oid (in)  : Class OID.
+ * oid (in)	   : Instance OID.
+ * mvcc_info (in)  : B-tree MVCC information.
+ * undo_nxlsa (in) : UNDO next lsa for logical compensate.
  */
 static int
 btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid,
 			    DB_VALUE * key, OID * class_oid,
-			    OID * oid, BTREE_MVCC_INFO * mvcc_info)
+			    OID * oid, BTREE_MVCC_INFO * mvcc_info,
+			    LOG_LSA * undo_nxlsa)
 {
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -27650,6 +27718,7 @@ btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid,
     }
   return btree_insert_internal (thread_p, btid, key, class_oid, oid,
 				SINGLE_ROW_INSERT, NULL, NULL, mvcc_info,
+				undo_nxlsa,
 				BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
 }
 
@@ -27709,7 +27778,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   assert (!BTREE_MVCC_INFO_IS_DELID_VALID (&mvcc_info));
 
   return btree_insert_internal (thread_p, btid, key, cls_oid, oid, op_type,
-				unique_stat_info, unique, &mvcc_info,
+				unique_stat_info, unique, &mvcc_info, NULL,
 				BTREE_OP_INSERT_NEW_OBJECT);
 }
 
@@ -27763,7 +27832,7 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   assert (BTREE_MVCC_INFO_IS_DELID_VALID (&mvcc_info));
 
   return btree_insert_internal (thread_p, btid, key, class_oid, oid, op_type,
-				unique_stat_info, unique, &mvcc_info,
+				unique_stat_info, unique, &mvcc_info, NULL,
 				BTREE_OP_INSERT_MVCC_DELID);
 }
 
@@ -27783,6 +27852,7 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
  * unique (out)		     : Outputs true if index was unique, false
  *			       otherwise.
  * mvcc_info (in)	     : B-tree MVCC information.
+ * undo_nxlsa (in)	     : UNDO next lsa for logical compensate.
  * purpose (in)		     : B-tree insert purpose
  *			       BTREE_OP_INSERT_NEW_OBJECT
  *			       BTREE_OP_INSERT_MVCC_DELID
@@ -27792,7 +27862,8 @@ static int
 btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 		       OID * class_oid, OID * oid, int op_type,
 		       BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
-		       BTREE_MVCC_INFO * mvcc_info, BTREE_OP_PURPOSE purpose)
+		       BTREE_MVCC_INFO * mvcc_info, LOG_LSA * undo_nxlsa,
+		       BTREE_OP_PURPOSE purpose)
 {
   int error_code = NO_ERROR;	/* Error code. */
   BTID_INT btid_int;		/* B-tree info. */
@@ -27830,8 +27901,12 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   /* Set key function. */
   switch (purpose)
     {
-    case BTREE_OP_INSERT_NEW_OBJECT:
     case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
+      /* Set undo_nxlsa. */
+      assert (undo_nxlsa != NULL);
+      LSA_COPY (&insert_helper.compensate_undo_nxlsa, undo_nxlsa);
+      /* Fall through. */
+    case BTREE_OP_INSERT_NEW_OBJECT:
       key_insert_func = btree_key_insert_new_object;
       break;
     case BTREE_OP_INSERT_MVCC_DELID:
@@ -29763,6 +29838,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
   assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND);
   assert (insert_helper->rv_redo_data != NULL
 	  && insert_helper->rv_redo_data_ptr != NULL);
+  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
 #if defined (SERVER_MODE)
   assert (log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper),
@@ -29770,12 +29846,6 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 				      thread_get_current_tran_index (),
 				      X_LOCK) > 0);
 #endif /* SERVER_MODE */
-
-  /* TODO: Lock escalation. */
-  /* TODO: Handle BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE
-   *       No locks are required.
-   *       No undo logging is required (is it?).
-   */
 
   /* Insert object in the beginning of leaf record if unique constraint is not
    * violated.
@@ -30183,23 +30253,11 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
     CAST_BUFLEN (insert_helper->rv_redo_data_ptr
 		 - insert_helper->rv_redo_data);
   assert (rv_redo_data_length <= BTREE_RV_REDO_BUFFER_SIZE);
-  if (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT)
-    {
-      log_append_undoredo_data (thread_p, insert_helper->rcvindex,
-				&insert_helper->leaf_addr,
-				insert_helper->rv_undo_data_length,
-				rv_redo_data_length,
-				insert_helper->rv_undo_data,
-				insert_helper->rv_redo_data);
-    }
-  else				/* BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE */
-    {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (*leaf),
-			     insert_helper->leaf_addr.offset, *leaf,
-			     rv_redo_data_length, insert_helper->rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
-    }
+  log_append_undoredo_data (thread_p, insert_helper->rcvindex,
+			    &insert_helper->leaf_addr,
+			    insert_helper->rv_undo_data_length,
+			    rv_redo_data_length, insert_helper->rv_undo_data,
+			    insert_helper->rv_redo_data);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -31438,7 +31496,8 @@ btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info,
 				key, NULL, unique, op_type, unique_stat_info,
-				MVCCID_NULL, BTREE_OP_DELETE_OBJECT_PHYSICAL);
+				MVCCID_NULL, NULL,
+				BTREE_OP_DELETE_OBJECT_PHYSICAL);
 }
 
 /*
@@ -31473,7 +31532,7 @@ btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid,
 
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info,
 				NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
-				NULL, insert_mvccid,
+				NULL, insert_mvccid, NULL,
 				BTREE_OP_DELETE_VACUUM_INSID);
 }
 
@@ -31510,7 +31569,7 @@ btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid,
 
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info,
 				NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
-				NULL, delete_mvccid,
+				NULL, delete_mvccid, NULL,
 				BTREE_OP_DELETE_VACUUM_OBJECT);
 }
 
@@ -31525,11 +31584,12 @@ btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid,
  * oid (in)	      : Object OID.
  * class_oid (in)     : Object class OID.
  * delete_mvccid (in) : The delete MVCCID of object.
+ * undo_nxlsa (in)	 : UNDO next lsa for logical compensate.
  */
 static int
 btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid,
 			OR_BUF * buffered_key, OID * oid, OID * class_oid,
-			MVCCID delete_mvccid)
+			MVCCID delete_mvccid, LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -31547,7 +31607,7 @@ btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid,
 
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info,
 				NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
-				NULL, delete_mvccid,
+				NULL, delete_mvccid, undo_nxlsa,
 				BTREE_OP_DELETE_UNDO_INSERT_DELID);
 }
 
@@ -31562,11 +31622,12 @@ btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid,
  * oid (in)	      : Object OID.
  * class_oid (in)     : Object class OID.
  * insert_mvccid (in) : Insert MVCCID.
+ * undo_nxlsa (in)    : UNDO next lsa for logical compensate.
  */
 static int
 btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid,
 			  OR_BUF * buffered_key, OID * oid, OID * class_oid,
-			  MVCCID insert_mvccid)
+			  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -31584,7 +31645,7 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid,
 
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info,
 				NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
-				NULL, insert_mvccid,
+				NULL, insert_mvccid, undo_nxlsa,
 				BTREE_OP_DELETE_UNDO_INSERT);
 }
 
@@ -31605,6 +31666,7 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid,
  * unique_stat_info (in) : Unique statistics collector.
  * match_mvccid (in)	 : MVCCID to be matched by either insert or delete
  *			   MVCCID.
+ * undo_nxlsa (in)	 : UNDO next lsa for logical compensate.
  * purpose (in)		 : Purpose/context for function call.
  */
 static int
@@ -31612,7 +31674,8 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
 		       OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 		       DB_VALUE * key, OR_BUF * buffered_key, int *unique,
 		       int op_type, BTREE_UNIQUE_STATS * unique_stat_info,
-		       MVCCID match_mvccid, BTREE_OP_PURPOSE purpose)
+		       MVCCID match_mvccid, LOG_LSA * undo_nxlsa,
+		       BTREE_OP_PURPOSE purpose)
 {
   /* Structure used by internal functions. */
   BTREE_DELETE_HELPER delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
@@ -31641,8 +31704,12 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
   /* Choose internal function based on purpose. */
   switch (purpose)
     {
-    case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_UNDO_INSERT:
+      /* Set undo_nxlsa. */
+      assert (undo_nxlsa != NULL);
+      LSA_COPY (&delete_helper.compensate_undo_nxlsa, undo_nxlsa);
+      /* Fall through. */
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
       key_func = btree_key_delete_remove_object;
       break;
@@ -31650,6 +31717,9 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
       key_func = btree_key_remove_insert_mvccid;
       break;
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
+      /* Set undo_nxlsa. */
+      assert (undo_nxlsa != NULL);
+      LSA_COPY (&delete_helper.compensate_undo_nxlsa, undo_nxlsa);
       key_func = btree_key_remove_delete_mvccid;
       break;
     default:
@@ -33584,14 +33654,20 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key,
       pgbuf_unfix_and_init (thread_p, *overflow_page);
 
       /* Vacuum needs system operation to deallocate pages. */
-      if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
+      if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT)
 	{
 	  if (log_start_system_op (thread_p) == NULL)
 	    {
 	      assert_release (false);
 	      return ER_FAILED;
 	    }
+	  is_system_op_started = true;
+	}
+      else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
+	{
+	  log_start_compensate_system_op (thread_p,
+					  &delete_helper->
+					  compensate_undo_nxlsa);
 	  is_system_op_started = true;
 	}
 
@@ -33687,7 +33763,15 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key,
 error:
   if (is_system_op_started)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
+	{
+	  assert_release (false);
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	}
+      else
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
     }
   assert_release (error_code != NO_ERROR);
   return error_code;

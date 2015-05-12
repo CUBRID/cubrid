@@ -720,11 +720,26 @@ struct log_topops_addresses
 				 */
 };
 
+typedef enum log_topops_type LOG_TOPOPS_COMPENSATE_TYPE;
+enum log_topops_type
+{
+  LOG_TOPOPS_COMPENSATE_NONE,
+  LOG_TOPOPS_COMPENSATE_TRAN_ABORT,
+  LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
+};
+
 typedef struct log_topops_stack LOG_TOPOPS_STACK;
 struct log_topops_stack
 {
   int max;			/* Size of stack                   */
   int last;			/* Last entry in stack             */
+  LOG_TOPOPS_COMPENSATE_TYPE for_compensate;	/* Used by compensate log
+						 * operation.
+						 */
+  LOG_LSA undo_nxlsa;		/* Compensate undo_nxlsa. */
+  int compensate_level;		/* The level of top operations when compensate
+				 * was started.
+				 */
   struct log_topops_addresses *stack;	/* Stack for push and pop of top
 					   system actions
 					 */
@@ -1397,9 +1412,7 @@ enum log_rectype
   LOG_COMPENSATE = 8,		/* Compensation record (compensate a
 				   undo record of an aborted tran)
 				 */
-  LOG_LCOMPENSATE = 9,		/* Compensation record (compensate a
-				   logical undo of an aborted tran)
-				 */
+  LOG_LCOMPENSATE = 9,		/* Obsolete */
   LOG_CLIENT_USER_UNDO_DATA = 10,	/* User client undo data */
   LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* User client postpone */
   LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Used to indicate that a set of
@@ -1684,16 +1697,6 @@ struct log_compensate
   struct log_data data;		/* Location of recovery data */
   LOG_LSA undo_nxlsa;		/* Address of next log record to undo */
   int length;			/* Length of compensating data */
-};
-
-/*
- * Information of a logical compensate record which marks the end of logical
- * undo
- */
-struct log_logical_compensate
-{
-  LOG_RCVINDEX rcvindex;	/* Index to recovery function */
-  LOG_LSA undo_nxlsa;		/* Address of next log record to undo */
 };
 
 /* This entry is included during commit */

@@ -230,6 +230,7 @@ struct log_rcv
   const char *data;		/* Replacement data. Pointer becomes invalid once the
 				   recovery of the data is finished
 				 */
+  LOG_LSA compensate_undo_nxlsa;	/* Next undo LSA used by compensate. */
 };
 
 /*

@@ -288,6 +288,7 @@ static void log_client_append_done_actions (THREAD_ENTRY * thread_p,
 static void log_dump_record_header_to_string (LOG_RECORD_HEADER * log,
 					      char *buf, size_t len);
 static void log_ascii_dump (FILE * out_fp, int length, void *data);
+static void log_hexa_dump (FILE * out_fp, int length, void *data);
 static void log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
 			   LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			   void (*dumpfun) (FILE * fp, int, void *),
@@ -330,10 +331,6 @@ static LOG_PAGE *log_dump_record_dbout_redo (THREAD_ENTRY * thread_p,
 static LOG_PAGE *log_dump_record_compensate (THREAD_ENTRY * thread_p,
 					     FILE * out_fp, LOG_LSA * lsa_p,
 					     LOG_PAGE * log_page_p);
-static LOG_PAGE *log_dump_record_logical_compensate (THREAD_ENTRY * thread_p,
-						     FILE * out_fp,
-						     LOG_LSA * lsa_p,
-						     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_client_user_undo (THREAD_ENTRY * thread_p,
 						   FILE * out_fp,
 						   LOG_LSA * lsa_p,
@@ -448,6 +445,10 @@ static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p,
 					     bool release,
 					     bool decache_classrepr);
 
+static LOG_LSA *log_start_system_op_internal (THREAD_ENTRY * thread_p,
+					      LOG_LSA *
+					      compensate_undo_nxlsa);
+
 /*
  * log_rectype_string - RETURN TYPE OF LOG RECORD IN STRING FORMAT
  *
@@ -505,7 +506,7 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_COMPENSATE";
 
     case LOG_LCOMPENSATE:
-      return "LOG_LCOMPENSATE";
+      return "LOG_LCOMPENSATE - OBSOLETE";
 
     case LOG_CLIENT_USER_UNDO_DATA:
       return "LOG_CLIENT_USER_UNDO_DATA";
@@ -3257,46 +3258,6 @@ log_append_compensate (THREAD_ENTRY * thread_p,
 }
 
 /*
- * log_append_logical_compensate - LOG COMPENSATE DATA
- *
- * return: nothing
- *
- *   rcvindex(in): Index to recovery function
- *   tdes(in/out): State structure of transaction of the log record
- *   undo_nxlsa(in): Address of next undo record to rollback after logical
- *                     undo has been done.
- *
- * NOTE:Log a logical/dummy compensating log record. The end of a
- *              logical undo is logged using what it is called a logical/dummy
- *              compensating record. This is needed to allow atomic undoes of
- *              logical undo operations.
- */
-void
-log_append_logical_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
-			       LOG_TDES * tdes, LOG_LSA * undo_nxlsa)
-{
-  struct log_logical_compensate *logical_comp;	/* end of a logical undo   */
-  LOG_PRIOR_NODE *node;
-
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_LCOMPENSATE,
-					rcvindex, NULL, 0, NULL, 0, NULL);
-  if (node == NULL)
-    {
-      return;
-    }
-
-  logical_comp = (struct log_logical_compensate *) node->data_header;
-
-  logical_comp->rcvindex = rcvindex;
-  LSA_COPY (&logical_comp->undo_nxlsa, undo_nxlsa);
-
-  (void) prior_lsa_next_record (thread_p, node, tdes);
-
-  /* Go back to our undo link */
-  LSA_COPY (&tdes->undo_nxlsa, undo_nxlsa);
-}
-
-/*
  * log_append_empty_record -
  *
  * return: nothing
@@ -4004,6 +3965,37 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name,
 LOG_LSA *
 log_start_system_op (THREAD_ENTRY * thread_p)
 {
+  return log_start_system_op_internal (thread_p, NULL);
+}
+
+/*
+ * log_start_compensate_system_op - Start a macro system operation for log
+ *				    compensate.
+ *
+ * return		      : Void.
+ * thread_p (in)	      : Thread entry.
+ * compensate_undo_nxlsa (in) : Log lsa to 
+ */
+void
+log_start_compensate_system_op (THREAD_ENTRY * thread_p,
+				LOG_LSA * compensate_undo_nxlsa)
+{
+  if (log_start_system_op_internal (thread_p, compensate_undo_nxlsa) == NULL)
+    {
+      assert (false);
+    }
+}
+
+/*
+ * log_start_system_op_internal - Start a macro system operation
+ *
+ * return: lsa of parent  or NULL in case of error.
+ *
+ */
+static LOG_LSA *
+log_start_system_op_internal (THREAD_ENTRY * thread_p,
+			      LOG_LSA * compensate_undo_nxlsa)
+{
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
   int error_code = NO_ERROR;
@@ -4099,6 +4091,67 @@ log_start_system_op (THREAD_ENTRY * thread_p)
 	  return NULL;
 	}
     }
+
+  /* Is system op started to execute log compensate? */
+  if (compensate_undo_nxlsa != NULL)
+    {
+      bool compensate_debug = prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG);
+
+      assert (!LOG_ISTRAN_ACTIVE (tdes));
+      if (tdes->topops.last == -1)
+	{
+	  /* Transaction rollback. */
+	  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_TRAN_ABORT;
+
+	  if (compensate_debug)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "COMPENSATE_DEBUG: Start compensate system op "
+			     "for transaction rollback. Tran_ID=%d. "
+			     "Undo_nxlsa=%llu|%d\n",
+			     tdes->trid,
+			     (long long int) compensate_undo_nxlsa->pageid,
+			     (int) compensate_undo_nxlsa->offset);
+	    }
+	}
+      else
+	{
+	  /* System op is aborted. */
+	  assert (tdes->topops.for_compensate == LOG_TOPOPS_COMPENSATE_NONE);
+	  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_SYSOP_ABORT;
+	  /* Set compensate level. It must be known in order to:
+	   * 1. Attach all top operations with higher level to their parent.
+	   * 2. Commit the top operation with the same level.
+	   *
+	   * Initially, only level -1 and 0 were allowed here. However, it
+	   * seems there can be nested qexec_execute_insert calls, each
+	   * opening a different system operation. If one of the nested calls
+	   * is aborted, we require to compensate its changes (among others
+	   * updating unique statistics, which is a logical operation and
+	   * which requires a logical compensation using system operation).
+	   * Remember the level here, and it will be used by
+	   * log_end_system_op.
+	   */
+	  tdes->topops.compensate_level = tdes->topops.last + 1;
+
+	  if (compensate_debug)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "COMPENSATE_DEBUG: Start compensate system op "
+			     "for system op abort. Tran_ID=%d. "
+			     "Undo_nxlsa=%llu|%d\n",
+			     tdes->trid,
+			     (long long int) compensate_undo_nxlsa->pageid,
+			     (int) compensate_undo_nxlsa->offset);
+	    }
+	}
+      LSA_COPY (&tdes->topops.undo_nxlsa, compensate_undo_nxlsa);
+    }
+  else if (tdes->topops.last == -1)
+    {
+      tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+    }
+
   /*
    * NOTE if tdes->topops.last >= 0, there is an already defined
    * top system operation.
@@ -4208,7 +4261,9 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
        * be decided at this moment.  Nested topops, however, must still be
        * allowed to attach to their parents.
        */
-      if (tdes->topops.last == 1
+      bool compensate_debug = prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG);
+
+      if (tdes->topops.last == 0
 	  && result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
 	{
 	  /*
@@ -4217,7 +4272,58 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	   * operation must be committed to undo whatever we were doing.
 	   */
 	  result = LOG_RESULT_TOPOP_COMMIT;
+
+	  /* TODO: It would be useful to print a call-stack here. */
+	  _er_log_debug (ARG_FILE_LINE,
+			 "WARNING: Attach to outer is used for top system "
+			 "operation, even though transaction is not active."
+			 "Tran_ID=%d", tdes->trid);
 	}
+      else if (tdes->topops.for_compensate
+	       == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
+	       && tdes->topops.compensate_level == tdes->topops.last)
+	{
+	  /* This is a compensate system op. It must be committed. */
+	  if (compensate_debug && result != LOG_RESULT_TOPOP_COMMIT)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "COMPENSATE_DEBUG: Convert result from %d to "
+			     "%d. Tran_ID=%d, system op depth=%d.\n",
+			     result, LOG_RESULT_TOPOP_COMMIT, tdes->trid,
+			     tdes->topops.last);
+	    }
+	  result = LOG_RESULT_TOPOP_COMMIT;
+	}
+      else if (tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE
+	       && tdes->topops.last > 0 && result == LOG_RESULT_TOPOP_COMMIT)
+	{
+	  /* Compensate will no longer work correctly if nested system
+	   * operations are committed. All operations inside a compensate
+	   * system operation should be committed together.
+	   */
+	  if (compensate_debug)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "COMPENSATE_DEBUG: Convert result from %d to "
+			     "%d. Tran_ID=%d, system op depth=%d.\n",
+			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
+			     tdes->trid, tdes->topops.last);
+	    }
+	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
+	}
+      if (compensate_debug
+	  && tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "COMPENSATE_DEBUG: End system operation under "
+			 "compensate. Tran_ID=%d, sytem op depth=%d, "
+			 "result=%d.\n",
+			 tdes->trid, tdes->topops.last, result);
+	}
+    }
+  else
+    {
+      assert (tdes->topops.for_compensate == LOG_TOPOPS_COMPENSATE_NONE);
     }
 
   if (result != LOG_RESULT_TOPOP_ATTACH_TO_OUTER
@@ -4344,7 +4450,19 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	    }
 	}
 
-      result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
+      if (tdes->topops.for_compensate == LOG_TOPOPS_COMPENSATE_NONE)
+	{
+	  /* Always attach to parent. */
+	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
+	}
+      else
+	{
+	  /* Even if inside compensation nothing was executed, we need to
+	   * complete system operation in order to "compensate" and to reset
+	   * for_compensate.
+	   */
+	  /* Don't attach to outer. */
+	}
       (void) log_complete_system_op (thread_p, tdes, result, save_state);
     }
 
@@ -4711,8 +4829,31 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     }
 
   top_start_posp = (struct log_topope_start_postpone *) node->data_header;
-  LSA_COPY (&top_start_posp->lastparent_lsa,
-	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
+  if (tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE)
+    {
+      assert (tdes->topops.last == 0
+	      || tdes->topops.for_compensate
+	      == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
+
+      /* Overwrite lastparent_lsa with compensate undo_nxlsa. */
+      LSA_COPY (&top_start_posp->lastparent_lsa, &tdes->topops.undo_nxlsa);
+
+      /* Do not reset for_compensate yet. It is reset when system op is
+       * completed.
+       */
+      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "COMPENSATE_DEBUG: Successful commit postpone for "
+			 "compensate. Tran_ID=%d, system op depth=%d.\n",
+			 tdes->trid, tdes->topops.last);
+	}
+    }
+  else
+    {
+      LSA_COPY (&top_start_posp->lastparent_lsa,
+		&tdes->topops.stack[tdes->topops.last].lastparent_lsa);
+    }
   LSA_COPY (&top_start_posp->posp_lsa, start_postpone_lsa);
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
@@ -6896,8 +7037,41 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   top_result = (struct log_topop_result *) node->data_header;
 
-  LSA_COPY (&top_result->lastparent_lsa,
-	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
+  if (result == LOG_RESULT_TOPOP_COMMIT
+      && tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE)
+    {
+      assert (tdes->topops.last == 0
+	      || tdes->topops.for_compensate
+	      == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
+
+      /* Overwrite lastparent_lsa with compensate undo_nxlsa. */
+      LSA_COPY (&top_result->lastparent_lsa, &tdes->topops.undo_nxlsa);
+
+      /* Reset for_compensate field. */
+      tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+
+      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "COMPENSATE_DEBUG: Successfully completed "
+			 "compensate. Tran_ID=%d, system op depth=%d.\n",
+			 tdes->trid, tdes->topops.last);
+	}
+    }
+  else
+    {
+      if (result != LOG_RESULT_TOPOP_COMMIT
+	  && tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE)
+	{
+	  /* Failed to compensate. */
+	  assert (false);
+
+	  /* Reset for_compensate field. */
+	  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+	}
+      LSA_COPY (&top_result->lastparent_lsa,
+		&tdes->topops.stack[tdes->topops.last].lastparent_lsa);
+    }
   LSA_COPY (&top_result->prv_topresult_lsa, &tdes->tail_topresult_lsa);
 
   (void) prior_lsa_next_record (thread_p, node, tdes);
@@ -7296,7 +7470,6 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    case LOG_POSTPONE:
 		    case LOG_RUN_POSTPONE:
 		    case LOG_COMPENSATE:
-		    case LOG_LCOMPENSATE:
 		    case LOG_WILL_COMMIT:
 		    case LOG_COMMIT_WITH_POSTPONE:
 		    case LOG_SAVEPOINT:
@@ -8006,6 +8179,32 @@ log_ascii_dump (FILE * out_fp, int length, void *data)
     }
 }
 
+/*
+ * log_hexa_dump () - Point recovery data as hexadecimals.
+ *
+ * return      : Void.
+ * out_fp (in) : Print output.
+ * length (in) : Recovery data length.
+ * data (in)   : Recovery data.
+ */
+static void
+log_hexa_dump (FILE * out_fp, int length, void *data)
+{
+  char *ptr;			/* Pointer to data */
+  int i;
+
+  fprintf (out_fp, "  00000: ");
+  for (i = 0, ptr = (char *) data; i < length; i++)
+    {
+      fprintf (out_fp, "%02X ", (unsigned char) (*ptr++));
+      if (i % 16 == 15 && i != length)
+	{
+	  fprintf (out_fp, "\n  %05d: ", i);
+	}
+    }
+  fprintf (out_fp, "\n");
+}
+
 static void
 log_repl_data_dump (FILE * out_fp, int length, void *data)
 {
@@ -8586,30 +8785,6 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp,
 }
 
 static LOG_PAGE *
-log_dump_record_logical_compensate (THREAD_ENTRY * thread_p, FILE * out_fp,
-				    LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
-{
-  struct log_logical_compensate *logical_comp;
-
-  /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*logical_comp), log_lsa,
-				    log_page_p);
-  logical_comp =
-    ((struct log_logical_compensate *) ((char *) log_page_p->area +
-					log_lsa->offset));
-
-  fprintf (out_fp, ", Recv_index = %s,\n",
-	   rv_rcvindex_string (logical_comp->rcvindex));
-  fprintf (out_fp, "     Next_to_UNDO = %lld|%d\n",
-	   (long long int) logical_comp->undo_nxlsa.pageid,
-	   logical_comp->undo_nxlsa.offset);
-
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*logical_comp), log_lsa, log_page_p);
-
-  return log_page_p;
-}
-
-static LOG_PAGE *
 log_dump_record_client_user_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
 				  LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
@@ -9155,12 +9330,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
     case LOG_COMPENSATE:
       log_page_p =
 	log_dump_record_compensate (thread_p, out_fp, log_lsa, log_page_p);
-      break;
-
-    case LOG_LCOMPENSATE:
-      log_page_p =
-	log_dump_record_logical_compensate (thread_p, out_fp, log_lsa,
-					    log_page_p);
       break;
 
     case LOG_CLIENT_USER_UNDO_DATA:
@@ -9753,6 +9922,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	   * Only no-page logical operations require logical compensation.
 	   */
 	  /* Invoke Undo recovery function */
+	  LSA_COPY (&rcv->compensate_undo_nxlsa, &tdes->undo_nxlsa);
 	  rv_err = log_undo_rec_restartable (thread_p, rcvindex, rcv);
 	  if (rv_err != NO_ERROR)
 	    {
@@ -9820,24 +9990,11 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
 	  /*
 	   * A system operation is needed since the postpone operations of an
-	   * undo log must be done at the end of the logical undo. Without this
-	   * if there is a crash, we will be in trouble since we will not be able
-	   * to undo a postpone operation.
+	   * undo log must be done at the end of the logical undo. Without
+	   * this if there is a crash, we will be in trouble since we will not
+	   * be able to undo a postpone operation.
 	   */
-	  if (log_start_system_op (thread_p) == NULL)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "log_rollback_record");
-	      if (area != NULL)
-		{
-		  free_and_init (area);
-		}
-	      if (rcv->pgptr != NULL)
-		{
-		  pgbuf_unfix (thread_p, rcv->pgptr);
-		}
-	      return;
-	    }
+	  log_start_compensate_system_op (thread_p, &logical_undo_nxlsa);
 
 #if defined(CUBRID_DEBUG)
 	  {
@@ -9881,12 +10038,6 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 	  tdes->state = save_state;
-	  /*
-	   * Now add the dummy logical compensating record. This mark the end of
-	   * the logical operation.
-	   */
-	  log_append_logical_compensate (thread_p, rcvindex, tdes,
-					 &logical_undo_nxlsa);
 	}
     }
   else
@@ -10009,7 +10160,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   struct log_undo *undo = NULL;	/* An undo log record */
   struct log_mvcc_undo *mvcc_undo = NULL;	/* An undo log record */
   struct log_compensate *compensate = NULL;	/* A compensating log record */
-  struct log_logical_compensate *logical_comp = NULL;	/* end of a logical undo */
   struct log_topop_result *top_result = NULL;	/* Partial result from top system
 						 * operation
 						 */
@@ -10242,24 +10392,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		(struct log_compensate *) ((char *) log_pgptr->area +
 					   log_lsa.offset);
 	      LSA_COPY (&prev_tranlsa, &compensate->undo_nxlsa);
-	      break;
-
-	    case LOG_LCOMPENSATE:
-	      /*
-	       * We found a partial rollback, use the CLR to find the next record
-	       * to undo
-	       */
-
-	      /* Read the DATA HEADER */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
-				  log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						sizeof (*logical_comp),
-						&log_lsa, log_pgptr);
-	      logical_comp =
-		((struct log_logical_compensate *) ((char *) log_pgptr->area +
-						    log_lsa.offset));
-	      LSA_COPY (&prev_tranlsa, &logical_comp->undo_nxlsa);
 	      break;
 
 	    case LOG_COMMIT_TOPOPE:
@@ -10684,7 +10816,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    case LOG_DBEXTERN_REDO_DATA:
 		    case LOG_RUN_POSTPONE:
 		    case LOG_COMPENSATE:
-		    case LOG_LCOMPENSATE:
 		    case LOG_CLIENT_USER_UNDO_DATA:
 		    case LOG_CLIENT_USER_POSTPONE_DATA:
 		    case LOG_SAVEPOINT:
@@ -11368,6 +11499,20 @@ log_rv_dump_char (FILE * fp, int length, void *data)
 {
   log_ascii_dump (fp, length, data);
   fprintf (fp, "\n");
+}
+
+/*
+ * log_rv_dump_hexa () - Point recovery data as hexadecimals.
+ *
+ * return      : Void.
+ * fp (in)     : Print output.
+ * length (in) : Recovery data length.
+ * data (in)   : Recovery data.
+ */
+void
+log_rv_dump_hexa (FILE * fp, int length, void *data)
+{
+  log_hexa_dump (fp, length, data);
 }
 
 /*

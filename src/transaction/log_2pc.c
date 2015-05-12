@@ -2514,7 +2514,6 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p,
       break;
 
     case LOG_COMPENSATE:
-    case LOG_LCOMPENSATE:
     case LOG_RUN_POSTPONE:
     case LOG_RUN_NEXT_CLIENT_UNDO:
     case LOG_RUN_NEXT_CLIENT_POSTPONE:
