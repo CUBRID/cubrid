@@ -1786,6 +1786,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 78 Kullanıcılar otomatik artış kısıtlaması tarafından oluşturulan seri nesneyi değiştirmek için izin verilmez.
 79 Geçersiz yalıtım düzeyi: %1$s şema, %2$s örnekleri.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** geçersiz önbellek ***

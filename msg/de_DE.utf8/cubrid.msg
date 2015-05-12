@@ -1786,6 +1786,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 78 Es ist Benutzers nicht erlaubt, ein von einer auto-inkrement Einschränkung  erstelltes Serial-Objekt zu ändern.
 79 Ungültiges Isolationslevel: %1$s Schema, %2$s Instanzen.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Ungültiges Cache ***

@@ -1786,6 +1786,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 78 「Auto increment」制約条件で作られたシリアルオブジェクトは自由に変更できません。
 79 正しくないアイソレーションレベル: 「%1$s」スキーマ、「%2$s」オブジェクト。
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 正しくないキャッシュ ***

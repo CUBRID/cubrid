@@ -816,6 +816,14 @@ update_auto_increment_error:
       AU_ENABLE (save);
     }
 
+  /* if dbt_finish_object() succeeded, it would never come here, so 
+   * we just check if obj_tmpl and clear it. 
+   */
+  if (obj_tmpl != NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
   return (error);
 }
 
@@ -895,6 +903,9 @@ do_reset_auto_increment_serial (MOP serial_obj)
 
 error_exit:
 
+  /* We don't need to check return value of dbt_finish_object() since if it
+   * succeeded, it would never come here. 
+   */
   if (obj_tmpl != NULL)
     {
       dbt_abort_object (obj_tmpl);
@@ -2127,6 +2138,8 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser,
   else
     {
       *serial_object = serial_mop;
+      /* obj_tmpl has been released by dbt_finish_object() */
+      obj_tmpl = NULL;
     }
 
 end:
@@ -2148,6 +2161,11 @@ end:
   if (serial_name != NULL)
     {
       free_and_init (serial_name);
+    }
+
+  if (obj_tmpl != NULL)
+    {
+      dbt_abort_object (obj_tmpl);
     }
 
   return error;
@@ -2737,6 +2755,22 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* cached num */
   if (cached_num_change)
     {
+
+      /* Here we need class_name and att_name to see if this serial is auto_increment.
+       * Cause for an auto_increment serial, it is not allowed to change the cached_num for it.
+       */
+      if (!DB_IS_NULL (&class_name_val))
+	{
+
+	  error = MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER;
+
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		      error, name);
+
+	  goto end;
+
+	}
+
       DB_MAKE_INT (&value, cached_num);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
       if (error < 0)
@@ -2768,6 +2802,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  /* obj_tmpl has been released by dbt_finish_object */
+  obj_tmpl = NULL;
+
 end:
   if (!OID_ISNULL (&serial_obj_id))
     {
@@ -2777,6 +2814,11 @@ end:
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
+    }
+
+  if (obj_tmpl != NULL)
+    {
+      dbt_abort_object (obj_tmpl);
     }
 
   return error;
@@ -16916,7 +16958,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
-	          assert (pt_has_error (parser));
+		  assert (pt_has_error (parser));
 
 		  err = ER_FAILED;
 		}

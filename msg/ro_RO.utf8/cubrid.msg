@@ -1786,6 +1786,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 78 Nu este permis utilizatorilor să modifice un obiect serial creat de o constrângere AUTO INCREMENT.
 79 Nivel de izolare invalid; schema: %1$s, instanţe: %2$s.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalid ***

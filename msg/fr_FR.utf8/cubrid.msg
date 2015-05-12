@@ -1786,6 +1786,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 78 Il est interdit aux utilisateurs de modifier l'objet serialisé créée par une contrainte d'incrémentation automatique.
 79 Niveau d'isolement invalid: schéma %1$s, %2$s instances.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
 
 
 $set 11 MSGCAT_SET_AUTHORIZATION
