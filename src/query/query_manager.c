@@ -1856,6 +1856,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 		     CACHE_TIME * server_cache_time_p,
 		     int query_timeout, XASL_CACHE_ENTRY ** ret_cache_entry_p)
 {
+#define CLASS_OID_BUFFER_SIZE 1024
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
   DB_VALUE *dbvals_p;
@@ -1875,6 +1876,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   bool cached_result;
   bool saved_is_stats_on;
   bool xasl_trace;
+  OID class_oid_buffer[CLASS_OID_BUFFER_SIZE];
+  OID *class_oid_list = NULL;
+  int class_oid_list_size = 0;
 
   cached_result = false;
   query_p = NULL;
@@ -1930,10 +1934,51 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   /* Check the existance of the given XASL. If someone marked it
      to be deleted, then remove it if possible. */
   cache_clone_p = NULL;		/* mark as pop */
-  xasl_cache_entry_p = qexec_check_xasl_cache_ent_by_xasl (thread_p,
-							   xasl_id_p,
-							   dbval_count,
-							   &cache_clone_p);
+  xasl_cache_entry_p =
+    qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p, dbval_count,
+					&cache_clone_p, class_oid_buffer,
+					CLASS_OID_BUFFER_SIZE,
+					&class_oid_list,
+					&class_oid_list_size);
+  if (xasl_cache_entry_p != NULL)
+    {
+      int i;
+      bool check_xasl_cache = false;
+      for (i = 0; i < class_oid_list_size; i++)
+	{
+	  if (check_xasl_cache
+	      || lock_object (thread_p, &class_oid_list[i],
+			      oid_Root_class_oid, IS_LOCK,
+			      LK_COND_LOCK) != LK_GRANTED)
+	    {
+	      check_xasl_cache = true;
+	      if (lock_object (thread_p, &class_oid_list[i],
+			       oid_Root_class_oid, IS_LOCK, LK_UNCOND_LOCK)
+		  != LK_GRANTED)
+		{
+		  ASSERT_ERROR ();
+		  if (class_oid_list != class_oid_buffer)
+		    {
+		      free (class_oid_list);
+		    }
+		  return NULL;
+		}
+	    }
+	}
+      if (check_xasl_cache)
+	{
+	  qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p,
+						 false);
+	  xasl_cache_entry_p =
+	    qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p,
+						dbval_count, &cache_clone_p,
+						NULL, 0, NULL, NULL);
+	}
+    }
+  if (class_oid_list != NULL && class_oid_list != class_oid_buffer)
+    {
+      free_and_init (class_oid_list);
+    }
   if (xasl_cache_entry_p == NULL)
     {
       /* It doesn't be there or was marked to be deleted. */
@@ -2311,7 +2356,8 @@ end:
       if (cache_clone_p)
 	{
 	  (void) qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p, -1,
-						     &cache_clone_p);
+						     &cache_clone_p, NULL, 0,
+						     NULL, NULL);
 	}
     }
 
@@ -4567,7 +4613,8 @@ end:
       /* save XASL tree */
       (void) qexec_check_xasl_cache_ent_by_xasl (thread_p,
 						 &query_p->xasl_id, -1,
-						 &cache_clone_p);
+						 &cache_clone_p, NULL, 0,
+						 NULL, NULL);
 #endif /* ENABLE_UNUSED_FUNCTION */
     }
   else

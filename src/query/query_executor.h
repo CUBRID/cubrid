@@ -1264,12 +1264,20 @@ extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY *
 							     xasl_id,
 							     int dbval_cnt,
 							     XASL_CACHE_CLONE
-							     ** clop);
+							     ** clop,
+							     OID *
+							     class_oid_buffer,
+							     int
+							     class_oid_buffer_size,
+							     OID **
+							     class_oid_list,
+							     int
+							     *class_oid_list_size);
 extern XASL_CACHE_ENTRY
-  * qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
-					       const XASL_ID * xasl_id,
-					       int dbval_cnt,
-					       XASL_CACHE_CLONE ** clop);
+  *qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
+					      const XASL_ID * xasl_id,
+					      int dbval_cnt,
+					      XASL_CACHE_CLONE ** clop);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int qexec_free_xasl_cache_clo (XASL_CACHE_CLONE * clo);
 #endif /* ENABLE_UNUSED_FUNCTION */

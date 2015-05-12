@@ -9961,17 +9961,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-              /* We may get NULL as an expr value.
-               * See pt_to_merge_update_query(...).
-               */
-              if (DB_IS_NULL (valp))
-                {
-                  should_delete = false;
-                }
-              else
-                {
-                  should_delete = DB_GET_INT (valp);
-                }
+	      /* We may get NULL as an expr value.
+	       * See pt_to_merge_update_query(...).
+	       */
+	      if (DB_IS_NULL (valp))
+		{
+		  should_delete = false;
+		}
+	      else
+		{
+		  should_delete = DB_GET_INT (valp);
+		}
 
 	      if (should_delete)
 		{
@@ -17954,7 +17954,11 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 XASL_CACHE_ENTRY *
 qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 				    const XASL_ID * xasl_id, int dbval_cnt,
-				    XASL_CACHE_CLONE ** clop)
+				    XASL_CACHE_CLONE ** clop,
+				    OID * class_oid_buffer,
+				    int class_oid_buffer_size,
+				    OID ** class_oid_list,
+				    int *class_oid_list_size)
 {
   XASL_CACHE_ENTRY *ent;
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -18040,6 +18044,51 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	    {
 	      assert (0);
 	    }
+	}
+
+      if (ent != NULL && class_oid_list != NULL)
+	{
+	  int n_classes = 0;
+	  int i = 0;
+	  int k = 0;
+
+	  for (i = 0; i < ent->n_oid_list; i++)
+	    {
+	      if (ent->tcard_list[i] < 0)
+		{
+		  /* Not a class */
+		  assert (ent->tcard_list[i] == -1);
+		}
+	      else
+		{
+		  n_classes++;
+		}
+	    }
+	  assert (class_oid_list_size != NULL);
+	  if (class_oid_buffer != NULL && class_oid_buffer_size >= n_classes)
+	    {
+	      *class_oid_list = class_oid_buffer;
+	    }
+	  else
+	    {
+	      *class_oid_list = malloc (n_classes * sizeof (OID));
+	      if (*class_oid_list == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  ent->n_oid_list * sizeof (OID));
+		  return NULL;
+		}
+	    }
+	  for (i = 0; i < ent->n_oid_list; i++)
+	    {
+	      if (ent->tcard_list[i] >= 0)
+		{
+		  (*class_oid_list)[k++] = ent->class_oid_list[i];
+		}
+	    }
+	  assert (k == n_classes);
+	  *class_oid_list_size = n_classes;
 	}
     }
 

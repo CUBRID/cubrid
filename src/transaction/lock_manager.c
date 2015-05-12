@@ -3579,6 +3579,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index,
   LK_TRAN_LOCK *tran_lock;
   bool is_instant_duration;
   int compat1, compat2;
+  bool is_res_mutex_locked = false;
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
   bool is_perf_tracking;
   TSC_TICKS start_tick, end_tick;
@@ -3636,6 +3637,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index,
   is_instant_duration = tran_lock->is_instant_duration;
 
 start:
+  assert (!is_res_mutex_locked);
 
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
@@ -3671,6 +3673,19 @@ start:
 	  return LK_GRANTED;
 	}
     }
+  else
+    {
+      /* Class lock request. */
+      /* Try to find class lock entry if it already exists to avoid using the
+       * expensive resource mutex.
+       */
+      entry_ptr = lock_find_class_entry (tran_index, oid);
+      if (entry_ptr != NULL)
+	{
+	  res_ptr = entry_ptr->res_head;
+	  goto lock_tran_lk_entry;
+	}
+    }
 
   /* find or add the lockable object in the lock table */
   search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid,
@@ -3685,6 +3700,8 @@ start:
     {
       return ER_FAILED;
     }
+  /* Find or insert also locks the resource mutex. */
+  is_res_mutex_locked = true;
 
   if (res_ptr->holder == NULL && res_ptr->waiter == NULL
       && res_ptr->non2pl == NULL)
@@ -3698,6 +3715,7 @@ start:
       entry_ptr = lf_freelist_claim (t_entry_ent, &lk_Gl.obj_free_entry_list);
       if (entry_ptr == NULL)
 	{
+	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		  1, "lock heap entry");
@@ -3740,6 +3758,7 @@ start:
 	    malloc (sizeof (LK_ACQUISITION_HISTORY));
 	  if (history == NULL)
 	    {
+	      assert (is_res_mutex_locked);
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
@@ -3753,6 +3772,7 @@ start:
 	}
 
       /* release all mutexes */
+      assert (is_res_mutex_locked);
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
       *entry_addr_ptr = entry_ptr;
@@ -3848,6 +3868,7 @@ start:
 		malloc (sizeof (LK_ACQUISITION_HISTORY));
 	      if (history == NULL)
 		{
+		  assert (is_res_mutex_locked);
 		  pthread_mutex_unlock (&res_ptr->res_mutex);
 #if defined(ENABLE_SYSTEMTAP)
 		  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
@@ -3860,6 +3881,7 @@ start:
 	      RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
 	    }
 
+	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  *entry_addr_ptr = entry_ptr;
 #if defined(ENABLE_SYSTEMTAP)
@@ -3872,6 +3894,7 @@ start:
       /* 2. I am not a holder & my request cannot be granted. */
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
+	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  if (wait_msecs == LK_ZERO_WAIT)
 	    {
@@ -3940,7 +3963,9 @@ start:
 	      /*  */
 	      thread_unlock_entry (wait_entry_ptr->thrd_entry);
 	      thread_unlock_entry (thrd_entry);
+	      assert (is_res_mutex_locked);
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      is_res_mutex_locked = false;
 	      goto start;
 	    }
 
@@ -3949,7 +3974,9 @@ start:
 	  wait_entry_ptr->thrd_entry->tran_next_wait = thrd_entry;
 
 	  thread_unlock_entry (wait_entry_ptr->thrd_entry);
+	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  is_res_mutex_locked = false;
 
 	  thread_suspend_wakeup_and_unlock_entry (thrd_entry,
 						  THREAD_LOCK_SUSPENDED);
@@ -3992,6 +4019,7 @@ start:
       entry_ptr = lf_freelist_claim (t_entry_ent, &lk_Gl.obj_free_entry_list);
       if (entry_ptr == NULL)
 	{
+	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		  1, "lock heap entry");
@@ -4033,6 +4061,7 @@ start:
       goto blocked;
     }				/* end of a new lock request */
 
+lock_tran_lk_entry:
   /* The object exists in the hash chain &
    * I am a lock holder of the lockable object.
    */
@@ -4071,7 +4100,10 @@ start:
 	    malloc (sizeof (LK_ACQUISITION_HISTORY));
 	  if (history == NULL)
 	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      if (is_res_mutex_locked)
+		{
+		  pthread_mutex_unlock (&res_ptr->res_mutex);
+		}
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
 				       LK_NOTGRANTED_DUE_ERROR);
@@ -4083,7 +4115,10 @@ start:
 	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
 	}
 
-      pthread_mutex_unlock (&res_ptr->res_mutex);
+      if (is_res_mutex_locked)
+	{
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	}
       mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
       *entry_addr_ptr = entry_ptr;
 
@@ -4092,6 +4127,13 @@ start:
 #endif /* ENABLE_SYSTEMTAP */
 
       return LK_GRANTED;
+    }
+
+  if (!is_res_mutex_locked)
+    {
+      /* We need to lock resource mutex. */
+      pthread_mutex_lock (&res_ptr->res_mutex);
+      is_res_mutex_locked = true;
     }
 
   /* check the compatibility with other holders' granted mode */
@@ -4118,6 +4160,7 @@ start:
 	    malloc (sizeof (LK_ACQUISITION_HISTORY));
 	  if (history == NULL)
 	    {
+	      assert (is_res_mutex_locked);
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
@@ -4139,6 +4182,7 @@ start:
       assert (res_ptr->total_holders_mode != NA_LOCK);
 
       lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
+      assert (is_res_mutex_locked);
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
       goto lock_conversion_treatement;
@@ -4184,7 +4228,9 @@ start:
 	{
 	  thread_unlock_entry (entry_ptr->thrd_entry);
 	  thread_unlock_entry (thrd_entry);
+	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  is_res_mutex_locked = false;
 	  goto start;
 	}
 
@@ -4193,7 +4239,9 @@ start:
 
       thread_unlock_entry (entry_ptr->thrd_entry);
 
+      assert (is_res_mutex_locked);
       pthread_mutex_unlock (&res_ptr->res_mutex);
+      is_res_mutex_locked = false;
 
       thread_suspend_wakeup_and_unlock_entry (thrd_entry,
 					      THREAD_LOCK_SUSPENDED);
@@ -4270,7 +4318,10 @@ blocked:
 #endif /* LK_TRACE_OBJECT */
 
   (void) thread_lock_entry (entry_ptr->thrd_entry);
-  pthread_mutex_unlock (&res_ptr->res_mutex);
+  if (is_res_mutex_locked)
+    {
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+    }
   ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
   if (is_perf_tracking)
