@@ -10928,7 +10928,18 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 		      (holder->bufptr->iopage_buffer->iopage.prv.ptype));
 
 	      if (req_page_has_group == false
-		  && pgbuf_get_page_ptype (thread_p, ret_pgptr) == PAGE_HEAP)
+		  && holder->first_watcher != NULL)
+		{
+		  /* special case : already have fix on this page with an
+		   * watcher; get group id from existing watcher */
+		  assert (holder->watch_count > 0);
+		  assert (!VPID_ISNULL (&holder->first_watcher->group_id));
+		  VPID_COPY (&req_watcher->group_id,
+			     &holder->first_watcher->group_id);
+		}
+	      else if (req_page_has_group == false
+		       && pgbuf_get_page_ptype (thread_p, ret_pgptr)
+		       == PAGE_HEAP)
 		{
 		  er_status =
 		    pgbuf_get_groupid_and_unfix (thread_p, req_vpid,
