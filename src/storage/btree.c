@@ -14180,7 +14180,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   sep_key = btree_find_split_point (thread_p, btid, Q, &leftcnt, key,
 				    &clear_sep_key);
-  assert (leftcnt < key_cnt && leftcnt >= 1);
+  assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
     {
       er_log_debug (ARG_FILE_LINE,
@@ -14235,8 +14235,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   rightcnt = key_cnt - leftcnt;
 
-  assert (leftcnt > 0);
-
   /*********************************************************************
    ***  STEP 2: save undo image of Q
    ***		update Q, R header info
@@ -14266,10 +14264,14 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       VPID_SET_NULL (&qheader->next_vpid);
     }
 
-  assert_release (leftcnt != 0);
-  if (leftcnt == 0)		/* defence */
+  if (leftcnt == 0)
     {
-      qheader->max_key_len = 0;
+      /* Only key length will exist in page. Set max key length. */
+      /* Max key length would have been set when key is inserted. However, we
+       * set it here to suppress assert of btree_verify_node.
+       */
+      qheader->max_key_len =
+	BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
     }
 
   qheader->split_info.index = 1;
@@ -14278,7 +14280,12 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   rheader->max_key_len = right_max_key_len;
   if (key_cnt - leftcnt == 0 && flag_fence_insert == false)
     {
-      rheader->max_key_len = 0;
+      /* Only key length will exist in page. Set max key length. */
+      /* Max key length would have been set when key is inserted. However, we
+       * set it here to suppress assert of btree_verify_node.
+       */
+      rheader->max_key_len =
+	BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
     }
 
   rheader->next_vpid = right_next_vpid;
@@ -15080,7 +15087,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   sep_key = btree_find_split_point (thread_p, btid, P, &leftcnt, key,
 				    &clear_sep_key);
-  assert (leftcnt < key_cnt && leftcnt >= 1);
+  assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
     {
       er_log_debug (ARG_FILE_LINE,
@@ -15161,7 +15168,12 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   qheader->max_key_len = pheader->node.max_key_len;
   if (leftcnt == 0 && flag_fence_insert == false)
     {
-      qheader->max_key_len = 0;
+      /* Only key length will exist in page. Set max key length. */
+      /* Max key length would have been set when key is inserted. However, we
+       * set it here to suppress assert of btree_verify_node.
+       */
+      qheader->max_key_len =
+	BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
     }
 
   VPID_SET_NULL (&(qheader->prev_vpid));	/* non leaf or first leaf node */
@@ -15188,7 +15200,12 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   rheader->max_key_len = pheader->node.max_key_len;
   if (key_cnt - leftcnt == 0 && flag_fence_insert == false)
     {
-      rheader->max_key_len = 0;
+      /* Only key length will exist in page. Set max key length. */
+      /* Max key length would have been set when key is inserted. However, we
+       * set it here to suppress assert of btree_verify_node.
+       */
+      rheader->max_key_len =
+	BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
     }
 
   VPID_SET_NULL (&(rheader->next_vpid));	/* non leaf or last leaf node */
