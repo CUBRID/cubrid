@@ -2561,6 +2561,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
 	}
       else if (lock_mode == IX_LOCK)
 	{
+	  assert (0);
 	  lock_mode = X_LOCK;
 	}
       assert (lock_mode == S_LOCK || lock_mode == X_LOCK);
@@ -2957,10 +2958,31 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
     }
 
 error:
-  if (error_code != NO_ERROR && lock != NULL_LOCK)
+  if (lock != NULL_LOCK)
     {
-      lock_unlock_object_donot_move_to_non2pl (thread_p, p_oid, class_oid,
-					       lock);
+      if (!OID_IS_ROOTOID (class_oid) && lock == IS_LOCK)
+	{
+	  lock = S_LOCK;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  if (!OID_IS_ROOTOID (class_oid) && lock == IX_LOCK)
+	    {
+	      assert (0);
+	      lock = X_LOCK;
+	    }
+
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, p_oid, class_oid,
+						   lock);
+	}
+      else if (heap_is_mvcc_disabled_for_class (class_oid))
+	{
+	  if (lock <= S_LOCK)
+	    {
+	      lock_unlock_object (thread_p, p_oid, class_oid, lock, false);
+	    }
+	}
     }
 
   return error_code;
