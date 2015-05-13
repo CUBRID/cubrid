@@ -4645,7 +4645,24 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_NEW_TIME:
       num = 0;
-      /* two overloads */
+      /* three overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATETIME;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_VARCHAR;
+
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_VARCHAR;
+
+      /* return type */
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_DATETIME;
+      def->overloads[num++] = sig;
 
       /* arg1 */
       sig.arg1_type.is_generic = false;
@@ -4686,7 +4703,20 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_FROM_TZ:
       num = 0;
-      /* two overloads */
+      /* three overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATETIME;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_VARCHAR;
+
+      /* return type */
+      sig.return_type.is_generic = true;
+      sig.return_type.val.type = PT_GENERIC_TYPE_DATETIME;
+      def->overloads[num++] = sig;
 
       /* arg1 */
       sig.arg1_type.is_generic = false;
@@ -9811,7 +9841,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_FROM_TZ:
     case PT_NEW_TIME:
       {
-	if (arg1_type != PT_TYPE_DATETIME && arg1_type != PT_TYPE_TIME)
+	if (arg1_type != PT_TYPE_DATETIME && arg1_type != PT_TYPE_TIME
+	    && arg1_type != PT_TYPE_MAYBE)
 	  {
 	    node->type_enum = PT_TYPE_NULL;
 	    goto error;
@@ -10131,6 +10162,17 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      node->type_enum = PT_TYPE_NONE;
 		    }
 		}
+	    }
+	  break;
+
+	case PT_FROM_TZ:
+	  if (arg1_type == PT_TYPE_TIME)
+	    {
+	      node->type_enum = PT_TYPE_TIMETZ;
+	    }
+	  else if (arg1_type == PT_TYPE_DATETIME)
+	    {
+	      node->type_enum = PT_TYPE_DATETIMETZ;
 	    }
 	  break;
 
@@ -22400,6 +22442,8 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_NULLIF:
     case PT_LEAST:
     case PT_GREATEST:
+    case PT_FROM_TZ:
+    case PT_NEW_TIME:
       return true;
     default:
       return false;

@@ -227,7 +227,9 @@
 	   ((t) == PT_TYPE_ENUMERATION)) ? true : false )
 
 #define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) \
-        ( (((t) == PT_TYPE_TIMESTAMPTZ)       || \
+        ( (((t) == PT_TYPE_TIMETZ)       || \
+	   ((t) == PT_TYPE_TIMELTZ)       || \
+	   ((t) == PT_TYPE_TIMESTAMPTZ)       || \
 	   ((t) == PT_TYPE_TIMESTAMPLTZ       || \
 	   ((t) == PT_TYPE_DATETIMETZ)  || \
 	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
