@@ -5845,3 +5845,30 @@ spage_slots_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 
   return NO_ERROR;
 }
+
+/*
+ * spage_need_compact () - Checks if the page needs compact
+ *   return: true if page needs compact, false otherwise
+ *
+ *   thread_p(in):
+ *   page_p(in):
+ */
+bool
+spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
+{
+  SPAGE_HEADER *page_header_p;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  /* estimated gain after compact is >= 5% of page */
+  if (page_header_p->total_free - page_header_p->cont_free >=
+      DB_PAGESIZE / 20)
+    {
+      return true;
+    }
+
+  return false;
+}

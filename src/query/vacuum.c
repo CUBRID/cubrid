@@ -542,6 +542,7 @@ struct vacuum_heap_helper
   OID partition_links[MAX_SLOTS_IN_PAGE];	/* Partition links. */
   int n_vacuumed;		/* Number of vacuumed objects.
 				 */
+  int initial_home_free_space;	/* Free space in home page before vacuum */
 };
 
 /* Flags used to mark rcv->offset with hints about recovery process. */
@@ -579,7 +580,8 @@ static int vacuum_heap_record (THREAD_ENTRY * thread_p,
 static int vacuum_heap_get_hfid (THREAD_ENTRY * thread_p,
 				 VACUUM_HEAP_HELPER * helper);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
-					    VACUUM_HEAP_HELPER * helper);
+					    VACUUM_HEAP_HELPER * helper,
+					    bool update_best_space_stat);
 
 static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
 static int vacuum_process_log_block (THREAD_ENTRY * thread_p,
@@ -1157,6 +1159,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
   helper.home_page = NULL;
   helper.forward_page = NULL;
   helper.n_vacuumed = 0;
+  helper.initial_home_free_space = -1;
   HFID_SET_NULL (&helper.hfid);
   VFID_SET_NULL (&helper.overflow_vfid);
 
@@ -1173,6 +1176,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
       return error_code;
     }
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
+
+  helper.initial_home_free_space =
+    spage_get_free_space_without_saving (thread_p, helper.home_page, NULL);
 
   helper.crt_slotid = -1;
   for (obj_index = 0; obj_index < n_heap_objects; obj_index++)
@@ -1349,7 +1355,7 @@ end:
   assert (helper.forward_page == NULL);
   if (helper.home_page != NULL)
     {
-      vacuum_heap_page_log_and_reset (thread_p, &helper);
+      vacuum_heap_page_log_and_reset (thread_p, &helper, true);
     }
 
   return error_code;
@@ -1482,7 +1488,7 @@ retry_prepare:
 	  /* Conditional latch. Unfix home, and fix in reversed order. */
 
 	  /* Make sure all current changes on home are logged. */
-	  vacuum_heap_page_log_and_reset (thread_p, helper);
+	  vacuum_heap_page_log_and_reset (thread_p, helper, false);
 	  assert (helper->home_page == NULL);
 
 	  /* Fix pages in reversed order. */
@@ -1569,7 +1575,7 @@ retry_prepare:
 	      /* Failed conditional latch. Unfix heap page and try again using
 	       * unconditional latch.
 	       */
-	      vacuum_heap_page_log_and_reset (thread_p, helper);
+	      vacuum_heap_page_log_and_reset (thread_p, helper, false);
 	      if (heap_ovf_find_vfid (thread_p, &helper->hfid,
 				      &helper->overflow_vfid, false,
 				      PGBUF_UNCONDITIONAL_LATCH) == NULL
@@ -2039,10 +2045,12 @@ vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
  * return	 : Void.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
+ * update_best_space_stat (in)	 :
  */
 static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
-				VACUUM_HEAP_HELPER * helper)
+				VACUUM_HEAP_HELPER * helper,
+				bool update_best_space_stat)
 {
   assert (helper != NULL);
   assert (helper->home_page != NULL);
@@ -2054,12 +2062,37 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
       return;
     }
 
-  /* Need logging. */
-
-  if (helper->n_vacuumed > (spage_number_of_slots (helper->home_page) / 4))
+  if (spage_need_compact (thread_p, helper->home_page) == true)
     {
       /* Compact page data */
       spage_compact (helper->home_page);
+    }
+
+  /* Update statistics only for home pages;
+   * We assume that fwd pages (from relocated records) are home pages for other
+   * OIDs and their statistics are updated in that context */
+  if (update_best_space_stat == true && helper->initial_home_free_space != -1)
+    {
+      if (HFID_IS_NULL (&helper->hfid))
+	{
+	  int freespace;
+
+	  freespace = spage_get_free_space_without_saving (thread_p,
+							   helper->home_page,
+							   NULL);
+	  if (heap_should_try_update_stat (freespace,
+					   helper->initial_home_free_space)
+	      == true)
+	    {
+	      (void) vacuum_heap_get_hfid (thread_p, helper);
+	    }
+	}
+
+      if (!HFID_IS_NULL (&helper->hfid))
+	{
+	  heap_stats_update (thread_p, helper->home_page, &helper->hfid,
+			     helper->initial_home_free_space);
+	}
     }
 
   /* Log vacuumed slots */
@@ -2373,7 +2406,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	}
     }
 
-  if (n_slots >= (spage_number_of_slots (rcv->pgptr) / 4))
+  if (spage_need_compact (thread_p, rcv->pgptr) == true)
     {
       (void) spage_compact (rcv->pgptr);
     }

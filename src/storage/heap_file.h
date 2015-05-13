@@ -937,5 +937,9 @@ extern bool heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p,
 extern int heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);
-
+extern void heap_stats_update (THREAD_ENTRY * thread_p,
+			       PAGE_PTR pgptr, const HFID * hfid,
+			       int prev_freespace);
+extern bool heap_should_try_update_stat (const int current_freespace,
+					 const int prev_freespace);
 #endif /* _HEAP_FILE_H_ */

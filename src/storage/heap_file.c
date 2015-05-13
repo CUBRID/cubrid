@@ -670,9 +670,6 @@ static OR_CLASSREP *heap_classrepr_get_from_record (THREAD_ENTRY * thread_p,
 						    RECDES * class_recdes,
 						    REPR_ID reprid);
 static int heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr);
-static void heap_stats_update (THREAD_ENTRY * thread_p,
-			       PAGE_PTR pgptr, const HFID * hfid,
-			       int prev_freespace);
 static int heap_stats_update_internal (THREAD_ENTRY * thread_p,
 				       const HFID * hfid,
 				       VPID * lotspace_vpid, int free_space);
@@ -3283,7 +3280,7 @@ heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr)
  *       from this page in the future, we may not use this page until
  *       heap_stats_sync_bestspace function searches all pages.
  */
-static void
+void
 heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid,
 		   int prev_freespace)
 {
@@ -30117,4 +30114,26 @@ heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   heap_page_update_chain_after_mvcc_op (thread_p, rcv->pgptr, rcv->mvcc_id);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
+}
+
+/*
+ * heap_should_try_update_stat () - checks if an heap update statistics is
+ *				    indicated
+ *					   
+ *
+ * return	 : NO_ERROR
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+bool
+heap_should_try_update_stat (const int current_freespace,
+			     const int prev_freespace)
+{
+  if (current_freespace > prev_freespace
+      && current_freespace > HEAP_DROP_FREE_SPACE
+      && prev_freespace < HEAP_DROP_FREE_SPACE)
+    {
+      return true;
+    }
+  return false;
 }
