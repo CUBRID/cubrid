@@ -690,7 +690,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  }
 
 	/* get the printed size */
-	size = db_get_string_size (val);
+	size = strlen (printed_bit);
 
 	result->info.value.string_type = 'X';
 	result->info.value.data_value.str =

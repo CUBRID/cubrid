@@ -3652,8 +3652,6 @@ struct parser_context
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
 
-  char *stmt_for_replication;
-
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;
 

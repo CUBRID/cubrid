@@ -43,7 +43,6 @@ struct db_session
 					   running a prepared statement, as a
 					   sub-session of a "true" client session */
   DB_SESSION *next;		/* subsessions for prepared statements */
-  char **stmts_for_replication;
 };
 
 #endif /* _API_COMPAT_H_ */

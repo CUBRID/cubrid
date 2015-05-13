@@ -15244,13 +15244,12 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   REPL_INFO_SBR repl_stmt;
   PARSER_VARCHAR *name = NULL;
   static const char *unknown_name = "-";
+  unsigned int save_custom;
 
   if (log_does_allow_replication () == false)
     {
       return NO_ERROR;
     }
-
-  assert_release (parser->stmt_for_replication != NULL);
 
   switch (statement->node_type)
     {
@@ -15403,7 +15402,12 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
-  repl_stmt.stmt_text = parser->stmt_for_replication;
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+  repl_stmt.stmt_text = parser_print_tree_with_quotes (parser, statement);
+  parser->custom_print = save_custom;
+
   repl_stmt.db_user = db_get_user_name ();
 
   if (pt_is_ddl_statement (statement) == true)
