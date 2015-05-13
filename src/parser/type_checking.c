@@ -6416,7 +6416,6 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
     case PT_NVL2:
     case PT_COALESCE:
     case PT_NULLIF:
-    case PT_RPAD:
     case PT_TRANSLATE:
     case PT_RAND:
     case PT_DRAND:
@@ -20270,24 +20269,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_LTRIM:
 	case PT_RTRIM:
 	  {
-	    INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET :
-	      DB_GET_STRING_CODESET (arg1);
-	    int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION :
-	      DB_GET_STRING_COLLATION (arg1);
-
-	    if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-	      {
-		db_make_varnchar (&dummy, 1, (char *) " ", 1, arg1_cs,
-				  arg1_coll);
-		type2 = PT_TYPE_VARNCHAR;
-	      }
-	    else
-	      {
-		db_make_varchar (&dummy, 1, (char *) " ", 0, arg1_cs,
-				 arg1_coll);
-		type2 = PT_TYPE_VARCHAR;
-	      }
-	    arg2 = &dummy;
+	    arg2 = NULL;
 	  }
 	  break;
 
@@ -20529,28 +20511,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_LPAD:
 	case PT_RPAD:
 	  {
-	    char pad_str[2] = { '\0' };
-	    int pad_size;
-	    INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET :
-	      DB_GET_STRING_CODESET (arg1);
-	    int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION :
-	      DB_GET_STRING_COLLATION (arg1);
-
-	    intl_pad_char (arg1_cs, (unsigned char *) pad_str, &pad_size);
-
-	    if (PT_IS_NATIONAL_CHAR_STRING_TYPE (type1))
-	      {
-		db_make_varnchar (&dummy, 1, pad_str, pad_size, arg1_cs,
-				  arg1_coll);
-		type3 = PT_TYPE_VARNCHAR;
-	      }
-	    else
-	      {
-		db_make_varchar (&dummy, 1, pad_str, pad_size, arg1_cs,
-				 arg1_coll);
-		type3 = PT_TYPE_VARCHAR;
-	      }
-	    arg3 = &dummy;
+	    arg3 = NULL;
 	  }
 	  break;
 	case PT_LIKE:
@@ -22618,7 +22579,7 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op,
       if (DB_VALUE_DOMAIN_TYPE (arg2) == DB_TYPE_INTEGER)
 	{
 	  int count_i = DB_GET_INTEGER (arg2);
-	  if (QSTR_IS_ANY_CHAR (DB_VALUE_DOMAIN_TYPE (arg3)))
+	  if (arg3 != NULL && QSTR_IS_ANY_CHAR (DB_VALUE_DOMAIN_TYPE (arg3)))
 	    {
 	      int arg3_len = DB_GET_STRING_SIZE (arg3);
 

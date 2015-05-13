@@ -159,11 +159,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    {
 	      break;
 	    }
-	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
-				vd, NULL, obj_oid, tpl,
-				&peek_third) != NO_ERROR)
+	  if (arithptr->thirdptr != NULL)
 	    {
-	      goto error;
+	      if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+				    vd, NULL, obj_oid, tpl,
+				    &peek_third) != NO_ERROR)
+		{
+		  goto error;
+		}
 	    }
 	}
       break;
@@ -186,12 +189,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_FINDINSET:
     case T_ADD_MONTHS:
     case T_MONTHS_BETWEEN:
-    case T_TRIM:
     case T_AES_ENCRYPT:
     case T_AES_DECRYPT:
     case T_SHA_TWO:
-    case T_LTRIM:
-    case T_RTRIM:
     case T_POWER:
     case T_ROUND:
     case T_LOG:
@@ -241,6 +241,26 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	}
       else
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				vd, NULL, obj_oid, tpl,
+				&peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_TRIM:
+    case T_LTRIM:
+    case T_RTRIM:
+      /* fetch lhs and rhs value */
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->rightptr != NULL)
 	{
 	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 				vd, NULL, obj_oid, tpl,
@@ -1493,7 +1513,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_TRIM:
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION)
-	  && !DB_IS_NULL (peek_left))
+	  && !DB_IS_NULL (peek_left) && peek_right
+	  && !DB_IS_NULL (peek_right))
 	{
 	  TP_DOMAIN_STATUS status =
 	    tp_value_change_coll_and_codeset (peek_right, peek_right,
@@ -1511,7 +1532,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	}
-      if (DB_IS_NULL (peek_left))
+      if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -1525,7 +1546,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_LTRIM:
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION)
-	  && !DB_IS_NULL (peek_left))
+	  && !DB_IS_NULL (peek_left) && peek_right
+	  && !DB_IS_NULL (peek_right))
 	{
 	  TP_DOMAIN_STATUS status =
 	    tp_value_change_coll_and_codeset (peek_right, peek_right,
@@ -1543,7 +1565,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	}
-      if (DB_IS_NULL (peek_left))
+      if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -1557,7 +1579,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_RTRIM:
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION)
-	  && !DB_IS_NULL (peek_left))
+	  && !DB_IS_NULL (peek_left) && peek_right
+	  && !DB_IS_NULL (peek_right))
 	{
 	  TP_DOMAIN_STATUS status =
 	    tp_value_change_coll_and_codeset (peek_right, peek_right,
@@ -1575,7 +1598,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	}
-      if (DB_IS_NULL (peek_left))
+      if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -1602,7 +1625,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_LPAD:
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION)
-	  && !DB_IS_NULL (peek_left))
+	  && !DB_IS_NULL (peek_left) && peek_third
+	  && !DB_IS_NULL (peek_third))
 	{
 	  TP_DOMAIN_STATUS status =
 	    tp_value_change_coll_and_codeset (peek_third, peek_third,
@@ -1620,7 +1644,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	}
-      if (DB_IS_NULL (peek_left))
+      if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -1633,7 +1657,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_RPAD:
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION)
-	  && !DB_IS_NULL (peek_left))
+	  && !DB_IS_NULL (peek_left) && peek_third
+	  && !DB_IS_NULL (peek_third))
 	{
 	  TP_DOMAIN_STATUS status =
 	    tp_value_change_coll_and_codeset (peek_third, peek_third,
@@ -1651,7 +1676,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	}
-      if (DB_IS_NULL (peek_left))
+      if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
