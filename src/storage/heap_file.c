@@ -9470,9 +9470,10 @@ start_current_version:
       /* Safe guard: select should have stopped with the visible version. */
       assert (op_type != S_SELECT);
       /* Safe guard: Isolation levels higher than READ COMMITTED should have
-       * stopped with visible version.
+       * stopped with visible version (if have snapshot).
        */
-      assert (logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
+      assert (logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED
+	      || mvcc_snapshot == NULL);
       /* is_original_oid should be false. */
       assert (is_original_oid == false);
 
