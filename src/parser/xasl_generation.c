@@ -9698,6 +9698,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  {
 		    OPERATOR_TYPE op;
 
+		    assert (node->node_type == PT_EXPR);
 		    if (PT_EXPR_INFO_IS_FLAGED
 			(node, PT_EXPR_INFO_CAST_NOFAIL))
 		      {

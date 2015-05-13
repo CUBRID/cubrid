@@ -9259,6 +9259,7 @@ pt_init_difference (PT_NODE * p)
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
+  p->info.query.into_list = NULL;
   p->info.query.is_order_dependent = false;
   p->info.query.scan_op_type = S_SELECT;
   return p;
@@ -13451,6 +13452,7 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
+  p->info.query.into_list = NULL;
   p->info.query.is_order_dependent = false;
   p->info.query.scan_op_type = S_SELECT;
   return p;

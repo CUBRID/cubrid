@@ -5212,6 +5212,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr,
 	}
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
+	  assert (new_node->node_type == PT_EXPR);
 	  PT_EXPR_INFO_SET_FLAG (new_node, PT_EXPR_INFO_CAST_NOFAIL);
 	}
 
@@ -8995,7 +8996,8 @@ pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
 			if (prm_get_bool_value
 			    (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 			  {
-			    PT_EXPR_INFO_SET_FLAG (arg_list,
+			    assert (new_att->node_type == PT_EXPR);
+			    PT_EXPR_INFO_SET_FLAG (new_att,
 						   PT_EXPR_INFO_CAST_NOFAIL);
 			  }
 
@@ -10634,6 +10636,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      node->type_enum = PT_TYPE_NONE;
 		      goto error;
 		    }
+		  assert (new_att->node_type == PT_EXPR);
 		  PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_NOFAIL);
 		  node->info.expr.arg1 = arg1 = new_att;
 		  arg1_type = new_type;
@@ -10647,6 +10650,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		  node->type_enum = PT_TYPE_NONE;
 		  goto error;
 		}
+	      assert (new_att->node_type == PT_EXPR);
 	      PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_NOFAIL);
 	      node->info.expr.arg2 = arg2 = new_att;
 	      arg2_type = new_type;
@@ -10749,6 +10753,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		if (prm_get_bool_value
 		    (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		  {
+		    assert (new_att->node_type == PT_EXPR);
 		    PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_NOFAIL);
 		  }
 		node->info.expr.arg1 = arg1 = new_att;
@@ -19253,6 +19258,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       dom_status = tp_value_cast (arg1, result, domain, false);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
+	  assert (expr->node_type == PT_EXPR);
 	  if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_NOFAIL))
 	    {
 	      db_make_null (result);
