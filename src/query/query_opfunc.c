@@ -401,13 +401,6 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 		      VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
 
-static int qdata_aggregate_evaluate_interpolation_function (THREAD_ENTRY *
-							    thread_p,
-							    AGGREGATE_TYPE *
-							    agg_p,
-							    QFILE_LIST_SCAN_ID
-							    * scan_id);
-
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *,
 				   int, DB_VALUE **) =
 {
@@ -421,6 +414,12 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
 static int
 qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p,
 						      DB_VALUE * val);
+
+static int
+qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
+				       void *func_p,
+				       QFILE_LIST_SCAN_ID * scan_id,
+				       bool is_analytic);
 
 /*
  * qdata_dummy () -
@@ -8649,8 +8648,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 		      && QPROC_IS_INTERPOLATION_FUNC (agg_p))
 		    {
 		      error =
-			qdata_aggregate_evaluate_interpolation_function
-			(thread_p, agg_p, &scan_id);
+			qdata_evaluate_interpolation_function
+			(thread_p, agg_p, &scan_id, false);
 		      if (error != NO_ERROR)
 			{
 			  qfile_close_scan (thread_p, &scan_id);
@@ -11756,7 +11755,11 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	}
       db_private_free_and_init (thread_p, disk_repr_p);
 
-      goto exit;
+      /* interpolation funcs need to check domain compatibility in the following code */
+      if (!QPROC_IS_INTERPOLATION_FUNC (func_p))
+	{
+	  goto exit;
+	}
     }
 
   copy_opr = false;
@@ -12270,6 +12273,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
   double dtmp;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   TP_DOMAIN *tmp_domain_ptr = NULL;
+  int err = NO_ERROR;
 
   DB_MAKE_NULL (&sqr_val);
   DB_MAKE_NULL (&dbval);
@@ -12329,106 +12333,80 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 
 	  DB_MAKE_NULL (func_p->value);
 
-	  while (true)
+	  /* median and percentile funcs don't need to read all rows */
+	  if (list_id_p->tuple_cnt > 0
+	      && QPROC_IS_INTERPOLATION_FUNC (func_p))
 	    {
-	      scan_code = qfile_scan_list_next (thread_p, &scan_id,
-						&tuple_record, PEEK);
-	      if (scan_code != S_SUCCESS)
-		{
-		  break;
-		}
-
-	      tuple_p = ((char *) tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE);
-	      if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
-		{
-		  continue;
-		}
-
-	      or_init (&buf, (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
-		       QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-	      if ((*(pr_type_p->data_readval)) (&buf, &dbval,
-						list_id_p->type_list.domp[0],
-						-1, true, NULL,
-						0) != NO_ERROR)
+	      err =
+		qdata_evaluate_interpolation_function (thread_p,
+						       func_p,
+						       &scan_id, true);
+	      if (err != NO_ERROR)
 		{
 		  qfile_close_scan (thread_p, &scan_id);
 		  qfile_close_list (thread_p, list_id_p);
 		  qfile_destroy_list (thread_p, list_id_p);
-		  return ER_FAILED;
-		}
 
-	      if (func_p->function == PT_VARIANCE
-		  || func_p->function == PT_VAR_POP
-		  || func_p->function == PT_VAR_SAMP
-		  || func_p->function == PT_STDDEV
-		  || func_p->function == PT_STDDEV_POP
-		  || func_p->function == PT_STDDEV_SAMP)
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      while (true)
 		{
-		  if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr)
-		      != DOMAIN_COMPATIBLE)
+		  scan_code = qfile_scan_list_next (thread_p, &scan_id,
+						    &tuple_record, PEEK);
+		  if (scan_code != S_SUCCESS)
 		    {
-		      (void) pr_clear_value (&dbval);
+		      break;
+		    }
+
+		  tuple_p =
+		    ((char *) tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE);
+		  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
+		    {
+		      continue;
+		    }
+
+		  or_init (&buf,
+			   (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
+			   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+		  if ((*(pr_type_p->data_readval))
+		      (&buf, &dbval, list_id_p->type_list.domp[0], -1, true,
+		       NULL, 0) != NO_ERROR)
+		    {
 		      qfile_close_scan (thread_p, &scan_id);
 		      qfile_close_list (thread_p, list_id_p);
 		      qfile_destroy_list (thread_p, list_id_p);
 		      return ER_FAILED;
 		    }
-		}
 
-	      if (DB_IS_NULL (func_p->value))
-		{
-		  /* first iteration: can't add to a null agg_ptr->value */
-		  PR_TYPE *tmp_pr_type;
-		  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
-
-		  tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
-		  if (tmp_pr_type == NULL)
-		    {
-		      (void) pr_clear_value (&dbval);
-		      qfile_close_scan (thread_p, &scan_id);
-		      qfile_close_list (thread_p, list_id_p);
-		      qfile_destroy_list (thread_p, list_id_p);
-		      return ER_FAILED;
-		    }
-
-		  if (func_p->function == PT_STDDEV
-		      || func_p->function == PT_STDDEV_POP
-		      || func_p->function == PT_STDDEV_SAMP
-		      || func_p->function == PT_VARIANCE
+		  if (func_p->function == PT_VARIANCE
 		      || func_p->function == PT_VAR_POP
-		      || func_p->function == PT_VAR_SAMP)
-		    {
-		      if (qdata_multiply_dbval (&dbval, &dbval,
-						&sqr_val,
-						tmp_domain_ptr) != NO_ERROR)
-			{
-			  (void) pr_clear_value (&dbval);
-			  qfile_close_scan (thread_p, &scan_id);
-			  qfile_close_list (thread_p, list_id_p);
-			  qfile_destroy_list (thread_p, list_id_p);
-			  return ER_FAILED;
-			}
-
-		      (*(tmp_pr_type->setval)) (func_p->value2, &sqr_val,
-						true);
-		    }
-
-		  (*(tmp_pr_type->setval)) (func_p->value, &dbval, true);
-		}
-	      else
-		{
-		  TP_DOMAIN *domain_ptr;
-
-		  if (func_p->function == PT_STDDEV
+		      || func_p->function == PT_VAR_SAMP
+		      || func_p->function == PT_STDDEV
 		      || func_p->function == PT_STDDEV_POP
-		      || func_p->function == PT_STDDEV_SAMP
-		      || func_p->function == PT_VARIANCE
-		      || func_p->function == PT_VAR_POP
-		      || func_p->function == PT_VAR_SAMP)
+		      || func_p->function == PT_STDDEV_SAMP)
 		    {
-		      if (qdata_multiply_dbval (&dbval, &dbval,
-						&sqr_val,
-						tmp_domain_ptr) != NO_ERROR)
+		      if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr)
+			  != DOMAIN_COMPATIBLE)
+			{
+			  (void) pr_clear_value (&dbval);
+			  qfile_close_scan (thread_p, &scan_id);
+			  qfile_close_list (thread_p, list_id_p);
+			  qfile_destroy_list (thread_p, list_id_p);
+			  return ER_FAILED;
+			}
+		    }
+
+		  if (DB_IS_NULL (func_p->value))
+		    {
+		      /* first iteration: can't add to a null agg_ptr->value */
+		      PR_TYPE *tmp_pr_type;
+		      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
+
+		      tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+		      if (tmp_pr_type == NULL)
 			{
 			  (void) pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
@@ -12437,12 +12415,81 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 			  return ER_FAILED;
 			}
 
-		      if (qdata_add_dbval (func_p->value2, &sqr_val,
-					   func_p->value2,
-					   tmp_domain_ptr) != NO_ERROR)
+		      if (func_p->function == PT_STDDEV
+			  || func_p->function == PT_STDDEV_POP
+			  || func_p->function == PT_STDDEV_SAMP
+			  || func_p->function == PT_VARIANCE
+			  || func_p->function == PT_VAR_POP
+			  || func_p->function == PT_VAR_SAMP)
+			{
+			  if (qdata_multiply_dbval (&dbval, &dbval,
+						    &sqr_val,
+						    tmp_domain_ptr) !=
+			      NO_ERROR)
+			    {
+			      (void) pr_clear_value (&dbval);
+			      qfile_close_scan (thread_p, &scan_id);
+			      qfile_close_list (thread_p, list_id_p);
+			      qfile_destroy_list (thread_p, list_id_p);
+			      return ER_FAILED;
+			    }
+
+			  (*(tmp_pr_type->setval)) (func_p->value2, &sqr_val,
+						    true);
+			}
+
+		      (*(tmp_pr_type->setval)) (func_p->value, &dbval, true);
+		    }
+		  else
+		    {
+		      TP_DOMAIN *domain_ptr;
+
+		      if (func_p->function == PT_STDDEV
+			  || func_p->function == PT_STDDEV_POP
+			  || func_p->function == PT_STDDEV_SAMP
+			  || func_p->function == PT_VARIANCE
+			  || func_p->function == PT_VAR_POP
+			  || func_p->function == PT_VAR_SAMP)
+			{
+			  if (qdata_multiply_dbval (&dbval, &dbval,
+						    &sqr_val,
+						    tmp_domain_ptr) !=
+			      NO_ERROR)
+			    {
+			      (void) pr_clear_value (&dbval);
+			      qfile_close_scan (thread_p, &scan_id);
+			      qfile_close_list (thread_p, list_id_p);
+			      qfile_destroy_list (thread_p, list_id_p);
+			      return ER_FAILED;
+			    }
+
+			  if (qdata_add_dbval (func_p->value2, &sqr_val,
+					       func_p->value2,
+					       tmp_domain_ptr) != NO_ERROR)
+			    {
+			      (void) pr_clear_value (&dbval);
+			      pr_clear_value (&sqr_val);
+			      qfile_close_scan (thread_p, &scan_id);
+			      qfile_close_list (thread_p, list_id_p);
+			      qfile_destroy_list (thread_p, list_id_p);
+			      return ER_FAILED;
+			    }
+			}
+
+		      domain_ptr =
+			NOT_NULL_VALUE (tmp_domain_ptr, func_p->domain);
+		      if ((func_p->function == PT_AVG)
+			  && (dbval.domain.general_info.type ==
+			      DB_TYPE_NUMERIC))
+			{
+			  domain_ptr = NULL;
+			}
+
+		      if (qdata_add_dbval
+			  (func_p->value, &dbval, func_p->value,
+			   domain_ptr) != NO_ERROR)
 			{
 			  (void) pr_clear_value (&dbval);
-			  pr_clear_value (&sqr_val);
 			  qfile_close_scan (thread_p, &scan_id);
 			  qfile_close_list (thread_p, list_id_p);
 			  qfile_destroy_list (thread_p, list_id_p);
@@ -12450,27 +12497,9 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 			}
 		    }
 
-		  domain_ptr =
-		    NOT_NULL_VALUE (tmp_domain_ptr, func_p->domain);
-		  if ((func_p->function == PT_AVG)
-		      && (dbval.domain.general_info.type == DB_TYPE_NUMERIC))
-		    {
-		      domain_ptr = NULL;
-		    }
-
-		  if (qdata_add_dbval (func_p->value, &dbval, func_p->value,
-				       domain_ptr) != NO_ERROR)
-		    {
-		      (void) pr_clear_value (&dbval);
-		      qfile_close_scan (thread_p, &scan_id);
-		      qfile_close_list (thread_p, list_id_p);
-		      qfile_destroy_list (thread_p, list_id_p);
-		      return ER_FAILED;
-		    }
-		}
-
-	      (void) pr_clear_value (&dbval);
-	    }			/* while (true) */
+		  (void) pr_clear_value (&dbval);
+		}		/* while (true) */
+	    }
 
 	  qfile_close_scan (thread_p, &scan_id);
 	  func_p->curr_cnt = list_id_p->tuple_cnt;
@@ -12677,76 +12706,6 @@ error_return:
       db_private_free (thread_p, vals);
     }
   *values = NULL;
-  return error;
-}
-
-/*
- * qdata_aggregate_evaluate_interpolation_function () -
- * return : error code or NO_ERROR
- * thread_p (in)    : thread entry
- * agg_p (in)       :
- *
- * NOTE: scan_id is release at the caller
- */
-static int
-qdata_aggregate_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
-						 AGGREGATE_TYPE * agg_p,
-						 QFILE_LIST_SCAN_ID * scan_id)
-{
-  int error = NO_ERROR;
-  int tuple_count;
-  double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
-
-  assert (agg_p != NULL
-	  && scan_id != NULL
-	  && scan_id->status == S_OPENED
-	  && QPROC_IS_INTERPOLATION_FUNC (agg_p));
-
-  tuple_count = scan_id->list_id.tuple_cnt;
-  if (tuple_count < 1)
-    {
-      return NO_ERROR;
-    }
-
-  if (agg_p->function == PT_MEDIAN)
-    {
-      percentile_d = 0.5;
-    }
-  else
-    {
-      percentile_d = agg_p->info.percentile.cur_group_percentile;
-
-      if (agg_p->function == PT_PERCENTILE_DISC)
-	{
-	  percentile_d = ceil (percentile_d * tuple_count) / tuple_count;
-	}
-    }
-
-  row_num_d = ((double) (tuple_count - 1)) * percentile_d;
-  f_row_num_d = floor (row_num_d);
-
-  if (agg_p->function == PT_PERCENTILE_DISC)
-    {
-      c_row_num_d = f_row_num_d;
-    }
-  else
-    {
-      c_row_num_d = ceil (row_num_d);
-    }
-
-  error = qdata_get_interpolation_function_result (thread_p, scan_id,
-						   scan_id->list_id.type_list.
-						   domp[0], 0, row_num_d,
-						   f_row_num_d, c_row_num_d,
-						   agg_p->accumulator.value,
-						   &agg_p->domain,
-						   agg_p->function);
-
-  if (TP_DOMAIN_TYPE (agg_p->domain) != agg_p->opr_dbtype)
-    {
-      agg_p->opr_dbtype = TP_DOMAIN_TYPE (agg_p->domain);
-    }
-
   return error;
 }
 
@@ -14345,6 +14304,120 @@ qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val,
   *domain = tmp_domain;
 
 end:
+
+  return error;
+}
+
+/*
+ * qdata_evaluate_interpolation_function () -
+ * return : error code or NO_ERROR
+ * thread_p (in)    : thread entry
+ * func_p (in)       :
+ *
+ * NOTE: scan_id is release at the caller
+ */
+static int
+qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
+				       void *func_p,
+				       QFILE_LIST_SCAN_ID * scan_id,
+				       bool is_analytic)
+{
+  int error = NO_ERROR;
+  int tuple_count;
+  double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
+  FUNC_TYPE function;
+  AGGREGATE_TYPE *agg_p = NULL;
+  ANALYTIC_TYPE *ana_p = NULL;
+  double cur_group_percentile;
+
+  assert (func_p != NULL && scan_id != NULL && scan_id->status == S_OPENED);
+
+  if (is_analytic)
+    {
+      ana_p = (ANALYTIC_TYPE *) func_p;
+      assert (QPROC_IS_INTERPOLATION_FUNC (ana_p));
+
+      function = ana_p->function;
+      cur_group_percentile = ana_p->info.percentile.cur_group_percentile;
+    }
+  else
+    {
+      agg_p = (AGGREGATE_TYPE *) func_p;
+      assert (QPROC_IS_INTERPOLATION_FUNC (agg_p));
+
+      function = agg_p->function;
+      cur_group_percentile = agg_p->info.percentile.cur_group_percentile;
+    }
+
+  tuple_count = scan_id->list_id.tuple_cnt;
+  if (tuple_count < 1)
+    {
+      return NO_ERROR;
+    }
+
+  if (function == PT_MEDIAN)
+    {
+      percentile_d = 0.5;
+    }
+  else
+    {
+      percentile_d = cur_group_percentile;
+
+      if (function == PT_PERCENTILE_DISC)
+	{
+	  percentile_d = ceil (percentile_d * tuple_count) / tuple_count;
+	}
+    }
+
+  row_num_d = ((double) (tuple_count - 1)) * percentile_d;
+  f_row_num_d = floor (row_num_d);
+
+  if (function == PT_PERCENTILE_DISC)
+    {
+      c_row_num_d = f_row_num_d;
+    }
+  else
+    {
+      c_row_num_d = ceil (row_num_d);
+    }
+
+  if (is_analytic)
+    {
+      error = qdata_get_interpolation_function_result (thread_p, scan_id,
+						       scan_id->list_id.
+						       type_list.domp[0], 0,
+						       row_num_d, f_row_num_d,
+						       c_row_num_d,
+						       ana_p->value,
+						       &ana_p->domain,
+						       ana_p->function);
+    }
+  else
+    {
+      error = qdata_get_interpolation_function_result (thread_p, scan_id,
+						       scan_id->list_id.
+						       type_list.domp[0], 0,
+						       row_num_d, f_row_num_d,
+						       c_row_num_d,
+						       agg_p->accumulator.
+						       value, &agg_p->domain,
+						       agg_p->function);
+    }
+
+  if (error == NO_ERROR)
+    {
+      if (is_analytic)
+	{
+	  if (TP_DOMAIN_TYPE (ana_p->domain) != ana_p->opr_dbtype)
+	    {
+	      ana_p->opr_dbtype = TP_DOMAIN_TYPE (ana_p->domain);
+	    }
+	}
+      else if (TP_DOMAIN_TYPE (agg_p->domain) != agg_p->opr_dbtype)
+	{
+	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (agg_p->domain);
+	}
+    }
 
   return error;
 }

@@ -24081,7 +24081,9 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 					      analytic_state->xasl_state,
 					      func_state, recdes, true);
 		}
-	      else if (func_state->func_p->function != PT_NTILE)
+	      else if (func_state->func_p->function != PT_NTILE
+		       && (!QPROC_IS_INTERPOLATION_FUNC (func_state->func_p)
+			   || func_state->func_p->option == Q_ALL))
 		{
 		  if (qexec_analytic_finalize_group
 		      (thread_p, analytic_state->xasl_state, func_state,

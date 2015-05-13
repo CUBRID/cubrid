@@ -14494,7 +14494,7 @@ reserved_func
 			  {
 			    node->info.function.function_type = $1;
   
-			    if ($1 == PT_MAX || $1 == PT_MIN || $1 == PT_MEDIAN)
+			    if ($1 == PT_MAX || $1 == PT_MIN)
 			      node->info.function.all_or_distinct = PT_ALL;
 			    else
 			      node->info.function.all_or_distinct = PT_DISTINCT;
