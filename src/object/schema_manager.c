@@ -5626,18 +5626,21 @@ sm_att_fk_constrained (MOP classop, const char *name)
 /*
  * sm_class_has_unique_constraint() - Returns whether the class has UNIQUE
  *				      constraint.
- *   return: true if has unique constraint, false otherwise.
+ *   return: NO_ERROR on success, non-zero for ERROR
  *   classobj(in): SM_CLASS *
  *   classop(in): class object
  *   check_subclasses(in): true if need to check all hierarchy
+ *   has_unique(out): true if has unique constraint, false otherwise.
  */
-bool
+int
 sm_class_has_unique_constraint (MOBJ classobj, MOP classop,
-				bool check_subclasses)
+				bool check_subclasses, bool * has_unique)
 {
+  int error = NO_ERROR;
   SM_CLASS *class_ = NULL;
   DB_OBJLIST *subclass = NULL;
   bool rc;
+  int au_save;
 
   assert (classobj != NULL || classop != NULL);
 
@@ -5647,10 +5650,14 @@ sm_class_has_unique_constraint (MOBJ classobj, MOP classop,
     }
   else
     {
-      if (au_fetch_class_by_classmop (classop, &class_, AU_FETCH_READ,
-				      AU_SELECT) != NO_ERROR)
+      AU_DISABLE (au_save);
+      error = au_fetch_class_by_classmop (classop, &class_, AU_FETCH_READ,
+					  AU_SELECT);
+      AU_ENABLE (au_save);
+
+      if (error != NO_ERROR)
 	{
-	  return false;
+	  return error;
 	}
     }
 
@@ -5658,11 +5665,17 @@ sm_class_has_unique_constraint (MOBJ classobj, MOP classop,
   for (subclass = class_->users; !rc && subclass != NULL;
        subclass = subclass->next)
     {
-      rc = sm_class_has_unique_constraint (NULL, subclass->op,
-					   check_subclasses);
+      error = sm_class_has_unique_constraint (NULL, subclass->op,
+					      check_subclasses, &rc);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
-  return rc;
+  *has_unique = rc;
+
+  return error;
 }
 
 /*
@@ -16494,6 +16507,7 @@ error_exit:
     }
   goto end;
 }
+
 /*
  * sm_cleanup_partition_links () - This function performs partition link cleanup
  *			  for the specified classes.
@@ -16549,4 +16563,3 @@ flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 
   return NO_ERROR;
 }
-

@@ -5037,8 +5037,13 @@ locator_mflush (MOP mop, void *mf)
 	    }
 	  hfid = mflush->hfid;
 	  has_index = sm_has_indexes (mflush->class_obj);
-	  has_unique_index =
-	    sm_class_has_unique_constraint (mflush->class_obj, NULL, true);
+	  error_code =
+	    sm_class_has_unique_constraint (mflush->class_obj, NULL, true,
+					    &has_unique_index);
+	  if (error_code != NO_ERROR)
+	    {
+	      return WS_MAP_FAIL;
+	    }
 	}
     }
   else if (object == NULL)
@@ -5123,8 +5128,13 @@ locator_mflush (MOP mop, void *mf)
 	      return map_status;
 	    }
 	  hfid = mflush->hfid;
-	  has_unique_index =
-	    sm_class_has_unique_constraint (mflush->class_obj, NULL, true);
+	  error_code =
+	    sm_class_has_unique_constraint (mflush->class_obj, NULL, true,
+					    &has_unique_index);
+	  if (error_code != NO_ERROR)
+	    {
+	      return WS_MAP_FAIL;
+	    }
 	}
     }
 

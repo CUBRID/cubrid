@@ -8578,13 +8578,27 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 	      goto exit_on_error;
 	    }
 
-	  if (!*has_unique
-	      && sm_class_has_unique_constraint (NULL, class_obj,
-						 spec->info.spec.only_all ==
-						 PT_ALL))
+	  if (!*has_unique)
 	    {
-	      *has_unique = 1;
-	      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+	      bool has_unique_temp = false;
+	      bool check_subclasses = (spec->info.spec.only_all == PT_ALL);
+
+	      error = sm_class_has_unique_constraint (NULL, class_obj,
+						      check_subclasses,
+						      &has_unique_temp);
+	      if (error == NO_ERROR)
+		{
+		  if (has_unique_temp)
+		    {
+		      *has_unique = 1;
+		      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+		    }
+		}
+	      else
+		{
+		  goto exit_on_error;
+		}
+
 	    }
 	  if (sm_att_constrained (class_obj, att->info.name.original,
 				  SM_ATTFLAG_NON_NULL))
