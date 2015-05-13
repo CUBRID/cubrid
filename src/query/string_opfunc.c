@@ -22012,36 +22012,53 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
     case DB_TYPE_VARNCHAR:
       {
 	bool has_explicit_time = false;
+	bool has_zone = false;
 	int str_len = DB_GET_STRING_SIZE (date);
 	date_s = DB_GET_STRING (date);
 
+	if (db_string_to_datetimetz_ex (date_s, str_len, &dt_tz, &has_zone)
+	    == NO_ERROR && has_zone == true)
+	  {
+	    is_dt = NO_ERROR;
+	    is_timest = ER_TIMESTAMP_CONVERSION;
+	    is_d = ER_DATE_CONVERSION;
+	    is_t = ER_TIME_CONVERSION;
+	    is_timezone = 1;
+
+	    error_status = tz_utc_datetimetz_to_local (&dt_tz.datetime,
+						       &dt_tz.tz_id,
+						       &db_datetime);
+	    if (error_status != NO_ERROR)
+	      {
+		goto error;
+	      }
+	    dt_p = &db_datetime;
+	    tz_id = dt_tz.tz_id;
+	  }
 	/* try to figure out the string format */
-	if (db_date_parse_datetime_parts (date_s, str_len, &db_datetime,
-					  &has_explicit_time, NULL, NULL,
-					  NULL))
+	else if (db_date_parse_datetime_parts (date_s, str_len, &db_datetime,
+					       &has_explicit_time, NULL, NULL,
+					       NULL))
 	  {
 	    is_dt = ER_TIMESTAMP_CONVERSION;
 	    is_timest = ER_TIMESTAMP_CONVERSION;
 	    is_d = ER_DATE_CONVERSION;
 	    is_t = db_string_to_time_ex (date_s, str_len, &db_time);
 	  }
+	else if (has_explicit_time)
+	  {
+	    is_dt = NO_ERROR;
+	    is_timest = ER_TIMESTAMP_CONVERSION;
+	    is_d = ER_DATE_CONVERSION;
+	    is_t = ER_TIME_CONVERSION;
+	  }
 	else
 	  {
-	    if (has_explicit_time)
-	      {
-		is_dt = NO_ERROR;
-		is_timest = ER_TIMESTAMP_CONVERSION;
-		is_d = ER_DATE_CONVERSION;
-		is_t = ER_TIME_CONVERSION;
-	      }
-	    else
-	      {
-		db_date = db_datetime.date;
-		is_dt = ER_TIMESTAMP_CONVERSION;
-		is_timest = ER_TIMESTAMP_CONVERSION;
-		is_d = NO_ERROR;
-		is_t = ER_TIME_CONVERSION;
-	      }
+	    db_date = db_datetime.date;
+	    is_dt = ER_TIMESTAMP_CONVERSION;
+	    is_timest = ER_TIMESTAMP_CONVERSION;
+	    is_d = NO_ERROR;
+	    is_t = ER_TIME_CONVERSION;
 	  }
 
 	if (is_dt && is_d && is_t && is_timest)
@@ -22327,7 +22344,25 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
       if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
 	{
-	  db_datetime_to_string (res_s, 64, &db_datetime);
+	  if (is_timezone > 0)
+	    {
+	      TZ_REGION tz_region;
+
+	      tz_id_to_region (&tz_id, &tz_region);
+	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
+						   &tz_region, &dt_tz, NULL);
+	      if (error_status != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      db_datetimetz_to_string (res_s, 64, &dt_tz.datetime,
+				       &dt_tz.tz_id);
+	    }
+	  else
+	    {
+	      db_datetime_to_string (res_s, 64, &db_datetime);
+	    }
 
 	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (res_final == NULL)
