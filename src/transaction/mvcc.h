@@ -260,7 +260,7 @@ enum mvcc_satisfies_delete_result
 {
   DELETE_RECORD_INVISIBLE,	/* invisible - created after scan started */
   DELETE_RECORD_CAN_DELETE,	/* is visible and valid - can be deleted */
-  DELETE_RECORD_DELETED,	/* deleted by the current transaction */
+  DELETE_RECORD_DELETED,	/* deleted by committed transaction */
   DELETE_RECORD_IN_PROGRESS,	/* deleted by other in progress transaction */
   DELETE_RECORD_SELF_DELETED	/* deleted by the current transaction */
 };				/* Heap record satisfies delete result */

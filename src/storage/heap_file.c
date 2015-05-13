@@ -979,6 +979,7 @@ static int heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p,
 						OID * oid,
 						OID * class_oid,
 						LOCK lock,
+						bool vacuum_allowed,
 						MVCC_REC_HEADER *
 						recdes_header,
 						PGBUF_WATCHER *
@@ -8817,6 +8818,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
   OID partition_class_oid;
   HEAP_SCANCACHE partition_scancache;
   bool is_watcher_replaced = false;
+  bool vacuum_allowed = false;
 
   PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
 		      HEAP_SCAN_ORDERED_HFID (scan_cache));
@@ -8828,6 +8830,11 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
     {
       /* Get MVCC snapshot from scan_cache. */
       mvcc_snapshot = scan_cache->mvcc_snapshot;
+    }
+
+  if (op_type == S_SELECT_WITH_LOCK)
+    {
+      vacuum_allowed = true;
     }
 
   if (updated_oid != NULL)
@@ -9238,7 +9245,7 @@ start_current_version:
       /* Try to lock the object. */
       if (heap_mvcc_check_and_lock_for_delete (thread_p, &current_oid,
 					       &current_class_oid, lock,
-					       &mvcc_header,
+					       vacuum_allowed, &mvcc_header,
 					       &home_page_watcher,
 					       &fwd_page_watcher,
 					       &forward_oid, &type,
@@ -9249,8 +9256,9 @@ start_current_version:
 	}
       assert (HEAP_IS_PAGE_OF_OID (home_page_watcher.pgptr, &current_oid));
       assert (type == REC_HOME || type == REC_RELOCATION
-	      || type == REC_BIGONE);
-      assert (type == REC_HOME
+	      || type == REC_BIGONE
+	      || (type == REC_MVCC_NEXT_VERSION && vacuum_allowed));
+      assert (type == REC_HOME || type == REC_MVCC_NEXT_VERSION
 	      || (!OID_ISNULL (&forward_oid)
 		  && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr,
 					  &forward_oid)));
@@ -9488,7 +9496,7 @@ start_current_version:
       /* Try to lock this version for update. */
       if (heap_mvcc_check_and_lock_for_delete (thread_p, &current_oid,
 					       &current_class_oid, lock,
-					       &mvcc_header,
+					       vacuum_allowed, &mvcc_header,
 					       &home_page_watcher,
 					       &fwd_page_watcher,
 					       &forward_oid, &type,
@@ -9500,8 +9508,9 @@ start_current_version:
       /* Check that pages are fixed and updated information is valid. */
       assert (HEAP_IS_PAGE_OF_OID (home_page_watcher.pgptr, &current_oid));
       assert (type == REC_HOME || type == REC_RELOCATION
-	      || type == REC_BIGONE);
-      assert (type == REC_HOME
+	      || type == REC_BIGONE
+	      || (type == REC_MVCC_NEXT_VERSION && vacuum_allowed));
+      assert (type == REC_HOME || type == REC_MVCC_NEXT_VERSION
 	      || (!OID_ISNULL (&forward_oid)
 		  && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr,
 					  &forward_oid)));
@@ -22817,6 +22826,9 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid,
  *   thread_p(in): thread entry
  *   oid(in): oid
  *   class_oid(in): class oid
+ *   lock(in): lock to acquire
+ *   vacuum_allowed(in): true, if VACUUM can clean the current OID
+ *	while current thread is waiting for unconditional lock or latch
  *   recdes_header(in/out): MVCC record header
  *   pgptr(in): page where the record reside, already latched for write
  *   forward_pgptr(in): forward page, needed in case of REC_BIGONE records
@@ -22824,17 +22836,19 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid,
  *   mvcc_delete_info(in/out): MVCC delete info
  *
  *  Note: The function preserve the acquired lock only if the row can be
- *    deleted.
+ *    deleted. If vacuum allowed, and the type of the record is
+ *    REC_MVCC_NEXT_VERSION when transaction resume after unconditional locking,
+ *    recdes_header is filled with informations that may be used by caller
+ *    to advance to the next version.
  */
 static int
 heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p,
-				     OID * oid,
-				     OID * class_oid, LOCK lock,
+				     OID * oid, OID * class_oid, LOCK lock,
+				     bool vacuum_allowed,
 				     MVCC_REC_HEADER * recdes_header,
 				     PGBUF_WATCHER * home_page_watcher,
 				     PGBUF_WATCHER * fwd_page_watcher,
-				     OID * forward_oid,
-				     INT16 * record_type,
+				     OID * forward_oid, INT16 * record_type,
 				     HEAP_MVCC_DELETE_INFO * mvcc_delete_info)
 {
   MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;
@@ -22843,6 +22857,7 @@ heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p,
   OID curr_row_version = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   bool ignore_record = false;
   INT16 rec_type_local;
+  OID partition_class_oid;
 
   assert (recdes_header != NULL);
   assert (home_page_watcher != NULL);
@@ -22933,9 +22948,11 @@ try_again:
       /* Prepare for getting record again. Since pages have been unlatched,
        * others may have changed them (even our record).
        */
+      OID_SET_NULL (&partition_class_oid);
       if (heap_prepare_get_record
-	  (thread_p, oid, class_oid, forward_oid, NULL, home_page_watcher,
-	   fwd_page_watcher, record_type, PGBUF_LATCH_READ) != S_SUCCESS)
+	  (thread_p, oid, class_oid, forward_oid, &partition_class_oid,
+	   home_page_watcher, fwd_page_watcher, record_type,
+	   PGBUF_LATCH_READ) != S_SUCCESS)
 	{
 	  goto error;
 	}
@@ -22943,6 +22960,54 @@ try_again:
       assert (*record_type == REC_HOME || *record_type == REC_RELOCATION
 	      || *record_type == REC_BIGONE
 	      || *record_type == REC_MVCC_NEXT_VERSION);
+
+      if (*record_type == REC_MVCC_NEXT_VERSION)
+	{
+	  if (vacuum_allowed)
+	    {
+	      /* 
+	       * if visible version was not previously obtained (MVCC snapshot
+	       * was not applied), it means that the current version may be
+	       * cleaned by VACUUM while current transaction is waiting on lock
+	       * or page latch acquisition.
+	       */
+
+	      /* release acquired lock */
+	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid,
+						       class_oid, lock);
+
+	      /*
+	       * Use MVCC header to store information about next version. These
+	       * infos may be used by the caller to advance to the next version.
+	       */
+	      recdes_header->mvcc_flag = OR_MVCC_FLAG_VALID_NEXT_VERSION;
+	      COPY_OID (&recdes_header->next_version, forward_oid);
+	      if (!OID_ISNULL (&partition_class_oid))
+		{
+		  recdes_header->mvcc_flag |=
+		    OR_MVCC_FLAG_VALID_PARTITION_OID;
+		  COPY_OID (&recdes_header->partition_oid,
+			    &partition_class_oid);
+		}
+
+	      /*
+	       * store saved DELID, satisfies result for current row,
+	       * set next row OID, lock needed for next row update
+	       */
+	      MVCC_SET_DELETE_INFO (mvcc_delete_info, del_mvccid,
+				    forward_oid, DELETE_RECORD_DELETED);
+	      return NO_ERROR;
+	    }
+
+	  /* This must be called on a version at least as new as the visible
+	   * version. Even if the version is deleted, it still cannot be
+	   * considered for vacuum, since its deleter is still active
+	   * relative to current transaction.
+	   */
+	  assert_release (false);
+	  goto error;
+	}
+
       /* Check page pointer and oid match. */
       assert (HEAP_IS_PAGE_OF_OID (home_page_watcher->pgptr, oid));
       /* Make sure that forward_oid and forward page are obtained if rec_type
@@ -22952,17 +23017,6 @@ try_again:
 	      || (!OID_ISNULL (forward_oid)
 		  && HEAP_IS_PAGE_OF_OID (fwd_page_watcher->pgptr,
 					  forward_oid)));
-
-      if (*record_type == REC_MVCC_NEXT_VERSION)
-	{
-	  /* This must be called on a version at least as new as the visible
-	   * version. Even if the version is deleted, it still cannot be
-	   * considered for vacuum, since its deleter is still active
-	   * relative to current transaction.
-	   */
-	  assert_release (false);
-	  goto error;
-	}
 
       /* Get MVCC header */
       if (heap_get_mvcc_header (thread_p, oid, forward_oid,
