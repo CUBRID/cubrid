@@ -9811,7 +9811,7 @@ delete_object_tuple (DB_OBJECT * object)
 	{
 	  DB_VALUE dbvalue;
 	  error = db_get (object, attr->header.name, &dbvalue);
-	  if (error == NO_ERROR)
+	  if (error == NO_ERROR && !DB_IS_NULL (&dbvalue))
 	    {
 	      DB_ELO *elo;
 
