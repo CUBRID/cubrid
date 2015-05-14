@@ -20173,7 +20173,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 
       if (att->is_autoincrement && (value->state == HEAP_UNINIT_ATTRVALUE))
 	{
-	  if (OID_ISNULL (&(att->serial_obj)))
+	  if (OID_ISNULL (&(att->auto_increment.serial_obj)))
 	    {
 	      memset (serial_name, '\0', sizeof (serial_name));
 	      recdes.data = NULL;
@@ -20248,7 +20248,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 		    }
 
 		  assert (!OID_ISNULL (&serial_oid));
-		  ATOMIC_CAS_64 ((INT64 *) (&att->serial_obj),
+		  ATOMIC_CAS_64 ((INT64 *) (&att->auto_increment.serial_obj),
 				 *(INT64 *) (&oid_Null_oid),
 				 *(INT64 *) (&serial_oid));
 		}
@@ -20262,7 +20262,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER)
 	      || (att->type == DB_TYPE_BIGINT))
 	    {
-	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &att->serial_obj, 0,	/* no cache */
+	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &att->auto_increment.serial_obj, 0,	/* no cache */
 					  1,	/* generate one value */
 					  GENERATE_AUTO_INCREMENT,
 					  false) != NO_ERROR)
@@ -20279,7 +20279,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	    }
 	  else if (att->type == DB_TYPE_NUMERIC)
 	    {
-	      if (xserial_get_next_value (thread_p, dbvalue, &att->serial_obj, 0,	/* no cache */
+	      if (xserial_get_next_value (thread_p, dbvalue, &att->auto_increment.serial_obj, 0,	/* no cache */
 					  1,	/* generate one value */
 					  GENERATE_AUTO_INCREMENT,
 					  false) != NO_ERROR)

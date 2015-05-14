@@ -67,6 +67,13 @@ struct or_attribute
   OR_DEFAULT_VALUE current_default_value;	/* default value */
   BTID *btids;			/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
+
+  union
+  {
+    double dummy;		/* alignment */
+    OID serial_obj;		/* db_serial's instance */
+  } auto_increment;
+
   int n_btids;			/* Number of ID's in the btids array */
   BTID index;			/* btree id if indexed */
 
@@ -74,7 +81,6 @@ struct or_attribute
   int max_btids;		/* Size of the btids array */
   BTID btid_pack[OR_ATT_BTID_PREALLOC];
 
-  OID serial_obj;		/* db_serial's instance */
   unsigned is_fixed:1;		/* non-zero if this is a fixed width attribute */
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
   unsigned is_notnull:1;	/* non-zero if has not null constraint */
