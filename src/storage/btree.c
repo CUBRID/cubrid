@@ -29381,7 +29381,8 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   leaf_record.area_size = DB_PAGESIZE;
   leaf_record.data = PTR_ALIGN (data_buffer, BTREE_MAX_ALIGN);
 
-  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk)
+      && insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT)
     {
       /* Call unique insert function. */
       error_code =
