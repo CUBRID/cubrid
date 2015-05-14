@@ -901,7 +901,14 @@ struct rvfun RV_fun[] = {
    NULL,
    locator_rv_redo_rename,
    NULL,
-   NULL}
+   NULL},
+
+  {RVHF_INSERT_NEWHOME,
+   "RVHF_INSERT_NEWHOME",
+   heap_rv_undo_insert,
+   heap_rv_redo_insert,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa},
 };
 
 /*

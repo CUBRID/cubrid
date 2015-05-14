@@ -26694,26 +26694,30 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
     {
       INT16 bytes_reserved;
       RECDES temp_recdes;
-      RECDES *undo_recdes_p = NULL;
 
       if (recdes_p->type == REC_ASSIGN_ADDRESS)
 	{
 	  /* special case for REC_ASSIGN */
-	  undo_recdes_p = &temp_recdes;
 	  temp_recdes.type = recdes_p->type;
 	  temp_recdes.area_size = sizeof (bytes_reserved);
 	  temp_recdes.length = sizeof (bytes_reserved);
 	  bytes_reserved = (INT16) recdes_p->length;
 	  temp_recdes.data = (char *) &bytes_reserved;
+	  log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL,
+				      &temp_recdes);
+	}
+      else if (recdes_p->type == REC_NEWHOME)
+	{
+	  /* we don't want replication for REC_NEWHOME; in any other respect
+	     RVHF_INSERT_NEWHOME is the same as RVHF_INSERT */
+	  log_append_undoredo_recdes (thread_p, RVHF_INSERT_NEWHOME,
+				      &log_addr, NULL, recdes_p);
 	}
       else
 	{
-	  undo_recdes_p = recdes_p;
+	  log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL,
+				      recdes_p);
 	}
-
-      /* non-MVCC logging */
-      log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL,
-				  undo_recdes_p);
     }
 }
 
