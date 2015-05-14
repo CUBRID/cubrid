@@ -1175,9 +1175,13 @@ static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
 						HEAP_OPERATION_CONTEXT *
 						context);
-static int heap_get_insert_location (THREAD_ENTRY * thread_p,
-				     HEAP_OPERATION_CONTEXT * context,
-				     PGBUF_WATCHER * home_hint_p);
+static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p,
+					       HEAP_OPERATION_CONTEXT *
+					       context,
+					       PGBUF_WATCHER * home_hint_p);
+static int heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p,
+						      HEAP_OPERATION_CONTEXT *
+						      context);
 static int heap_insert_newhome (THREAD_ENTRY * thread_p,
 				HEAP_OPERATION_CONTEXT * parent_context,
 				RECDES * recdes_p, OID * out_oid_p);
@@ -26320,7 +26324,8 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
 }
 
 /*
- * heap_get_insert_location () - get a page (and possibly and slot) for insert
+ * heap_get_insert_location_with_lock () - get a page (and possibly and slot)
+ *				    for insert and lock the OID
  *   thread_p(in): thread entry
  *   context(in): operation context
  *   home_hint_p(in): if not null, will try to find and lock a slot in hinted page
@@ -26334,9 +26339,9 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
  *       find the page on it's own.
  */
 static int
-heap_get_insert_location (THREAD_ENTRY * thread_p,
-			  HEAP_OPERATION_CONTEXT * context,
-			  PGBUF_WATCHER * home_hint_p)
+heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p,
+				    HEAP_OPERATION_CONTEXT * context,
+				    PGBUF_WATCHER * home_hint_p)
 {
   int slot_count, slot_id, lk_result;
   LOCK lock;
@@ -26446,6 +26451,96 @@ heap_get_insert_location (THREAD_ENTRY * thread_p,
   return ER_FAILED;
 }
 
+
+/*
+ * heap_find_location_and_insert_rec_newhome  () - find location in a heap page
+ *				    and then insert context->record
+ *   thread_p(in): thread entry
+ *   context(in): operation context
+ *   returns: error code or NO_ERROR
+ *
+ * NOTE: This function will find a suitable page, put it in
+ *	  context->home_page_watcher, insert context->recdes_p into that page
+ *	  and put recdes location into context->res_oid.
+ *	 Currently, this function is called only for REC_NEWHOME records, when
+ *	  lock acquisition is not required.
+ *	 The caller must log the inserted data.
+ */
+static int
+heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p,
+					   HEAP_OPERATION_CONTEXT * context)
+{
+  int sp_success;
+
+  /* check input */
+  assert (context != NULL);
+  assert (context->type == HEAP_OPERATION_INSERT);
+  assert (context->recdes_p != NULL);
+  assert (context->recdes_p->type == REC_NEWHOME);
+
+#if defined(CUBRID_DEBUG)
+  if (heap_is_big_length (context->recdes_p->length))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "heap_insert_internal: This function does not accept"
+		    " objects longer than %d. An object of %d was given\n",
+		    heap_Maxslotted_reclength, recdes->length);
+      return ER_FAILED;
+    }
+#endif
+
+  if (heap_stats_find_best_page (thread_p, &context->hfid,
+				 context->recdes_p->length, false,
+				 context->recdes_p->length,
+				 context->scan_cache_p,
+				 context->home_page_watcher_p) == NULL)
+    {
+      return ER_FAILED;
+    }
+
+#if !defined(NDEBUG)
+  if (context->scan_cache_p != NULL)
+    {
+      OID heap_class_oid;
+
+      assert (heap_get_class_oid_from_page (thread_p,
+					    context->home_page_watcher_p->
+					    pgptr,
+					    &heap_class_oid) == NO_ERROR);
+
+      assert (OID_EQ (&heap_class_oid, &context->scan_cache_p->class_oid));
+    }
+#endif
+
+  assert (context->home_page_watcher_p->pgptr != NULL);
+  (void) pgbuf_check_page_ptype (thread_p,
+				 context->home_page_watcher_p->pgptr,
+				 PAGE_HEAP);
+
+  sp_success = spage_insert (thread_p, context->home_page_watcher_p->pgptr,
+			     context->recdes_p, &context->res_oid.slotid);
+  if (sp_success == SP_SUCCESS)
+    {
+      context->res_oid.volid =
+	pgbuf_get_volume_id (context->home_page_watcher_p->pgptr);
+      context->res_oid.pageid =
+	pgbuf_get_page_id (context->home_page_watcher_p->pgptr);
+
+      return NO_ERROR;
+    }
+  else
+    {
+      if (sp_success != SP_ERROR)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
+		  0);
+	}
+      OID_SET_NULL (&context->res_oid);
+      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+      return ER_FAILED;
+    }
+}
+
 /*
  * heap_insert_newhome () - will find an insert location for a REC_NEWHOME
  *                          record and will insert it there
@@ -26478,14 +26573,9 @@ heap_insert_newhome (THREAD_ENTRY * thread_p,
 			      &parent_context->class_oid, recdes_p, NULL,
 			      false);
 
-  /* find an insertion location */
-  if (heap_get_insert_location (thread_p, &ins_context, NULL) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
   /* physical insertion */
-  if (heap_insert_physical (thread_p, &ins_context) != NO_ERROR)
+  if (heap_find_location_and_insert_rec_newhome (thread_p, &ins_context) !=
+      NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -26556,7 +26646,7 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
   /* if we get a page hint, try to get the insert location in it */
   if (home_hint != NULL)
     {
-      rc = heap_get_insert_location (thread_p, context, home_hint);
+      rc = heap_get_insert_location_with_lock (thread_p, context, home_hint);
       if (rc != NO_ERROR && rc != ER_SP_NOSPACE_IN_PAGE)
 	{
 	  return rc;
@@ -26575,7 +26665,8 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	}
 
       /* get new insert location */
-      if (heap_get_insert_location (thread_p, context, NULL) != NO_ERROR)
+      if (heap_get_insert_location_with_lock (thread_p, context, NULL) !=
+	  NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -28618,7 +28709,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
     }
 
   /* get insert location (includes locking) */
-  if (heap_get_insert_location (thread_p, context, NULL) != NO_ERROR)
+  if (heap_get_insert_location_with_lock (thread_p, context, NULL) !=
+      NO_ERROR)
     {
       return ER_FAILED;
     }
