@@ -297,8 +297,6 @@ extern VACUUM_LOG_BLOCKID vacuum_data_get_last_blockid (THREAD_ENTRY *
 
 extern int vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
-extern void vacuum_rv_vacuum_heap_page_dump (FILE * fp, int length,
-					     void *data);
 extern int vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
 extern int vacuum_rv_redo_remove_data_entries (THREAD_ENTRY * thread_p,

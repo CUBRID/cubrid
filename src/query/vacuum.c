@@ -2422,59 +2422,6 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * vacuum_rv_vacuum_heap_page_dump () - Dump RVVAC_HEAP_PAGE_VACUUM redo data.
- *
- * return      : Void.
- * fp (in)     : Print output.
- * length (in) : Recovery data offset converted to integer.
- * data (in)   : Redo recovery data.
- *
- * NOTE: Normally, without offset field of recovery data, nothing can be
- *	 dumped since the number of slots is unknown. Log manager was hacked
- *	 in this case to use offset instead of record data length.
- */
-void
-vacuum_rv_vacuum_heap_page_dump (FILE * fp, int length, void *data)
-{
-  PGSLOTID offset = (PGSLOTID) length;
-  int n_slots = 0;
-  bool reusable = false;
-  bool all_vacuumed = false;
-  bool vacuum_insid = false;
-  PGSLOTID *slots = (PGSLOTID *) data;
-  PGSLOTID slot;
-  int i;
-
-  n_slots = (int) (offset & (~VACUUM_LOG_VACUUM_HEAP_MASK));
-  reusable = (offset & VACUUM_LOG_VACUUM_HEAP_REUSABLE) != 0;
-  all_vacuumed = (offset & VACUUM_LOG_VACUUM_HEAP_ALL_VACUUMED) != 0;
-
-  fprintf (fp, " Reusable slots = %s \n", reusable ? "true" : "false");
-  fprintf (fp, " Will all be vacuumed = %s \n",
-	   all_vacuumed ? "true" : "false");
-  fprintf (fp, " Slot count = %d \n", n_slots);
-
-  for (i = 0; i < n_slots; i++)
-    {
-      slot = slots[i];
-      if (slot < 0)
-	{
-	  slot = -slot;
-	  vacuum_insid = false;
-	}
-      else
-	{
-	  vacuum_insid = true;
-	}
-      fprintf (fp, "   Vacuum %s for slot %d\n",
-	       vacuum_insid ? "insert MVCCID" : "record", slot);
-    }
-  /* We don't know record length and we can't print next versions and
-   * partitions links.
-   */
-}
-
-/*
  * vacuum_log_remove_ovf_insid () - Log removing insert MVCCID from big record.
  *
  * return	 : Void.

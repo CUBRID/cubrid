@@ -8199,7 +8199,7 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
       fprintf (out_fp, "%02X ", (unsigned char) (*ptr++));
       if (i % 16 == 15 && i != length)
 	{
-	  fprintf (out_fp, "\n  %05d: ", i);
+	  fprintf (out_fp, "\n  %05d: ", i + 1);
 	}
     }
   fprintf (out_fp, "\n");
@@ -8435,14 +8435,14 @@ log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_undofun !=
-		   NULL) ? RV_fun[rcvindex].dump_undofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump),
 		 log_zip_p);
   /* Print REDO (AFTER) DATA */
   fprintf (out_fp, "-->> Redo (After) Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump),
 		 log_zip_p);
 
   return log_page_p;
@@ -8478,7 +8478,7 @@ log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_undofun !=
-		   NULL) ? RV_fun[rcvindex].dump_undofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump),
 		 log_zip_p);
 
   return log_page_p;
@@ -8509,20 +8509,12 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
   rcvindex = redo->data.rcvindex;
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), log_lsa, log_page_p);
 
-  if (rcvindex == RVVAC_HEAP_PAGE_VACUUM)
-    {
-      /* RVVAC_HEAP_PAGE_VACUUM redo can be dumped only if redo->data.offset
-       * is known, while length is not relevant. Replace argument.
-       */
-      redo_length = redo->data.offset;
-    }
-
   /* Print REDO(AFTER) DATA */
   fprintf (stdout, "-->> Redo (After) Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump),
 		 log_zip_p);
 
   return log_page_p;
@@ -8575,14 +8567,14 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_undofun !=
-		   NULL) ? RV_fun[rcvindex].dump_undofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump),
 		 log_zip_p);
   /* Print REDO (AFTER) DATA */
   fprintf (out_fp, "-->> Redo (After) Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump),
 		 log_zip_p);
 
   return log_page_p;
@@ -8629,7 +8621,7 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_undofun !=
-		   NULL) ? RV_fun[rcvindex].dump_undofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump),
 		 log_zip_p);
 
   return log_page_p;
@@ -8669,7 +8661,7 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump),
 		 log_zip_p);
 
   return log_page_p;
@@ -8707,7 +8699,7 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump),
 		 NULL);
 
   return log_page_p;
@@ -8740,7 +8732,7 @@ log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump),
 		 NULL);
 
   return log_page_p;
@@ -8778,7 +8770,7 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, length_compensate, log_lsa,
 		 log_page_p,
 		 (RV_fun[rcvindex].dump_undofun !=
-		  NULL) ? RV_fun[rcvindex].dump_undofun : log_ascii_dump,
+		  NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump,
 		 NULL);
 
   return log_page_p;
@@ -8812,11 +8804,11 @@ log_dump_record_client_user_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
 #if defined(SA_MODE)
   log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
 		 ((RVCL_fun[rcvclient_index].dump_undofun != NULL)
-		  ? RVCL_fun[rcvclient_index].dump_undofun : log_ascii_dump),
+		  ? RVCL_fun[rcvclient_index].dump_undofun : log_hexa_dump),
 		 NULL);
 #else /* SA_MODE */
   log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
-		 log_ascii_dump, NULL);
+		 log_hexa_dump, NULL);
 #endif /* SA_MODE */
 
   return log_page_p;
@@ -8855,11 +8847,11 @@ log_dump_record_client_user_postpone (THREAD_ENTRY * thread_p, FILE * out_fp,
 #if defined(SA_MODE)
   log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
 		 ((RVCL_fun[rcvclient_index].dump_redofun != NULL)
-		  ? RVCL_fun[rcvclient_index].dump_redofun : log_ascii_dump),
+		  ? RVCL_fun[rcvclient_index].dump_redofun : log_hexa_dump),
 		 NULL);
 #else /* SA_MODE */
   log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
-		 log_ascii_dump, NULL);
+		 log_hexa_dump, NULL);
 #endif /* SA_MODE */
 
   return log_page_p;
@@ -9160,7 +9152,7 @@ log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp,
   /* Print savept name */
   fprintf (out_fp, "     Savept Name =");
   log_dump_data (thread_p, out_fp, length_save_point, log_lsa,
-		 log_page_p, log_ascii_dump, NULL);
+		 log_page_p, log_hexa_dump, NULL);
 
   return log_page_p;
 }
