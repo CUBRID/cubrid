@@ -3915,25 +3915,29 @@ db_string_trim (const MISC_OPERAND tr_operand,
       return error_status;
     }
 
-  trim_type = DB_VALUE_DOMAIN_TYPE (trim_charset);
-
   if (trim_charset == NULL)
     {
       is_trim_charset_omitted = true;
     }
-  else if (DB_IS_NULL (trim_charset))
+  else
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
+      is_trim_charset_omitted = false;
+      trim_type = DB_VALUE_DOMAIN_TYPE (trim_charset);
+
+      if (DB_IS_NULL (trim_charset))
 	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR,
-				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
+	    {
+	      db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	    }
+	  else
+	    {
+	      db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	    }
+	  return error_status;
 	}
-      else
-	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR,
-				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      return error_status;
     }
 
   /*
