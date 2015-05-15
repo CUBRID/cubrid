@@ -52,8 +52,11 @@
 #define IS_EMPTY_STR(s) ((s) == NULL || *(s) == '\0')
 
 #define TZ_MAX_YEAR 9999
-/* julian date for 1 Jan 9999 */
-#define TZ_MAX_JULIAN_DATE 5373119
+/* support dates up to 31/12/9999 23:59:59 */
+/* we need 2 Jan 10000 because of timezones like America/New_York
+ * which when transformed into UTC time reference exceed 1 Jan 10000 */
+/* julian date for 2 Jan 10000 */
+#define TZ_MAX_JULIAN_DATE 5373486
 
 #define TZ_ZONE_ID_MAX	0x3ff
 #define TZ_OFFSET_ID_MAX  0xff

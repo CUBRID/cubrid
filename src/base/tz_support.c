@@ -133,9 +133,9 @@ static void
 tz_timestamp_decode_leap_sec_adj (int timestamp, int *yearp, int *monthsp,
 				  int *dayp, int *hoursp, int *minutesp,
 				  int *secondsp);
-static int tz_offset_with_fixed_ds (const bool src_is_utc,
-				    const TZ_TIME_TYPE until_time_type,
-				    const int gmt_offset_sec);
+static int tz_offset (const bool src_is_utc,
+		      const TZ_TIME_TYPE until_time_type,
+		      const int gmt_offset_sec, const int ds_save_time);
 #if defined (LINUX)
 static int find_timezone_from_clock (char *timezone_name, int buf_len);
 static int find_timezone_from_localtime (char *timezone_name, int buf_len);
@@ -2871,21 +2871,36 @@ tz_check_ds_match_string (const TZ_OFFSET_RULE * off_rule,
  * src_is_utc(in): true if UTC time reference, false otherwise
  * until_time_type(in): time type of the offset rule
  * gmt_offset_sec(in): gmt offset of the offset rule 
+ * ds_save_time(in): daylight saving time
  */
 static int
-tz_offset_with_fixed_ds (const bool src_is_utc,
-			 const TZ_TIME_TYPE until_time_type,
-			 const int gmt_offset_sec)
+tz_offset (const bool src_is_utc,
+	   const TZ_TIME_TYPE until_time_type,
+	   const int gmt_offset_sec, const int ds_save_time)
 {
   int offset = 0;
 
-  if (src_is_utc == true && until_time_type != TZ_TIME_TYPE_UTC)
+  if (src_is_utc == true)
     {
-      offset += gmt_offset_sec;
+      if (until_time_type == TZ_TIME_TYPE_LOCAL_STD)
+	{
+	  offset += gmt_offset_sec;
+	}
+      else if (until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
+	{
+	  offset += gmt_offset_sec + ds_save_time;
+	}
     }
-  else if (src_is_utc == false && until_time_type == TZ_TIME_TYPE_UTC)
+  else if (src_is_utc == false)
     {
-      offset -= gmt_offset_sec;
+      if (until_time_type == TZ_TIME_TYPE_UTC)
+	{
+	  offset -= gmt_offset_sec + ds_save_time;
+	}
+      else if (until_time_type == TZ_TIME_TYPE_LOCAL_STD)
+	{
+	  offset -= ds_save_time;
+	}
     }
 
   return offset;
@@ -2932,6 +2947,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
   bool check_user_dst = false;
   bool applying_with_prev_year = false;
   bool applying_is_in_leap_interval = false;
+  int save_time = 0, src_offset = 0;
 
   if (tz_info->type == TZ_REGION_OFFSET)
     {
@@ -2986,11 +3002,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
 	  rule_time_sec = 0;
 	}
 
-      /* we don't take into account locale time here, we do that
-       * later, when we consider DST,
-       * we add a safety buffer (1 julian day) to account of threshold local
-       * dates */
-      if (src_julian_date < rule_julian_date - 1)
+      if (src_julian_date <= rule_julian_date)
 	{
 	  /* this is a candidate, we still have to check the exact time when
 	   * rule ends */
@@ -3037,8 +3049,8 @@ detect_dst:
       int curr_time_offset;
 
       curr_time_offset =
-	tz_offset_with_fixed_ds (src_is_utc, curr_off_rule->until_time_type,
-				 gmt_std_offset_sec);
+	tz_offset (src_is_utc, curr_off_rule->until_time_type,
+		   gmt_std_offset_sec, 0);
 
       if (FULL_DATE (src_julian_date, src_time_sec + curr_time_offset)
 	  <= FULL_DATE (rule_julian_date, rule_time_sec))
@@ -3315,6 +3327,22 @@ detect_dst:
 
   if (applying_ds_id != -1)
     {
+      save_time = applying_ds_rule->save_time;
+    }
+  src_offset = tz_offset (src_is_utc, curr_off_rule->until_time_type,
+			  gmt_std_offset_sec, save_time);
+
+  if (applying_ds_id != -1)
+    {
+      if (FULL_DATE (src_julian_date, src_time_sec + src_offset)
+	  > FULL_DATE (rule_julian_date, rule_time_sec))
+	{
+	  curr_off_rule = next_off_rule;
+	  next_off_rule = NULL;
+	  curr_offset_id++;
+	  goto detect_dst;
+	}
+
       if (check_user_dst)
 	{
 	  if (tz_check_ds_match_string (curr_off_rule, applying_ds_rule,
@@ -3329,13 +3357,6 @@ detect_dst:
     }
   else
     {
-      int src_offset;
-      assert (applying_ds_id == -1);
-
-      src_offset =
-	tz_offset_with_fixed_ds (src_is_utc, curr_off_rule->until_time_type,
-				 gmt_std_offset_sec);
-
       /* try next GMT offset zone */
       if (next_off_rule == NULL
 	  || (FULL_DATE (src_julian_date, src_time_sec + src_offset)
