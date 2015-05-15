@@ -5334,6 +5334,19 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr,
       goto error;
     }
 
+  if (pgbuf_has_any_waiters (crt_watcher.pgptr))
+    {
+      /* Even though we have fixed all required pages, somebody was doing
+       * a heap scan, and already reached our page. We cannot deallocate
+       * it.
+       */
+      vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WARNING,
+		     "VACUUM: Candidate heap page %d|%d to remove has "
+		     "waiters.\n",
+		     page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+
   /* Start changes under the protection of system operation. */
   if (log_start_system_op (thread_p) == NULL)
     {

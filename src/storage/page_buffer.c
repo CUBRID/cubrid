@@ -12292,3 +12292,24 @@ pgbuf_initialize_seq_flusher (PGBUF_SEQ_FLUSHER * seq_flusher,
 
   return NO_ERROR;
 }
+
+/*
+ * pgbuf_has_any_waiters () - Quick check if page has any waiters.
+ *
+ * return     : True if page has any waiters, false otherwise.
+ * pgptr (in) : Page pointer.
+ */
+bool
+pgbuf_has_any_waiters (PAGE_PTR pgptr)
+{
+#if defined (SERVER_MODE)
+  PGBUF_BCB *bufptr = NULL;
+
+  assert (pgptr != NULL);
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  return bufptr->next_wait_thrd != NULL;
+#else
+  return false;
+#endif
+}

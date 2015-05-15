@@ -1304,7 +1304,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	  /* Set page dirty. */
 	  pgbuf_set_dirty (thread_p, helper.home_page, DONT_FREE);
 
-	  if (spage_number_of_records (helper.home_page) <= 1)
+	  if (spage_number_of_records (helper.home_page) <= 1
+	      && helper.reusable)
 	    {
 	      /* Try to remove page from heap. */
 
