@@ -19491,17 +19491,18 @@ btree_rv_keyval_dump (FILE * fp, int length, void *data)
   OID oid, class_oid;
   short mvcc_flags;
   MVCCID mvccid;
+  char *datap = (char *) data;
 
-  data = or_unpack_btid (data, &btid);
+  datap = or_unpack_btid (datap, &btid);
   fprintf (fp, " BTID = { { %d , %d }, %d} \n ",
 	   btid.vfid.volid, btid.vfid.fileid, btid.root_pageid);
 
-  data = or_unpack_oid (data, &oid);
+  datap = or_unpack_oid (datap, &oid);
   mvcc_flags = BTREE_OID_GET_MVCC_FLAGS (&oid);
 
   if (BTREE_OID_IS_RECORD_FLAG_SET (&oid, BTREE_LEAF_RECORD_CLASS_OID))
     {
-      data = or_unpack_oid (data, &class_oid);
+      datap = or_unpack_oid (datap, &class_oid);
       BTREE_OID_CLEAR_ALL_FLAGS (&oid);
       fprintf (fp, " OID = { %d, %d, %d } \n", oid.volid, oid.pageid,
 	       oid.slotid);
@@ -19517,16 +19518,18 @@ btree_rv_keyval_dump (FILE * fp, int length, void *data)
 
   if (mvcc_flags & BTREE_OID_HAS_MVCC_INSID)
     {
-      data = or_unpack_mvccid (data, &mvccid);
+      datap = or_unpack_mvccid (datap, &mvccid);
       fprintf (fp, " INSERT MVCCID = %llu \n",
 	       (long long unsigned int) mvccid);
     }
   if (mvcc_flags & BTREE_OID_HAS_MVCC_DELID)
     {
-      data = or_unpack_mvccid (data, &mvccid);
+      datap = or_unpack_mvccid (datap, &mvccid);
       fprintf (fp, " DELETE MVCCID = %llu \n",
 	       (long long unsigned int) mvccid);
     }
+  /* Print key as hexa. */
+  log_rv_dump_hexa (fp, length - CAST_BUFLEN (datap - (char *) data), datap);
 }
 
 /*

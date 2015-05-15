@@ -2671,19 +2671,12 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	      load_args->curr_rec_obj_count++;
 	      if (!MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 		{
-		  load_args->curr_non_del_obj_count++;
-		}
-	      if (load_args->curr_non_del_obj_count == 1)
-		{
-		  /* When first non-deleted object is found, we must
-		   * increment that number of keys for statistics.
+		  /* TODO: Rewrite btree_construct_leafs. It's almost
+		   *       impossible to follow.
 		   */
-		  (load_args->n_keys)++;
-		}
-	      if (BTREE_IS_UNIQUE (load_args->btid->unique_pk))
-		{
-		  /* instance level uniqueness checking */
-		  if (load_args->curr_non_del_obj_count > 1)
+		  load_args->curr_non_del_obj_count++;
+		  if (load_args->curr_non_del_obj_count > 1
+		      && BTREE_IS_UNIQUE (load_args->btid->unique_pk))
 		    {
 		      /* Unique constrain violation - more than one visible
 		       * records for this key.
@@ -2697,68 +2690,74 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		      ret = ER_BTREE_UNIQUE_FAILED;
 		      goto error;
 		    }
-		  else if (load_args->curr_non_del_obj_count == 1)
+		  if (load_args->curr_non_del_obj_count == 1)
 		    {
-		      /* this is the first non-deleted OID of the key; it
-		       * must be placed as the first OID
+		      /* When first non-deleted object is found, we must
+		       * increment that number of keys for statistics.
 		       */
-		      BTREE_MVCC_INFO first_mvcc_info;
-		      OID first_oid, first_class_oid;
-		      int offset = 0;
+		      (load_args->n_keys)++;
 
-		      /* Safe guard */
-		      assert_release (load_args->curr_non_del_obj_count == 1);
-
-		      /* Retrieve the first OID from leaf record */
-		      ret =
-			btree_leaf_get_first_object (load_args->btid,
-						     &load_args->
-						     leaf_nleaf_recdes,
-						     &first_oid,
-						     &first_class_oid,
-						     &first_mvcc_info);
-		      if (ret != NO_ERROR)
+		      if (BTREE_IS_UNIQUE (load_args->btid->unique_pk))
 			{
-			  goto error;
-			}
-
-		      /* replace with current OID (might move memory in
-		         record) */
-		      btree_mvcc_info_from_heap_mvcc_header (&mvcc_header,
-							     &mvcc_info);
-		      btree_leaf_change_first_object (&load_args->
-						      leaf_nleaf_recdes,
-						      load_args->btid,
-						      &this_oid,
-						      &this_class_oid,
-						      &mvcc_info, &offset,
-						      NULL);
-		      if (ret != NO_ERROR)
-			{
-			  goto error;
-			}
-
-		      if (!load_args->overflowing)
-			{
-			  /* Update load_args->new_pos in case record has
-			   * grown after replace
+			  /* this is the first non-deleted OID of the key; it
+			   * must be placed as the first OID
 			   */
-			  load_args->new_pos += offset;
-			}
+			  BTREE_MVCC_INFO first_mvcc_info;
+			  OID first_oid, first_class_oid;
+			  int offset = 0;
 
-		      assert (load_args->leaf_nleaf_recdes.length
-			      <= load_args->leaf_nleaf_recdes.area_size);
+			  /* Retrieve the first OID from leaf record */
+			  ret =
+			    btree_leaf_get_first_object (load_args->btid,
+							 &load_args->
+							 leaf_nleaf_recdes,
+							 &first_oid,
+							 &first_class_oid,
+							 &first_mvcc_info);
+			  if (ret != NO_ERROR)
+			    {
+			      goto error;
+			    }
+
+			  /* replace with current OID (might move memory in
+			     record) */
+			  btree_mvcc_info_from_heap_mvcc_header (&mvcc_header,
+								 &mvcc_info);
+			  btree_leaf_change_first_object (&load_args->
+							  leaf_nleaf_recdes,
+							  load_args->btid,
+							  &this_oid,
+							  &this_class_oid,
+							  &mvcc_info, &offset,
+							  NULL);
+			  if (ret != NO_ERROR)
+			    {
+			      goto error;
+			    }
+
+			  if (!load_args->overflowing)
+			    {
+			      /* Update load_args->new_pos in case record has
+			       * grown after replace
+			       */
+			      load_args->new_pos += offset;
+			    }
+
+			  assert (load_args->leaf_nleaf_recdes.length
+				  <= load_args->leaf_nleaf_recdes.area_size);
 #if !defined (NDEBUG)
-		      btree_check_valid_record (NULL, load_args->btid,
-						&load_args->leaf_nleaf_recdes,
-						BTREE_LEAF_NODE, NULL);
+			  btree_check_valid_record (NULL, load_args->btid,
+						    &load_args->
+						    leaf_nleaf_recdes,
+						    BTREE_LEAF_NODE, NULL);
 #endif
 
-		      /* save first OID as current OID, to be written */
-		      COPY_OID (&this_oid, &first_oid);
-		      COPY_OID (&this_class_oid, &first_class_oid);
-		      btree_mvcc_info_to_heap_mvcc_header (&first_mvcc_info,
-							   &mvcc_header);
+			  /* save first OID as current OID, to be written */
+			  COPY_OID (&this_oid, &first_oid);
+			  COPY_OID (&this_class_oid, &first_class_oid);
+			  btree_mvcc_info_to_heap_mvcc_header
+			    (&first_mvcc_info, &mvcc_header);
+			}
 		    }
 		}
 
