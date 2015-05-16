@@ -221,7 +221,7 @@ start_check_active:
     {
       is_active = true;
       position = mvccid - local_bit_area_start_mvccid;
-      if (position < local_bit_area_length)
+      if ((int) position < local_bit_area_length)
 	{
 	  p_area =
 	    MVCC_GET_BITAREA_ELEMENT_PTR (trans_status->bit_area, position);

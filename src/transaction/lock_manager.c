@@ -1201,7 +1201,7 @@ lock_initialize_object_lock_res_list (void)
 
   /* initialize */
   block_count = 1;
-  block_size = MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO), 1);
+  block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO), 1);
   ret =
     lf_freelist_init (&lk_Gl.obj_free_res_list, block_count, block_size,
 		      &obj_lock_res_desc, &obj_lock_res_Ts);
@@ -1233,7 +1233,7 @@ lock_initialize_object_lock_entry_list (void)
 
   /* initialize the entry freelist */
   block_count = 1;
-  block_size = MAX ((lk_Gl.max_obj_locks * LK_ENTRY_RATIO), 1);
+  block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_ENTRY_RATIO), 1);
   ret =
     lf_freelist_init (&lk_Gl.obj_free_entry_list, block_count,
 		      block_size, &obj_lock_entry_desc, &obj_lock_ent_Ts);
@@ -2204,7 +2204,8 @@ set_error:
       oid_rr = oid_get_rep_read_tran_oid ();
       if (oid_rr != NULL && OID_EQ (&entry_ptr->res_head->key.oid, oid_rr))
 	{
-	  classname = "Generic object for Repeatable Read consistency";
+	  classname =
+	    (char *) "Generic object for Repeatable Read consistency";
 	  is_classname_alloced = false;
 	}
       else
@@ -6353,7 +6354,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		      if (MVCC_IS_FLAG_SET
 			  (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
 			{
-			  sprintf (str_insid, "%lld",
+			  sprintf (str_insid, "%llu",
+				   (unsigned long long int)
 				   MVCC_GET_INSID (&mvcc_rec_header));
 			}
 		      else
@@ -6363,7 +6365,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		      if (MVCC_IS_FLAG_SET
 			  (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID))
 			{
-			  sprintf (str_delid, "%lld",
+			  sprintf (str_delid, "%llu",
+				   (unsigned long long int)
 				   MVCC_GET_DELID (&mvcc_rec_header));
 			}
 		      else
@@ -6955,8 +6958,6 @@ lock_finalize (void)
 #if !defined (SERVER_MODE)
   lk_Standalone_has_xlock = false;
 #else /* !SERVER_MODE */
-  LK_RES_BLOCK *res_block;	/* pointer to lock resource table node */
-  LK_ENTRY_BLOCK *entry_block;	/* pointer to lock entry block */
   LK_TRAN_LOCK *tran_lock;
   int i;
 
@@ -7682,7 +7683,6 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
-  LOG_TDES *tdes;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
@@ -9373,7 +9373,6 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   LF_TRAN_ENTRY *t_entry =
     thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   int k, s, t;
-  LK_RES_BLOCK *res_block;
   LK_RES *res_ptr;
   LK_ENTRY *hi, *hj;
   LK_WFG_NODE *TWFG_node;
@@ -10267,7 +10266,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   int old_wait_msecs = 0;	/* Old transaction lock wait    */
   int tran_index;
   LK_RES *res_ptr;
-  int rv, num_locked;
+  int num_locked;
   float lock_timeout_sec;
   char lock_timeout_string[64];
 

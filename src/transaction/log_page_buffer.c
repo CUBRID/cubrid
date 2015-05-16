@@ -476,6 +476,10 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p,
 
 static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 
+static int logpb_copy_log_header (THREAD_ENTRY * thread_p,
+				  struct log_header *to_hdr,
+				  const struct log_header *from_hdr);
+
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
  *
@@ -1964,7 +1968,7 @@ logpb_create_header_page (THREAD_ENTRY * thread_p)
  * 
  * NOTE: Copy a log header.
  */
-int
+static int
 logpb_copy_log_header (THREAD_ENTRY * thread_p, struct log_header *to_hdr,
 		       const struct log_header *from_hdr)
 {
@@ -3160,7 +3164,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  i++;
 	}
 
-      phy_pageid = pageid - bg_arv_info->start_page_id + 1;
+      phy_pageid = (LOG_PHY_PAGEID) (pageid - bg_arv_info->start_page_id + 1);
       assert_release (phy_pageid > 0);
       if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr,
 			phy_pageid, LOG_PAGESIZE) == NULL)
@@ -4675,7 +4679,7 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 
   if (prior_list != NULL)
     {
-      mnt_prior_lsa_list_size (thread_p, current_size / ONE_K);	/* kbytes */
+      mnt_prior_lsa_list_size (thread_p, (unsigned int) current_size / ONE_K);	/* kbytes */
       mnt_prior_lsa_list_removed (thread_p);
 
       logpb_append_prior_lsa_list (thread_p, prior_list);
@@ -5334,10 +5338,13 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      event_log_log_flush_thr_wait (thread_p, flush_page_count,
 					    &writer_info->
 					    last_writer_client_info,
-					    all_writer_thr_end_time -
-					    flush_start_time,
-					    all_writer_thr_end_time -
-					    flush_completed_time,
+					    (int)
+					    (all_writer_thr_end_time -
+					     flush_start_time),
+					    (int)
+					    (all_writer_thr_end_time -
+					     flush_completed_time),
+					    (int)
 					    writer_info->
 					    last_writer_elapsed_time);
 	    }
@@ -5662,7 +5669,8 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   if (log_Gl.append.log_pgptr->hdr.offset == NULL_OFFSET)
     {
-      log_Gl.append.log_pgptr->hdr.offset = log_Gl.hdr.append_lsa.offset;
+      log_Gl.append.log_pgptr->hdr.offset =
+	(PGLENGTH) log_Gl.hdr.append_lsa.offset;
     }
 
   if (log_rec->type == LOG_END_OF_LOG)
@@ -5820,7 +5828,7 @@ prior_lsa_append_data (int length)
        */
       LOG_PRIOR_LSA_APPEND_ALIGN ();
 
-      current_offset = log_Gl.prior_info.prior_lsa.offset;
+      current_offset = (int) log_Gl.prior_info.prior_lsa.offset;
       last_offset = LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
 
       /* Does data fit completely in current page ? */
@@ -5969,7 +5977,7 @@ prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
        */
       LOG_PRIOR_LSA_APPEND_ALIGN ();
 
-      current_offset = log_Gl.prior_info.prior_lsa.offset;
+      current_offset = (int) log_Gl.prior_info.prior_lsa.offset;
       last_offset = LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
 
       for (i = 0; i < num_crumbs; i++)
@@ -7431,7 +7439,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   for (; pageid <= last_pageid;
        pageid += num_pages, ar_phy_pageid += num_pages)
     {
-      num_pages = MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
+      num_pages = (int) MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
       num_pages = logpb_read_page_from_active_log (thread_p, pageid,
 						   num_pages, log_pgptr);
       if (num_pages <= 0)
@@ -8525,9 +8533,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int i, j;
   const char *catmsg;
   VOLID volid;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   int error_code = NO_ERROR;
   LOG_PAGEID smallest_pageid;
   int first_arv_num_not_needed;
@@ -8577,7 +8582,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * point.
    */
 
-  rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
+  (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
   LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
@@ -8674,7 +8679,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       goto error_cannot_chkpt;
     }
 
-  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  (void) pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
 
   /* CHECKPOINT THE TRANSACTION TABLE */
 
@@ -8846,7 +8851,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 					RV_NOT_DEFINED, NULL,
 					length_all_chkpt_trans,
 					(char *) chkpt_trans,
-					length_all_tops,
+					(int) length_all_tops,
 					(char *) chkpt_topops);
   if (node == NULL)
     {
@@ -8900,7 +8905,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   log_Gl.hdr.avg_nlocks = (log_Gl.hdr.avg_nlocks + nobj_locks) >> 1;
 
   /* Flush the header */
-  rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
+  (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   if (LSA_LT (&log_Gl.hdr.chkpt_lsa, &newchkpt_lsa))
     {
       LSA_COPY (&log_Gl.hdr.chkpt_lsa, &newchkpt_lsa);
@@ -10240,8 +10245,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
     }
 
   /* The enum type can be negative in Windows. */
-  while (success == NO_ERROR && try_level >= FILEIO_BACKUP_FULL_LEVEL
-	 && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
+  while (success == NO_ERROR && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
     {
       if (!first_time)
 	{
@@ -10263,7 +10267,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      success = ER_FAILED;
 	    }
 
-	  assert (try_level != r_args->level);
+	  assert (try_level != (FILEIO_BACKUP_LEVEL) r_args->level);
 	}
 
       error_code = fileio_get_backup_volume (thread_p, db_fullname, logpath,
@@ -10501,8 +10505,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		}
 	      else
 		{
-		  total_pages = CEIL_PTVDIV (session->dbfile.nbytes,
-					     IO_PAGESIZE);
+		  total_pages =
+		    (DKNPAGES) CEIL_PTVDIV (session->dbfile.nbytes,
+					    IO_PAGESIZE);
 		  /*
 		   * Create a page_bitmap to remember the id's of pages
 		   * that have been written. We only need to write the page 

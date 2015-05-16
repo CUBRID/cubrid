@@ -386,9 +386,10 @@ enum param_id
   PRM_ID_HA_REPL_FILTER_FILE,
 
   PRM_ID_COMPENSATE_DEBUG,
+  PRM_ID_POSTPONE_DEBUG,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_COMPENSATE_DEBUG
+  PRM_LAST_ID = PRM_ID_POSTPONE_DEBUG
 };
 
 /*

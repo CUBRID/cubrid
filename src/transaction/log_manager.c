@@ -446,6 +446,7 @@ static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p,
 					     bool decache_classrepr);
 
 static LOG_LSA *log_start_system_op_internal (THREAD_ENTRY * thread_p,
+					      LOG_TOPOPS_TYPE type,
 					      LOG_LSA *
 					      compensate_undo_nxlsa);
 
@@ -2983,6 +2984,9 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
+  /* We cannot append postpone during a postpone system operation. */
+  assert (tdes->topops.type != LOG_TOPOPS_POSTPONE);
+
   skipredo = log_can_skip_redo_logging (rcvindex, tdes, addr);
   if (skipredo == true
       || (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes)
@@ -3965,7 +3969,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name,
 LOG_LSA *
 log_start_system_op (THREAD_ENTRY * thread_p)
 {
-  return log_start_system_op_internal (thread_p, NULL);
+  return log_start_system_op_internal (thread_p, LOG_TOPOPS_NORMAL, NULL);
 }
 
 /*
@@ -3980,7 +3984,28 @@ void
 log_start_compensate_system_op (THREAD_ENTRY * thread_p,
 				LOG_LSA * compensate_undo_nxlsa)
 {
-  if (log_start_system_op_internal (thread_p, compensate_undo_nxlsa) == NULL)
+  if (log_start_system_op_internal (thread_p,
+				    LOG_TOPOPS_COMPENSATE_TRAN_ABORT,
+				    compensate_undo_nxlsa) == NULL)
+    {
+      assert (false);
+    }
+}
+
+/*
+ * log_start_postpone_system_op () - Start a macro system operation for
+ *				     postpone.
+ *
+ * return	      : Void.
+ * thread_p (in)      : Thread entry.
+ * reference_lsa (in) : Postpone reference lsa.
+ */
+void
+log_start_postpone_system_op (THREAD_ENTRY * thread_p,
+			      LOG_LSA * reference_lsa)
+{
+  if (log_start_system_op_internal (thread_p, LOG_TOPOPS_POSTPONE,
+				    reference_lsa) == NULL)
     {
       assert (false);
     }
@@ -3993,8 +4018,8 @@ log_start_compensate_system_op (THREAD_ENTRY * thread_p,
  *
  */
 static LOG_LSA *
-log_start_system_op_internal (THREAD_ENTRY * thread_p,
-			      LOG_LSA * compensate_undo_nxlsa)
+log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type,
+			      LOG_LSA * reference_lsa)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
@@ -4093,15 +4118,17 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p,
     }
 
   /* Is system op started to execute log compensate? */
-  if (compensate_undo_nxlsa != NULL)
+  if (type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT)
     {
       bool compensate_debug = prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG);
 
       assert (!LOG_ISTRAN_ACTIVE (tdes));
+      assert (reference_lsa != NULL);
+
       if (tdes->topops.last == -1)
 	{
 	  /* Transaction rollback. */
-	  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_TRAN_ABORT;
+	  tdes->topops.type = LOG_TOPOPS_COMPENSATE_TRAN_ABORT;
 
 	  if (compensate_debug)
 	    {
@@ -4110,15 +4137,15 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p,
 			     "for transaction rollback. Tran_ID=%d. "
 			     "Undo_nxlsa=%llu|%d\n",
 			     tdes->trid,
-			     (long long int) compensate_undo_nxlsa->pageid,
-			     (int) compensate_undo_nxlsa->offset);
+			     (long long int) reference_lsa->pageid,
+			     (int) reference_lsa->offset);
 	    }
 	}
       else
 	{
 	  /* System op is aborted. */
-	  assert (tdes->topops.for_compensate == LOG_TOPOPS_COMPENSATE_NONE);
-	  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_SYSOP_ABORT;
+	  assert (tdes->topops.type == LOG_TOPOPS_NORMAL);
+	  tdes->topops.type = LOG_TOPOPS_COMPENSATE_SYSOP_ABORT;
 	  /* Set compensate level. It must be known in order to:
 	   * 1. Attach all top operations with higher level to their parent.
 	   * 2. Commit the top operation with the same level.
@@ -4141,15 +4168,33 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p,
 			     "for system op abort. Tran_ID=%d. "
 			     "Undo_nxlsa=%llu|%d\n",
 			     tdes->trid,
-			     (long long int) compensate_undo_nxlsa->pageid,
-			     (int) compensate_undo_nxlsa->offset);
+			     (long long int) reference_lsa->pageid,
+			     (int) reference_lsa->offset);
 	    }
 	}
-      LSA_COPY (&tdes->topops.undo_nxlsa, compensate_undo_nxlsa);
+      LSA_COPY (&tdes->topops.ref_lsa, reference_lsa);
+    }
+  else if (type == LOG_TOPOPS_POSTPONE)
+    {
+      assert (tdes->topops.last == -1);
+      assert (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+      assert (reference_lsa != NULL);
+
+      tdes->topops.type = LOG_TOPOPS_POSTPONE;
+      LSA_COPY (&tdes->topops.ref_lsa, reference_lsa);
+
+      if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "POSTPONE_DEBUG: Start postpone system op. "
+			 "Tran_ID=%d. Ref_lsa=%lld|%d.\n",
+			 tdes->trid, (long long int) reference_lsa->pageid,
+			 (int) reference_lsa->offset);
+	}
     }
   else if (tdes->topops.last == -1)
     {
-      tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+      tdes->topops.type = LOG_TOPOPS_NORMAL;
     }
 
   /*
@@ -4262,6 +4307,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
        * allowed to attach to their parents.
        */
       bool compensate_debug = prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG);
+      bool postpone_debug = prm_get_bool_value (PRM_ID_POSTPONE_DEBUG);
 
       if (tdes->topops.last == 0
 	  && result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
@@ -4279,8 +4325,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 			 "operation, even though transaction is not active."
 			 "Tran_ID=%d", tdes->trid);
 	}
-      else if (tdes->topops.for_compensate
-	       == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
+      else if (tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
 	       && tdes->topops.compensate_level == tdes->topops.last)
 	{
 	  /* This is a compensate system op. It must be committed. */
@@ -4294,14 +4339,15 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	    }
 	  result = LOG_RESULT_TOPOP_COMMIT;
 	}
-      else if (tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE
+      else if (tdes->topops.type != LOG_TOPOPS_NORMAL
 	       && tdes->topops.last > 0 && result == LOG_RESULT_TOPOP_COMMIT)
 	{
-	  /* Compensate will no longer work correctly if nested system
-	   * operations are committed. All operations inside a compensate
-	   * system operation should be committed together.
+	  /* Compensate/Postpone will no longer work correctly if nested
+	   * system operations are committed. All operations inside a
+	   * compensate/postpone system operation should be committed
+	   * together.
 	   */
-	  if (compensate_debug)
+	  if (tdes->topops.type != LOG_TOPOPS_POSTPONE && compensate_debug)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
 			     "COMPENSATE_DEBUG: Convert result from %d to "
@@ -4309,21 +4355,38 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
 			     tdes->trid, tdes->topops.last);
 	    }
+	  if (tdes->topops.type == LOG_TOPOPS_POSTPONE && postpone_debug)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "POSTPONE_DEBUG: Convert result from %d to "
+			     "%d. Tran_ID=%d, system op depth=%d.\n",
+			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
+			     tdes->trid, tdes->topops.last);
+	    }
 	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
 	}
       if (compensate_debug
-	  && tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE)
+	  && (tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
+	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "COMPENSATE_DEBUG: End system operation under "
-			 "compensate. Tran_ID=%d, sytem op depth=%d, "
+			 "compensate. Tran_ID=%d, system op depth=%d, "
+			 "result=%d.\n",
+			 tdes->trid, tdes->topops.last, result);
+	}
+      if (postpone_debug && tdes->topops.type == LOG_TOPOPS_POSTPONE)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "POSTPONE_DEBUG: End system operation under "
+			 "postpone. Tran_ID=%d, system op depth=%d, "
 			 "result=%d.\n",
 			 tdes->trid, tdes->topops.last, result);
 	}
     }
   else
     {
-      assert (tdes->topops.for_compensate == LOG_TOPOPS_COMPENSATE_NONE);
+      assert (tdes->topops.type == LOG_TOPOPS_NORMAL);
     }
 
   if (result != LOG_RESULT_TOPOP_ATTACH_TO_OUTER
@@ -4450,7 +4513,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	    }
 	}
 
-      if (tdes->topops.for_compensate == LOG_TOPOPS_COMPENSATE_NONE)
+      if (tdes->topops.type == LOG_TOPOPS_NORMAL)
 	{
 	  /* Always attach to parent. */
 	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
@@ -4459,7 +4522,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	{
 	  /* Even if inside compensation nothing was executed, we need to
 	   * complete system operation in order to "compensate" and to reset
-	   * for_compensate.
+	   * type.
 	   */
 	  /* Don't attach to outer. */
 	}
@@ -4829,16 +4892,16 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     }
 
   top_start_posp = (struct log_topope_start_postpone *) node->data_header;
-  if (tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE)
+  if (tdes->topops.type != LOG_TOPOPS_NORMAL)
     {
       assert (tdes->topops.last == 0
-	      || tdes->topops.for_compensate
-	      == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
+	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
+      assert (tdes->topops.type != LOG_TOPOPS_POSTPONE);
 
-      /* Overwrite lastparent_lsa with compensate undo_nxlsa. */
-      LSA_COPY (&top_start_posp->lastparent_lsa, &tdes->topops.undo_nxlsa);
+      /* Overwrite lastparent_lsa with compensate ref_lsa. */
+      LSA_COPY (&top_start_posp->lastparent_lsa, &tdes->topops.ref_lsa);
 
-      /* Do not reset for_compensate yet. It is reset when system op is
+      /* Do not reset type yet. It is reset when system op is
        * completed.
        */
       if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG))
@@ -7038,36 +7101,45 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   top_result = (struct log_topop_result *) node->data_header;
 
   if (result == LOG_RESULT_TOPOP_COMMIT
-      && tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE)
+      && tdes->topops.type != LOG_TOPOPS_NORMAL)
     {
       assert (tdes->topops.last == 0
-	      || tdes->topops.for_compensate
-	      == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
+	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
 
-      /* Overwrite lastparent_lsa with compensate undo_nxlsa. */
-      LSA_COPY (&top_result->lastparent_lsa, &tdes->topops.undo_nxlsa);
+      /* Overwrite lastparent_lsa with compensate/postpone ref_lsa. */
+      LSA_COPY (&top_result->lastparent_lsa, &tdes->topops.ref_lsa);
 
-      /* Reset for_compensate field. */
-      tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+      /* Reset type field. */
+      tdes->topops.type = LOG_TOPOPS_NORMAL;
 
-      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG))
+      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG)
+	  && (tdes->topops.type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT
+	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "COMPENSATE_DEBUG: Successfully completed "
 			 "compensate. Tran_ID=%d, system op depth=%d.\n",
 			 tdes->trid, tdes->topops.last);
 	}
+      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG)
+	  && tdes->topops.type == LOG_TOPOPS_POSTPONE)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "POSTPONE_DEBUG: Successfully completed "
+			 "postpone. Tran_ID=%d, system op depth=%d.\n",
+			 tdes->trid, tdes->topops.last);
+	}
     }
   else
     {
       if (result != LOG_RESULT_TOPOP_COMMIT
-	  && tdes->topops.for_compensate != LOG_TOPOPS_COMPENSATE_NONE)
+	  && tdes->topops.type != LOG_TOPOPS_NORMAL)
 	{
-	  /* Failed to compensate. */
+	  /* Failed to compensate/postpone. */
 	  assert (false);
 
-	  /* Reset for_compensate field. */
-	  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+	  /* Reset type field. */
+	  tdes->topops.type = LOG_TOPOPS_NORMAL;
 	}
       LSA_COPY (&top_result->lastparent_lsa,
 		&tdes->topops.stack[tdes->topops.last].lastparent_lsa);
@@ -9914,7 +9986,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	   * Only no-page logical operations require logical compensation.
 	   */
 	  /* Invoke Undo recovery function */
-	  LSA_COPY (&rcv->compensate_undo_nxlsa, &tdes->undo_nxlsa);
+	  LSA_COPY (&rcv->reference_lsa, &tdes->undo_nxlsa);
 	  rv_err = log_undo_rec_restartable (thread_p, rcvindex, rcv);
 	  if (rv_err != NO_ERROR)
 	    {
@@ -10429,10 +10501,14 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	      break;
 
 	    case LOG_RUN_POSTPONE:
+	    case LOG_COMMIT_WITH_POSTPONE:
+	      /* Undo of postpone system operation. End here. */
+	      LSA_SET_NULL (&prev_tranlsa);
+	      break;
+
 	    case LOG_RUN_NEXT_CLIENT_UNDO:
 	    case LOG_RUN_NEXT_CLIENT_POSTPONE:
 	    case LOG_WILL_COMMIT:
-	    case LOG_COMMIT_WITH_POSTPONE:
 	    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
 	    case LOG_COMMIT:
 	    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
@@ -10954,7 +11030,8 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), log_lsa, log_pgptr);
 
-  if (rcvindex == RVVAC_DROPPED_FILE_ADD)
+  if (rcvindex == RVVAC_DROPPED_FILE_ADD
+      || rcvindex == RVFL_POSTPONE_DESTROY_FILE)
     {
       rcv.pgptr = NULL;
     }
@@ -11031,6 +11108,21 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	   * we have to do a special call here.
 	   */
 	  (void) vacuum_notify_dropped_file (thread_p, &rcv, &ref_lsa);
+	}
+      else if (rcvindex == RVFL_POSTPONE_DESTROY_FILE)
+	{
+	  if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "POSTPONE_DEBUG: Run postpone of drop file for ",
+			     "%lld|%d.\n", (long long int) ref_lsa.pageid,
+			     (int) ref_lsa.offset);
+	    }
+	  LSA_COPY (&rcv.reference_lsa, &ref_lsa);
+	  if (file_rv_postpone_destroy_file (thread_p, &rcv) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
 	}
       else
 	{

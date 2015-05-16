@@ -211,7 +211,9 @@ typedef enum
 
   RVHF_INSERT_NEWHOME = 137,	/* Same as RVHF_INSERT but no replication */
 
-  RV_LAST_LOGID = RVHF_INSERT_NEWHOME,
+  RVFL_POSTPONE_DESTROY_FILE = 138,
+
+  RV_LAST_LOGID = RVFL_POSTPONE_DESTROY_FILE,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -232,7 +234,7 @@ struct log_rcv
   const char *data;		/* Replacement data. Pointer becomes invalid once the
 				   recovery of the data is finished
 				 */
-  LOG_LSA compensate_undo_nxlsa;	/* Next undo LSA used by compensate. */
+  LOG_LSA reference_lsa;	/* Next LSA used by compensate/postpone. */
 };
 
 /*

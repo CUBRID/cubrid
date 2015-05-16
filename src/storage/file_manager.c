@@ -3666,7 +3666,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   INT32 batch_ndealloc;		/* # of sectors to deallocate in the batch */
   FILE_TYPE file_type;
   bool pb_invalid_temp_called = false;
-  bool rv;
 
   addr.vfid = vfid;
 
@@ -3865,6 +3864,50 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   return file_xdestroy (thread_p, vfid, pb_invalid_temp_called);
 }
 
+/*
+ * file_rv_postpone_destroy_file () - Execute file destroy during postpone.
+ *				      It was added in order to avoid double
+ *				      page deallocations because of vacuum
+ *				      workers.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data (file VFID).
+ */
+int
+file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  VFID *vfid = (VFID *) rcv->data;
+  int error_code = NO_ERROR;
+
+  assert (rcv->length == sizeof (*vfid));
+
+  /* Start postpone type system operation (overrides the normal system
+   * operation).
+   */
+  log_start_postpone_system_op (thread_p, &rcv->reference_lsa);
+
+  /* We need to unregister file before deallocating its pages. */
+  if (file_tracker_unregister (thread_p, vfid) == NULL)
+    {
+      assert_release (false);
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      return ER_FAILED;
+    }
+
+  /* Destroy file */
+  error_code = file_destroy (thread_p, vfid);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      return error_code;
+    }
+  /* Success. */
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  return NO_ERROR;
+}
 
 /*
  * file_destroy_without_reuse () - Destroy a file not regarding reuse file
@@ -3908,6 +3951,7 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
   int ret = NO_ERROR;
   int rv;
   DISK_PAGE_TYPE page_type;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -3919,6 +3963,14 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
     {
       return ER_FAILED;
     }
+
+  assert (tdes != NULL);
+
+  /* Safe guard: postpone system operation is allowed only if
+   * transaction state is TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE.
+   */
+  assert (tdes->topops.type != LOG_TOPOPS_POSTPONE
+	  || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
   old_val = thread_set_check_interrupt (thread_p, false);
 
@@ -4278,7 +4330,6 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
 
       num_user_pages = fhdr->num_user_pages;
       fhdr->num_user_pages = 0;
-      fhdr->num_user_pages_mrkdelete += num_user_pages;
 
       addr.vfid = vfid;
       addr.pgptr = fhdr_pgptr;
@@ -4289,11 +4340,17 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
 				sizeof (undo_data), sizeof (redo_data),
 				&undo_data, &redo_data);
 
-      postpone_data.deleted_npages = num_user_pages;
-      postpone_data.need_compaction = 0;
+      if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
+	{
+	  fhdr->num_user_pages_mrkdelete += num_user_pages;
 
-      log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr,
-			   sizeof (postpone_data), &postpone_data);
+	  /* Add postpone to compress. */
+	  postpone_data.deleted_npages = num_user_pages;
+	  postpone_data.need_compaction = 0;
+
+	  log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr,
+			       sizeof (postpone_data), &postpone_data);
+	}
 
       pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
     }
@@ -4475,7 +4532,11 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
 	{
 	  goto exit_on_error;
 	}
-      (void) file_tracker_unregister (thread_p, vfid);
+      if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
+	{
+	  /* If this was postpone, it must be already unregistered. */
+	  (void) file_tracker_unregister (thread_p, vfid);
+	}
 
       /* The responsibility of the removal of the file is given to the outer
          nested level. */
@@ -8436,6 +8497,14 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   int ret = NO_ERROR;
   INT32 undo_data, redo_data;
   FILE_RECV_DELETE_PAGES postpone_data;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  assert (tdes != NULL);
+  /* Safe guard: postpone system operation is allowed only if
+   * transaction state is TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE.
+   */
+  assert (tdes->topops.type != LOG_TOPOPS_POSTPONE
+	  || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
   (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
   (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
@@ -8502,8 +8571,11 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
       mem[i] = NULL_PAGEID;
     }
 
-  log_append_postpone (thread_p, RVFL_IDSTABLE, &addr,
-		       sizeof (*aid_ptr) * num_contpages, mem);
+  if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
+    {
+      log_append_postpone (thread_p, RVFL_IDSTABLE, &addr,
+			   sizeof (*aid_ptr) * num_contpages, mem);
+    }
 
   if (mem != prealloc_mem)
     {
@@ -8525,7 +8597,6 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   pgbuf_set_dirty (thread_p, allocset_pgptr, DONT_FREE);
 
   fhdr->num_user_pages -= num_contpages;
-  fhdr->num_user_pages_mrkdelete += num_contpages;
 
   addr.pgptr = fhdr_pgptr;
   addr.offset = FILE_HEADER_OFFSET;
@@ -8535,15 +8606,20 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
 			    sizeof (undo_data), sizeof (redo_data),
 			    &undo_data, &redo_data);
 
-  postpone_data.deleted_npages = num_contpages;
-  postpone_data.need_compaction = 0;
-  if (allocset->num_holes >= NUM_HOLES_NEED_COMPACTION)
+  if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
     {
-      postpone_data.need_compaction = 1;
-    }
+      fhdr->num_user_pages_mrkdelete += num_contpages;
 
-  log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr,
-		       sizeof (postpone_data), &postpone_data);
+      postpone_data.deleted_npages = num_contpages;
+      postpone_data.need_compaction = 0;
+      if (allocset->num_holes >= (int) NUM_HOLES_NEED_COMPACTION)
+	{
+	  postpone_data.need_compaction = 1;
+	}
+
+      log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr,
+			   sizeof (postpone_data), &postpone_data);
+    }
   pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
 
   return ret;
@@ -10821,7 +10897,7 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
 				    + allocset_offset);
 
       if (do_partial_compaction == true
-	  && allocset->num_holes < NUM_HOLES_NEED_COMPACTION)
+	  && allocset->num_holes < (int) NUM_HOLES_NEED_COMPACTION)
 	{
 	  prev_allocset_vpid = allocset_vpid;
 	  prev_allocset_offset = allocset_offset;
@@ -14995,7 +15071,7 @@ file_print_class_name_index_name_with_attrid (THREAD_ENTRY * thread_p,
    */
   btid.vfid = *vfid;
   btid.root_pageid = NULL_PAGEID;
-  if (heap_get_indexinfo_of_btid (thread_p, class_oid_p, &btid,
+  if (heap_get_indexinfo_of_btid (thread_p, (OID *) class_oid_p, &btid,
 				  NULL, NULL, NULL, NULL, &index_name_p,
 				  NULL) != NO_ERROR)
     {

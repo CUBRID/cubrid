@@ -6033,6 +6033,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
 		    BTREE_MAX_ALIGN];
   int ret = NO_ERROR;
   int num_nulls, num_oids, num_keys, unique_pk;
+  LOG_DATA_ADDR addr;
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
@@ -6132,27 +6133,28 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   datap += OR_INT_SIZE;
   redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
 
-  log_append_undoredo_data2 (thread_p, RVBT_DELETE_INDEX, NULL, NULL, -1,
-			     undo_rec.length, redo_rec.length, undo_rec.data,
-			     redo_rec.data);
+  addr.vfid = NULL;
+  addr.pgptr = NULL;
+  addr.offset = -1;
+
+  log_append_undoredo_data (thread_p, RVBT_DELETE_INDEX, &addr,
+			    undo_rec.length, redo_rec.length, undo_rec.data,
+			    redo_rec.data);
 
   btid->root_pageid = NULL_PAGEID;
 
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
-  ret = file_destroy (thread_p, &btid->vfid);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
-
+  log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr,
+		       sizeof (btid->vfid), &btid->vfid);
   if (!VFID_ISNULL (&ovfid))
     {
-      ret = file_destroy (thread_p, &ovfid);
+      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr,
+			   sizeof (ovfid), &ovfid);
     }
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*
@@ -19360,8 +19362,7 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /* Undo insert: just delete object and all its information. */
   err =
     btree_undo_insert_object (thread_p, btid.sys_btid, &key_buf, &oid,
-			      &cls_oid, insert_mvccid,
-			      &recv->compensate_undo_nxlsa);
+			      &cls_oid, insert_mvccid, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -19411,7 +19412,7 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
   assert (MVCCID_IS_NOT_ALL_VISIBLE (delete_mvccid));
   err =
     btree_undo_mvcc_delete (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid,
-			    delete_mvccid, &recv->compensate_undo_nxlsa);
+			    delete_mvccid, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -19464,7 +19465,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /* Insert object and all its info. */
   error_code =
     btree_undo_delete_physical (thread_p, btid.sys_btid, &key, &cls_oid, &oid,
-				&mvcc_info, &recv->compensate_undo_nxlsa);
+				&mvcc_info, &recv->reference_lsa);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

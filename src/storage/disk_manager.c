@@ -335,6 +335,22 @@ static bool disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid,
 static int disk_find_cache_index_of_purpose (DISK_VOLPURPOSE vol_purpose,
 					     int *start, int *end);
 
+static void disk_alloctable_vhdr_update (THREAD_ENTRY * thread_p,
+					 PAGE_PTR vhdr_page, int num_pages,
+					 int deallid_type,
+					 DISK_PAGE_TYPE page_type,
+					 DISK_ALLOCTABLE_MODE mode,
+					 bool * need_to_add_generic_volume);
+static void disk_alloctable_bitmap_update (THREAD_ENTRY * thread_p,
+					   PAGE_PTR alloctable_page,
+					   INT32 start_byte,
+					   unsigned int start_bit,
+					   int num_pages,
+					   DISK_ALLOCTABLE_MODE mode);
+static void disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p,
+					    LOG_DATA_ADDR * addr,
+					    DISK_RECV_MTAB_BITS_WITH * recv);
+
 
 static char *
 disk_vhdr_get_vol_fullname (const DISK_VAR_HEADER * vhdr)
@@ -388,12 +404,7 @@ disk_bit_set (unsigned char *c, unsigned int n)
 static void
 disk_bit_clear (unsigned char *c, unsigned int n)
 {
-  /* TODO: Uncomment and investigate the double clearing issue. As far as I am
-   *       concerned, this shouldn't happen due to last changes of vacuum.
-   *       Maybe a bugged case is uncovered.
-   *       Investigate after fixing current crashes.
-   */
-  /* assert_release (disk_bit_is_set (c, n)); */
+  assert_release (disk_bit_is_set (c, n));
 
   *c &= ~(1 << n);
 }
@@ -1617,8 +1628,7 @@ disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
       return NULL_VOLID;
     }
 
-  if (vol_purpose < DISK_PERMVOL_DATA_PURPOSE
-      || vol_purpose > DISK_TEMPVOL_TEMP_PURPOSE)
+  if (vol_purpose > DISK_TEMPVOL_TEMP_PURPOSE)
     {
       vol_purpose = DISK_UNKNOWN_PURPOSE;
     }
@@ -2040,8 +2050,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
     }
 
   /* Make sure that this is a valid purpose */
-  if (vol_purpose < DISK_PERMVOL_DATA_PURPOSE
-      || vol_purpose > DISK_TEMPVOL_TEMP_PURPOSE)
+  if (vol_purpose > DISK_TEMPVOL_TEMP_PURPOSE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_UNKNOWN_PURPOSE, 3,
 	      vol_purpose, DISK_PERMVOL_DATA_PURPOSE,
@@ -2880,7 +2889,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid,
   /* Do I need to log anything ? */
   if (logchange != false)
     {
-      size_t undo_size, redo_size;
+      int undo_size, redo_size;
 
       undo_size = (sizeof (*undo_recv)
 		   + (int) strlen (disk_vhdr_get_vol_fullname (vhdr)));
@@ -3015,7 +3024,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
   /* Do I need to log anything ? */
   if (logchange == true)
     {
-      size_t undo_size, redo_size;
+      int undo_size, redo_size;
 
       undo_size = (sizeof (*undo_recv)
 		   + (int) strlen (disk_vhdr_get_next_vol_fullname (vhdr)));
@@ -4108,7 +4117,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
   VPID vpid;
   LOG_DATA_ADDR addr;
   DISK_VOLPURPOSE vol_purpose;
-  DISK_RECV_MTAB_BITS_WITH undo_data, redo_data;
+  DISK_RECV_MTAB_BITS_WITH undoredo_data;
   bool need_to_add_generic_volume;
 
 #if defined(CUBRID_DEBUG)
@@ -4246,33 +4255,10 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
     }
   else
     {
-      vhdr->free_pages -= npages;
-      if (vhdr->purpose == DISK_PERMVOL_GENERIC_PURPOSE)
-	{
-	  if (alloc_page_type == DISK_PAGE_DATA_TYPE)
-	    {
-	      vhdr->used_data_npages += npages;
-	    }
-	  else if (alloc_page_type == DISK_PAGE_INDEX_TYPE)
-	    {
-	      vhdr->used_index_npages += npages;
-	    }
-	  else
-	    {
-	      assert_release (alloc_page_type == DISK_PAGE_DATA_TYPE
-			      || alloc_page_type == DISK_PAGE_INDEX_TYPE);
-	    }
-	}
-      else if (vhdr->purpose == DISK_PERMVOL_DATA_PURPOSE)
-	{
-	  assert_release (alloc_page_type == DISK_PAGE_DATA_TYPE);
-	  vhdr->used_data_npages += npages;
-	}
-      else if (vhdr->purpose == DISK_PERMVOL_INDEX_PURPOSE)
-	{
-	  assert_release (alloc_page_type == DISK_PAGE_INDEX_TYPE);
-	  vhdr->used_index_npages += npages;
-	}
+      need_to_add_generic_volume = false;
+      disk_alloctable_vhdr_update (thread_p, addr.pgptr, npages, DISK_PAGE,
+				   alloc_page_type, DISK_ALLOCTABLE_SET,
+				   &need_to_add_generic_volume);
 
       if (sectid == DISK_SECTOR_WITH_ALL_PAGES
 	  && (vhdr->hint_allocsect >= (new_pageid / vhdr->sect_npgs))
@@ -4303,26 +4289,16 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
        * operation
        */
       addr.offset = 0;		/* Header is located at offset zero */
-      undo_data.start_bit = 0;	/* not used */
-      undo_data.num = npages;
-      undo_data.deallid_type = DISK_PAGE;
-      undo_data.page_type = alloc_page_type;
-
-      redo_data.start_bit = 0;
-      redo_data.num = -npages;
-      redo_data.deallid_type = DISK_PAGE;
-      redo_data.page_type = alloc_page_type;
+      undoredo_data.start_bit = 0;	/* not used */
+      undoredo_data.num = npages;
+      undoredo_data.deallid_type = DISK_PAGE;
+      undoredo_data.page_type = alloc_page_type;
 
       log_append_undoredo_data (thread_p, RVDK_VHDR_PGALLOC, &addr,
-				sizeof (undo_data), sizeof (redo_data),
-				&undo_data, &redo_data);
-
+				sizeof (undoredo_data),
+				sizeof (undoredo_data),
+				&undoredo_data, &undoredo_data);
       (void) disk_verify_volume_header (thread_p, addr.pgptr);
-
-      /* Update free_pages on disk_Cache. */
-      need_to_add_generic_volume = false;
-      disk_cache_goodvol_update (thread_p, volid, vol_purpose, -npages,
-				 false, &need_to_add_generic_volume);
 
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
       addr.pgptr = NULL;
@@ -5063,14 +5039,9 @@ disk_id_dealloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
 			      fileio_get_volume_label (volid, PEEK));
 		    }
 
+		  disk_id_dealloc_with_volheader (thread_p, &addr, &recv);
 		  if (recv.num > 0)
 		    {
-		      /* Log a postpone operation to deallocate the found ids
-		         at the END OF THE TRANSACTION (or top action). */
-		      log_append_postpone (thread_p,
-					   RVDK_IDDEALLOC_WITH_VOLHEADER,
-					   &addr, sizeof (recv), &recv);
-
 		      /* Continue at next deallocation identifier */
 		      recv.start_bit = (deallid + 1) % CHAR_BIT;
 		      recv.num = 0;
@@ -5083,17 +5054,88 @@ disk_id_dealloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
 		}
 	    }
 	}
-      if (recv.num > 0)
-	{
-	  /* Log a postpone operation to deallocate the ids at the end of the
-	     transaction. */
-	  log_append_postpone (thread_p, RVDK_IDDEALLOC_WITH_VOLHEADER, &addr,
-			       sizeof (recv), &recv);
-	}
+      disk_id_dealloc_with_volheader (thread_p, &addr, &recv);
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
     }
 
   return nfound;
+}
+
+/*
+ * disk_id_dealloc_with_volheader () - Deallocate pages/sectors from bitmap
+ *				       and volume header.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * addr (in)	 : Log address for bitmap page.
+ * recv (in)	 : Recovery data.
+ */
+static void
+disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr,
+				DISK_RECV_MTAB_BITS_WITH * recv)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  assert (tdes != NULL);
+  assert (addr != NULL);
+  /* Safe guard: postpone system operation is allowed only if
+   * transaction state is TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE.
+   */
+  assert (tdes->topops.type != LOG_TOPOPS_POSTPONE
+	  || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+
+  if (recv->num == 0)
+    {
+      /* Nothing changed. */
+      return;
+    }
+
+  if (tdes->topops.type == LOG_TOPOPS_POSTPONE)
+    {
+      /* Do not add postpones. Add undoredo and deallocate pages. */
+      LOG_DATA_ADDR vol_header_addr;
+      VPID vhdr_vpid;
+
+      /* Get volume header. */
+      vol_header_addr.vfid = addr->vfid;
+      vol_header_addr.offset = 0;
+      vhdr_vpid.volid = pgbuf_get_volume_id (addr->pgptr);
+      vhdr_vpid.pageid = DISK_VOLHEADER_PAGE;
+      vol_header_addr.pgptr =
+	pgbuf_fix (thread_p, &vhdr_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+		   PGBUF_UNCONDITIONAL_LATCH);
+      if (vol_header_addr.pgptr == NULL)
+	{
+	  assert_release (false);
+	  /* Deallocate is leaked. */
+	  return;
+	}
+
+      /* Update volume header. */
+      disk_alloctable_vhdr_update (thread_p, vol_header_addr.pgptr, recv->num,
+				   recv->deallid_type, recv->page_type,
+				   DISK_ALLOCTABLE_CLEAR, NULL);
+      log_append_undoredo_data (thread_p, RVDK_IDDEALLOC_VHDR_ONLY,
+				&vol_header_addr, sizeof (*recv),
+				sizeof (*recv), recv, recv);
+
+      /* Update bitmap. */
+      disk_alloctable_bitmap_update (thread_p, addr->pgptr, addr->offset,
+				     recv->start_bit, recv->num,
+				     DISK_ALLOCTABLE_CLEAR);
+      log_append_undoredo_data (thread_p, RVDK_IDDEALLOC_BITMAP_ONLY, addr,
+				sizeof (*recv), sizeof (*recv), recv, recv);
+
+      /* Mark pages dirty and unfix volume header. */
+      pgbuf_set_dirty (thread_p, addr->pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, vol_header_addr.pgptr, FREE);
+    }
+  else
+    {
+      /* Postpone deallocation. */
+      log_append_postpone (thread_p, RVDK_IDDEALLOC_WITH_VOLHEADER, addr,
+			   sizeof (*recv), recv);
+    }
 }
 
 /*
@@ -6494,101 +6536,6 @@ disk_vhdr_rv_dump_free_sectors (FILE * fp, int length_ignore, void *data)
 }
 
 /*
- * disk_vhdr_rv_undoredo_free_pages () - Redo (Undo) the update of the volume header
- *                                for page deallocation(allocation)
- *   return: NO_ERROR
- *   rcv(in): Recovery structure
- */
-int
-disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  DISK_VAR_HEADER *vhdr;
-  DISK_RECV_MTAB_BITS_WITH *mtb;
-
-  vhdr = (DISK_VAR_HEADER *) rcv->pgptr;
-  mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
-
-  vhdr->free_pages += mtb->num;
-
-  if (vhdr->purpose == DISK_PERMVOL_DATA_PURPOSE)
-    {
-      if (mtb->page_type == DISK_PAGE_DATA_TYPE)
-	{
-	  vhdr->used_data_npages -= mtb->num;
-	  if (vhdr->used_data_npages < 0)
-	    {
-	      assert_release (vhdr->used_data_npages >= 0);
-	      vhdr->used_data_npages = 0;
-	    }
-	}
-      else
-	{
-	  assert_release (mtb->page_type == DISK_PAGE_DATA_TYPE);
-	}
-    }
-  else if (vhdr->purpose == DISK_PERMVOL_INDEX_PURPOSE)
-    {
-      if (mtb->page_type == DISK_PAGE_INDEX_TYPE)
-	{
-	  vhdr->used_index_npages -= mtb->num;
-	  if (vhdr->used_index_npages < 0)
-	    {
-	      /* TODO: Uncomment the check after fixing the multiple
-	       *       deallocation issue.
-	       */
-	      /*assert_release (vhdr->used_index_npages >= 0); */
-	      vhdr->used_index_npages = 0;
-	    }
-	}
-      else
-	{
-	  assert_release (mtb->page_type == DISK_PAGE_INDEX_TYPE);
-	}
-    }
-  else if (vhdr->purpose == DISK_PERMVOL_GENERIC_PURPOSE)
-    {
-      if (mtb->page_type == DISK_PAGE_DATA_TYPE)
-	{
-	  vhdr->used_data_npages -= mtb->num;
-	  if (vhdr->used_data_npages < 0)
-	    {
-	      assert_release (vhdr->used_data_npages >= 0);
-	      vhdr->used_data_npages = 0;
-	    }
-	}
-      else if (mtb->page_type == DISK_PAGE_INDEX_TYPE)
-	{
-	  vhdr->used_index_npages -= mtb->num;
-	  if (vhdr->used_index_npages < 0)
-	    {
-	      /* TODO: Uncomment the check after fixing the multiple
-	       *       deallocation issue.
-	       */
-	      /*assert_release (vhdr->used_index_npages >= 0); */
-	      vhdr->used_index_npages = 0;
-	    }
-	}
-      else
-	{
-	  assert_release (mtb->page_type == DISK_PAGE_DATA_TYPE
-			  || mtb->page_type == DISK_PAGE_INDEX_TYPE);
-	}
-    }
-  else
-    {
-      assert_release (mtb->page_type != DISK_PAGE_DATA_TYPE
-		      && mtb->page_type != DISK_PAGE_INDEX_TYPE);
-    }
-
-  disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose,
-			     mtb->num, false, NULL);
-
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-
-  return NO_ERROR;
-}
-
-/*
  * disk_page_type_to_string () - Get a string of the given disk page type
  *   return: string of the disk page type
  *   page_type(in): The type of the structure
@@ -6612,24 +6559,6 @@ disk_page_type_to_string (DISK_PAGE_TYPE page_type)
 }
 
 /*
- * disk_vhdr_rv_dump_free_pages () - Dump either redo/undo volume header for page
- *                                allocation or deallocation
- *   return: void
- *   length_ignore(in): Length of Recovery Data
- *   data(in): The data being logged
- */
-void
-disk_vhdr_rv_dump_free_pages (FILE * fp, int length_ignore, void *data)
-{
-  DISK_RECV_MTAB_BITS_WITH *mtb;
-
-  mtb = (DISK_RECV_MTAB_BITS_WITH *) data;
-
-  fprintf (fp, "num_pages = %d, page_type = %s\n", mtb->num,
-	   disk_page_type_to_string (mtb->page_type));
-}
-
-/*
  * disk_rv_alloctable_helper () - Redo (undo) update of allocation table for
  *                           allocation (deallocation) of IDS (pageid, sectid)
  *   return: NO_ERROR
@@ -6640,35 +6569,11 @@ disk_rv_alloctable_helper (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 			   DISK_ALLOCTABLE_MODE mode)
 {
   DISK_RECV_MTAB_BITS *mtb;	/* Recovery structure of bits */
-  unsigned char *at_chptr;	/* Pointer to character of Sector or page
-				   allocation table */
-  INT32 num = 0;		/* Number of allocated bits */
-  unsigned int bit, i;
-
-  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_VOLBITMAP);
 
   mtb = (DISK_RECV_MTAB_BITS *) rcv->data;
 
-  /* Set mtb->num of bits starting at mtb->start_bit of byte rcv->offset */
-  bit = mtb->start_bit;
-  num = 0;
-
-  for (at_chptr = (unsigned char *) rcv->pgptr + rcv->offset; num < mtb->num;
-       at_chptr++)
-    {
-      for (i = bit; i < CHAR_BIT && num < mtb->num; i++, num++)
-	{
-	  if (mode == DISK_ALLOCTABLE_SET)
-	    {
-	      disk_bit_set (at_chptr, i);
-	    }
-	  else
-	    {
-	      disk_bit_clear (at_chptr, i);
-	    }
-	}
-      bit = 0;
-    }
+  disk_alloctable_bitmap_update (thread_p, rcv->pgptr, rcv->offset,
+				 mtb->start_bit, mtb->num, mode);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
@@ -6716,6 +6621,59 @@ disk_rv_dump_alloctable (FILE * fp, int length_ignore, void *data)
   fprintf (fp, "Start_bit = %u, Num_bits = %d\n", mtb->start_bit, mtb->num);
 }
 
+/*
+ * disk_alloctable_bitmap_update () - Update allocate table bitmap.
+ *
+ * return		: Void.
+ * thread_p (in)	: Thread entry.
+ * alloctable_page (in) : Allocate table page.
+ * start_byte (in)	: First byte to update.
+ * start_bit (in)	: First bit in first byte to update.
+ * num_pages (in)	: Number of pages allocated or deallocated.
+ * mode (in)		: Set/clear bit.
+ */
+static void
+disk_alloctable_bitmap_update (THREAD_ENTRY * thread_p,
+			       PAGE_PTR alloctable_page, INT32 start_byte,
+			       unsigned int start_bit, int num_pages,
+			       DISK_ALLOCTABLE_MODE mode)
+{
+  unsigned char *at_chptr;	/* Pointer to character of Sector or page
+				   allocation table */
+  INT32 num = 0;		/* Number of allocated bits */
+  unsigned int bit, i;
+
+  assert (alloctable_page != NULL);
+  assert (start_byte >= 0);
+  assert (start_bit < 8);
+  assert (num_pages > 0);
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, alloctable_page, PAGE_VOLBITMAP);
+#endif /* !NDEBUG */
+
+  /* Set mtb->num of bits starting at mtb->start_bit of byte rcv->offset */
+  bit = start_bit;
+  num = 0;
+
+  /* Update all bits. */
+  at_chptr = (unsigned char *) alloctable_page + start_byte;
+  for (; num < num_pages; at_chptr++)
+    {
+      for (i = bit; i < CHAR_BIT && num < num_pages; i++, num++)
+	{
+	  if (mode == DISK_ALLOCTABLE_SET)
+	    {
+	      disk_bit_set (at_chptr, i);
+	    }
+	  else
+	    {
+	      disk_bit_clear (at_chptr, i);
+	    }
+	}
+      bit = 0;
+    }
+}
 
 /*
  * disk_rv_alloctable_bitmap_only () - Redo (undo) update of allocation
@@ -6729,64 +6687,137 @@ disk_rv_alloctable_bitmap_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 				DISK_ALLOCTABLE_MODE mode)
 {
   DISK_RECV_MTAB_BITS_WITH *mtb;	/* Recovery structure of bits */
-  unsigned char *at_chptr;	/* Pointer to character of Sector or page
-				   allocation table */
-  INT32 num = 0;		/* Number of allocated bits */
-  unsigned int bit, i;
-
-  /* TODO: Remove this code when double deallocations issue is
-   *       fixed.
-   */
-  int already_cleared = 0;	/* <-- */
-
-  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_VOLBITMAP);
 
   mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
 
   assert (mtb != NULL);
   assert (mtb->num > 0);
 
-  /* Set mtb->num of bits starting at mtb->start_bit of byte rcv->offset */
-  bit = mtb->start_bit;
-  num = 0;
+  disk_alloctable_bitmap_update (thread_p, rcv->pgptr, rcv->offset,
+				 mtb->start_bit, mtb->num, mode);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
-  at_chptr = (unsigned char *) rcv->pgptr + rcv->offset;
-  for (; num < mtb->num; at_chptr++)
+  return NO_ERROR;
+}
+
+/*
+ * disk_alloctable_vhdr_update () - Update volume header when pages or sectors
+ *				    are allocated or deallocated.
+ *
+ * return			    : Void.
+ * thread_p (in)		    : Thread entry.
+ * vhdr_page (in)		    : Volume header page.
+ * num_pages (in)		    : Number of pages allocated/deallocated.
+ * deallid_type (in)		    : Volume type.
+ * page_type (in)		    : Type of pages.
+ * mode (in)			    : Set/clear (for allocate/deallocate).
+ * need_to_add_generic_volume (out) : If not null, outputs whether a new
+ *				      generic volume is required.
+ */
+static void
+disk_alloctable_vhdr_update (THREAD_ENTRY * thread_p, PAGE_PTR vhdr_page,
+			     int num_pages, int deallid_type,
+			     DISK_PAGE_TYPE page_type,
+			     DISK_ALLOCTABLE_MODE mode,
+			     bool * need_to_add_generic_volume)
+{
+  DISK_VAR_HEADER *vhdr = NULL;
+  INT32 delta = 0;
+
+  vhdr = (DISK_VAR_HEADER *) vhdr_page;
+
+  assert (num_pages > 0);
+
+  /* Get delta pages (number of freed pages - negative when pages are
+   * allocated and positive when pages are freed).
+   */
+  if (mode == DISK_ALLOCTABLE_SET)
     {
-      for (i = bit; i < CHAR_BIT && num < mtb->num; i++, num++)
+      delta = -num_pages;
+    }
+  else
+    {
+      delta = num_pages;
+    }
+
+  if (deallid_type == DISK_SECTOR)
+    {
+      /* Update free sectors count. */
+      vhdr->free_sects += delta;
+    }
+  else
+    {
+      /* Update free pages count. */
+      vhdr->free_pages += delta;
+
+      if (vhdr->purpose == DISK_PERMVOL_DATA_PURPOSE)
 	{
-	  if (mode == DISK_ALLOCTABLE_SET)
+	  if (page_type == DISK_PAGE_DATA_TYPE)
 	    {
-	      disk_bit_set (at_chptr, i);
+	      vhdr->used_data_npages -= delta;
+	      if (vhdr->used_data_npages < 0)
+		{
+		  assert_release (vhdr->used_data_npages >= 0);
+		  vhdr->used_data_npages = 0;
+		}
 	    }
 	  else
 	    {
-	      /* TODO: Remove this code when double deallocations issue is
-	       *       fixed. This should only call:
-	       *       disk_bit_clear (at_chptr, i);
-	       */
-	      if (!disk_bit_is_set (at_chptr, i))	/* <-- */
-		{		/* <-- */
-		  already_cleared++;	/* <-- */
-		}		/* <-- */
-	      else		/* <-- */
-		{		/* <-- */
-		  disk_bit_clear (at_chptr, i);
-		}		/* <-- */
+	      assert_release (page_type == DISK_PAGE_DATA_TYPE);
 	    }
 	}
-      bit = 0;
+      else if (vhdr->purpose == DISK_PERMVOL_INDEX_PURPOSE)
+	{
+	  if (page_type == DISK_PAGE_INDEX_TYPE)
+	    {
+	      vhdr->used_index_npages -= delta;
+	      if (vhdr->used_index_npages < 0)
+		{
+		  assert_release (vhdr->used_index_npages >= 0);
+		  vhdr->used_index_npages = 0;
+		}
+	    }
+	  else
+	    {
+	      assert_release (page_type == DISK_PAGE_INDEX_TYPE);
+	    }
+	}
+      else if (vhdr->purpose == DISK_PERMVOL_GENERIC_PURPOSE)
+	{
+	  if (page_type == DISK_PAGE_DATA_TYPE)
+	    {
+	      vhdr->used_data_npages -= delta;
+	      if (vhdr->used_data_npages < 0)
+		{
+		  assert_release (vhdr->used_data_npages >= 0);
+		  vhdr->used_data_npages = 0;
+		}
+	    }
+	  else if (page_type == DISK_PAGE_INDEX_TYPE)
+	    {
+	      vhdr->used_index_npages -= delta;
+	      if (vhdr->used_index_npages < 0)
+		{
+		  assert_release (vhdr->used_index_npages >= 0);
+		  vhdr->used_index_npages = 0;
+		}
+	    }
+	  else
+	    {
+	      assert_release (page_type == DISK_PAGE_DATA_TYPE
+			      || page_type == DISK_PAGE_INDEX_TYPE);
+	    }
+	}
+      else
+	{
+	  assert (page_type != DISK_PAGE_DATA_TYPE
+		  && page_type != DISK_PAGE_INDEX_TYPE);
+	}
+
+      /* Update volume cache. */
+      disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose,
+				 delta, false, need_to_add_generic_volume);
     }
-  /* TODO: Remove this code when double deallocations issue is
-   *       fixed. The number is passed to volume header recovery so update
-   *       it to avoid header corruption.
-   * PLEASE ALSO FIX disk_rv_alloctable_vhdr_only ().
-   */
-  mtb->num -= already_cleared;	/* <-- */
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-
-
-  return NO_ERROR;
 }
 
 /*
@@ -6801,116 +6832,11 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 			      DISK_ALLOCTABLE_MODE mode)
 {
   DISK_RECV_MTAB_BITS_WITH *mtb;	/* Recovery structure of bits */
-  DISK_VAR_HEADER *vhdr;
-  INT32 delta = 0;
 
-  vhdr = (DISK_VAR_HEADER *) rcv->pgptr;
   mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
 
-  assert (mtb != NULL);
-
-  /* TODO: Remove this code when double deallocations issue is fixed. 
-   *       The number is passed to volume header recovery so update
-   *       it to avoid header corruption.
-   */
-  if (mtb->num == 0)		/* <---- */
-    {				/* <---- */
-      return NO_ERROR;		/* <---- */
-    }				/* <---- */
-
-  assert (mtb->num > 0);
-
-  if (mode == DISK_ALLOCTABLE_SET)
-    {
-      delta = -(mtb->num);
-    }
-  else
-    {
-      delta = mtb->num;
-    }
-
-  if (mtb->deallid_type == DISK_SECTOR)
-    {
-      vhdr->free_sects += delta;
-    }
-  else
-    {
-      vhdr->free_pages += delta;
-
-      if (vhdr->purpose == DISK_PERMVOL_DATA_PURPOSE)
-	{
-	  if (mtb->page_type == DISK_PAGE_DATA_TYPE)
-	    {
-	      vhdr->used_data_npages -= delta;
-	      if (vhdr->used_data_npages < 0)
-		{
-		  assert_release (vhdr->used_data_npages >= 0);
-		  vhdr->used_data_npages = 0;
-		}
-	    }
-	  else
-	    {
-	      assert_release (mtb->page_type == DISK_PAGE_DATA_TYPE);
-	    }
-	}
-      else if (vhdr->purpose == DISK_PERMVOL_INDEX_PURPOSE)
-	{
-	  if (mtb->page_type == DISK_PAGE_INDEX_TYPE)
-	    {
-	      vhdr->used_index_npages -= delta;
-	      if (vhdr->used_index_npages < 0)
-		{
-		  /* TODO: Uncomment the check after fixing the multiple
-		   *       deallocation issue.
-		   */
-		  /* assert_release (vhdr->used_index_npages >= 0); */
-		  vhdr->used_index_npages = 0;
-		}
-	    }
-	  else
-	    {
-	      assert_release (mtb->page_type == DISK_PAGE_INDEX_TYPE);
-	    }
-	}
-      else if (vhdr->purpose == DISK_PERMVOL_GENERIC_PURPOSE)
-	{
-	  if (mtb->page_type == DISK_PAGE_DATA_TYPE)
-	    {
-	      vhdr->used_data_npages -= delta;
-	      if (vhdr->used_data_npages < 0)
-		{
-		  assert_release (vhdr->used_data_npages >= 0);
-		  vhdr->used_data_npages = 0;
-		}
-	    }
-	  else if (mtb->page_type == DISK_PAGE_INDEX_TYPE)
-	    {
-	      vhdr->used_index_npages -= delta;
-	      if (vhdr->used_index_npages < 0)
-		{
-		  /* TODO: Uncomment the check after fixing the multiple
-		   *       deallocation issue.
-		   */
-		  /* assert_release (vhdr->used_index_npages >= 0); */
-		  vhdr->used_index_npages = 0;
-		}
-	    }
-	  else
-	    {
-	      assert_release (mtb->page_type == DISK_PAGE_DATA_TYPE
-			      || mtb->page_type == DISK_PAGE_INDEX_TYPE);
-	    }
-	}
-      else
-	{
-	  assert (mtb->page_type != DISK_PAGE_DATA_TYPE
-		  && mtb->page_type != DISK_PAGE_INDEX_TYPE);
-	}
-
-      disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose,
-				 delta, false, NULL);
-    }
-
+  disk_alloctable_vhdr_update (thread_p, rcv->pgptr, mtb->num,
+			       mtb->deallid_type, mtb->page_type, mode, NULL);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
@@ -6933,24 +6859,6 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   VPID vhdr_vpid, page_vpid;
 
   LOG_DATA_ADDR page_addr, vhdr_addr;
-  /* TODO: Remove this code when double deallocations issue is fixed. */
-  /* disk_rv_alloctable_bitmap_only updates the number of deallocated because
-   * some pages are already deallocated (this is a known issue due to vacuum
-   * worker merge b-tree and destroy index file). The real number of
-   * deallocated must be passed to header in order to not mess up with its
-   * statistics on volume pages.
-   * However, when the run postpones are appended, bitmap and header each
-   * should receive its own number.
-   * The fix for this issue is high priority after merging MVCC into trunk and
-   * requires two changes:
-   * 1. Mark root page header that the file is being dropped and prevent any
-   *    further merges.
-   * 2. Deallocate file pages in the b-tree normal traverse order (to be
-   *    blocked on merges that started before deleting file).
-   */
-  int bitmap_num =		/* <----- */
-    ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num;	/* <----- */
-  int vhdr_num = 0;
 
   assert (rcv->pgptr != NULL);
   assert (rcv->length > 0);
@@ -6989,10 +6897,6 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   disk_rv_alloctable_bitmap_only (thread_p, rcv, DISK_ALLOCTABLE_CLEAR);
   disk_rv_alloctable_vhdr_only (thread_p, &vhdr_rcv, DISK_ALLOCTABLE_CLEAR);
 
-  /* TODO: Remove this code when double deallocations issue is fixed. */
-  vhdr_num =			/* <----- */
-    ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num;	/* <----- */
-
   if (ref_lsa != NULL)
     {
       /*
@@ -7002,9 +6906,6 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
       page_addr.offset = rcv->offset;
       page_addr.pgptr = rcv->pgptr;
 
-      /* TODO: Remove this code when double deallocations issue is fixed. */
-      ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num = bitmap_num;	/* <--- */
-
       log_append_run_postpone (thread_p,
 			       RVDK_IDDEALLOC_BITMAP_ONLY,
 			       &page_addr,
@@ -7012,9 +6913,6 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 
       vhdr_addr.offset = 0;
       vhdr_addr.pgptr = vhdr_rcv.pgptr;
-
-      /* TODO: Remove this code when double deallocations issue is fixed. */
-      ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num = vhdr_num;	/* <--- */
 
       log_append_run_postpone (thread_p,
 			       RVDK_IDDEALLOC_VHDR_ONLY,
@@ -7100,7 +6998,7 @@ disk_rv_dump_alloctable_with_vhdr (FILE * fp, int length_ignore, void *data)
 
   mtb = (DISK_RECV_MTAB_BITS_WITH *) data;
   fprintf (fp,
-	   "Start_bit = %u, Num_bits = %d, Deallocation_type = %d\n",
+	   "Start_bit = %u, Num_bits = %d, Type = %d\n",
 	   mtb->start_bit, mtb->num, mtb->deallid_type);
 }
 

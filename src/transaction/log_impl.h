@@ -720,12 +720,13 @@ struct log_topops_addresses
 				 */
 };
 
-typedef enum log_topops_type LOG_TOPOPS_COMPENSATE_TYPE;
+typedef enum log_topops_type LOG_TOPOPS_TYPE;
 enum log_topops_type
 {
-  LOG_TOPOPS_COMPENSATE_NONE,
+  LOG_TOPOPS_NORMAL,
   LOG_TOPOPS_COMPENSATE_TRAN_ABORT,
-  LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
+  LOG_TOPOPS_COMPENSATE_SYSOP_ABORT,
+  LOG_TOPOPS_POSTPONE
 };
 
 typedef struct log_topops_stack LOG_TOPOPS_STACK;
@@ -733,10 +734,10 @@ struct log_topops_stack
 {
   int max;			/* Size of stack                   */
   int last;			/* Last entry in stack             */
-  LOG_TOPOPS_COMPENSATE_TYPE for_compensate;	/* Used by compensate log
-						 * operation.
-						 */
-  LOG_LSA undo_nxlsa;		/* Compensate undo_nxlsa. */
+  LOG_TOPOPS_TYPE type;		/* Used by compensate/postpone log operation.
+				 */
+  LOG_LSA ref_lsa;		/* Compensate undo_nxlsa or postpone next lsa.
+				 */
   int compensate_level;		/* The level of top operations when compensate
 				 * was started.
 				 */

@@ -606,6 +606,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_HA_REPL_FILTER_FILE "ha_repl_filter_file"
 
 #define PRM_NAME_COMPENSATE_DEBUG "compensate_debug"
+#define PRM_NAME_POSTPONE_DEBUG "postpone_debug"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
@@ -2025,6 +2026,10 @@ static unsigned int prm_ha_repl_filter_file_flag = 0;
 bool PRM_COMPENSATE_DEBUG = false;
 static const bool prm_compensate_debug_default = false;
 static unsigned int prm_compensate_debug_flag = 0;
+
+bool PRM_POSTPONE_DEBUG = false;
+static const bool prm_postpone_debug_default = false;
+static unsigned int prm_postpone_debug_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4870,6 +4875,16 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_compensate_debug_flag,
    (void *) &prm_compensate_debug_default,
    (void *) &PRM_COMPENSATE_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_POSTPONE_DEBUG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_postpone_debug_flag,
+   (void *) &prm_postpone_debug_default,
+   (void *) &PRM_POSTPONE_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

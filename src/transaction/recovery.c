@@ -76,10 +76,10 @@ struct rvfun RV_fun[] = {
    disk_vhdr_rv_dump_free_sectors},
   {RVDK_VHDR_PGALLOC,
    "RVDK_VHDR_PGALLOC",
-   disk_vhdr_rv_undoredo_free_pages,
-   disk_vhdr_rv_undoredo_free_pages,
-   disk_vhdr_rv_dump_free_pages,
-   disk_vhdr_rv_dump_free_pages},
+   disk_rv_clear_alloctable_vhdr_only,
+   disk_rv_set_alloctable_vhdr_only,
+   disk_rv_dump_alloctable_with_vhdr,
+   disk_rv_dump_alloctable_with_vhdr},
   {RVDK_IDALLOC,
    "RVDK_IDALLOC",
    disk_rv_clear_alloctable,
@@ -910,6 +910,13 @@ struct rvfun RV_fun[] = {
    heap_rv_redo_insert,
    log_rv_dump_hexa,
    log_rv_dump_hexa},
+
+  {RVFL_POSTPONE_DESTROY_FILE,
+   "RVFL_POSTPONE_DESTROY_FILE",
+   NULL,
+   file_rv_postpone_destroy_file,
+   NULL,
+   NULL}
 };
 
 /*

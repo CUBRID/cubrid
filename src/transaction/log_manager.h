@@ -200,6 +200,8 @@ extern LOG_LSA *log_append_savepoint (THREAD_ENTRY * thread_p,
 extern LOG_LSA *log_start_system_op (THREAD_ENTRY * thread_p);
 extern void log_start_compensate_system_op (THREAD_ENTRY * thread_p,
 					    LOG_LSA * compensate_undo_nxlsa);
+extern void log_start_postpone_system_op (THREAD_ENTRY * thread_p,
+					  LOG_LSA * reference_lsa);
 extern TRAN_STATE log_end_system_op (THREAD_ENTRY * thread_p,
 				     LOG_RESULT_TOPOP result);
 extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p,

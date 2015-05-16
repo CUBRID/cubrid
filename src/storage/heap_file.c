@@ -6383,30 +6383,27 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid,
 	       const OID * class_oid)
 {
   VFID vfid;
-  int ret;
+  LOG_DATA_ADDR addr;
 
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid,
 			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
+  addr.vfid = NULL;
+  addr.pgptr = NULL;
+  addr.offset = -1;
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false,
 			  PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      ret = file_destroy (thread_p, &vfid);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
+      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr,
+			   sizeof (vfid), &vfid);
     }
 
-  ret = file_destroy (thread_p, &hfid->vfid);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
+  log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr,
+		       sizeof (hfid->vfid), &hfid->vfid);
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*

@@ -306,10 +306,6 @@ extern int disk_vhdr_rv_undoredo_free_sectors (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);
 extern void disk_vhdr_rv_dump_free_sectors (FILE * fp, int length_ignore,
 					    void *data);
-extern int disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p,
-					     LOG_RCV * rcv);
-extern void disk_vhdr_rv_dump_free_pages (FILE * fp, int length_ignore,
-					  void *data);
 extern int disk_rv_set_alloctable (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_clear_alloctable (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_rv_dump_alloctable (FILE * fp, int length_ignore,

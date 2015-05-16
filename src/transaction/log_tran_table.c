@@ -1016,9 +1016,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   tdes->topops.stack = NULL;
   tdes->topops.max = 0;
   tdes->topops.last = -1;
-  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+  tdes->topops.type = LOG_TOPOPS_NORMAL;
   tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.undo_nxlsa);
+  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
@@ -2050,9 +2050,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->client_undo_lsa);
   LSA_SET_NULL (&tdes->client_posp_lsa);
   tdes->topops.last = -1;
-  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+  tdes->topops.type = LOG_TOPOPS_NORMAL;
   tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.undo_nxlsa);
+  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   if (tdes->gtrinfo.info_data != NULL)
@@ -2195,9 +2195,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->topops.stack = NULL;
   tdes->topops.last = -1;
   tdes->topops.max = 0;
-  tdes->topops.for_compensate = LOG_TOPOPS_COMPENSATE_NONE;
+  tdes->topops.type = LOG_TOPOPS_NORMAL;
   tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.undo_nxlsa);
+  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->num_unique_btrees = 0;
   tdes->max_unique_btrees = 0;
   tdes->tran_unique_stats = NULL;
@@ -2835,13 +2835,13 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	  if (tdes->query_start_time > 0)
 	    {
 	      query_exec_info[i].query_time =
-		(float) (current_msec - tdes->query_start_time) / 1000.0;
+		(float) (current_msec - tdes->query_start_time) / 1000.0f;
 	    }
 
 	  if (tdes->tran_start_time > 0)
 	    {
 	      query_exec_info[i].tran_time =
-		(float) (current_msec - tdes->tran_start_time) / 1000.0;
+		(float) (current_msec - tdes->tran_start_time) / 1000.0f;
 	    }
 
 	  lock_get_lock_holder_tran_index (thread_p,
@@ -4462,7 +4462,8 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   MVCCTABLE *mvcc_table = NULL;
   int try_count = 0;
   volatile MVCCID *p_transaction_lowest_active_mvccid = NULL;
-  int index, trans_status_version;
+  int index;
+  unsigned int trans_status_version;
   MVCC_TRANS_STATUS *trans_status;
 #if defined(HAVE_ATOMIC_BUILTINS)
   MVCC_TRANS_STATUS *current_trans_status;
@@ -4673,7 +4674,8 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
     local_transaction_lowest_active_mvccid[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
   MVCCID oldest_long_time_mvccid = MVCCID_NULL;
   MVCC_TRANS_STATUS *current_trans_status;
-  int index, current_trans_status_version;
+  int index;
+  unsigned int current_trans_status_version;
 
   mvcc_table = &log_Gl.mvcc_table;
 
@@ -6429,7 +6431,7 @@ logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length,
   int lowest_bit_pos, end_position;
 
   assert (bit_area != NULL && bit_area_length >= 0
-	  && lowest_active_mvccid != NULL && long_tran_mvccids_length >= 0);
+	  && lowest_active_mvccid != NULL);
 
   if (long_tran_mvccids != NULL && long_tran_mvccids_length > 0)
     {

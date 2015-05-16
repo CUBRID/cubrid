@@ -487,4 +487,7 @@ extern void file_rv_tracker_dump_undo_register (FILE * fp, int length_ignore,
 
 extern int file_rv_logical_redo_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
+extern int file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p,
+					  LOG_RCV * rcv);
+
 #endif /* _FILE_MANAGER_H_ */

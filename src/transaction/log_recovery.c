@@ -142,7 +142,8 @@ static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
 				     bool is_media_crash, time_t * stop_at,
 				     bool * did_incom_recovery);
 static int log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p,
-					    int tran_id, LOG_LSA * log_lsa);
+					    int tran_id, LOG_LSA * log_lsa,
+					    LOG_PAGE * log_page_p);
 static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa,
 					     LOG_LSA * start_lsa,
 					     bool * may_use_checkpoint);
@@ -417,7 +418,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	   * Only no-page logical operations require logical compensation.
 	   */
 	  /* Invoke Undo recovery function */
-	  LSA_COPY (&rcv->compensate_undo_nxlsa, &tdes->undo_nxlsa);
+	  LSA_COPY (&rcv->reference_lsa, &tdes->undo_nxlsa);
 	  error_code = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 	  if (error_code != NO_ERROR)
 	    {
@@ -2226,14 +2227,16 @@ end:
  *
  *   tran_id(in):
  *   lsa(in/out):
+ *   log_page_p(in/out):
  *
  * Note:
  */
 static int
 log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p, int tran_id,
-				 LOG_LSA * log_lsa)
+				 LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_TDES *tdes;
+  struct log_topop_result *top_result;
 
   /*
    * The top system action is declared as finished. Pop it from the
@@ -2255,15 +2258,43 @@ log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p, int tran_id,
     }
 
   LSA_COPY (&tdes->tail_lsa, log_lsa);
-  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
+  if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+    {
+      /* Read the DATA HEADER */
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER),
+			  log_lsa, log_page_p);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					sizeof (struct log_topop_result),
+					log_lsa, log_page_p);
+      top_result =
+	(struct log_topop_result *)
+	((char *) log_page_p->area + log_lsa->offset);
+      /* Last parent lsa is overwritten. */
+      LSA_COPY (&tdes->posp_nxlsa, &top_result->lastparent_lsa);
+      /* No undo */
+      LSA_SET_NULL (&tdes->undo_nxlsa);
+
+      if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "POSTPONE_DEBUG: Found system op complete after "
+			 "commit with postpone. Tran_ID=%d, "
+			 "reference_lsa=%lld|%d.\n",
+			 tdes->trid, (long long int) tdes->posp_nxlsa.pageid,
+			 (int) tdes->posp_nxlsa.offset);
+	}
+    }
+  else
+    {
+      LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
+      LSA_COPY (&tdes->tail_topresult_lsa, log_lsa);
+      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+    }
 
   if (tdes->topops.last >= 0)
     {
       tdes->topops.last--;
     }
-
-  LSA_COPY (&tdes->tail_topresult_lsa, log_lsa);
-  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
 
   return NO_ERROR;
 }
@@ -2989,7 +3020,8 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 
     case LOG_COMMIT_TOPOPE:
     case LOG_ABORT_TOPOPE:
-      log_rv_analysis_complete_topope (thread_p, tran_id, log_lsa);
+      log_rv_analysis_complete_topope (thread_p, tran_id, log_lsa,
+				       log_page_p);
       break;
 
     case LOG_START_CHKPT:
@@ -4874,6 +4906,28 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /*
        * The transaction was the one that was committing
        */
+      if (!LSA_ISNULL (&tdes->undo_nxlsa))
+	{
+	  /* Transaction stopped in the middle of a logical postpone.
+	   * We must rollback it.
+	   */
+	  assert (tdes->topops.last == -1);
+	  if (log_start_system_op (thread_p) == NULL)
+	    {
+	      assert_release (false);
+	      return;
+	    }
+	  /* We need to rollback everything. */
+	  LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].
+			lastparent_lsa);
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  /* End system op changed undo_nxlsa and tail_topresult_lsa. Reset
+	   * them.
+	   */
+	  LSA_SET_NULL (&tdes->undo_nxlsa);
+	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
+	}
+
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
 					&tdes->posp_nxlsa, tdes);
 
@@ -6552,6 +6606,9 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
   int nxtop_count = 0;
   bool start_postpone_lsa_wasapplied = false;
 
+  struct log_topop_result *topop_result = NULL;
+  bool found_commit_with_postpone = false;
+
   assert (ret_lsa && start_postpone_lsa && tdes);
 
   LSA_SET_NULL (ret_lsa);
@@ -6684,14 +6741,13 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 					  sizeof (LOG_RECORD_HEADER),
 					  &log_lsa, log_pgptr);
 
-		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-							sizeof (struct
-								log_run_postpone),
-							&log_lsa, log_pgptr);
+		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT
+			(thread_p, sizeof (struct log_run_postpone), &log_lsa,
+			 log_pgptr);
 
 		      run_posp =
-			(struct log_run_postpone *) ((char *) log_pgptr->
-						     area + log_lsa.offset);
+			(struct log_run_postpone *)
+			((char *) log_pgptr->area + log_lsa.offset);
 
 		      if (LSA_EQ (start_postpone_lsa, &run_posp->ref_lsa))
 			{
@@ -6701,6 +6757,45 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 			   */
 			  start_postpone_lsa_wasapplied = true;
 			  isdone = true;
+			}
+		      break;
+
+		    case LOG_COMMIT_WITH_POSTPONE:
+		      found_commit_with_postpone = true;
+		      break;
+
+		    case LOG_COMMIT_TOPOPE:
+		      if (found_commit_with_postpone)
+			{
+			  LOG_READ_ADD_ALIGN (thread_p,
+					      sizeof (LOG_RECORD_HEADER),
+					      &log_lsa, log_pgptr);
+
+			  LOG_READ_ADVANCE_WHEN_DOESNT_FIT
+			    (thread_p, sizeof (struct log_topop_result),
+			     &log_lsa, log_pgptr);
+			  topop_result =
+			    (struct log_topop_result *)
+			    ((char *) log_pgptr->area + log_lsa.offset);
+
+			  if (LSA_EQ (start_postpone_lsa,
+				      &topop_result->lastparent_lsa))
+			    {
+			      start_postpone_lsa_wasapplied = true;
+			      isdone = true;
+
+			      if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
+				{
+				  _er_log_debug (ARG_FILE_LINE,
+						 "POSTPONE_DEBUG: Found "
+						 "postpone using commit top "
+						 "op. Postpone_lsa=%lld|%d\n",
+						 (long long int)
+						 start_postpone_lsa->pageid,
+						 (int)
+						 start_postpone_lsa->offset);
+				}
+			    }
 			}
 		      break;
 
