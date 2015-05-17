@@ -9210,41 +9210,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_REPLACE:
-		  if (node->info.expr.arg3 == NULL)
-		    {
-		      empty_str = pt_make_empty_string (parser, node);
-		    }
-
 		  r3 = (node->info.expr.arg3)
 		    ? pt_to_regu_variable (parser, node->info.expr.arg3,
-					   unbox)
-		    : pt_to_regu_variable (parser, empty_str, unbox);
+					   unbox) : NULL;
 		  regu = pt_make_regu_arith (r1, r2, r3, T_REPLACE, domain);
-		  if (node->info.expr.arg3 == NULL)
-		    {
-		      parser_free_tree (parser, empty_str);
-		      REGU_VARIABLE_SET_FLAG (regu,
-					      REGU_VARIABLE_INFER_COLLATION);
-		    }
 		  break;
 
 		case PT_TRANSLATE:
-		  if (node->info.expr.arg3 == NULL)
-		    {
-		      empty_str = pt_make_empty_string (parser, node);
-		    }
-
-		  r3 = (node->info.expr.arg3)
-		    ? pt_to_regu_variable (parser, node->info.expr.arg3,
-					   unbox)
-		    : pt_to_regu_variable (parser, empty_str, unbox);
+		  r3 = pt_to_regu_variable (parser, node->info.expr.arg3,
+					    unbox);
 		  regu = pt_make_regu_arith (r1, r2, r3, T_TRANSLATE, domain);
-		  if (node->info.expr.arg3 == NULL)
-		    {
-		      parser_free_tree (parser, empty_str);
-		      REGU_VARIABLE_SET_FLAG (regu,
-					      REGU_VARIABLE_INFER_COLLATION);
-		    }
 		  break;
 
 		case PT_ADD_MONTHS:

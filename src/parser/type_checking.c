@@ -20485,31 +20485,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     {
       switch (op)
 	{
-	case PT_REPLACE:
-	case PT_TRANSLATE:
-	  {
-	    INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET :
-	      DB_GET_STRING_CODESET (arg1);
-	    int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION :
-	      DB_GET_STRING_COLLATION (arg1);
-	    if (PT_IS_NATIONAL_CHAR_STRING_TYPE (type1))
-	      {
-		db_make_varnchar (&dummy, 1, (char *) "", 0, arg1_cs,
-				  arg1_coll);
-		type3 = PT_TYPE_VARNCHAR;
-	      }
-	    else
-	      {
-		db_make_varchar (&dummy, 1, (char *) "", 0, arg1_cs,
-				 arg1_coll);
-		type3 = PT_TYPE_VARCHAR;
-	      }
-	    arg3 = &dummy;
-	  }
-	  break;
-
 	case PT_LPAD:
 	case PT_RPAD:
+	case PT_REPLACE:
 	  {
 	    arg3 = NULL;
 	  }

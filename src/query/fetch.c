@@ -1689,7 +1689,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_REPLACE:
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION)
-	  && !DB_IS_NULL (peek_left))
+	  && !DB_IS_NULL (peek_left) && peek_third
+	  && !DB_IS_NULL (peek_third))
 	{
 	  TP_DOMAIN_STATUS status =
 	    tp_value_change_coll_and_codeset (peek_third, peek_third,
@@ -1707,7 +1708,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	}
-      if (DB_IS_NULL (peek_left))
+      if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
