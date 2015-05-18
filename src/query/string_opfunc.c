@@ -5580,20 +5580,16 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
 
   if ((qstr_get_category (src_string) != qstr_get_category (srch_string))
       || (!is_repl_string_omitted
-	  && qstr_get_category (src_string) !=
-	  qstr_get_category (repl_string)) || (!is_repl_string_omitted
-					       &&
-					       qstr_get_category (srch_string)
-					       !=
-					       qstr_get_category
-					       (repl_string))
-      || (DB_GET_STRING_CODESET (src_string) !=
-	  DB_GET_STRING_CODESET (srch_string)) || (!is_repl_string_omitted
-						   &&
-						   DB_GET_STRING_CODESET
-						   (src_string) !=
-						   DB_GET_STRING_CODESET
-						   (repl_string)))
+	  && (qstr_get_category (src_string)
+	      != qstr_get_category (repl_string)))
+      || (!is_repl_string_omitted
+	  && (qstr_get_category (srch_string)
+	      != qstr_get_category (repl_string)))
+      || ((DB_GET_STRING_CODESET (src_string)
+	   != DB_GET_STRING_CODESET (srch_string)))
+      || (!is_repl_string_omitted
+	  && (DB_GET_STRING_CODESET (src_string)
+	      != DB_GET_STRING_CODESET (repl_string))))
     {
       error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,

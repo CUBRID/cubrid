@@ -269,8 +269,6 @@ static REGU_VARIABLE *pt_to_regu_attr_descr (PARSER_CONTEXT * parser,
 static REGU_VARIABLE *pt_make_vid (PARSER_CONTEXT * parser,
 				   const PT_NODE * data_type,
 				   const REGU_VARIABLE * regu3);
-static PT_NODE *pt_make_empty_string (PARSER_CONTEXT * parser,
-				      const PT_NODE * node);
 static PT_NODE *pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser,
 						  PT_NODE * where_key_part,
 						  PT_NODE * where_part,
@@ -7652,49 +7650,6 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale,
 	  *p_scale = DB_DEFAULT_NUMERIC_PRECISION;
 	}
     }
-}
-
-/*
- * pt_make_empty_string() -
- *   return:
- *   parser(in):
- *   node(in):
- */
-static PT_NODE *
-pt_make_empty_string (PARSER_CONTEXT * parser, const PT_NODE * node)
-{
-  PT_TYPE_ENUM arg1_type;
-  PT_NODE *empty_str;
-
-  assert (node->node_type == PT_EXPR);
-  assert (node->info.expr.arg1 != NULL);
-
-  empty_str = parser_new_node (parser, PT_VALUE);
-  if (empty_str == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      return NULL;
-    }
-
-  arg1_type = node->info.expr.arg1->type_enum;
-  empty_str->type_enum = (arg1_type == PT_TYPE_MAYBE)
-    ? PT_TYPE_VARCHAR : arg1_type;
-  switch (empty_str->type_enum)
-    {
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
-      empty_str->info.value.string_type = 'N';
-      break;
-    default:
-      empty_str->info.value.string_type = ' ';
-    }
-  empty_str->info.value.data_value.str = pt_append_nulstring (parser,
-							      NULL, "");
-  PT_NODE_PRINT_VALUE_TO_TEXT (parser, empty_str);
-  empty_str->data_type =
-    parser_copy_tree (parser, node->info.expr.arg1->data_type);
-
-  return empty_str;
 }
 
 /*
