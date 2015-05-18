@@ -1961,6 +1961,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 		    {
 		      free (class_oid_list);
 		    }
+		  qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+							 xasl_cache_entry_p,
+							 false);
 		  return NULL;
 		}
 	    }
