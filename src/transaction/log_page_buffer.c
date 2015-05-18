@@ -10245,7 +10245,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
     }
 
   /* The enum type can be negative in Windows. */
-  while (success == NO_ERROR && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
+  while (success == NO_ERROR && try_level >= FILEIO_BACKUP_FULL_LEVEL
+	 && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
     {
       if (!first_time)
 	{

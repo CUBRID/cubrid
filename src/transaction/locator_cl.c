@@ -2297,7 +2297,7 @@ locator_fetch_mode_to_lock (DB_FETCH_MODE purpose, LC_OBJTYPE type,
   switch (purpose)
     {
     default:
-      assert (purpose <= DB_FETCH_EXCLUSIVE_SCAN);
+      assert (DB_FETCH_READ <= purpose && purpose <= DB_FETCH_EXCLUSIVE_SCAN);
       /* for release build, assume DB_FETCH_READ */
       /* fall through */
 

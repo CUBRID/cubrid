@@ -1628,7 +1628,8 @@ disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
       return NULL_VOLID;
     }
 
-  if (vol_purpose > DISK_TEMPVOL_TEMP_PURPOSE)
+  if (vol_purpose < DISK_PERMVOL_DATA_PURPOSE
+      || vol_purpose > DISK_TEMPVOL_TEMP_PURPOSE)
     {
       vol_purpose = DISK_UNKNOWN_PURPOSE;
     }
@@ -2050,7 +2051,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
     }
 
   /* Make sure that this is a valid purpose */
-  if (vol_purpose > DISK_TEMPVOL_TEMP_PURPOSE)
+  if (vol_purpose < DISK_PERMVOL_DATA_PURPOSE
+      || vol_purpose > DISK_TEMPVOL_TEMP_PURPOSE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_UNKNOWN_PURPOSE, 3,
 	      vol_purpose, DISK_PERMVOL_DATA_PURPOSE,
