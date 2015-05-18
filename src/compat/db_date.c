@@ -3867,6 +3867,7 @@ db_string_to_time (const char *str, DB_TIME * time)
  *
  * return : 0 on success, -1 on error.
  * str(in): a buffer containing a date to be parsed
+ * is_timeltz(in): flag that tells us if the date is from a timeltz data type
  * str_len(in): the length of the string to be parsed
  * time_tz(out): a pointer to a DB_TIMETZ to be modified
  * has_zone(out): true if string had valid zone information to decode, false
@@ -3888,15 +3889,6 @@ db_string_to_timetz_ex (const char *str, int str_len,
 
   tz_get_session_tz_region (&session_tz_region);
 
-  if (is_timeltz == true)
-    {
-      if (session_tz_region.type != TZ_REGION_OFFSET)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_GEOGRAPHIC_ZONE, 0);
-	  return ER_TZ_GEOGRAPHIC_ZONE;
-	}
-    }
-
   p = parse_time (str, str_len, &time);
   if (p == NULL)
     {
@@ -3915,6 +3907,14 @@ db_string_to_timetz_ex (const char *str, int str_len,
       *has_zone = true;
       str_zone = p;
       str_zone_size = (int) (p_end - str_zone);
+    }
+
+  if (is_timeltz == true
+      && ((*has_zone == false && session_tz_region.type == TZ_REGION_ZONE)
+	  || (str_zone != NULL && *str_zone != '+' && *str_zone != '-')))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_GEOGRAPHIC_ZONE, 0);
+      return ER_TZ_GEOGRAPHIC_ZONE;
     }
 
   er_status =
