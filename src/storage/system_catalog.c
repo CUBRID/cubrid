@@ -5752,13 +5752,20 @@ catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p,
       goto exit;
     }
 
-  error =
-    heap_get_btid_from_index_name (thread_p, &class_oid, index_name,
-				   &found_btid);
+  if (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK,
+		   LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  error = heap_get_btid_from_index_name (thread_p, &class_oid, index_name,
+					 &found_btid);
   if (error != NO_ERROR)
     {
       goto exit;
     }
+
   if (BTID_IS_NULL (&found_btid))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INDEX_NOT_FOUND, 0);
