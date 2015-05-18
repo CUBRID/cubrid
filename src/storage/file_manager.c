@@ -8481,25 +8481,27 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
 {
   LOG_DATA_ADDR addr;
   int i;
-  INT32 prealloc_mem[FILE_PREALLOC_MEMSIZE] = {
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
-    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED
-  };
   INT32 *mem;
   int ret = NO_ERROR;
   INT32 undo_data, redo_data;
   FILE_RECV_DELETE_PAGES postpone_data;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  const PAGEID delete_pageid_value =
+    tdes->topops.type == LOG_TOPOPS_POSTPONE ?
+    NULL_PAGEID : NULL_PAGEID_MARKED_DELETED;
+  INT32 prealloc_mem[FILE_PREALLOC_MEMSIZE] = {
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value,
+    delete_pageid_value, delete_pageid_value
+  };
 
-  assert (tdes != NULL);
   /* Safe guard: postpone system operation is allowed only if
    * transaction state is TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE.
    */
@@ -8543,7 +8545,7 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
 	{
 	  for (i = 0; i < num_contpages; i++)
 	    {
-	      mem[i] = NULL_PAGEID_MARKED_DELETED;
+	      mem[i] = delete_pageid_value;
 	    }
 	}
     }
@@ -8566,13 +8568,12 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
 
   memcpy (aid_ptr, mem, sizeof (*aid_ptr) * num_contpages);
 
-  for (i = 0; i < num_contpages; i++)
-    {
-      mem[i] = NULL_PAGEID;
-    }
-
   if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
     {
+      for (i = 0; i < num_contpages; i++)
+	{
+	  mem[i] = NULL_PAGEID;
+	}
       log_append_postpone (thread_p, RVFL_IDSTABLE, &addr,
 			   sizeof (*aid_ptr) * num_contpages, mem);
     }
