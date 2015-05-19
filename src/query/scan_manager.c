@@ -5577,6 +5577,21 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  continue;	/* not qualified, continue to the next tuple */
 		}
 	    }
+
+	  /* Data filter passed. If object should be locked and is not locked
+	   * yet, lock it.
+	   */
+	  if (heap_is_mvcc_disabled_for_class (&hsidp->cls_oid)
+	      && (scan_id->scan_op_type == S_DELETE
+		  || scan_id->scan_op_type == S_UPDATE))
+	    {
+	      if (lock_object (thread_p, &hsidp->curr_oid, &hsidp->cls_oid,
+			       X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  ASSERT_ERROR ();
+		  return S_ERROR;
+		}
+	    }
 	}
 
       scan_id->stats.qualified_rows++;

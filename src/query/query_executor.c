@@ -7408,14 +7408,27 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 	  goto exit_on_error;
 	}
     }
-  if (force_select_lock)
+  if (heap_is_mvcc_disabled_for_class (&ACCESS_SPEC_CLS_OID (curr_spec)))
     {
-      mvcc_select_lock_needed = true;
+      assert (!force_select_lock);
+      if (scan_op_type == S_DELETE || scan_op_type == S_UPDATE)
+	{
+	  assert (oid_check_cached_class_oid
+		  (OID_CACHE_HA_APPLY_INFO_CLASS_ID,
+		   &ACCESS_SPEC_CLS_OID (curr_spec)));
+	}
     }
   else
     {
-      mvcc_select_lock_needed =
-	(curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE);
+      if (force_select_lock)
+	{
+	  mvcc_select_lock_needed = true;
+	}
+      else
+	{
+	  mvcc_select_lock_needed =
+	    (curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE);
+	}
     }
 
   switch (curr_spec->type)
