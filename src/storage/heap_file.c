@@ -19492,6 +19492,8 @@ heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_LONG_CHN);
   MVCC_SET_CHN (&mvcc_header, chn);
+  MVCC_SET_NEXT_VERSION (&mvcc_header, &oid_Null_oid);
+  MVCC_SET_PARTITION_OID (&mvcc_header, &oid_Null_oid);
 
   /* Change header. */
   if (heap_set_mvcc_rec_header_on_overflow (rcv->pgptr, &mvcc_header)
