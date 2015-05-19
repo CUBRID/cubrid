@@ -10768,7 +10768,7 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
 		  char *index_name = NULL;
 		  error =
 		    heap_get_indexinfo_of_btid (thread_p,
-						&scan_cache->scan_cache.
+						&scan_cache->scan_cache.node.
 						class_oid, &unique_stat->btid,
 						NULL, NULL, NULL, NULL,
 						&index_name, NULL);
@@ -10779,7 +10779,7 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
 
 		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
 						    &scan_cache->scan_cache.
-						    class_oid,
+						    node.class_oid,
 						    &unique_stat->btid,
 						    index_name);
 
@@ -11571,7 +11571,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
     }
   assert_release (index_attr_info->last_classrepr != NULL);
 
-  HFID_COPY (&class_hfid, &scan_cache->hfid);
+  HFID_COPY (&class_hfid, &scan_cache->node.hfid);
   COPY_OID (&class_oid, &attr_info->class_oid);
 
   local_scan_cache = scan_cache;

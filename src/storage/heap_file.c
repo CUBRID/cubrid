@@ -197,7 +197,7 @@ static int rv;
   while (0)
 
 #define HEAP_SCAN_ORDERED_HFID(scan) \
-  (((scan) != NULL) ? (&(scan)->hfid) : (PGBUF_ORDERED_NULL_HFID))
+  (((scan) != NULL) ? (&(scan)->node.hfid) : (PGBUF_ORDERED_NULL_HFID))
 
 typedef enum
 {
@@ -1053,17 +1053,17 @@ static void heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p,
 						 LOG_DATA_ADDR * p_addr);
 static void heap_mvcc_log_home_no_change_on_delete (THREAD_ENTRY * thread_p,
 						    LOG_DATA_ADDR * p_addr);
-static int heap_mvcc_get_partition_link_scancache (THREAD_ENTRY * thread_p,
-						   OID * partition_oid,
-						   HEAP_SCANCACHE *
-						   scancache);
-static int heap_mvcc_lock_scan_of_partition_link (THREAD_ENTRY * thread_p,
-						  OID * partition_oid_p,
-						  PGBUF_WATCHER *
-						  home_page_watcher_p,
-						  PGBUF_WATCHER *
-						  fwd_page_watcher_p,
-						  bool * unfixed_watchers);
+static int heap_mvcc_lock_scan_and_set_scancache_node (THREAD_ENTRY *
+						       thread_p,
+						       OID * partition_oid_p,
+						       HEAP_SCANCACHE *
+						       scan_cache,
+						       PGBUF_WATCHER *
+						       home_page_watcher_p,
+						       PGBUF_WATCHER *
+						       fwd_page_watcher_p,
+						       bool *
+						       unfixed_watchers);
 static SCAN_CODE heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 						   HFID * hfid,
 						   const OID * oid,
@@ -1273,6 +1273,10 @@ static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p,
 static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
 						  PAGE_PTR heap_page,
 						  MVCCID mvccid);
+static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p,
+					      HEAP_SCANCACHE * scan_cache,
+					      OID * partition_oid,
+					      int scanid_bit);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -4014,7 +4018,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
       if (scan_cache != NULL)
 	{
-	  assert (HFID_EQ (hfid, &scan_cache->hfid));
+	  assert (HFID_EQ (hfid, &scan_cache->node.hfid));
 	  assert (scan_cache->file_type != FILE_UNKNOWN_TYPE);
 	  assert (scan_cache->is_new_file != FILE_ERROR);
 	  assert (scan_cache->is_new_file
@@ -5342,8 +5346,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr,
        */
       vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WARNING,
 		     "VACUUM: Candidate heap page %d|%d to remove has "
-		     "waiters.\n",
-		     page_vpid.volid, page_vpid.pageid);
+		     "waiters.\n", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
 
@@ -7338,8 +7341,8 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid,
 			" initialized");
 	  *scan_cache = NULL;
 	}
-      else if (!HFID_EQ (&(*scan_cache)->hfid, hfid)
-	       || OID_ISNULL (&(*scan_cache)->class_oid))
+      else if (!HFID_EQ (&(*scan_cache)->node.hfid, hfid)
+	       || OID_ISNULL (&(*scan_cache)->node.class_oid))
 	{
 	  /* scancache is not on our heap file, reinitialize it */
 	  if (heap_scancache_reset_modify (thread_p, *scan_cache, hfid,
@@ -7379,14 +7382,14 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
   LOCK class_lock = NULL_LOCK;
   int ret = NO_ERROR;
 
-  scan_cache->scanid_bit = -1;
+  scan_cache->node.scanid_bit = -1;
 
   if (class_oid != NULL)
     {
       /*
        * Scanning the instances of a specific class
        */
-      scan_cache->class_oid = *class_oid;
+      scan_cache->node.class_oid = *class_oid;
 
       if (is_queryscan == true)
 	{
@@ -7396,7 +7399,8 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
 	   * levels that release the locks of the class when the class is read.
 	   */
 	  if (lock_scan (thread_p, class_oid, is_indexscan, LK_UNCOND_LOCK,
-			 &class_lock, &scan_cache->scanid_bit) != LK_GRANTED)
+			 &class_lock, &scan_cache->node.scanid_bit)
+	      != LK_GRANTED)
 	    {
 	      goto exit_on_error;
 	    }
@@ -7407,14 +7411,14 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
       /*
        * Scanning the instances of any class in the heap
        */
-      OID_SET_NULL (&scan_cache->class_oid);
+      OID_SET_NULL (&scan_cache->node.class_oid);
     }
 
 
   if (hfid == NULL)
     {
-      HFID_SET_NULL (&scan_cache->hfid);
-      scan_cache->hfid.vfid.volid = NULL_VOLID;
+      HFID_SET_NULL (&scan_cache->node.hfid);
+      scan_cache->node.hfid.vfid.volid = NULL_VOLID;
       scan_cache->file_type = FILE_UNKNOWN_TYPE;
       scan_cache->is_new_file = FILE_ERROR;
     }
@@ -7439,9 +7443,9 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
 	  goto exit_on_error;
 	}
 #endif
-      scan_cache->hfid.vfid.volid = hfid->vfid.volid;
-      scan_cache->hfid.vfid.fileid = hfid->vfid.fileid;
-      scan_cache->hfid.hpgid = hfid->hpgid;
+      scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
+      scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
+      scan_cache->node.hfid.hpgid = hfid->hpgid;
       scan_cache->file_type = file_get_type (thread_p, &hfid->vfid);
       if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
 	{
@@ -7466,14 +7470,15 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
 
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
+  scan_cache->partition_list = NULL;
 
   return ret;
 
 exit_on_error:
 
-  HFID_SET_NULL (&scan_cache->hfid);
-  scan_cache->hfid.vfid.volid = NULL_VOLID;
-  OID_SET_NULL (&scan_cache->class_oid);
+  HFID_SET_NULL (&scan_cache->node.hfid);
+  scan_cache->node.hfid.vfid.volid = NULL_VOLID;
+  OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->page_latch = NULL_LOCK;
   scan_cache->cache_last_fix_page = false;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher),
@@ -7486,6 +7491,7 @@ exit_on_error:
   scan_cache->is_new_file = FILE_ERROR;
   scan_cache->debug_initpattern = 0;
   scan_cache->mvcc_snapshot = NULL;
+  scan_cache->partition_list = NULL;
 
   return (ret == NO_ERROR
 	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -7686,18 +7692,18 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p,
 
   if (class_oid != NULL)
     {
-      scan_cache->class_oid = *class_oid;
+      scan_cache->node.class_oid = *class_oid;
     }
   else
     {
-      OID_SET_NULL (&scan_cache->class_oid);
+      OID_SET_NULL (&scan_cache->node.class_oid);
     }
 
-  if (!HFID_EQ (&scan_cache->hfid, hfid))
+  if (!HFID_EQ (&scan_cache->node.hfid, hfid))
     {
-      scan_cache->hfid.vfid.volid = hfid->vfid.volid;
-      scan_cache->hfid.vfid.fileid = hfid->vfid.fileid;
-      scan_cache->hfid.hpgid = hfid->hpgid;
+      scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
+      scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
+      scan_cache->node.hfid.hpgid = hfid->hpgid;
 
       scan_cache->file_type = file_get_type (thread_p, &hfid->vfid);
       if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
@@ -7776,20 +7782,20 @@ static int
 heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache,
 				     const HFID * hfid)
 {
-  HFID_SET_NULL (&scan_cache->hfid);
+  HFID_SET_NULL (&scan_cache->node.hfid);
   if (hfid == NULL)
     {
-      scan_cache->hfid.vfid.volid = NULL_VOLID;
+      scan_cache->node.hfid.vfid.volid = NULL_VOLID;
       PGBUF_INIT_WATCHER (&(scan_cache->page_watcher),
 			  PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
     }
   else
     {
-      HFID_COPY (&scan_cache->hfid, hfid);
+      HFID_COPY (&scan_cache->node.hfid, hfid);
       PGBUF_INIT_WATCHER (&(scan_cache->page_watcher),
 			  PGBUF_ORDERED_HEAP_NORMAL, hfid);
     }
-  OID_SET_NULL (&scan_cache->class_oid);
+  OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->page_latch = S_LOCK;
   scan_cache->cache_last_fix_page = true;
   scan_cache->area = NULL;
@@ -7800,6 +7806,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache,
   scan_cache->is_new_file = FILE_ERROR;
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = NULL;
+  scan_cache->partition_list = NULL;
 
   return NO_ERROR;
 }
@@ -7849,11 +7856,26 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p,
 	{
 	  db_private_free_and_init (thread_p, scan_cache->area);
 	}
+
+      if (scan_cache->partition_list)
+	{
+	  HEAP_SCANCACHE_NODE_LIST *next_node = NULL;
+	  HEAP_SCANCACHE_NODE_LIST *curr_node = NULL;
+
+	  curr_node = scan_cache->partition_list;
+
+	  while (curr_node != NULL)
+	    {
+	      next_node = curr_node->next;
+	      db_private_free_and_init (thread_p, curr_node);
+	      curr_node = next_node;
+	    }
+	}
     }
 
-  HFID_SET_NULL (&scan_cache->hfid);
-  scan_cache->hfid.vfid.volid = NULL_VOLID;
-  OID_SET_NULL (&scan_cache->class_oid);
+  HFID_SET_NULL (&scan_cache->node.hfid);
+  scan_cache->node.hfid.vfid.volid = NULL_VOLID;
+  OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->page_latch = NULL_LOCK;
   assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
   scan_cache->area = NULL;
@@ -7876,6 +7898,7 @@ heap_scancache_end_internal (THREAD_ENTRY * thread_p,
 			     HEAP_SCANCACHE * scan_cache, bool scan_state)
 {
   int ret = NO_ERROR;
+  HEAP_SCANCACHE_NODE_LIST *p = NULL;
 
   if (scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN)
     {
@@ -7885,12 +7908,24 @@ heap_scancache_end_internal (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (!OID_ISNULL (&scan_cache->class_oid))
+  if (!OID_ISNULL (&scan_cache->node.class_oid))
     {
-      lock_unlock_scan (thread_p, &scan_cache->class_oid,
-			scan_cache->scanid_bit, scan_state);
-      OID_SET_NULL (&scan_cache->class_oid);
+      lock_unlock_scan (thread_p, &scan_cache->node.class_oid,
+			scan_cache->node.scanid_bit, scan_state);
     }
+
+  p = scan_cache->partition_list;
+  while (p != NULL)
+    {
+      if (!OID_EQ (&p->node.class_oid, &scan_cache->node.class_oid))
+	{
+	  lock_unlock_scan (thread_p, &p->node.class_oid,
+			    p->node.scanid_bit, scan_state);
+	}
+      p = p->next;
+    }
+
+  OID_SET_NULL (&scan_cache->node.class_oid);
 
   ret = heap_scancache_quick_end (thread_p, scan_cache);
 
@@ -8827,17 +8862,28 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
   bool found_visible = false;	/* Set to true when visible
 				 * object is found.
 				 */
-  HEAP_SCANCACHE *current_scan_cache = NULL;
   OID current_class_oid;
   OID partition_class_oid;
-  HEAP_SCANCACHE partition_scancache;
+  OID save_class_oid;
+  HFID save_hfid;
+  int save_scanid_bit;
   bool is_watcher_replaced = false;
   bool vacuum_allowed = false;
+  HEAP_SCANCACHE local_scancache;
+  bool is_local_scancache_started = false;
 
   PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
 		      HEAP_SCAN_ORDERED_HFID (scan_cache));
   PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
 		      HEAP_SCAN_ORDERED_HFID (scan_cache));
+
+  /* save original scancache node */
+  if (scan_cache != NULL)
+    {
+      COPY_OID (&save_class_oid, &scan_cache->node.class_oid);
+      HFID_COPY (&save_hfid, &scan_cache->node.hfid);
+      save_scanid_bit = scan_cache->node.scanid_bit;
+    }
 
   /* Start by checking all arguments are correct. */
   if (scan_cache != NULL)
@@ -8868,18 +8914,31 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
    * can be copied).
    */
 
-  current_scan_cache = scan_cache;
-
   if (recdes != NULL
       && ((ispeeking == PEEK
-	   && (current_scan_cache == NULL
-	       || !current_scan_cache->cache_last_fix_page))
-	  || (ispeeking == COPY && current_scan_cache == NULL
+	   && (scan_cache == NULL
+	       || !scan_cache->cache_last_fix_page))
+	  || (ispeeking == COPY && scan_cache == NULL
 	      && recdes->data == NULL)))
     {
       assert_release (false);
       return S_ERROR;
     }
+
+  if (scan_cache == NULL)
+    {
+      /* we will need to lock the partitions that would be traversed for
+       * partition links.
+       */
+      if (heap_scancache_quick_start (&local_scancache) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      scan_cache = &local_scancache;
+      is_local_scancache_started = true;
+    }
+
+  assert (scan_cache != NULL);
 
   /* Lock depends on type of operation. */
   if (op_type == S_SELECT)
@@ -8930,11 +8989,11 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
       scan_reev_data = mvcc_reev_data->select_reev_data;
     }
 
-  if (current_scan_cache != NULL && current_scan_cache->cache_last_fix_page
-      && current_scan_cache->page_watcher.pgptr != NULL)
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page
+      && scan_cache->page_watcher.pgptr != NULL)
     {
       /* switch to local page watcher */
-      pgbuf_replace_watcher (thread_p, &current_scan_cache->page_watcher,
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher,
 			     &home_page_watcher);
       is_watcher_replaced = true;
     }
@@ -9061,8 +9120,8 @@ start_current_version:
 	  bool unfixed_watchers = false;
 
 	  /* lock scan on new scan cache */
-	  if (heap_mvcc_lock_scan_of_partition_link
-	      (thread_p, &partition_class_oid, &home_page_watcher,
+	  if (heap_mvcc_lock_scan_and_set_scancache_node
+	      (thread_p, &partition_class_oid, scan_cache, &home_page_watcher,
 	       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
 	    {
 	      goto error;
@@ -9074,22 +9133,6 @@ start_current_version:
 	      goto start_current_version;
 	    }
 
-	  /* end current scan cache */
-	  if (current_scan_cache && current_scan_cache != scan_cache)
-	    {
-	      heap_scancache_end (thread_p, current_scan_cache);
-	      current_scan_cache = NULL;
-	    }
-
-	  /* start a scancache on new partition */
-	  if (heap_mvcc_get_partition_link_scancache (thread_p,
-						      &partition_class_oid,
-						      &partition_scancache)
-	      != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  current_scan_cache = &partition_scancache;
 	  COPY_OID (&current_class_oid, &partition_class_oid);
 	}
 
@@ -9163,9 +9206,9 @@ start_current_version:
 		      partition_oid = &MVCC_GET_PARTITION_OID (&mvcc_header);
 
 		      /* lock scan on new scan cache */
-		      if (heap_mvcc_lock_scan_of_partition_link
-			  (thread_p, partition_oid, &home_page_watcher,
-			   &fwd_page_watcher,
+		      if (heap_mvcc_lock_scan_and_set_scancache_node
+			  (thread_p, partition_oid, scan_cache,
+			   &home_page_watcher, &fwd_page_watcher,
 			   &unfixed_watchers) != LK_GRANTED)
 			{
 			  goto error;
@@ -9177,23 +9220,6 @@ start_current_version:
 			  goto start_current_version;
 			}
 
-		      /* end old scancache */
-		      if (current_scan_cache
-			  && current_scan_cache != scan_cache)
-			{
-			  heap_scancache_end (thread_p, current_scan_cache);
-			  current_scan_cache = NULL;
-			}
-
-		      /* start new scancache on new partition */
-		      if (heap_mvcc_get_partition_link_scancache (thread_p,
-								  partition_oid,
-								  &partition_scancache)
-			  != NO_ERROR)
-			{
-			  goto error;
-			}
-		      current_scan_cache = &partition_scancache;
 		      COPY_OID (&current_class_oid, partition_oid);
 		    }
 
@@ -9227,8 +9253,7 @@ start_current_version:
 						 home_page_watcher.pgptr,
 						 fwd_page_watcher.pgptr, type,
 						 &temp_recdes,
-						 current_scan_cache,
-						 ispeeking);
+						 scan_cache, ispeeking);
 	  ev_res =
 	    eval_data_filter (thread_p, &current_oid, &temp_recdes,
 			      scan_cache, scan_reev_data->data_filter);
@@ -9331,9 +9356,10 @@ start_current_version:
 		  partition_oid = &MVCC_GET_PARTITION_OID (&mvcc_header);
 
 		  /* lock scan on new scan cache */
-		  if (heap_mvcc_lock_scan_of_partition_link
-		      (thread_p, partition_oid, &home_page_watcher,
-		       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
+		  if (heap_mvcc_lock_scan_and_set_scancache_node
+		      (thread_p, partition_oid, scan_cache,
+		       &home_page_watcher, &fwd_page_watcher,
+		       &unfixed_watchers) != LK_GRANTED)
 		    {
 		      goto error;
 		    }
@@ -9345,22 +9371,6 @@ start_current_version:
 		      goto start_current_version;
 		    }
 
-		  /* end old scancache */
-		  if (current_scan_cache && current_scan_cache != scan_cache)
-		    {
-		      heap_scancache_end (thread_p, current_scan_cache);
-		      current_scan_cache = NULL;
-		    }
-
-		  /* start new scancache on new partition */
-		  if (heap_mvcc_get_partition_link_scancache (thread_p,
-							      partition_oid,
-							      &partition_scancache)
-		      != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		  current_scan_cache = &partition_scancache;
 		  COPY_OID (&current_class_oid, partition_oid);
 		}
 
@@ -9415,9 +9425,10 @@ start_current_version:
 		  partition_oid = &MVCC_GET_PARTITION_OID (&mvcc_header);
 
 		  /* lock scan on new scan cache */
-		  if (heap_mvcc_lock_scan_of_partition_link
-		      (thread_p, partition_oid, &home_page_watcher,
-		       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
+		  if (heap_mvcc_lock_scan_and_set_scancache_node
+		      (thread_p, partition_oid, scan_cache,
+		       &home_page_watcher, &fwd_page_watcher,
+		       &unfixed_watchers) != LK_GRANTED)
 		    {
 		      goto error;
 		    }
@@ -9429,23 +9440,6 @@ start_current_version:
 		      goto start_current_version;
 		    }
 
-		  /* close old scancache */
-		  if (current_scan_cache && current_scan_cache != scan_cache)
-		    {
-		      heap_scancache_end (thread_p, current_scan_cache);
-		      current_scan_cache = NULL;
-		    }
-
-		  /* start new scancache */
-		  if (heap_mvcc_get_partition_link_scancache (thread_p,
-							      partition_oid,
-							      &partition_scancache)
-		      != NO_ERROR)
-		    {
-		      goto error;
-		    }
-
-		  current_scan_cache = &partition_scancache;
 		  COPY_OID (&current_class_oid, partition_oid);
 		}
 	      /* Go to next version. */
@@ -9559,8 +9553,7 @@ start_current_version:
 						     home_page_watcher.pgptr,
 						     fwd_page_watcher.pgptr,
 						     type, &temp_recdes,
-						     current_scan_cache,
-						     ispeeking);
+						     scan_cache, ispeeking);
 	      if (scan_code != S_SUCCESS)
 		{
 		  goto end;
@@ -9568,7 +9561,7 @@ start_current_version:
 
 	      ev_res =
 		heap_mvcc_reev_cond_and_assignment (thread_p,
-						    current_scan_cache,
+						    scan_cache,
 						    mvcc_reev_data,
 						    &mvcc_header,
 						    &current_oid,
@@ -9622,9 +9615,10 @@ start_current_version:
 		  partition_oid = &MVCC_GET_PARTITION_OID (&mvcc_header);
 
 		  /* lock scan on new scan cache */
-		  if (heap_mvcc_lock_scan_of_partition_link
-		      (thread_p, partition_oid, &home_page_watcher,
-		       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
+		  if (heap_mvcc_lock_scan_and_set_scancache_node
+		      (thread_p, partition_oid, scan_cache,
+		       &home_page_watcher, &fwd_page_watcher,
+		       &unfixed_watchers) != LK_GRANTED)
 		    {
 		      goto error;
 		    }
@@ -9635,23 +9629,6 @@ start_current_version:
 		      goto start_current_version;
 		    }
 
-		  /* close old scan cache */
-		  if (current_scan_cache && current_scan_cache != scan_cache)
-		    {
-		      heap_scancache_end (thread_p, current_scan_cache);
-		      current_scan_cache = NULL;
-		    }
-
-		  /* open new scan cache */
-		  if (heap_mvcc_get_partition_link_scancache (thread_p,
-							      partition_oid,
-							      &partition_scancache)
-		      != NO_ERROR)
-		    {
-		      goto error;
-		    }
-
-		  current_scan_cache = &partition_scancache;
 		  COPY_OID (&current_class_oid, partition_oid);
 		}
 	      /* advance to next version */
@@ -9718,8 +9695,7 @@ get_record:
 					     &forward_oid,
 					     home_page_watcher.pgptr,
 					     fwd_page_watcher.pgptr, type,
-					     recdes, current_scan_cache,
-					     ispeeking);
+					     recdes, scan_cache, ispeeking);
       if (scan_code != S_SUCCESS)
 	{
 	  goto end;
@@ -9738,7 +9714,7 @@ end:
 	{
 	  /* Save the page to scan_cache. */
 	  pgbuf_replace_watcher (thread_p, &home_page_watcher,
-				 &current_scan_cache->page_watcher);
+				 &scan_cache->page_watcher);
 	}
       else
 	{
@@ -9768,10 +9744,17 @@ end:
 					       &current_class_oid, lock);
     }
 
-  if (current_scan_cache && current_scan_cache != scan_cache)
+  if (is_local_scancache_started == true)
     {
-      heap_scancache_end (thread_p, current_scan_cache);
-      current_scan_cache = NULL;
+      heap_scancache_end (thread_p, scan_cache);
+      scan_cache = NULL;
+    }
+
+  /* restore original scancache information */
+  if (scan_cache != NULL)
+    {
+      HEAP_SCANCACHE_SET_NODE (scan_cache, &save_class_oid, &save_hfid,
+			       save_scanid_bit);
     }
 
   COPY_OID (class_oid, &current_class_oid);
@@ -10470,10 +10453,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   if (scan_cache != NULL)
     {
-      hfid = &scan_cache->hfid;
-      if (!OID_ISNULL (&scan_cache->class_oid))
+      hfid = &scan_cache->node.hfid;
+      if (!OID_ISNULL (&scan_cache->node.class_oid))
 	{
-	  class_oid = &scan_cache->class_oid;
+	  class_oid = &scan_cache->node.class_oid;
 	}
     }
 
@@ -10532,7 +10515,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    {
 	      assert (scan_cache->is_new_file
 		      == file_is_new_file (thread_p,
-					   &(scan_cache->hfid.vfid)));
+					   &(scan_cache->node.hfid.vfid)));
 
 	      if (scan_cache->cache_last_fix_page == true
 		  && scan_cache->page_watcher.pgptr != NULL)
@@ -11084,8 +11067,8 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p,
       if (OID_ISNULL (start_oid))
 	{
 	  /* Scanrange starts at first heap object */
-	  scan = heap_first (thread_p, &scan_range->scan_cache.hfid,
-			     &scan_range->scan_cache.class_oid,
+	  scan = heap_first (thread_p, &scan_range->scan_cache.node.hfid,
+			     &scan_range->scan_cache.node.class_oid,
 			     &scan_range->first_oid, &recdes,
 			     &scan_range->scan_cache, PEEK);
 	  if (scan != S_SUCCESS)
@@ -11103,10 +11086,11 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p,
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 		{
-		  scan = heap_next (thread_p, &scan_range->scan_cache.hfid,
-				    &scan_range->scan_cache.class_oid,
-				    &scan_range->first_oid, &recdes,
-				    &scan_range->scan_cache, PEEK);
+		  scan =
+		    heap_next (thread_p, &scan_range->scan_cache.node.hfid,
+			       &scan_range->scan_cache.node.class_oid,
+			       &scan_range->first_oid, &recdes,
+			       &scan_range->scan_cache, PEEK);
 		  if (scan != S_SUCCESS)
 		    {
 		      return scan;
@@ -11126,8 +11110,8 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p,
        * the previous scanrange
        */
       scan_range->first_oid = scan_range->last_oid;
-      scan = heap_next (thread_p, &scan_range->scan_cache.hfid,
-			&scan_range->scan_cache.class_oid,
+      scan = heap_next (thread_p, &scan_range->scan_cache.node.hfid,
+			&scan_range->scan_cache.node.class_oid,
 			&scan_range->first_oid, &recdes,
 			&scan_range->scan_cache, PEEK);
       if (scan != S_SUCCESS)
@@ -11203,8 +11187,8 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range,
       if (OID_ISNULL (last_oid))
 	{
 	  /* Scanrange ends at last heap object */
-	  scan = heap_last (thread_p, &scan_range->scan_cache.hfid,
-			    &scan_range->scan_cache.class_oid,
+	  scan = heap_last (thread_p, &scan_range->scan_cache.node.hfid,
+			    &scan_range->scan_cache.node.class_oid,
 			    &scan_range->last_oid, &recdes,
 			    &scan_range->scan_cache, PEEK);
 	  if (scan != S_SUCCESS)
@@ -11222,10 +11206,11 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range,
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 		{
-		  scan = heap_prev (thread_p, &scan_range->scan_cache.hfid,
-				    &scan_range->scan_cache.class_oid,
-				    &scan_range->first_oid, &recdes,
-				    &scan_range->scan_cache, PEEK);
+		  scan =
+		    heap_prev (thread_p, &scan_range->scan_cache.node.hfid,
+			       &scan_range->scan_cache.node.class_oid,
+			       &scan_range->first_oid, &recdes,
+			       &scan_range->scan_cache, PEEK);
 		  if (scan != S_SUCCESS)
 		    {
 		      return scan;
@@ -11241,8 +11226,8 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range,
        * the previous scanrange
        */
       scan_range->last_oid = scan_range->first_oid;
-      scan = heap_prev (thread_p, &scan_range->scan_cache.hfid,
-			&scan_range->scan_cache.class_oid,
+      scan = heap_prev (thread_p, &scan_range->scan_cache.node.hfid,
+			&scan_range->scan_cache.node.class_oid,
 			&scan_range->last_oid, &recdes,
 			&scan_range->scan_cache, PEEK);
       if (scan != S_SUCCESS)
@@ -11320,8 +11305,8 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes,
 		       ispeeking, NULL_CHN);
       if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
-	  scan = heap_next (thread_p, &scan_range->scan_cache.hfid,
-			    &scan_range->scan_cache.class_oid, next_oid,
+	  scan = heap_next (thread_p, &scan_range->scan_cache.node.hfid,
+			    &scan_range->scan_cache.node.class_oid, next_oid,
 			    recdes, &scan_range->scan_cache, ispeeking);
 	}
       /* Make sure that we did not go overboard */
@@ -11341,8 +11326,8 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes,
 	}
       else
 	{
-	  scan = heap_next (thread_p, &scan_range->scan_cache.hfid,
-			    &scan_range->scan_cache.class_oid, next_oid,
+	  scan = heap_next (thread_p, &scan_range->scan_cache.node.hfid,
+			    &scan_range->scan_cache.node.class_oid, next_oid,
 			    recdes, &scan_range->scan_cache, ispeeking);
 	  /* Make sure that we did not go overboard */
 	  if (scan == S_SUCCESS && OID_GT (next_oid, &scan_range->last_oid))
@@ -11391,8 +11376,8 @@ heap_scanrange_prev (THREAD_ENTRY * thread_p, OID * prev_oid, RECDES * recdes,
 		       ispeeking, NULL_CHN);
       if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
-	  scan = heap_prev (thread_p, &scan_range->scan_cache.hfid,
-			    &scan_range->scan_cache.class_oid, prev_oid,
+	  scan = heap_prev (thread_p, &scan_range->scan_cache.node.hfid,
+			    &scan_range->scan_cache.node.class_oid, prev_oid,
 			    recdes, &scan_range->scan_cache, ispeeking);
 	}
       /* Make sure that we did not go underboard */
@@ -11412,8 +11397,8 @@ heap_scanrange_prev (THREAD_ENTRY * thread_p, OID * prev_oid, RECDES * recdes,
 	}
       else
 	{
-	  scan = heap_prev (thread_p, &scan_range->scan_cache.hfid,
-			    &scan_range->scan_cache.class_oid, prev_oid,
+	  scan = heap_prev (thread_p, &scan_range->scan_cache.node.hfid,
+			    &scan_range->scan_cache.node.class_oid, prev_oid,
 			    recdes, &scan_range->scan_cache, ispeeking);
 	  if (scan == S_SUCCESS && OID_LT (prev_oid, &scan_range->last_oid))
 	    {
@@ -11459,8 +11444,8 @@ heap_scanrange_first (THREAD_ENTRY * thread_p, OID * first_oid,
 		   ispeeking, NULL_CHN);
   if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
     {
-      scan = heap_next (thread_p, &scan_range->scan_cache.hfid,
-			&scan_range->scan_cache.class_oid, first_oid,
+      scan = heap_next (thread_p, &scan_range->scan_cache.node.hfid,
+			&scan_range->scan_cache.node.class_oid, first_oid,
 			recdes, &scan_range->scan_cache, ispeeking);
     }
   /* Make sure that we did not go overboard */
@@ -11505,9 +11490,9 @@ heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, RECDES * recdes,
 		   ispeeking, NULL_CHN);
   if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
     {
-      scan = heap_prev (thread_p, &scan_range->scan_cache.hfid,
-			&scan_range->scan_cache.class_oid, last_oid, recdes,
-			&scan_range->scan_cache, ispeeking);
+      scan = heap_prev (thread_p, &scan_range->scan_cache.node.hfid,
+			&scan_range->scan_cache.node.class_oid, last_oid,
+			recdes, &scan_range->scan_cache, ispeeking);
     }
   /* Make sure that we did not go underboard */
   if (scan == S_SUCCESS && OID_LT (last_oid, &scan_range->last_oid))
@@ -20943,8 +20928,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
     }
 
   error =
-    locator_attribute_info_force (thread_p, &upd_scancache->hfid, oid, NULL,
-				  false, attr_info, atts_id,
+    locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid,
+				  NULL, false, attr_info, atts_id,
 				  updated_n_attrs_id, LC_FLUSH_UPDATE,
 				  SINGLE_ROW_UPDATE, upd_scancache,
 				  &force_count, false,
@@ -23150,8 +23135,9 @@ heap_scancache_start_chain_update (THREAD_ENTRY * thread_p,
   /* update scan cache */
 
   /* start a local cache that is suitable for our needs */
-  if (heap_scancache_start (thread_p, new_scan_cache, &old_scan_cache->hfid,
-			    &old_scan_cache->class_oid, true, false,
+  if (heap_scancache_start (thread_p, new_scan_cache,
+			    &old_scan_cache->node.hfid,
+			    &old_scan_cache->node.class_oid, true, false,
 			    NULL) != NO_ERROR)
     {
       /* TODO - er_set */
@@ -23457,7 +23443,7 @@ heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, OID * oid,
       oid_inst = oid;
       if (heap_scancache_quick_start_with_class_hfid (thread_p,
 						      &local_scan_cache,
-						      &scan_cache->hfid)
+						      &scan_cache->node.hfid)
 	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
@@ -23910,7 +23896,7 @@ heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p,
 	    case REEV_DATA_UPDDEL:
 	      ev_res =
 		heap_mvcc_reev_cond_assigns (thread_p,
-					     &scan_cache->class_oid,
+					     &scan_cache->node.class_oid,
 					     curr_row_version_oid_p,
 					     scan_cache, recdes,
 					     mvcc_reev_data_p->
@@ -24548,38 +24534,12 @@ exit_on_error:
 }
 
 /*
- * heap_mvcc_get_partition_link_scancache () - retrieve the partition scan cache
- *
- * return : error code
- *
- * thread_p (in)      :
- * partition_oid (in) : partition OID
- * scancache (out)    : retrieved scancache
- */
-static int
-heap_mvcc_get_partition_link_scancache (THREAD_ENTRY * thread_p,
-					OID * partition_oid,
-					HEAP_SCANCACHE * scancache)
-{
-  HFID hfid;
-
-  if (heap_get_hfid_from_class_oid (thread_p, partition_oid, &hfid) !=
-      NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (heap_scancache_start (thread_p, scancache, &hfid,
-			    partition_oid, true, false, NULL) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * heap_mvcc_lock_scan_of_partition_link () - lock a scan for partition hopping
+ * heap_mvcc_lock_scan_and_set_scancache_node () - lock a scan for partition
+ *					hopping.
+ *					Sets the curent node of the scancache
+ *					with the given OID. If the lock was not
+ *					previously acquired, the node is added
+ *					to the scancache's partition list.
  *   thread_p(in): thread entry
  *   partition_oid_p(in): partition OID
  *   home_page_watcher_p(in): home page
@@ -24588,20 +24548,43 @@ heap_mvcc_get_partition_link_scancache (THREAD_ENTRY * thread_p,
  *   returns: lock result
  */
 static int
-heap_mvcc_lock_scan_of_partition_link (THREAD_ENTRY * thread_p,
-				       OID * partition_oid_p,
-				       PGBUF_WATCHER * home_page_watcher_p,
-				       PGBUF_WATCHER * fwd_page_watcher_p,
-				       bool * unfixed_watchers)
+heap_mvcc_lock_scan_and_set_scancache_node (THREAD_ENTRY * thread_p,
+					    OID * partition_oid_p,
+					    HEAP_SCANCACHE * scan_cache,
+					    PGBUF_WATCHER *
+					    home_page_watcher_p,
+					    PGBUF_WATCHER *
+					    fwd_page_watcher_p,
+					    bool * unfixed_watchers)
 {
   LOCK curr_lock = NULL_LOCK;
   int scanid_bit = 0;
   int rc;
+  HEAP_SCANCACHE_NODE_LIST *p = NULL;
 
   assert (partition_oid_p != NULL);
   assert (!OID_ISNULL (partition_oid_p));
   assert (home_page_watcher_p != NULL);
   assert (fwd_page_watcher_p != NULL);
+
+  if (scan_cache == NULL)
+    {
+      return LK_GRANTED;
+    }
+  assert (scan_cache != NULL);
+
+  p = scan_cache->partition_list;
+  while (p != NULL)
+    {
+      if (OID_EQ (partition_oid_p, &p->node.class_oid))
+	{
+	  HEAP_SCANCACHE_SET_NODE (scan_cache, &p->node.class_oid,
+				   &p->node.hfid, p->node.scanid_bit);
+	  /* no need to acquire lock */
+	  return LK_GRANTED;
+	}
+      p = p->next;
+    }
 
   if (home_page_watcher_p->pgptr == NULL && fwd_page_watcher_p->pgptr == NULL)
     {
@@ -24615,6 +24598,17 @@ heap_mvcc_lock_scan_of_partition_link (THREAD_ENTRY * thread_p,
   if (rc != LK_NOTGRANTED_DUE_TIMEOUT)
     {
       /* could be granted, error, aborted ...  */
+      if (rc == LK_GRANTED)
+	{
+	  if (heap_scancache_add_partition_node (thread_p, scan_cache,
+						 partition_oid_p, scanid_bit)
+	      != NO_ERROR)
+	    {
+	      lock_unlock_scan (thread_p, partition_oid_p, scanid_bit,
+				END_SCAN);
+	      return LK_NOTGRANTED;
+	    }
+	}
       return rc;
     }
 
@@ -24636,6 +24630,17 @@ unconditional_lock:
   /* unconditional lock */
   rc = lock_scan (thread_p, partition_oid_p, false, LK_UNCOND_LOCK,
 		  &curr_lock, &scanid_bit);
+  if (rc == LK_GRANTED)
+    {
+      if (heap_scancache_add_partition_node (thread_p, scan_cache,
+					     partition_oid_p,
+					     scanid_bit) != NO_ERROR)
+	{
+	  lock_unlock_scan (thread_p, partition_oid_p, scanid_bit, END_SCAN);
+	  return LK_NOTGRANTED;
+	}
+    }
+
   return rc;
 }
 
@@ -26032,7 +26037,7 @@ heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   if (context->scan_cache_p != NULL)
     {
-      assert (HFID_EQ (&context->hfid, &context->scan_cache_p->hfid));
+      assert (HFID_EQ (&context->hfid, &context->scan_cache_p->node.hfid));
       assert (context->scan_cache_p->file_type != FILE_UNKNOWN_TYPE);
       assert (context->scan_cache_p->is_new_file != FILE_ERROR);
       assert (context->scan_cache_p->is_new_file ==
@@ -26518,7 +26523,8 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p,
 					    pgptr,
 					    &heap_class_oid) == NO_ERROR);
 
-      assert (OID_EQ (&heap_class_oid, &context->scan_cache_p->class_oid));
+      assert (OID_EQ (&heap_class_oid,
+		      &context->scan_cache_p->node.class_oid));
     }
 #endif
 
@@ -26997,7 +27003,8 @@ heap_get_record_location (THREAD_ENTRY * thread_p,
 					    context->home_page_watcher_p->
 					    pgptr,
 					    &heap_class_oid) == NO_ERROR);
-      assert (OID_EQ (&heap_class_oid, &context->scan_cache_p->class_oid));
+      assert (OID_EQ
+	      (&heap_class_oid, &context->scan_cache_p->node.class_oid));
     }
 #endif
 
@@ -29469,7 +29476,7 @@ heap_update_logical (THREAD_ENTRY * thread_p,
     {
       if (context->scan_cache_p != NULL)
 	{
-	  HFID_COPY (&context->hfid, &context->scan_cache_p->hfid);
+	  HFID_COPY (&context->hfid, &context->scan_cache_p->node.hfid);
 	}
       else
 	{
@@ -30297,4 +30304,63 @@ heap_should_try_update_stat (const int current_freespace,
       return true;
     }
   return false;
+}
+
+/*
+ * heap_scancache_add_partition_node () - add a new partition information to
+ *				      to the scan_cache's partition list.
+ *				      Also sets the current node of the
+ *				      scancache to this newly inserted node.
+ * 
+ * return		: error code
+ * thread_p (in)	:
+ * scan_cache (in)	:
+ * partition_oid (in)   :
+ * scanid_bit (in)	:
+ */
+static int
+heap_scancache_add_partition_node (THREAD_ENTRY * thread_p,
+				   HEAP_SCANCACHE * scan_cache,
+				   OID * partition_oid, int scanid_bit)
+{
+  HFID hfid;
+  HEAP_SCANCACHE_NODE_LIST *new_ = NULL;
+
+  assert (scan_cache != NULL);
+
+  if (heap_get_hfid_from_class_oid (thread_p, partition_oid, &hfid) !=
+      NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  new_ =
+    (HEAP_SCANCACHE_NODE_LIST *) db_private_alloc (thread_p,
+						   sizeof
+						   (HEAP_SCANCACHE_NODE_LIST));
+  if (new_ == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (HEAP_SCANCACHE_NODE_LIST));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  COPY_OID (&new_->node.class_oid, partition_oid);
+  HFID_COPY (&new_->node.hfid, &hfid);
+  new_->node.scanid_bit = scanid_bit;
+  if (scan_cache->partition_list == NULL)
+    {
+      new_->next = NULL;
+      scan_cache->partition_list = new_;
+    }
+  else
+    {
+      new_->next = scan_cache->partition_list;
+      scan_cache->partition_list = new_;
+    }
+
+  /* set the new node as the current node */
+  HEAP_SCANCACHE_SET_NODE (scan_cache, partition_oid, &hfid, scanid_bit);
+
+  return NO_ERROR;
 }

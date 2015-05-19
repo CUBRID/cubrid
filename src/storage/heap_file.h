@@ -87,6 +87,13 @@
    : disk_isvalid_page (NULL, (oid)->volid, (oid)->pageid))
 #endif
 
+#define HEAP_SCANCACHE_SET_NODE(scan_cache, class_oid_p, hfid_p, scan_bit) \
+  do  {	\
+  COPY_OID (&(scan_cache)->node.class_oid, class_oid_p); \
+  HFID_COPY (&(scan_cache)->node.hfid, hfid_p); \
+  (scan_cache)->node.scanid_bit = scan_bit; \
+  }while(0)
+
 /*
  * Heap scan structures
  */
@@ -109,6 +116,20 @@ struct heap_bestspace
   int freespace;		/* Estimated free space in this page */
 };
 
+typedef struct heap_scancache_node HEAP_SCANCACHE_NODE;
+struct heap_scancache_node
+{
+  HFID hfid;			/* Heap file of scan                   */
+  OID class_oid;		/* Class oid of scanned instances       */
+  int scanid_bit;
+};
+
+typedef struct heap_scancache_node_list HEAP_SCANCACHE_NODE_LIST;
+struct heap_scancache_node_list
+{
+  HEAP_SCANCACHE_NODE node;
+  HEAP_SCANCACHE_NODE_LIST *next;
+};
 
 typedef struct heap_scancache HEAP_SCANCACHE;
 struct heap_scancache
@@ -116,8 +137,7 @@ struct heap_scancache
   int debug_initpattern;	/* A pattern which indicates that the
 				 * structure has been initialized
 				 */
-  HFID hfid;			/* Heap file of scan                   */
-  OID class_oid;		/* Class oid of scanned instances       */
+  HEAP_SCANCACHE_NODE node;	/* current scanned heap file information */
   LOCK page_latch;		/* Indicates the latch/lock to be acquired
 				 * on heap pages. Its value may be
 				 * NULL_LOCK when it is secure to skip
@@ -139,7 +159,6 @@ struct heap_scancache
   BTREE_UNIQUE_STATS *index_stat_info;	/* unique-related stat info
 					 * <btid,num_nulls,num_keys,num_oids>
 					 */
-  int scanid_bit;
   FILE_TYPE file_type;		/* The file type of the heap file being
 				 * scanned. Can be FILE_HEAP or
 				 * FILE_HEAP_REUSE_SLOTS
@@ -148,6 +167,10 @@ struct heap_scancache
 				 * and logging of new file
 				 */
   MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
+  HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file
+						 * information for partition
+						 * nodes involved in the scan
+						 */
 };
 
 typedef struct heap_scanrange HEAP_SCANRANGE;

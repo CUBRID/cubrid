@@ -3525,7 +3525,7 @@ partition_get_scancache (PRUNING_CONTEXT * pcontext,
   node = pcontext->scan_cache_list;
   while (node != NULL)
     {
-      if (OID_EQ (&node->scan_cache.scan_cache.class_oid, partition_oid))
+      if (OID_EQ (&node->scan_cache.scan_cache.node.class_oid, partition_oid))
 	{
 	  return &node->scan_cache;
 	}
