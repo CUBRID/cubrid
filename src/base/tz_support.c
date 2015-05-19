@@ -3033,6 +3033,7 @@ detect_dst:
       rule_time_sec = 0;
     }
 
+  applying_ds_id = -1;
   gmt_std_offset_sec = curr_off_rule->gmt_off;
   total_offset_sec = gmt_std_offset_sec;
 
