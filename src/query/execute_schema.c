@@ -2187,7 +2187,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 	  /* comment */
 	  node = statement->info.create_user.comment;
-	  if (node != NULL)
+	  if (error == NO_ERROR && node != NULL)
 	    {
 	      assert (node->node_type == PT_VALUE);
 	      comment = (char *) PT_VALUE_GET_BYTES (node);
