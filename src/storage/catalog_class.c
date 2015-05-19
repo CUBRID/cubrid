@@ -3119,9 +3119,14 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 	  if (DB_VALUE_TYPE (&element) == DB_TYPE_OID)
 	    {
 	      oid_p = DB_PULL_OID (&element);
+	      /*
+	       * Need to get class OID using SNAPSHOT_TYPE_NONE, since
+	       * the OID may be referred from other catalog class and we
+	       * want the class OID of referred OID.
+	       */
 	      /* TODO: Do we need to check scan code here? */
 	      (void) heap_get_class_oid_with_lock (thread_p, &class_oid,
-						   oid_p, SNAPSHOT_TYPE_MVCC,
+						   oid_p, SNAPSHOT_TYPE_NONE,
 						   NULL_LOCK, NULL);
 	      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 		{
