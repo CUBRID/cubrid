@@ -92,7 +92,6 @@ static int tz_create_tzid_for_utc_datetime (DB_DATETIME * dt,
 static const TZ_REGION *tz_get_invalid_tz_region (void);
 static DB_DATE tz_get_current_date (void);
 static int tz_str_timezone_decode (const char *tz_str, const int tz_str_size,
-				   bool is_time_tz,
 				   TZ_DECODE_INFO * tz_info,
 				   const char **tz_end);
 static int tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
@@ -1134,7 +1133,6 @@ tz_get_zone_id_by_name (const char *name, const int name_size)
  *	       not null-terminated
  * tz_str(in): string containing timezone information (zone, daylight saving);
  *	       null-terminated
- * is_timetz(in): true if the timezone information is from a timetz
  * tz_info(out): object containing decoded timezone info
  * tz_end(out): pointer to end of zone information
  *
@@ -1146,8 +1144,7 @@ tz_get_zone_id_by_name (const char *name, const int name_size)
  */
 static int
 tz_str_timezone_decode (const char *tz_str, const int tz_str_size,
-			bool is_timetz, TZ_DECODE_INFO * tz_info,
-			const char **tz_end)
+			TZ_DECODE_INFO * tz_info, const char **tz_end)
 {
   const char *zone_str, *tz_str_end;
   const char *zone_str_end;
@@ -1178,7 +1175,7 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size,
 	}
       tz_info->type = TZ_REGION_OFFSET;
     }
-  else if (is_timetz == false)
+  else
     {
       const char *dst_str, *dst_str_end, *reg_str_end;
       /* zone plus optional DST */
@@ -1238,11 +1235,6 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size,
 	{
 	  tz_info->zone.dst_str[0] = '\0';
 	}
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_GEOGRAPHIC_ZONE, 0);
-      return ER_TZ_GEOGRAPHIC_ZONE;
     }
 
   if (tz_end != NULL)
@@ -1397,7 +1389,7 @@ tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str,
 
   if (tz_str != NULL)
     {
-      err_status = tz_str_timezone_decode (tz_str, tz_size, false,
+      err_status = tz_str_timezone_decode (tz_str, tz_size,
 					   &tz_info, end_tz_str);
       if (err_status != NO_ERROR)
 	{
@@ -1459,7 +1451,7 @@ tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time,
 
   if (tz_str != NULL)
     {
-      err_status = tz_str_timezone_decode (tz_str, tz_size, false,
+      err_status = tz_str_timezone_decode (tz_str, tz_size,
 					   &tz_info, end_tz_str);
       if (err_status != NO_ERROR)
 	{
@@ -1567,7 +1559,7 @@ tz_create_timetz (const DB_TIME * time, const char *tz_str,
 
   if (tz_str != NULL)
     {
-      err_status = tz_str_timezone_decode (tz_str, tz_size, true,
+      err_status = tz_str_timezone_decode (tz_str, tz_size,
 					   &tz_info, end_tz_str);
       if (err_status != NO_ERROR)
 	{
@@ -1584,7 +1576,7 @@ tz_create_timetz (const DB_TIME * time, const char *tz_str,
     {
       goto exit;
     }
-  if (tz_str == NULL)
+  if (tz_info.type == TZ_REGION_ZONE)
     {
       offset = (int) (dt.date - utc_dt.date) * 3600 * 24 +
 	(int) (dt.time - utc_dt.time) / 1000;
