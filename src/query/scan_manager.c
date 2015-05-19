@@ -5581,15 +5581,84 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* Data filter passed. If object should be locked and is not locked
 	   * yet, lock it.
 	   */
-	  if (heap_is_mvcc_disabled_for_class (&hsidp->cls_oid)
-	      && (scan_id->scan_op_type == S_DELETE
-		  || scan_id->scan_op_type == S_UPDATE))
+	  if (heap_is_mvcc_disabled_for_class (&hsidp->cls_oid))
 	    {
-	      if (lock_object (thread_p, &hsidp->curr_oid, &hsidp->cls_oid,
-			       X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	      LOCK lock = NULL_LOCK;
+	      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	      TRAN_ISOLATION tran_isolation =
+		logtb_find_isolation (tran_index);
+
+	      if (scan_id->scan_op_type == S_DELETE
+		  || scan_id->scan_op_type == S_UPDATE)
 		{
-		  ASSERT_ERROR ();
-		  return S_ERROR;
+		  lock = X_LOCK;
+		}
+	      else if (oid_is_serial (&hsidp->cls_oid))
+		{
+		  /* S_SELECT is currently handled only for serial, but may be
+		   * extended to the other non-MVCC classes if needed
+		   */
+		  lock = S_LOCK;
+		}
+
+	      if (lock != NULL_LOCK)
+		{
+		  if (tran_isolation == TRAN_READ_COMMITTED && lock == S_LOCK)
+		    {
+		      if (lock_hold_object_instant
+			  (thread_p, &hsidp->curr_oid, &hsidp->cls_oid,
+			   lock) == LK_GRANTED)
+			{
+			  lock = NULL_LOCK;
+			}
+		    }
+		  else
+		    {
+		      if (lock_object (thread_p, &hsidp->curr_oid,
+				       &hsidp->cls_oid,
+				       lock, LK_COND_LOCK) == LK_GRANTED)
+			{
+			  /* successfully locked */
+			  lock = NULL_LOCK;
+			}
+		    }
+		}
+
+	      if (lock != NULL_LOCK)
+		{
+		  if (hsidp->scan_cache.page_watcher.pgptr != NULL)
+		    {
+		      pgbuf_ordered_unfix (thread_p,
+					   &hsidp->scan_cache.page_watcher);
+		    }
+
+		  if (lock_object (thread_p, &hsidp->curr_oid,
+				   &hsidp->cls_oid,
+				   lock, LK_UNCOND_LOCK) != LK_GRANTED)
+		    {
+		      return S_ERROR;
+		    }
+
+		  if (!heap_does_exist (thread_p, NULL, &hsidp->curr_oid))
+		    {
+		      /* not qualified, continue to the next tuple */
+		      lock_unlock_object_donot_move_to_non2pl (thread_p,
+							       &hsidp->
+							       curr_oid,
+							       &hsidp->
+							       cls_oid, lock);
+		      continue;
+		    }
+
+		  if (tran_isolation == TRAN_READ_COMMITTED && lock == S_LOCK)
+		    {
+		      /* release acquired lock in RC */
+		      lock_unlock_object_donot_move_to_non2pl (thread_p,
+							       &hsidp->
+							       curr_oid,
+							       &hsidp->
+							       cls_oid, lock);
+		    }
 		}
 	    }
 	}
@@ -6426,6 +6495,89 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       if (ev_res != V_TRUE)
 	{
 	  return S_DOESNT_EXIST;
+	}
+
+      /* Data filter passed. If object should be locked and is not locked
+       * yet, lock it.
+       */
+      if (heap_is_mvcc_disabled_for_class (&isidp->cls_oid))
+	{
+	  LOCK lock = NULL_LOCK;
+	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  TRAN_ISOLATION tran_isolation = logtb_find_isolation (tran_index);
+
+	  if (scan_id->scan_op_type == S_DELETE
+	      || scan_id->scan_op_type == S_UPDATE)
+	    {
+	      lock = X_LOCK;
+	    }
+	  else if (oid_is_serial (&isidp->cls_oid))
+	    {
+	      /* S_SELECT is currently handled only for serial, but may be
+	       * extended to the other non-MVCC classes if needed
+	       */
+	      lock = S_LOCK;
+	    }
+
+	  if (lock != NULL_LOCK)
+	    {
+	      if (tran_isolation == TRAN_READ_COMMITTED && lock == S_LOCK)
+		{
+		  if (lock_hold_object_instant
+		      (thread_p, isidp->curr_oidp, &isidp->cls_oid,
+		       lock) == LK_GRANTED)
+		    {
+		      lock = NULL_LOCK;
+		    }
+		}
+	      else
+		{
+		  if (lock_object (thread_p, isidp->curr_oidp,
+				   &isidp->cls_oid,
+				   lock, LK_COND_LOCK) == LK_GRANTED)
+		    {
+		      /* successfully locked */
+		      lock = NULL_LOCK;
+		    }
+		}
+	    }
+
+	  if (lock != NULL_LOCK)
+	    {
+	      if (isidp->scan_cache.page_watcher.pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p,
+				       &isidp->scan_cache.page_watcher);
+		}
+
+	      if (lock_object (thread_p, isidp->curr_oidp,
+			       &isidp->cls_oid,
+			       lock, LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  return S_ERROR;
+		}
+
+	      if (!heap_does_exist (thread_p, NULL, isidp->curr_oidp))
+		{
+		  /* not qualified, continue to the next tuple */
+		  lock_unlock_object_donot_move_to_non2pl (thread_p,
+							   isidp->
+							   curr_oidp,
+							   &isidp->
+							   cls_oid, lock);
+		  return S_DOESNT_EXIST;
+		}
+
+	      if (tran_isolation == TRAN_READ_COMMITTED && lock == S_LOCK)
+		{
+		  /* release acquired lock in RC */
+		  lock_unlock_object_donot_move_to_non2pl (thread_p,
+							   isidp->
+							   curr_oidp,
+							   &isidp->
+							   cls_oid, lock);
+		}
+	    }
 	}
     }
 
