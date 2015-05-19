@@ -1969,9 +1969,9 @@ stmt_
 	| vacuum_stmt
 		{ $$ = $1; }
 
-	| SET
+	| SET TIMEZONE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); }
-	  TIMEZONE char_string_literal
+	  char_string_literal
 		{ pop_msg(); }
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_SET_TIMEZONE);
@@ -1984,9 +1984,9 @@ stmt_
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| SET
+	| SET Time ZONE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); }
-	  Time ZONE char_string_literal
+	  char_string_literal
 		{ pop_msg(); }
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_SET_TIMEZONE);
