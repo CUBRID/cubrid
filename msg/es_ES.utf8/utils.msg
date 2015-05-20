@@ -465,23 +465,6 @@ opciones validas:\n\
   -t, --table=TABLE             nombre de tabla que es sustituido por falta de encabezamiento de clase en archivo de datos\n\
       --error-control-file=FILE ARCHIVO para controlar error(es) al cargar\n\
       --ignore-class-file=FILE  archivo de entrada de nombres de clase que saltan carga\n
-121 \
-load_noopt: Esta utilidad es depreciada. Sea atento al utilizar.\n\
-uso: load_noopt [OPTION] database-name\n\
-\n\
-opciones validos:\n\
-  -u, --user=ID                 ID de utilizador para acceso a la base de datos; estandar: "public"\n\
-  -p, --password=PASS           contrasena de utilizador; estandar: ninguna\n\
-      --data-file-check-only    verificar sintaxis para archivo de datos sin carga; estandar: cargar despues de verificar\n\
-  -l, --load-only               cargar archivo de datos sin verificar sintaxis; estandar: cargar despues de verificar\n\
-      --estimated-size=NUMBER   NUMERO estimado de instancias; estandar: 5000\n\
-  -v, --verbose                 habilitar mensajes de estado verbose; estandar: inhabilitado\n\
-  -c, --periodic-commit=COUNT   insertar COUNT al cometer periodicamente; estandar: no cometer mientras cargando\n\
-      --no-oid                  no utilizar OID\n\
-  -s, --schema-file=FILE[:LINE] crear esquema de la LINEA con ARCHIVO\n\
-  -i, --index-file=FILE[:LINE]  crear indice de la LINEA con ARCHIVO\n\
-  -d, --data-file=FILE          cargar datos con ARCHIVO\n\
-      --error-control-file=FILE ARCHIVO para controlar error(es) mientras cargando\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

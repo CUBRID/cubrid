@@ -41,11 +41,7 @@
 #include "locator_sr.h"
 
 /* just for error constants until we can get this sorted out */
-#if defined(LDR_OLD_LOADDB)
-#include "loader_old.h"
-#else /* !LDR_OLD_LOADDB */
 #include "loader.h"
-#endif /* LDR_OLD_LOADDB */
 #include "xserver_interface.h"
 #include "transform_cl.h"
 

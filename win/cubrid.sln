@@ -166,11 +166,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cubrid_esql", "cubrid_esql\
 		{1426F074-E2F1-4541-B0FC-9D2A817C40B0} = {1426F074-E2F1-4541-B0FC-9D2A817C40B0}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "migrate_91_to_92", "migrate\migrate.vcproj", "{A5F2A05C-6739-4AC0-85B3-4124B3B83F7A}"
-	ProjectSection(ProjectDependencies) = postProject
-		{B5802715-70FB-426C-A9C6-6C3E7DBCC241} = {B5802715-70FB-426C-A9C6-6C3E7DBCC241}
-	EndProjectSection
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cmstat", "cmstat\cmstat.vcproj", "{2C823AB7-9B73-4EF5-B526-82F327ABDE1C}"
 	ProjectSection(ProjectDependencies) = postProject
 		{8A289E5A-311F-46FA-8853-04C5F16E3437} = {8A289E5A-311F-46FA-8853-04C5F16E3437}

@@ -468,23 +468,6 @@ options valids:\n\
                                     classe manquante dans le fichier de données\n\
       --error-control-file=FICHIER  FICHIER de contrôle d'erreur(s) pendant le chargement\n\
       --ignore-class-file=FICHIER   FICHIER d'entrée avec les noms de classe qui saut le chargement\n
-121 \
-load_noopt: Cet utilitaire est obsolète. Utiliser avec précaution.\n\
-usage: load_noopt [OPTION] database-name\n\
-\n\
-options valids:\n\
-  -u, --user=ID                 ID d'utilisateur pour l'accès à la base de données, par défaut: "public"\n\
-  -p, --password=MOT-DE-PASSE   MOT DE PASSE d'utilisateur; par défaut: aucun\n\
-      --data-file-check-only    vérifie la syntaxe pour le fichier de données sans chargement; par défaut: chargement après vérification\n\
-  -l, --load-only               charge le fichier de données sans vérification de la syntaxe; par défaut: chargement après vérification\n\
-      --estimated-size=NOMBRE   estimation du NOMBRE des instances; par défaut: 5000\n\
-  -v, --verbose                 activer les messages verbeux d'état; par défaut: désactivé\n\
-  -c, --periodic-commit=COMPTE  COMPTE d'insertion pour la validation périodique; par défaut: aucune validation pendant le chargement\n\
-      --no-oid                  utilise pas l'OID\n\
-  -s, --schema-file=FICHIER[:LIGNE] crée le schéma de la LIGNE en utilisant le FICHIER\n\
-  -i, --index-file=FICHIER[:LIGNE]  crée un index de la LIGNE en utilisant le FICHIER\n\
-  -d, --data-file=FICHIER           charge des données en utilisant le FICHIER\n\
-      --error-control-file=FICHIER  FICHIER de contrôle d'erreur(s) pendant le chargement\n\
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

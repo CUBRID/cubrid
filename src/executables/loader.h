@@ -238,12 +238,8 @@ extern void ldr_act_start_instance (LDR_CONTEXT * context, int id,
 
 /* Statistics updating/retrieving functions */
 
-#if defined (LDR_OLD_LOADDB)
-extern void ldr_stats (int *errors, int *objects, int *defaults);
-#else /* !LDR_OLD_LOADDB */
 extern void ldr_stats (int *errors, int *objects, int *defaults,
 		       int *lastcommit, int *fails);
-#endif /* LDR_OLD_LOADDB */
 extern int ldr_update_statistics (void);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void print_parser_lineno (FILE * fp);

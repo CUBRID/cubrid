@@ -465,23 +465,6 @@ geçerli seçenekler:\n\
   -t, --table=TABLE             Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
       --error-control-file=FILE Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
       --ignore-class-file=FILE  yük atlamak sınıf adları girdi dosyası\n
-121 \
-load_noopt: Bu yardımcı önerilmiyor. Kullanırken dikkatli olun.\n\
-kullanım: load_noopt [SEÇENEK] database-name\n\
-\n\
-geçerli seçenekler:\n\
-  -u, --user=ID                 veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
-  -p, --password=PASS           kullanıcı şifresi; varsayılan: hiçbir\n\
-      --data-file-check-only    yük olmadan veri dosyası için sözdizimi kontrol edin; varsayılan: yükleme kontrol ettikten sonra\n\
-  -l, --load-only               sözdizimi denetimi olmadan veri dosyası yükleyebilir; varsayılan: yükleme kontrol ettikten sonra\n\
-      --estimated-size=NUMBER   örneklerini tahmin NUMBER; varsayılan: 5000\n\
-  -v, --verbose                 Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
-  -c, --periodic-commit=COUNT   Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\
-      --no-oid                  OID kullanmayın\n\
-  -s, --schema-file=FILE[:LINE] FILE ile LINE şeması oluşturun\n\
-  -i, --index-file=FILE[:LINE]  FILE ile LINE dizin oluşturun\n\
-  -d, --data-file=FILE          FILE ile yük verileri\n\
-      --error-control-file=FILE Yükleme sırasında bir hata(lar) kontrol etmek için FILE\n\
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

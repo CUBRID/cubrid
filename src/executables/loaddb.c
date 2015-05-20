@@ -38,13 +38,9 @@
 #include "db.h"
 #include "utility.h"
 #include "misc_string.h"
-#if defined (LDR_OLD_LOADDB)
-#include "loader_old.h"
-#else /* !LDR_OLD_LOADDB */
 #include "loader.h"
 #include "load_object.h"
 #include "environment_variable.h"
-#endif /* LDR_OLD_LOADDB */
 #include "message_catalog.h"
 #include "log_manager.h"
 #include "chartype.h"
@@ -84,11 +80,6 @@ static bool Syntax_check = false;
 /* No syntax checking performed */
 static bool Load_only = false;
 static bool Verbose = false;
-#if 0
-#if !defined(LDR_OLD_LOADDB)
-static int No_optimization = 0;
-#endif /* !LDR_OLD_LOADDB */
-#endif
 static int Verbose_commit = 0;
 static int Estimated_size = 5000;
 static bool Disable_statistics = false;
@@ -129,10 +120,8 @@ static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
 static int ldr_exec_query_from_file (const char *file_name, FILE * file,
 				     int *start_line, int commit_period);
-#if !defined (LDR_OLD_LOADDB)
 static int get_ignore_class_list (const char *filename);
 static void free_ignoreclasslist (void);
-#endif
 static int ldr_compare_attribute_with_meta (char *table_name, char *meta,
 					    DB_ATTRIBUTE * attribute);
 static int ldr_compare_storage_order (FILE * schema_file);
@@ -170,18 +159,12 @@ print_log_msg (int verbose, const char *fmt, ...)
 static void
 load_usage (const char *argv0)
 {
-#ifdef LDR_OLD_LOADDB
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_USAGE + 1));
-#else
   const char *exec_name;
 
   exec_name = basename ((char *) argv0);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_USAGE),
 	   exec_name);
-#endif
 }
 
 /*
@@ -629,9 +612,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int fails = 0;
 
   int ldr_init_ret = NO_ERROR;
-#if !defined (LDR_OLD_LOADDB)
   int lastcommit = 0;
-#endif /* !LDR_OLD_LOADDB */
   char *passwd;
   /* set to static to avoid copiler warning (clobbered by longjump) */
   static int interrupted = false;
@@ -669,14 +650,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 						LOAD_ERROR_CONTROL_FILE_S, 0);
   Ignore_logging = utility_get_option_bool_value (arg_map,
 						  LOAD_IGNORE_LOGGING_S);
-#if !defined (LDR_OLD_LOADDB)
   Table_name = utility_get_option_string_value (arg_map,
 						LOAD_TABLE_NAME_S, 0);
 
   Ignore_class_file = utility_get_option_string_value (arg_map,
 						       LOAD_IGNORE_CLASS_S,
 						       0);
-#endif
   compare_Storage_order =
     utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
 
@@ -753,78 +732,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
-#if 0
-#if !defined (LDR_OLD_LOADDB)
-
-  /* Execute old loaddb if no optimization flag is set true
-   * or LOADDB_NOPT is set, we must pass the argv except
-   * -no option and invoke execvp() for no optimized loaddb
-   */
-  if (No_optimization || envvar_get ("LOADDB_NOPT"))
-    {
-
-      char **tmp;
-      char *lastslash, path[PATH_MAX];
-      int i = 1, j = 1;
-
-      tmp = (char **) malloc (sizeof (char *) * (argc + 1));
-      tmp[0] = (char *) "loaddb";
-      while (j < argc)
-	{
-	  if (!strcmp (argv[j], "-no"))
-	    j++;
-	  else
-	    tmp[i++] = argv[j++];
-	};
-      tmp[i] = 0;
-
-      strcpy (path, argv[0]);
-      lastslash = strrchr (path, (int) '/');
-#if defined(WINDOWS)
-      {
-	char *p, exec_path[1024], cmd_line[1024 * 8];
-	int cp_len = 0;
-
-	db_shutdown ();
-
-	p = envvar_root ();
-	if (p == NULL)
-	  {
-	    printf ("The `CUBRID' environment variable is not set.\n");
-	  }
-	else
-	  {
-	    sprintf (exec_path, "%s/migdb_o.exe", p);
-	    for (i = 0; tmp[i]; i++)
-	      {
-		cp_len += sprintf (cmd_line + cp_len, "\"%s\" ", tmp[i]);
-	      }
-	    if (envvar_get ("FRONT_DEBUG") != NULL)
-	      {
-		printf ("Executing:%s %s\n", exec_path, cmd_line);
-	      }
-	    run_proc (exec_path, cmd_line);
-	  }
-	exit (0);
-      }
-#else /* !WINDOWS */
-      if (lastslash != NULL)
-	strcpy (lastslash + 1, "migdb_o");
-      else
-	strcpy (path, "migdb_o");
-
-      if (execvp (path, tmp) == -1)
-	{
-	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-					    MSGCAT_UTIL_SET_LOADDB,
-					    LOADDB_MSG_NOPT_ERR));
-	  exit (0);
-	};
-#endif /* WINDOWS */
-    }
-#endif /* !LDR_OLD_LOADDB */
-#endif
-
   /* check if schema/index/object files exist */
   ldr_check_file_name_and_line_no ();
 
@@ -872,7 +779,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
     }
 
-#if !defined (LDR_OLD_LOADDB)
   if (Ignore_class_file)
     {
       int retval;
@@ -884,7 +790,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  goto error_return;
 	}
     }
-#endif
 
   /* Disallow syntax only and load only options together */
   if (Load_only && Syntax_check)
@@ -1035,12 +940,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       if (Periodic_commit)
 	{
 	  /* register the post commit function */
-#if defined(LDR_OLD_LOADDB)
-	  ldr_register_post_commit_handler (&loaddb_report_num_of_commits);
-#else /* !LDR_OLD_LOADDB */
 	  ldr_register_post_commit_handler (&loaddb_report_num_of_commits,
 					    NULL);
-#endif /* LDR_OLD_LOADDB */
 	}
 
       /* Check if we need to perform syntax checking. */
@@ -1049,18 +950,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS,
 							MSGCAT_UTIL_SET_LOADDB,
 							LOADDB_MSG_CHECKING));
-#if !defined (LDR_OLD_LOADDB)
 	  if (Table_name[0] != '\0')
 	    {
 	      ldr_init_ret = ldr_init_class_spec (Table_name);
 	    }
-#endif
 	  do_loader_parse (object_file);
-#if defined(LDR_OLD_LOADDB)
-	  ldr_stats (&errors, &objects, &defaults);
-#else /* !LDR_OLD_LOADDB */
 	  ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
-#endif /* LDR_OLD_LOADDB */
 	}
       else
 	{
@@ -1112,7 +1007,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 							LOADDB_MSG_OBJECT_COUNT),
 				     Total_objects_loaded);
 		    }
-#if !defined(LDR_OLD_LOADDB)
 		  ldr_stats (&errors, &objects, &defaults, &lastcommit,
 			     &fails);
 		  if (lastcommit > 0)
@@ -1122,33 +1016,20 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 							LOADDB_MSG_LAST_COMMITTED_LINE),
 				     lastcommit);
 		    }
-#endif /* !LDR_OLD_LOADDB */
 		  interrupted = true;
 		  status = 3;
 		}
 	      else
 		{
-#if !defined (LDR_OLD_LOADDB)
 		  if (Table_name[0] != '\0')
 		    {
 		      ldr_init_class_spec (Table_name);
 		    }
-#endif
 		  do_loader_parse (object_file);
-#if defined(LDR_OLD_LOADDB)
-		  ldr_stats (&errors, &objects, &defaults);
-#else /* !LDR_OLD_LOADDB */
 		  ldr_stats (&errors, &objects, &defaults, &lastcommit,
 			     &fails);
-#endif /* LDR_OLD_LOADDB */
 		  if (errors)
 		    {
-#if defined(LDR_OLD_LOADDB)
-		      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-							MSGCAT_UTIL_SET_LOADDB,
-							LOADDB_MSG_ERROR_COUNT),
-				     errors);
-#else /* !LDR_OLD_LOADDB */
 		      if (lastcommit > 0)
 			{
 			  print_log_msg (1,
@@ -1157,7 +1038,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 							 LOADDB_MSG_LAST_COMMITTED_LINE),
 					 lastcommit);
 			}
-#endif /* LDR_OLD_LOADDB */
 
 		      util_log_write_errstr ("%s\n", db_error_string (3));
 		      /*
@@ -1272,9 +1152,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 						LOADDB_MSG_CLOSING));
   (void) db_shutdown ();
 
-#if !defined (LDR_OLD_LOADDB)
   free_ignoreclasslist ();
-#endif
   return (status);
 
 error_return:
@@ -1291,9 +1169,7 @@ error_return:
       fclose (index_file);
     }
 
-#if !defined (LDR_OLD_LOADDB)
   free_ignoreclasslist ();
-#endif
 
   return status;
 }
@@ -1491,7 +1367,6 @@ end:
   return error;
 }
 
-#if !defined (LDR_OLD_LOADDB)
 static int
 get_ignore_class_list (const char *inputfile_name)
 {
@@ -1597,4 +1472,3 @@ free_ignoreclasslist (void)
     }
   ignore_class_num = 0;
 }
-#endif

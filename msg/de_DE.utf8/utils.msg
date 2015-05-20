@@ -465,24 +465,6 @@ gültige Optionen:\n\
   -t, --table=TABLE             Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird \n\
       --error-control-file=DATEI DATEI für Fehlerkontrolle während Ladung\n\
       --ignore-class-file=DATEI  Eingangsdatei für Klassenamen, die nicht geladen werden\n
-121 \
-load_noopt: Veraltet. Vorsicht bei Anwendung.\n\
-Anwendung: load_noopt [OPTION] Datenbanknamen\n\
-\n\
-gültige Optionen:\n\
-  -u, --user=ID                 Benutzer ID für Datenbankzugang; Standard: "public"\n\
-  -p, --password=PASSWORT           Benutzerpasswort; Standard: keinen\n\
-      --data-file-check-only    Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
-  -l, --load-only               Datenladung ohne Syntaxprüfung; Standard: Ladung nach Prüfung \n\
-      --estimated-size=NUMBER   geschätzte Anzahl der Instanzen; Standard: 5000\n\
-  -v, --verbose                 ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -c, --periodic-commit=ANZAHL   Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
-      --no-oid                  OID nicht anwenden\n\
-  -s, --schema-file=DATEI[:LINE] Schema ab ZEILE mit DATEI erstellen\n\
-  -i, --index-file=DATEI[:ZEILE] Index ab ZEILE mit DATEI erstellen\n\
-  -d, --data-file=DATEI          Datei laden\n\
-      --error-control-file=DATEI DATEI für Fehlerkontrolle während Ladung\n
-
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Cached-Seiten-Anzahl ungültig.\n

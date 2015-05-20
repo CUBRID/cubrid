@@ -465,23 +465,6 @@ valid options:\n\
   -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
       --error-control-file=FILE FILE to control error(s) during loading\n\
       --ignore-class-file=FILE  input file of class names that skip load\n
-121 \
-load_noopt: This utility is deprecated. Be careful to use.\n\
-usage: load_noopt [OPTION] database-name\n\
-\n\
-valid options:\n\
-  -u, --user=ID                 user ID for database access; default: "public"\n\
-  -p, --password=PASS           user password; default: none\n\
-      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
-  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
-      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
-  -v, --verbose                 enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
-      --no-oid                  don't use OID\n\
-  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
-  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
-  -d, --data-file=FILE          load data with FILE\n\
-      --error-control-file=FILE FILE to control error(s) during loading\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

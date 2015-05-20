@@ -480,26 +480,6 @@ opţiuni valide:\n\
   -t, --table=TABELA                numele tabelei înlocuite pentru antetul de clasă absent din fişierul de date\n\
       --error-control-file=FIŞIER   FIŞIER de control al erorilor în timpul încărcării\n\
       --ignore-class-file=FIŞIER    FIŞIER de intrare cu numele claselor ce nu vor fi încărcate\n
-121 \
-load_noopt: Acest utilitar este învechit. A se folosi cu atenţie.\n\
-utilizare: load_noopt [OPŢIUNI] nume-bază-de-date\n\
-\n\
-opţiuni valide:\n\
-  -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
-  -p, --password=PAROLĂ             parola de utilizator; implicit: nulă\n\
-      --data-file-check-only        verifică suntaxa pentru fişierul de date fără a-l încărca;\n\
-                                    implicit: încărcarea se face după verificare\n\
-  -l, --load-only                   încarcă fişierul de date fără a verifica sintaxa;\n\
-                                    implicit: încărcarea se face dupa verificare\n\
-      --estimated-size=NUMĂR        NUMĂR estimat de instanţe; implicit: 5000\n\
-  -v, --verbose                     activează mesaje detaliate de stare; implicit: dezactivate\n\
-  -c, --periodic-commit=CONTOR      CONTOR de inserare pentru salvare periodică;\n\
-                                    implicit: nu se face commit in timpul încărăarii\n\
-      --no-oid                      nu se va folosi OID\n\
-  -s, --schema-file=FIŞIER[:LINIE]  creează schema de la linia, respectiv din fişierul specificat\n\
-  -i, --index-file=FIŞIER[:LINIE]   creează un index de la linia, respectiv din fişierul specificat\n\
-  -d, --data-file=FIŞIER            încarcă datele din FIŞIER\n\
-      --error-control-file=FIŞIER   FIŞIER de control al erorilor în timpul încărcării\n\
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

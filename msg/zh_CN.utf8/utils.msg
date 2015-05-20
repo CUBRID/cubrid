@@ -465,23 +465,6 @@ loaddb: 将对象和结构导入到数据库.\n\
   -t, --table=TABLE             用TABLE名替代数据文件中找不到表头的表\n\
       --error-control-file=FILE 指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n\
       --ignore-class-file=FILE  指定文件 FILE 用来描述要忽略掉的类\n
-121 \
-load_noopt: 不赞成使用这个工具. 小心使用.\n\
-用法: load_noopt [选项] 数据库名\n\
-\n\
-可用选项:\n\
-  -u, --user=ID                 访问数据库的用户ID; 默认: "public"\n\
-  -p, --password=PASS           用户密码; 默认: 空\n\
-      --data-file-check-only    对数据文件进行语法检测而不加载; 默认: 检测后读取\n\
-  -l, --load-only               读取数据而不进行语法检测; 默认: 检测后读取\n\
-      --estimated-size=NUMBER   用NUMBER作为估计的实例数目; 默认: 5000\n\
-  -v, --verbose                 启用详细状态信息; 默认: 不可用\n\
-  -c, --periodic-commit=COUNT   当插入COUNT个实例进行周期性的提交; 默认: 读取是不提交\n\
-      --no-oid                  不使用OID\n\
-  -s, --schema-file=FILE[:LINE] 从文件 FILE 的第 LINE 行创建结构(schema)\n\
-  -i, --index-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建索引\n\
-  -d, --data-file=FILE          从文件 FILE 读取数据\n\
-      --error-control-file=FILE 指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

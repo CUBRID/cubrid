@@ -64,22 +64,15 @@ endif
 $(EXECUTABLE_DIR)/esql_lexer.c : $(EXECUTABLE_DIR)/esql_lexer.l
 	$(FLEX) --never-interactive --prefix=esql_yy -o $@ $<
 
-$(EXECUTABLE_DIR)/loader_old_grammar.c : $(EXECUTABLE_DIR)/loader_old_grammar.y
-	$(BISON) --name-prefix=loader_yy -d -r all -o $@ $<
-
-$(EXECUTABLE_DIR)/loader_old_lexer.c : $(EXECUTABLE_DIR)/loader_old_lexer.l
-	$(FLEX) --never-interactive --prefix=loader_yy -o $@ $<
-
-
 include_HEADERS = $(EXECUTABLE_DIR)/cubrid_esql.h
 
 bin_PROGRAMS = \
 	csql cub_master cub_server cubrid cub_admin cub_commdb \
-	cubrid_esql cubrid_rel loadjava migrate_91_to_92
+	cubrid_esql cubrid_rel loadjava 
 
 compat_PROGRAMS = \
 	addvoldb backupdb checkdb commdb compactdb copydb \
-	createdb deletedb installdb killtran load_noopt loaddb lockdb \
+	createdb deletedb installdb killtran loaddb lockdb \
 	optimizedb renamedb restoredb spacedb sqlx unloaddb get_disk_compat \
 	convert_password
 
@@ -108,22 +101,6 @@ get_disk_compat_LDADD = @SA_LIB@
 
 convert_password_SOURCES = $(EXECUTABLE_DIR)/convert_password.c
 convert_password_LDADD = @SA_LIB@
-
-migrate_91_to_92_SOURCES = $(EXECUTABLE_DIR)/migrate.c
-migrate_91_to_92_LDADD = @SA_LIB@
-
-load_noopt_SOURCES = $(EXECUTABLE_DIR)/loader_old_grammar.c \
-		$(EXECUTABLE_DIR)/loader_old_lexer.c \
-		$(EXECUTABLE_DIR)/loader_old.c \
-		$(EXECUTABLE_DIR)/loader_object_table.c \
-		$(EXECUTABLE_DIR)/loader_action.c \
-		$(EXECUTABLE_DIR)/loader_disk.c \
-		$(EXECUTABLE_DIR)/load_object.c \
-		$(EXECUTABLE_DIR)/loaddb.c \
-		$(EXECUTABLE_DIR)/util_support.c \
-		$(EXECUTABLE_DIR)/loader_noopt.c
-load_noopt_CFLAGS = $(AM_CFLAGS) -DLDR_OLD_LOADDB
-load_noopt_LDADD = @SA_LIB@
 
 loaddb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 
