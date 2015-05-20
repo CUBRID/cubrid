@@ -4274,19 +4274,25 @@ logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   int error_code = NO_ERROR;
+  bool old_check_interrupt;
 
   if (tdes == NULL)
     {
       return ER_FAILED;
     }
 
-  error_code =
-    mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash,
-		    logtb_tran_update_delta_hash_func, thread_p);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
+  /* We have to disable interrupt while reflecting unique stats.
+   * Please notice that the transaction is still in TRAN_ACTIVE state and
+   * it may be previously interrupted but user eventually issues commit.
+   * The transaction should successfully complete commit in spite of interrupt.
+   */
+  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+
+  error_code = mht_map_no_key (thread_p,
+			       tdes->log_upd_stats.unique_stats_hash,
+			       logtb_tran_update_delta_hash_func, thread_p);
+
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
 
   return error_code;
 }
