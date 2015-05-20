@@ -1419,6 +1419,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       goto error;
     }
+  json_set_alloc_funcs (malloc, free);
 
   return error_code;
 

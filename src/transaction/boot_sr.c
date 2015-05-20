@@ -4052,6 +4052,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       /* server is up! */
       boot_server_status (BOOT_SERVER_UP);
     }
+#if !defined(SA_MODE)
+  json_set_alloc_funcs (malloc, free);
+#endif
 
   return NO_ERROR;
 
