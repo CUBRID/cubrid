@@ -6317,6 +6317,35 @@ end_completed:
   (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 
   curr_mvcc_info->is_sub_active = false;
+
+  if (tdes->mvccinfo.snapshot.valid)
+    {
+      /* adjust snapshot to reflect committed sub-transaction, since the
+       * parent transaction didn't finished yet
+       */
+      MVCC_SNAPSHOT *snapshot = &tdes->mvccinfo.snapshot;
+      if (mvcc_sub_id >= snapshot->highest_completed_mvccid)
+	{
+	  snapshot->highest_completed_mvccid = mvcc_sub_id;
+	  MVCCID_FORWARD (snapshot->highest_completed_mvccid);
+	}
+
+      if ((mvcc_sub_id >= snapshot->bit_area_start_mvccid)
+	  && ((mvcc_sub_id - snapshot->bit_area_start_mvccid) <
+	      MVCC_BITAREA_ELEMENTS_TO_BITS (MVCC_BITAREA_MAXIMUM_ELEMENTS)))
+	{
+	  position = mvcc_sub_id - snapshot->bit_area_start_mvccid;
+	  mask = MVCC_BITAREA_MASK (position);
+	  p_area =
+	    MVCC_GET_BITAREA_ELEMENT_PTR (snapshot->bit_area, position);
+	  (*p_area) |= mask;
+
+	  if (snapshot->bit_area_length <= (int) (position))
+	    {
+	      snapshot->bit_area_length = (int) (position + 1);
+	    }
+	}
+    }
 }
 
 /*
