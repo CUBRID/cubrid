@@ -3763,6 +3763,18 @@ boot_define_ha_apply_info (MOP class_mop)
       return error_code;
     }
 
+  error_code = db_constrain_non_null (class_mop, "required_lsa_pageid", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "required_lsa_offset", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   if (locator_has_heap (class_mop) == NULL)
     {
       assert (er_errid () != NO_ERROR);

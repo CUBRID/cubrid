@@ -1689,16 +1689,34 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
 	  ha_apply_info->creation_time.time = db_time->time;
 
 	  /* 4 ~ 5. committed_lsa */
-	  ha_apply_info->committed_lsa.pageid =
-	    DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->committed_lsa.offset =
-	    DB_GET_INTEGER (&out_value[out_value_idx++]);
+	  if (DB_IS_NULL (&out_value[out_value_idx])
+	      || DB_IS_NULL (&out_value[out_value_idx + 1]))
+	    {
+	      LSA_SET_NULL (&ha_apply_info->committed_lsa);
+	      out_value_idx += 2;
+	    }
+	  else
+	    {
+	      ha_apply_info->committed_lsa.pageid =
+		DB_GET_BIGINT (&out_value[out_value_idx++]);
+	      ha_apply_info->committed_lsa.offset =
+		DB_GET_INTEGER (&out_value[out_value_idx++]);
+	    }
 
 	  /* 6 ~ 7. committed_rep_lsa */
-	  ha_apply_info->committed_rep_lsa.pageid =
-	    DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->committed_rep_lsa.offset =
-	    DB_GET_INTEGER (&out_value[out_value_idx++]);
+	  if (DB_IS_NULL (&out_value[out_value_idx])
+	      || DB_IS_NULL (&out_value[out_value_idx + 1]))
+	    {
+	      LSA_SET_NULL (&ha_apply_info->committed_rep_lsa);
+	      out_value_idx += 2;
+	    }
+	  else
+	    {
+	      ha_apply_info->committed_rep_lsa.pageid =
+		DB_GET_BIGINT (&out_value[out_value_idx++]);
+	      ha_apply_info->committed_rep_lsa.offset =
+		DB_GET_INTEGER (&out_value[out_value_idx++]);
+	    }
 
 	  /* 8 ~ 9. append_lsa */
 	  ha_apply_info->append_lsa.pageid =
@@ -1713,16 +1731,34 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
 	    DB_GET_INTEGER (&out_value[out_value_idx++]);
 
 	  /* 12 ~ 13. final_lsa */
-	  ha_apply_info->final_lsa.pageid =
-	    DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->final_lsa.offset =
-	    DB_GET_INTEGER (&out_value[out_value_idx++]);
+	  if (DB_IS_NULL (&out_value[out_value_idx])
+	      || DB_IS_NULL (&out_value[out_value_idx + 1]))
+	    {
+	      LSA_SET_NULL (&ha_apply_info->final_lsa);
+	      out_value_idx += 2;
+	    }
+	  else
+	    {
+	      ha_apply_info->final_lsa.pageid =
+		DB_GET_BIGINT (&out_value[out_value_idx++]);
+	      ha_apply_info->final_lsa.offset =
+		DB_GET_INTEGER (&out_value[out_value_idx++]);
+	    }
 
 	  /* 14 ~ 15. required_lsa */
-	  ha_apply_info->required_lsa.pageid =
-	    DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->required_lsa.offset =
-	    DB_GET_INTEGER (&out_value[out_value_idx++]);
+	  if (DB_IS_NULL (&out_value[out_value_idx])
+	      || DB_IS_NULL (&out_value[out_value_idx + 1]))
+	    {
+	      LSA_SET_NULL (&ha_apply_info->required_lsa);
+	      out_value_idx += 2;
+	    }
+	  else
+	    {
+	      ha_apply_info->required_lsa.pageid =
+		DB_GET_BIGINT (&out_value[out_value_idx++]);
+	      ha_apply_info->required_lsa.offset =
+		DB_GET_INTEGER (&out_value[out_value_idx++]);
+	    }
 
 	  /* 16. log_record_time */
 	  db_time = DB_GET_DATETIME (&out_value[out_value_idx++]);
@@ -2068,6 +2104,7 @@ la_get_last_ha_applied_info (void)
   time_t log_db_creation;
   DB_DATETIME log_db_creation_time;
   bool insert_apply_info = false;
+  char err_msg[LINE_MAX];
 
   act_log = &la_Info.act_log;
 
@@ -2096,6 +2133,15 @@ la_get_last_ha_applied_info (void)
       if ((log_db_creation_time.date != apply_info.creation_time.date)
 	  || (log_db_creation_time.time != apply_info.creation_time.time))
 	{
+	  return ER_FAILED;
+	}
+
+      if (LSA_ISNULL (&la_Info.required_lsa))
+	{
+	  snprintf (err_msg, LINE_MAX, "required_lsa in %s cannot be NULL",
+		    CT_HA_APPLY_INFO_NAME);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  err_msg);
 	  return ER_FAILED;
 	}
     }
