@@ -4141,12 +4141,6 @@ tr_create_trigger (const char *name,
 
 error:
 
-  if (has_savepoint && er_errid () != ER_LK_UNILATERALLY_ABORTED)
-    {
-      (void)
-	tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_TRIGGER);
-    }
-
   if (trigger != NULL)
     {
       if (object != NULL)
@@ -4161,6 +4155,12 @@ error:
       remove_trigger_list (&tr_Uncommitted_triggers, trigger);
       tr_drop_deferred_activities (trigger->object, NULL);
       free_trigger (trigger);
+    }
+
+  if (has_savepoint && er_errid () != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void)
+	tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_TRIGGER);
     }
 
   return (NULL);
