@@ -15258,7 +15258,8 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   REPL_INFO_SBR repl_stmt;
   PARSER_VARCHAR *name = NULL;
   static const char *unknown_name = "-";
-  unsigned int save_custom;
+  char stmt_separator;
+  char *stmt_end = NULL;
 
   if (log_does_allow_replication () == false)
     {
@@ -15417,10 +15418,16 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
 
-  save_custom = parser->custom_print;
-  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
-  repl_stmt.stmt_text = parser_print_tree_with_quotes (parser, statement);
-  parser->custom_print = save_custom;
+  assert_release (statement->sql_user_text != NULL && statement->sql_user_text_len > 0);
+
+  /* it may contain multiple statements */
+  if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
+    {
+      stmt_end = &statement->sql_user_text[statement->sql_user_text_len];
+      stmt_separator = *stmt_end;
+      *stmt_end = '\0';
+    }
+  repl_stmt.stmt_text = statement->sql_user_text;
 
   repl_stmt.db_user = db_get_user_name ();
 
@@ -15438,6 +15445,11 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   repl_info.info = (char *) &repl_stmt;
 
   error = locator_flush_replication_info (&repl_info);
+
+  if (stmt_end != NULL)
+    {
+      *stmt_end = stmt_separator;
+    }
 
   db_string_free (repl_stmt.db_user);
   if (repl_stmt.sys_prm_context)
