@@ -7413,12 +7413,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
       && heap_is_mvcc_disabled_for_class (&ACCESS_SPEC_CLS_OID (curr_spec)))
     {
       assert (!force_select_lock);
-      if (scan_op_type == S_DELETE || scan_op_type == S_UPDATE)
-	{
-	  assert (oid_check_cached_class_oid
+
+      /* We expect to update or delete a non MVCC objects via a scan 
+       * are only db_serial and db_ha_apply_info objects.
+       */
+      assert ((scan_op_type != S_DELETE && scan_op_type != S_UPDATE)
+	      || oid_is_serial (&ACCESS_SPEC_CLS_OID (curr_spec))
+	      || (oid_check_cached_class_oid
 		  (OID_CACHE_HA_APPLY_INFO_CLASS_ID,
-		   &ACCESS_SPEC_CLS_OID (curr_spec)));
-	}
+		   &ACCESS_SPEC_CLS_OID (curr_spec))));
     }
   else
     {
