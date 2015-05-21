@@ -52,6 +52,10 @@
 #include "job_queue.h"
 #endif /* SERVER_MODE */
 
+#if !defined (SERVER_MODE)
+#include "transaction_cl.h"
+#endif
+
 /* Estimate on number of pages in the multipage temporary file */
 #define SORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20
 

@@ -56,6 +56,7 @@ extern TRAN_ISOLATION tm_Tran_isolation;
 extern bool tm_Tran_async_ws;
 extern int tm_Tran_wait_msecs;
 extern int tm_Tran_ID;
+extern bool tm_Tran_check_interrupt;
 extern bool tm_Use_OID_preflush;
 extern LOCK tm_Tran_rep_read_lock;
 extern LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version;
@@ -102,4 +103,6 @@ extern int tran_get_query_timeout (void);
 extern void tran_begin_libcas_function (void);
 extern void tran_end_libcas_function (void);
 extern bool tran_is_in_libcas (void);
+extern bool tran_set_check_interrupt (bool flag);
+extern bool tran_get_check_interrupt (void);
 #endif /* _TRANSACTION_CL_H_ */

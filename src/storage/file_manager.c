@@ -55,6 +55,10 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
+#if !defined (SERVER_MODE)
+#include "transaction_cl.h"
+#endif
+
 #include "fault_injection.h"
 
 #if !defined(SERVER_MODE)

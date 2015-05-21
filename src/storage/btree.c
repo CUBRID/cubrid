@@ -57,6 +57,10 @@
 #include "mvcc.h"
 #include "transform.h"
 
+#if !defined (SERVER_MODE)
+#include "transaction_cl.h"
+#endif
+
 #include "fault_injection.h"
 
 /* this must be the last header file included!!! */

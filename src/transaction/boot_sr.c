@@ -106,6 +106,10 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 
+#if !defined (SERVER_MODE)
+#include "transaction_cl.h"
+#endif
+
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
 

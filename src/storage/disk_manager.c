@@ -50,6 +50,10 @@
 #include "event_log.h"
 #include "tsc_timer.h"
 
+#if !defined (SERVER_MODE)
+#include "transaction_cl.h"
+#endif
+
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)

@@ -73,14 +73,20 @@
 /* For creating multi-column sequence keys (sets) */
 #include "set_object.h"
 
-#ifdef SERVER_MODE
+#if defined (SERVER_MODE)
 #include "connection_error.h"
 #endif
 
 #include "tsc_timer.h"
+
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+#if !defined (SERVER_MODE)
+#include "transaction_cl.h"
+#endif
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 

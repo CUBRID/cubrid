@@ -67,6 +67,7 @@ int tm_Tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 bool tm_Tran_async_ws = false;
 int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+bool tm_Tran_check_interrupt = false;
 int tm_Tran_ID = -1;
 LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
 					 * lock twice.
@@ -1712,4 +1713,30 @@ bool
 tran_is_in_libcas (void)
 {
   return tm_Is_libcas;
+}
+
+/*
+ * tran_set_check_interrupt() -
+ *   return:
+ *   flag(in):
+ */
+bool
+tran_set_check_interrupt (bool flag)
+{
+  bool old_val = true;
+
+  old_val = tm_Tran_check_interrupt;
+  tm_Tran_check_interrupt = flag;
+
+  return old_val;
+}
+
+/*
+ * tran_get_check_interrupt() -
+ *   return:
+ */
+bool
+tran_get_check_interrupt (void)
+{
+  return tm_Tran_check_interrupt;
 }

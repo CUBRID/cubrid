@@ -78,6 +78,10 @@
 #include "replication.h"
 #endif
 
+#if !defined (SERVER_MODE)
+#include "transaction_cl.h"
+#endif
+
 #define MVCC_OLDEST_ACTIVE_BUFFER_LENGTH 300
 
 /* bit area sizes expressed in bits */
