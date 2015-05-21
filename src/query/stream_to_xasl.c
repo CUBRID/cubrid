@@ -5799,7 +5799,7 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
 
       if (i < val_list->val_cnt - 1)
 	{
-	  value_list[i].next = (QPROC_DB_VALUE_LIST) & value_list[i + 1];
+	  value_list[i].next = (QPROC_DB_VALUE_LIST) (&value_list[i + 1]);
 	}
       else
 	{

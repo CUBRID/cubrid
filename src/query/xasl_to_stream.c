@@ -4139,7 +4139,7 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 {
   int offset, i;
 
-  ptr = or_pack_oid (ptr, (OID *) & insert_info->class_oid);
+  ptr = or_pack_oid (ptr, (OID *) (&insert_info->class_oid));
 
   ptr = or_pack_hfid (ptr, &insert_info->class_hfid);
 
@@ -4248,8 +4248,7 @@ xts_process_selupd_list (char *ptr, const SELUPD_LIST * selupd_list)
 {
   int offset;
 
-  ptr = or_pack_oid (ptr, (OID *) & selupd_list->class_oid);
-
+  ptr = or_pack_oid (ptr, (OID *) (&selupd_list->class_oid));
   ptr = or_pack_hfid (ptr, &selupd_list->class_hfid);
 
   ptr = or_pack_int (ptr, selupd_list->select_list_size);
@@ -4686,11 +4685,11 @@ xts_process_indx_id (char *ptr, const INDX_ID * indx_id)
   switch (indx_id->type)
     {
     case T_BTID:
-      ptr = or_pack_btid (ptr, (BTID *) & indx_id->i.btid);
+      ptr = or_pack_btid (ptr, (BTID *) (&indx_id->i.btid));
       break;
 
     case T_EHID:
-      ptr = or_pack_ehid (ptr, (EHID *) & indx_id->i.ehid);
+      ptr = or_pack_ehid (ptr, (EHID *) (&indx_id->i.ehid));
       break;
 
     default:
@@ -4751,7 +4750,7 @@ xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec)
 
   ptr = or_pack_hfid (ptr, &cls_spec->hfid);
 
-  ptr = or_pack_oid (ptr, (OID *) & cls_spec->cls_oid);
+  ptr = or_pack_oid (ptr, (OID *) (&cls_spec->cls_oid));
 
   offset = xts_save_regu_variable_list (cls_spec->cls_regu_list_key);
   if (offset == ER_FAILED)

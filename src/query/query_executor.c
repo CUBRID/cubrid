@@ -7408,7 +7408,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 	  goto exit_on_error;
 	}
     }
-  if (heap_is_mvcc_disabled_for_class (&ACCESS_SPEC_CLS_OID (curr_spec)))
+
+  if (curr_spec->type == TARGET_CLASS
+      && heap_is_mvcc_disabled_for_class (&ACCESS_SPEC_CLS_OID (curr_spec)))
     {
       assert (!force_select_lock);
       if (scan_op_type == S_DELETE || scan_op_type == S_UPDATE)
