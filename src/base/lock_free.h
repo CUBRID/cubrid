@@ -432,18 +432,17 @@ struct lock_free_circular_queue
 };
 
 /* Macro's to inspect queue status and size. Note that their results is not
- * guaranteed to be precise.
+ * guaranteed to be precise. They can provide false positives and negatives.
  */
-/* Check if queue is empty */
-/* Macro can sometimes return true even if the queue is not empty (if
- * concurrent transactions consume entries at the same time). However it will
- * always return true if the queue is empty.
+/* Check if queue is empty.
+ * NOTE: It can provide false positives/negatives. Use it only as early out
+ *	 but do not expect that lf_circular_queue_consume will succeed.
  */
 #define LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY(queue) \
   (queue->produce_cursor <= queue->consume_cursor)
 /* Check if queue is full */
-/* Macro can return true even if the queue is not full. However it will never
- * return false if the queue is really full.
+/* NOTE: It can provide false positives/negatives. Use it only as early out
+ *	 but do not expect that lf_circular_queue_produce will succeed.
  */
 #define LOCK_FREE_CIRCULAR_QUEUE_IS_FULL(queue) \
   (queue->consume_cursor <= queue->produce_cursor - queue->capacity + 1)

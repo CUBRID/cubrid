@@ -334,6 +334,10 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
 #define VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES \
   (1 + vacuum_Data->log_block_npages)
 
+#define VACUUM_JOB_QUEUE_SAFETY_BUFFER 10
+#define VACUUM_JOB_QUEUE_MIN_CAPACITY \
+  (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) \
+   + VACUUM_JOB_QUEUE_SAFETY_BUFFER)
 #define VACUUM_JOB_QUEUE_CAPACITY \
   (VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT - \
    prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT))
@@ -782,10 +786,11 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
   vacuum_Prefetch_log_pages =
     prm_get_integer_value (PRM_ID_VACUUM_PREFETCH_LOG_NBUFFERS);
 
-  if (VACUUM_JOB_QUEUE_CAPACITY < 1)
+  if (VACUUM_JOB_QUEUE_CAPACITY < VACUUM_JOB_QUEUE_MIN_CAPACITY)
     {
       vacuum_Prefetch_log_pages =
-	(2 * prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT))
+	(prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT)
+	 + VACUUM_JOB_QUEUE_MIN_CAPACITY)
 	* VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES;
       assert (VACUUM_JOB_QUEUE_CAPACITY >=
 	      prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT));
@@ -2652,7 +2657,8 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 #if defined(SERVER_MODE)
   for (i = 0, new_created_jobs = 0;
        i < vacuum_entries
-       && !LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (vacuum_Job_queue); i++)
+       && LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Job_queue)
+       < VACUUM_JOB_QUEUE_CAPACITY - VACUUM_JOB_QUEUE_SAFETY_BUFFER; i++)
 #else
   for (i = 0; i < vacuum_entries; i++)
 #endif
@@ -2691,10 +2697,9 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 
       if (!lf_circular_queue_produce (vacuum_Job_queue, &vacuum_job_entry))
 	{
-	  /* Safe guard, should never happen */
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER,
+	  /* Queue is full, abort creating new jobs. */
+	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_MASTER,
 			 "VACUUM ERROR: Could not push new job.");
-	  assert (false);
 	  return;
 	}
 
