@@ -2208,12 +2208,17 @@ set_error:
 	    (char *) "Generic object for Repeatable Read consistency";
 	  is_classname_alloced = false;
 	}
+      else if (OID_ISTEMP (&entry_ptr->res_head->key.oid))
+	{
+	  classname = NULL;
+	}
       else
 	{
 	  classname = heap_get_class_name (thread_p,
 					   &entry_ptr->res_head->key.oid);
 	  is_classname_alloced = true;
 	}
+
       if (classname != NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2241,8 +2246,17 @@ set_error:
       break;
 
     case LOCK_RESOURCE_INSTANCE:
-      classname =
-	heap_get_class_name (thread_p, &entry_ptr->res_head->key.class_oid);
+      if (OID_ISTEMP (&entry_ptr->res_head->key.class_oid))
+	{
+	  classname = NULL;
+	}
+      else
+	{
+	  classname =
+	    heap_get_class_name (thread_p,
+				 &entry_ptr->res_head->key.class_oid);
+	}
+
       if (classname != NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -11565,9 +11579,10 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
 	  fprintf (log_fp,
 		   ", Generic object for Repeatable Read consistency");
 	}
-      else
+      else if (!OID_ISTEMP (&res_ptr->key.oid))
 	{
 	  classname = heap_get_class_name (thread_p, &res_ptr->key.oid);
+
 	  if (classname != NULL)
 	    {
 	      fprintf (log_fp, ", table=%s", classname);
@@ -11577,11 +11592,15 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
       break;
 
     case LOCK_RESOURCE_INSTANCE:
-      classname = heap_get_class_name (thread_p, &res_ptr->key.class_oid);
-      if (classname != NULL)
+      if (!OID_ISTEMP (&res_ptr->key.class_oid))
 	{
-	  fprintf (log_fp, ", table=%s", classname);
-	  free_and_init (classname);
+	  classname = heap_get_class_name (thread_p, &res_ptr->key.class_oid);
+
+	  if (classname != NULL)
+	    {
+	      fprintf (log_fp, ", table=%s", classname);
+	      free_and_init (classname);
+	    }
 	}
 
       if (!BTID_IS_NULL (&res_ptr->key.btid))
