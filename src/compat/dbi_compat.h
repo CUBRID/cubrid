@@ -3388,7 +3388,7 @@ struct cache_time
 
 #define OR_PACK_CACHE_TIME(PTR, T)                      \
         do {                                            \
-          if (T) {                                      \
+          if ((CACHE_TIME *) (T) != NULL) {                                      \
             PTR = or_pack_int(PTR, (T)->sec);        \
             PTR = or_pack_int(PTR, (T)->usec);       \
           }                                             \
@@ -3400,7 +3400,7 @@ struct cache_time
 
 #define OR_UNPACK_CACHE_TIME(PTR, T)                    \
         do {                                            \
-          if (T) {                                      \
+          if ((CACHE_TIME *) (T) != NULL) {                                      \
             PTR = or_unpack_int(PTR, &((T)->sec));      \
             PTR = or_unpack_int(PTR, &((T)->usec));     \
           }                                             \

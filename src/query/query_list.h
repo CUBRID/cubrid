@@ -88,7 +88,7 @@ struct cache_time
 
 #define OR_PACK_CACHE_TIME(PTR, T)                      \
         do {                                            \
-          if (T) {                                      \
+          if ((CACHE_TIME *) (T) != NULL) {                                      \
             PTR = or_pack_int(PTR, (T)->sec);           \
             PTR = or_pack_int(PTR, (T)->usec);          \
           }                                             \
@@ -100,7 +100,7 @@ struct cache_time
 
 #define OR_UNPACK_CACHE_TIME(PTR, T)                    \
         do {                                            \
-          if (T) {                                      \
+          if ((CACHE_TIME *) (T) != NULL) {                                      \
             PTR = or_unpack_int(PTR, &((T)->sec));      \
             PTR = or_unpack_int(PTR, &((T)->usec));     \
           }                                             \
@@ -175,7 +175,7 @@ struct xasl_id
     } while (0)
 
 #define XASL_ID_IS_NULL(X) \
-    ((X) && (X)->first_vpid.pageid == NULL_PAGEID)
+    (((XASL_ID *) (X) != NULL) && (X)->first_vpid.pageid == NULL_PAGEID)
 
 #define XASL_ID_COPY(X1, X2) \
     *(X1) = *(X2)
@@ -211,7 +211,7 @@ struct xasl_id
                                                                \
           PTR = or_pack_loid (PTR, (LOID *) (X));              \
           CACHE_TIME_RESET (&_t);                              \
-          if (X)                                               \
+          if ((XASL_ID *) (X) != NULL)                                               \
             {                                                  \
               _t = (X)->time_stored;                           \
             }                                                  \

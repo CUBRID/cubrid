@@ -78,7 +78,7 @@
 
 
 #define DB_IS_NULL(v) \
-    (((v) && (v)->domain.general_info.is_null == 0) ? false : true)
+    ((((DB_VALUE *) (v) != NULL) && (v)->domain.general_info.is_null == 0) ? false : true)
 
 #if !defined(NDEBUG)
 #else
@@ -538,7 +538,7 @@
      (v)->data.ch.medium.codeset = (c), \
      (v)->data.ch.medium.size = (s), \
      (v)->data.ch.medium.buf = (char *) (p), \
-     (v)->domain.general_info.is_null = ((p) ? 0 : 1), \
+     (v)->domain.general_info.is_null = (((void *) (p) != NULL) ? 0 : 1), \
      (v)->domain.general_info.is_null = \
          ((s) == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) \
 	  ? 1 : DB_IS_NULL(v), \
@@ -570,7 +570,7 @@
      (v)->domain.general_info.type = DB_TYPE_VARCHAR, \
      (v)->need_clear = false, \
      db_make_db_char((v), LANG_SYS_CODESET, LANG_SYS_COLLATION, \
-		     (p), ((p) ? strlen(p) : 0)), \
+		     (p), (((void *) (p) != NULL) ? strlen(p) : 0)), \
      NO_ERROR)
 
 #define db_make_char(v, l, p, s, cs, col) \

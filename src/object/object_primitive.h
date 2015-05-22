@@ -300,7 +300,7 @@ extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
 #define PR_SHARE_VALUE(src, dst) \
   do \
     { \
-      if (src && dst && src != dst) \
+      if (((DB_VALUE *) (src) != NULL) && ((DB_VALUE *) (dst) != NULL) && src != dst) \
 	{ \
 	  *(dst) = *(src); \
 	  (dst)->need_clear = false; \

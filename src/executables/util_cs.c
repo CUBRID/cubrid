@@ -667,7 +667,7 @@ delvoldb (UTIL_FUNCTION_ARG * arg)
 	    }
 
 	  db_vol_label (volid, vol_label);
-	  assert (vol_label);	/* we confirmed volid is valid */
+	  assert (vol_label != NULL);	/* we confirmed volid is valid */
 
 	  spacedb_get_size_str (num_total_str,
 				(UINT64) space_info.total_pages,

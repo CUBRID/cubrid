@@ -202,7 +202,7 @@
       if ((p_scan_id)->type == S_INDX_SCAN) \
 	{ \
 	  INDX_SCAN_ID * p_idx_scan_id = &(p_scan_id)->s.isid; \
-	  if (p_range_filter)  \
+	  if ((FILTER_INFO *) (p_range_filter) != NULL)  \
 	    { \
 	      scan_init_filter_info ((p_range_filter), \
 				     &(p_idx_scan_id)->range_pred,  \
@@ -212,7 +212,7 @@
 				     &(p_idx_scan_id)->num_vstr, \
 				     (p_idx_scan_id)->vstr_ids); \
 	    } \
-	  if (p_key_filter) \
+	  if ((FILTER_INFO *) (p_key_filter) != NULL) \
 	    { \
 	      scan_init_filter_info ((p_key_filter), &(p_idx_scan_id)->key_pred, \
 				     &(p_idx_scan_id)->key_attrs, \
@@ -223,7 +223,7 @@
 				     &(p_idx_scan_id)->num_vstr, \
 				     (p_idx_scan_id)->vstr_ids); \
 	    } \
-	  if (p_data_filter) \
+	  if ((FILTER_INFO *) (p_data_filter) != NULL) \
 	    { \
 	      scan_init_filter_info ((p_data_filter), \
 				     &(p_idx_scan_id)->scan_pred,  \
@@ -236,7 +236,7 @@
       else if ((p_scan_id)->type == S_HEAP_SCAN) \
 	{ \
 	  HEAP_SCAN_ID * p_heap_scan_id = &(p_scan_id)->s.hsid; \
-	  if (p_data_filter)  \
+	  if ((FILTER_INFO  *) (p_data_filter) != NULL)  \
 	    { \
 	      scan_init_filter_info ((p_data_filter), \
 				     &(p_heap_scan_id)->scan_pred,  \
@@ -246,11 +246,11 @@
 				     &(p_heap_scan_id)->cls_oid, \
 				     0, NULL, NULL, NULL); \
 	    } \
-	  if (p_range_filter)  \
+	  if ((FILTER_INFO  *) (p_range_filter) != NULL)  \
 	    { \
 	      memset (p_range_filter, 0, sizeof (FILTER_INFO)); \
 	    } \
-	  if (p_key_filter) \
+	  if ((FILTER_INFO  *) (p_key_filter) != NULL) \
 	   { \
 	      memset (p_key_filter, 0, sizeof (FILTER_INFO)); \
 	   } \
@@ -263,7 +263,7 @@
   do \
     { \
       assert ((p_mvcc_sel_reev_data) != NULL); \
-      if ((p_range_filter) && ((p_range_filter)->scan_pred != NULL) \
+      if (((FILTER_INFO  *) (p_range_filter) != NULL) && ((p_range_filter)->scan_pred != NULL) \
           && ((p_range_filter)->scan_pred->regu_list != NULL)) \
 	{ \
 	  (p_mvcc_sel_reev_data)->range_filter = (p_range_filter); \
@@ -272,7 +272,7 @@
 	{ \
 	  (p_mvcc_sel_reev_data)->range_filter = NULL; \
 	} \
-      if ((p_key_filter) && ((p_key_filter)->scan_pred != NULL) \
+      if (((FILTER_INFO  *) (p_key_filter) != NULL) && ((p_key_filter)->scan_pred != NULL) \
           && ((p_key_filter)->scan_pred->regu_list != NULL)) \
 	{ \
 	  (p_mvcc_sel_reev_data)->key_filter = (p_key_filter); \
@@ -281,7 +281,7 @@
 	{ \
 	  (p_mvcc_sel_reev_data)->key_filter = NULL; \
 	} \
-      if ((p_data_filter) && ((p_data_filter)->scan_pred != NULL) \
+      if (((FILTER_INFO  *) (p_data_filter) != NULL) && ((p_data_filter)->scan_pred != NULL) \
 	  && ((p_data_filter)->scan_pred->regu_list != NULL)) \
 	{ \
 	  (p_mvcc_sel_reev_data)->data_filter = (p_data_filter); \

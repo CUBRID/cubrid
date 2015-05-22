@@ -48,7 +48,7 @@
 
 #define OR_PACK_VOL_SPACE_INFO(PTR, INFO)               \
   do {                                                   \
-    if (INFO) {                                          \
+    if ((VOL_SPACE_INFO *) (INFO) != NULL) {                                          \
       PTR = or_pack_int (PTR, ((INFO)->total_pages));    \
       PTR = or_pack_int (PTR, ((INFO)->free_pages));     \
       PTR = or_pack_int (PTR, ((INFO)->max_pages));      \
@@ -68,7 +68,7 @@
 
 #define OR_UNPACK_VOL_SPACE_INFO(PTR, INFO)             \
   do {                                                   \
-    if (INFO) {                                          \
+    if ((VOL_SPACE_INFO *) (INFO) != NULL) {                                          \
       PTR = or_unpack_int (PTR, &((INFO)->total_pages)); \
       PTR = or_unpack_int (PTR, &((INFO)->free_pages));  \
       PTR = or_unpack_int (PTR, &((INFO)->max_pages));   \
