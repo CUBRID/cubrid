@@ -72,6 +72,19 @@
 #define FILEIO_PATH_SEPARATOR(path) \
   (path[strlen(path) - 1] == PATH_SEPARATOR ? "" : STR_PATH_SEPARATOR)
 
+/* Definitions of some log archive and backup names */
+#define FILEIO_SUFFIX_LOGACTIVE      "_lgat"
+#define FILEIO_SUFFIX_LOGARCHIVE     "_lgar"
+#define FILEIO_SUFFIX_TMP_LOGARCHIVE "_lgar_t"
+#define FILEIO_SUFFIX_LOGINFO        "_lginf"
+#define FILEIO_SUFFIX_BACKUP         "_bk"
+#define FILEIO_SUFFIX_BACKUP_VOLINFO "_bkvinf"
+#define FILEIO_VOLEXT_PREFIX         "_x"
+#define FILEIO_VOLTMP_PREFIX         "_t"
+#define FILEIO_VOLINFO_SUFFIX        "_vinf"
+#define FILEIO_VOLLOCK_SUFFIX        "__lock"
+#define FILEIO_MAX_SUFFIX_LENGTH     7
+
 typedef enum
 {
   FILEIO_BACKUP_FULL_LEVEL = 0,	/* Full backup */

@@ -12212,3 +12212,37 @@ log_archive_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 
   return NO_ERROR;
 }
+
+/*
+ * log_set_ha_promotion_time () - set ha promotion time
+ *   return: none
+ *
+ *   thread_p(in):
+ *   ha_promotion_time(in):
+ */
+void
+log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time)
+{
+  LOG_CS_ENTER (thread_p);
+  log_Gl.hdr.ha_promotion_time = ha_promotion_time;
+  LOG_CS_EXIT (thread_p);
+
+  return;
+}
+
+/*
+ * log_set_db_restore_time () - set db restore time 
+ *   return: none
+ *
+ *   thread_p(in):
+ *   db_restore_time(in):
+ */
+void
+log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
+{
+  LOG_CS_ENTER (thread_p);
+  log_Gl.hdr.db_restore_time = db_restore_time;
+  LOG_CS_EXIT (thread_p);
+
+  return;
+}

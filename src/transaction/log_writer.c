@@ -26,6 +26,10 @@
 #include "config.h"
 
 #include <assert.h>
+#include <errno.h>
+#if !defined(WINDOWS)
+#include <dirent.h>
+#endif /* !WINDOWNS */
 
 #include "page_buffer.h"
 #include "log_impl.h"
@@ -61,7 +65,6 @@
 
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
-
 #if defined(CS_MODE)
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
@@ -117,7 +120,9 @@ LOGWR_GLOBAL logwr_Gl = {
   /* ori_nxarv_pageid */
   NULL_PAGEID,
   /* start_pageid */
-  -2
+  -2,
+  /* reinit_copylog */
+  false
 };
 
 
@@ -134,6 +139,7 @@ static int logwr_archive_active_log (void);
 static int logwr_background_archiving (void);
 static int logwr_flush_bgarv_header_page (void);
 static void logwr_send_end_msg (LOGWR_CONTEXT * ctx_ptr, int error);
+static void logwr_reinit_copylog (void);
 
 /*
  * logwr_to_physical_pageid -
@@ -572,6 +578,8 @@ logwr_finalize (void)
 	  logwr_Gl.bg_archive_info.vdes = NULL_VOLDES;
 	}
     }
+
+  logwr_Gl.reinit_copylog = false;
 }
 
 /*
@@ -665,6 +673,25 @@ logwr_set_hdr_and_flush_info (void)
       struct log_header hdr;
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
       hdr = *((struct log_header *) log_pgptr->area);
+
+      if ((hdr.ha_server_state != HA_SERVER_STATE_ACTIVE
+	   && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
+	   && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY)
+	  && (hdr.ha_promotion_time == 0
+	      || difftime64 (hdr.ha_promotion_time,
+			     logwr_Gl.hdr.ha_promotion_time) == 0)
+	  && difftime64 (hdr.db_restore_time,
+			 logwr_Gl.hdr.db_restore_time) != 0)
+	{
+	  logwr_Gl.reinit_copylog = true;
+
+	  logwr_Gl.loghdr_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1,
+		  logwr_Gl.active_name);
+	  return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
+	}
 
       if (difftime64 (hdr.db_creation, logwr_Gl.hdr.db_creation) != 0)
 	{
@@ -1628,6 +1655,22 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode,
 		      "and will shut itself down", "");
 #endif /* !WINDOWS */
 	    }
+
+	  if (logwr_Gl.reinit_copylog)
+	    {
+	      char error_str[LINE_MAX];
+
+	      sprintf (error_str,
+		       "Replication logs and catalog have been reinitialized "
+		       "due to rebuilt database on the peer node");
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		      1, error_str);
+	      error = ER_HA_GENERIC_ERROR;
+
+	      logwr_reinit_copylog ();
+
+	      goto end;
+	    }
 	}
       else
 	{
@@ -1666,6 +1709,7 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode,
       error = ER_HA_LW_STOPPED_BY_SIGNAL;
     }
 
+end:
   if (ctx.rc > 0)
     {
       if (logwr_Gl.start_pageid >= NULL_PAGEID && error == NO_ERROR)
@@ -1682,6 +1726,87 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode,
   logwr_finalize ();
   return error;
 }
+
+static void
+logwr_reinit_copylog (void)
+{
+#if !defined(WINDOWS)
+  DIR *dirp;
+  struct dirent *dp;
+  char log_archive_path[PATH_MAX];
+  char archive_log_prefix[PATH_MAX];
+  int archive_log_prefix_len;
+  BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
+  LOG_BGARV_HEADER *bgarvhdr = NULL;
+
+  /* mark will be deleted */
+  logwr_Gl.hdr.mark_will_del = true;
+  logwr_flush_header_page ();
+
+  /* remove background archive */
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
+    {
+      if (logwr_Gl.bg_archive_info.vdes != NULL_VOLDES)
+	{
+	  bg_arv_info = &logwr_Gl.bg_archive_info;
+
+	  fileio_dismount (NULL, bg_arv_info->vdes);
+	  bg_arv_info->vdes = NULL_VOLDES;
+	}
+
+      fileio_unformat (NULL, logwr_Gl.bg_archive_name);
+    }
+
+  /* remove log info */
+  fileio_unformat (NULL, logwr_Gl.loginf_path);
+
+  /* remove archive logs */
+  sprintf (archive_log_prefix, "%s%s", logwr_Gl.db_name,
+	   FILEIO_SUFFIX_LOGARCHIVE);
+  archive_log_prefix_len = strlen (archive_log_prefix);
+  dirp = opendir (logwr_Gl.log_path);
+  if (dirp == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  do
+    {
+      errno = 0;
+      dp = readdir (dirp);
+      if (dp == NULL)
+	{
+	  if (errno != 0)
+	    {
+	      assert (false);
+	    }
+	  break;
+	}
+
+      if (strncmp (archive_log_prefix, dp->d_name,
+		   archive_log_prefix_len) == 0)
+	{
+	  sprintf (log_archive_path, "%s%s%s", logwr_Gl.log_path,
+		   FILEIO_PATH_SEPARATOR (logwr_Gl.log_path), dp->d_name);
+	  fileio_unformat (NULL, log_archive_path);
+	}
+    }
+  while (1);
+  closedir (dirp);
+
+  /* remove active log */
+  if (logwr_Gl.append_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (NULL, logwr_Gl.append_vdes);
+      logwr_Gl.append_vdes = NULL_VOLDES;
+    }
+  fileio_unformat (NULL, logwr_Gl.active_name);
+
+#endif /* !WINDOWS */
+  return;
+}
+
 #else /* CS_MODE */
 int
 logwr_copy_log_file (const char *db_name, const char *log_path, int mode,

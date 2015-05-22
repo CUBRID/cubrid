@@ -89,6 +89,8 @@ struct logwr_global
 
   /* start pageid */
   LOG_PAGEID start_pageid;
+
+  bool reinit_copylog;
 };
 
 #define LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(pageid) \

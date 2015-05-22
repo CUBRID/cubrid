@@ -221,19 +221,6 @@
       return (rtn); \
   } while (0)
 
-/* Definitions of some log archive and backup names */
-#define FILEIO_SUFFIX_LOGACTIVE      "_lgat"
-#define FILEIO_SUFFIX_LOGARCHIVE     "_lgar"
-#define FILEIO_SUFFIX_TMP_LOGARCHIVE "_lgar_t"
-#define FILEIO_SUFFIX_LOGINFO        "_lginf"
-#define FILEIO_SUFFIX_BACKUP         "_bk"
-#define FILEIO_SUFFIX_BACKUP_VOLINFO "_bkvinf"
-#define FILEIO_VOLEXT_PREFIX         "_x"
-#define FILEIO_VOLTMP_PREFIX         "_t"
-#define FILEIO_VOLINFO_SUFFIX        "_vinf"
-#define FILEIO_VOLLOCK_SUFFIX        "__lock"
-#define FILEIO_MAX_SUFFIX_LENGTH     7
-
 /* Some specifications of page identifiers of backup */
 #define FILEIO_BACKUP_START_PAGE_ID      (-2)
 #define FILEIO_BACKUP_END_PAGE_ID        (-3)

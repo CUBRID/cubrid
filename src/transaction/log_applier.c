@@ -329,6 +329,8 @@ struct la_info
   int db_lockf_vdes;
 
   LA_REPL_FILTER repl_filter;
+
+  bool reinit_copylog;
 };
 
 typedef struct la_ovf_first_part LA_OVF_FIRST_PART;
@@ -467,6 +469,7 @@ static int la_insert_ha_apply_info (DB_DATETIME * creation_time);
 static int la_update_ha_apply_info_start_time (void);
 static int la_get_last_ha_applied_info (void);
 static int la_update_ha_last_applied_info (void);
+static int la_delete_ha_apply_info (void);
 
 static bool la_ignore_on_error (int errid);
 static bool la_retry_on_error (int errid);
@@ -619,6 +622,8 @@ static bool la_need_filter_out (LA_ITEM * item);
 static int la_create_repl_filter (void);
 static void la_destroy_repl_filter (void);
 static void la_print_repl_filter_info (void);
+
+static int check_reinit_copylog (void);
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -1028,6 +1033,17 @@ log_reopen:
 				    la_Info.log_path,
 				    la_Info.act_log.log_hdr->prefix_name,
 				    la_Info.arv_log.arv_num);
+
+      error = check_reinit_copylog ();
+      if (error != NO_ERROR)
+	{
+	  la_applier_need_shutdown = true;
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_LOG_MOUNT_FAIL, 1, la_Info.arv_log.path);
+
+	  return ER_LOG_MOUNT_FAIL;
+	}
+
       /* open the archive file */
       la_Info.arv_log.log_vdes = fileio_open (la_Info.arv_log.path,
 					      O_RDONLY, 0);
@@ -2366,6 +2382,50 @@ la_update_ha_last_applied_info (void)
 #undef LA_IN_VALUE_COUNT
 }
 
+static int
+la_delete_ha_apply_info (void)
+{
+#define LA_IN_VALUE_COUNT       2
+  int res;
+  LA_ACT_LOG *act_log;
+  int i;
+  int in_value_idx;
+  DB_VALUE in_value[LA_IN_VALUE_COUNT];
+  char query_buf[LA_QUERY_BUF_SIZE];
+
+  act_log = &la_Info.act_log;
+
+  snprintf (query_buf, sizeof (query_buf),
+	    "DELETE FROM %s "
+	    "WHERE db_name = ? AND copied_log_path = ?",
+	    CT_HA_APPLY_INFO_NAME);
+
+  in_value_idx = 0;
+  db_make_varchar (&in_value[in_value_idx++], 255,
+		   act_log->log_hdr->prefix_name,
+		   strlen (act_log->log_hdr->prefix_name),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
+		   strlen (la_Info.log_path),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  assert (in_value_idx == LA_IN_VALUE_COUNT);
+
+  res = la_update_query_execute_with_values (query_buf, in_value_idx,
+					     &in_value[0], true);
+  la_Info.is_apply_info_updated = true;
+
+  for (i = 0; i < in_value_idx; i++)
+    {
+      db_value_clear (&in_value[i]);
+    }
+
+  (void) db_commit_transaction ();
+
+  return res;
+
+#undef LA_IN_VALUE_COUNT
+}
+
 static bool
 la_ignore_on_error (int errid)
 {
@@ -2843,6 +2903,16 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
 	}
 
       act_log->log_hdr = (struct log_header *) act_log->hdr_page->area;
+
+      /* check mark will deleted */
+      if (act_log->log_hdr->mark_will_del == true)
+	{
+	  LA_SLEEP (3, 0);
+
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_LOG_MOUNT_FAIL, 1, act_log->path);
+	  return ER_LOG_MOUNT_FAIL;
+	}
 
       /* check if the log header is valid */
       if (strncmp (act_log->log_hdr->magic,
@@ -7173,7 +7243,8 @@ la_update_last_deleted_arv_num (int lockf_vdes, int last_deleted_arv_num)
   char arv_num_str[11];
   int len;
 
-  if (lockf_vdes == NULL_VOLDES || last_deleted_arv_num < 0)
+  assert (last_deleted_arv_num >= -1);
+  if (lockf_vdes == NULL_VOLDES || last_deleted_arv_num < -1)
     {
       return ER_FAILED;
     }
@@ -7306,6 +7377,8 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.repl_filter.list_size = 0;
   la_Info.repl_filter.num_filters = 0;
 
+  la_Info.reinit_copylog = false;
+
   return;
 }
 
@@ -7418,6 +7491,8 @@ la_shutdown (void)
 
   la_destroy_repl_filter ();
 
+  la_Info.reinit_copylog = false;
+
   return;
 }
 
@@ -7440,8 +7515,8 @@ la_print_log_header (const char *database_name, struct log_header *hdr,
     {
       printf ("%-30s : %s\n", "Magic", hdr->magic);
     }
-  printf ("%-30s : %s\n", "DB name ", database_name);
-  printf ("%-30s : %s (%ld)\n", "DB creation time ", timebuf, tloc);
+  printf ("%-30s : %s\n", "DB name", database_name);
+  printf ("%-30s : %s (%ld)\n", "DB creation time", timebuf, tloc);
   printf ("%-30s : %lld | %d\n", "EOF LSA",
 	  (long long int) hdr->eof_lsa.pageid, (int) hdr->eof_lsa.offset);
   printf ("%-30s : %lld | %d\n", "Append LSA",
@@ -7472,6 +7547,22 @@ la_print_log_header (const char *database_name, struct log_header *hdr,
       printf ("%-30s : %s\n", "HA file status",
 	      logwr_log_ha_filestat_to_string (hdr->ha_file_status));
     }
+
+
+  tloc = hdr->ha_promotion_time;
+  db_localdatetime (&tloc, &datetime);
+  db_datetime_to_string ((char *) timebuf, 1024, &datetime);
+  printf ("%-30s : %s (%ld)\n", "HA promotion time", timebuf, tloc);
+
+  tloc = hdr->db_restore_time;
+  db_localdatetime (&tloc, &datetime);
+  db_datetime_to_string ((char *) timebuf, 1024, &datetime);
+  printf ("%-30s : %s (%ld)\n", "DB restore time", timebuf, tloc);
+
+  printf ("%-30s : %s \n", "Mark will be deleted",
+	  (hdr->mark_will_del == true) ? "true" : "false");
+
+  return;
 }
 
 /*
@@ -9117,6 +9208,29 @@ la_destroy_repl_filter (void)
   return;
 }
 
+static int
+check_reinit_copylog (void)
+{
+  int error = NO_ERROR;
+
+  /* fetch header */
+  error = la_fetch_log_hdr (&la_Info.act_log);
+  if (error != NO_ERROR)
+    {
+      error = ER_FAILED;
+      return error;
+    }
+
+  if (la_Info.act_log.log_hdr->mark_will_del == true)
+    {
+      la_Info.reinit_copylog = true;
+      error = ER_FAILED;
+      return error;
+    }
+
+  return error;
+}
+
 /*
  * la_apply_log_file() - apply the transaction log to the slave
  *   return: int
@@ -9343,7 +9457,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  /* we should fetch final log page from disk not cache buffer */
 	  la_decache_page_buffers (la_Info.final_lsa.pageid, LOGPAGEID_MAX);
 
-	  error = la_fetch_log_hdr (&la_Info.act_log);
+	  error = check_reinit_copylog ();
 	  if (error != NO_ERROR)
 	    {
 	      la_applier_need_shutdown = true;
@@ -9806,6 +9920,26 @@ la_apply_log_file (const char *database_name, const char *log_path,
 				 * && la_applier_need_shutdown == false)   */
     }
   while (la_applier_need_shutdown == false);
+
+  if (la_Info.reinit_copylog == true)
+    {
+      char error_str[LINE_MAX];
+
+      la_delete_ha_apply_info ();
+      (void) la_update_last_deleted_arv_num (la_Info.log_path_lockf_vdes, -1);
+
+      la_Info.reinit_copylog = false;
+
+      sprintf (error_str,
+	       "Replication logs and catalog have been reinitialized "
+	       "due to rebuilt database on the peer node");
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      error_str);
+      error = ER_HA_GENERIC_ERROR;
+
+      LA_SLEEP (10, 0);
+    }
 
   la_shutdown ();
 

@@ -1245,6 +1245,10 @@ struct log_header
   MVCCID last_block_newest_mvccid;	/* Used to find the newest MVCCID in a
 					 * block of log data.
 					 */
+
+  INT64 ha_promotion_time;
+  INT64 db_restore_time;
+  bool mark_will_del;
 };
 
 #define LOG_HEADER_INITIALIZER                   \
@@ -1297,7 +1301,13 @@ struct log_header
      /* last_block_oldest_mvccid */		 \
      MVCCID_NULL,				 \
      /* last_block_newest_mvccid */		 \
-     MVCCID_NULL				 \
+     MVCCID_NULL,				 \
+     /* ha_promotion_time */ 			 \
+     0, 					 \
+     /* db_restore_time */			 \
+     0,						 \
+     /* mark_will_del */			 \
+     false					 \
   }
 
 #define LOGWR_HEADER_INITIALIZER                 \
@@ -1350,7 +1360,13 @@ struct log_header
      /* last_block_oldest_mvccid */		 \
      MVCCID_NULL,				 \
      /* last_block_newest_mvccid */		 \
-     MVCCID_NULL				 \
+     MVCCID_NULL,				 \
+     /* ha_promotion_time */ 			 \
+     0, 					 \
+     /* db_restore_time */			 \
+     0,						 \
+     /* mark_will_del */			 \
+     false					 \
   }
 
 struct log_arv_header
@@ -2691,4 +2707,10 @@ extern char *log_rv_pack_redo_record_changes (char *ptr,
 					      int new_data_size,
 					      char *new_data);
 extern void logtb_reset_bit_area_start_mvccid (void);
+
+extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p,
+				       INT64 ha_promotion_time);
+extern void log_set_db_restore_time (THREAD_ENTRY * thread_p,
+				     INT64 db_restore_time);
+
 #endif /* _LOG_IMPL_H_ */

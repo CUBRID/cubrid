@@ -4050,6 +4050,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #endif /* !NDEBUG */
     }
 
+  if (from_backup == true)
+    {
+      log_set_ha_promotion_time (thread_p, 0);
+      log_set_db_restore_time (thread_p, (INT64) (time (0)));
+    }
+
   /* server status could be changed by css_change_ha_server_state */
   if (boot_Server_status == BOOT_SERVER_DOWN)
     {

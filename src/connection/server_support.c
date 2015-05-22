@@ -2979,6 +2979,12 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 	  ha_Server_state = new_state;
 	  /* sync up the current HA state with the system parameter */
 	  prm_set_integer_value (PRM_ID_HA_SERVER_STATE, ha_Server_state);
+
+	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
+	    {
+	      log_set_ha_promotion_time (thread_p, ((INT64) time (0)));
+	    }
+
 	  break;
 	}
     }
@@ -3170,6 +3176,11 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 		      ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		      css_ha_server_state_string (ha_Server_state),
 		      css_ha_server_state_string (state));
+	    }
+
+	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
+	    {
+	      log_set_ha_promotion_time (thread_p, ((INT64) time (0)));
 	    }
 	}
     }
