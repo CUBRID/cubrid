@@ -13340,6 +13340,13 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
       return log_Gl.hdr.nxarv_pageid;
     }
 
+  /* before opening a new archive log, close the archive log opened earlier */
+  if (log_Gl.archive.vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, log_Gl.archive.vdes);
+      log_Gl.archive.vdes = NULL_VOLDES;
+    }
+
   aligned_arv_hdr_pgbuf = PTR_ALIGN (arv_hdr_pgbuf, MAX_ALIGNMENT);
   arv_hdr_pgptr = (LOG_PAGE *) aligned_arv_hdr_pgbuf;
 
