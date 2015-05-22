@@ -1116,7 +1116,6 @@ void pop_msg (void);
 
 char *g_query_string;
 int g_query_string_len;
-PT_NODE *g_last_stmt;
 int g_original_buffer_len;
 
 
@@ -1161,7 +1160,7 @@ int g_original_buffer_len;
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 598 "../../src/parser/csql_grammar.y"
+#line 597 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1173,7 +1172,7 @@ typedef union YYSTYPE
   container_10 c10;
 }
 /* Line 2616 of glr.c.  */
-#line 1177 "../../src/parser/csql_grammar.h"
+#line 1176 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

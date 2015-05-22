@@ -545,7 +545,6 @@ void pop_msg (void);
 
 char *g_query_string;
 int g_query_string_len;
-PT_NODE *g_last_stmt;
 int g_original_buffer_len;
 
 
@@ -1688,15 +1687,6 @@ stmt
 
 			    g_query_string = this_parser->original_buffer + pos;
 			
-			    /* set query length of previous statement */
-			    if (g_last_stmt)
-			      {
-				/* remove ';' character in user sql text */
-				int len = g_query_string - g_last_stmt->sql_user_text - 1; 
-				g_last_stmt->sql_user_text_len = len;
-				g_query_string_len = len;
-			      }
-			    
 			    while (char_isspace (*g_query_string))
 			      {
 			        g_query_string++;
@@ -1778,8 +1768,6 @@ stmt
 				node->sql_user_text_len = len;
 				g_query_string_len = len;
 			      }
-
-			    g_last_stmt = node;
 			  }
 
 		DBG_PRINT}}
@@ -23650,7 +23638,6 @@ parser_main (PARSER_CONTEXT * parser)
 
   g_query_string = NULL;
   g_query_string_len = 0;
-  g_last_stmt = NULL;
   g_original_buffer_len = 0;
 
   rv = yyparse ();
@@ -23744,7 +23731,6 @@ parse_one_statement (int state)
 
   g_query_string = NULL;
   g_query_string_len = 0;
-  g_last_stmt = NULL;
   g_original_buffer_len = 0;
 
 
