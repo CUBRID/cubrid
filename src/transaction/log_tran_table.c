@@ -1629,6 +1629,9 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 	      else
 		{
 		  logtb_free_tran_index (thread_p, tran_index);
+		  logtb_set_client_ids_all (&tdes->client,
+					    BOOT_CLIENT_UNKNOWN, NULL, NULL,
+					    NULL, NULL, NULL, -1);
 		}
 	    }
 	}
@@ -7175,4 +7178,37 @@ logtb_reset_bit_area_start_mvccid (void)
   trans_status = log_Gl.mvcc_table.trans_status_history + history_position;
   assert (trans_status->bit_area_length == 0);
   trans_status->bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+}
+
+/*
+ * logtb_does_active_user_exist - check whether the specified user is active user
+ * 			or not. active user means it is in trantable now.
+ *
+ * return: true for existed
+ *    thread_p(in):
+ *    user_name(in): the specified user name
+ *
+ */
+bool
+xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
+{
+  int i;
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  bool existed = false;
+  int tran_index;
+
+  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+
+  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+    {
+      tdes = log_Gl.trantable.all_tdes[i];
+      if (tdes != NULL && strcmp (tdes->client.db_user, user_name) == 0)
+	{
+	  existed = true;
+	  break;
+	}
+    }
+  TR_TABLE_CS_EXIT (thread_p);
+
+  return existed;
 }

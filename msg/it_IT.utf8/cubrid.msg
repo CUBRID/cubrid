@@ -1254,7 +1254,8 @@ $ LOADDB
 1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
 1186 checksumdb: %1$s (error code: %2$d).
 1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Ultimo errore
+1188 Dropping an active user '%1$s' is not allowed.
+1189 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

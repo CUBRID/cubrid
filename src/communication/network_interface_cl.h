@@ -615,4 +615,6 @@ extern int log_invalidate_mvcc_snapshot (void);
 extern int tran_lock_rep_read (LOCK lock_rr_tran);
 
 extern int chksum_insert_repl_log_and_unlock_all (REPL_INFO * repl_info);
+
+extern int log_does_active_user_exist (const char *user_name, bool * existed);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

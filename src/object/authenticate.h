@@ -181,6 +181,7 @@ extern int au_set_user (MOP newuser);
 
 /* user/group hierarchy maintenance */
 extern MOP au_find_user (const char *user_name);
+extern int au_find_user_to_drop (const char *user_name, MOP * user);
 extern MOP au_add_user (const char *name, int *exists);
 extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);

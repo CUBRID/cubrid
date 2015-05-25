@@ -1296,6 +1296,94 @@ exit:
 }
 
 /*
+ * au_find_user_to_drop - Find a user object by name for dropping. 
+ *
+ *   return: error code
+ *   user_name(in): name
+ *   user(out): user object
+ *
+ * Note:  X_Lock will be added on this user_object
+          We also need check whether ths user is an active user.
+ */
+int
+au_find_user_to_drop (const char *user_name, MOP * user)
+{
+  int error = NO_ERROR;
+  bool existed;
+  MOP user_class;
+  char *upper_case_name = NULL;
+  size_t upper_case_name_size;
+  DB_VALUE user_name_string;
+
+  *user = NULL;
+
+  /* check current user is DBA group */
+  if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "drop_user");
+      goto exit;
+    }
+
+  upper_case_name_size = intl_identifier_upper_string_size (user_name);
+  upper_case_name = (char *) malloc (upper_case_name_size + 1);
+  if (upper_case_name == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      upper_case_name_size);
+      goto exit;
+    }
+  intl_identifier_upper (user_name, upper_case_name);
+
+  /* find the user object */
+  user_class = db_find_class (AU_USER_CLASS_NAME);
+  if (user_class == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      goto exit;
+    }
+
+  db_make_string (&user_name_string, upper_case_name);
+  *user = obj_find_unique (user_class, "name", &user_name_string,
+			   AU_FETCH_WRITE);
+  if ((*user) == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  error = ER_AU_INVALID_USER;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
+	}
+      goto exit;
+    }
+
+  /*check whether this user is an active user */
+  error = log_does_active_user_exist (upper_case_name, &existed);
+  if (error == NO_ERROR && existed)
+    {
+      error = ER_AU_NOT_ALLOW_TO_DROP_ACTIVE_USER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
+    }
+
+exit:
+
+  if (upper_case_name)
+    {
+      free_and_init (upper_case_name);
+    }
+
+  if (error != NO_ERROR)
+    {
+      *user = NULL;
+    }
+
+  return error;
+}
+
+/*
  * au_find_user_method - Method interface to au_find_user.
  *   return: none
  *   class(in):
@@ -3501,7 +3589,7 @@ void
 au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name)
 {
   int error;
-  MOP user;
+  DB_OBJECT *user = NULL;
 
   db_make_null (returnval);
 
@@ -3516,14 +3604,16 @@ au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name)
       user = NULL;
       if (name != NULL && IS_STRING (name) && db_get_string (name) != NULL)
 	{
-	  user = au_find_user (db_get_string (name));
-	  if (user != NULL)
+	  error = au_find_user_to_drop (db_get_string (name), &user);
+	  if (error == NO_ERROR)
 	    {
+	      assert (user != NULL);
 	      error = au_drop_user (user);
-	      if (error != NO_ERROR)
-		{
-		  db_make_error (returnval, error);
-		}
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      db_make_error (returnval, error);
 	    }
 	}
       else

@@ -2219,7 +2219,7 @@ int
 do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
-  DB_OBJECT *user;
+  DB_OBJECT *user = NULL;
   PT_NODE *node;
   const char *user_name;
 
@@ -2242,15 +2242,10 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
   else
     {
-      user = db_find_user (user_name);
-
-      if (user == NULL)
+      error = db_find_user_to_drop (user_name, &user);
+      if (error == NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-      else
-	{
+	  assert (user != NULL);
 	  error = db_drop_user (user);
 	}
     }

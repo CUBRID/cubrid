@@ -11754,3 +11754,67 @@ chksum_insert_repl_log_and_unlock_all (REPL_INFO * repl_info)
   return r;
 #endif /* !CS_MODE */
 }
+
+/*
+ * log_does_active_user_exist () - Cbeck the specified user is an
+ * 			active user or not
+ *   return: error code
+ *   user_name(in) :
+ *   existed (out) : true mean user is an active user
+ */
+int
+log_does_active_user_exist (const char *user_name, bool * existed)
+{
+#if defined(CS_MODE)
+  int error;
+  int xexisted;
+  int req_error, request_size, strlen;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  *existed = false;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (user_name, &strlen);
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      (void) pack_const_string_with_length (request, user_name, strlen);
+      req_error = net_client_request (NET_SERVER_AU_DOES_ACTIVE_USER_EXIST,
+				      request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  or_unpack_int (reply, &xexisted);
+	  if ((bool) xexisted)
+	    {
+	      *existed = true;
+	    }
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) request_size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return error;
+#else /* CS_MODE */
+
+  /* in SA_MODE, no other active user */
+  *existed = false;
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}

@@ -11263,3 +11263,31 @@ schksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
+
+/*
+ * slogtb_does_active_user_exist -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slogtb_does_active_user_exist (THREAD_ENTRY * thread_p,
+			       unsigned int rid, char *request, int reqlen)
+{
+  char *user_name;
+  bool existed;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_string_nocopy (request, &user_name);
+  existed = xlogtb_does_active_user_exist (thread_p, user_name);
+
+  (void) or_pack_int (reply, (int) existed);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}

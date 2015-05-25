@@ -1667,6 +1667,25 @@ db_find_user (const char *name)
 }
 
 /*
+ * db_find_user_to_drop() - find the object by name user for dropping.
+ *
+ * return  : error code
+ * name(in): user name
+ * user(out): user object
+ *
+ */
+int
+db_find_user_to_drop (const char *name, DB_OBJECT ** user)
+{
+  DB_OBJECT *retval;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (name);
+
+  return au_find_user_to_drop (name, user);
+}
+
+/*
  * db_add_user() - This will add a new user to the database.  Only the DBA can
  *       add users. If the user already exists, its object pointer will be
  *       returned and the exists flag will be set to non-zero. The exists

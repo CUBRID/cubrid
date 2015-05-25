@@ -373,7 +373,7 @@ cm_ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error)
     {
       return ERR_WITH_MSG;
     }
-  if ((dbuser = db_find_user (newdbusername)) == NULL)
+  if (db_find_user_to_drop (newdbusername, &dbuser) != NO_ERROR)
     {
       goto error_return;
     }

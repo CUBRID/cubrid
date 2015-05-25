@@ -1524,7 +1524,9 @@
 
 #define ER_PB_ORDERED_NO_HEAP         		    -1187
 
-#define ER_LAST_ERROR                               -1188
+#define ER_AU_NOT_ALLOW_TO_DROP_ACTIVE_USER	    -1188
+
+#define ER_LAST_ERROR                               -1189
 
 /*
  * CAUTION!

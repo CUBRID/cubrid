@@ -1527,7 +1527,9 @@
 
 #define ER_PB_ORDERED_NO_HEAP         		    -1187
 
-#define ER_LAST_ERROR                               -1188
+#define ER_AU_NOT_ALLOW_TO_DROP_ACTIVE_USER 	    -1188
+
+#define ER_LAST_ERROR                               -1189
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -3519,6 +3521,7 @@ extern DB_OBJECT *db_get_owner (DB_OBJECT * classobj);
 extern char *db_get_user_name (void);
 extern char *db_get_user_and_host_name (void);
 extern DB_OBJECT *db_find_user (const char *name);
+extern int db_find_user_to_drop (const char *name, DB_OBJECT ** user);
 extern DB_OBJECT *db_add_user (const char *name, int *exists);
 extern int db_drop_user (DB_OBJECT * user);
 extern int db_add_member (DB_OBJECT * user, DB_OBJECT * member);
