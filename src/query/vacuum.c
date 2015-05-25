@@ -1602,6 +1602,11 @@ retry_prepare:
 				 helper->home_vpid.pageid);
 		  return error_code;
 		}
+	      /* While home has been unfixed, it is possible that current
+	       * record was changed. It could be vacuumed.
+	       * Repeat getting record.
+	       */
+	      goto retry_prepare;
 	    }
 	}
       assert (!VFID_ISNULL (&helper->overflow_vfid));
