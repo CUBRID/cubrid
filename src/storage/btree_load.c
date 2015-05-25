@@ -3399,6 +3399,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   int *prefix_lengthp;
   int result;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+  MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  bool snapshot_dirty_satisfied;
 
   DB_MAKE_NULL (&dbvalue);
 
@@ -3415,6 +3417,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
     {
       oid_size = OR_OID_SIZE;
     }
+
+  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
 
   do
     {				/* Infinite loop */
@@ -3557,6 +3561,10 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
 	}
 
+      snapshot_dirty_satisfied =
+	(mvcc_snapshot_dirty).snapshot_fnc (thread_p, &mvcc_header,
+					    &mvcc_snapshot_dirty);
+
       if (sort_args->filter)
 	{
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid,
@@ -3623,20 +3631,23 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->fk_refcls_oid && !OID_ISNULL (sort_args->fk_refcls_oid))
 	{
-	  if (btree_check_foreign_key (thread_p,
-				       &sort_args->class_ids[cur_class],
-				       &sort_args->hfids[cur_class],
-				       &sort_args->cur_oid, dbvalue_ptr,
-				       sort_args->n_attrs,
-				       sort_args->fk_refcls_oid,
-				       sort_args->fk_refcls_pk_btid,
-				       sort_args->fk_name) != NO_ERROR)
+	  if (snapshot_dirty_satisfied)
 	    {
-	      if (dbvalue_ptr == &dbvalue)
+	      if (btree_check_foreign_key (thread_p,
+					   &sort_args->class_ids[cur_class],
+					   &sort_args->hfids[cur_class],
+					   &sort_args->cur_oid, dbvalue_ptr,
+					   sort_args->n_attrs,
+					   sort_args->fk_refcls_oid,
+					   sort_args->fk_refcls_pk_btid,
+					   sort_args->fk_name) != NO_ERROR)
 		{
-		  pr_clear_value (&dbvalue);
+		  if (dbvalue_ptr == &dbvalue)
+		    {
+		      pr_clear_value (&dbvalue);
+		    }
+		  return SORT_ERROR_OCCURRED;
 		}
-	      return SORT_ERROR_OCCURRED;
 	    }
 	}
 
@@ -3662,7 +3673,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       if (DB_IS_NULL (dbvalue_ptr)
 	  || btree_multicol_key_is_null (dbvalue_ptr))
 	{
-	  if (!MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
+	  if (snapshot_dirty_satisfied)
 	    {
 	      /* All objects that were not candidates for vacuum are loaded,
 	       * but statistics should only care for objects that have not
@@ -3824,7 +3835,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	    }
 	}
 
-      if (!MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
+      if (snapshot_dirty_satisfied)
 	{
 	  /* All objects that were not candidates for vacuum are loaded,
 	   * but statistics should only care for objects that have not
