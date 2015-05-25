@@ -140,6 +140,7 @@ EXPORTS
     db_find_all_triggers
     db_find_class
     db_find_user
+    db_find_user_to_drop
     db_get
     db_get_all_classes
     db_get_all_objects
