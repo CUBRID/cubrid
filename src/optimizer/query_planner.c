@@ -2185,11 +2185,17 @@ qo_iscan_cost (QO_PLAN * planp)
    * it does to fetch the next value for the following BTRangeScan */
   if (qo_is_index_iss_scan (planp))
     {
-      /* The btree is scanned an additional K times */
-      index_IO += cum_statsp->pkeys[0] * ((ni_entryp)->n * height);
+      if (pkeys_num > 0)
+	{
+	  assert (cum_statsp->pkeys != NULL);
+	  assert (cum_statsp->pkeys_size != 0);
 
-      /* K leaves are additionally read */
-      index_IO += cum_statsp->pkeys[0];
+	  /* The btree is scanned an additional K times */
+	  index_IO += cum_statsp->pkeys[0] * ((ni_entryp)->n * height);
+
+	  /* K leaves are additionally read */
+	  index_IO += cum_statsp->pkeys[0];
+	}
     }
 
   /* IO cost to fetch objects */
