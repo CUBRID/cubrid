@@ -10551,52 +10551,93 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATE:
       {
-	DB_VALUE *dt_p;
+	DB_VALUE *dt_tz_p;
 	DB_VALUE dt;
 	TP_DOMAIN *tp_datetime;
+	TP_DOMAIN *tp_datetimetz;
 	DB_DATETIME datetime;
 	DB_TIMESTAMP timestamp;
 	DB_DATE date;
 
-	dt_p = &dt;
+	dt_tz_p = &dt;
 	if (type != DB_TYPE_DATETIME && type != DB_TYPE_DATE)
 	  {
-	    tp_datetime = db_type_to_db_domain (DB_TYPE_DATETIME);
+	    tp_datetimetz = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
 
-	    if (tp_value_cast (src_date, dt_p, tp_datetime, false)
-		!= DOMAIN_COMPATIBLE)
+	    if (tp_value_cast (src_date, dt_tz_p, tp_datetimetz, false)
+		== DOMAIN_COMPATIBLE)
 	      {
-		error_status = ER_OBJ_INVALID_ARGUMENTS;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		DB_MAKE_NULL (result_timestamp);
-		return ER_FAILED;
+		type = DB_TYPE_DATETIMETZ;
 	      }
-	    type = DB_TYPE_DATETIME;
+	    else
+	      {
+		tp_datetime = db_type_to_db_domain (DB_TYPE_DATETIME);
+
+		if (tp_value_cast (src_date, dt_tz_p, tp_datetime, false)
+		    == DOMAIN_COMPATIBLE)
+		  {
+		    type = DB_TYPE_DATETIME;
+		  }
+		else
+		  {
+		    error_status = ER_OBJ_INVALID_ARGUMENTS;
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status,
+			    0);
+		    DB_MAKE_NULL (result_timestamp);
+		    return ER_FAILED;
+		  }
+	      }
+
+	    assert (DB_VALUE_TYPE (dt_tz_p) == type);
 	  }
 	else
 	  {
-	    dt_p = (DB_VALUE *) src_date;
+	    dt_tz_p = (DB_VALUE *) src_date;
 	  }
 
 	/* The supported datetime range is '1970-01-01 00:00:01'
 	 * UTC to '2038-01-19 03:14:07' UTC */
 
-	if (type == DB_TYPE_DATETIME)
+	if (type == DB_TYPE_DATETIMETZ)
 	  {
-	    datetime = *DB_GET_DATETIME (dt_p);
+	    DB_DATETIMETZ *datetimetz;
+
+	    datetimetz = DB_GET_DATETIMETZ (dt_tz_p);
+	    datetime = datetimetz->datetime;
+	    datetime.time /= 1000;
+	  }
+	else if (type == DB_TYPE_DATETIME)
+	  {
+	    datetime = *DB_GET_DATETIME (dt_tz_p);
 	    datetime.time /= 1000;
 	  }
 	else
 	  {
-	    date = *DB_GET_DATE (dt_p);
+	    assert (type == DB_TYPE_DATE);
+	    date = *DB_GET_DATE (dt_tz_p);
 	    datetime.date = date;
 	    datetime.time = 0;
 	  }
-	error_status = db_timestamp_encode (&timestamp, &datetime.date,
-					    &datetime.time);
-	if (error_status != NO_ERROR)
+
+	if (type == DB_TYPE_DATE || type == DB_TYPE_DATETIME)
 	  {
-	    return error_status;
+	    error_status = db_timestamp_encode (&timestamp, &datetime.date,
+						&datetime.time);
+	    if (error_status != NO_ERROR)
+	      {
+		return error_status;
+	      }
+	  }
+	else
+	  {
+	    assert (type == DB_TYPE_DATETIMETZ);
+	    error_status = db_timestamp_encode_utc (&datetime.date,
+						    &datetime.time,
+						    &timestamp);
+	    if (error_status != NO_ERROR)
+	      {
+		return error_status;
+	      }
 	  }
 
 	DB_MAKE_INT (result_timestamp, timestamp);
@@ -10661,7 +10702,6 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
   DB_MAKE_NULL (result_timestamp);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
   return ER_FAILED;
-
 }
 
 /*
