@@ -17973,29 +17973,13 @@ date_to_char (const DB_VALUE * src_value,
 	      break;
 
 	    case DT_TZM:
-	      if (!has_tzh)
+	      if (tzm < 0)
 		{
-		  if (tzm >= 0)
-		    {
-		      sprintf (&result_buf[i], "%c%02d\n", '+', tzm);
-		    }
-		  else
-		    {
-		      tzm = -tzm;
-		      sprintf (&result_buf[i], "%c%02d\n", '-', tzm);
-		    }
-		  i += 3;
+		  tzm = -tzm;
 		}
-	      else
-		{
-		  if (tzm < 0)
-		    {
-		      tzm = -tzm;
-		    }
-		  sprintf (&result_buf[i], "%02d\n", tzm);
-		  result_size--;
-		  i += 2;
-		}
+	      sprintf (&result_buf[i], "%02d\n", tzm);
+	      result_size--;
+	      i += 2;
 	      break;
 
 	    default:
@@ -23265,25 +23249,11 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
 		case 'M':
 		  if (tzm >= 0)
 		    {
-		      if (!has_tzh)
-			{
-			  sprintf (hours_or_minutes, "%c%02d", '+', tzm);
-			}
-		      else
-			{
-			  sprintf (hours_or_minutes, "%02d", tzm);
-			}
+		      sprintf (hours_or_minutes, "%02d", tzm);
 		    }
 		  else
 		    {
-		      if (!has_tzh)
-			{
-			  sprintf (hours_or_minutes, "%c%02d", '-', -tzm);
-			}
-		      else
-			{
-			  sprintf (hours_or_minutes, "%02d", -tzm);
-			}
+		      sprintf (hours_or_minutes, "%02d", -tzm);
 		    }
 		  strcat (res, hours_or_minutes);
 		  break;
