@@ -1162,7 +1162,7 @@ usage: %1$s restoreslave [OPTION] database-name\n\
 valid options:\n\
   -s, --source-state=STATE          state of backup source node; mandatory\n\
                                     STATE may be 'master', 'slave', or 'replica'\n\
-  -h, --source-host-name=NAME       host name of backup source node; mandatory\n\
+  -m, --master-host-name=NAME       host name of the current master node; mandatory\n\
       --list                        display a list of backup volumes without restoring\n\
   -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\

@@ -1509,8 +1509,8 @@ typedef struct _ha_config
 /* restoreslave option list */
 #define RESTORESLAVE_SOURCE_STATE_S                  's'
 #define RESTORESLAVE_SOURCE_STATE_L                  "source-state"
-#define RESTORESLAVE_SOURCE_HOST_NAME_S              'h'
-#define RESTORESLAVE_SOURCE_HOST_NAME_L              "source-host-name"
+#define RESTORESLAVE_MASTER_HOST_NAME_S              'm'
+#define RESTORESLAVE_MASTER_HOST_NAME_L              "master-host-name"
 #define RESTORESLAVE_LIST_S                          10601
 #define RESTORESLAVE_LIST_L                          "list"
 #define RESTORESLAVE_BACKUP_FILE_PATH_S              'B'
