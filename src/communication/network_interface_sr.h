@@ -393,7 +393,8 @@ extern int xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p,
 					  LOGWR_MODE mode);
 extern int xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p,
 					     LOG_PAGEID * fpageid_ptr,
-					     LOGWR_MODE * mode_ptr);
+					     LOGWR_MODE * mode_ptr,
+					     int timeout);
 extern void shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p,
 					      unsigned int rid, char *request,
 					      int reqlen);
@@ -410,8 +411,8 @@ extern void sprm_server_obtain_parameters (THREAD_ENTRY * thread_p,
 					   unsigned int rid, char *request,
 					   int reqlen);
 extern void sprm_server_get_force_parameters (THREAD_ENTRY * thread_p,
-					      unsigned int rid,
-					      char *request, int reqlen);
+					      unsigned int rid, char *request,
+					      int reqlen);
 extern void sprm_server_dump_parameters (THREAD_ENTRY * thread_p,
 					 unsigned int rid, char *request,
 					 int reqlen);

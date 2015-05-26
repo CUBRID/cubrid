@@ -8536,7 +8536,7 @@ xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p,
 int
 xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p,
 				  LOG_PAGEID * fpageid_ptr,
-				  LOGWR_MODE * mode_ptr)
+				  LOGWR_MODE * mode_ptr, int timeout)
 {
   char *reply = NULL;
   int reply_size;
@@ -8550,8 +8550,7 @@ xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p,
      server. */
   error =
     xs_receive_data_from_client_with_timeout (thread_p, &reply, &reply_size,
-					      prm_get_integer_value
-					      (PRM_ID_HA_COPY_LOG_TIMEOUT));
+					      timeout);
   if (error != NO_ERROR)
     {
       if (reply)

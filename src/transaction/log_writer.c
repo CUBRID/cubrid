@@ -2549,8 +2549,20 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	}
 
       /* Get the next request from the client and reset the arguments */
-      error_code = xlog_get_page_request_with_reply (thread_p, &next_fpageid,
-						     &next_mode);
+      if (need_cs_exit_after_send == true)
+	{
+	  error_code =
+	    xlog_get_page_request_with_reply (thread_p, &next_fpageid,
+					      &next_mode,
+					      prm_get_integer_value
+					      (PRM_ID_HA_COPY_LOG_TIMEOUT));
+	}
+      else
+	{
+	  error_code =
+	    xlog_get_page_request_with_reply (thread_p, &next_fpageid,
+					      &next_mode, -1);
+	}
       if (error_code != NO_ERROR)
 	{
 	  status = LOGWR_STATUS_ERROR;
