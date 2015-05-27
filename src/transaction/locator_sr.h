@@ -87,7 +87,8 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p,
 					 PRUNING_CONTEXT * pcontext,
 					 FUNC_PRED_UNPACK_INFO * func_preds,
 					 MVCC_REEV_DATA * mvcc_reev_data,
-					 bool force_update_inplace);
+					 bool force_update_inplace,
+					 RECDES * rec_descriptor);
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY *
 							     thread_p,
 							     HEAP_CACHE_ATTRINFO
@@ -110,8 +111,8 @@ extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
 					REPR_ID * new_reprid);
 extern DISK_ISVALID locator_check_class (THREAD_ENTRY * thtread_p,
 					 OID * class_oid, RECDES * peek,
-					 HFID * class_hfid,
-					 BTID * index_btid, bool repair);
+					 HFID * class_hfid, BTID * index_btid,
+					 bool repair);
 extern DISK_ISVALID locator_check_by_class_oid (THREAD_ENTRY * thread_p,
 						OID * cls_oid, HFID * hfid,
 						BTID * index_btid,

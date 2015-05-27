@@ -5106,7 +5106,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 						      REPL_INFO_TYPE_RBR_NORMAL,
 						      DB_NOT_PARTITIONED_CLASS,
 						      NULL, NULL, NULL,
-						      false);
+						      false, &recdes);
 		      if (error_code != NO_ERROR)
 			{
 			  if (error_code ==
@@ -5468,7 +5468,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 							     REPL_INFO_TYPE_RBR_NORMAL,
 							     DB_NOT_PARTITIONED_CLASS,
 							     NULL, NULL,
-							     NULL, false);
+							     NULL, false,
+							     &recdes);
 		  if (error_code != NO_ERROR)
 		    {
 		      if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -8421,7 +8422,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 			      int pruning_type, PRUNING_CONTEXT * pcontext,
 			      FUNC_PRED_UNPACK_INFO * func_preds,
 			      MVCC_REEV_DATA * mvcc_reev_data,
-			      bool force_update_inplace)
+			      bool force_update_inplace,
+			      RECDES * rec_descriptor)
 {
   LC_COPYAREA *copyarea = NULL;
   RECDES new_recdes;
@@ -8463,74 +8465,83 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
        * transaction updates same OID many times during command execution
        */
 
-      if (scan_cache && scan_cache->mvcc_snapshot != NULL)
+      if (rec_descriptor != NULL)
 	{
-	  /* Why is snapshot set to NULL? */
-	  saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
-	  scan_cache->mvcc_snapshot = NULL;
-	}
-
-      scan =
-	heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes,
-				  scan_cache, COPY, NULL_CHN, NULL,
-				  &updated_oid);
-      if (scan == S_SUCCESS && !OID_ISNULL (&updated_oid))
-	{
-	  COPY_OID (oid, &updated_oid);
-	}
-
-      if (saved_mvcc_snapshot != NULL)
-	{
-	  scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
-	}
-
-      if (scan == S_SUCCESS)
-	{
-	  old_recdes = &copy_recdes;
-	}
-      else if (scan == S_ERROR || scan == S_DOESNT_FIT)
-	{
-	  /* Whenever an error including an interrupt was broken out,
-	   * quit the update.
-	   */
-	  return ER_FAILED;
-	}
-      else if (scan == S_DOESNT_EXIST)
-	{
-	  int err_id;
-
-	  assert (er_errid () != NO_ERROR);
-	  err_id = er_errid ();
-	  if (err_id == ER_HEAP_NODATA_NEWADDRESS)
-	    {
-	      /* it is an immature record. go ahead to update */
-	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
-	    }
-	  else if (err_id == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      /* This means that the object we're looking for does not exist.
-	       * This information is useful for the caller of this function
-	       * so return this error code instead of ER_FAILD.
-	       * An example for which we need to know this error code is when
-	       * we're updating partitioned tables and previous iterations
-	       * removed this record and placed it in another partition.
-	       */
-	      return err_id;
-	    }
-	  else
-	    {
-	      return ((err_id == NO_ERROR) ? ER_FAILED : err_id);
-	    }
-	}
-      else if (scan == S_SNAPSHOT_NOT_SATISFIED)
-	{
-	  return ER_FAILED;
+	  copy_recdes = *rec_descriptor;
 	}
       else
 	{
-	  assert (false);
-	  return ER_FAILED;
+	  if (scan_cache && scan_cache->mvcc_snapshot != NULL)
+	    {
+	      /* Why is snapshot set to NULL? */
+	      saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
+	      scan_cache->mvcc_snapshot = NULL;
+	    }
+
+	  scan =
+	    heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes,
+				      scan_cache, COPY, NULL_CHN, NULL,
+				      &updated_oid);
+	  if (scan == S_SUCCESS && !OID_ISNULL (&updated_oid))
+	    {
+	      COPY_OID (oid, &updated_oid);
+	    }
+
+	  if (saved_mvcc_snapshot != NULL)
+	    {
+	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
+	    }
+
+	  if (scan == S_SUCCESS)
+	    {
+	      /* do nothing for the moment */
+	    }
+	  else if (scan == S_ERROR || scan == S_DOESNT_FIT)
+	    {
+	      /* Whenever an error including an interrupt was broken out,
+	       * quit the update.
+	       */
+	      return ER_FAILED;
+	    }
+	  else if (scan == S_DOESNT_EXIST)
+	    {
+	      int err_id;
+
+	      assert (er_errid () != NO_ERROR);
+	      err_id = er_errid ();
+	      if (err_id == ER_HEAP_NODATA_NEWADDRESS)
+		{
+		  /* it is an immature record. go ahead to update */
+		  er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
+		}
+	      else if (err_id == ER_HEAP_UNKNOWN_OBJECT)
+		{
+		  /* This means that the object we're looking for does not exist.
+		   * This information is useful for the caller of this function
+		   * so return this error code instead of ER_FAILD.
+		   * An example for which we need to know this error code is when
+		   * we're updating partitioned tables and previous iterations
+		   * removed this record and placed it in another partition.
+		   */
+		  return err_id;
+		}
+	      else
+		{
+		  return ((err_id == NO_ERROR) ? ER_FAILED : err_id);
+		}
+	    }
+	  else if (scan == S_SNAPSHOT_NOT_SATISFIED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      assert (false);
+	      return ER_FAILED;
+	    }
 	}
+
+      old_recdes = &copy_recdes;
 
       /* Fall through */
 

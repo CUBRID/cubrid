@@ -20943,7 +20943,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 				  &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL,
 				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				  true);
+				  true, NULL);
   if (error != NO_ERROR)
     {
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)

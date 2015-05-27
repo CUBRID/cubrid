@@ -286,7 +286,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
 				      &force_count, false,
 				      REPL_INFO_TYPE_RBR_NORMAL,
 				      DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-				      NULL, false);
+				      NULL, false, &copy_recdes);
       if (error_code != NO_ERROR)
 	{
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
