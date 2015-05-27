@@ -5429,6 +5429,7 @@ vacuum_data_get_first_log_pageid (THREAD_ENTRY * thread_p)
 {
   /* Return first pageid from first block in vacuum data table */
   VACUUM_LOG_BLOCKID blockid = VACUUM_NULL_LOG_BLOCKID;
+  bool locked_vacuum_data = false;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -5437,12 +5438,31 @@ vacuum_data_get_first_log_pageid (THREAD_ENTRY * thread_p)
 
   if (vacuum_Data->n_table_entries == 0)
     {
-      /* No entries, no log pageid */
-      return NULL_PAGEID;
+      VACUUM_LOCK_DATA ();
+      locked_vacuum_data = true;
+      vacuum_consume_buffer_log_blocks (thread_p);
     }
 
-  /* Get blockid of first entry in vacuum data table */
-  blockid = VACUUM_DATA_ENTRY_BLOCKID (vacuum_Data->vacuum_data_table);
+  if (vacuum_Data->n_table_entries == 0)
+    {
+      /* No entries, no log pageid */
+      blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
+    }
+  else
+    {
+      /* Get blockid of first entry in vacuum data table */
+      blockid = VACUUM_DATA_ENTRY_BLOCKID (vacuum_Data->vacuum_data_table);
+    }
+
+  if (locked_vacuum_data)
+    {
+      VACUUM_UNLOCK_DATA ();
+    }
+
+  if (blockid == VACUUM_NULL_LOG_BLOCKID)
+    {
+      return NULL_PAGEID;
+    }
 
   /* Return first pageid for blockid */
   return VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (blockid);

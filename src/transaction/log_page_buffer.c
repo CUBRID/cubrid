@@ -7674,6 +7674,9 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
       return deleted_count;
     }
 
+  /* Get first log pageid needed for vacuum before locking LOG_CS. */
+  vacuum_first_pageid = vacuum_data_get_first_log_pageid (thread_p);
+
   LOG_CS_ENTER (thread_p);
 
   if (!prm_get_bool_value (PRM_ID_FORCE_REMOVE_LOG_ARCHIVES))
@@ -7732,8 +7735,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 	    MIN (last_arv_num_to_delete,
 		 log_Gl.hdr.last_arv_num_for_syscrashes);
 	}
-
-      vacuum_first_pageid = vacuum_data_get_first_log_pageid (thread_p);
       vacuum_er_log (VACUUM_ER_LOG_ARCHIVES,
 		     "VACUUM: First log pageid in vacuum data is %lld",
 		     vacuum_first_pageid);
