@@ -220,6 +220,5 @@ extern int catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p,
 					      LOCK lock_mode);
 extern int catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p,
 					    CATALOG_ACCESS_INFO *
-					    catalog_access_info,
-					    bool is_error);
+					    catalog_access_info, int error);
 #endif /* _SYSTEM_CATALOG_H_ */

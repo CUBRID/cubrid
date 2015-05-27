@@ -194,7 +194,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
     }
 
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  false);
+					  NO_ERROR);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	  ER_LOG_STARTED_TO_UPDATE_STATISTICS, 4,
@@ -277,7 +277,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto error;
     }
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  false);
+					  NO_ERROR);
 
   npages = estimated_nobjs = 0;
 
@@ -359,8 +359,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 end:
 
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  (error_code != NO_ERROR)
-					  ? true : false);
+					  error_code);
 
   lock_unlock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK,
 		      false);
@@ -578,7 +577,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
     }
 
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  false);
+					  NO_ERROR);
 
   n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
 
@@ -846,7 +845,7 @@ exit_on_error:
   if (catalog_access_info.access_started)
     {
       (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					      true);
+					      ER_FAILED);
     }
 
   if (disk_repr_p)
@@ -1387,7 +1386,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
     }
 
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  false);
+					  NO_ERROR);
 
   /* partitions_count number of btree_stats we will need to use */
   n_btrees = 0;
@@ -1571,7 +1570,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
       (void) catalog_end_access_with_dir_oid (thread_p,
 					      &part_catalog_access_info,
-					      false);
+					      NO_ERROR);
 
       subcls_rep =
 	heap_classrepr_get (thread_p, &partitions[i], NULL,
@@ -1715,7 +1714,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	}
       (void) catalog_end_access_with_dir_oid (thread_p,
 					      &part_catalog_access_info,
-					      false);
+					      NO_ERROR);
 
       subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL,
 				       NULL_REPRID, &subcls_idx_cache);
@@ -1902,10 +1901,9 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
 cleanup:
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  (error != NO_ERROR) ? true : false);
+					  error);
   (void) catalog_end_access_with_dir_oid (thread_p,
-					  &part_catalog_access_info,
-					  (error != NO_ERROR) ? true : false);
+					  &part_catalog_access_info, error);
 
   if (cls_rep != NULL)
     {

@@ -3158,7 +3158,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return error_code;
     }
@@ -3174,7 +3174,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -3200,7 +3200,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return error_code;
     }
@@ -3230,7 +3230,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  if (do_end_access)
 	    {
 	      catalog_end_access_with_dir_oid (thread_p,
-					       catalog_access_info_p, true);
+					       catalog_access_info_p,
+					       ER_FAILED);
 	    }
 	  return error_code;
 	}
@@ -3246,7 +3247,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  if (do_end_access)
 	    {
 	      catalog_end_access_with_dir_oid (thread_p,
-					       catalog_access_info_p, true);
+					       catalog_access_info_p,
+					       ER_FAILED);
 	    }
 	  return error_code;
 	}
@@ -3268,7 +3270,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 		{
 		  catalog_end_access_with_dir_oid (thread_p,
 						   catalog_access_info_p,
-						   true);
+						   ER_FAILED);
 		}
 	      return error_code;
 	    }
@@ -3287,7 +3289,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return error_code;
     }
@@ -3305,7 +3307,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return error_code;
     }
@@ -3313,7 +3315,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
   if (do_end_access)
     {
       catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-				       false);
+				       NO_ERROR);
     }
 
   db_private_free_and_init (thread_p, data);
@@ -3391,7 +3393,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return error_code;
     }
@@ -3404,7 +3406,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return error_code;
     }
@@ -3426,7 +3428,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return error_code;
     }
@@ -3449,7 +3451,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return error_code;
     }
@@ -3457,7 +3459,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
   if (do_end_access)
     {
       catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-				       false);
+				       NO_ERROR);
     }
 
   recdes_free_data_area (&record);
@@ -3537,7 +3539,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -3549,7 +3551,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -3571,7 +3573,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -3594,7 +3596,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -3617,7 +3619,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
   if (do_end_access)
     {
       catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-				       false);
+				       NO_ERROR);
     }
 
   return class_info_p;
@@ -3667,7 +3669,8 @@ catalog_drop (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
       || repr_item.slot_id == NULL_SLOTID)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, true);
+      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+				       ER_FAILED);
       return error_code;
     }
 
@@ -3677,11 +3680,12 @@ catalog_drop (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
       != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, true);
+      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+				       ER_FAILED);
       return error_code;
     }
 
-  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, false);
+  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
   return NO_ERROR;
 }
@@ -3832,7 +3836,8 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p,
   if (page_p == NULL)
     {
       recdes_free_data_area (&record);
-      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, true);
+      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+				       ER_FAILED);
       return ER_FAILED;
     }
 
@@ -3859,7 +3864,7 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p,
 	    }
 	  recdes_free_data_area (&record);
 	  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					   true);
+					   ER_FAILED);
 	  return ER_FAILED;
 	}
       assert (page_p != NULL);
@@ -3870,7 +3875,8 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p,
     {
       pgbuf_unfix_and_init (thread_p, page_p);
       recdes_free_data_area (&record);
-      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, true);
+      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+				       ER_FAILED);
       return ER_FAILED;
     }
 
@@ -3880,7 +3886,7 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p,
   recdes_free_data_area (&record);
 
   catalog_delete_key (class_id_p, CATALOG_DIR_REPR_KEY);
-  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, false);
+  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
   return NO_ERROR;
 }
@@ -3953,7 +3959,8 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
   if (page_p == NULL)
     {
       recdes_free_data_area (&record);
-      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, true);
+      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+				       ER_FAILED);
       return ER_FAILED;
     }
 
@@ -3999,7 +4006,8 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
 		}
 	      recdes_free_data_area (&record);
 	      catalog_end_access_with_dir_oid (thread_p,
-					       &catalog_access_info, true);
+					       &catalog_access_info,
+					       ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  assert (page_p != NULL);
@@ -4053,7 +4061,7 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
 	  pgbuf_unfix_and_init (thread_p, page_p);
 	  recdes_free_data_area (&record);
 	  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					   true);
+					   ER_FAILED);
 	  return ER_FAILED;
 	}
 
@@ -4066,7 +4074,7 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
   catalog_update_max_space (&vpid, new_space);
 
   recdes_free_data_area (&record);
-  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, false);
+  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
   return NO_ERROR;
 }
 
@@ -4324,7 +4332,7 @@ start:
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -4341,7 +4349,7 @@ start:
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -4359,7 +4367,7 @@ start:
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -4399,7 +4407,7 @@ start:
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -4482,7 +4490,7 @@ exit_on_end:
   if (do_end_access)
     {
       catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-				       (error != NO_ERROR) ? true : false);
+				       error);
     }
 
   return disk_repr_p;
@@ -4606,7 +4614,7 @@ start:
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -4618,7 +4626,7 @@ start:
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -4666,7 +4674,7 @@ start:
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -4678,7 +4686,7 @@ start:
       if (do_end_access)
 	{
 	  catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-					   true);
+					   ER_FAILED);
 	}
       return NULL;
     }
@@ -4690,7 +4698,7 @@ start:
   if (do_end_access)
     {
       catalog_end_access_with_dir_oid (thread_p, catalog_access_info_p,
-				       false);
+				       NO_ERROR);
     }
 
   assert (!OID_ISNULL (&(class_info_p->ci_rep_dir)));
@@ -5861,7 +5869,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 	  error = ER_UNEXPECTED;
 	  goto exit;
 	}
-      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, false);
+      catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+				       NO_ERROR);
       free_disk_rep = true;
     }
 
@@ -6039,7 +6048,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 	      goto exit_cleanup;
 	    }
 	  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					   false);
+					   NO_ERROR);
 
 	  subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL,
 					   NULL_REPRID, &subcls_idx_cache);
@@ -6122,8 +6131,7 @@ exit_cleanup:
       db_private_free (thread_p, partitions);
     }
 exit:
-  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-				   (error != NO_ERROR) ? true : false);
+  catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);
   return error;
 
 }
@@ -6389,7 +6397,7 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p,
   if (catalog_access_info->access_started == true)
     {
       (void) catalog_end_access_with_dir_oid (thread_p, catalog_access_info,
-					      false);
+					      NO_ERROR);
     }
 
   if (BO_IS_SERVER_RESTARTED () == false
@@ -6465,12 +6473,12 @@ error:
  *					OID
  *   return: error code
  *   catalog_access_info(in/out): catalog access helper structure
- *   is_error(in): true if an error has occured
+ *   error(in): error code
  */
 int
 catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p,
 				 CATALOG_ACCESS_INFO * catalog_access_info,
-				 bool is_error)
+				 int error)
 {
   OID virtual_class_dir_oid;
   LOCK current_lock;
@@ -6501,7 +6509,7 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p,
 
   if (catalog_access_info->is_update == true)
     {
-      if (is_error == true)
+      if (error != NO_ERROR)
 	{
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	}
