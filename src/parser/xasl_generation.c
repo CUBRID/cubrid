@@ -19768,6 +19768,10 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 	  odku->assignments[i].regu_var =
 	    pt_to_regu_variable (parser, assignments_helper.rhs,
 				 UNBOX_AS_VALUE);
+	  if (odku->assignments[i].regu_var == NULL)
+	    {
+	      goto exit_on_error;
+	    }
 	}
 
       i++;
