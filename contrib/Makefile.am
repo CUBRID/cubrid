@@ -41,14 +41,8 @@ dist_hascripts_DATA = scripts/ha/README
 
 hafuncdir = ${hascriptsdir}/functions
 dist_hafunc_SCRIPTS = \
-	scripts/ha/functions/ha_check_copylog.sh \
 	scripts/ha/functions/ha_check_environment.sh \
-	scripts/ha/functions/ha_check_script.sh \
-	scripts/ha/functions/ha_repl_copylog.sh \
-	scripts/ha/functions/ha_repl_reset.sh \
-	scripts/ha/functions/ha_repl_resume.sh \
-	scripts/ha/functions/ha_repl_suspend.sh \
-	scripts/ha/functions/ha_set_apply_info.sh
+	scripts/ha/functions/ha_check_script.sh
 
 haexpdir = ${hascriptsdir}/expect
 dist_haexp_SCRIPTS = \
