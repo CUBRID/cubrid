@@ -17865,7 +17865,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 #endif
 
       /* retrieve the class information */
-      cls_info_p = catalog_get_class_info (thread_p, (OID *) oidp);
+      cls_info_p = catalog_get_class_info (thread_p, (OID *) oidp, NULL);
 
       if (cls_info_p && !HFID_IS_NULL (&cls_info_p->ci_hfid))
 	{
@@ -17892,7 +17892,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	      cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
 	      if (catalog_update_class_info (thread_p, (OID *) oidp,
-					     cls_info_p, true) == NULL)
+					     cls_info_p, NULL, true) == NULL)
 		{
 		  ret = ER_FAILED;
 		}
@@ -17903,7 +17903,6 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	{
 	  catalog_free_class_info (cls_info_p);
 	}
-
     }				/* for */
 
   /* delete the entry if any referenced class RT was changed */
@@ -27542,7 +27541,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  disk_repr_p = catalog_get_representation (thread_p, class_oid, rep->id);
+  disk_repr_p =
+    catalog_get_representation (thread_p, class_oid, rep->id, NULL);
   if (disk_repr_p == NULL)
     {
       GOTO_EXIT_ON_ERROR;

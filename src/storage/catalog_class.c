@@ -756,7 +756,8 @@ catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid_p)
     }
   else
     {
-      repr_p = catalog_get_representation (thread_p, index_class_p, repr_id);
+      repr_p = catalog_get_representation (thread_p, index_class_p, repr_id,
+					   NULL);
       if (repr_p == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -2973,7 +2974,8 @@ catcls_reorder_attributes_by_repr (THREAD_ENTRY * thread_p,
     }
   else
     {
-      repr_p = catalog_get_representation (thread_p, class_oid_p, repr_id);
+      repr_p = catalog_get_representation (thread_p, class_oid_p, repr_id,
+					   NULL);
       if (repr_p == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -3501,7 +3503,8 @@ catcls_put_or_value_into_record (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
     }
   else
     {
-      repr_p = catalog_get_representation (thread_p, class_oid_p, repr_id);
+      repr_p = catalog_get_representation (thread_p, class_oid_p, repr_id,
+					   NULL);
       if (repr_p == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -3584,7 +3587,7 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p,
       goto error;
     }
 
-  repr_p = catalog_get_representation (thread_p, class_oid_p, repr_id);
+  repr_p = catalog_get_representation (thread_p, class_oid_p, repr_id, NULL);
   if (repr_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3670,7 +3673,7 @@ catcls_insert_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
     }
 
   class_oid_p = &subset_p[0].id.classoid;
-  cls_info_p = catalog_get_class_info (thread_p, class_oid_p);
+  cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
   if (cls_info_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3765,7 +3768,7 @@ catcls_delete_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
   oid_set_p = DB_GET_SET (&value_p->value);
   class_oid_p = &subset_p[0].id.classoid;
 
-  cls_info_p = catalog_get_class_info (thread_p, class_oid_p);
+  cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
   if (cls_info_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3874,7 +3877,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
     }
 
   old_oid_set_p = DB_PULL_SET (&old_value_p->value);
-  cls_info_p = catalog_get_class_info (thread_p, class_oid_p);
+  cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
   if (cls_info_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -4016,7 +4019,6 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
   RECDES record;
   OR_VALUE *attrs;
   OR_VALUE *subset_p, *attr_p;
-  bool old;
   int i, j, k;
   bool is_lock_inited = false;
   int error = NO_ERROR;
@@ -4284,7 +4286,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
   OR_VALUE *subset_p, *attr_p;
   int old_chn;
   int uflag = false;
-  bool old;
   int i, j, k;
 #if defined(SERVER_MODE)
   bool is_lock_inited = false;
@@ -4468,7 +4469,7 @@ catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record_p)
     }
 
   class_oid_p = &ct_Class.cc_classoid;
-  cls_info_p = catalog_get_class_info (thread_p, class_oid_p);
+  cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
   if (cls_info_p == NULL)
     {
       goto error;
@@ -4544,7 +4545,7 @@ catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
     }
 
   ct_class_oid_p = &ct_Class.cc_classoid;
-  cls_info_p = catalog_get_class_info (thread_p, ct_class_oid_p);
+  cls_info_p = catalog_get_class_info (thread_p, ct_class_oid_p, NULL);
   if (cls_info_p == NULL)
     {
       goto error;
@@ -4757,7 +4758,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
     }
 
   catalog_class_oid_p = &ct_Class.cc_classoid;
-  cls_info_p = catalog_get_class_info (thread_p, catalog_class_oid_p);
+  cls_info_p = catalog_get_class_info (thread_p, catalog_class_oid_p, NULL);
   if (cls_info_p == NULL)
     {
       goto error;
@@ -5240,7 +5241,7 @@ catcls_mvcc_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
       old_oid_set_p = DB_PULL_SET (&old_value_p->value);
     }
 
-  cls_info_p = catalog_get_class_info (thread_p, class_oid_p);
+  cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
   if (cls_info_p == NULL)
     {
       error = er_errid ();
@@ -5387,7 +5388,6 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
   OR_VALUE *old_value_p = NULL;
   OR_VALUE *attrs, *old_attrs;
   OR_VALUE *subset_p, *attr_p;
-  bool old;
   int i, j, k;
   bool is_lock_inited = false;
   int uflag = false;

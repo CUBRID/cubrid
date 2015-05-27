@@ -609,6 +609,10 @@ static void lock_event_set_xasl_id_to_entry (int tran_index,
 					     LK_ENTRY * entry);
 static LK_RES_KEY lock_create_search_key (OID * oid, OID * class_oid,
 					  BTID * btid);
+#if defined (SERVER_MODE)
+static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p,
+					 LK_ENTRY * entry_ptr);
+#endif /* SERVER_MODE */
 
 /* object lock entry */
 static void *lock_alloc_entry (void);
@@ -2214,8 +2218,20 @@ set_error:
 	}
       else
 	{
-	  classname = heap_get_class_name (thread_p,
-					   &entry_ptr->res_head->key.oid);
+	  OID real_class_oid;
+
+	  if (entry_ptr->res_head->key.type == LOCK_RESOURCE_CLASS
+	      && OID_IS_VIRTUAL_CLASS_OF_DIR_OID
+	      (&entry_ptr->res_head->key.oid))
+	    {
+	      OID_GET_REAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.oid,
+					     &real_class_oid);
+	    }
+	  else
+	    {
+	      COPY_OID (&real_class_oid, &entry_ptr->res_head->key.oid);
+	    }
+	  classname = heap_get_class_name (thread_p, &real_class_oid);
 	  is_classname_alloced = true;
 	}
 
@@ -2252,9 +2268,18 @@ set_error:
 	}
       else
 	{
-	  classname =
-	    heap_get_class_name (thread_p,
-				 &entry_ptr->res_head->key.class_oid);
+	  OID real_class_oid;
+	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID
+	      (&entry_ptr->res_head->key.class_oid))
+	    {
+	      OID_GET_REAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.
+					     class_oid, &real_class_oid);
+	    }
+	  else
+	    {
+	      COPY_OID (&real_class_oid, &entry_ptr->res_head->key.class_oid);
+	    }
+	  classname = heap_get_class_name (thread_p, &real_class_oid);
 	}
 
       if (classname != NULL)
@@ -2363,7 +2388,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   LOG_TDES *tdes;
 
   /* The threads must not hold a page latch to be blocked on a lock request. */
-  assert (!pgbuf_has_perm_pages_fixed (thread_p));
+  assert (lock_is_safe_lock_with_page (thread_p, entry_ptr)
+	  || !pgbuf_has_perm_pages_fixed (thread_p));
 
   /* The caller is holding the thread entry mutex */
 
@@ -6249,6 +6275,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   int time_str_len;
   OID *oid_rr = NULL;
   HEAP_SCANCACHE scan_cache;
+  OID real_class_oid;
 
   memset (time_val, 0, sizeof (time_val));
 
@@ -6277,8 +6304,17 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	}
       else if (!OID_ISTEMP (&res_ptr->key.oid))
 	{
+	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&res_ptr->key.oid))
+	    {
+	      OID_GET_REAL_CLASS_OF_DIR_OID (&res_ptr->key.oid,
+					     &real_class_oid);
+	    }
+	  else
+	    {
+	      COPY_OID (&real_class_oid, &res_ptr->key.oid);
+	    }
 	  /* Don't get class names for temporary class objects. */
-	  classname = heap_get_class_name (thread_p, &res_ptr->key.oid);
+	  classname = heap_get_class_name (thread_p, &real_class_oid);
 	  if (classname == NULL)
 	    {
 	      /* We must stop processing if an interrupt occurs */
@@ -6301,7 +6337,16 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       if (!OID_ISTEMP (&res_ptr->key.class_oid))
 	{
 	  /* Don't get class names for temporary class objects. */
-	  classname = heap_get_class_name (thread_p, &res_ptr->key.class_oid);
+	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid))
+	    {
+	      OID_GET_REAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid,
+					     &real_class_oid);
+	    }
+	  else
+	    {
+	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
+	    }
+	  classname = heap_get_class_name (thread_p, &real_class_oid);
 	  if (classname == NULL)
 	    {
 	      /* We must stop processing if an interrupt occurs */
@@ -11581,7 +11626,18 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
 	}
       else if (!OID_ISTEMP (&res_ptr->key.oid))
 	{
-	  classname = heap_get_class_name (thread_p, &res_ptr->key.oid);
+	  OID real_class_oid;
+
+	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&res_ptr->key.oid))
+	    {
+	      OID_GET_REAL_CLASS_OF_DIR_OID (&res_ptr->key.oid,
+					     &real_class_oid);
+	    }
+	  else
+	    {
+	      COPY_OID (&real_class_oid, &res_ptr->key.oid);
+	    }
+	  classname = heap_get_class_name (thread_p, &real_class_oid);
 
 	  if (classname != NULL)
 	    {
@@ -11594,7 +11650,18 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
     case LOCK_RESOURCE_INSTANCE:
       if (!OID_ISTEMP (&res_ptr->key.class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, &res_ptr->key.class_oid);
+	  OID real_class_oid;
+
+	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid))
+	    {
+	      OID_GET_REAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid,
+					     &real_class_oid);
+	    }
+	  else
+	    {
+	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
+	    }
+	  classname = heap_get_class_name (thread_p, &real_class_oid);
 
 	  if (classname != NULL)
 	    {
@@ -11724,3 +11791,29 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
   return NO_ERROR;
 #endif
 }
+
+#if defined (SERVER_MODE)
+static bool
+lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
+{
+  LK_RES *lock_res;
+  bool is_safe = true;
+
+  lock_res = entry_ptr->res_head;
+  if (lock_res != NULL)
+    {
+      is_safe = false;
+      if (lock_res->key.type == LOCK_RESOURCE_INSTANCE
+	  && OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&lock_res->key.class_oid))
+	{
+	  is_safe = true;
+	}
+      else if (lock_res->key.type == LOCK_RESOURCE_CLASS
+	       && OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&lock_res->key.oid))
+	{
+	  is_safe = true;
+	}
+    }
+  return is_safe;
+}
+#endif /* SERVER_MODE */

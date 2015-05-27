@@ -32,6 +32,8 @@
 
 #define ROOTCLASS_NAME "Rootclass"	/* Name of Rootclass */
 
+#define VIRTUAL_CLASS_DIR_OID_MASK (1 << 15)
+
 #define OID_INITIALIZER \
   {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
 
@@ -130,6 +132,30 @@
    ((((unsigned int)(oidp)->pageid) >> 8) | \
     (((unsigned int)(oidp)->volid) << 24)))
 
+#define OID_IS_VIRTUAL_CLASS_OF_DIR_OID(oidp) \
+  ((((oidp)->slotid & VIRTUAL_CLASS_DIR_OID_MASK) \
+    == VIRTUAL_CLASS_DIR_OID_MASK) ? true : false)
+
+#define OID_GET_VIRTUAL_CLASS_OF_DIR_OID(class_oidp,virtual_oidp) \
+  do \
+    { \
+      (virtual_oidp)->volid = (class_oidp)->volid; \
+      (virtual_oidp)->pageid = (class_oidp)->pageid; \
+      (virtual_oidp)->slotid = ((class_oidp)->slotid) \
+			        | VIRTUAL_CLASS_DIR_OID_MASK; \
+    } \
+  while (0)
+
+#define OID_GET_REAL_CLASS_OF_DIR_OID(virtual_oidp,class_oidp) \
+  do \
+    { \
+      (class_oidp)->volid = (virtual_oidp)->volid; \
+      (class_oidp)->pageid = (virtual_oidp)->pageid; \
+      (class_oidp)->slotid = ((virtual_oidp)->slotid) \
+			     & (~VIRTUAL_CLASS_DIR_OID_MASK); \
+    } \
+  while (0)
+
 enum
 {
   OID_CACHE_ROOT_CLASS_ID = 0,
@@ -169,5 +195,4 @@ extern bool oid_check_cached_class_oid (const int cache_id, const OID * oid);
 extern void oid_set_cached_class_oid (const int cache_id, const OID * oid);
 extern const char *oid_get_cached_class_name (const int cache_id);
 extern OID *oid_get_rep_read_tran_oid (void);
-
 #endif /* _OID_H_ */

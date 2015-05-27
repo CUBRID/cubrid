@@ -123,6 +123,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   DISK_REPR *disk_repr_p = NULL;
   DISK_ATTR *disk_attr_p = NULL;
   BTREE_STATS *btree_stats_p = NULL;
+  OID dir_oid;
   int npages, estimated_nobjs;
   char *class_name = NULL;
   int i, j;
@@ -132,18 +133,26 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   int track_id;
 #endif
   int lk_grant_code = 0;
+  CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
 
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
 #endif
+
+  OID_SET_NULL (&dir_oid);
 
   class_name = heap_get_class_name (thread_p, class_id_p);
   if (class_name == NULL)
     {
       /* something wrong. give up.
        */
-      assert (false);
       assert (error_code == NO_ERROR);
+#if !defined(NDEBUG)
+      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
+#endif
 
       return error_code;
     }
@@ -160,11 +169,32 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto error;
     }
 
-  cls_info_p = catalog_get_class_info (thread_p, class_id_p);
+  if (catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid)
+      != NO_ERROR)
+    {
+      goto error;
+    }
+
+  catalog_access_info.class_oid = class_id_p;
+  catalog_access_info.dir_oid = &dir_oid;
+  catalog_access_info.class_name = class_name;
+  error_code = catalog_start_access_with_dir_oid (thread_p,
+						  &catalog_access_info,
+						  S_LOCK);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  cls_info_p = catalog_get_class_info (thread_p, class_id_p,
+				       &catalog_access_info);
   if (cls_info_p == NULL)
     {
       goto error;
     }
+
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+					  false);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	  ER_LOG_STARTED_TO_UPDATE_STATISTICS, 4,
@@ -182,7 +212,16 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       cls_info_p->ci_tot_pages = 0;
       cls_info_p->ci_tot_objects = 0;
 
-      error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
+      error_code = catalog_start_access_with_dir_oid (thread_p,
+						      &catalog_access_info,
+						      X_LOCK);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p,
+					   &catalog_access_info);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -217,17 +256,28 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto end;
     }
 
+  error_code = catalog_start_access_with_dir_oid (thread_p,
+						  &catalog_access_info,
+						  S_LOCK);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   if (catalog_get_last_representation_id (thread_p, class_id_p, &repr_id) !=
       NO_ERROR)
     {
       goto error;
     }
 
-  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id);
+  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id,
+					    &catalog_access_info);
   if (disk_repr_p == NULL)
     {
       goto error;
     }
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+					  false);
 
   npages = estimated_nobjs = 0;
 
@@ -277,12 +327,21 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 	}			/* for (j = 0; ...) */
     }				/* for (i = 0; ...) */
 
+  error_code = catalog_start_access_with_dir_oid (thread_p,
+						  &catalog_access_info,
+						  X_LOCK);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* replace the current disk representation structure/information in the
      catalog with the newly computed statistics */
   assert (!OID_ISNULL (&(cls_info_p->ci_rep_dir)));
   error_code = catalog_add_representation (thread_p, class_id_p,
 					   repr_id, disk_repr_p,
-					   &(cls_info_p->ci_rep_dir));
+					   &(cls_info_p->ci_rep_dir),
+					   &catalog_access_info);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -290,13 +349,18 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
-  error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
+  error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p,
+				       &catalog_access_info);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
 end:
+
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+					  (error_code != NO_ERROR)
+					  ? true : false);
 
   lock_unlock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK,
 		      false);
@@ -356,7 +420,7 @@ int
 xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 {
   int error = NO_ERROR;
-  RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
+  RECDES recdes = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
   HFID root_hfid;
   OID class_oid;
 #if !defined(NDEBUG)
@@ -381,7 +445,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
     }
 
   if (heap_scancache_start (thread_p, &scan_cache, &root_hfid,
-			    oid_Root_class_oid, true, false,
+			    oid_Root_class_oid, false, false,
 			    mvcc_snapshot) != NO_ERROR)
     {
       goto exit_on_error;
@@ -391,11 +455,12 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
   class_oid.pageid = NULL_PAGEID;
   class_oid.slotid = NULL_SLOTID;
 
+  recdes.data = NULL;
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid,
-		    &peek, &scan_cache, PEEK) == S_SUCCESS)
+		    &recdes, &scan_cache, COPY) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
-      classname = or_class_name (&peek);
+      classname = or_class_name (&recdes);
       assert (classname != NULL);
       assert (strlen (classname) < 255);
 #endif
@@ -412,6 +477,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 	{
 	  break;
 	}
+      recdes.data = NULL;
     }				/* while (...) */
 
   /* End the scan cursor */
@@ -451,6 +517,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   DISK_REPR *disk_repr_p;
   DISK_ATTR *disk_attr_p;
   BTREE_STATS *btree_stats_p;
+  OID dir_oid;
   int npages, estimated_nobjs, max_unique_keys;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   char *buf_p, *start_p;
@@ -458,6 +525,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 #if !defined(NDEBUG)
   int track_id;
 #endif
+  CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
 
   /* init */
   cls_info_p = NULL;
@@ -469,7 +537,22 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   *length_p = -1;
 
-  cls_info_p = catalog_get_class_info (thread_p, class_id_p);
+  if (catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid)
+      != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  catalog_access_info.class_oid = class_id_p;
+  catalog_access_info.dir_oid = &dir_oid;
+  if (catalog_start_access_with_dir_oid
+      (thread_p, &catalog_access_info, S_LOCK) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  cls_info_p = catalog_get_class_info (thread_p, class_id_p,
+				       &catalog_access_info);
   if (cls_info_p == NULL)
     {
       goto exit_on_error;
@@ -487,11 +570,15 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto exit_on_error;
     }
 
-  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id);
+  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id,
+					    &catalog_access_info);
   if (disk_repr_p == NULL)
     {
       goto exit_on_error;
     }
+
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+					  false);
 
   n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
 
@@ -755,6 +842,12 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   return start_p;
 
 exit_on_error:
+
+  if (catalog_access_info.access_started)
+    {
+      (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+					      true);
+    }
 
   if (disk_repr_p)
     {
@@ -1233,6 +1326,11 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
   OR_CLASSREP *cls_rep = NULL;
   OR_CLASSREP *subcls_rep = NULL;
   int cls_idx_cache = 0, subcls_idx_cache = 0;
+  CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
+  CATALOG_ACCESS_INFO part_catalog_access_info =
+    CATALOG_ACCESS_INFO_INITIALIZER;
+  OID dir_oid;
+  OID part_dir_oid;
 
   assert_release (class_id_p != NULL);
   assert_release (partitions != NULL);
@@ -1248,11 +1346,26 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	}
     }
 
-  cls_info_p = catalog_get_class_info (thread_p, class_id_p);
+  error = catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  catalog_access_info.class_oid = class_id_p;
+  catalog_access_info.dir_oid = &dir_oid;
+  error = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info,
+					     S_LOCK);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  cls_info_p = catalog_get_class_info (thread_p, class_id_p,
+				       &catalog_access_info);
   if (cls_info_p == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       goto cleanup;
     }
 
@@ -1265,13 +1378,16 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
   cls_info_p->ci_tot_pages = 0;
   cls_info_p->ci_tot_objects = 0;
 
-  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id);
+  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id,
+					    &catalog_access_info);
   if (disk_repr_p == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       goto cleanup;
     }
+
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+					  false);
 
   /* partitions_count number of btree_stats we will need to use */
   n_btrees = 0;
@@ -1407,12 +1523,30 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  subcls_rep = NULL;
 	}
 
-      /* load new subclass */
-      subcls_info = catalog_get_class_info (thread_p, &partitions[i]);
-      if (subcls_info == NULL)
+      if (catalog_get_dir_oid_from_cache
+	  (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
+	  goto cleanup;
+	}
+
+      part_catalog_access_info.class_oid = &partitions[i];
+      part_catalog_access_info.dir_oid = &part_dir_oid;
+      if (catalog_start_access_with_dir_oid (thread_p,
+					     &part_catalog_access_info,
+					     S_LOCK) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto cleanup;
+	}
+
+      /* load new subclass */
+      subcls_info = catalog_get_class_info (thread_p, &partitions[i],
+					    &part_catalog_access_info);
+      if (subcls_info == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
       cls_info_p->ci_tot_pages += subcls_info->ci_tot_pages;
@@ -1427,13 +1561,17 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	}
 
       subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i],
-						    subcls_repr_id);
+						    subcls_repr_id,
+						    &part_catalog_access_info);
       if (subcls_disk_rep == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
+
+      (void) catalog_end_access_with_dir_oid (thread_p,
+					      &part_catalog_access_info,
+					      false);
 
       subcls_rep =
 	heap_classrepr_get (thread_p, &partitions[i], NULL,
@@ -1527,6 +1665,9 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   for (i = 0; i < partitions_count; i++)
     {
+      OID part_dir_oid;
+      bool part_need_unlock = false;
+
       /* clean subclass loaded in previous iteration */
       if (subcls_disk_rep != NULL)
 	{
@@ -1539,6 +1680,23 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  subcls_rep = NULL;
 	}
 
+      if (catalog_get_dir_oid_from_cache
+	  (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto cleanup;
+	}
+
+      part_catalog_access_info.class_oid = &partitions[i];
+      part_catalog_access_info.dir_oid = &part_dir_oid;
+      if (catalog_start_access_with_dir_oid (thread_p,
+					     &part_catalog_access_info,
+					     S_LOCK) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto cleanup;
+	}
+
       /* get disk repr for subclass */
       error = catalog_get_last_representation_id (thread_p, &partitions[i],
 						  &subcls_repr_id);
@@ -1548,13 +1706,16 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	}
 
       subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i],
-						    subcls_repr_id);
+						    subcls_repr_id,
+						    &part_catalog_access_info);
       if (subcls_disk_rep == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
+      (void) catalog_end_access_with_dir_oid (thread_p,
+					      &part_catalog_access_info,
+					      false);
 
       subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL,
 				       NULL_REPRID, &subcls_idx_cache);
@@ -1715,12 +1876,20 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	}
     }
 
+  error = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info,
+					     X_LOCK);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
   /* replace the current disk representation structure/information in the
      catalog with the newly computed statistics */
   assert (!OID_ISNULL (&(cls_info_p->ci_rep_dir)));
   error = catalog_add_representation (thread_p, class_id_p,
 				      repr_id, disk_repr_p,
-				      &(cls_info_p->ci_rep_dir));
+				      &(cls_info_p->ci_rep_dir),
+				      &catalog_access_info);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -1728,9 +1897,16 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
-  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
+  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p,
+				  &catalog_access_info);
 
 cleanup:
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
+					  (error != NO_ERROR) ? true : false);
+  (void) catalog_end_access_with_dir_oid (thread_p,
+					  &part_catalog_access_info,
+					  (error != NO_ERROR) ? true : false);
+
   if (cls_rep != NULL)
     {
       heap_classrepr_free (cls_rep, &cls_idx_cache);

@@ -278,7 +278,7 @@ static char *double_to_string (double double_value, int field_width,
 			       const char *trailing_str,
 			       bool leading_zeros, bool trailing_zeros,
 			       bool commas, char conversion);
-#if defined (ENABLED_UNUSED_FUNCTIONS)
+#if defined (ENABLE_UNUSED_FUNCTION)
 static char *time_as_string (DB_TIME * time_value, const char *conversion);
 #endif
 static char *date_as_string (DB_DATE * date_value, int format);
@@ -644,7 +644,7 @@ double_to_string (double double_value, int field_width,
     }
 }
 
-#if defined (ENABLED_UNUSED_FUNCTIONS)
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * time_as_string() - convert time value to string
  *   return: formatted string

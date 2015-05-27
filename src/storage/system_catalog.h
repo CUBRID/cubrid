@@ -40,6 +40,8 @@
 #define NULL_REPRID       -1	/* Null Representation Identifier */
 #define NULL_ATTRID       -1	/* Null Attribute Identifier */
 
+#define CATALOG_DIR_REPR_KEY -2
+
 typedef struct ctid CTID;
 struct ctid
 {
@@ -106,6 +108,29 @@ struct cls_info
   OID ci_rep_dir;		/* representation directory record OID */
 };				/* class specific information */
 
+typedef struct catalog_access_info CATALOG_ACCESS_INFO;
+struct catalog_access_info
+{
+  OID *class_oid;
+  OID *dir_oid;
+  char *class_name;
+  bool is_update;
+  bool need_unlock;
+  bool access_started;
+  bool need_free_class_name;
+#if !defined (NDEBUG)
+  bool is_systemop_started;
+#endif
+};
+
+#if !defined (NDEBUG)
+#define CATALOG_ACCESS_INFO_INITIALIZER \
+  {NULL, NULL, NULL, false, false, false, false, false}
+#else
+#define CATALOG_ACCESS_INFO_INITIALIZER \
+  {NULL, NULL, NULL, false, false, false, false}
+#endif
+
 #define CLS_INFO_INITIALIZER \
   { HFID_INITIALIZER, 0, 0, 0, { NULL_PAGEID, NULL_SLOTID, NULL_VOLID } }
 
@@ -126,20 +151,29 @@ extern int catalog_reclaim_space (THREAD_ENTRY * thread_p);
 extern int catalog_add_representation (THREAD_ENTRY * thread_p,
 				       OID * class_id, REPR_ID repr_id,
 				       DISK_REPR * Disk_Repr,
-				       OID * rep_dir_p);
+				       OID * rep_dir_p,
+				       CATALOG_ACCESS_INFO *
+				       catalog_access_info_p);
 extern int catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_oid_p,
-				   CLS_INFO * class_info_p);
+				   CLS_INFO * class_info_p,
+				   CATALOG_ACCESS_INFO *
+				   catalog_access_info_p);
 extern CLS_INFO *catalog_update_class_info (THREAD_ENTRY * thread_p,
 					    OID * class_id,
 					    CLS_INFO * cls_info,
+					    CATALOG_ACCESS_INFO *
+					    catalog_access_info_p,
 					    bool skip_logging);
 extern int catalog_drop_old_representations (THREAD_ENTRY * thread_p,
 					     OID * class_id);
 extern DISK_REPR *catalog_get_representation (THREAD_ENTRY * thread_p,
-					      OID * class_id,
-					      REPR_ID repr_id);
+					      OID * class_id, REPR_ID repr_id,
+					      CATALOG_ACCESS_INFO *
+					      catalog_access_info_p);
 extern CLS_INFO *catalog_get_class_info (THREAD_ENTRY * thread_p,
-					 OID * class_id);
+					 OID * class_id,
+					 CATALOG_ACCESS_INFO *
+					 catalog_access_info_p);
 extern int catalog_get_representation_directory (THREAD_ENTRY * thread_p,
 						 OID * class_id,
 						 REPR_ID ** reprid_set,
@@ -177,4 +211,15 @@ extern int catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p,
 						    LOG_RCV * recv);
+extern int catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p,
+					   const OID * class_id_p,
+					   OID * dir_oid_p);
+extern int catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p,
+					      CATALOG_ACCESS_INFO *
+					      catalog_access_info,
+					      LOCK lock_mode);
+extern int catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p,
+					    CATALOG_ACCESS_INFO *
+					    catalog_access_info,
+					    bool is_error);
 #endif /* _SYSTEM_CATALOG_H_ */
