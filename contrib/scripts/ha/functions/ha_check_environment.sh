@@ -74,18 +74,25 @@ done
 
 check_args
 
+rm -f $output_file
 if [ "$CUBRID" != "$cubrid_path" ]; then
+	echo -ne '$CUBRID environment is different. ' >> $output_file
+	echo -ne "($CUBRID != $cubrid_path). " >> $output_file
 	exit 1
 fi
+
 if [ "$CUBRID_DATABASES" != "$cubrid_db_path" ]; then
+	echo -ne '$CUBRID_DATABASES environment is different. ' >> $output_file
+	echo -ne "($CUBRID_DATABASES != $cubrid_db_path). " >> $output_file
 	exit 1
 fi
+
 if [ ! -d $repl_log_path ]; then
         if [ $is_slave -eq $YES ]; then
 	        mkdir -p $repl_log_path
 	else
+		echo -ne "Replication log path($repl_log_path) does not exist." >> $output_file
 		exit 1
 	fi
 fi
 
-echo $(hostname) > $output_file
