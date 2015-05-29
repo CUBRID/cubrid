@@ -18098,7 +18098,7 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk,
 	      overflow_oid = (OID *) recdes.data;
 	      overflow_vpid.volid = overflow_oid->volid;
 	      overflow_vpid.pageid = overflow_oid->pageid;
-	      if (!VPID_ISNULL (&overflow_vpid))
+	      if (VPID_ISNULL (&overflow_vpid))
 		{
 		  chk->not_vacuumed_res = DISK_ERROR;
 		  return DISK_ERROR;
