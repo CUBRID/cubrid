@@ -9971,7 +9971,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 			btree_update (thread_p, &old_btid, old_key, new_key,
 				      class_oid, old_oid, new_oid, op_type,
 				      unique_stat_info, &unique,
-				      p_mvcc_rec_header);
+				      p_mvcc_rec_header, same_key);
 
 		      if (error_code != NO_ERROR)
 			{

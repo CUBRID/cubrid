@@ -4255,6 +4255,14 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	      result = LOG_RESULT_TOPOP_COMMIT;
 	    }
 	}
+      else
+	{
+	  if (result == LOG_RESULT_TOPOP_COMMIT)
+	    {
+	      /* Do not commit nested top operations. */
+	      result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
+	    }
+	}
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
 		     "VACUUM: End system operation. Worker tdes: "
@@ -4732,7 +4740,6 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	  return true;
 	}
     }
-
 
   if (addr->vfid != NULL
       && file_is_new_file_with_has_undolog (thread_p, addr->vfid,

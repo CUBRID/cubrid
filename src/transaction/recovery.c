@@ -916,7 +916,21 @@ struct rvfun RV_fun[] = {
    NULL,
    file_rv_postpone_destroy_file,
    NULL,
-   NULL}
+   NULL},
+
+  {RVBT_MVCC_UPDATE_SAME_KEY,
+   "RVBT_MVCC_UPDATE_SAME_KEY",
+   btree_rv_undo_mvcc_update_same_key,
+   btree_rv_redo_record_modify,
+   btree_rv_keyval_mvcc_update_same_key_dump,
+   log_rv_dump_hexa},
+
+  {RVBT_RECORD_MODIFY_UNDOREDO,
+   "RVBT_RECORD_MODIFY_UNDOREDO",
+   btree_rv_undo_record_modify,
+   btree_rv_redo_record_modify,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa}
 };
 
 /*

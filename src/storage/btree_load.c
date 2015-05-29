@@ -893,9 +893,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
    */
   init_pgcnt = BTREE_NUM_ALLOC_PAGES;
 
-  if (file_create (thread_p, &btid->vfid, init_pgcnt, FILE_BTREE, &btdes,
-		   &first_page_vpid, 1) == NULL || btree_get_root_page
-      (thread_p, btid, &root_vpid) == NULL)
+  if (file_create_check_not_dropped (thread_p, &btid->vfid, init_pgcnt,
+				     FILE_BTREE, &btdes, &first_page_vpid, 1)
+      == NULL || btree_get_root_page (thread_p, btid, &root_vpid) == NULL)
     {
       goto error;
     }
@@ -2729,7 +2729,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 							  &this_oid,
 							  &this_class_oid,
 							  &mvcc_info, &offset,
-							  NULL);
+							  NULL, NULL);
 			  if (ret != NO_ERROR)
 			    {
 			      goto error;
@@ -2835,7 +2835,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		      btree_leaf_record_change_overflow_link
 			(thread_p, load_args->btid,
 			 &load_args->leaf_nleaf_recdes, &load_args->ovf.vpid,
-			 NULL);
+			 NULL, NULL);
 
 		      load_args->overflowing = true;
 

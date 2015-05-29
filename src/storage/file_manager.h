@@ -243,6 +243,13 @@ extern int file_new_set_has_undolog (THREAD_ENTRY * thread_p,
 extern int file_new_destroy_all_tmp (THREAD_ENTRY * thread_p,
 				     FILE_TYPE tmp_type);
 
+extern VFID *file_create_check_not_dropped (THREAD_ENTRY * thread_p,
+					    VFID * vfid,
+					    INT32 exp_numpages,
+					    FILE_TYPE file_type,
+					    const void *file_des,
+					    VPID * first_prealloc_vpid,
+					    INT32 prealloc_npages);
 extern VFID *file_create (THREAD_ENTRY * thread_p, VFID * vfid,
 			  INT32 exp_numpages, FILE_TYPE file_type,
 			  const void *file_des, VPID * first_prealloc_vpid,

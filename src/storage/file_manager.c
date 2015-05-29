@@ -2748,6 +2748,88 @@ file_calculate_offset (INT16 start_offset, int size, int nelements,
 }
 
 /*
+ * file_create_check_not_dropped () - Create a file that is not 
+ *
+ * return		     : NULL if file creation failed, VFID of file if
+ *			       creation was successful.
+ * thread_p (in)	     : Thread entry.
+ * vfid (out)		     : Output VFID of created file.
+ * exp_numpages (in)	     : Expected number of pages.
+ * file_type (in)	     : File type.
+ * file_des (in)	     : Descriptor for file.
+ * first_prealloc_vpid (out) : Output VPID of first page in file.
+ * prealloc_npages (in)	     : Number of pages to allocate.
+ *
+ * This function is required for concurrent create/drop files (heap and index)
+ * done by very long transactions. Vacuum tracks dropped files and marks them
+ * with current mvcc_next_id in order to avoid accessing them any further.
+ * However, a long transaction may reuse VFID and its MVCCID may be less than
+ * the MVCCID used to mark the dropped file.
+ * This scenario is not really likely to happen in production. However, to
+ * suppress it in our tests, we try to create several files until one is not
+ * considered dropped by vacuum.
+ */
+VFID *
+file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid,
+			       INT32 exp_numpages, FILE_TYPE file_type,
+			       const void *file_des,
+			       VPID * first_prealloc_vpid,
+			       INT32 prealloc_npages)
+{
+#define FILE_NOT_DROPPED_CREATE_RETRIES 100
+  VFID created_files[FILE_NOT_DROPPED_CREATE_RETRIES];
+  int n_created_files = 0;
+  int i;
+  MVCCID tran_mvccid = logtb_get_current_mvccid (thread_p);
+  VFID *return_vfid = NULL;
+
+  assert (file_type == FILE_BTREE || file_type == FILE_HEAP
+	  || file_type == FILE_HEAP_REUSE_SLOTS);
+
+  while (n_created_files < FILE_NOT_DROPPED_CREATE_RETRIES)
+    {
+      if (file_create (thread_p, &created_files[n_created_files],
+		       exp_numpages, file_type, file_des, first_prealloc_vpid,
+		       prealloc_npages) == NULL)
+	{
+	  /* Failed to create a new file. */
+	  break;
+	}
+      if (!vacuum_is_file_dropped (thread_p, &created_files[n_created_files],
+				   tran_mvccid))
+	{
+	  /* Successfully created not dropped file. */
+	  VFID_COPY (vfid, &created_files[n_created_files]);
+	  return_vfid = vfid;
+	  break;
+	}
+      /* Created a file but paired with current transaction MVCCID it will
+       * be considered dropped by vacuum. Retry.
+       */
+      n_created_files++;
+    }
+  /* Destroy all previously created files. */
+  for (i = 0; i < n_created_files; i++)
+    {
+      file_destroy (thread_p, &created_files[i]);
+    }
+
+  /* Return result: NULL if create files, VFID of file if successful. */
+  if (n_created_files == FILE_NOT_DROPPED_CREATE_RETRIES)
+    {
+      /* Very unlikely to happen, but let's set an error. */
+      /* If this assert is ever hit, it is really ridiculous. We tried 100
+       * times. Find a better way of handling the case (do not deallocated
+       * file header page until it is removed from vacuum's list of dropped
+       * files - just an idea).
+       */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
+  return return_vfid;
+}
+
+/*
  * file_create () - Create an unstructured file in a volume
  *   return: vfid or NULL in case of error
  *   vfid(out): Complete file identifier (i.e., Volume_id + file_id)

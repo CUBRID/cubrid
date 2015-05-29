@@ -233,6 +233,10 @@ static void log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 					     chkpt_block_oldest_mvccid,
 					     MVCCID *
 					     chkpt_block_newest_mvccid);
+
+static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p,
+					  LOG_RCV * rcv, bool is_undo);
+
 /*
  * CRASH RECOVERY PROCESS
  */
@@ -7073,7 +7077,7 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 }
 
 /*
- * log_rv_redo_record_partial_changes () - Redo record data changes.
+ * log_rv_undoredo_record_partial_changes () - Undoredo record data changes.
  *
  * return		: Error code.
  * thread_p (in)	: Thread entry.
@@ -7084,9 +7088,9 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
  * TODO: Extend this to undo and undoredo.
  */
 int
-log_rv_redo_record_partial_changes (THREAD_ENTRY * thread_p,
-				    char *rcv_data,
-				    int rcv_data_length, RECDES * record)
+log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p,
+					char *rcv_data,
+					int rcv_data_length, RECDES * record)
 {
   OR_BUF rcv_buf;		/* Buffer used to process recovery data. */
   int error_code = NO_ERROR;	/* Error code. */
@@ -7186,6 +7190,44 @@ log_rv_redo_record_partial_changes (THREAD_ENTRY * thread_p,
 int
 log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  return log_rv_record_modify_internal (thread_p, rcv, false);
+}
+
+/*
+ * log_rv_undo_record_modify () - Modify one record of database slotted page.
+ *				  The change can be one of:
+ *				  1. New record is inserted.
+ *				  2. Existing record is removed.
+ *				  3. Existing record is entirely updated.
+ *				  4. Existing record is partially updated.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return log_rv_record_modify_internal (thread_p, rcv, true);
+}
+
+/*
+ * log_rv_redo_record_modify () - Modify one record of database slotted page.
+ *				  The change can be one of:
+ *				  1. New record is inserted.
+ *				  2. Existing record is removed.
+ *				  3. Existing record is entirely updated.
+ *				  4. Existing record is partially updated.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ * is_undo (in)  : True if undo recovery, false if redo recovery.
+ */
+static int
+log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
+			       bool is_undo)
+{
   INT16 flags = rcv->offset & LOG_RV_RECORD_MODIFY_MASK;
   PGSLOTID slotid = rcv->offset & (~LOG_RV_RECORD_MODIFY_MASK);
   RECDES record;
@@ -7194,7 +7236,8 @@ log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   char *ptr = NULL;
   int error_code = NO_ERROR;
 
-  if (LOG_RV_RECORD_IS_INSERT (flags))
+  if ((!is_undo && LOG_RV_RECORD_IS_INSERT (flags))
+      || (is_undo && LOG_RV_RECORD_IS_DELETE (flags)))
     {
       /* Insert new record. */
       ptr = (char *) rcv->data;
@@ -7213,7 +7256,8 @@ log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	}
       /* Success. */
     }
-  else if (LOG_RV_RECORD_IS_DELETE (flags))
+  else if ((!is_undo && LOG_RV_RECORD_IS_DELETE (flags))
+	   || (is_undo && LOG_RV_RECORD_IS_INSERT (flags)))
     {
       if (spage_delete (thread_p, rcv->pgptr, slotid) != slotid)
 	{
@@ -7256,13 +7300,14 @@ log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	}
       /* Make recorded changes. */
       error_code =
-	log_rv_redo_record_partial_changes (thread_p, (char *) rcv->data,
-					    rcv->length, &record);
+	log_rv_undoredo_record_partial_changes (thread_p, (char *) rcv->data,
+						rcv->length, &record);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
 	  return error_code;
 	}
+
       /* Update in page. */
       if (spage_update (thread_p, rcv->pgptr, slotid, &record) != SP_SUCCESS)
 	{
@@ -7293,12 +7338,11 @@ log_rv_pack_redo_record_changes (char *ptr, int offset_to_data,
 				 int old_data_size, int new_data_size,
 				 char *new_data)
 {
-  int error_code = NO_ERROR;	/* Error code. */
-
   /* Assert expected arguments. */
   assert (ptr != NULL);
-  assert (offset_to_data >= 0);
+  assert (offset_to_data >= 0 && offset_to_data <= 0x8FFF);
   assert (old_data_size >= 0 && new_data_size >= 0);
+  assert (old_data_size <= 255 && new_data_size <= 255);
   assert (new_data_size == 0 || new_data != NULL);
 
   ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
@@ -7316,6 +7360,50 @@ log_rv_pack_redo_record_changes (char *ptr, int offset_to_data,
     {
       memcpy (ptr, new_data, new_data_size);
       ptr += new_data_size;
+    }
+  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+
+  return ptr;
+}
+
+/*
+ * log_rv_pack_redo_record_changes () - Pack recovery data for undo record
+ *					change.
+ *
+ * return	       : Error code.
+ * ptr (in)	       : Where recovery data is packed.
+ * offset_to_data (in) : Offset to data being modified.
+ * old_data_size (in)  : Old data size.
+ * new_data_size (in)  : New data size.
+ * old_data (in)       : Old data.
+ */
+char *
+log_rv_pack_undo_record_changes (char *ptr, int offset_to_data,
+				 int old_data_size, int new_data_size,
+				 char *old_data)
+{
+  /* Assert expected arguments. */
+  assert (ptr != NULL);
+  assert (offset_to_data >= 0 && offset_to_data <= 0x8FFF);
+  assert (old_data_size >= 0 && new_data_size >= 0);
+  assert (old_data_size <= 255 && new_data_size <= 255);
+  assert (old_data_size == 0 || old_data != NULL);
+
+  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+
+  OR_PUT_SHORT (ptr, (short) offset_to_data);
+  ptr += OR_SHORT_SIZE;
+
+  OR_PUT_BYTE (ptr, (INT16) new_data_size);
+  ptr += OR_BYTE_SIZE;
+
+  OR_PUT_BYTE (ptr, (INT16) old_data_size);
+  ptr += OR_BYTE_SIZE;
+
+  if (old_data_size > 0)
+    {
+      memcpy (ptr, old_data, old_data_size);
+      ptr += old_data_size;
     }
   ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
 

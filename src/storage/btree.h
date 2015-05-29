@@ -494,9 +494,11 @@ enum btree_op_purpose
 				 * transactions.
 				 */
 
-  BTREE_UPDATE_SAME_KEY_DIFF_OID,	/* MVCC update of object when key doesn't
-					 * change. TODO.
+  BTREE_OP_UPDATE_SAME_KEY_DIFF_OID,	/* MVCC update of object when key
+					 * doesn't change.
 					 */
+  BTREE_OP_UNDO_SAME_KEY_DIFF_OID,	/* Undo of MVCC update same key. */
+  BTREE_OP_VACUUM_SAME_KEY_DIFF_OID,	/* Vacuum of MVCC update same key. */
 
   BTREE_OP_NOTIFY_VACUUM	/* Notify vacuum of an object in need of
 				 * cleanup.
@@ -597,11 +599,17 @@ extern int btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid,
 extern int btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid,
 				OR_BUF * buffered_key, OID * oid,
 				OID * class_oid, MVCCID delete_mvccid);
+extern int btree_vacuum_mvcc_update_same_key (THREAD_ENTRY * thread_p,
+					      BTID * btid,
+					      OR_BUF * buffered_key,
+					      BTREE_OBJECT_INFO * old_version,
+					      BTREE_OBJECT_INFO * new_version,
+					      MVCCID tran_mvccid);
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid,
 			 DB_VALUE * old_key, DB_VALUE * new_key,
 			 OID * cls_oid, OID * oid, OID * new_oid, int op_type,
 			 BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
-			 MVCC_REC_HEADER * p_mvcc_rec_header);
+			 MVCC_REC_HEADER * p_mvcc_rec_header, bool same_key);
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p,
 						   GLOBAL_UNIQUE_STATS *
 						   unique_stat_info,
@@ -671,13 +679,28 @@ extern int btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key,
 					  char *preallocated_buffer,
 					  char **data, int *capacity,
 					  int *length);
+extern int
+btree_rv_save_keyval_for_undo_mvcc_update_same_key (BTID_INT * btid,
+						    DB_VALUE * key,
+						    BTREE_OBJECT_INFO *
+						    old_version,
+						    BTREE_OBJECT_INFO *
+						    new_version,
+						    char *preallocated_buffer,
+						    char **data,
+						    int *capacity,
+						    int *length);
 extern int btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
 extern int btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
 						   LOG_RCV * recv);
 extern int btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
+extern int btree_rv_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p,
+					       LOG_RCV * rcv);
 extern void btree_rv_keyval_dump (FILE * fp, int length, void *data);
+extern void btree_rv_keyval_mvcc_update_same_key_dump (FILE * fp, int length,
+						       void *data);
 extern int btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
 extern int btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
@@ -745,6 +768,7 @@ extern void btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid,
 					    OID * oidp, OID * class_oidp,
 					    BTREE_MVCC_INFO * mvcc_info,
 					    int *key_offset,
+					    char **rv_undo_data_ptr,
 					    char **rv_redo_data_ptr);
 extern int btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 			 OID * cls_oid, OID * oid,
@@ -787,6 +811,16 @@ extern void btree_rv_read_keybuf_nocopy (THREAD_ENTRY * thread_p, char *datap,
 					 OID * cls_oid, OID * oid,
 					 BTREE_MVCC_INFO * mvcc_info,
 					 OR_BUF * key_buf);
+extern void btree_rv_read_keybuf_mvcc_update_same_key (THREAD_ENTRY *
+						       thread_p,
+						       char *datap,
+						       int data_size,
+						       BTID_INT * btid_int,
+						       BTREE_OBJECT_INFO *
+						       old_version,
+						       BTREE_OBJECT_INFO *
+						       new_version,
+						       OR_BUF * key_buf);
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				     RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);
@@ -812,6 +846,8 @@ extern void btree_mvcc_info_to_heap_mvcc_header (BTREE_MVCC_INFO * mvcc_info,
 
 extern int btree_rv_redo_record_modify (THREAD_ENTRY * thread_p,
 					LOG_RCV * rcv);
+extern int btree_rv_undo_record_modify (THREAD_ENTRY * thread_p,
+					LOG_RCV * rcv);
 extern int btree_rv_undo_delete_index (THREAD_ENTRY * thread_p,
 				       LOG_RCV * recv);
 extern int btree_rv_redo_delete_index (THREAD_ENTRY * thread_p,
@@ -821,5 +857,6 @@ extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p,
 						    BTID_INT * btid_int,
 						    RECDES * leaf_record,
 						    VPID * new_overflow_vpid,
+						    char **rv_undo_data_ptr,
 						    char **rv_redo_data_ptr);
 #endif /* _BTREE_H_ */

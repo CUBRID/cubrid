@@ -213,7 +213,10 @@ typedef enum
 
   RVFL_POSTPONE_DESTROY_FILE = 138,
 
-  RV_LAST_LOGID = RVFL_POSTPONE_DESTROY_FILE,
+  RVBT_MVCC_UPDATE_SAME_KEY = 139,
+  RVBT_RECORD_MODIFY_UNDOREDO = 140,
+
+  RV_LAST_LOGID = RVBT_RECORD_MODIFY_UNDOREDO,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -262,7 +265,8 @@ extern void rv_check_rvfuns (void);
   ((idx) == RVBT_DELETE_OBJECT_PHYSICAL \
    || ((idx) == RVBT_MVCC_DELETE_OBJECT) \
    || ((idx) == RVBT_MVCC_INSERT_OBJECT) \
-   || ((idx) == RVBT_NON_MVCC_INSERT_OBJECT))
+   || ((idx) == RVBT_NON_MVCC_INSERT_OBJECT) \
+   || ((idx) == RVBT_MVCC_UPDATE_SAME_KEY))
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   ((((vpid)->volid == NULL_VOLID) \

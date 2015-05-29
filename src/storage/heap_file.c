@@ -5840,8 +5840,8 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
    * new, and the file is going to be removed in the event of a crash.
    */
 
-  if (file_create (thread_p, &hfid->vfid, exp_npgs, file_type, &hfdes,
-		   &vpid, 1) == NULL)
+  if (file_create_check_not_dropped (thread_p, &hfid->vfid, exp_npgs,
+				     file_type, &hfdes, &vpid, 1) == NULL)
     {
       /* Unable to create the heap file */
       return NULL;

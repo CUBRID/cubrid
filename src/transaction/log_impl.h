@@ -1586,7 +1586,8 @@ enum log_repl_flush
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
   ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
    || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
-   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
+   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM \
+   || (rcvindex) == RVBT_MVCC_UPDATE_SAME_KEY)
 
 /* Is log record for a MVCC operation */
 #define LOG_IS_MVCC_OPERATION(rcvindex) \
@@ -2696,16 +2697,22 @@ extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p,
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY *
 						       thread_p);
 
-extern int log_rv_redo_record_partial_changes (THREAD_ENTRY * thread_p,
-					       char *rcv_data,
-					       int rcv_data_length,
-					       RECDES * record);
+extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p,
+						   char *rcv_data,
+						   int rcv_data_length,
+						   RECDES * record);
 extern int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern char *log_rv_pack_redo_record_changes (char *ptr,
 					      int offset_to_data,
 					      int old_data_size,
 					      int new_data_size,
 					      char *new_data);
+extern char *log_rv_pack_undo_record_changes (char *ptr,
+					      int offset_to_data,
+					      int old_data_size,
+					      int new_data_size,
+					      char *old_data);
 extern void logtb_reset_bit_area_start_mvccid (void);
 
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p,

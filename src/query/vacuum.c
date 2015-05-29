@@ -2769,6 +2769,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 {
   VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
   LOG_LSA log_lsa;
+  LOG_LSA rcv_lsa;
   LOG_PAGEID first_block_pageid =
     VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_DATA_ENTRY_BLOCKID (data));
   int error_code = NO_ERROR;
@@ -2781,6 +2782,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   BTID_INT btid_int;
   BTID sys_btid;
   OID class_oid, oid;
+  BTREE_OBJECT_INFO old_version;
+  BTREE_OBJECT_INFO new_version;
   MVCCID threshold_mvccid = vacuum_Global_oldest_active_mvccid;
   BTREE_MVCC_INFO mvcc_info;
   MVCCID mvccid;
@@ -2870,6 +2873,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 		     (long long int) log_lsa.pageid, (int) log_lsa.offset);
 
       worker->state = VACUUM_WORKER_STATE_PROCESS_LOG;
+      LSA_COPY (&rcv_lsa, &log_lsa);
 
       if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	{
@@ -2901,6 +2905,12 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
       if (is_file_dropped)
 	{
 	  /* No need to vacuum */
+	  vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_DROPPED_FILES,
+			 "VACUUM: Skip vacuuming based on (%lld, %d) in "
+			 "file %d|%d. Log record info: rcvindex=%d.\n",
+			 (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
+			 log_vacuum.vfid.volid, log_vacuum.vfid.fileid,
+			 log_record_data.rcvindex);
 	  continue;
 	}
 
@@ -2948,14 +2958,55 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
 	  assert (undo_data != NULL);
 
-	  btree_rv_read_keybuf_nocopy (thread_p, undo_data, undo_data_size,
-				       &btid_int, &class_oid, &oid,
-				       &mvcc_info, &key_buf);
+	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY)
+	    {
+	      btree_rv_read_keybuf_mvcc_update_same_key (thread_p, undo_data,
+							 undo_data_size,
+							 &btid_int,
+							 &old_version,
+							 &new_version,
+							 &key_buf);
+	    }
+	  else
+	    {
+	      btree_rv_read_keybuf_nocopy (thread_p, undo_data,
+					   undo_data_size, &btid_int,
+					   &class_oid, &oid, &mvcc_info,
+					   &key_buf);
+	    }
 
-	  /* Set btree_delete purpose: vacuum object if it was deleted or
-	   * vacuum insert MVCCID if it was inserted.
-	   */
-	  if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
+	  /* Vacuum based on rcvindex. */
+	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY)
+	    {
+	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+			     "VACUUM: thread(%d): vacuum mvcc update same "
+			     "key from b-tree: btidp(%d, (%d %d)), "
+			     "old object oid(%d, %d, %d), "
+			     "class_oid(%d, %d, %d), "
+			     "new object oid(%d, %d, %d), "
+			     "class_oid(%d, %d, %d), mvccid=%llu.\n",
+			     thread_get_current_entry_index (),
+			     btid_int.sys_btid->root_pageid,
+			     btid_int.sys_btid->vfid.fileid,
+			     btid_int.sys_btid->vfid.volid,
+			     old_version.oid.volid, old_version.oid.pageid,
+			     old_version.oid.slotid,
+			     old_version.class_oid.volid,
+			     old_version.class_oid.pageid,
+			     old_version.class_oid.slotid,
+			     new_version.oid.volid, new_version.oid.pageid,
+			     new_version.oid.slotid,
+			     new_version.class_oid.volid,
+			     new_version.class_oid.pageid,
+			     new_version.class_oid.slotid,
+			     (unsigned long long int) mvccid);
+	      error_code =
+		btree_vacuum_mvcc_update_same_key (thread_p,
+						   btid_int.sys_btid,
+						   &key_buf, &old_version,
+						   &new_version, mvccid);
+	    }
+	  else if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
 	    {
 	      /* The notification comes from loading index. The object may be
 	       * both inserted or deleted (load index considers all objects
@@ -3037,7 +3088,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 		btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf,
 				     &oid, &class_oid, mvccid);
 	    }
-	  else
+	  else if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT)
 	    {
 	      /* Object was inserted and only its insert MVCCID must be
 	       * removed.
@@ -3058,6 +3109,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 		btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid,
 					    &key_buf, &oid, &class_oid,
 					    mvccid);
+	    }
+	  else
+	    {
+	      /* Unexpected. */
+	      assert_release (false);
 	    }
 	  /* Did we have any errors? */
 	  if (error_code != NO_ERROR)
@@ -3648,11 +3704,6 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
 						 *mvccid);
       if (*is_file_dropped)
 	{
-	  /* File is dropped, no vacuum is required. */
-	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_WORKER,
-			 "VACUUM: Worker(%d) skips vacuuming file (%d, %d)",
-			 thread_get_current_tran_index (),
-			 vacuum_info->vfid.volid, vacuum_info->vfid.fileid);
 	  return NO_ERROR;
 	}
     }
