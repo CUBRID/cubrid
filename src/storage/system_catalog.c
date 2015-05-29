@@ -6515,6 +6515,7 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p,
 	}
       else
 	{
+#if defined (SERVER_MODE)
 	  current_lock = lock_get_object_lock (catalog_access_info->class_oid,
 					       oid_Root_class_oid,
 					       LOG_FIND_THREAD_TRAN_INDEX
@@ -6531,6 +6532,9 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p,
 	      /* this case applies with UPDATE STATISTICS */
 	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 	    }
+#else
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+#endif /* SERVER_MODE */
 	}
 #if !defined (NDEBUG)
       catalog_access_info->is_systemop_started = false;
