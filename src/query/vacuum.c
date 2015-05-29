@@ -4874,6 +4874,24 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
 
+  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
+		 "VACUUM: Finish recovery of vacuum data: "
+		 "is_chkpt_block_incomplete = %s, chkpt_blockid = %lld, "
+		 "chkpt_lsa = %lld|%d, chkpt_block_first_lsa = %lld|%d, "
+		 "chkpt_block_start_lsa = %lld|%d, "
+		 "chkpt_block_oldest_mvccid = %llu, "
+		 "chkpt_block_newest_mvccid = %llu.\n",
+		 is_chkpt_block_incomplete ? "true" : "false",
+		 (long long int) chkpt_blockid,
+		 (long long int) chkpt_lsa->pageid,
+		 (int) chkpt_lsa->offset,
+		 (long long int) chkpt_block_first_lsa->pageid,
+		 (int) chkpt_block_first_lsa->offset,
+		 (long long int) chkpt_block_start_lsa->pageid,
+		 (int) chkpt_block_start_lsa->offset,
+		 (unsigned long long int) chkpt_block_oldest_mvccid,
+		 (unsigned long long int) chkpt_block_newest_mvccid);
+
   if (!is_chkpt_block_incomplete
       || chkpt_blockid <= vacuum_Data->last_blockid)
     {

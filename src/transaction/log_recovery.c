@@ -3705,6 +3705,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   LSA_SET_NULL (&chkpt_block_first_lsa);
   LSA_SET_NULL (&chkpt_block_start_lsa);
 
+  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
+		 "VACUUM: Status when redo recovery is starting: "
+		 "log_Gl.hdr.mvcc_op_log_lsa = %lld|%d, "
+		 "log_Gl.hdr.last_block_oldest_mvccid = %llu, "
+		 "log_Gl.hdr.last_block_newest_mvccid = %llu, "
+		 "vacuum_last_blockid = %lld, checkpoint_blockid = %lld.\n",
+		 (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
+		 (int) log_Gl.hdr.mvcc_op_log_lsa.offset,
+		 (unsigned long long int) log_Gl.hdr.last_block_oldest_mvccid,
+		 (unsigned long long int) log_Gl.hdr.last_block_newest_mvccid,
+		 (long long int) recover_after_blockid,
+		 (long long int) chkpt_blockid);
+
   while (!LSA_ISNULL (&lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -4851,6 +4864,18 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
       LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &last_mvcc_op_lsa);
       log_Gl.hdr.last_block_oldest_mvccid = last_block_oldest_mvccid;
       log_Gl.hdr.last_block_newest_mvccid = last_block_newest_mvccid;
+
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
+		     "VACUUM: Finished redo recovery. Global header: "
+		     "log_Gl.hdr.mvcc_op_log_lsa = %lld|%d, "
+		     "log_Gl.hdr.last_block_oldest_mvccid = %llu, "
+		     "log_Gl.hdr.last_block_newest_mvccid = %llu.\n",
+		     (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
+		     (int) log_Gl.hdr.mvcc_op_log_lsa.offset,
+		     (unsigned long long int)
+		     log_Gl.hdr.last_block_oldest_mvccid,
+		     (unsigned long long int)
+		     log_Gl.hdr.last_block_newest_mvccid);
     }
   /* Add to vacuum data recovered block buffer. */
   vacuum_rv_finish_vacuum_data_recovery (thread_p, is_chkpt_block_incomplete,
@@ -6898,6 +6923,12 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
   if (LSA_ISNULL (last_mvcc_op_lsa))
     {
       /* First MVCC op log entry to recover. */
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
+		     "VACUUM: Found first mvcc log entry: lsa = %lld|%d, "
+		     "mvccid = %llu.\n",
+		     (long long int) mvcc_op_lsa->pageid,
+		     (int) mvcc_op_lsa->offset,
+		     (unsigned long long int) mvccid);
 
       /* Initialize last_mvcc_op_lsa, last_block_oldest_mvccid and
        * last_block_newest_mvccid.
@@ -6918,11 +6949,16 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
       if (chkpt_blockid == VACUUM_NULL_LOG_BLOCKID)
 	{
 	  /* Checkpoint is NULL. First condition is not met. */
+	  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
+			 "VACUUM: There is no checkpoint.\n");
 	  return;
 	}
       if (chkpt_blockid <= vacuum_data_get_last_blockid (thread_p))
 	{
 	  /* Already recovered. Second condition is not met. */
+	  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
+			 "VACUUM: Checkpoint block is already in vacuum "
+			 "data.");
 	  return;
 	}
 
@@ -6946,12 +6982,24 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 	       */
 	      if (log_hdr_blockid > recover_after_blockid)
 		{
+		  vacuum_er_log (VACUUM_ER_LOG_RECOVERY
+				 | VACUUM_ER_LOG_VACUUM_DATA,
+				 "VACUUM: Generate a new block based on "
+				 "global header information. Checkpoint block"
+				 " doesn't need recovering.\n");
 		  vacuum_produce_log_block_data (thread_p,
 						 &log_Gl.hdr.mvcc_op_log_lsa,
 						 log_Gl.hdr.
 						 last_block_oldest_mvccid,
 						 log_Gl.hdr.
 						 last_block_newest_mvccid);
+		}
+	      else
+		{
+		  vacuum_er_log (VACUUM_ER_LOG_RECOVERY
+				 | VACUUM_ER_LOG_VACUUM_DATA,
+				 "VACUUM: Checkpoint block doesn't need "
+				 "recovering.\n");
 		}
 	    }
 	  else
@@ -6994,6 +7042,19 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 		  *last_block_newest_mvccid =
 		    log_Gl.hdr.last_block_newest_mvccid;
 		}
+	      vacuum_er_log (VACUUM_ER_LOG_RECOVERY
+			     | VACUUM_ER_LOG_VACUUM_DATA,
+			     "VACUUM: Aggregate info from global header with "
+			     "current MVCC op. Updated block data is: "
+			     "start_lsa = %lld|%d, oldest_mvccid = %llu, "
+			     "newest_mvccid = %llu, blockid = %lld.\n",
+			     (long long int) mvcc_op_lsa->pageid,
+			     (int) mvcc_op_lsa->offset,
+			     (unsigned long long int)
+			     (*last_block_oldest_mvccid),
+			     (unsigned long long int)
+			     (*last_block_newest_mvccid),
+			     (long long int) mvcc_op_blockid);
 	    }
 	  /* Third condition is not met. */
 	  return;
@@ -7010,6 +7071,13 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 	   */
 	  LSA_COPY (chkpt_block_first_lsa, mvcc_op_lsa);
 	  *is_chkpt_block = true;
+
+	  vacuum_er_log (VACUUM_ER_LOG_RECOVERY
+			 | VACUUM_ER_LOG_VACUUM_DATA,
+			 "VACUUM: Checkpoint block must be recovered. A "
+			 "record to start recovering was found: %lld|%d.\n",
+			 (long long int) mvcc_op_lsa->pageid,
+			 (int) mvcc_op_lsa->offset);
 	}
       else
 	{
@@ -7019,6 +7087,10 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 	   * to look for an MVCC op log record before checkpoint LSA.
 	   */
 	  /* Do nothing here. */
+	  vacuum_er_log (VACUUM_ER_LOG_RECOVERY
+			 | VACUUM_ER_LOG_VACUUM_DATA,
+			 "VACUUM: Checkpoint block must be recovered. A "
+			 "record to start recovering was found not found.\n");
 	}
       /* Finished processing first recovered record. */
       return;
@@ -7045,6 +7117,20 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 	  LSA_COPY (chkpt_block_start_lsa, last_mvcc_op_lsa);
 	  *chkpt_block_oldest_mvccid = *last_block_oldest_mvccid;
 	  *chkpt_block_newest_mvccid = *last_block_newest_mvccid;
+
+	  vacuum_er_log (VACUUM_ER_LOG_RECOVERY
+			 | VACUUM_ER_LOG_VACUUM_DATA,
+			 "VACUUM: Checkpoint block not produced yet. Must "
+			 "recover missing part. So far we have: "
+			 "start_lsa = %lld|%d, oldest_mvccid = %llu, "
+			 "newest_mvccid = %llu, blockid = %d",
+			 (long long int) chkpt_block_start_lsa->pageid,
+			 (int) chkpt_block_start_lsa->offset,
+			 (unsigned long long int)
+			 (*chkpt_block_oldest_mvccid),
+			 (unsigned long long int)
+			 (*chkpt_block_newest_mvccid),
+			 (long long int) chkpt_blockid);
 	}
       else
 	{
