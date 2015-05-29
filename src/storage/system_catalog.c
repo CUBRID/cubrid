@@ -6441,7 +6441,8 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p,
 			       lock_mode, LK_UNCOND_LOCK);
   if (lk_grant_code != LK_GRANTED)
     {
-      assert (false);
+      assert (lk_grant_code == LK_NOTGRANTED_DUE_ABORTED
+	      || lk_grant_code == LK_NOTGRANTED_DUE_TIMEOUT);
       if (catalog_access_info->class_name == NULL)
 	{
 	  catalog_access_info->class_name =

@@ -521,6 +521,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   char *buf_p, *start_p;
   int key_size;
+  int lk_grant_code;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -535,6 +536,27 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 #endif
 
   *length_p = -1;
+
+  /* the lock on class to avoid changes of representation from rollbacked 
+   * UPDATE statistics */
+  lk_grant_code = lock_object (thread_p, class_id_p, oid_Root_class_oid,
+			       SCH_S_LOCK, LK_UNCOND_LOCK);
+  if (lk_grant_code != LK_GRANTED)
+    {
+      char *class_name = NULL;
+
+      class_name = heap_get_class_name (thread_p, class_id_p);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_UPDATE_STAT_CANNOT_GET_LOCK, 1,
+	      class_name ? class_name : "*UNKNOWN-CLASS*");
+
+      if (class_name != NULL)
+	{
+	  free_and_init (class_name);
+	}
+      goto exit_on_error;
+    }
 
   if (catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid)
       != NO_ERROR)
@@ -578,6 +600,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
 					  NO_ERROR);
+
+  lock_unlock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK,
+		      false);
 
   n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
 
