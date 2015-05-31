@@ -3,7 +3,7 @@ CUBRID is registered trademark of Search Solution Corporation.
 
 This Software is released under GNU GPL v2, BSD and GPL v3 according to CUBRID components.
 For brevity, CUBRID Server Engine is under GPL v2, CUBRID Web Manager is under GPL v3, and CUBRID APIs and Connectors are under BSD License.
-For deatails, please refer to the CUBRID License Page(http://www.cubrid.org/license).
+For details, please refer to the CUBRID License Page(http://www.cubrid.org/license).
 
 * CUBRID APIs and Connectors under BSD 3-Clause License(http://opensource.org/licenses/BSD-3-Clause)
 --------------------------------------------------------------------------------
