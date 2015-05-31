@@ -171,6 +171,7 @@ Available administrator's utilities:\n\
     plandump\n\
     renamedb\n\
     restoredb\n\
+    restoreslave\n\
     spacedb\n\
     unloaddb\n\
     paramdump\n\

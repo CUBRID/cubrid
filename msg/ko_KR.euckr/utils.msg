@@ -172,6 +172,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     plandump\n\
     renamedb\n\
     restoredb\n\
+    restoreslave\n\
     spacedb\n\
     unloaddb\n\
     paramdump\n\

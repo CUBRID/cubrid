@@ -171,6 +171,7 @@ Mevcut yönetici programları:\n\
     plandump\n\
     renamedb\n\
     restoredb\n\
+    restoreslave\n\
     spacedb\n\
     unloaddb\n\
     paramdump\n\

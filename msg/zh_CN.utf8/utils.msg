@@ -171,6 +171,7 @@ cubrid 管理工具，版本 %1$s\n\
     plandump\n\
     renamedb\n\
     restoredb\n\
+    restoreslave\n\
     spacedb\n\
     unloaddb\n\
     paramdump\n\
