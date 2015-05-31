@@ -692,8 +692,8 @@ qo_optimize_helper (QO_ENV * env)
    * info.
    */
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-  if (PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level) &&
-      env->plan_dump_enabled)
+  if (plan && PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level)
+      && env->plan_dump_enabled)
     {
       qo_env_dump (env, query_Plan_dump_fp);
     }
