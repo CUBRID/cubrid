@@ -686,10 +686,6 @@ logtb_initialize_vacuum_worker_tdes (LOG_TDES * tdes, TRANID trid)
 
   /* Set transaction state to active. */
   tdes->state = TRAN_ACTIVE;
-
-  /* Set client ID's to NULL. */
-  logtb_set_client_ids_all (&tdes->client, -1, NULL, NULL, NULL, NULL, NULL,
-			    -1);
 }
 
 /*
@@ -2257,6 +2253,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 		logtb_tran_btid_hash_cmp_func);
   tdes->log_upd_stats.classes_cos_hash =
     mht_create ("Tran_classes_cos", 101, oid_hash, oid_compare_equals);
+
+  logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL,
+			    NULL, NULL, NULL, -1);
 }
 
 /*
