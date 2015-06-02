@@ -4239,8 +4239,8 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p,
 
   LSA_SET_NULL (&vacuum_data_p->crt_lsa);
   vacuum_data_p->last_blockid = VACUUM_NULL_LOG_BLOCKID;
-  vacuum_data_p->newest_mvccid = MVCCID_NULL;
-  vacuum_data_p->oldest_mvccid = MVCCID_NULL;
+  vacuum_data_p->newest_mvccid = MVCCID_ALL_VISIBLE;
+  vacuum_data_p->oldest_mvccid = MVCCID_ALL_VISIBLE;
   vacuum_data_p->n_table_entries = 0;
 
   LSA_SET_NULL (&vacuum_data_p->first_blocks_to_recover);

@@ -26250,7 +26250,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
 {
   MVCC_REC_HEADER mvcc_rec_header;
   MVCCID mvcc_id;
-  int size = recdes_p->length;
+  int record_size = recdes_p->length;
 
   /* read MVCC header from record */
   if (or_mvcc_get_header (recdes_p, &mvcc_rec_header) != NO_ERROR)
@@ -26269,19 +26269,26 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
       if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
 	{
 	  MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
-	  size += OR_MVCCID_SIZE;
+	  record_size += OR_MVCCID_SIZE;
 	}
       MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
     }
   else
     {
-      size -= or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+      int curr_header_size, new_header_size;
 
       /* strip MVCC information */
+      curr_header_size =
+	or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
       MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
+      new_header_size =
+	or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+
+      /* compute new record size */
+      record_size -= (curr_header_size - new_header_size);
     }
 
-  if (is_mvcc_class && heap_is_big_length (size))
+  if (is_mvcc_class && heap_is_big_length (record_size))
     {
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
