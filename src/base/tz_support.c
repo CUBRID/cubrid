@@ -2995,7 +2995,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
 	  rule_time_sec = 0;
 	}
 
-      if (src_julian_date <= rule_julian_date)
+      if (src_julian_date < rule_julian_date)
 	{
 	  /* this is a candidate, we still have to check the exact time when
 	   * rule ends */
@@ -3047,7 +3047,7 @@ detect_dst:
 		   gmt_std_offset_sec, 0);
 
       if (FULL_DATE (src_julian_date, src_time_sec + curr_time_offset)
-	  <= FULL_DATE (rule_julian_date, rule_time_sec))
+	  < FULL_DATE (rule_julian_date, rule_time_sec))
 	{
 	  if (src_is_utc == false
 	      && tz_info->zone.dst_str[0] != '\0'
@@ -3333,7 +3333,7 @@ detect_dst:
   if (applying_ds_id != -1)
     {
       if (FULL_DATE (src_julian_date, src_time_sec + src_offset)
-	  > FULL_DATE (rule_julian_date, rule_time_sec))
+	  >= FULL_DATE (rule_julian_date, rule_time_sec))
 	{
 	  curr_off_rule = next_off_rule;
 	  next_off_rule = NULL;
@@ -3358,7 +3358,7 @@ detect_dst:
       /* try next GMT offset zone */
       if (next_off_rule == NULL
 	  || (FULL_DATE (src_julian_date, src_time_sec + src_offset)
-	      <= FULL_DATE (rule_julian_date, rule_time_sec)))
+	      < FULL_DATE (rule_julian_date, rule_time_sec)))
 	{
 	  /* check if provided DS specifier matches the offset rule format */
 	  if (tz_info->zone.dst_str[0] != '\0'
