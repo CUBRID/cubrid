@@ -30232,7 +30232,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (insert_helper->log_operations)
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "BTREE_INSERT: Split node %d|%d of "
+			 "BTREE_INSERT: Split node %d|%d max keylen %d of "
 			 "index (%d, %d|%d).\n",
 			 child_vpid.volid, child_vpid.pageid,
 			 node_header->max_key_len,
@@ -31306,7 +31306,8 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 		     "class_oid %d|%d|%d, mvcc_info=%llu|%llu with "
 		     "object %d|%d|%d, class_oid %d|%d|%d, "
 		     "mvcc_info=%llu|%llu, key=%s - "
-		     "in node %d|%d slot %d, in unique index (%d, %d|%d). "
+		     "in node %d|%d slot %d, lsa=%lld|%d, "
+		     "in unique index (%d, %d|%d). "
 		     "First object was relocated. "
 		     "Log for this change is postponed.\n",
 		     first_object.oid.volid, first_object.oid.pageid,
@@ -32164,7 +32165,7 @@ btree_key_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 			 "first in leaf record: "
 			 "object %d|%d|%d, class_oid %d|%d|%d, "
 			 "mvcc_info=%llu|%llu, key=%s - in %s node %d|%d "
-			 "slot %d, in index (%d, %d|%d)."
+			 "slot %d, lsa=%lld|%d, in index (%d, %d|%d)."
 			 "Log for this change is postponed.\n",
 			 helper->update_to.oid.volid,
 			 helper->update_to.oid.pageid,
@@ -36640,12 +36641,12 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p,
 		     (&delete_helper->object_info.mvcc_info),
 		     pgbuf_get_volume_id (leaf_page),
 		     pgbuf_get_page_id (leaf_page),
-		     (long long int) prev_lsa.pageid, (int) prev_lsa.offset,
-		     (long long int) pgbuf_get_lsa (leaf_page)->pageid,
-		     (int) pgbuf_get_lsa (leaf_page)->offset,
 		     search_key->slotid,
 		     delete_helper->printed_key != NULL ?
 		     delete_helper->printed_key : "(unknown)",
+		     (long long int) prev_lsa.pageid, (int) prev_lsa.offset,
+		     (long long int) pgbuf_get_lsa (leaf_page)->pageid,
+		     (int) pgbuf_get_lsa (leaf_page)->offset,
 		     btid_int->sys_btid->root_pageid,
 		     btid_int->sys_btid->vfid.volid,
 		     btid_int->sys_btid->vfid.fileid, leaf_record->length);
