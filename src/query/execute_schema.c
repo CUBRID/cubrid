@@ -12112,8 +12112,8 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
     case DB_TYPE_TIMELTZ:
       switch (new_type)
 	{
+	case DB_TYPE_TIME:
 	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
