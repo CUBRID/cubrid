@@ -2760,8 +2760,9 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	  goto exit;
 	}
 
-      if (date_diff < 0)
+      if (date_diff < 0 && curr_ds_rule->from_year < year_to_apply_rule)
 	{
+	  /* if DS rule does not apply to current year try previous year */
 	  er_status = tz_get_ds_change_julian_date_diff (src_julian_date,
 							 curr_ds_rule,
 							 year_to_apply_rule -
@@ -3164,6 +3165,7 @@ detect_dst:
 	  int ds_time_offset = 0;
 	  full_date_t ds_rule_date = 0;
 	  full_date_t utc_src_offset = 0;
+	  int save_time = 0;
 
 	  /* there may be an ambiguity :
 	   * check the time deviation of a date before current candidate
@@ -3180,10 +3182,14 @@ detect_dst:
 	      goto exit;
 	    }
 
-	  assert (wall_ds_rule_id + ds_ruleset->index_start
-		  < tzd->ds_rule_count);
-	  wall_ds_rule = &(tzd->ds_rules[wall_ds_rule_id
-					 + ds_ruleset->index_start]);
+	  if (wall_ds_rule_id != -1)
+	    {
+	      assert (wall_ds_rule_id + ds_ruleset->index_start
+		      < tzd->ds_rule_count);
+	      wall_ds_rule = &(tzd->ds_rules[wall_ds_rule_id
+					     + ds_ruleset->index_start]);
+	      save_time = wall_ds_rule->save_time;
+	    }
 
 
 	  /* the difference between the input date and the rule date
@@ -3206,7 +3212,7 @@ detect_dst:
 	    {
 	      /* wall clock: may indicate either the daylight time or 
 	       * standard time */
-	      ds_time_offset = -wall_ds_rule->save_time;
+	      ds_time_offset = -save_time;
 	    }
 
 	  if (src_is_utc == true)
@@ -3219,8 +3225,7 @@ detect_dst:
 	    }
 	  else
 	    {
-	      leap_interval =
-		wall_ds_rule->save_time - curr_ds_rule->save_time;
+	      leap_interval = save_time - curr_ds_rule->save_time;
 	    }
 
 	  ds_rule_date = FULL_DATE (ds_rule_julian_date, ds_time_offset +
