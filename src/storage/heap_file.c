@@ -1175,11 +1175,11 @@ static void heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type,
 
 /* heap insert related functions */
 static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
+					     HEAP_OPERATION_CONTEXT *
+					     context,
 					     RECDES * recdes_p,
 					     bool is_mvcc_op,
-					     bool is_mvcc_class,
-					     HEAP_OPERATION_CONTEXT *
-					     context);
+					     bool is_mvcc_class);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
 						HEAP_OPERATION_CONTEXT *
 						context);
@@ -26239,6 +26239,7 @@ heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type,
  * heap_insert_adjust_recdes_header () - adjust record header for insert
  *                                       operation
  *   thread_p(in): thread entry
+ *   context(in): operation context
  *   recdes_p(in): record descriptor to adjust
  *   is_mvcc_op(in): specifies type of operation (MVCC/non-MVCC)
  *   returns: error code or NO_ERROR
@@ -26248,9 +26249,10 @@ heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type,
  * NOTE: The function will alter the provided record descriptor data area.
  */
 static int
-heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
-				  bool is_mvcc_op, bool is_mvcc_class,
-				  HEAP_OPERATION_CONTEXT * context)
+heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, 
+				  HEAP_OPERATION_CONTEXT * context, 
+				  RECDES * recdes_p,
+				  bool is_mvcc_op, bool is_mvcc_class)
 {
   MVCC_REC_HEADER mvcc_rec_header;
   MVCCID mvcc_id;
@@ -28713,10 +28715,10 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
     {
       bool is_mvcc_class =
 	!heap_is_mvcc_disabled_for_class (&context->class_oid);
-      if (heap_insert_adjust_recdes_header (thread_p, context->recdes_p,
+      if (heap_insert_adjust_recdes_header (thread_p, context,
+					    context->recdes_p,
 					    is_mvcc_op,
-					    is_mvcc_class,
-					    context) != NO_ERROR)
+					    is_mvcc_class) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -29554,10 +29556,10 @@ heap_update_logical (THREAD_ENTRY * thread_p,
     {
       bool is_mvcc_class =
 	!heap_is_mvcc_disabled_for_class (&context->class_oid);
-      if (heap_insert_adjust_recdes_header (thread_p, context->recdes_p,
+      if (heap_insert_adjust_recdes_header (thread_p, context, 
+					    context->recdes_p,
 					    is_mvcc_op,
-					    is_mvcc_class,
-					    context) != NO_ERROR)
+					    is_mvcc_class) != NO_ERROR)
 	{
 	  rc = ER_FAILED;
 	  goto error;
