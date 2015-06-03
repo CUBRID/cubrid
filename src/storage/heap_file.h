@@ -330,9 +330,22 @@ typedef enum
   HEAP_OPERATION_NONE = 0,
   HEAP_OPERATION_INSERT,
   HEAP_OPERATION_DELETE,
-  HEAP_OPERATION_UPDATE,
-  HEAP_OPERATION_UPDATE_IN_PLACE
+  HEAP_OPERATION_UPDATE
 } HEAP_OPERATION_TYPE;
+
+typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
+enum update_inplace_style
+{
+  UPDATE_INPLACE_NONE = 0,	/* None */
+  UPDATE_INPLACE_CURRENT_MVCCID = 1,	/* non-MVCC in-place update style with current
+					 * MVCC ID.
+					 */
+  UPDATE_INPLACE_OLD_MVCCID = 2	/* non-MVCC in-place update style with old
+				 * MVCC ID. Preserves old MVCC ID
+				 */
+};
+
+#define HEAP_IS_UPDATE_INPLACE(update_inplace_style) ((update_inplace_style) != UPDATE_INPLACE_NONE)
 
 /* heap operation information structure */
 typedef struct heap_operation_context HEAP_OPERATION_CONTEXT;
@@ -340,6 +353,7 @@ struct heap_operation_context
 {
   /* heap operation type */
   HEAP_OPERATION_TYPE type;
+  UPDATE_INPLACE_STYLE update_in_place;
 
   /* logical operation input */
   HFID hfid;			/* heap file identifier */
@@ -386,13 +400,6 @@ enum
 #define HEAP_OP_CONTEXT_SET_FLAG(var, flag)          ((var) |= (flag))
 #define HEAP_OP_CONTEXT_CLEAR_FLAG(var, flag)        ((var) &= (flag))
 #define HEAP_OP_CONTEXT_IS_FLAG_SET(var, flag)       ((var) & (flag))
-
-typedef enum heap_update_style HEAP_UPDATE_STYLE;
-enum heap_update_style
-{
-  HEAP_UPDATE_MVCC_STYLE = 0,	/* MVCC update style */
-  HEAP_UPDATE_IN_PLACE = 1	/* non-MVCC in-place update style */
-};
 
 enum
 { END_SCAN, CONTINUE_SCAN };
@@ -929,7 +936,7 @@ extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context,
 					OID * class_oid_p,
 					RECDES * recdes_p,
 					HEAP_SCANCACHE * scancache_p,
-					bool in_place);
+					UPDATE_INPLACE_STYLE in_place);
 extern int heap_insert_logical (THREAD_ENTRY * thread_p,
 				HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p,

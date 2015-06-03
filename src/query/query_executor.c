@@ -10212,7 +10212,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		     internal_class->scan_cache, &force_count, false,
 		     REPL_INFO_TYPE_RBR_NORMAL,
 		     DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-		     &mvcc_reev_data, false, NULL);
+		     &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL);
 
 		  if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		    {
@@ -10415,7 +10415,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					      &force_count, false, repl_info,
 					      internal_class->needs_pruning,
 					      pcontext, NULL,
-					      &mvcc_reev_data, false, NULL);
+					      &mvcc_reev_data,
+					      UPDATE_INPLACE_NONE, NULL);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -11189,8 +11190,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					      &force_count, false,
 					      REPL_INFO_TYPE_RBR_NORMAL,
 					      DB_NOT_PARTITIONED_CLASS, NULL,
-					      NULL, &mvcc_reev_data, false,
-					      NULL);
+					      NULL, &mvcc_reev_data,
+					      UPDATE_INPLACE_NONE, NULL);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -11681,7 +11682,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 					  local_scan_cache, &force_count,
 					  false, REPL_INFO_TYPE_RBR_NORMAL,
 					  DB_NOT_PARTITIONED_CLASS, NULL,
-					  NULL, NULL, false, NULL);
+					  NULL, NULL, UPDATE_INPLACE_NONE,
+					  NULL);
 
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 	    {
@@ -12126,7 +12128,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
 					local_op_type, local_scan_cache,
 					force_count, false, repl_info,
 					pruning_type, pcontext, NULL, NULL,
-					false, &rec_descriptor);
+					UPDATE_INPLACE_NONE, &rec_descriptor);
   if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
     {
       error = NO_ERROR;
@@ -12634,7 +12636,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						REPL_INFO_TYPE_RBR_NORMAL,
 						insert->pruning_type,
 						pcontext, func_indx_preds,
-						NULL, false,
+						NULL, UPDATE_INPLACE_NONE,
 						NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -12835,8 +12837,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						false,
 						REPL_INFO_TYPE_RBR_NORMAL,
 						insert->pruning_type,
-						pcontext, NULL, NULL, false,
-						NULL) != NO_ERROR)
+						pcontext, NULL, NULL,
+						UPDATE_INPLACE_NONE, NULL) !=
+		  NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -13584,7 +13587,7 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 					    &force_count, false,
 					    REPL_INFO_TYPE_RBR_NORMAL,
 					    pruning_type, NULL, NULL,
-					    NULL, false, NULL);
+					    NULL, UPDATE_INPLACE_NONE, NULL);
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 	{
 	  assert (force_count == 0);

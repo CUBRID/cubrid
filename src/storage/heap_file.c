@@ -1177,7 +1177,9 @@ static void heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type,
 static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
 					     RECDES * recdes_p,
 					     bool is_mvcc_op,
-					     bool is_mvcc_class);
+					     bool is_mvcc_class,
+					     HEAP_OPERATION_CONTEXT *
+					     context);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p,
 						HEAP_OPERATION_CONTEXT *
 						context);
@@ -20943,7 +20945,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 				  &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL,
 				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				  true, NULL);
+				  UPDATE_INPLACE_OLD_MVCCID, NULL);
   if (error != NO_ERROR)
     {
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -25949,6 +25951,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
 
   /* nullify everything else */
   context->type = HEAP_OPERATION_NONE;
+  context->update_in_place = UPDATE_INPLACE_NONE;
   OID_SET_NULL (&context->oid);
   OID_SET_NULL (&context->next_version);
   OID_SET_NULL (&context->partition_link);
@@ -26246,7 +26249,8 @@ heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type,
  */
 static int
 heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
-				  bool is_mvcc_op, bool is_mvcc_class)
+				  bool is_mvcc_op, bool is_mvcc_class,
+				  HEAP_OPERATION_CONTEXT * context)
 {
   MVCC_REC_HEADER mvcc_rec_header;
   MVCCID mvcc_id;
@@ -26258,34 +26262,38 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, RECDES * recdes_p,
       return ER_FAILED;
     }
 
-  if (is_mvcc_op)
+  if (context->type != HEAP_OPERATION_UPDATE
+      || context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
     {
-      assert (is_mvcc_class);
-
-      /* get MVCC id */
-      mvcc_id = logtb_get_current_mvccid (thread_p);
-
-      /* set MVCC insertid if necessary */
-      if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
+      if (is_mvcc_op)
 	{
-	  MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
-	  record_size += OR_MVCCID_SIZE;
+	  assert (is_mvcc_class);
+
+	  /* get MVCC id */
+	  mvcc_id = logtb_get_current_mvccid (thread_p);
+
+	  /* set MVCC insertid if necessary */
+	  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
+	    {
+	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
+	      record_size += OR_MVCCID_SIZE;
+	    }
+	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
 	}
-      MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
-    }
-  else
-    {
-      int curr_header_size, new_header_size;
+      else
+	{
+	  int curr_header_size, new_header_size;
 
-      /* strip MVCC information */
-      curr_header_size =
-	or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
-      MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
-      new_header_size =
-	or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+	  /* strip MVCC information */
+	  curr_header_size =
+	    or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
+	  new_header_size =
+	    or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
 
-      /* compute new record size */
-      record_size -= (curr_header_size - new_header_size);
+	  /* compute new record size */
+	  record_size -= (curr_header_size - new_header_size);
+	}
     }
 
   if (is_mvcc_class && heap_is_big_length (record_size))
@@ -26596,8 +26604,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p,
   assert (recdes_p != NULL);
   assert (parent_context != NULL);
   assert (parent_context->type == HEAP_OPERATION_DELETE
-	  || parent_context->type == HEAP_OPERATION_UPDATE
-	  || parent_context->type == HEAP_OPERATION_UPDATE_IN_PLACE);
+	  || parent_context->type == HEAP_OPERATION_UPDATE);
 
   /* build insert context */
   heap_create_insert_context (&ins_context, &parent_context->hfid,
@@ -27813,8 +27820,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
   OID overflow_oid;
 
   assert (context != NULL);
-  assert (context->type == HEAP_OPERATION_UPDATE
-	  || context->type == HEAP_OPERATION_UPDATE_IN_PLACE);
+  assert (context->type == HEAP_OPERATION_UPDATE);
   assert (context->recdes_p != NULL);
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
@@ -27824,7 +27830,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
   overflow_oid = *((OID *) context->home_recdes.data);
 
   /* update */
-  if (is_mvcc_op && context->type == HEAP_OPERATION_UPDATE)
+  if (is_mvcc_op && !HEAP_IS_UPDATE_INPLACE (context->update_in_place))
     {
       HEAP_OPERATION_CONTEXT delete_context, insert_context;
 
@@ -28001,8 +28007,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
-  assert (context->type == HEAP_OPERATION_UPDATE
-	  || context->type == HEAP_OPERATION_UPDATE_IN_PLACE);
+  assert (context->type == HEAP_OPERATION_UPDATE);
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
@@ -28024,7 +28029,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (is_mvcc_op && context->type == HEAP_OPERATION_UPDATE)
+  if (is_mvcc_op && !HEAP_IS_UPDATE_INPLACE (context->update_in_place))
     {
       /*
        * TO BE OPTIMIZED IN THE FUTURE. You can use the disabled function
@@ -28270,13 +28275,12 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 {
   assert (context != NULL);
   assert (context->recdes_p != NULL);
-  assert (context->type == HEAP_OPERATION_UPDATE
-	  || context->type == HEAP_OPERATION_UPDATE_IN_PLACE);
+  assert (context->type == HEAP_OPERATION_UPDATE);
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
 
-  if (context->type != HEAP_OPERATION_UPDATE_IN_PLACE
+  if (!HEAP_IS_UPDATE_INPLACE (context->update_in_place)
       && context->home_recdes.type == REC_ASSIGN_ADDRESS)
     {
       /* updating a REC_ASSIGN_ADDRESS should be done as a non-mvcc operation */
@@ -28289,7 +28293,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       return ER_FAILED;
     }
 
-  if (is_mvcc_op && context->type == HEAP_OPERATION_UPDATE)
+  if (is_mvcc_op && !HEAP_IS_UPDATE_INPLACE (context->update_in_place))
     {
       HEAP_OPERATION_CONTEXT delete_context, insert_context;
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
@@ -28611,12 +28615,13 @@ heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p,
  *   class_oid_p(in): class OID
  *   recdes_p(in): updated record to write
  *   scancache_p(in): scan cache to use (optional)
- *   in_place(in): in place update?
+ *   in_place(in): specifies if the "in place" type of the update operation
  */
 void
 heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p,
 			    OID * oid_p, OID * class_oid_p, RECDES * recdes_p,
-			    HEAP_SCANCACHE * scancache_p, bool in_place)
+			    HEAP_SCANCACHE * scancache_p,
+			    UPDATE_INPLACE_STYLE in_place)
 {
   assert (context != NULL);
   assert (hfid_p != NULL);
@@ -28629,8 +28634,8 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p,
   COPY_OID (&context->class_oid, class_oid_p);
   context->recdes_p = recdes_p;
   context->scan_cache_p = scancache_p;
-  context->type = (in_place ? HEAP_OPERATION_UPDATE_IN_PLACE
-		   : HEAP_OPERATION_UPDATE);
+  context->type = HEAP_OPERATION_UPDATE;
+  context->update_in_place = in_place;
 }
 
 /*
@@ -28710,7 +28715,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
 	!heap_is_mvcc_disabled_for_class (&context->class_oid);
       if (heap_insert_adjust_recdes_header (thread_p, context->recdes_p,
 					    is_mvcc_op,
-					    is_mvcc_class) != NO_ERROR)
+					    is_mvcc_class,
+					    context) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -29464,8 +29470,7 @@ heap_update_logical (THREAD_ENTRY * thread_p,
    * Check input
    */
   assert (context != NULL);
-  assert (context->type == HEAP_OPERATION_UPDATE
-	  || context->type == HEAP_OPERATION_UPDATE_IN_PLACE);
+  assert (context->type == HEAP_OPERATION_UPDATE);
   assert (!OID_ISNULL (&context->oid));
   assert (!OID_ISNULL (&context->class_oid));
 
@@ -29551,7 +29556,8 @@ heap_update_logical (THREAD_ENTRY * thread_p,
 	!heap_is_mvcc_disabled_for_class (&context->class_oid);
       if (heap_insert_adjust_recdes_header (thread_p, context->recdes_p,
 					    is_mvcc_op,
-					    is_mvcc_class) != NO_ERROR)
+					    is_mvcc_class,
+					    context) != NO_ERROR)
 	{
 	  rc = ER_FAILED;
 	  goto error;

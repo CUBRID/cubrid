@@ -123,7 +123,8 @@ extern int xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p,
 					int *nobjects, int *nfetched,
 					int *nfailed_instance_locks,
 					OID * last_oid,
-					LC_COPYAREA ** fetch_area);
+					LC_COPYAREA ** fetch_area,
+					MVCC_SNAPSHOT * mvcc_snapshot);
 extern int xlocator_fetch_lockset (THREAD_ENTRY * thread_p,
 				   LC_LOCKSET * lockset,
 				   LC_COPYAREA ** fetch_area);

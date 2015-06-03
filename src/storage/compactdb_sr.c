@@ -286,7 +286,8 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
 				      &force_count, false,
 				      REPL_INFO_TYPE_RBR_NORMAL,
 				      DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-				      NULL, false, &copy_recdes);
+				      NULL, UPDATE_INPLACE_NONE,
+				      &copy_recdes);
       if (error_code != NO_ERROR)
 	{
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -377,6 +378,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_SCANCACHE upd_scancache;
   int ret = NO_ERROR, object_processed;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
   int nfailed_instances = 0;
 
@@ -387,6 +389,15 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
       big_objects == NULL || *total_objects < 0 || *failed_objects < 0)
     {
       return ER_FAILED;
+    }
+
+  if (!OID_IS_ROOTOID (class_oid))
+    {
+      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (mvcc_snapshot == NULL)
+	{
+	  return ER_FAILED;
+	}
     }
 
   nobjects = 0;
@@ -416,7 +427,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 					 instance_lock_timeout, class_oid,
 					 &null_lock, &nobjects, &nfetched,
 					 &nfailed_instances, &last_oid,
-					 &fetch_area);
+					 &fetch_area, mvcc_snapshot);
 
       if (ret == NO_ERROR)
 	{

@@ -447,7 +447,8 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	  HEAP_OPERATION_CONTEXT update_context;
 
 	  heap_create_update_context (&update_context, hfid, oid,
-				      WS_OID (classop), Diskrec, NULL, false);
+				      WS_OID (classop), Diskrec, NULL,
+				      UPDATE_INPLACE_NONE);
 
 	  if (heap_update_logical (NULL, &update_context) != NO_ERROR)
 	    {
@@ -632,7 +633,8 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
 	  HEAP_OPERATION_CONTEXT update_context;
 
 	  heap_create_update_context (&update_context, hfid, oid,
-				      WS_OID (classop), Diskerc, NULL, false);
+				      WS_OID (classop), Diskerc, NULL,
+				      UPDATE_INPLACE_NONE);
 
 	  if (heap_update_logical (NULL, &update_context) != NO_ERROR)
 	    {

@@ -125,7 +125,8 @@ extern int catcls_delete_catalog_classes (THREAD_ENTRY * thread_p,
 extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p,
 					  const char *name, RECDES * record,
 					  OID * class_oid_p,
-					  bool force_in_place);
+					  UPDATE_INPLACE_STYLE
+					  force_in_place);
 extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY *
 							thread_p);
 extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
@@ -4121,7 +4122,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
     }
 
   heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p,
-			      &record, scan_p, true);
+			      &record, scan_p, UPDATE_INPLACE_CURRENT_MVCCID);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       error = er_errid ();
@@ -4406,7 +4407,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
       /* update in place */
       heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p,
-				  &record, scan_p, true);
+				  &record, scan_p,
+				  UPDATE_INPLACE_CURRENT_MVCCID);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -4689,14 +4691,15 @@ error:
  *   name(in):
  *   record(in):
  *   class_oid_p(in): class OID
- *   force_in_place(in): in MVCC the update of the instances will be made in
- *			 place. Otherwise the decision will be made in this
- *			 function. Doesn't matter in non-MVCC.
+ *   force_in_place(in): if UPDATE_INPLACE_NONE then the 'in place' will not be forced
+ *			 and the update style will be decided in this function.
+ *			 Otherwise the update of the instance will be made in
+ *			 place and according to provided style.
  */
 int
 catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
 			       RECDES * record_p, OID * class_oid_p,
-			       bool force_in_place)
+			       UPDATE_INPLACE_STYLE force_in_place)
 {
   OR_VALUE *value_p = NULL;
   OID oid, *catalog_class_oid_p;
@@ -4704,7 +4707,6 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
   HFID *hfid_p;
   HEAP_SCANCACHE scan;
   bool is_scan_inited = false;
-  bool need_mvcc_update;
 
   if (catcls_find_oid_by_class_name (thread_p, name_p, &oid) != NO_ERROR)
     {
@@ -4717,24 +4719,29 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
     }
 
   /* check whether mvcc update or update in place is needed */
-  if (force_in_place)
+#if defined (SERVER_MODE)
+  if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
     {
-      need_mvcc_update = false;
-    }
-  else
-    {
-#if !defined (SERVER_MODE)
-      need_mvcc_update = false;
-#else /* SERVER_MODE */
+      bool need_mvcc_update;
+
       if (catcls_is_mvcc_update_needed (thread_p, &oid, &need_mvcc_update)
 	  != NO_ERROR)
 	{
 	  goto error;
 	}
-#endif /* SERVER_MODE */
+      if (!need_mvcc_update)
+	{
+	  force_in_place = UPDATE_INPLACE_CURRENT_MVCCID;
+	}
     }
+#else
+  if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
+    {
+      force_in_place = UPDATE_INPLACE_CURRENT_MVCCID;
+    }
+#endif /* SERVER_MODE */
 
-  if (need_mvcc_update)
+  if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
     {
       /* remove old OID version from class oid to oid hash */
       if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
@@ -4781,7 +4788,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
    * concurrently update oid - can't be two concurrent transactions that 
    * alter the same table.
    */
-  if (need_mvcc_update == false)
+  if (HEAP_IS_UPDATE_INPLACE (force_in_place))
     {
       /* already inserted by the current transaction, need to replace
        * the old version
@@ -5508,7 +5515,7 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
   /* heap update new object */
   heap_create_update_context (&update_context, hfid_p, new_oid, class_oid_p,
-			      &record, scan_p, true);
+			      &record, scan_p, UPDATE_INPLACE_CURRENT_MVCCID);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       error = er_errid ();
