@@ -446,6 +446,9 @@ extern int file_rv_fhdr_undoredo_mark_deleted_pages (THREAD_ENTRY * thread_p,
 extern void file_rv_fhdr_dump_mark_deleted_pages (FILE * fp,
 						  int length_ignore,
 						  void *data);
+extern int file_rv_fhdr_undoredo_update_num_user_pages (THREAD_ENTRY *
+							thread_p,
+							LOG_RCV * rcv);
 
 extern int file_rv_allocset_undoredo_sector (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);

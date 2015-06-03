@@ -930,7 +930,13 @@ struct rvfun RV_fun[] = {
    btree_rv_undo_record_modify,
    btree_rv_redo_record_modify,
    log_rv_dump_hexa,
-   log_rv_dump_hexa}
+   log_rv_dump_hexa},
+
+  {RVFL_FHDR_UPDATE_NUM_USER_PAGES,
+   "RVFL_FHDR_UPDATE_NUM_USER_PAGES",
+   file_rv_fhdr_undoredo_update_num_user_pages,
+   file_rv_fhdr_undoredo_update_num_user_pages,
+   NULL, NULL}
 };
 
 /*

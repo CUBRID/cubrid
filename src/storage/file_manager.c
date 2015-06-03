@@ -4422,13 +4422,15 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
       addr.offset = FILE_HEADER_OFFSET;
       undo_data = num_user_pages;
       redo_data = -num_user_pages;
-      log_append_undoredo_data (thread_p, RVFL_FHDR_MARK_DELETED_PAGES, &addr,
-				sizeof (undo_data), sizeof (redo_data),
-				&undo_data, &redo_data);
 
       if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
 	{
 	  fhdr->num_user_pages_mrkdelete += num_user_pages;
+
+	  log_append_undoredo_data (thread_p, RVFL_FHDR_MARK_DELETED_PAGES,
+				    &addr, sizeof (undo_data),
+				    sizeof (redo_data), &undo_data,
+				    &redo_data);
 
 	  /* Add postpone to compress. */
 	  postpone_data.deleted_npages = num_user_pages;
@@ -4436,6 +4438,13 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
 
 	  log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr,
 			       sizeof (postpone_data), &postpone_data);
+	}
+      else
+	{
+	  log_append_undoredo_data (thread_p, RVFL_FHDR_UPDATE_NUM_USER_PAGES,
+				    &addr, sizeof (undo_data),
+				    sizeof (redo_data), &undo_data,
+				    &redo_data);
 	}
 
       pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
@@ -8689,13 +8698,14 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   addr.offset = FILE_HEADER_OFFSET;
   undo_data = num_contpages;
   redo_data = -num_contpages;
-  log_append_undoredo_data (thread_p, RVFL_FHDR_MARK_DELETED_PAGES, &addr,
-			    sizeof (undo_data), sizeof (redo_data),
-			    &undo_data, &redo_data);
 
   if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
     {
       fhdr->num_user_pages_mrkdelete += num_contpages;
+
+      log_append_undoredo_data (thread_p, RVFL_FHDR_MARK_DELETED_PAGES, &addr,
+				sizeof (undo_data), sizeof (redo_data),
+				&undo_data, &redo_data);
 
       postpone_data.deleted_npages = num_contpages;
       postpone_data.need_compaction = 0;
@@ -8706,6 +8716,12 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
 
       log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr,
 			   sizeof (postpone_data), &postpone_data);
+    }
+  else
+    {
+      log_append_undoredo_data (thread_p, RVFL_FHDR_UPDATE_NUM_USER_PAGES,
+				&addr, sizeof (undo_data), sizeof (redo_data),
+				&undo_data, &redo_data);
     }
   pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
 
@@ -14438,6 +14454,33 @@ file_rv_fhdr_undoredo_mark_deleted_pages (THREAD_ENTRY * thread_p,
 
   fhdr->num_user_pages += npages;
   fhdr->num_user_pages_mrkdelete -= npages;
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  return NO_ERROR;		/* do not permit error */
+}
+
+/*
+ * file_rv_fhdr_undoredo_update_num_user_pages () - Undo/redo update num user
+ *						    pages.
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+file_rv_fhdr_undoredo_update_num_user_pages (THREAD_ENTRY * thread_p,
+					     LOG_RCV * rcv)
+{
+  FILE_HEADER *fhdr;
+  INT32 npages;
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
+  npages = *(INT32 *) rcv->data;
+  fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
+
+  fhdr->num_user_pages += npages;
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
