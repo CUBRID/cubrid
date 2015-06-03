@@ -4378,7 +4378,8 @@ smt_downcase_all_class_info (void)
   int c;
   char name_buf[SM_MAX_IDENTIFIER_LENGTH];
 
-  lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE);
+  lmops =
+    locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE, NULL);
   if (lmops != NULL)
     {
 

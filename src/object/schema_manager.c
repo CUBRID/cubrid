@@ -538,7 +538,10 @@ static int update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 					    const char *old_name,
 					    const char *new_name);
 static int flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat);
-
+static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op,
+						  DB_FETCH_MODE purpose,
+						  LC_FETCH_VERSION_TYPE *
+						  force_fetch_version_type);
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -2384,7 +2387,7 @@ sm_fetch_all_classes (int external_list, DB_FETCH_MODE purpose)
   if (au_check_user () == NO_ERROR)
     {				/* make sure we have a user */
       last = NULL;
-      lmops = locator_get_all_mops (sm_Root_class_mop, purpose);
+      lmops = locator_get_all_mops (sm_Root_class_mop, purpose, NULL);
       /* probably should make sure we push here because the list could be long */
       if (lmops != NULL)
 	{
@@ -2469,7 +2472,7 @@ sm_fetch_all_base_classes (int external_list, DB_FETCH_MODE purpose)
   if (au_check_user () == NO_ERROR)
     {				/* make sure we have a user */
       last = NULL;
-      lmops = locator_get_all_mops (sm_Root_class_mop, purpose);
+      lmops = locator_get_all_mops (sm_Root_class_mop, purpose, NULL);
       /* probably should make sure we push here because the list could be long */
       if (lmops != NULL)
 	{
@@ -2579,10 +2582,42 @@ sm_get_base_classes (int external_list)
 }
 #endif
 
+/*
+ * sm_fetch_all_objects() -
+ *    a general interface function of sm_fetch_all_objects_internal
+ *   return: list of objects
+ *   op(in): class or instance object
+ *   purpose(in): Fetch purpose
+ */
+
+DB_OBJLIST *
+sm_fetch_all_objects (DB_OBJECT * op, DB_FETCH_MODE purpose)
+{
+  return sm_fetch_all_objects_internal (op, purpose, NULL);
+}
+
+/*
+ * sm_fetch_all_objects_of_dirty_version() -
+ *      an interface function of sm_fetch_all_objects_internal
+ *      It will fetch DIRTY version.
+ *      Currently, the only user of this function is au_get_new_auth.
+ *   return: list of objects
+ *   op(in): class or instance object
+ *   purpose(in): Fetch purpose
+ */
+DB_OBJLIST *
+sm_fetch_all_objects_of_dirty_version (DB_OBJECT * op, DB_FETCH_MODE purpose)
+{
+  LC_FETCH_VERSION_TYPE fetch_version_type = LC_FETCH_DIRTY_VERSION;
+
+  return sm_fetch_all_objects_internal (op, purpose, &fetch_version_type);
+}
+
+
 /* OBJECT LOCATION */
 /*
- * sm_get_all_objects() - Returns a list of all the instances that have
- *    been created for a class.
+ * sm_fetch_all_objects_internal() - Returns a list of all the instances that
+ *    have been created for a class.
  *    This was used early on before query was available, it should not
  *    be heavily used now.  Be careful, this can potentially bring
  *    in lots of objects and overflow the workspace.
@@ -2591,10 +2626,13 @@ sm_get_base_classes (int external_list)
  *   return: list of objects
  *   op(in): class or instance object
  *   purpose(in): Fetch purpose
+ *   force_fetch_version_type: fetch version type
  */
 
-DB_OBJLIST *
-sm_fetch_all_objects (DB_OBJECT * op, DB_FETCH_MODE purpose)
+static DB_OBJLIST *
+sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE purpose,
+			       LC_FETCH_VERSION_TYPE *
+			       force_fetch_version_type)
 {
   LIST_MOPS *lmops;
   SM_CLASS *class_;
@@ -2638,7 +2676,8 @@ sm_fetch_all_objects (DB_OBJECT * op, DB_FETCH_MODE purpose)
 	  ct = sm_get_class_type (class_);
 	  if (ct == SM_CLASS_CT)
 	    {
-	      lmops = locator_get_all_mops (classmop, purpose);
+	      lmops = locator_get_all_mops (classmop, purpose,
+					    force_fetch_version_type);
 	      if (lmops != NULL)
 		{
 		  for (i = 0; i < lmops->num; i++)
@@ -2851,7 +2890,8 @@ sm_mark_system_classes (void)
 
   if (au_check_user () == NO_ERROR)
     {
-      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE);
+      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE,
+				    NULL);
       if (lmops != NULL)
 	{
 	  for (i = 0; i < lmops->num; i++)
@@ -3315,7 +3355,8 @@ sm_force_write_all_classes (void)
   int i;
 
   /* get all class objects */
-  lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE);
+  lmops =
+    locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE, NULL);
   if (lmops != NULL)
     {
       for (i = 0; i < lmops->num; i++)

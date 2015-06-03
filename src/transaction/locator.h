@@ -169,6 +169,10 @@ typedef enum
  *   If the instance is not locked and its class doesn't have shared or
  *  exclusive mode, use MVCC version.
  *
+ *   au_get_new_auth uses IX-lock with dirty version when fetch all _db_auth
+ *  instances. Each instance is fetched using S-lock and if an error occur, the
+ *  instance is skipped.
+ *
  *   Currently, CUBRID tools use MVCC version when need to read instances.
  *
  */

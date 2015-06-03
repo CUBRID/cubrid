@@ -162,7 +162,7 @@ compactdb_start (bool verbose_flag)
   if (prm_get_integer_value (PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY) != 2)
     {
       class_table = locator_get_all_mops (sm_Root_class_mop,
-					  DB_FETCH_QUERY_READ);
+					  DB_FETCH_QUERY_READ, NULL);
       if (class_table == NULL)
 	{
 	  return 1;		/* error */

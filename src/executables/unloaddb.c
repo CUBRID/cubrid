@@ -219,7 +219,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       fflush (stdout);
     }
 
-  class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_READ);
+  class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_READ, NULL);
   if (input_filename)
     {
       /* It may not be needed */

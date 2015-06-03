@@ -600,7 +600,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
   else
     {
       class_table =
-	locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ);
+	locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ, NULL);
       if (!class_table)
 	{
 	  status = ER_FAILED;

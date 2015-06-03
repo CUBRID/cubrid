@@ -207,7 +207,9 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname,
 			   OID * class_oid, LOCK lock);
 static LIST_MOPS *locator_fun_get_all_mops (MOP class_mop,
 					    DB_FETCH_MODE purpose,
-					    int (*fun) (MOBJ class_obj));
+					    int (*fun) (MOBJ class_obj),
+					    LC_FETCH_VERSION_TYPE
+					    * force_fetch_version_type);
 static int locator_internal_flush_instance (MOP inst_mop, bool decache);
 
 static int locator_add_to_oidset_when_temp_oid (MOP mop, void *data);
@@ -2868,14 +2870,21 @@ locator_keep_mops (MOP mop, MOBJ object, void *kmops)
  *                                    DB_FETCH_QUERY_WRITE
  *   fun(in): Function to call on each object of class. If the function
  *                 returns false, the object is not returned to the caller.
+ *   force_fetch_version_type(in): Fetch version type
  *
  * Note: Find out all the instances (mops) of a given class. The
  *              instances of the class are prefetched for future references.
  *              The list of mops is returned to the caller.
+ *	     The force_fetch_version_type parameter, allow to users to specify
+ *	            desired fetch version type. The user must carefully set this
+ *	            parameter. Thus, if force_fetch_version_type is dirty and
+ *	            class is IX-locked, the instance is fetched without lock,
+ *	            and the user must lock the instance later before using it.
  */
 static LIST_MOPS *
 locator_fun_get_all_mops (MOP class_mop,
-			  DB_FETCH_MODE purpose, int (*fun) (MOBJ class_obj))
+			  DB_FETCH_MODE purpose, int (*fun) (MOBJ class_obj),
+			  LC_FETCH_VERSION_TYPE * force_fetch_version_type)
 {
   LOCATOR_LIST_KEEP_MOPS keep_mops;
   LC_COPYAREA *fetch_area;	/* Area where objects are received */
@@ -2955,14 +2964,22 @@ locator_fun_get_all_mops (MOP class_mop,
    * update an instance that's not visible for current transaction, instead of
    * returning SERIALIZABLE conflict (snapshot is acquired once / transaction).
    */
-  if ((lock == S_LOCK || lock >= SIX_LOCK)
-      && (TM_TRAN_ISOLATION () == TRAN_READ_COMMITTED))
+
+  if (force_fetch_version_type == NULL)
     {
-      fetch_version_type = LC_FETCH_DIRTY_VERSION;
+      if ((lock == S_LOCK || lock >= SIX_LOCK)
+	  && (TM_TRAN_ISOLATION () == TRAN_READ_COMMITTED))
+	{
+	  fetch_version_type = LC_FETCH_DIRTY_VERSION;
+	}
+      else
+	{
+	  fetch_version_type = LC_FETCH_MVCC_VERSION;
+	}
     }
   else
     {
-      fetch_version_type = LC_FETCH_MVCC_VERSION;
+      fetch_version_type = *force_fetch_version_type;
     }
 
   /* Now start fetching all the instances and build a list of the mops */
@@ -3060,15 +3077,18 @@ locator_fun_get_all_mops (MOP class_mop,
  *                                    DB_FETCH_DIRTY (Will not lock)
  *                                    DB_FETCH_QUERY_READ
  *                                    DB_FETCH_QUERY_WRITE
+ *  force_fetch_version_type(in): fetch version type
  *
  * Note: Find out all the instances (mops) of a given class. The
  *              instances of the class are prefetched for future references.
  *              The list of mops is returned to the caller.
  */
 LIST_MOPS *
-locator_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose)
+locator_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose,
+		      LC_FETCH_VERSION_TYPE * force_fetch_version_type)
 {
-  return locator_fun_get_all_mops (class_mop, purpose, NULL);
+  return locator_fun_get_all_mops (class_mop, purpose, NULL,
+				   force_fetch_version_type);
 }
 
 /*
@@ -3091,7 +3111,7 @@ LIST_MOPS *
 locator_get_all_class_mops (DB_FETCH_MODE purpose,
 			    int (*fun) (MOBJ class_obj))
 {
-  return locator_fun_get_all_mops (sm_Root_class_mop, purpose, fun);
+  return locator_fun_get_all_mops (sm_Root_class_mop, purpose, fun, NULL);
 }
 
 /*

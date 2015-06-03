@@ -1638,7 +1638,12 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       return (ret_obj);
     }
 
-  list = sm_fetch_all_objects (au_class, DB_FETCH_CLREAD_INSTWRITE);
+  /* In RR, any serializable conflicts was already detected when accessing
+   * db_user, db_authorizations classes. So, we can use dirty version without
+   * lock in _db_auth.
+   */
+  list = sm_fetch_all_objects_of_dirty_version (au_class,
+						DB_FETCH_CLREAD_INSTWRITE);
   if (list == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_NO_AUTHORIZATION, 0);

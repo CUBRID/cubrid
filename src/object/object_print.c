@@ -3429,7 +3429,8 @@ help_fprint_all_classes (FILE * fp)
 
   if (au_check_user () == NO_ERROR)
     {
-      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ);
+      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ,
+				    NULL);
       if (lmops != NULL)
 	{
 	  for (i = 0; i < lmops->num; i++)

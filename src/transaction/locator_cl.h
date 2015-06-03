@@ -127,7 +127,9 @@ extern LC_FIND_CLASSNAME locator_lockhint_classes (int num_classes,
 						   LOCK lock_rr_tran);
 extern int locator_does_exist_object (MOP mop, DB_FETCH_MODE purpose);
 extern LIST_MOPS *locator_get_all_mops (MOP class_mop,
-					DB_FETCH_MODE class_purpose);
+					DB_FETCH_MODE class_purpose,
+					LC_FETCH_VERSION_TYPE
+					* force_fetch_version_type);
 extern LIST_MOPS *locator_get_all_class_mops (DB_FETCH_MODE purpose,
 					      int (*fun) (MOBJ class_obj));
 #if defined (ENABLE_UNUSED_FUNCTION)
