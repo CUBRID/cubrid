@@ -32342,7 +32342,7 @@ end:
   if (helper->rv_keyval_data != NULL
       && helper->rv_keyval_data != rv_undo_data_bufalign)
     {
-      free (helper->rv_keyval_data);
+      db_private_free (helper->rv_keyval_data);
     }
   return error_code;
 }
