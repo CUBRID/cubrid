@@ -31018,8 +31018,11 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
   /* No error, object was locked and key leaf node is held. */
   assert (*leaf != NULL);
 
-  /* Slot ID may have changed. Update insert_helper->leaf_addr.offset. */
+  /* Slot ID and page pointer may have changed. Update
+   * insert_helper->leaf_addr.
+   */
   insert_helper->leaf_addr.offset = search_key->slotid;
+  insert_helper->leaf_addr.pgptr = *leaf;
 
 #if defined (SERVER_MODE)
   if (!LSA_EQ (&saved_leaf_lsa, pgbuf_get_lsa (*leaf)))
@@ -32342,7 +32345,7 @@ end:
   if (helper->rv_keyval_data != NULL
       && helper->rv_keyval_data != rv_undo_data_bufalign)
     {
-      db_private_free (helper->rv_keyval_data);
+      db_private_free (thread_p, helper->rv_keyval_data);
     }
   return error_code;
 }
