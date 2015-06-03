@@ -6754,8 +6754,13 @@ locator_lockhint_classes (int num_classes, const char **many_classnames,
 	   * small cache coherance number) or a class that has been deleted
 	   */
 	  class_mop = ws_find_class (many_classnames[i]);
-	  if (class_mop != NULL
-	      && WS_ISDIRTY (class_mop)
+	  if (class_mop == NULL)
+	    {
+	      need_call_server = true;
+	      continue;
+	    }
+
+	  if (WS_ISDIRTY (class_mop)
 	      && (OID_ISTEMP (ws_oid (class_mop))
 		  || ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED
 		  || (class_obj != NULL && WS_CHN (class_obj) <= 1)))
@@ -6782,18 +6787,12 @@ locator_lockhint_classes (int num_classes, const char **many_classnames,
 	   * Check if the classname to OID entry is cached. Trust the cache only
 	   * if there is a lock on the class
 	   */
+	  current_lock = ws_get_lock (class_mop);
+	  assert (many_locks[i] >= NULL_LOCK && current_lock >= NULL_LOCK);
+	  conv_lock = lock_Conv[many_locks[i]][current_lock];
+	  assert (conv_lock != NA_LOCK);
 
-	  if (class_mop != NULL)
-	    {
-	      current_lock = ws_get_lock (class_mop);
-	      assert (many_locks[i] >= NULL_LOCK
-		      && current_lock >= NULL_LOCK);
-	      conv_lock = lock_Conv[many_locks[i]][current_lock];
-	      assert (conv_lock != NA_LOCK);
-	    }
-
-	  if (class_mop == NULL || current_lock == NULL_LOCK
-	      || current_lock != conv_lock)
+	  if (current_lock == NULL_LOCK || current_lock != conv_lock)
 	    {
 	      need_call_server = true;
 	      continue;
