@@ -1295,6 +1295,15 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	  if (page_vacuum_status == HEAP_PAGE_VACUUM_ONCE)
 	    {
 	      heap_page_set_vacuum_status_none (thread_p, helper.home_page);
+
+	      vacuum_er_log (VACUUM_ER_LOG_HEAP,
+			     "VACUUM: Changed vacuum status of heap page "
+			     "%d|%d, lsa=%lld|%d from once to none.\n",
+			     pgbuf_get_volume_id (helper.home_page),
+			     pgbuf_get_page_id (helper.home_page),
+			     (long long int)
+			     pgbuf_get_lsa (helper.home_page)->pageid,
+			     (int) pgbuf_get_lsa (helper.home_page)->offset);
 	      vacuum_log_vacuum_heap_page (thread_p, helper.home_page,
 					   helper.n_vacuumed, helper.slots,
 					   helper.results,
@@ -2302,6 +2311,17 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   assert (n_slots < ((SPAGE_HEADER *) page_p)->num_slots);
 
+  if (all_vacuumed)
+    {
+      vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
+		     "VACUUM: Change vacuum status for heap page %d|%d, "
+		     "lsa=%lld|%d, from once to none.\n",
+		     pgbuf_get_volume_id (rcv->pgptr),
+		     pgbuf_get_page_id (rcv->pgptr),
+		     (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
+		     (int) pgbuf_get_lsa (rcv->pgptr)->offset);
+    }
+
   if (n_slots == 0)
     {
       /* No slots have been vacuumed, but header must be changed from one
@@ -2935,7 +2955,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	  /* Collect heap object to be vacuumed at the end of the job. */
 	  heap_object_oid.pageid = log_record_data.pageid;
 	  heap_object_oid.volid = log_record_data.volid;
-	  heap_object_oid.slotid = log_record_data.offset;
+	  heap_object_oid.slotid =
+	    heap_rv_remove_flags_from_offset (log_record_data.offset);
 
 	  error_code =
 	    vacuum_collect_heap_objects (worker, &heap_object_oid,
@@ -5962,7 +5983,6 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
   int i;
   MVCCID oldest_mvccid;
   MVCCID log_header_oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
-  LOG_DATA_ADDR addr;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "VACUUM: Try to update oldest_mvccid.");
@@ -6017,12 +6037,6 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
 
       /* Verify that vacuum data is still consistent. */
       VACUUM_VERIFY_VACUUM_DATA ();
-
-      addr.pgptr = NULL;
-      addr.vfid = NULL;
-      addr.offset = -1;
-      log_append_redo_data (thread_p, RVVAC_UPDATE_OLDEST_MVCCID, &addr,
-			    sizeof (oldest_mvccid), &oldest_mvccid);
     }
   else
     {
@@ -6030,23 +6044,6 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
 		     "VACUUM: Oldest MVCCID remains %llu.",
 		     vacuum_Data->oldest_mvccid);
     }
-}
-
-/*
- * vacuum_rv_redo_udate_oldest_mvccid () - Redo update oldest MVCCID.
- *
- * return	 : NO_ERROR.
- * thread_p (in) : Thread entry.
- * rcv (in)	 : Recover data.
- */
-int
-vacuum_rv_redo_udate_oldest_mvccid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  assert (rcv->length == sizeof (MVCCID));
-
-  vacuum_Data->oldest_mvccid = *((MVCCID *) rcv->data);
-  assert (MVCCID_IS_NORMAL (vacuum_Data->oldest_mvccid));
-  return NO_ERROR;
 }
 
 /*

@@ -623,6 +623,9 @@ static HEAP_HFID_TABLE heap_Hfid_table_area =
 
 static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
 
+/* Recovery. */
+#define HEAP_RV_FLAG_VACUUM_STATUS_CHANGE 0x8000
+
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
 					     const VPID * vpid_ptr,
@@ -1281,6 +1284,10 @@ static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p,
 static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
 						  PAGE_PTR heap_page,
 						  MVCCID mvccid);
+static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p,
+				       PAGE_PTR heap_page, MVCCID mvccid,
+				       bool vacuum_status_change);
+
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p,
 					      HEAP_SCANCACHE * scan_cache,
 					      OID * partition_oid,
@@ -19266,9 +19273,20 @@ heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes,
   int n_redo_crumbs = 0, data_copy_offset = 0, chn_offset;
   LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS];
   INT32 mvcc_flags;
+  HEAP_PAGE_VACUUM_STATUS vacuum_status =
+    heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
 
   assert (p_recdes != NULL);
   assert (p_addr != NULL);
+
+  /* Update chain. */
+  heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr,
+					logtb_get_current_mvccid (thread_p));
+  if (vacuum_status != heap_page_get_vacuum_status (thread_p, p_addr->pgptr))
+    {
+      /* Mark status change for recovery. */
+      p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
+    }
 
   /* Build redo crumbs */
   /* Add record type */
@@ -19322,9 +19340,18 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int chn, sp_success;
   MVCC_REC_HEADER mvcc_rec_header;
   INT16 record_type;
+  bool vacuum_status_change = false;
 
   assert (rcv->pgptr != NULL);
   assert (MVCCID_IS_NORMAL (rcv->mvcc_id));
+
+  slotid = rcv->offset;
+  if (slotid & HEAP_RV_FLAG_VACUUM_STATUS_CHANGE)
+    {
+      vacuum_status_change = true;
+    }
+  slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+  assert (slotid > 0);
 
   record_type = *(INT16 *) rcv->data;
   if (record_type == REC_BIGONE)
@@ -19383,7 +19410,6 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       recdes.length += (rcv->length - offset);
     }
 
-  slotid = rcv->offset;
   sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid,
 					  &recdes);
 
@@ -19394,7 +19420,8 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
 
-  heap_page_update_chain_after_mvcc_op (thread_p, rcv->pgptr, rcv->mvcc_id);
+  heap_page_rv_chain_update (thread_p, rcv->pgptr, rcv->mvcc_id,
+			     vacuum_status_change);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
@@ -19414,6 +19441,8 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   INT16 slotid;
 
   slotid = rcv->offset;
+  /* Clear HEAP_RV_FLAG_VACUUM_STATUS_CHANGE */
+  slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
   (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -19466,11 +19495,27 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, INT32 undo_chn,
   char *ptr;
   int undo_data_size = 0;
   int redo_data_size = 0;
+  HEAP_PAGE_VACUUM_STATUS vacuum_status;
 
   assert (p_addr != NULL);
   assert (rcvindex == RVHF_MVCC_DELETE_REC_HOME
 	  || rcvindex == RVHF_MVCC_DELETE_REC_NEWHOME
 	  || rcvindex == RVHF_MVCC_DELETE_OVERFLOW);
+
+  if (LOG_IS_MVCC_HEAP_OPERATION (rcvindex))
+    {
+      vacuum_status = heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
+
+      heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr,
+					    logtb_get_current_mvccid
+					    (thread_p));
+      if (heap_page_get_vacuum_status (thread_p, p_addr->pgptr)
+	  != vacuum_status)
+	{
+	  /* Mark vacuum status change for recovery. */
+	  p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
+	}
+    }
 
   /* Prepare undo data. */
   ptr = or_pack_int (undo_data_p, (int) undo_chn);
@@ -19529,6 +19574,8 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (rcv->length == OR_INT_SIZE);
 
   slotid = rcv->offset;
+  slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+  assert (slotid > 0);
 
   rebuild_record.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
   rebuild_record.area_size = DB_PAGESIZE;
@@ -19711,11 +19758,21 @@ heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
   int offset = 0;
+  PGSLOTID slotid;
   OID next_version;
   OID partition_oid;
+  bool vacuum_status_change = false;
 
   assert (rcv->pgptr != NULL);
   assert (MVCCID_IS_NORMAL (rcv->mvcc_id));
+
+  slotid = rcv->offset;
+  if (slotid & HEAP_RV_FLAG_VACUUM_STATUS_CHANGE)
+    {
+      vacuum_status_change = true;
+    }
+  slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+  assert (slotid > 0);
 
   if (offset < rcv->length)
     {
@@ -19742,7 +19799,7 @@ heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (offset == rcv->length);
 
   error_code =
-    heap_rv_mvcc_redo_delete_internal (thread_p, rcv->pgptr, rcv->offset,
+    heap_rv_mvcc_redo_delete_internal (thread_p, rcv->pgptr, slotid,
 				       rcv->mvcc_id, &next_version,
 				       &partition_oid);
   if (error_code != NO_ERROR)
@@ -19750,7 +19807,8 @@ heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       ASSERT_ERROR ();
       return error_code;
     }
-  heap_page_update_chain_after_mvcc_op (thread_p, rcv->pgptr, rcv->mvcc_id);
+  heap_page_rv_chain_update (thread_p, rcv->pgptr, rcv->mvcc_id,
+			     vacuum_status_change);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
@@ -23882,6 +23940,9 @@ heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p,
 				     RECDES * old_recdes, RECDES * new_recdes,
 				     LOG_DATA_ADDR * p_addr)
 {
+  HEAP_PAGE_VACUUM_STATUS vacuum_status =
+    heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
+
   /* REC_RELOCATION type record was brought back to home page or
    * REC_HOME has been converted to REC_RELOCATION/REC_BIGONE.
    */
@@ -23889,6 +23950,11 @@ heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p,
   /* Update heap chain for vacuum. */
   heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr,
 					logtb_get_current_mvccid (thread_p));
+  if (heap_page_get_vacuum_status (thread_p, p_addr->pgptr) != vacuum_status)
+    {
+      /* Mark vacuum status change for recovery. */
+      p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
+    }
   log_append_undoredo_recdes (thread_p, RVHF_MVCC_DELETE_MODIFY_HOME, p_addr,
 			      old_recdes, new_recdes);
 }
@@ -23908,8 +23974,15 @@ static void
 heap_mvcc_log_home_no_change_on_delete (THREAD_ENTRY * thread_p,
 					LOG_DATA_ADDR * p_addr)
 {
+  HEAP_PAGE_VACUUM_STATUS vacuum_status =
+    heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
   heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr,
 					logtb_get_current_mvccid (thread_p));
+  if (vacuum_status != heap_page_get_vacuum_status (thread_p, p_addr->pgptr))
+    {
+      /* Mark vacuum status change for recovery. */
+      p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
+    }
   log_append_undoredo_data (thread_p, RVHF_MVCC_DELETE_NO_MODIFY_HOME, p_addr,
 			    0, 0, NULL, NULL);
 }
@@ -23925,9 +23998,19 @@ heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
+  bool vacuum_status_change = false;
+  PGSLOTID slotid;
 
   assert (rcv->pgptr != NULL);
   assert (MVCCID_IS_NORMAL (rcv->mvcc_id));
+
+  slotid = rcv->offset;
+  if (slotid & HEAP_RV_FLAG_VACUUM_STATUS_CHANGE)
+    {
+      vacuum_status_change = true;
+    }
+  slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+  assert (slotid > 0);
 
   error_code = heap_rv_undoredo_update (thread_p, rcv);
   if (error_code != NO_ERROR)
@@ -23935,7 +24018,9 @@ heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p,
       ASSERT_ERROR ();
       return error_code;
     }
-  heap_page_update_chain_after_mvcc_op (thread_p, rcv->pgptr, rcv->mvcc_id);
+
+  heap_page_rv_chain_update (thread_p, rcv->pgptr, rcv->mvcc_id,
+			     vacuum_status_change);
   /* Page was already marked as dirty */
   return NO_ERROR;
 }
@@ -26401,8 +26486,8 @@ heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type,
  * NOTE: The function will alter the provided record descriptor data area.
  */
 static int
-heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, 
-				  HEAP_OPERATION_CONTEXT * context, 
+heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
+				  HEAP_OPERATION_CONTEXT * context,
 				  RECDES * recdes_p,
 				  bool is_mvcc_op, bool is_mvcc_class)
 {
@@ -26967,10 +27052,6 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   if (is_mvcc_op)
     {
       /* MVCC logging */
-      /* Also update chain for vacuum. */
-      heap_page_update_chain_after_mvcc_op (thread_p, page_p,
-					    logtb_get_current_mvccid
-					    (thread_p));
       heap_mvcc_log_insert (thread_p, recdes_p, &log_addr);
     }
   else
@@ -27836,13 +27917,6 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 	   * No relocation, can be updated in place
 	   */
 
-	  /* Modify page chain for vacuum */
-	  heap_page_update_chain_after_mvcc_op (thread_p,
-						context->home_page_watcher_p->
-						pgptr,
-						logtb_get_current_mvccid
-						(thread_p));
-
 	  rec_address.pgptr = context->home_page_watcher_p->pgptr;
 	  rec_address.vfid = &context->hfid.vfid;
 	  rec_address.offset = context->oid.slotid;
@@ -28688,9 +28762,16 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
        * information. Update page chain header and notify vacuum of this
        * change.
        */
+      HEAP_PAGE_VACUUM_STATUS vacuum_status =
+	heap_page_get_vacuum_status (thread_p, page_p);
       heap_page_update_chain_after_mvcc_op (thread_p, page_p,
 					    logtb_get_current_mvccid
 					    (thread_p));
+      if (heap_page_get_vacuum_status (thread_p, page_p) != vacuum_status)
+	{
+	  /* Mark vacuum status change for recovery. */
+	  address.offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
+	}
       log_append_undoredo_recdes (thread_p, RVHF_UPDATE_NOTIFY_VACUUM,
 				  &address, old_recdes_p, new_recdes_p);
     }
@@ -29708,7 +29789,7 @@ heap_update_logical (THREAD_ENTRY * thread_p,
     {
       bool is_mvcc_class =
 	!heap_is_mvcc_disabled_for_class (&context->class_oid);
-      if (heap_insert_adjust_recdes_header (thread_p, context, 
+      if (heap_insert_adjust_recdes_header (thread_p, context,
 					    context->recdes_p,
 					    is_mvcc_op,
 					    is_mvcc_class) != NO_ERROR)
@@ -30245,20 +30326,24 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
       assert (MVCC_ID_PRECEDES (chain->max_mvccid, mvccid));
       HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "VACUUM: Changed vacuum status for page %d|%d from "
-		     "no vacuum to vacuum once.\n",
+		     "VACUUM: Changed vacuum status for page %d|%d, "
+		     "lsa=%lld|%d from no vacuum to vacuum once.\n",
 		     pgbuf_get_volume_id (heap_page),
-		     pgbuf_get_page_id (heap_page));
+		     pgbuf_get_page_id (heap_page),
+		     (long long int) pgbuf_get_lsa (heap_page)->pageid,
+		     (int) pgbuf_get_lsa (heap_page)->offset);
       break;
 
     case HEAP_PAGE_VACUUM_ONCE:
       /* Change status to unknown number of vacuums. */
       HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_UNKNOWN);
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "VACUUM: Changed vacuum status for page %d|%d from "
-		     "vacuum once to unknown.\n",
+		     "VACUUM: Changed vacuum status for page %d|%d, "
+		     "lsa=%lld|%d from vacuum once to unknown.\n",
 		     pgbuf_get_volume_id (heap_page),
-		     pgbuf_get_page_id (heap_page));
+		     pgbuf_get_page_id (heap_page),
+		     (long long int) pgbuf_get_lsa (heap_page)->pageid,
+		     (int) pgbuf_get_lsa (heap_page)->offset);
       break;
 
     case HEAP_PAGE_VACUUM_UNKNOWN:
@@ -30270,10 +30355,12 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
 	  /* Now page must be vacuumed once, due to new MVCC op. */
 	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP,
-			 "VACUUM: Changed vacuum status for page %d|%d "
-			 "from unknown to vacuum once.\n ",
+			 "VACUUM: Changed vacuum status for page %d|%d, "
+			 "lsa=%lld|%d from unknown to vacuum once.\n ",
 			 pgbuf_get_volume_id (heap_page),
-			 pgbuf_get_page_id (heap_page));
+			 pgbuf_get_page_id (heap_page),
+			 (long long int) pgbuf_get_lsa (heap_page)->pageid,
+			 (int) pgbuf_get_lsa (heap_page)->offset);
 	}
       else
 	{
@@ -30281,10 +30368,12 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
 	   * predicted.
 	   */
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP,
-			 "VACUUM: Vacuum status for page %d|%d remains "
-			 "unknown.\n ",
+			 "VACUUM: Vacuum status for page %d|%d, %lld|%d "
+			 "remains unknown.\n ",
 			 pgbuf_get_volume_id (heap_page),
-			 pgbuf_get_page_id (heap_page));
+			 pgbuf_get_page_id (heap_page),
+			 (long long int) pgbuf_get_lsa (heap_page)->pageid,
+			 (int) pgbuf_get_lsa (heap_page)->offset);
 	}
       break;
     default:
@@ -30302,6 +30391,83 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
 		     pgbuf_get_page_id (heap_page),
 		     (unsigned long long int) chain->max_mvccid,
 		     (unsigned long long int) mvccid);
+      chain->max_mvccid = mvccid;
+    }
+}
+
+/*
+ * heap_page_rv_vacuum_status_change () - Applies vacuum status change for
+ *					  recovery.
+ *
+ * return	  : Void.
+ * thread_p (in)  : Thread entry.
+ * heap_page (in) : Heap page.
+ */
+static void
+heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page,
+			   MVCCID mvccid, bool vacuum_status_change)
+{
+  HEAP_CHAIN *chain;
+  RECDES chain_recdes;
+  HEAP_PAGE_VACUUM_STATUS vacuum_status;
+
+  assert (heap_page != NULL);
+
+  /* Possible transitions (see heap_page_update_chain_after_mvcc_op):
+   * - HEAP_PAGE_VACUUM_NONE => HEAP_PAGE_VACUUM_ONCE.
+   * - HEAP_PAGE_VACUUM_ONCE => HEAP_PAGE_VACUUM_UNKNOWN.
+   * - HEAP_PAGE_VACUUM_UNKNOWN  => HEAP_PAGE_VACUUM_ONCE.
+   */
+
+  /* Get heap chain. */
+  if (spage_get_record (heap_page, HEAP_HEADER_AND_CHAIN_SLOTID,
+			&chain_recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return;
+    }
+  if (chain_recdes.length != sizeof (HEAP_CHAIN))
+    {
+      /* Header page. Don't change chain. */
+      return;
+    }
+  chain = (HEAP_CHAIN *) chain_recdes.data;
+
+  if (vacuum_status_change)
+    {
+      /* Change status. */
+      vacuum_status = HEAP_PAGE_GET_VACUUM_STATUS (chain);
+      switch (vacuum_status)
+	{
+	case HEAP_PAGE_VACUUM_NONE:
+	case HEAP_PAGE_VACUUM_UNKNOWN:
+	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
+
+	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
+			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, "
+			 "status from %s to once.\n",
+			 pgbuf_get_volume_id (heap_page),
+			 pgbuf_get_page_id (heap_page),
+			 (long long int) pgbuf_get_lsa (heap_page)->pageid,
+			 (int) pgbuf_get_lsa (heap_page)->offset,
+			 vacuum_status == HEAP_PAGE_VACUUM_NONE ?
+			 "none" : "unknown");
+	  break;
+	case HEAP_PAGE_VACUUM_ONCE:
+	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_UNKNOWN);
+
+	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
+			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, "
+			 "status from once to unknown.\n",
+			 pgbuf_get_volume_id (heap_page),
+			 pgbuf_get_page_id (heap_page),
+			 (long long int) pgbuf_get_lsa (heap_page)->pageid,
+			 (int) pgbuf_get_lsa (heap_page)->offset);
+	  break;
+	}
+    }
+  if (MVCC_ID_PRECEDES (chain->max_mvccid, mvccid))
+    {
       chain->max_mvccid = mvccid;
     }
 }
@@ -30451,12 +30617,29 @@ heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  bool vacuum_status_change = false;
+
   assert (rcv->pgptr != NULL);
   assert (MVCCID_IS_NORMAL (rcv->mvcc_id));
 
-  heap_page_update_chain_after_mvcc_op (thread_p, rcv->pgptr, rcv->mvcc_id);
+  vacuum_status_change =
+    (rcv->offset & HEAP_RV_FLAG_VACUUM_STATUS_CHANGE) != 0;
+  heap_page_rv_chain_update (thread_p, rcv->pgptr, rcv->mvcc_id,
+			     vacuum_status_change);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
+}
+
+/*
+ * heap_rv_remove_flags_from_offset () - Remove flags from recovery offset.
+ *
+ * return	 : Offset without flags.
+ * offset (in)	 : Offset with flags.
+ */
+INT16
+heap_rv_remove_flags_from_offset (INT16 offset)
+{
+  return offset & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
 }
 
 /*

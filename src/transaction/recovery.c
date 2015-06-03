@@ -778,10 +778,10 @@ struct rvfun RV_fun[] = {
    vacuum_rv_redo_save_blocks,
    NULL,
    NULL},
-  {RVVAC_UPDATE_OLDEST_MVCCID,
+  {RVVAC_UPDATE_OLDEST_MVCCID,	/* TODO: Remove me. */
    "RVVAC_UPDATE_OLDEST_MVCCID",
    NULL,
-   vacuum_rv_redo_udate_oldest_mvccid,
+   NULL,
    NULL,
    NULL},
   {RVVAC_START_OR_END_JOB,

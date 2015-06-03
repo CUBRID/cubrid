@@ -968,6 +968,8 @@ extern bool heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p,
 extern int heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);
+extern INT16 heap_rv_remove_flags_from_offset (INT16 offset);
+
 extern void heap_stats_update (THREAD_ENTRY * thread_p,
 			       PAGE_PTR pgptr, const HFID * hfid,
 			       int prev_freespace);

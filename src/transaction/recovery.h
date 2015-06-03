@@ -179,7 +179,9 @@ typedef enum
   RVVAC_LOG_BLOCK_REMOVE = 115,
   RVVAC_LOG_BLOCK_APPEND = 116,
   RVVAC_LOG_BLOCK_SAVE = 117,
-  RVVAC_UPDATE_OLDEST_MVCCID = 118,
+  RVVAC_UPDATE_OLDEST_MVCCID = 118,	/* TODO: Remove me. Better be done under
+					 * a refactoring of all recovery indexes.
+					 */
   RVVAC_START_OR_END_JOB = 119,
   RVVAC_DROPPED_FILE_CLEANUP = 120,
   RVVAC_DROPPED_FILE_NEXT_PAGE = 121,
