@@ -1323,8 +1323,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 		  goto end;
 		}
 	      assert (!HFID_IS_NULL (&helper.hfid));
-	      if (heap_remove_page_on_vacuum (thread_p, &helper.home_page,
-					      &helper.hfid))
+	      if (pgbuf_has_prevent_dealloc (helper.home_page) == false
+		  && heap_remove_page_on_vacuum (thread_p, &helper.home_page,
+						 &helper.hfid))
 		{
 		  /* Successfully removed page. */
 		  assert (helper.home_page == NULL);

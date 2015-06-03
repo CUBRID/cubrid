@@ -419,6 +419,7 @@ struct pgbuf_bcb
   PGBUF_BCB *next_BCB;		/* next LRU or Invalid(Free) chain */
   int ain_tick;			/* age of AIN when this BCB was inserted into
 				 * AIN list */
+  int avoid_dealloc_cnt;
   unsigned dirty:1;		/* Is page dirty ? */
   unsigned avoid_victim:1;
   unsigned async_flush_request:1;
@@ -1635,6 +1636,7 @@ try_again:
       bufptr->dirty = false;
       bufptr->latch_mode = PGBUF_NO_LATCH;
       bufptr->async_flush_request = false;
+      bufptr->avoid_dealloc_cnt = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -1781,6 +1783,11 @@ try_again:
 	}
 
       return NULL;
+    }
+
+  if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
+    {
+      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, 1);
     }
 
   /* At this place, the caller is holding bufptr->BCB_mutex */
@@ -5170,6 +5177,7 @@ pgbuf_initialize_bcb_table (void)
 	}
 
       bufptr->dirty = false;
+      bufptr->avoid_dealloc_cnt = 0;
       bufptr->avoid_victim = false;
       bufptr->async_flush_request = false;
       bufptr->victim_candidate = false;
@@ -7326,6 +7334,7 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
       curr_bufptr->hash_next = NULL;
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       VPID_SET_NULL (&(bufptr->vpid));
+      bufptr->avoid_dealloc_cnt = 0;
 
       return NO_ERROR;
     }
@@ -8016,6 +8025,7 @@ pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr)
   VPID_SET_NULL (&bufptr->vpid);
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
   bufptr->zone = PGBUF_INVALID_ZONE;
+  bufptr->avoid_dealloc_cnt = 0;
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
   bufptr->next_BCB = pgbuf_Pool.buf_invalid_list.invalid_top;
@@ -10832,14 +10842,14 @@ pgbuf_compare_hold_vpid_for_sort (const void *p1, const void *p2)
 #if !defined(NDEBUG)
 int
 pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid,
-			 const PAGE_FETCH_MODE fetch_mode,
+			 PAGE_FETCH_MODE fetch_mode,
 			 const PGBUF_LATCH_MODE request_mode,
 			 PGBUF_WATCHER * req_watcher,
 			 const char *caller_file, int caller_line)
 #else /* NDEBUG */
 int
 pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
-			   const PAGE_FETCH_MODE fetch_mode,
+			   PAGE_FETCH_MODE fetch_mode,
 			   const PGBUF_LATCH_MODE request_mode,
 			   PGBUF_WATCHER * req_watcher)
 #endif				/* NDEBUG */
@@ -10857,6 +10867,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
   bool req_page_has_group;
   int er_status_get_hfid = NO_ERROR;
   VPID req_page_groupid;
+  bool has_dealloc_prevent_flag = false;
 #if defined(PGBUF_ORDERED_DEBUG)
   static unsigned int global_ordered_fix_id = 0;
   unsigned int ordered_fix_id;
@@ -11004,6 +11015,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
     }
 
   saved_pages_cnt = 0;
+
+  if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
+    {
+      has_dealloc_prevent_flag = true;
+      fetch_mode = OLD_PAGE;
+    }
 
   holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
   while (holder != NULL)
@@ -11377,6 +11394,13 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 #endif
       if (pgptr != NULL)
 	{
+	  if (has_dealloc_prevent_flag == true)
+	    {
+	      PGBUF_BCB *bufptr;
+	      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	      has_dealloc_prevent_flag = false;
+	    }
 	  if (pgbuf_get_page_ptype (thread_p, pgptr) == PAGE_HEAP)
 	    {
 	      er_status = pgbuf_get_groupid_and_unfix (thread_p, req_vpid,
@@ -11551,6 +11575,15 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
       if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
 	{
 	  ret_pgptr = pgptr;
+
+	  if (has_dealloc_prevent_flag == true)
+	    {
+	      PGBUF_BCB *bufptr;
+	      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	      has_dealloc_prevent_flag = false;
+	    }
+
 	  if (req_watcher != NULL)
 	    {
 #if !defined(NDEBUG)
@@ -12309,6 +12342,27 @@ pgbuf_has_any_waiters (PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
   return bufptr->next_wait_thrd != NULL;
+#else
+  return false;
+#endif
+}
+
+/*
+ * pgbuf_has_prevent_dealloc () - Quick check if page has any scanners.
+ *
+ * return     : True if page has any waiters, false otherwise.
+ * pgptr (in) : Page pointer.
+ */
+bool
+pgbuf_has_prevent_dealloc (PAGE_PTR pgptr)
+{
+#if defined (SERVER_MODE)
+  PGBUF_BCB *bufptr = NULL;
+
+  assert (pgptr != NULL);
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  return (bufptr->avoid_dealloc_cnt > 0) ? true : false;
 #else
   return false;
 #endif

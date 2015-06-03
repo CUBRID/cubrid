@@ -182,11 +182,14 @@ typedef enum
 				 * directly in buffer without fixing from
 				 * disk.
 				 */
-  OLD_PAGE_IF_EXISTS		/* Fetch existing page only if is valid and
+  OLD_PAGE_IF_EXISTS,		/* Fetch existing page only if is valid and
 				 * if it exists in page buffer. Page may be
 				 * deallocated or flushed and invalidated from
 				 * buffer, in which case fixing page is not
 				 * necessary.
+				 */
+  OLD_PAGE_PREVENT_DEALLOC,	/* Fetch existing page and mark its memory
+				 * buffer, to prevent deallocation.
 				 */
 } PAGE_FETCH_MODE;
 
@@ -289,7 +292,7 @@ extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
 
 extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p,
 				    const VPID * req_vpid,
-				    const PAGE_FETCH_MODE fetch_mode,
+				    PAGE_FETCH_MODE fetch_mode,
 				    const PGBUF_LATCH_MODE requestmode,
 				    PGBUF_WATCHER * req_watcher,
 				    const char *caller_file, int caller_line);
@@ -370,7 +373,7 @@ extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,
 
 extern int pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p,
 				      const VPID * req_vpid,
-				      const PAGE_FETCH_MODE fetch_mode,
+				      PAGE_FETCH_MODE fetch_mode,
 				      const PGBUF_LATCH_MODE requestmode,
 				      PGBUF_WATCHER * watcher_object);
 
@@ -542,5 +545,5 @@ extern void pgbuf_attach_watcher (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 #endif /* NDEBUG */
 
 extern bool pgbuf_has_any_waiters (PAGE_PTR pgptr);
-
+extern bool pgbuf_has_prevent_dealloc (PAGE_PTR pgptr);
 #endif /* _PAGE_BUFFER_H_ */
