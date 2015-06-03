@@ -9104,7 +9104,7 @@ start_current_version:
 
   if (type == REC_MVCC_NEXT_VERSION)
     {
-      if (found_visible)
+      if (found_visible && !vacuum_allowed)
 	{
 	  /* Is it impossible to find a vacuumed version after a visible
 	   * version.
