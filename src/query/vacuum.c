@@ -4887,9 +4887,11 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
   assert (chkpt_block_start_lsa != NULL);
   assert (!LOG_ISRESTARTED ());
 
-  /* Get vacuum_Global_oldest_active_mvccid. */
-  vacuum_Global_oldest_active_mvccid =
-    logtb_get_oldest_active_mvccid (thread_p);
+  /* Initialize vacuum_Global_oldest_active_mvccid. Since we don't have any
+   * active transactions yet, initialize it as current
+   * vacuum_Data->newest_mvccid.
+   */
+  vacuum_Global_oldest_active_mvccid = vacuum_Data->newest_mvccid;
 
   /* Initialize log_page_p. */
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, MAX_ALIGNMENT);
@@ -5998,7 +6000,8 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
    * unvacuumed MVCCID's!
    */
   if (MVCC_ID_PRECEDES (vacuum_Global_oldest_active_mvccid,
-			log_header_oldest_mvccid))
+			log_header_oldest_mvccid)
+      || LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
     {
       oldest_mvccid = vacuum_Global_oldest_active_mvccid;
     }
