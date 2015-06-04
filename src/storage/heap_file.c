@@ -180,7 +180,7 @@ static int rv;
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_INSID)) \
 	{ \
 	  MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_INSID); \
-	  MVCC_SET_INSID (mvcc_rec_header_p, MVCCID_NULL); \
+	  MVCC_SET_INSID (mvcc_rec_header_p, MVCCID_ALL_VISIBLE); \
 	} \
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID \
 			     | OR_MVCC_FLAG_VALID_LONG_CHN)) \

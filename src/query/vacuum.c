@@ -6021,7 +6021,9 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (vacuum_Data->oldest_mvccid != oldest_mvccid)
+  if (vacuum_Data->oldest_mvccid != oldest_mvccid
+      && (vacuum_Data->oldest_mvccid != MVCCID_ALL_VISIBLE
+	  || oldest_mvccid != MVCCID_NULL))
     {
       /* Oldest MVCCID has changed. Update it and run cleanup on dropped
        * files.
