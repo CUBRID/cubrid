@@ -20011,6 +20011,9 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int sp_success;
 
   slotid = rcv->offset;
+  slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+  assert (slotid > 0);
+
   recdes.type = *(INT16 *) (rcv->data);
   recdes.data = (char *) (rcv->data) + sizeof (recdes.type);
   recdes.area_size = recdes.length = rcv->length - sizeof (recdes.type);
