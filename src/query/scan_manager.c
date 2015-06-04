@@ -5518,8 +5518,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       if (hsidp->regu_list_last_version && hsidp->cls_regu_inited == false)
 	{
-	  if (eval_set_last_version (thread_p, &hsidp->cls_oid,
-				     &hsidp->scan_cache,
+	  if (eval_set_last_version (thread_p, &hsidp->cls_oid, hsidp->hfid,
 				     hsidp->regu_list_last_version)
 	      != NO_ERROR)
 	    {
@@ -6450,8 +6449,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   if (isidp->regu_list_last_version && isidp->cls_regu_inited == false)
     {
-      if (eval_set_last_version (thread_p, &isidp->cls_oid,
-				 &isidp->scan_cache,
+      if (eval_set_last_version (thread_p, &isidp->cls_oid, isidp->hfid,
 				 isidp->regu_list_last_version) != NO_ERROR)
 	{
 	  return S_ERROR;

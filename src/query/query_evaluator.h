@@ -854,7 +854,7 @@ extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p,
 					 FILTER_INFO * key_filter,
 					 RECDES * recdes, const OID * oid);
 extern int eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
-				  HEAP_SCANCACHE * scan_cache,
+				  HFID hfid,
 				  REGU_VARIABLE_LIST regu_variable_list);
 
 #endif /* _QUERY_EVALUATOR_H_ */

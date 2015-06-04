@@ -3066,10 +3066,10 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
  */
 int
 eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
-		       HEAP_SCANCACHE * scan_cache,
-		       REGU_VARIABLE_LIST regu_list_last_version)
+		       HFID hfid, REGU_VARIABLE_LIST regu_list_last_version)
 {
   /* TO DO - add into a function */
+  HEAP_SCANCACHE local_scancache;
   REGU_VARIABLE_LIST regup;
   RECDES mvcc_last_record;
   DB_VALUE *peek_dbval;
@@ -3097,13 +3097,17 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 	  return ER_FAILED;
 	}
 
+      if (heap_scancache_start (thread_p, &local_scancache, &hfid, NULL,
+				false, false, NULL) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
       mvcc_last_record.data = NULL;
-      ispeeking =
-	(scan_cache != NULL && scan_cache->cache_last_fix_page) ? PEEK : COPY;
       if (heap_mvcc_get_visible (thread_p,
 				 DB_GET_OID (peek_dbval), &mvcc_last_record,
-				 scan_cache, S_SELECT, ispeeking, NULL_CHN,
-				 &mvcc_updated_oid) != S_SUCCESS)
+				 &local_scancache, S_SELECT, COPY,
+				 NULL_CHN, &mvcc_updated_oid) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS
 	      || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -3111,8 +3115,10 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 	      continue;
 	    }
+	  heap_scancache_end (thread_p, &local_scancache);
 	  return er_errid ();
 	}
+      heap_scancache_end (thread_p, &local_scancache);
 
       if (!OID_ISNULL (&mvcc_updated_oid)
 	  && !OID_EQ (&mvcc_updated_oid, DB_GET_OID (peek_dbval)))
