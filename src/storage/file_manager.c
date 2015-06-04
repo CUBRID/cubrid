@@ -2776,7 +2776,7 @@ file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid,
 			       VPID * first_prealloc_vpid,
 			       INT32 prealloc_npages)
 {
-#define FILE_NOT_DROPPED_CREATE_RETRIES 100
+#define FILE_NOT_DROPPED_CREATE_RETRIES 256
   VFID created_files[FILE_NOT_DROPPED_CREATE_RETRIES];
   int n_created_files = 0;
   int i;
