@@ -7072,6 +7072,13 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 	  LSA_COPY (chkpt_block_first_lsa, mvcc_op_lsa);
 	  *is_chkpt_block = true;
 
+	  /* Initialize checkpoint block start_lsa, and oldest and newest
+	   * MVCCID's.
+	   */
+	  LSA_COPY (chkpt_block_start_lsa, mvcc_op_lsa);
+	  *chkpt_block_oldest_mvccid = mvccid;
+	  *chkpt_block_newest_mvccid = mvccid;
+
 	  vacuum_er_log (VACUUM_ER_LOG_RECOVERY
 			 | VACUUM_ER_LOG_VACUUM_DATA,
 			 "VACUUM: Checkpoint block must be recovered. A "
@@ -7158,6 +7165,13 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
       if (MVCC_ID_PRECEDES (*last_block_newest_mvccid, mvccid))
 	{
 	  *last_block_newest_mvccid = mvccid;
+	}
+
+      if (*is_chkpt_block)
+	{
+	  LSA_COPY (chkpt_block_start_lsa, last_mvcc_op_lsa);
+	  *chkpt_block_oldest_mvccid = *last_block_oldest_mvccid;
+	  *chkpt_block_newest_mvccid = *last_block_newest_mvccid;
 	}
     }
 }

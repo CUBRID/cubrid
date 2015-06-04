@@ -5030,6 +5030,20 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 	}
       LSA_COPY (&log_lsa, &vacuum_info.prev_mvcc_op_log_lsa);
     }
+
+  if (LSA_EQ (&log_Gl.hdr.mvcc_op_log_lsa, chkpt_block_start_lsa))
+    {
+      /* Do not produce the block yet. Update header oldest and newest MVCCID
+       * and the block will be produced when a different block is created.
+       */
+      assert (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer));
+      log_Gl.hdr.last_block_oldest_mvccid = chkpt_entry.oldest_mvccid;
+      log_Gl.hdr.last_block_newest_mvccid = chkpt_entry.newest_mvccid;
+      return NO_ERROR;
+    }
+
+  assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid)
+	  > chkpt_blockid);
   /* Add recovered data in buffer before current entries (to keep entries
    * ordered by blockid).
    */
