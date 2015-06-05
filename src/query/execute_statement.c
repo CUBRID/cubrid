@@ -1118,16 +1118,16 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
   mop = db_find_unique (serial_class_mop, SERIAL_ATTR_NAME, &val);
   AU_ENABLE (save);
 
-  if (er_errid () != NO_ERROR)
+  if (mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
+
       if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
 	{
 	  er_clear ();
 	}
-      mop = NULL;
     }
-
-  if (mop)
+  else
     {
       db_id = ws_identifier (mop);
 
