@@ -4939,6 +4939,43 @@ locator_mflush (MOP mop, void *mf)
       return WS_MAP_CONTINUE;
     }
 
+  if (WS_ISPINNED (mop))
+    {
+      /* Since dirty bit can't be reset during flush, if the object is pinned,
+       * we need to check if pinned mop is already in flush area. We need to
+       * avoid adding the same mop twice.
+       */
+      operation = LC_UPDATE_OPERATION_TYPE (mop->pruning_type);
+      if (LC_IS_FLUSH_INSERT (operation) && OID_ISTEMP (ws_oid (mop)))
+	{
+	  LOCATOR_MFLUSH_TEMP_OID *mop_toid;
+	  for (mop_toid = mflush->mop_toids; mop_toid != NULL;
+	       mop_toid = mop_toid->next)
+	    {
+	      if (mop_toid->mop == mop)
+		{
+		  /* already in flush area */
+		  return WS_MAP_CONTINUE;
+		}
+	    }
+	}
+      else if (operation == LC_FLUSH_UPDATE_PRUNE
+	       || (operation == LC_FLUSH_UPDATE
+		   && ws_class_mop (mop) != sm_Root_class_mop))
+	{
+	  LOCATOR_MFLUSH_TEMP_OID *mop_uoid;
+	  for (mop_uoid = mflush->mop_uoids; mop_uoid != NULL;
+	       mop_uoid = mop_uoid->next)
+	    {
+	      if (ws_is_same_object (mop_uoid->mop, mop))
+		{
+		  /* already in flush area */
+		  return WS_MAP_CONTINUE;
+		}
+	    }
+	}
+    }
+
   /* Check if this is a virtual ID */
 
   if (WS_ISVID (mop))
