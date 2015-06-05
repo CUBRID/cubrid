@@ -5476,39 +5476,38 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
   async_commit = prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT);
   group_commit = LOG_IS_GROUP_COMMIT_ACTIVE ();
-  if (async_commit == true && group_commit == true)
+
+  if (async_commit == false)
     {
-      /* async & group commit, just return */
-
-      log_Stat.async_commit_request_count++;
-      log_Stat.gc_commit_request_count++;
-
-      need_wakeup_LFT = false;
-      need_wait = false;
-    }
-  else if (async_commit == true && group_commit == false)
-    {
-      /* async commit: wakeup LFT and return */
-
-      log_Stat.async_commit_request_count++;
-
-      need_wakeup_LFT = true;
-      need_wait = false;
-    }
-  else if (async_commit == false && group_commit == true)
-    {
-      /* group commit: wait */
-
-      log_Stat.gc_commit_request_count++;
-
-      need_wakeup_LFT = false;
       need_wait = true;
+      if (group_commit == false)
+	{
+	  /* Default case: synchorous & non-group commit */
+	  need_wakeup_LFT = true;
+	}
+      else
+	{
+	  /* synchronous & group commit */
+	  need_wakeup_LFT = false;
+	  log_Stat.gc_commit_request_count++;
+	}
     }
   else
     {
-      /* normal commit: wakeup LFT and wait */
-      need_wakeup_LFT = true;
-      need_wait = true;
+      need_wait = false;
+      log_Stat.async_commit_request_count++;
+
+      if (group_commit == false)
+	{
+	  /* asynchorous & non-group commit */
+	  need_wakeup_LFT = true;
+	}
+      else
+	{
+	  /* asynchorous & group commit */
+	  need_wakeup_LFT = false;
+	  log_Stat.gc_commit_request_count++;
+	}
     }
 
   if (need_wakeup_LFT == true && need_wait == false)
@@ -5551,7 +5550,6 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  logpb_get_nxio_lsa (&nxio_lsa);
 	}
     }
-
 #endif /* SERVER_MODE */
 }
 
