@@ -3161,7 +3161,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
   offset_rule_id = 0;
 
   memset (tzd->offset_rules, 0,
-	  sizeof (tzd->offset_rule_count * sizeof (tzd->offset_rules[0])));
+	  tzd->offset_rule_count * sizeof (tzd->offset_rules[0]));
 
   for (i = 0; i < tzd_raw->zone_count; i++)
     {
