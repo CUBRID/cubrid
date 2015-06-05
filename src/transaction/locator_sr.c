@@ -5881,7 +5881,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	      heap_create_update_context (&update_context, &real_hfid, oid,
 					  &real_class_oid, recdes,
 					  local_scan_cache,
-					  UPDATE_INPLACE_CURRENT_MVCCID);
+					  UPDATE_INPLACE_CURRENT_MVCCID,
+					  false);
 	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -6124,6 +6125,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   OID new_oid;
   bool no_data_new_address = false;
   REPL_INFO repl_info;
+  bool use_bigone_maxsize = false;
 
   if (new_oid_p == NULL)
     {
@@ -6235,7 +6237,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
       heap_create_update_context (&update_context, hfid, oid, class_oid,
 				  recdes, scan_cache,
-				  UPDATE_INPLACE_CURRENT_MVCCID);
+				  UPDATE_INPLACE_CURRENT_MVCCID, false);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  /*
@@ -6304,7 +6306,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	      heap_create_update_context (&update_context, hfid, oid,
 					  class_oid, recdes, scan_cache,
-					  UPDATE_INPLACE_CURRENT_MVCCID);
+					  UPDATE_INPLACE_CURRENT_MVCCID,
+					  false);
 	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  /*
@@ -6682,6 +6685,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    }
 	}
 
+      /* use REC_BIGONE maximum record length only for partitioned classes
+       * and partitions.
+       */
+      use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
       if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
 	{
 	  HEAP_OPERATION_CONTEXT update_context;
@@ -6689,7 +6696,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  /* in MVCC update heap and then indexes */
 	  heap_create_update_context (&update_context, hfid, oid, class_oid,
 				      recdes, local_scan_cache,
-				      force_in_place);
+				      force_in_place, use_bigone_maxsize);
 	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	    {
 	      /*
@@ -6809,7 +6816,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
 	  heap_create_update_context (&update_context, hfid, oid, class_oid,
 				      recdes, local_scan_cache,
-				      force_in_place);
+				      force_in_place, use_bigone_maxsize);
 	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	    {
 	      /*

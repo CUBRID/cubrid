@@ -28073,6 +28073,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 				  &context->class_oid, context->recdes_p,
 				  NULL, false);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
+      insert_context.flags = context->flags;
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
       /* insert new version */
@@ -28277,6 +28278,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 				  &context->class_oid, context->recdes_p,
 				  NULL, false);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
+      insert_context.flags = context->flags;
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
       /* insert new version */
@@ -28538,6 +28540,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 				  &context->class_oid, context->recdes_p,
 				  NULL, false);
       COPY_OID (&insert_context.partition_link, &context->partition_link);
+      insert_context.flags = context->flags;
       insert_context.header_page_watcher_p = &context->header_page_watcher;
 
       /* insert new version */
@@ -28854,12 +28857,15 @@ heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p,
  *   recdes_p(in): updated record to write
  *   scancache_p(in): scan cache to use (optional)
  *   in_place(in): specifies if the "in place" type of the update operation
+ *   bigone_max_size(in): use maximum record size
+ *			      (reserve space for an extra OID) for REC_BIGONE 
  */
 void
 heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p,
 			    OID * oid_p, OID * class_oid_p, RECDES * recdes_p,
 			    HEAP_SCANCACHE * scancache_p,
-			    UPDATE_INPLACE_STYLE in_place)
+			    UPDATE_INPLACE_STYLE in_place,
+			    bool bigone_max_size)
 {
   assert (context != NULL);
   assert (hfid_p != NULL);
@@ -28874,6 +28880,11 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p,
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_UPDATE;
   context->update_in_place = in_place;
+  if (bigone_max_size == true)
+    {
+      HEAP_OP_CONTEXT_SET_FLAG (context->flags,
+				HEAP_OP_CONTEXT_FLAG_BIGONE_MAXSIZE);
+    }
 }
 
 /*

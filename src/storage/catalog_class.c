@@ -4122,7 +4122,8 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
     }
 
   heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p,
-			      &record, scan_p, UPDATE_INPLACE_CURRENT_MVCCID);
+			      &record, scan_p, UPDATE_INPLACE_CURRENT_MVCCID,
+			      false);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       error = er_errid ();
@@ -4408,7 +4409,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
       /* update in place */
       heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p,
 				  &record, scan_p,
-				  UPDATE_INPLACE_CURRENT_MVCCID);
+				  UPDATE_INPLACE_CURRENT_MVCCID, false);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -5515,7 +5516,8 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
   /* heap update new object */
   heap_create_update_context (&update_context, hfid_p, new_oid, class_oid_p,
-			      &record, scan_p, UPDATE_INPLACE_CURRENT_MVCCID);
+			      &record, scan_p, UPDATE_INPLACE_CURRENT_MVCCID,
+			      false);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       error = er_errid ();

@@ -937,7 +937,8 @@ extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context,
 					OID * class_oid_p,
 					RECDES * recdes_p,
 					HEAP_SCANCACHE * scancache_p,
-					UPDATE_INPLACE_STYLE in_place);
+					UPDATE_INPLACE_STYLE in_place,
+					bool bigone_max_size);
 extern int heap_insert_logical (THREAD_ENTRY * thread_p,
 				HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p,
