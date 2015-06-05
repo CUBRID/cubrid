@@ -31,10 +31,10 @@ show_usage ()
   echo "    -? | -h Show this help message and exit"
   echo ""
   echo " EXAMPLES"
-  echo "   $APP_NAME                  # Build and pack timezone data (32bit/release/new)"
+  echo "   $APP_NAME                  # Build and pack timezone data (64bit/release/new)"
   echo "   $APP_NAME -m debug         # Create debug mode library with timezone data"
   echo "   $APP_NAME -m debug -g update   # Update existing timezone library (in debug mode)"
-  echo "   $APP_NAME -t x64 -m debug  # Build and pack timezone data (64bit/release/new)"
+  echo "   $APP_NAME -t 32 -m release  # Build and pack timezone data (32bit/release/new)"
   echo ""
 }
 
@@ -46,7 +46,7 @@ error_database_name()
 	exit 1
 }
 
-BUILD_TARGET=32bit
+BUILD_TARGET=64bit
 BUILD_MODE=release
 TZ_GEN_MODE=new
 DATABASE_NAME=""

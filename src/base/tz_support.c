@@ -361,7 +361,6 @@ tz_load (void)
   return NO_ERROR;
 
 error_exit:
-  assert (er_errid () != NO_ERROR);
 
   if (er_errid () == NO_ERROR)
     {
