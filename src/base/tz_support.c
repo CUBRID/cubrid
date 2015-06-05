@@ -3133,7 +3133,14 @@ detect_dst:
 
       if (src_year <= curr_ds_rule->to_year)
 	{
-	  year_to_apply_rule = src_year;
+	  if (src_year >= curr_ds_rule->from_year)
+	    {
+	      year_to_apply_rule = src_year;
+	    }
+	  else
+	    {
+	      year_to_apply_rule = curr_ds_rule->from_year;
+	    }
 	}
       else
 	{
