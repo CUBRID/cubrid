@@ -3285,7 +3285,7 @@ detect_dst:
 		   * a previous rule was matched, but also the current one is;
 		   * We are during the DS interval change, we choose the one
 		   * before (timewise) DS change is performed */
-		  if (applying_ds_rule->in_month < curr_ds_rule->in_month
+		  if (applying_date_diff > date_diff
 		      || applying_with_prev_year)
 		    {
 		      rule_matched = false;
