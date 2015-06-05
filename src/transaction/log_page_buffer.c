@@ -5519,6 +5519,11 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     {
       logpb_get_nxio_lsa (&nxio_lsa);
 
+      if (need_wakeup_LFT == false && pgbuf_has_perm_pages_fixed (thread_p))
+	{
+	  need_wakeup_LFT = true;
+	}
+
       while (LSA_LT (&nxio_lsa, flush_lsa))
 	{
 	  gettimeofday (&start_time, NULL);
