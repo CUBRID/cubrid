@@ -2369,63 +2369,72 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
       /*
        * The cached object was obsolete.
        */
-      if (OID_IS_ROOTOID (class_oid))
-	{
-	  if (tran_index == NULL_TRAN_INDEX)
-	    {
-	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	    }
-	  (void) heap_chnguess_put (thread_p, oid, tran_index,
-				    or_chn (&assign->recdes));
-	}
-      assign->mobjs->num_objs++;
-
-      COPY_OID (&assign->obj->class_oid, class_oid);
-      COPY_OID (&assign->obj->oid, oid);
-      COPY_OID (&assign->obj->updated_oid, updated_oid);
-
-      /* Set object flag */
-      assign->obj->flag = 0;
-      if (!OID_ISNULL (updated_oid) && assign->recdes.data != NULL
-	  && assign->recdes.length > 0)
-	{
-	  MVCCID mvcc_insid;
-
-	  /* When object is updated to a new version (and to a new OID) the
-	   * client caches a new mop and creates an MVCC link between old
-	   * version and new version. If the new version is created by another
-	   * transaction, it means that it is also committed and the MVCC link
-	   * should be permanent. If the new version is created by current
-	   * transaction, it may be aborted, and the MVCC link will have to
-	   * be invalidated. To do so, the client must have this information.
-	   */
-
-	  OR_GET_MVCC_INSERT_ID (assign->recdes.data,
-				 OR_GET_MVCC_FLAG (assign->recdes.data),
-				 &mvcc_insid);
-	  if (logtb_is_current_mvccid (thread_p, mvcc_insid))
-	    {
-	      LC_ONEOBJ_SET_UPDATED_BY_ME (assign->obj);
-	    }
-	}
-
-      assign->obj->hfid = NULL_HFID;
-      assign->obj->length = assign->recdes.length;
-      assign->obj->offset = assign->area_offset;
-      assign->obj->operation = LC_FETCH;
-      assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
-
       round_length = DB_ALIGN (assign->recdes.length, MAX_ALIGNMENT);
+      if (assign->recdes.area_size < (round_length + sizeof (*assign->obj)))
+	{
+	  assign->recdes.area_size -= (round_length + sizeof (*assign->obj));
+	  scan = S_DOESNT_FIT;
+	}
+      else
+	{
+	  if (OID_IS_ROOTOID (class_oid))
+	    {
+	      if (tran_index == NULL_TRAN_INDEX)
+		{
+		  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+		}
+	      (void) heap_chnguess_put (thread_p, oid, tran_index,
+					or_chn (&assign->recdes));
+	    }
+	  assign->mobjs->num_objs++;
+
+	  COPY_OID (&assign->obj->class_oid, class_oid);
+	  COPY_OID (&assign->obj->oid, oid);
+	  COPY_OID (&assign->obj->updated_oid, updated_oid);
+
+	  /* Set object flag */
+	  assign->obj->flag = 0;
+	  if (!OID_ISNULL (updated_oid) && assign->recdes.data != NULL
+	      && assign->recdes.length > 0)
+	    {
+	      MVCCID mvcc_insid;
+
+	      /* When object is updated to a new version (and to a new OID) the
+	       * client caches a new mop and creates an MVCC link between old
+	       * version and new version. If the new version is created by another
+	       * transaction, it means that it is also committed and the MVCC link
+	       * should be permanent. If the new version is created by current
+	       * transaction, it may be aborted, and the MVCC link will have to
+	       * be invalidated. To do so, the client must have this information.
+	       */
+
+	      OR_GET_MVCC_INSERT_ID (assign->recdes.data,
+				     OR_GET_MVCC_FLAG (assign->recdes.data),
+				     &mvcc_insid);
+	      if (logtb_is_current_mvccid (thread_p, mvcc_insid))
+		{
+		  LC_ONEOBJ_SET_UPDATED_BY_ME (assign->obj);
+		}
+	    }
+
+	  assign->obj->hfid = NULL_HFID;
+	  assign->obj->length = assign->recdes.length;
+	  assign->obj->offset = assign->area_offset;
+	  assign->obj->operation = LC_FETCH;
+	  assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
+
 #if !defined(NDEBUG)
-      /* suppress valgrind UMW error */
-      memset (assign->recdes.data + assign->recdes.length, 0,
-	      MIN (round_length - assign->recdes.length,
-		   assign->recdes.area_size - assign->recdes.length));
+	  /* suppress valgrind UMW error */
+	  memset (assign->recdes.data + assign->recdes.length, 0,
+		  MIN (round_length - assign->recdes.length,
+		       assign->recdes.area_size - assign->recdes.length));
 #endif
-      assign->recdes.length = round_length;
-      assign->area_offset += round_length;
-      assign->recdes.data += round_length;
-      assign->recdes.area_size -= round_length + sizeof (*assign->obj);
+	  assign->recdes.length = round_length;
+	  assign->area_offset += round_length;
+	  assign->recdes.data += round_length;
+	  assign->recdes.area_size -= round_length + sizeof (*assign->obj);
+	}
+
       break;
 
     case S_SUCCESS_CHN_UPTODATE:
@@ -2436,19 +2445,27 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
 
       if (guess_chn == CHN_UNKNOWN_ATCLIENT)
 	{
-	  assign->mobjs->num_objs++;
+	  if (assign->recdes.area_size < sizeof (*assign->obj))
+	    {
+	      assign->recdes.area_size -= sizeof (*assign->obj);
+	      scan = S_DOESNT_FIT;
+	    }
+	  else
+	    {
+	      assign->mobjs->num_objs++;
 
-	  /* Indicate to the caller that the object does not exist any
-	   * longer */
-	  COPY_OID (&assign->obj->class_oid, class_oid);
-	  COPY_OID (&assign->obj->oid, oid);
-	  assign->obj->flag = 0;
-	  assign->obj->hfid = NULL_HFID;
-	  assign->obj->length = -chn;
-	  assign->obj->offset = -1;
-	  assign->obj->operation = LC_FETCH_VERIFY_CHN;
-	  assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
-	  assign->recdes.area_size -= sizeof (*assign->obj);
+	      /* Indicate to the caller that the object does not exist any
+	       * longer */
+	      COPY_OID (&assign->obj->class_oid, class_oid);
+	      COPY_OID (&assign->obj->oid, oid);
+	      assign->obj->flag = 0;
+	      assign->obj->hfid = NULL_HFID;
+	      assign->obj->length = -chn;
+	      assign->obj->offset = -1;
+	      assign->obj->operation = LC_FETCH_VERIFY_CHN;
+	      assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
+	      assign->recdes.area_size -= sizeof (*assign->obj);
+	    }
 	}
       break;
 
@@ -2456,18 +2473,26 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
       /*
        * The object does not exist
        */
-      assign->mobjs->num_objs++;
+      if (assign->recdes.area_size < sizeof (*assign->obj))
+	{
+	  assign->recdes.area_size -= sizeof (*assign->obj);
+	  scan = S_DOESNT_FIT;
+	}
+      else
+	{
+	  assign->mobjs->num_objs++;
 
-      /* Indicate to the caller that the object does not exist any longer */
-      COPY_OID (&assign->obj->class_oid, class_oid);
-      COPY_OID (&assign->obj->oid, oid);
-      assign->obj->flag = 0;
-      assign->obj->hfid = NULL_HFID;
-      assign->obj->length = -1;
-      assign->obj->offset = -1;
-      assign->obj->operation = LC_FETCH_DELETED;
-      assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
-      assign->recdes.area_size -= sizeof (*assign->obj);
+	  /* Indicate to the caller that the object does not exist any longer */
+	  COPY_OID (&assign->obj->class_oid, class_oid);
+	  COPY_OID (&assign->obj->oid, oid);
+	  assign->obj->flag = 0;
+	  assign->obj->hfid = NULL_HFID;
+	  assign->obj->length = -1;
+	  assign->obj->offset = -1;
+	  assign->obj->operation = LC_FETCH_DELETED;
+	  assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
+	  assign->recdes.area_size -= sizeof (*assign->obj);
+	}
 
       break;
 
@@ -13111,14 +13136,17 @@ xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p,
 	      scan = S_SUCCESS;
 	      break;		/* finish the for */
 	    }
-	  else
-	    if (scan != S_DOESNT_FIT
-		&& (scan == S_DOESNT_EXIST
-		    || lockhint->quit_on_errors == false))
+	  else if (scan != S_DOESNT_FIT
+		   && (scan == S_DOESNT_EXIST
+		       || lockhint->quit_on_errors == false))
 	    {
 	      OID_SET_NULL (&lockhint->classes[i].oid);
 	      lockhint->num_classes_processed += 1;
 	      scan = S_SUCCESS;
+	    }
+	  else
+	    {
+	      break;		/* Quit on errors */
 	    }
 	}
     }
