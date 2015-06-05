@@ -15851,6 +15851,26 @@ exit_on_error:
       db_private_free_and_init (thread_p, func_vector);
     }
 
+  /* close all the scans that are involved within the query */
+  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
+    {
+      spec_ptr[0] = xptr->spec_list;
+      spec_ptr[1] = xptr->merge_spec;
+      for (spec_level = 0; spec_level < 2; ++spec_level)
+	{
+	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
+	    {
+	      qexec_end_scan (thread_p, specp);
+	      qexec_close_scan (thread_p, specp);
+	    }
+	}
+      if (xptr->curr_spec != NULL)
+	{
+	  xptr->curr_spec->curent = NULL;
+	  xptr->curr_spec = NULL;
+	}
+    }
+
   if (tplrec.tpl)
     {
       db_private_free_and_init (thread_p, tplrec.tpl);
