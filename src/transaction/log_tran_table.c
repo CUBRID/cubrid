@@ -2512,6 +2512,7 @@ logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type,
 	   MAXHOSTNAMELEN);
   client->host_name[MAXHOSTNAMELEN] = '\0';
   client->process_id = process_id;
+  client->is_user_active = false;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -2677,6 +2678,25 @@ void
 logtb_set_current_user_name (THREAD_ENTRY * thread_p, const char *user_name)
 {
   logtb_set_user_name (LOG_FIND_THREAD_TRAN_INDEX (thread_p), user_name);
+}
+
+/*
+ * logtb_set_current_user_active() - set active state of current user
+ *
+ * return:
+ * thread_p(in):
+ * is_user_active(in):
+ */
+void
+logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active)
+{
+  int tran_index;
+  LOG_TDES *tdes;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  tdes->client.is_user_active = is_user_active;
 }
 
 /*
@@ -7201,7 +7221,8 @@ xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && strcmp (tdes->client.db_user, user_name) == 0)
+      if (tdes != NULL && tdes->client.is_user_active
+	  && strcmp (tdes->client.db_user, user_name) == 0)
 	{
 	  existed = true;
 	  break;

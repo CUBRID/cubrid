@@ -43,6 +43,7 @@
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
+#include "log_impl.h"
 #endif
 #include "xserver_interface.h"
 #include "lock_free.h"
@@ -592,6 +593,8 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
       thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
       thread_p->conn_entry->session_p = NULL;
       session_state_decrease_ref_count (thread_p, session_p);
+
+      logtb_set_current_user_active (thread_p, false);
       pthread_mutex_unlock (&session_p->mutex);
     }
 #endif
@@ -635,6 +638,8 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
   /* set as thread session */
   session_set_conn_entry_data (thread_p, session_p);
+
+  logtb_set_current_user_active (thread_p, true);
 #endif
 
   /* done with the entry */
@@ -701,6 +706,8 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   assert (session_p->ref_count > 0);
 
   session_state_decrease_ref_count (thread_p, session_p);
+
+  logtb_set_current_user_active (thread_p, false);
 
   if (session_p->ref_count > 0)
     {
@@ -772,6 +779,8 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
       thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
       thread_p->conn_entry->session_p = NULL;
       session_state_decrease_ref_count (thread_p, session_p);
+
+      logtb_set_current_user_active (thread_p, false);
       pthread_mutex_unlock (&session_p->mutex);
     }
 #endif
@@ -803,6 +812,8 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
   /* increase reference count of new session_p */
   session_state_increase_ref_count (thread_p, session_p);
   session_set_conn_entry_data (thread_p, session_p);
+
+  logtb_set_current_user_active (thread_p, true);
 #endif
 
   /* done with the entry */

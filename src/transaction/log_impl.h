@@ -480,6 +480,7 @@ struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
   char login_name[L_cuserid + 1];
   char host_name[MAXHOSTNAMELEN + 1];
   int process_id;
+  bool is_user_active;
 };
 
 /*
@@ -2569,6 +2570,8 @@ extern void logtb_set_user_name (int tran_index, const char *client_name);
 extern void logtb_set_current_user_name (THREAD_ENTRY * thread_p,
 					 const char *client_name);
 extern char *logtb_find_client_hostname (int tran_index);
+extern void logtb_set_current_user_active (THREAD_ENTRY * thread_p,
+					   bool is_user_active);
 extern int logtb_find_client_name_host_pid (int tran_index,
 					    char **client_prog_name,
 					    char **client_user_name,
