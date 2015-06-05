@@ -3070,11 +3070,21 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 {
   /* TO DO - add into a function */
   HEAP_SCANCACHE local_scancache;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   REGU_VARIABLE_LIST regup;
   RECDES mvcc_last_record;
   DB_VALUE *peek_dbval;
   OID mvcc_updated_oid;
   int ispeeking;
+
+  if (!OID_IS_ROOTOID (class_oid))
+    {
+      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (mvcc_snapshot == NULL)
+	{
+	  return ER_FAILED;
+	}
+    }
 
   for (regup = regu_list_last_version; regup != NULL;
        regup = regu_list_last_version->next)
@@ -3098,7 +3108,7 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 	}
 
       if (heap_scancache_start (thread_p, &local_scancache, &hfid, NULL,
-				false, false, NULL) != NO_ERROR)
+				false, false, mvcc_snapshot) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
