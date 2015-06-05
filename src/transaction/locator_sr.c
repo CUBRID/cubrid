@@ -6371,6 +6371,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  if (oldrecdes == NULL)
 	    {
 	      OID updated_oid;
+
 	      copy_recdes.data = NULL;
 	      if (mvcc_reev_data != NULL
 		  && mvcc_reev_data->type == REEV_DATA_UPDDEL)
@@ -6447,6 +6448,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		  COPY_OID (oid, &updated_oid);
 		}
 	    }
+
 	  if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
 	    {
 	      LOG_TDES *tdes;
@@ -6455,6 +6457,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	      if (!(has_index & LC_FLAG_HAS_UNIQUE_INDEX))
 		{
 		  MVCC_REC_HEADER old_rec_header;
+
 		  or_mvcc_get_header (oldrecdes, &old_rec_header);
 		  if (logtb_find_current_mvccid (thread_p)
 		      == old_rec_header.mvcc_ins_id)
@@ -6482,26 +6485,39 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  else if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
 	    {
 	      MVCC_REC_HEADER old_rec_header, new_rec_header;
+
 	      if (or_mvcc_get_header (oldrecdes, &old_rec_header) != NO_ERROR
 		  || or_mvcc_get_header (recdes, &new_rec_header) != NO_ERROR)
 		{
 		  goto error;
 		}
 
-	      if (MVCC_IS_FLAG_SET
-		  (&old_rec_header, OR_MVCC_FLAG_VALID_INSID))
+	      if (MVCC_IS_FLAG_SET (&old_rec_header,
+				    OR_MVCC_FLAG_VALID_INSID))
 		{
 		  MVCC_SET_FLAG (&new_rec_header, OR_MVCC_FLAG_VALID_INSID);
 		  MVCC_SET_INSID (&new_rec_header,
 				  MVCC_GET_INSID (&old_rec_header));
 		}
-	      if (MVCC_IS_FLAG_SET
-		  (&old_rec_header, OR_MVCC_FLAG_VALID_DELID))
+	      else
+		{
+		  MVCC_CLEAR_FLAG_BITS (&new_rec_header,
+					OR_MVCC_FLAG_VALID_INSID);
+		}
+
+	      if (MVCC_IS_FLAG_SET (&old_rec_header,
+				    OR_MVCC_FLAG_VALID_DELID))
 		{
 		  MVCC_SET_FLAG (&new_rec_header, OR_MVCC_FLAG_VALID_DELID);
 		  MVCC_SET_DELID (&new_rec_header,
 				  MVCC_GET_DELID (&old_rec_header));
 		}
+	      else
+		{
+		  MVCC_CLEAR_FLAG_BITS (&new_rec_header,
+					OR_MVCC_FLAG_VALID_DELID);
+		}
+
 	      if (or_mvcc_set_header (recdes, &new_rec_header) != NO_ERROR)
 		{
 		  goto error;
@@ -6514,6 +6530,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    {
 	      force_in_place = UPDATE_INPLACE_CURRENT_MVCCID;
 	    }
+
 	  if (lock_object (thread_p, oid, class_oid, X_LOCK, LK_UNCOND_LOCK)
 	      != LK_GRANTED)
 	    {
@@ -6536,9 +6553,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		  goto error;
 		}
 
-	      scan =
-		heap_get (thread_p, oid, &copy_recdes, local_scan_cache, COPY,
-			  NULL_CHN);
+	      scan = heap_get (thread_p, oid, &copy_recdes, local_scan_cache,
+			       COPY, NULL_CHN);
 	      if (scan == S_SUCCESS)
 		{
 		  oldrecdes = &copy_recdes;
