@@ -301,7 +301,9 @@ session_state_uninit (void *st)
     {
       return NO_ERROR;
     }
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
+#endif /* SESSION_DEBUG */
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -337,9 +339,11 @@ session_state_uninit (void *st)
       sysprm_free_session_parameters (&session->session_parameters);
     }
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE,
 		"session_free_session closed %d queries for %d\n", cnt,
 		session->id);
+#endif /* SESSION_DEBUG */
 
   pr_clear_value (&session->cur_insert_id);
   pr_clear_value (&session->last_insert_id);
@@ -467,7 +471,9 @@ session_free_prepared_statement (PREPARED_STATEMENT * stmt_p)
       return;
     }
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "drop statement %s\n", stmt_p->name);
+#endif /* SESSION_DEBUG */
 
   if (stmt_p->name != NULL)
     {
@@ -501,7 +507,9 @@ session_states_init (THREAD_ENTRY * thread_p)
   sessions.last_session_id = 0;
   sessions.num_holdable_cursors = 0;
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "creating session states table\n");
+#endif /* SESSION_DEBUG */
 
   /* initialize freelist */
   ret =
@@ -544,7 +552,9 @@ session_states_finalize (THREAD_ENTRY * thread_p)
       session_states_dump (thread_p);
     }
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "deleting session state table\n");
+#endif /* SESSION_DEBUG */
 
   /* destroy hash and freelist */
   lf_hash_destroy (&sessions.sessions_table);
@@ -645,6 +655,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* done with the entry */
   pthread_mutex_unlock (&session_p->mutex);
 
+#if defined (SESSION_DEBUG)
   /* debug logging */
   er_log_debug (ARG_FILE_LINE, "adding session with id %u\n", *id);
   if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG) == true)
@@ -663,6 +674,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
       er_log_debug (ARG_FILE_LINE, "finished printing active sessions\n");
     }
+#endif /* SESSION_DEBUG */
 
   return NO_ERROR;
 }
@@ -680,7 +692,9 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   SESSION_STATE *session_p;
   int error = NO_ERROR, success = 0;
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "removing session %u", id);
+#endif /* SESSION_DEBUG */
 
   error =
     lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id,
@@ -754,7 +768,9 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
   SESSION_STATE *session_p = NULL;
   int error = NO_ERROR;
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "updating timeout for session_id %u\n", id);
+#endif /* SESSION_DEBUG */
 
 #if defined (SERVER_MODE)
   if (thread_p && thread_p->conn_entry && thread_p->conn_entry->session_p)
@@ -953,15 +969,19 @@ session_check_timeout (SESSION_STATE * session_p,
 #endif
       /* remove this session: timeout expired and it doesn't have an active
        * connection. */
+#if defined (SESSION_DEBUG)
       er_log_debug (ARG_FILE_LINE, "timeout expired for session %u\n",
 		    session_p->id);
+#endif /* SESSION_DEBUG */
 
       (*remove) = true;
     }
   else
     {
+#if defined (SESSION_DEBUG)
       er_log_debug (ARG_FILE_LINE, "timeout ok for session %u\n",
 		    session_p->id);
+#endif /* SESSION_DEBUG */
     }
 
   return err;
@@ -1672,8 +1692,10 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
       goto error;
     }
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "create statement %s(%d)\n", name,
 		state_p->id);
+#endif /* SESSION_DEBUG */
 
   if (state_p->statements == NULL)
     {
@@ -1727,7 +1749,9 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
 	}
     }
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "success %s(%d)\n", name, state_p->id);
+#endif /* SESSION_DEBUG */
 
   return NO_ERROR;
 
@@ -1819,21 +1843,27 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
     {
       /* if we don't have an alias print, we do not search for the XASL id */
       *xasl_entry = NULL;
+#if defined (SESSION_DEBUG)
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name,
 		    state_p->id);
+#endif /* SESSION_DEBUG */
       return NO_ERROR;
     }
 
   entry = qexec_lookup_xasl_cache_ent (thread_p, alias_print, &user);
   if (entry == NULL)
     {
+#if defined (SESSION_DEBUG)
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name,
 		    state_p->id);
+#endif /* SESSION_DEBUG */
     }
   else
     {
+#if defined (SESSION_DEBUG)
       er_log_debug (ARG_FILE_LINE, "found xasl_id for %s(%d)\n", name,
 		    state_p->id);
+#endif /* SESSION_DEBUG */
     }
 
   *xasl_entry = entry;
@@ -1861,8 +1891,10 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
       return ER_FAILED;
     }
 
+#if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "dropping %s from session_id %d\n", name,
 		state_p->id);
+#endif /* SESSION_DEBUG */
 
   for (stmt_p = state_p->statements, prev = NULL; stmt_p != NULL;
        prev = stmt_p, stmt_p = stmt_p->next)
