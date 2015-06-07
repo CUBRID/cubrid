@@ -585,7 +585,8 @@ static int vacuum_heap_get_hfid (THREAD_ENTRY * thread_p,
 				 VACUUM_HEAP_HELPER * helper);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
 					    VACUUM_HEAP_HELPER * helper,
-					    bool update_best_space_stat);
+					    bool update_best_space_stat,
+					    bool unlatch_page);
 
 static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
 static int vacuum_process_log_block (THREAD_ENTRY * thread_p,
@@ -1371,7 +1372,7 @@ end:
   assert (helper.forward_page == NULL);
   if (helper.home_page != NULL)
     {
-      vacuum_heap_page_log_and_reset (thread_p, &helper, true);
+      vacuum_heap_page_log_and_reset (thread_p, &helper, true, true);
     }
 
   return error_code;
@@ -1504,7 +1505,7 @@ retry_prepare:
 	  /* Conditional latch. Unfix home, and fix in reversed order. */
 
 	  /* Make sure all current changes on home are logged. */
-	  vacuum_heap_page_log_and_reset (thread_p, helper, false);
+	  vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
 	  assert (helper->home_page == NULL);
 
 	  /* Fix pages in reversed order. */
@@ -1591,7 +1592,7 @@ retry_prepare:
 	      /* Failed conditional latch. Unfix heap page and try again using
 	       * unconditional latch.
 	       */
-	      vacuum_heap_page_log_and_reset (thread_p, helper, false);
+	      vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
 	      if (heap_ovf_find_vfid (thread_p, &helper->hfid,
 				      &helper->overflow_vfid, false,
 				      PGBUF_UNCONDITIONAL_LATCH) == NULL
@@ -1917,6 +1918,28 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
 
+  /* Vacuum REC_HOME/REC_RELOCATION/REC_BIGONE */
+  spage_vacuum_slot (thread_p, helper->home_page, helper->crt_slotid,
+		     &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
+		     &MVCC_GET_PARTITION_OID (&helper->mvcc_header),
+		     helper->reusable);
+  /* Collect home page changes. */
+  helper->slots[helper->n_vacuumed] = helper->crt_slotid;
+  helper->results[helper->n_vacuumed] = VACUUM_RECORD_REMOVE;
+  if (!helper->reusable)
+    {
+      /* Save next version and partition links. */
+      COPY_OID (&helper->next_versions[helper->n_vacuumed],
+		&MVCC_GET_NEXT_VERSION (&helper->mvcc_header));
+      COPY_OID (&helper->partition_links[helper->n_vacuumed],
+		&MVCC_GET_PARTITION_OID (&helper->mvcc_header));
+    }
+  else
+    {
+      /* Links not logged. */
+    }
+  helper->n_vacuumed++;
+
   switch (helper->record_type)
     {
     case REC_RELOCATION:
@@ -1925,6 +1948,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert (!OID_ISNULL (&helper->forward_oid));
       assert (!HFID_IS_NULL (&helper->hfid));
       assert (!OID_ISNULL (&helper->forward_oid));
+
+      vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
 
       spage_vacuum_slot (thread_p, helper->forward_page,
 			 helper->forward_oid.slotid, NULL, NULL, true);
@@ -1945,6 +1970,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       /* Unfix first overflow page. */
       pgbuf_unfix_and_init (thread_p, helper->forward_page);
+
+      vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
 
       /* Remove overflow pages. */
       if (log_start_system_op (thread_p) == NULL)
@@ -1976,28 +2003,6 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
     }
 
   assert (helper->forward_page == NULL);
-
-  /* Vacuum REC_HOME/REC_RELOCATION/REC_BIGONE */
-  spage_vacuum_slot (thread_p, helper->home_page, helper->crt_slotid,
-		     &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
-		     &MVCC_GET_PARTITION_OID (&helper->mvcc_header),
-		     helper->reusable);
-  /* Collect home page changes. */
-  helper->slots[helper->n_vacuumed] = helper->crt_slotid;
-  helper->results[helper->n_vacuumed] = VACUUM_RECORD_REMOVE;
-  if (!helper->reusable)
-    {
-      /* Save next version and partition links. */
-      COPY_OID (&helper->next_versions[helper->n_vacuumed],
-		&MVCC_GET_NEXT_VERSION (&helper->mvcc_header));
-      COPY_OID (&helper->partition_links[helper->n_vacuumed],
-		&MVCC_GET_PARTITION_OID (&helper->mvcc_header));
-    }
-  else
-    {
-      /* Links not logged. */
-    }
-  helper->n_vacuumed++;
 
   return NO_ERROR;
 }
@@ -2067,11 +2072,13 @@ vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
  * update_best_space_stat (in)	 :
+ * unlatch_page (in) :
  */
 static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
 				VACUUM_HEAP_HELPER * helper,
-				bool update_best_space_stat)
+				bool update_best_space_stat,
+				bool unlatch_page)
 {
   assert (helper != NULL);
   assert (helper->home_page != NULL);
@@ -2079,7 +2086,10 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
   if (helper->n_vacuumed == 0)
     {
       /* No logging is required. */
-      pgbuf_unfix_and_init (thread_p, helper->home_page);
+      if (unlatch_page == true)
+	{
+	  pgbuf_unfix_and_init (thread_p, helper->home_page);
+	}
       return;
     }
 
@@ -2125,7 +2135,10 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
 
   /* Mark page as dirty and unfix */
   pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
-  pgbuf_unfix_and_init (thread_p, helper->home_page);
+  if (unlatch_page == true)
+    {
+      pgbuf_unfix_and_init (thread_p, helper->home_page);
+    }
 
   /* Reset the number of vacuumed slots */
   helper->n_vacuumed = 0;
