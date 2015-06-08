@@ -1826,7 +1826,10 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
 	{
 	  PT_NODE *crt_value_list = NULL;
 
-	  assert (node->info.node_list.list == NULL);
+	  assert ((node->node_type == PT_INSERT
+		   && node->info.node_list.list == NULL)
+		  || (node->node_type == PT_MERGE
+		      && crt_list->info.node_list.list == NULL));
 
 	  for (crt_attr = attrs_list; crt_attr != NULL;
 	       crt_attr = crt_attr->next)
