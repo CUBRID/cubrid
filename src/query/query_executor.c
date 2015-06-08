@@ -14867,18 +14867,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int error;
   DB_LOGICAL limit_zero;
   bool scan_immediately_stop = false;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  bool instant_lock_mode_started = false;
 
   /*
    * Pre_processing
    */
-
-  if (xasl->selected_upd_list != NULL
-      && !QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
-    {
-      /* reevaluate at select since can't reevaluate in execute_selupd_list */
-      lock_start_instant_lock_mode (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-      force_select_lock = true;
-    }
 
   if (xasl->limit_row_count)
     {
@@ -15074,6 +15068,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  if (error != NO_ERROR)
 	    {
 	      return error;
+	    }
+
+	  if (!QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
+	    {
+	      /* Reevaluate at select since can't reevaluate in
+	       * execute_selupd_list. Need to start instant lock mode.
+	       */
+	      lock_start_instant_lock_mode (tran_index);
+	      instant_lock_mode_started = true;
+	      force_select_lock = true;
 	    }
 	}
 
@@ -15845,6 +15849,11 @@ exit_on_error:
       qmgr_set_query_error (thread_p, xasl_state->query_id);
     }
 #endif
+
+  if (instant_lock_mode_started)
+    {
+      lock_stop_instant_lock_mode (thread_p, tran_index, true);
+    }
   qfile_close_list (thread_p, xasl->list_id);
   if (func_vector)
     {
