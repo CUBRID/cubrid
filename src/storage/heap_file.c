@@ -8926,7 +8926,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
       mvcc_snapshot = scan_cache->mvcc_snapshot;
     }
 
-  if (op_type == S_SELECT_WITH_LOCK)
+  if (mvcc_snapshot && mvcc_snapshot->snapshot_fnc == mvcc_satisfies_dirty)
     {
       vacuum_allowed = true;
     }

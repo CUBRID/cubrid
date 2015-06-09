@@ -4441,9 +4441,12 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback,
 		  /* check temp object is not needed */
 		  if (!OID_ISTEMP (ws_oid (trigger->object)))
 		    {
+		      /* need to fetch dirty version, since the object was
+		       * previously locked by current transaction.
+		       */
 		      error = au_fetch_instance_force (trigger->object, NULL,
 						       AU_FETCH_WRITE,
-						       LC_FETCH_MVCC_VERSION);
+						       LC_FETCH_DIRTY_VERSION);
 		      if (error == NO_ERROR)
 			{
 			  /* 

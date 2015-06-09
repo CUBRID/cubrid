@@ -6359,11 +6359,12 @@ au_check_authorization (MOP op, DB_AUTH auth)
  *   op(in): instance MOP
  *   obj_ptr(out): returned pointer to object
  *   fetchmode(in): desired operation
- *   read_fetch_version_type(in): fetch version type used in case of read
+ *   fetch_version_type(in): fetch version type, currently used in case of
+ *			    read/write fetch
  */
 static int
 fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
-		LC_FETCH_VERSION_TYPE read_fetch_version_type)
+		LC_FETCH_VERSION_TYPE fetch_version_type)
 {
   int error = NO_ERROR;
   MOBJ obj = NULL;
@@ -6399,12 +6400,10 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
       switch (fetchmode)
 	{
 	case AU_FETCH_READ:
-	  obj =
-	    vid_fetch_instance (op, DB_FETCH_READ, read_fetch_version_type);
+	  obj = vid_fetch_instance (op, DB_FETCH_READ, fetch_version_type);
 	  break;
 	case AU_FETCH_WRITE:
-	  obj =
-	    vid_fetch_instance (op, DB_FETCH_WRITE, LC_FETCH_MVCC_VERSION);
+	  obj = vid_fetch_instance (op, DB_FETCH_WRITE, fetch_version_type);
 	  break;
 	case AU_FETCH_UPDATE:
 	  obj = vid_upd_instance (op);
@@ -6423,13 +6422,11 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
 	{
 	case AU_FETCH_READ:
 	  obj =
-	    locator_fetch_instance (op, DB_FETCH_READ,
-				    read_fetch_version_type);
+	    locator_fetch_instance (op, DB_FETCH_READ, fetch_version_type);
 	  break;
 	case AU_FETCH_WRITE:
 	  obj =
-	    locator_fetch_instance (op, DB_FETCH_WRITE,
-				    LC_FETCH_MVCC_VERSION);
+	    locator_fetch_instance (op, DB_FETCH_WRITE, fetch_version_type);
 	  break;
 	case AU_FETCH_UPDATE:
 	  obj = locator_update_instance (op);
