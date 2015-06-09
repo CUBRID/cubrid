@@ -1027,6 +1027,7 @@ static int
 tzc_index_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
 {
   int err_status = NO_ERROR;
+  char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
   if (mode == TZ_GEN_TYPE_NEW || mode == TZ_GEN_TYPE_EXTEND)
     {
@@ -1034,8 +1035,12 @@ tzc_index_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
     }
   else
     {
-      printf ("NOT IMPLEMENTED!");
-      assert (false);
+      snprintf (err_msg, sizeof (err_msg) - 1,
+		"UPDATE OPTION NOT IMPLEMENTED!");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_COMPILE_ERROR, 1,
+	      err_msg);
+      err_status = ER_TZ_COMPILE_ERROR;
+      goto exit;
     }
 
   err_status = tzc_index_raw_subdata (tzd_raw, mode);
