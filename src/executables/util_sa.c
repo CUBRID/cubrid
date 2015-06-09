@@ -4290,12 +4290,12 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       input_path = inputpath_local;
     }
 
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
   if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
     {
-      /* error message log file */
-      snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-		"%s_%s.err", db_name, arg->command_name);
-      er_init (er_msg_file, ER_NEVER_EXIT);
       AU_DISABLE_PASSWORDS ();
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
       db_login ("DBA", NULL);

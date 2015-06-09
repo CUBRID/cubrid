@@ -5057,8 +5057,6 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code,
   *err_msg = '\0';
   *err_msg_temp = '\0';
 
-  snprintf (err_msg, sizeof (err_msg) - 1, "Timezone compiler error");
-
   if (context != NULL && !IS_EMPTY_STR (context->current_file)
       && context->current_line != -1)
     {
@@ -5067,15 +5065,12 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code,
 		context->current_line);
     }
   strcat (err_msg, err_msg_temp);
-  strcat (err_msg, ": ");
 
   *err_msg_temp = '\0';
   snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_err_messages[-code],
 	    msg1, msg2);
   strcat (err_msg, err_msg_temp);
   strcat (err_msg, "\n");
-
-  printf (err_msg);
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_COMPILE_ERROR, 1, err_msg);
 }
