@@ -25590,6 +25590,7 @@ heap_remove_partition_links (THREAD_ENTRY * thread_p, OID * class_oid,
       /* start with first OID of the first page */
       vpid.volid = hfid.vfid.volid;
       vpid.pageid = hfid.hpgid;
+      is_scan_end = false;
       while (!is_scan_end)
 	{
 	  if (curr_page_watcher.pgptr == NULL)
