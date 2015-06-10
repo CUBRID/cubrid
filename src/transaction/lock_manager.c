@@ -3773,6 +3773,7 @@ start:
       if (is_instant_duration)
 	{
 	  entry_ptr->instant_lock_count++;
+	  assert (entry_ptr->instant_lock_count > 0);
 	}
 
       /* add the lock entry into the holder list */
@@ -3876,6 +3877,7 @@ start:
 	  if (is_instant_duration)
 	    {
 	      entry_ptr->instant_lock_count++;
+	      assert (entry_ptr->instant_lock_count > 0);
 	    }
 
 	  /* to manage granules */
@@ -3961,6 +3963,7 @@ start:
 		      /* && lock_Comp[lock][NULL_LOCK] == true */ )
 		    {
 		      entry_ptr->instant_lock_count++;
+		      assert (entry_ptr->instant_lock_count > 0);
 		    }
 		}
 	      (void) lock_set_error_for_timeout (thread_p, entry_ptr);
@@ -4076,6 +4079,7 @@ start:
       if (is_instant_duration)
 	{
 	  entry_ptr->instant_lock_count++;
+	  assert (entry_ptr->instant_lock_count > 0);
 	}
 
       /* append the lock request at the end of the waiter */
@@ -4132,6 +4136,7 @@ lock_tran_lk_entry:
 	  else
 	    {
 	      entry_ptr->instant_lock_count++;
+	      assert (entry_ptr->instant_lock_count > 0);
 	    }
 	}
 
@@ -4552,6 +4557,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
       if (lock_is_instant_lock_mode (tran_index))
 	{
 	  entry_ptr->instant_lock_count--;
+	  assert (entry_ptr->instant_lock_count >= 0);
 	}
 
       if (entry_ptr->blocked_mode == NULL_LOCK && entry_ptr->count > 0)
@@ -4943,6 +4949,7 @@ lock_demote_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
 	  if (lock_is_instant_lock_mode (tran_index))
 	    {
 	      entry_ptr->instant_lock_count--;
+	      assert (entry_ptr->instant_lock_count >= 0);
 	    }
 	}
     }
@@ -5257,6 +5264,7 @@ lock_remove_all_inst_locks_with_scanid (THREAD_ENTRY * thread_p,
 	      if (lock_is_instant_lock_mode (tran_index))
 		{
 		  curr->instant_lock_count--;
+		  assert (curr->instant_lock_count >= 0);
 		}
 	    }
 
@@ -5375,6 +5383,7 @@ lock_remove_all_key_locks_with_scanid (THREAD_ENTRY * thread_p,
 	      if (lock_is_instant_lock_mode (tran_index))
 		{
 		  curr->instant_lock_count--;
+		  assert (curr->instant_lock_count >= 0);
 		}
 	    }
 
