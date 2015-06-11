@@ -7,7 +7,7 @@ show_usage ()
   echo "Usage: $APP_NAME [OPTIONS]"
   echo "Build timezone shared library for CUBRID"
   echo " OPTIONS"
-  echo "    -t arg  Set target machine (32(i386) or 64(x86_64)); [default: 32]"
+  echo "    -t arg  Set target machine (32(i386) or 64(x86_64)); [default: 64]"
   echo "            Values for arg: i386, x86, 32, 32bit, x86_64, x64, 64, 64bit"
   echo "    -m arg  Set build mode(release or debug); [default: release]"
   echo "    -g arg  Set generation mode(new, update or extend); [default: new]"
