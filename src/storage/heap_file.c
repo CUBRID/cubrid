@@ -9132,7 +9132,7 @@ start_current_version:
 
   if (type == REC_MVCC_NEXT_VERSION)
     {
-      if (found_visible && !vacuum_allowed)
+      if (found_visible)
 	{
 	  /* Is it impossible to find a vacuumed version after a visible
 	   * version.
@@ -9411,6 +9411,14 @@ start_current_version:
 	      /* Go to next version. */
 	      COPY_OID (&current_oid, &MVCC_GET_NEXT_VERSION (&mvcc_header));
 	      is_original_oid = false;
+
+	      if (type == REC_MVCC_NEXT_VERSION)
+		{
+		  /* the record has been cleaned meanwhile by VACUUM
+		   * so we didn't find visible version yet
+		   */
+		  found_visible = false;
+		}
 	      goto start_current_version;
 	    }
 	  /* Impossible to reach. */
