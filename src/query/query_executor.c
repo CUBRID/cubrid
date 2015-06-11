@@ -15661,10 +15661,21 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 		}
 
+	      assert (lock_is_instant_lock_mode (tran_index) == false);
+	      instant_lock_mode_started = false;
+
 	      if (error != NO_ERROR)
 		{
 		  qexec_clear_mainblock_iterations (thread_p, xasl);
 		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	  else
+	    {
+	      if (instant_lock_mode_started == true)
+		{
+		  lock_stop_instant_lock_mode (thread_p, tran_index, true);
+		  instant_lock_mode_started = false;
 		}
 	    }
 	}
@@ -15815,6 +15826,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /*
    * Cleanup and Exit processing
    */
+  if (instant_lock_mode_started == true)
+    {
+      assert (lock_is_instant_lock_mode (tran_index) == false);
+      /* a safe guard */
+      lock_stop_instant_lock_mode (thread_p, tran_index, true);
+    }
+
   /* destroy hash table */
   if (xasl->type == BUILDLIST_PROC)
     {
@@ -15850,7 +15868,7 @@ exit_on_error:
     }
 #endif
 
-  if (instant_lock_mode_started)
+  if (instant_lock_mode_started == true)
     {
       lock_stop_instant_lock_mode (thread_p, tran_index, true);
     }
