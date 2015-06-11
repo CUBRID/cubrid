@@ -4905,7 +4905,7 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
    * vacuum_Data->newest_mvccid and log_Gl.hdr.last_block_oldest_mvccid .
    */
   vacuum_Global_oldest_active_mvccid = vacuum_Data->newest_mvccid;
-  if (!LSA_ISNULL (log_Gl.hdr.mvcc_op_log_lsa))
+  if (!LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
     {
       vacuum_Global_oldest_active_mvccid =
 	MAX (vacuum_Global_oldest_active_mvccid,
