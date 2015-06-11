@@ -25011,6 +25011,12 @@ start_current_version:
       /* heap_prepare_get_record should have output next_version to
        * forward_oid.
        */
+      if (OID_ISNULL (&forward_oid))
+	{
+	  OID_SET_NULL (next_version);
+	  OID_SET_NULL (next_version_class_oid);
+	  goto end;
+	}
       assert (!OID_ISNULL (&forward_oid));
       COPY_OID (&current_oid, &forward_oid);
 
