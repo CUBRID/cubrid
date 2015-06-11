@@ -4901,10 +4901,16 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
   assert (!LOG_ISRESTARTED ());
 
   /* Initialize vacuum_Global_oldest_active_mvccid. Since we don't have any
-   * active transactions yet, initialize it as current
-   * vacuum_Data->newest_mvccid.
+   * active transactions yet, initialize it as maximum of
+   * vacuum_Data->newest_mvccid and log_Gl.hdr.last_block_oldest_mvccid .
    */
   vacuum_Global_oldest_active_mvccid = vacuum_Data->newest_mvccid;
+  if (!LSA_ISNULL (log_Gl.hdr.mvcc_op_log_lsa))
+    {
+      vacuum_Global_oldest_active_mvccid =
+	MAX (vacuum_Global_oldest_active_mvccid,
+	     log_Gl.hdr.last_block_oldest_mvccid);
+    }
 
   /* Initialize log_page_p. */
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, MAX_ALIGNMENT);
