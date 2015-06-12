@@ -83,6 +83,7 @@
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
 
+static bool need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid);
 static int server_capabilities (void);
 static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap,
 				      int rel_compare,
@@ -107,43 +108,37 @@ static void event_log_many_ioreads (THREAD_ENTRY * thread_p,
 static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p,
 					 EXECUTION_INFO * info);
 
+
 /*
- * return_error_to_client -
+ * need_to_abort_tran - check whether the transaction should be aborted
  *
- * return:
+ * return: true/false
  *
- *   rid(in):
- *
- * NOTE:
+ *   thread_p(in): thread entry
+ *   errid(out): the latest error code
  */
-void
-return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
+static bool
+need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid)
 {
-  int errid;
-  void *area;
-  char buffer[1024];
-  int length = 1024;
-  CSS_CONN_ENTRY *conn;
   LOG_TDES *tdes;
   bool flag_abort = false;
 
   assert (thread_p != NULL);
 
-  conn = thread_p->conn_entry;
-  assert (conn != NULL);
-
 #if 0				/* TODO */
   assert (er_errid () != NO_ERROR);
 #endif
-  errid = er_errid ();
-  if (errid == ER_LK_UNILATERALLY_ABORTED || errid == ER_DB_NO_MODIFICATIONS)
+
+  *errid = er_errid ();
+  if (*errid == ER_LK_UNILATERALLY_ABORTED
+      || *errid == ER_DB_NO_MODIFICATIONS)
     {
       flag_abort = true;
     }
 
   /*
    * DEFENCE CODE:
-   *  below block means ER_LK_UNILATERALLY_ABORTED ocurrs but another error
+   *  below block means ER_LK_UNILATERALLY_ABORTED occurs but another error
    *  set after that.
    *  So, re-set that error to rollback in client side.
    */
@@ -157,6 +152,37 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
 	      thread_p->tran_index, tdes->client.db_user,
 	      tdes->client.host_name, tdes->client.process_id);
     }
+
+  return flag_abort;
+}
+
+/*
+ * return_error_to_client -
+ *
+ * return:
+ *
+ *   rid(in):
+ *
+ * NOTE:
+ */
+void
+return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
+{
+  LOG_TDES *tdes;
+  int errid;
+  bool flag_abort = false;
+  void *area;
+  char buffer[1024];
+  int length = 1024;
+  CSS_CONN_ENTRY *conn;
+
+  assert (thread_p != NULL);
+
+  conn = thread_p->conn_entry;
+  assert (conn != NULL);
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  flag_abort = need_to_abort_tran (thread_p, &errid);
 
   /* check some errors which require special actions */
   /*
@@ -6070,6 +6096,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   char *sql_id = NULL;
   int error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
+  bool tran_abort = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
 
@@ -6168,6 +6195,29 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		  sql_id ? sql_id : "(UNKNOWN SQL_ID)",
 		  info.sql_user_text ? info.
 		  sql_user_text : "(UNKNOWN USER_TEXT)");
+
+	  if (sql_id != NULL)
+	    {
+	      free_and_init (sql_id);
+	    }
+	}
+
+      if (xasl_cache_entry_p)
+	{
+	  tran_abort = need_to_abort_tran (thread_p, &error_code);
+	  if (tran_abort == true)
+	    {
+	      /* Remove transaction id from xasl cache entry before
+	       * return_error_to_client, where current transaction may be aborted.
+	       * Otherwise, another transaction may be resumed and
+	       * xasl_cache_entry_p may be removed by that transaction, during class
+	       * deletion.
+	       */
+	      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+							    xasl_cache_entry_p,
+							    true);
+	      xasl_cache_entry_p = NULL;
+	    }
 	}
 
       return_error_to_client (thread_p, rid);
@@ -6211,12 +6261,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	}
       else
 	{
-	  /*
-	   * During query execution, ER_LK_UNILATERALLY_ABORTED may have
-	   * occurred.
-	   * xqmgr_sync_query() had set this error
-	   * so that the transaction will be rolled back.
-	   */
 	  return_error_to_client (thread_p, rid);
 	}
     }
@@ -6236,6 +6280,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	  return_error_to_client (thread_p, rid);
 	}
     }
+
   /* pack 'QUERY_END' as a first argument of the reply */
   ptr = or_pack_int (reply, QUERY_END);
   /* pack size of list file id to return as a second argument of the reply */
@@ -6243,41 +6288,43 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   /* pack size of a page to return as a third argumnet of the reply */
   ptr = or_pack_int (ptr, page_size);
 
-  if (trace_slow_msec >= 0 || trace_ioreads > 0)
+  /* We may release the xasl cache entry when the transaction aborted. 
+   * To refer the contents of the freed entry for the case will cause defects. 
+   */
+  if (tran_abort == false)
     {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
-
-      xmnt_server_copy_stats (thread_p, &current_stats);
-      mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
-
-      if (response_time >= trace_slow_msec)
+      if (trace_slow_msec >= 0 || trace_ioreads > 0)
 	{
-	  queryinfo_string_length = er_log_slow_query (thread_p, &info,
-						       response_time,
-						       &diff_stats,
-						       queryinfo_string);
-	  event_log_slow_query (thread_p, &info, response_time, &diff_stats);
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
+
+	  xmnt_server_copy_stats (thread_p, &current_stats);
+	  mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
+
+	  if (response_time >= trace_slow_msec)
+	    {
+	      queryinfo_string_length = er_log_slow_query (thread_p, &info,
+							   response_time,
+							   &diff_stats,
+							   queryinfo_string);
+	      event_log_slow_query (thread_p, &info, response_time,
+				    &diff_stats);
+	    }
+
+	  if (trace_ioreads > 0 && diff_stats.pb_num_ioreads >= trace_ioreads)
+	    {
+	      event_log_many_ioreads (thread_p, &info, response_time,
+				      &diff_stats);
+	    }
+
+	  xmnt_server_stop_stats (thread_p);
 	}
 
-      if (trace_ioreads > 0 && diff_stats.pb_num_ioreads >= trace_ioreads)
+      if (thread_p->event_stats.temp_expand_pages > 0)
 	{
-	  event_log_many_ioreads (thread_p, &info, response_time,
-				  &diff_stats);
+	  event_log_temp_expand_pages (thread_p, &info);
 	}
-
-      xmnt_server_stop_stats (thread_p);
-    }
-
-  if (thread_p->event_stats.temp_expand_pages > 0)
-    {
-      event_log_temp_expand_pages (thread_p, &info);
-    }
-
-  if (sql_id != NULL)
-    {
-      free_and_init (sql_id);
     }
 
   if (xasl_cache_entry_p)
