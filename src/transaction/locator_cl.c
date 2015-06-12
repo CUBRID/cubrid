@@ -4367,6 +4367,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
   OID *oid;
   int error_code = NO_ERROR;
   int i;
+  int content_size = 0;
 
   assert (mflush != NULL);
 
@@ -4400,9 +4401,11 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	}
 
       /* Force the flushing area */
+      content_size = CAST_BUFLEN (mflush->recdes.data - mflush->copy_area->mem);
+      assert (content_size >= 0);
       error_code =
 	locator_force (mflush->copy_area, ws_Error_ignore_count,
-		       ws_Error_ignore_list);
+		       ws_Error_ignore_list, content_size);
 
       assert (error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH);
 

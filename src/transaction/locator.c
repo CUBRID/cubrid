@@ -700,7 +700,6 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr,
   char *end;
 
   *contents_ptr = copyarea->mem;
-  *contents_length = 0;
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
   *desc_length =
@@ -715,25 +714,29 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr,
 
   /* Find the length of the content area and pack the descriptor area */
 
-  if (mobjs->num_objs > 0)
+  if (contents_length != NULL)
     {
-      obj = &mobjs->objs;
-      obj++;
-      for (i = 0; i < mobjs->num_objs; i++)
+      *contents_length = 0;
+      if (mobjs->num_objs > 0)
 	{
-	  obj--;
-	  if (obj->offset > offset)
+	  obj = &mobjs->objs;
+	  obj++;
+	  for (i = 0; i < mobjs->num_objs; i++)
 	    {
-	      /* To the right */
-	      *contents_length = obj->length;
-	      offset = obj->offset;
+	      obj--;
+	      if (obj->offset > offset)
+		{
+		  /* To the right */
+		  *contents_length = obj->length;
+		  offset = obj->offset;
+		}
 	    }
-	}
 
-      if (offset != -1)
-	{
-	  *contents_length = DB_ALIGN (*contents_length, MAX_ALIGNMENT);
-	  *contents_length += offset;
+	  if (offset != -1)
+	    {
+	      *contents_length = DB_ALIGN (*contents_length, MAX_ALIGNMENT);
+	      *contents_length += offset;
+	    }
 	}
     }
 

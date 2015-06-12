@@ -642,7 +642,7 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
  */
 int
 locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
-	       int *ignore_error_list)
+	       int *ignore_error_list, int content_size)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -654,7 +654,6 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
   char *desc_ptr = NULL;
   int desc_size;
   char *content_ptr;
-  int content_size;
   int num_objs = 0;
   int req_error;
   int i;
@@ -674,7 +673,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size,
+  num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL,
 				     &desc_ptr, &desc_size);
 
   request_ptr = or_pack_int (request, num_objs);

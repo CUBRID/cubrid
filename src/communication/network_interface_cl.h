@@ -82,7 +82,7 @@ extern int locator_does_exist (OID * oidp, int chn, LOCK lock,
 			       LC_COPYAREA ** fetch_copyarea);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
 extern int locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
-			  int *ignore_error_list);
+			  int *ignore_error_list, int content_size);
 extern int locator_repl_force (LC_COPYAREA * copy_area,
 			       LC_COPYAREA ** reply_copy_area);
 extern int locator_force_repl_update (BTID * btid, OID * class_oid,
