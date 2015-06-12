@@ -3180,8 +3180,20 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
       tz_zone->gmt_off_rule_count = tz_raw_zone->offset_rule_count;
 
       if (tz_zone->gmt_off_rule_count == 0)
-	{
-	  continue;
+	{	  
+	  /* if zone is an alias continue */
+	  if (tz_raw_zone->clone_of_id != -1)
+	    {
+	      continue;
+	    }
+	  /* else stop building the timezone library */
+	  else
+	    {
+	      err_status = TZC_ERR_INVALID_ZONE;
+	      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw),
+				  TZC_ERR_INVALID_ZONE, "Empty zone");
+	      goto exit;
+	  } 
 	}
 
       for (j = 0; j < tz_zone->gmt_off_rule_count; j++)
