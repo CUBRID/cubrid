@@ -618,7 +618,6 @@ int g_original_buffer_len;
 %type <number> opt_of_inner_left_right
 %type <number> opt_class_type
 %type <number> opt_of_attr_column_method
-%type <number> opt_of_constraint_index_key
 %type <number> opt_class
 %type <number> isolation_level_name
 %type <number> opt_status
@@ -3457,45 +3456,6 @@ alter_stmt
 	  identifier			/* 3 */
 	  ON_					/* 4 */
 	  class_name			/* 5 */
-	  RENAME				/* 6 */
-	  TO					/* 7 */
-	  identifier			/* 8 */
-	  opt_comment_spec		/* 9 */
-		{{
-			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
-
-			if (node != NULL)
-			  {
-			    node->info.index.code = PT_RENAME_INDEX;
-			    node->info.index.index_name = $3;
-			    node->info.index.new_name = $8;
-			    node->info.index.comment = $9;
-						
-			    if (node->info.index.index_name)
-			      {
-			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
-			      }
-			
-			    if ($5 != NULL)
-			      {
-			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
-			        ocs->info.spec.entity_name = $5;
-			        ocs->info.spec.only_all = PT_ONLY;
-			        ocs->info.spec.meta_class = PT_CLASS;
-			
-			        node->info.index.indexed_class = ocs;
-			      }
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ALTER				/* 1 */
-	  INDEX				/* 2 */
-	  identifier			/* 3 */
-	  ON_					/* 4 */
-	  class_name			/* 5 */
 	  COMMENT comment_value /* 6, 7 */
 		{{
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
@@ -5152,36 +5112,6 @@ alter_rename_clause_allow_multiple
 			  }
 
 		DBG_PRINT}}
-	| opt_of_constraint_index_key identifier as_or_to identifier
-		{{
-
-			PT_NODE *node = parser_get_alter_node ();
-			PT_MISC_TYPE etyp = $1;
-
-			if (node)
-			  {
-			    if (etyp == PT_CONSTRAINT_NAME)
-			    	{
-			    	  node->info.alter.code = PT_RENAME_CONSTRAINT;
-			    	}
-			    else if (etyp == PT_INDEX_NAME)
-			        {
-			        node->info.alter.code = PT_RENAME_INDEX;
-			        }
-			    else 
-			        {
-  			        node->info.alter.code = PT_RENAME_ATTR_MTHD;
-  			        etyp = PT_ATTRIBUTE;
-  			        node->info.alter.alter_clause.rename.meta = PT_NORMAL;
-  			        }
-
-			    node->info.alter.alter_clause.rename.element_type = etyp;
-			    
-			    node->info.alter.alter_clause.rename.new_name = $4;
-			    node->info.alter.alter_clause.rename.old_name = $2;
-			  }
-
-		DBG_PRINT}}
 	;
 
 alter_rename_clause_cubrid_specific
@@ -5247,27 +5177,6 @@ opt_of_attr_column_method
 		DBG_PRINT}}
 	;
 	
-opt_of_constraint_index_key
-	: CONSTRAINT
-		{{
-
-			$$ = PT_CONSTRAINT_NAME;
-
-		DBG_PRINT}}
-   	| INDEX
-		{{
-
-			$$ = PT_INDEX_NAME;
-
-		DBG_PRINT}}
-   	| KEY
-		{{
-
-			$$ = PT_INDEX_NAME;
-
-		DBG_PRINT}}
-	;
-
 opt_class
 	: /* empty */
 		{{

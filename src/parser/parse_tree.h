@@ -1280,8 +1280,10 @@ typedef enum
   PT_CHANGE_AUTO_INCREMENT,
   PT_CHANGE_OWNER,
   PT_CHANGE_COLLATION,
+#if defined (ENABLE_RENAME_CONSTRAINT)
   PT_RENAME_CONSTRAINT,
   PT_RENAME_INDEX,
+#endif
   PT_REBUILD_INDEX,
   PT_ADD_INDEX_CLAUSE,
   PT_CHANGE_TABLE_COMMENT,
@@ -1967,7 +1969,9 @@ struct pt_index_info
   PT_NODE *indexed_class;	/* PT_SPEC */
   PT_NODE *column_names;	/* PT_SORT_SPEC (list) */
   PT_NODE *index_name;		/* PT_NAME */
+#if defined (ENABLE_RENAME_CONSTRAINT)
   PT_NODE *new_name;		/* PT_NAME */
+#endif
   PT_NODE *prefix_length;	/* PT_NAME */
   PT_NODE *where;		/* PT_EXPR */
   PT_NODE *function_expr;	/* PT_EXPR - expression to be used in a

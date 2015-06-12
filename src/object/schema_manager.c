@@ -10796,6 +10796,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 /*
  * sm_rename_foreign_key_ref() - Rename constraint name in PK referenced by FK
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -10880,6 +10881,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid,
   AU_ENABLE (save);
   return NO_ERROR;
 }
+#endif
 
 /*
  * allocate_unique_constraint() - Allocate index for unique constraints
@@ -11643,11 +11645,19 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  continue;
 	}
 
+#if 1
+      new_con = classobj_find_class_constraint (flat_constraints,
+						con->type, con->name);
+#else
+#if defined (ENABLE_RENAME_CONSTRAINT)
       /* We need to find the constraint by BTID because the constraint name
        * may have been changed by RENAME CONSTRAINT(or INDEX) DDLs. */
       new_con = classobj_find_class_constraint_by_btid (flat_constraints,
 							con->type,
 							con->index_btid);
+#endif
+#endif
+
       if (new_con == NULL)
 	{
 	  /* Constraint does not exist in the template */
@@ -16475,6 +16485,7 @@ update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 	    }
 	}
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
       if (old_name != NULL && new_name != NULL)
 	{
 	  error = classobj_rename_foreign_key_ref (&sub_ctemplate->properties,
@@ -16485,7 +16496,11 @@ update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
 	    }
 	}
       else
+#endif
 	{
+	  /* disable rename constraint */
+	  assert (new_name == NULL);
+
 	  if (fk_info != NULL)
 	    {
 	      error =

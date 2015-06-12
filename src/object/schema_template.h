@@ -161,9 +161,11 @@ extern int smt_add_set_argument_domain (SM_TEMPLATE * template_,
 extern int smt_rename_any (SM_TEMPLATE * template_, const char *name,
 			   const bool class_namespace, const char *new_name);
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 extern int smt_rename_constraint (SM_TEMPLATE * ctemplate,
 				  const char *old_name, const char *new_name,
 				  SM_CONSTRAINT_FAMILY element_type);
+#endif
 
 /* Change comment function */
 extern int smt_change_constraint_comment (SM_TEMPLATE * ctemplate,

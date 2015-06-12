@@ -143,6 +143,7 @@ static int smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
 						     DB_DOMAIN * new_domain);
 
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 static int rename_constraint (SM_TEMPLATE * ctemplate,
 			      SM_CLASS_CONSTRAINT * sm_cons,
 			      const char *old_name, const char *new_name,
@@ -153,6 +154,7 @@ static int rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
 						 const char *new_name,
 						 SM_CONSTRAINT_FAMILY
 						 element_type);
+#endif
 
 static int change_constraint_comment (SM_TEMPLATE * ctemplate,
 				      const char *index_name,
@@ -2766,6 +2768,7 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
   return error;
 }
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 /*
  * rename_constraint() - Renames a constraint.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -3111,6 +3114,7 @@ end:
 error_exit:
   goto end;
 }
+#endif /* ENABLE_RENAME_CONSTRAINT */
 
 /*
  * change_constraint_comment() - Changes a constraint comment.

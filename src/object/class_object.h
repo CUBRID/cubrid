@@ -1137,10 +1137,12 @@ extern int classobj_find_prop_constraint (DB_SEQ * properties,
 					  const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 extern int classobj_rename_constraint (DB_SEQ * properties,
 				       const char *prop_name,
 				       const char *old_name,
 				       const char *new_name);
+#endif
 
 extern int classobj_change_constraint_comment (DB_SEQ * properties,
 					       const char *prop_type,
@@ -1178,10 +1180,12 @@ extern SM_CLASS_CONSTRAINT
   * classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
 				    SM_CONSTRAINT_TYPE type,
 				    const char *name);
+#if defined (ENABLE_RENAME_CONSTRAINT)
 extern SM_CLASS_CONSTRAINT
   * classobj_find_class_constraint_by_btid (SM_CLASS_CONSTRAINT * constraints,
 					    SM_CONSTRAINT_TYPE type,
 					    BTID btid);
+#endif
 
 extern SM_CLASS_CONSTRAINT *classobj_find_class_index (SM_CLASS * class_,
 						       const char *name);

@@ -1353,6 +1353,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       error = do_alter_partitioning_pre (parser, alter, &pinfo);
       break;
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
     case PT_RENAME_CONSTRAINT:
     case PT_RENAME_INDEX:
 
@@ -1375,6 +1376,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       error = smt_rename_constraint (ctemplate, old_name, new_name,
 				     constraint_family);
       break;
+#endif
 
     default:
       assert (false);
@@ -3543,6 +3545,7 @@ error_exit:
   goto end;
 }
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 /*
  * do_alter_index_rename() - renames an index on a class.
  *   return: Error code if it fails
@@ -3668,6 +3671,7 @@ error_exit:
 
   goto end;
 }
+#endif
 
 /*
  * do_alter_index_comment() - alter an index comment on a class.
@@ -3794,10 +3798,12 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       error = do_alter_index_rebuild (parser, statement);
     }
+#if defined (ENABLE_RENAME_CONSTRAINT)
   else if (statement->info.index.code == PT_RENAME_INDEX)
     {
       error = do_alter_index_rename (parser, statement);
     }
+#endif
   else if (statement->info.index.code == PT_CHANGE_INDEX_COMMENT)
     {
       error = do_alter_index_comment (parser, statement);

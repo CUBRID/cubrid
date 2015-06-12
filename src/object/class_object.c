@@ -2049,6 +2049,7 @@ end:
   return err;
 }
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 /*
  * classobj_rename_foreign_key_ref()
  *
@@ -2232,6 +2233,7 @@ end:
 
   return err;
 }
+#endif
 
 /*
  * classobj_drop_foreign_key_ref()
@@ -2423,6 +2425,7 @@ classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name,
   return found;
 }
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 /*
  * classobj_rename_constraint() - This function is used to rename
  *                                a constraint name.
@@ -2486,6 +2489,7 @@ end:
   pr_clear_value (&new_val);
   return error;
 }
+#endif
 
 /*
  * classobj_change_constraint_comment() - This function is used to change
@@ -4391,6 +4395,7 @@ classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
   return con;
 }
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 /*
  * classobj_find_class_constraint_by_btid() - Searches a list of class
  *    constraint structures for one with a certain btid. Couldn't we be
@@ -4416,6 +4421,7 @@ classobj_find_class_constraint_by_btid (SM_CLASS_CONSTRAINT * constraints,
     }
   return con;
 }
+#endif
 
 /*
  * classobj_find_cons_index()

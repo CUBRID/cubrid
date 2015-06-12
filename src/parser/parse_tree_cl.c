@@ -5725,6 +5725,7 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p,
       p->info.alter.alter_clause.rename.mthd_name =
 	g (parser, p->info.alter.alter_clause.rename.mthd_name, arg);
       break;
+#if defined (ENABLE_RENAME_CONSTRAINT)
     case PT_RENAME_CONSTRAINT:
     case PT_RENAME_INDEX:
       p->info.alter.alter_clause.rename.old_name = g (parser,
@@ -5734,6 +5735,7 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p,
       p->info.alter.alter_clause.rename.new_name =
 	g (parser, p->info.alter.alter_clause.rename.new_name, arg);
       break;
+#endif
     case PT_MODIFY_DEFAULT:
     case PT_ALTER_DEFAULT:
       p->info.alter.alter_clause.ch_attr_def.attr_name_list =
@@ -6151,6 +6153,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       break;
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
     case PT_RENAME_CONSTRAINT:
     case PT_RENAME_INDEX:
       q = pt_append_nulstring (parser, q, " rename ");
@@ -6176,6 +6179,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	  break;
 	}
       break;
+#endif
 
     case PT_RENAME_ATTR_MTHD:
       q = pt_append_nulstring (parser, q, " rename ");
@@ -6592,6 +6596,7 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_varchar (parser, b, r3);
 	}
     }
+#if defined (ENABLE_RENAME_CONSTRAINT)
   else if (p->info.index.code == PT_RENAME_INDEX)
     {
       b = pt_append_nulstring (parser, b, "rename to ");
@@ -6602,6 +6607,7 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_bytes (parser, b, new_name, strlen (new_name));
 	}
     }
+#endif
 
   if (p->info.index.comment != NULL)
     {

@@ -342,10 +342,12 @@ extern bool classobj_is_exist_foreign_key_ref (MOP refop,
 
 extern int classobj_put_foreign_key_ref (DB_SEQ ** properties,
 					 SM_FOREIGN_KEY_INFO * fk_info);
+#if defined (ENABLE_RENAME_CONSTRAINT)
 extern int classobj_rename_foreign_key_ref (DB_SEQ ** properties,
 					    const BTID * btid,
 					    const char *old_name,
 					    const char *new_name);
+#endif
 extern int classobj_drop_foreign_key_ref (DB_SEQ ** properties,
 					  const BTID * btid,
 					  const char *name);
@@ -363,9 +365,11 @@ extern int sm_is_global_only_constraint (MOP classmop,
 					 int *is_global,
 					 SM_TEMPLATE * template_);
 
+#if defined (ENABLE_RENAME_CONSTRAINT)
 extern int sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid,
 				      const char *old_name,
 				      const char *new_name);
+#endif
 
 extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop,
 					  bool * found);
