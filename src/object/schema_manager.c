@@ -11645,35 +11645,89 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  continue;
 	}
 
-#if 1
       new_con = classobj_find_class_constraint (flat_constraints,
 						con->type, con->name);
-#else
 #if defined (ENABLE_RENAME_CONSTRAINT)
-      /* We need to find the constraint by BTID because the constraint name
-       * may have been changed by RENAME CONSTRAINT(or INDEX) DDLs. */
-      new_con = classobj_find_class_constraint_by_btid (flat_constraints,
-							con->type,
-							con->index_btid);
-#endif
+      /* TODO: We have to differentiate between the case of rename constraint
+       *       and dropping a shared index.
+       *       For instance, when index is renamed, the foreign key references
+       *       in primary key are also updated. We don't have to call
+       *       drop_foreign_key_ref here.
+       */
 #endif
 
-      if (new_con == NULL)
+      if (new_con != NULL)
 	{
-	  /* Constraint does not exist in the template */
-	  if (con->attributes[0] != NULL)
+	  /* Index still exists. */
+
+	  if (!BTID_IS_EQUAL (&con->index_btid, &new_con->index_btid))
 	    {
-	      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
+	      /* We don't know if this case is reachable or handled properly.
+	       * Added an assert here to discover the cases that can reach it.
+	       */
+	      assert (false);
+	      if (BTID_IS_NULL (&(new_con->index_btid)))
 		{
-		  error = drop_foreign_key_ref (classop, flat_constraints,
-						con);
-		  if (error != NO_ERROR)
+		  /* Template index isn't set, transfer the old one
+		   * Can this happen, it should have been transfered by now.
+		   */
+		  new_con->index_btid = con->index_btid;
+		}
+	      else
+		{
+		  /* The index in the new template is not the same, I'm not
+		   * entirely sure what this means or how we can get here.
+		   * Possibly if we drop the unique but add it again with the
+		   * same name but over different attributes.
+		   */
+		  if (con->attributes[0] != NULL
+		      && is_index_owner (classop, con))
 		    {
-		      goto end;
+		      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
+			{
+			  error =
+			    drop_foreign_key_ref (classop, flat_constraints,
+						  con);
+			  if (error != NO_ERROR)
+			    {
+			      goto end;
+			    }
+			}
+
+		      error = deallocate_index (class_->constraints,
+						&con->index_btid);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
+		      BTID_SET_NULL (&con->index_btid);
 		    }
 		}
+	    }
+	  continue;
+	}
+      /* Index was dropped or renamed. */
 
-
+      if (con->attributes[0] != NULL)
+	{
+	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      error = drop_foreign_key_ref (classop, flat_constraints, con);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	  /* Does index structure still exist? It is possible if index was
+	   * renamed or if BTID was shared.
+	   */
+	  new_con =
+	    classobj_find_class_constraint_by_btid (flat_constraints,
+						    con->type,
+						    con->index_btid);
+	  if (new_con == NULL)
+	    {
+	      /* Index structure doesn't exist. */
 	      if (is_index_owner (classop, con))
 		{
 		  /* destroy the old index but only if we're the owner of
@@ -11730,44 +11784,6 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		}
 
 	      BTID_SET_NULL (&con->index_btid);
-	    }
-	}
-      else if (!BTID_IS_EQUAL (&con->index_btid, &new_con->index_btid))
-	{
-	  if (BTID_IS_NULL (&(new_con->index_btid)))
-	    {
-	      /* Template index isn't set, transfer the old one
-	       * Can this happen, it should have been transfered by now.
-	       */
-	      new_con->index_btid = con->index_btid;
-	    }
-	  else
-	    {
-	      /* The index in the new template is not the same, I'm not entirely
-	       * sure what this means or how we can get here.
-	       * Possibly if we drop the unique but add it again with the same
-	       * name but over different attributes.
-	       */
-	      if (con->attributes[0] != NULL && is_index_owner (classop, con))
-		{
-		  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
-		    {
-		      error = drop_foreign_key_ref (classop, flat_constraints,
-						    con);
-		      if (error != NO_ERROR)
-			{
-			  goto end;
-			}
-		    }
-
-		  error = deallocate_index (class_->constraints,
-					    &con->index_btid);
-		  if (error != NO_ERROR)
-		    {
-		      goto end;
-		    }
-		  BTID_SET_NULL (&con->index_btid);
-		}
 	    }
 	}
     }

@@ -4395,7 +4395,6 @@ classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
   return con;
 }
 
-#if defined (ENABLE_RENAME_CONSTRAINT)
 /*
  * classobj_find_class_constraint_by_btid() - Searches a list of class
  *    constraint structures for one with a certain btid. Couldn't we be
@@ -4421,7 +4420,6 @@ classobj_find_class_constraint_by_btid (SM_CLASS_CONSTRAINT * constraints,
     }
   return con;
 }
-#endif
 
 /*
  * classobj_find_cons_index()
