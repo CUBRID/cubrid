@@ -31225,10 +31225,12 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
 
       /* Cannot consider this a new key. */
       insert_helper->is_unique_key_added_or_deleted = false;
+#if defined (SERVER_MODE)
       /* We don't want to unlock the object we will relocate. Others cannot
        * delete it until we are finished.
        */
       OID_SET_NULL (&insert_helper->saved_locked_oid);
+#endif
     }
   else
     {
