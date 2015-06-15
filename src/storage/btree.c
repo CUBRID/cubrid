@@ -24347,6 +24347,10 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
   bool has_overflow_pages = false;
   VPID first_overflow_vpid = VPID_INITIALIZER;
 
+  assert (btid != NULL);
+  assert (recp != NULL && recp->data != NULL && recp->length > 0);
+  assert (node_type == BTREE_LEAF_NODE || node_type == BTREE_OVERFLOW_NODE);
+
   if (btid == NULL || btid->key_type == NULL)
     {
       /* We don't have access to b-tree information to check the record. */
@@ -38551,14 +38555,46 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
   else
     {
-      /* Remove old object and insert new ordered by OID. */
-      btree_record_remove_object_internal (thread_p, btid_int, record,
-					   node_type, offset_to_replaced,
-					   rv_undo_data, rv_redo_data, NULL);
-
       /* Object must be fixed size. */
+      int fixed_object_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
       BTREE_MVCC_INFO_SET_FIXED_SIZE (&replacement->mvcc_info);
-      btree_insert_object_ordered_by_oid (record, btid_int, replacement,
-					  rv_undo_data, rv_redo_data);
+
+      if (record->length == fixed_object_size)
+	{
+	  /* Only one object. Just replace it. */
+	  assert (offset_to_replaced == 0);
+	  if (undo_logging)
+	    {
+	      /* Undo logging. */
+	      *rv_undo_data =
+		log_rv_pack_undo_record_changes (*rv_undo_data, 0,
+						 fixed_object_size,
+						 fixed_object_size,
+						 record->data);
+	    }
+	  ptr =
+	    btree_pack_object (record->data, btid_int, node_type, record,
+			       replacement);
+	  assert (ptr == record->data + fixed_object_size);
+	  if (redo_logging)
+	    {
+	      /* Redo logging. */
+	      *rv_redo_data =
+		log_rv_pack_redo_record_changes (*rv_redo_data, 0,
+						 fixed_object_size,
+						 fixed_object_size,
+						 record->data);
+	    }
+	}
+      else
+	{
+	  /* Remove old object and insert new ordered by OID. */
+	  btree_record_remove_object_internal (thread_p, btid_int, record,
+					       node_type, offset_to_replaced,
+					       rv_undo_data, rv_redo_data,
+					       NULL);
+	  btree_insert_object_ordered_by_oid (record, btid_int, replacement,
+					      rv_undo_data, rv_redo_data);
+	}
     }
 }
