@@ -5374,6 +5374,8 @@ pgbuf_initialize_ain_list (void)
 static int
 pgbuf_initialize_aout_list (void)
 {
+/* limit Aout size to equivalent of 512M */
+#define PGBUF_LIMIT_AOUT_BUFFERS 32768
   int i;
   float aout_ratio;
   size_t alloc_size = 0;
@@ -5396,6 +5398,7 @@ pgbuf_initialize_aout_list (void)
       return NO_ERROR;
     }
 
+  list->max_count = MIN (list->max_count, PGBUF_LIMIT_AOUT_BUFFERS);
   alloc_size = list->max_count * sizeof (PGBUF_AOUT_BUF);
 
   list->bufarray = (PGBUF_AOUT_BUF *) malloc (alloc_size);
@@ -5468,6 +5471,7 @@ error_return:
   pthread_mutex_destroy (&list->Aout_mutex);
 
   return ER_FAILED;
+#undef PGBUF_LIMIT_AOUT_BUFFERS
 }
 
 /*
