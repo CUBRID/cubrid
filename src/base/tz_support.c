@@ -191,6 +191,16 @@ static const int days_up_to_month[] =
     v = *aux;							\
   } while (0)
 
+
+#define APPLY_NEXT_OFF_RULE()						  \
+  do {									  \
+      prev_off_rule = curr_off_rule;					  \
+      curr_off_rule = next_off_rule;					  \
+      next_off_rule = NULL;						  \
+      curr_offset_id++;							  \
+    } while(0)
+
+
 /*
  * tz_load_library - loads the timezone specific DLL/so
  * Returns : error code - ER_LOC_INIT if library load fails
@@ -2934,12 +2944,17 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
   TZ_TIMEZONE *timezone;
   const TZ_DATA *tzd;
   TZ_OFFSET_RULE *curr_off_rule = NULL, *next_off_rule = NULL;
+  TZ_OFFSET_RULE *prev_off_rule = NULL;
   TZ_DS_RULESET *ds_ruleset;
   TZ_DS_RULE *curr_ds_rule, *applying_ds_rule;
   bool check_user_dst = false;
   bool applying_with_prev_year = false;
   bool applying_is_in_leap_interval = false;
-  int save_time = 0, src_offset = 0;
+  int save_time = 0, src_offset_curr_off_rule = 0;
+  int src_offset_prev_off_rule = 0;
+  full_date_t leap_offset_rule_interval = 0;
+  int prev_rule_julian_date = 0, prev_rule_time_sec = 0;
+  bool try_offset_rule_overlap = false;
 
   if (tz_info->type == TZ_REGION_OFFSET)
     {
@@ -2978,6 +2993,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
     {
       assert (timezone->gmt_off_rule_start + curr_offset_id
 	      < tzd->offset_rule_count);
+      prev_off_rule = curr_off_rule;
       curr_off_rule =
 	&(tzd->offset_rules[timezone->gmt_off_rule_start + curr_offset_id]);
 
@@ -3034,20 +3050,51 @@ detect_dst:
     }
 
   applying_ds_id = -1;
+  applying_date_diff = -1;
   gmt_std_offset_sec = curr_off_rule->gmt_off;
   total_offset_sec = gmt_std_offset_sec;
+  if (prev_off_rule != NULL)
+    {
+      prev_rule_julian_date = prev_off_rule->julian_date;
+      prev_rule_time_sec = (prev_off_rule->until_hour * 60
+			    + curr_off_rule->until_min) * 60
+	+ curr_off_rule->until_sec;
+      leap_offset_rule_interval = curr_off_rule->gmt_off
+	- prev_off_rule->gmt_off;
+    }
 
   if (curr_off_rule->ds_type == DS_TYPE_FIXED)
     {
       int curr_time_offset;
+      full_date_t offset_rule_diff;
 
       curr_time_offset =
 	tz_offset (src_is_utc, curr_off_rule->until_time_type,
 		   gmt_std_offset_sec, 0);
+      if (prev_off_rule != NULL)
+	{
+	  src_offset_prev_off_rule = tz_offset (src_is_utc,
+						prev_off_rule->
+						until_time_type,
+						gmt_std_offset_sec, 0);
+	}
+
+      offset_rule_diff = FULL_DATE (src_julian_date, src_time_sec
+				    + src_offset_prev_off_rule) -
+	FULL_DATE (prev_rule_julian_date, prev_rule_time_sec);
 
       if (FULL_DATE (src_julian_date, src_time_sec + curr_time_offset)
 	  < FULL_DATE (rule_julian_date, rule_time_sec))
 	{
+	  if (leap_offset_rule_interval > 0 && offset_rule_diff >= 0
+	      && (offset_rule_diff < leap_offset_rule_interval))
+	    {
+	      /* invalid time, abort */
+	      err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	      goto exit;
+	    }
+
 	  if (src_is_utc == false
 	      && tz_info->zone.dst_str[0] != '\0'
 	      && curr_off_rule->var_format == NULL
@@ -3058,9 +3105,30 @@ detect_dst:
 		  || strcasecmp (curr_off_rule->save_format,
 				 tz_info->zone.dst_str) != 0))
 	    {
-	      err_status = ER_TZ_DST_NOT_SUPPORTED;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
-	      goto exit;
+	      if (next_off_rule == NULL)
+		{
+		  err_status = ER_TZ_DST_NOT_SUPPORTED;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  goto exit;
+		}
+	      else
+		{
+		  try_offset_rule_overlap = true;
+		  APPLY_NEXT_OFF_RULE ();
+		  goto detect_dst;
+		}
+	    }
+	  else if (src_is_utc == false && tz_info->zone.dst_str[0] != '\0'
+		   && try_offset_rule_overlap == true)
+	    {
+	      if (leap_offset_rule_interval > 0
+		  || (ABS (offset_rule_diff) >=
+		      ABS (leap_offset_rule_interval)))
+		{
+		  err_status = ER_TZ_DST_NOT_SUPPORTED;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  goto exit;
+		}
 	    }
 
 	  applying_ds_id = 0;
@@ -3075,10 +3143,7 @@ detect_dst:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	  goto exit;
 	}
-      curr_off_rule = next_off_rule;
-      next_off_rule = NULL;
-      curr_offset_id++;
-
+      APPLY_NEXT_OFF_RULE ();
       goto detect_dst;
     }
 
@@ -3333,18 +3398,38 @@ detect_dst:
     {
       save_time = applying_ds_rule->save_time;
     }
-  src_offset = tz_offset (src_is_utc, curr_off_rule->until_time_type,
-			  gmt_std_offset_sec, save_time);
+  src_offset_curr_off_rule = tz_offset (src_is_utc,
+					curr_off_rule->until_time_type,
+					gmt_std_offset_sec, save_time);
+  if (prev_off_rule != NULL)
+    {
+      src_offset_prev_off_rule = tz_offset (src_is_utc,
+					    prev_off_rule->until_time_type,
+					    gmt_std_offset_sec, save_time);
+    }
 
   if (applying_ds_id != -1)
     {
-      if (FULL_DATE (src_julian_date, src_time_sec + src_offset)
+      full_date_t offset_rule_diff;
+
+      if (FULL_DATE (src_julian_date, src_time_sec + src_offset_curr_off_rule)
 	  >= FULL_DATE (rule_julian_date, rule_time_sec))
 	{
-	  curr_off_rule = next_off_rule;
-	  next_off_rule = NULL;
-	  curr_offset_id++;
+	  APPLY_NEXT_OFF_RULE ();
 	  goto detect_dst;
+	}
+
+      offset_rule_diff = FULL_DATE (src_julian_date, src_time_sec
+				    + src_offset_prev_off_rule) -
+	FULL_DATE (prev_rule_julian_date, prev_rule_time_sec);
+
+      if (leap_offset_rule_interval > 0 && offset_rule_diff >= 0
+	  && (offset_rule_diff < leap_offset_rule_interval))
+	{
+	  /* invalid time, abort */
+	  err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	  goto exit;
 	}
 
       if (check_user_dst)
@@ -3353,9 +3438,34 @@ detect_dst:
 					tz_info->zone.dst_str,
 					ds_ruleset->default_abrev) == false)
 	    {
-	      err_status = ER_TZ_INVALID_COMBINATION;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
-	      goto exit;
+	      if (next_off_rule == NULL)
+		{
+		  err_status = ER_TZ_INVALID_COMBINATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  goto exit;
+		}
+	      /* try the next offset rule to see if we have an ambiguous time */
+	      else
+		{
+		  try_offset_rule_overlap = true;
+		  APPLY_NEXT_OFF_RULE ();
+		  goto detect_dst;
+		}
+	    }
+	  /* we need to see if we have an overlap with the previous rule 
+	   * in this case
+	   */
+	  else if (try_offset_rule_overlap == true)
+	    {
+	      if (leap_offset_rule_interval > 0
+		  || (ABS (offset_rule_diff) >=
+		      ABS (leap_offset_rule_interval)))
+		{
+		  /* invalid time, abort */
+		  err_status = ER_TZ_INVALID_COMBINATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  goto exit;
+		}
 	    }
 	}
     }
@@ -3363,9 +3473,27 @@ detect_dst:
     {
       /* try next GMT offset zone */
       if (next_off_rule == NULL
-	  || (FULL_DATE (src_julian_date, src_time_sec + src_offset)
-	      < FULL_DATE (rule_julian_date, rule_time_sec)))
+	  ||
+	  (FULL_DATE
+	   (src_julian_date,
+	    src_time_sec + src_offset_curr_off_rule) <
+	   FULL_DATE (rule_julian_date, rule_time_sec)))
 	{
+	  full_date_t offset_rule_diff;
+
+	  offset_rule_diff = FULL_DATE (src_julian_date, src_time_sec
+					+ src_offset_prev_off_rule) -
+	    FULL_DATE (prev_rule_julian_date, prev_rule_time_sec);
+
+	  if (leap_offset_rule_interval > 0 && offset_rule_diff >= 0
+	      && (offset_rule_diff < leap_offset_rule_interval))
+	    {
+	      /* invalid time, abort */
+	      err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	      goto exit;
+	    }
+
 	  /* check if provided DS specifier matches the offset rule format */
 	  if (tz_info->zone.dst_str[0] != '\0'
 	      && curr_off_rule->var_format != NULL
@@ -3374,16 +3502,40 @@ detect_dst:
 					   ds_ruleset->default_abrev)
 	      == false)
 	    {
-	      err_status = ER_TZ_INVALID_DST;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
-	      goto exit;
+	      if (next_off_rule == NULL)
+		{
+		  err_status = ER_TZ_INVALID_DST;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  goto exit;
+		}
+	      else
+		{
+		  try_offset_rule_overlap = true;
+		  APPLY_NEXT_OFF_RULE ();
+		  goto detect_dst;
+		}
 	    }
+	  else if (tz_info->zone.dst_str[0] != '\0'
+		   && curr_off_rule->var_format != NULL
+		   && tz_check_ds_match_string (curr_off_rule, NULL,
+						tz_info->zone.dst_str,
+						ds_ruleset->default_abrev)
+		   == true && try_offset_rule_overlap == true)
+	    {
+	      if (leap_offset_rule_interval > 0
+		  || (ABS (offset_rule_diff) >=
+		      ABS (leap_offset_rule_interval)))
+		{
+		  err_status = ER_TZ_INVALID_DST;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  goto exit;
+		}
+	    }
+
 	  applying_ds_id = TZ_DS_ID_MAX;
 	  goto exit;
 	}
-      curr_off_rule = next_off_rule;
-      next_off_rule = NULL;
-      curr_offset_id++;
+      APPLY_NEXT_OFF_RULE ();
       goto detect_dst;
     }
 

@@ -1529,7 +1529,9 @@
 
 #define ER_AU_NOT_ALLOW_TO_DROP_ACTIVE_USER 	    -1188
 
-#define ER_LAST_ERROR                               -1189
+#define ER_TZ_DURING_OFFSET_RULE_LEAP		    -1189
+
+#define ER_LAST_ERROR                               -1190
 
 #define DB_TRUE 1
 #define DB_FALSE 0

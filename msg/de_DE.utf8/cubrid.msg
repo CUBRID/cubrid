@@ -1255,7 +1255,8 @@ $ LOADDB
 1186 checksumdb: %1$s (error code: %2$d).
 1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
 1188 Dropping an active user '%1$s' is not allowed.
-1189 Letzter Fehler
+1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
+1190 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
