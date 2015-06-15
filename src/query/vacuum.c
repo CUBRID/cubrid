@@ -2884,8 +2884,17 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
        * know this job was partially executed. Logging the start of a job
        * already interrupted is not necessary.
        */
+      /* TODO: I think this can be done in an unsynchronized way. Since we
+       *       we don't need to be utterly precise when a job is started,
+       *       we may just change vacuum_set_vacuum_data_lsa handle this
+       *       case (set only LSA that increment vacuum_Data->crt_lsa).
+       *       However, to be on the safe side, it is preferable to lock
+       *       vacuum data.
+       */
+      VACUUM_LOCK_DATA ();
       log_append_redo_data2 (thread_p, RVVAC_START_OR_END_JOB, NULL, NULL, 0,
 			     sizeof (data->blockid), &data->blockid);
+      VACUUM_UNLOCK_DATA ();
     }
 
   /* Follow the linked records starting with start_lsa */
