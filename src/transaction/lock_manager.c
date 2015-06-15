@@ -6345,16 +6345,21 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
     case LOCK_RESOURCE_INSTANCE:
       if (!OID_ISTEMP (&res_ptr->key.class_oid))
 	{
+	  bool is_virtual_directory_oid;
+
 	  /* Don't get class names for temporary class objects. */
 	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid))
 	    {
+	      is_virtual_directory_oid = true;
 	      OID_GET_REAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid,
 					     &real_class_oid);
 	    }
 	  else
 	    {
+	      is_virtual_directory_oid = false;
 	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
 	    }
+
 	  classname = heap_get_class_name (thread_p, &real_class_oid);
 	  if (classname == NULL)
 	    {
@@ -6404,7 +6409,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	    }
 
 	  /* Dump MVCC info */
-	  if (heap_scancache_quick_start (&scan_cache) == NO_ERROR)
+	  if (is_virtual_directory_oid == false
+	      && heap_scancache_quick_start (&scan_cache) == NO_ERROR)
 	    {
 	      RECDES recdes;
 
