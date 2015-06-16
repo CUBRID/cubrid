@@ -47,6 +47,25 @@
 #include "virtual_object.h"
 #include "object_template.h"
 
+#define SET_PARSER_ERROR_AND_FREE_NODE(parser, result, default_msg_id)	      \
+  do {									      \
+      if (!pt_has_error(parser))					      \
+	{								      \
+	  if (er_errid() != NO_ERROR)					      \
+	    {								      \
+	      PT_ERRORc (parser, result, er_msg());			      \
+	    }								      \
+	  else								      \
+	    {								      \
+	      PT_ERRORm (parser, result, MSGCAT_SET_PARSER_RUNTIME,	      \
+			 default_msg_id);				      \
+	      assert (false);						      \
+	    }								      \
+	}								      \
+	parser_free_node (parser, result);				      \
+	result = NULL;							      \
+    } while (0)
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -728,7 +747,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_TIME:
       if (db_time_to_string (buf, sizeof (buf), DB_GET_TIME (val)) == 0)
 	{
-	  result->type_enum = PT_TYPE_NONE;
+	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					  MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
       else
 	{
@@ -739,7 +759,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_TIMELTZ:
       if (db_timeltz_to_string (buf, sizeof (buf), DB_GET_TIME (val)) == 0)
 	{
-	  result->type_enum = PT_TYPE_NONE;
+	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					  MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
       else
 	{
@@ -753,7 +774,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	if (db_timetz_to_string (buf, sizeof (buf), &time_tz->time,
 				 &time_tz->tz_id) == 0)
 	  {
-	    result->type_enum = PT_TYPE_NONE;
+	    SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					    MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	  }
 	else
 	  {
@@ -765,7 +787,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_UTIME:
       if (db_utime_to_string (buf, sizeof (buf), DB_GET_UTIME (val)) == 0)
 	{
-	  result->type_enum = PT_TYPE_NONE;
+	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					  MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
       else
 	{
@@ -777,7 +800,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       if (db_timestampltz_to_string (buf, sizeof (buf), DB_GET_UTIME (val))
 	  == 0)
 	{
-	  result->type_enum = PT_TYPE_NONE;
+	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					  MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
       else
 	{
@@ -792,7 +816,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	if (db_timestamptz_to_string (buf, sizeof (buf), &ts_tz->timestamp,
 				      &ts_tz->tz_id) == 0)
 	  {
-	    result->type_enum = PT_TYPE_NONE;
+	    SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					    MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	  }
 	else
 	  {
@@ -805,7 +830,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       if (db_datetime_to_string (buf, sizeof (buf),
 				 DB_GET_DATETIME (val)) == 0)
 	{
-	  result->type_enum = PT_TYPE_NONE;
+	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					  MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
       else
 	{
@@ -817,7 +843,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       if (db_datetimeltz_to_string (buf, sizeof (buf),
 				    DB_GET_DATETIME (val)) == 0)
 	{
-	  result->type_enum = PT_TYPE_NONE;
+	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					  MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
       else
 	{
@@ -832,7 +859,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	if (db_datetimetz_to_string (buf, sizeof (buf), &dt_tz->datetime,
 				     &(dt_tz->tz_id)) == 0)
 	  {
-	    result->type_enum = PT_TYPE_NONE;
+	    SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					    MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	  }
 	else
 	  {
@@ -844,7 +872,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_DATE:
       if (db_date_to_string (buf, sizeof (buf), DB_GET_DATE (val)) == 0)
 	{
-	  result->type_enum = PT_TYPE_NONE;
+	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result,
+					  MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
       else
 	{

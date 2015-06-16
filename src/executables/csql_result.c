@@ -386,9 +386,14 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
       CSQL_FAILURE)
     {
       if (csql_Error_code == CSQL_ERR_SQL_ERROR)
-	csql_display_csql_err (0, 0);
+	{
+	  db_set_read_fetch_instance_version (read_fetch_instance_version);
+	  goto error;
+	}
       else
-	nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+	{
+	  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+	}
     }
 
   db_set_read_fetch_instance_version (read_fetch_instance_version);
