@@ -2091,6 +2091,44 @@ er_errid (void)
 }
 
 /*
+ * er_errid_if_has_error - Retrieve last error identifier set before
+ *   return: error identifier
+ *
+ * Note: The function ignores an error with ER_WARNING_SEVERITY or 
+ *       ER_NOTIFICATION_SEVERITY. 
+ */
+int
+er_errid_if_has_error (void)
+{
+#if defined (SERVER_MODE)
+  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
+  ER_MSG *er_Msg;
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+  assert (th_entry != NULL);
+
+  er_Msg = th_entry->er_Msg;
+#endif
+
+  if (er_Msg == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (er_Msg->severity == ER_FATAL_ERROR_SEVERITY
+      || er_Msg->severity == ER_ERROR_SEVERITY
+      || er_Msg->severity == ER_SYNTAX_ERROR_SEVERITY)
+    {
+      return er_Msg->err_id;
+    }
+  else
+    {
+      return NO_ERROR;
+    }
+}
+
+/*
  * er_clearid - Clear only error identifier
  *   return: none
  */

@@ -238,6 +238,7 @@ extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
 
 
 extern int er_errid (void);
+extern int er_errid_if_has_error (void);
 extern int er_severity (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int er_nlevels (void);

@@ -21111,6 +21111,12 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
       if (log_warning)
 	{
 	  assert (warning_code != NO_ERROR);
+
+	  /* Since we don't like to bother callers with the following warning
+	   * which is just for a logging, it will be poped once it is set.
+	   */
+	  er_stack_push ();
+
 	  if (warning_code == ER_QPROC_SIZE_STRING_TRUNCATED)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, warning_code, 1,
@@ -21120,6 +21126,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, warning_code, 0);
 	    }
+
+	  /* forget the warning */
+	  er_stack_pop ();
 	}
 
       value->state = HEAP_WRITTEN_ATTRVALUE;

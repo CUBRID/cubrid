@@ -73,6 +73,7 @@ EXPORTS
     db_trigger_status
     do_is_partitioned_subclass
     er_errid
+    er_errid_if_has_error
     file_alloc_pages
     file_dealloc_page
     file_find_nthfile

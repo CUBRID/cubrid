@@ -515,6 +515,7 @@ EXPORTS
     dbt_create_object_internal
     dbt_dput_internal
     er_errid
+    er_errid_if_has_error
     er_msg
     pt_attrs_part
     pt_class_part

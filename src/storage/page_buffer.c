@@ -10992,14 +10992,13 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 
       assert (ret_pgptr == NULL);
 
-      er_status = er_errid ();
-
+      er_status = er_errid_if_has_error ();
       if (er_status == ER_PB_BAD_PAGEID || er_status == ER_INTERRUPTED)
 	{
 	  goto exit;
 	}
-      wait_msecs = logtb_find_current_wait_msecs (thread_p);
 
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
 	  /* attempts to unfix-refix old page may fail since CONDITIONAL latch
