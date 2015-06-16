@@ -437,6 +437,7 @@ static VPID *file_alloc_pages_internal (THREAD_ENTRY * thread_p,
 					VPID * first_alloc_vpid,
 					INT32 npages,
 					const VPID * near_vpid,
+					FILE_TYPE * p_file_type,
 					int with_sys_op,
 					bool (*fun) (THREAD_ENTRY
 						     * thread_p,
@@ -7510,8 +7511,8 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 			       void *args), void *args)
 {
   return file_alloc_pages_internal (thread_p, vfid, first_alloc_vpid, npages,
-				    near_vpid, FILE_WITHOUT_OUTER_SYSTEM_OP,
-				    fun, args);
+				    near_vpid, NULL,
+				    FILE_WITHOUT_OUTER_SYSTEM_OP, fun, args);
 }
 
 /*
@@ -7522,6 +7523,7 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
  *   npages(in): Number of pages to allocate
  *   near_vpid(in): Allocate the pages as close as the value of this parameter.
  *                  Hint only, it may be ignored.
+ *   p_file_type(out): File type
  *   fun(in): Function to be called to initialize the page
  *   args(in): Additional arguments to be passed to fun
  *
@@ -7531,6 +7533,7 @@ file_alloc_pages_with_outer_sys_op (THREAD_ENTRY * thread_p,
 				    const VFID * vfid,
 				    VPID * first_alloc_vpid, INT32 npages,
 				    const VPID * near_vpid,
+				    FILE_TYPE * p_file_type,
 				    bool (*fun) (THREAD_ENTRY * thread_p,
 						 const VFID * vfid,
 						 const FILE_TYPE file_type,
@@ -7540,8 +7543,8 @@ file_alloc_pages_with_outer_sys_op (THREAD_ENTRY * thread_p,
 				    void *args)
 {
   return file_alloc_pages_internal (thread_p, vfid, first_alloc_vpid, npages,
-				    near_vpid, FILE_WITH_OUTER_SYSTEM_OP,
-				    fun, args);
+				    near_vpid, p_file_type,
+				    FILE_WITH_OUTER_SYSTEM_OP, fun, args);
 }
 
 /*
@@ -7552,6 +7555,7 @@ file_alloc_pages_with_outer_sys_op (THREAD_ENTRY * thread_p,
  *   npages(in): Number of pages to allocate
  *   near_vpid(in): Allocate the pages as close as the value of this parameter.
  *                  Hint only, it may be ignored.
+ *   p_file_type(out): File type
  *   with_sys_op(in):
  *   fun(in): Function to be called to initialize the page
  *   args(in): Additional arguments to be passed to fun
@@ -7560,7 +7564,8 @@ file_alloc_pages_with_outer_sys_op (THREAD_ENTRY * thread_p,
 static VPID *
 file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 			   VPID * first_alloc_vpid, INT32 npages,
-			   const VPID * near_vpid, int with_sys_op,
+			   const VPID * near_vpid, FILE_TYPE * p_file_type,
+			   int with_sys_op,
 			   bool (*fun) (THREAD_ENTRY * thread_p,
 					const VFID * vfid,
 					const FILE_TYPE file_type,
@@ -7697,14 +7702,14 @@ file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
    * committed until the transaction commits
    */
 
-  isfile_new = file_is_new_file (thread_p, vfid);
-  if (isfile_new == FILE_ERROR)
-    {
-      goto exit_on_error;
-    }
-
   if (with_sys_op == FILE_WITHOUT_OUTER_SYSTEM_OP)
     {
+      isfile_new = file_is_new_file (thread_p, vfid);
+      if (isfile_new == FILE_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
       if (isfile_new == FILE_NEW_FILE
 	  && file_type != FILE_TMP && file_type != FILE_TMP_TMP
 	  && logtb_is_current_active (thread_p) == true)
@@ -7720,6 +7725,11 @@ file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
   if (restore_check_interrupt == true)
     {
       rv = thread_set_check_interrupt (thread_p, old_val);
+    }
+
+  if (p_file_type)
+    {
+      *p_file_type = file_type;
     }
 
   return first_alloc_vpid;

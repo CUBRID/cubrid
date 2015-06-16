@@ -325,6 +325,7 @@ extern VPID *file_alloc_pages_with_outer_sys_op (THREAD_ENTRY * thread_p,
 						 VPID * first_alloc_vpid,
 						 INT32 npages,
 						 const VPID * near_vpid,
+						 FILE_TYPE * p_file_type,
 						 bool (*fun) (THREAD_ENTRY *
 							      thread_p,
 							      const VFID *

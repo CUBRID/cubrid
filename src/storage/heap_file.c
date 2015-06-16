@@ -733,6 +733,7 @@ static PAGE_PTR heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 PAGE_PTR hdr_pgptr,
 				 HEAP_HDR_STATS * heap_hdr, int needed_space,
 				 HEAP_SCANCACHE * scan_cache,
+				 FILE_IS_NEW_FILE isfile_new,
 				 PGBUF_WATCHER * new_pg_watcher);
 static VPID *heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid);
@@ -4119,7 +4120,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
       pg_watcher->pgptr =
 	heap_vpid_alloc (thread_p, hfid, hdr_page_watcher.pgptr, heap_hdr,
-			 total_space, scan_cache, pg_watcher);
+			 total_space, scan_cache, is_new_file, pg_watcher);
       assert (pg_watcher->pgptr != NULL || er_errid () == ER_INTERRUPTED
 	      || er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE);
     }
@@ -4808,7 +4809,7 @@ static PAGE_PTR
 heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 		 PAGE_PTR hdr_pgptr, HEAP_HDR_STATS * heap_hdr,
 		 int needed_space, HEAP_SCANCACHE * scan_cache,
-		 PGBUF_WATCHER * new_pg_watcher)
+		 FILE_IS_NEW_FILE isfile_new, PGBUF_WATCHER * new_pg_watcher)
 {
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data */
@@ -4816,6 +4817,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   HEAP_CHAIN_TOLAST tolast;
   VPID last_vpid;
   PGBUF_WATCHER last_pg_watcher;
+  FILE_TYPE file_type;
 
   assert (PGBUF_IS_CLEAN_WATCHER (new_pg_watcher));
 
@@ -4856,7 +4858,8 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   tolast.heap_hdr = heap_hdr;
 
   if (file_alloc_pages_with_outer_sys_op (thread_p, &hfid->vfid, &vpid, 1,
-					  &last_vpid, heap_vpid_init_new,
+					  &last_vpid, &file_type,
+					  heap_vpid_init_new,
 					  &tolast) == NULL)
     {
       /* Unable to allocate a new page */
@@ -4931,7 +4934,15 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
    * The added page will be used later by other insert operation.
    */
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  if (isfile_new == FILE_NEW_FILE && file_type != FILE_TMP
+      && file_type != FILE_TMP_TMP && logtb_is_current_active (thread_p))
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+    }
+  else
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+    }
 
   return new_pg_watcher->pgptr;	/* new_pgptr is lock and fetch */
 }
