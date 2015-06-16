@@ -31,31 +31,49 @@
 package cubrid.sql;
 
 import java.sql.Time;
+import cubrid.jdbc.jci.UJCIUtil;
+import cubrid.jdbc.jci.UJCIUtil.TimeInfo;
+import cubrid.jdbc.driver.*;
+
 
 public class CUBRIDTimetz extends Time {
     private static final long serialVersionUID = 2346294268719129394L;
-	
+
 	private String timezone;
 
 	public CUBRIDTimetz (long time,  String str_timezone) {
 		super (time);
 		this.timezone = str_timezone;
 	}
-	
+
+	public CUBRIDTimetz(String str_CUBRIDTimetz) throws CUBRIDException{
+		super(0);
+
+		TimeInfo timeinfo = new TimeInfo();
+		long time = 0;
+		
+		timeinfo = UJCIUtil.parseStringTime(str_CUBRIDTimetz);
+		Time tmptime = Time.valueOf(timeinfo.time);
+		time = tmptime.getTime();
+
+		setTime(time);
+		this.timezone = timeinfo.timezone;
+	}
+
 	public static CUBRIDTimetz valueOf (Time t, String str_timezone) {
 		long tmp_time = t.getTime();
-		
-		CUBRIDTimetz cubrid_time_tz = new CUBRIDTimetz (tmp_time, str_timezone); 
+
+		CUBRIDTimetz cubrid_time_tz = new CUBRIDTimetz (tmp_time, str_timezone);
 
 		return cubrid_time_tz;
 	}
-		
+
 	public static CUBRIDTimetz valueOf(String str_time, String str_timezone) {
 		Time tmptime = Time.valueOf(str_time);
-		CUBRIDTimetz cubrid_time_tz = new CUBRIDTimetz(tmptime.getTime(), str_timezone); 
+		CUBRIDTimetz cubrid_time_tz = new CUBRIDTimetz(tmptime.getTime(), str_timezone);
 		return cubrid_time_tz;
 	}
-	
+
 	public String toString() {
 		if (timezone.isEmpty()) {
 			return "" + super.toString();

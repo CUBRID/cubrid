@@ -62,6 +62,8 @@ import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.UStatement;
 import cubrid.jdbc.jci.UShardInfo;
 import cubrid.sql.CUBRIDOID;
+import cubrid.sql.CUBRIDTimetz;
+import cubrid.sql.CUBRIDTimestamptz;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -297,7 +299,27 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		checkBindError();
 	}
 
+	public synchronized void setTimetz(int parameterIndex, CUBRIDTimetz x)
+			throws SQLException {
+		checkIsOpen();
+		synchronized (u_stmt) {
+			u_stmt.bind(parameterIndex - 1, x);
+			error = u_stmt.getRecentError();
+		}
+		checkBindError();
+	}
+
 	public synchronized void setTimestamp(int parameterIndex, Timestamp x)
+			throws SQLException {
+		checkIsOpen();
+		synchronized (u_stmt) {
+			u_stmt.bind(parameterIndex - 1, x);
+			error = u_stmt.getRecentError();
+		}
+		checkBindError();
+	}
+
+	public synchronized void setTimestamptz(int parameterIndex, CUBRIDTimestamptz x)
 			throws SQLException {
 		checkIsOpen();
 		synchronized (u_stmt) {
@@ -709,9 +731,19 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		setTime(parameterIndex, x);
 	}
 
+	public synchronized void setTimetz(int parameterIndex, CUBRIDTimetz x,
+			Calendar cal) throws SQLException {
+		setTimetz(parameterIndex, x);
+	}
+
 	public synchronized void setTimestamp(int parameterIndex, Timestamp x,
 			Calendar cal) throws SQLException {
 		setTimestamp(parameterIndex, x);
+	}
+
+	public synchronized void setTimestamptz(int parameterIndex, CUBRIDTimestamptz x,
+			Calendar cal) throws SQLException {
+		setTimestamptz(parameterIndex, x);
 	}
 
 	public synchronized void setNull(int paramIndex, int sqlType,

@@ -51,6 +51,8 @@ import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
 import cubrid.sql.CUBRIDOID;
+import cubrid.sql.CUBRIDTimetz;
+import cubrid.sql.CUBRIDTimestamptz;
 
 public class UStatement {
 	public final static int CURSOR_SET = 0, CURSOR_CUR = 1, CURSOR_END = 2;
@@ -399,7 +401,19 @@ public class UStatement {
 		bindValue(index, UUType.U_TYPE_TIME, value);
 	}
 
+	public void bind(int index, CUBRIDTimetz value) {
+		byte type = UUType.getObjectDBtype(value);
+
+		bindValue(index, type, value);
+	}
+
 	public void bind(int index, Timestamp value) {
+		byte type = UUType.getObjectDBtype(value);
+
+		bindValue(index, type, value);
+	}
+
+	public void bind(int index, CUBRIDTimestamptz value) {
 		byte type = UUType.getObjectDBtype(value);
 
 		bindValue(index, type, value);

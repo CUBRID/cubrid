@@ -32,11 +32,14 @@ package cubrid.sql;
 
 import java.sql.Timestamp;
 import cubrid.sql.CUBRIDTimestamp;
+import cubrid.jdbc.jci.UJCIUtil;
+import cubrid.jdbc.jci.UJCIUtil.TimeInfo;
+import cubrid.jdbc.driver.*;
 
 
 public class CUBRIDTimestamptz extends CUBRIDTimestamp {
     private static final long serialVersionUID = 6217189754717078421L;
-	
+
 	private String timezone;
 
 
@@ -45,23 +48,37 @@ public class CUBRIDTimestamptz extends CUBRIDTimestamp {
 		this.isDatetime = isDatetime;
 		this.timezone = str_timezone;
 	}
-	
+
+	public CUBRIDTimestamptz(String str_CUBRIDTimestamptz) throws CUBRIDException{
+		super(0, false);
+
+		TimeInfo timeinfo = new TimeInfo();
+		long time = 0;
+
+		timeinfo = UJCIUtil.parseStringTime(str_CUBRIDTimestamptz);
+		Timestamp tmptime = Timestamp.valueOf(timeinfo.time);
+		time = tmptime.getTime();
+
+		setTime(time);
+		this.timezone = timeinfo.timezone;		
+		this.isDatetime = timeinfo.isDatetime;
+	}
+
 	public static CUBRIDTimestamptz valueOf (CUBRIDTimestamp t, String str_timezone) {
 		long tmp_time = t.getTime();
-		
-		CUBRIDTimestamptz cubrid_ts_tz = new CUBRIDTimestamptz (tmp_time, !CUBRIDTimestamp.isTimestampType (t), str_timezone); 
 
-		return cubrid_ts_tz;
-	}	
-		
-	
-	public static CUBRIDTimestamptz valueOf(String str_timestamp, boolean isdt, String str_timezone) {
-		Timestamp tmptime = Timestamp.valueOf(str_timestamp);
-		CUBRIDTimestamptz cubrid_ts_tz = new CUBRIDTimestamptz(tmptime.getTime(), isdt, str_timezone); 
+		CUBRIDTimestamptz cubrid_ts_tz = new CUBRIDTimestamptz (tmp_time, !CUBRIDTimestamp.isTimestampType (t), str_timezone);
+
 		return cubrid_ts_tz;
 	}
 	
-	
+	public static CUBRIDTimestamptz valueOf(String str_timestamp, boolean isdt, String str_timezone) {
+		Timestamp tmptime = Timestamp.valueOf(str_timestamp);
+		CUBRIDTimestamptz cubrid_ts_tz = new CUBRIDTimestamptz(tmptime.getTime(), isdt, str_timezone);
+		return cubrid_ts_tz;
+	}
+
+
 	public String toString() {
 		if (timezone.isEmpty()) {
 			return "" + super.toString();
