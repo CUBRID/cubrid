@@ -12589,6 +12589,8 @@ pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p,
 	g (parser, p->info.function.analytic.offset, arg);
       p->info.function.analytic.default_value =
 	g (parser, p->info.function.analytic.default_value, arg);
+      p->info.function.analytic.expanded_list =
+	g (parser, p->info.function.analytic.expanded_list, arg);
     }
   return p;
 }
@@ -12611,6 +12613,8 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.partition_by = NULL;
   p->info.function.analytic.order_by = NULL;
   p->info.function.analytic.default_value = NULL;
+  p->info.function.analytic.expanded_list = NULL;
+  p->info.function.analytic.adjusted = false;
   p->info.function.analytic.offset = NULL;
   p->info.function.analytic.from_last = false;
   p->info.function.analytic.ignore_nulls = false;

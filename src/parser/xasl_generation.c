@@ -24714,6 +24714,8 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
 			 PT_NODE * select_list)
 {
   PT_NODE *spec, *arg, *ptr;
+  PT_NODE *old_ex_list = NULL, *new_ex_list = NULL;
+  PT_NODE *last_node = NULL;
   bool visited_part = false;
 
   if (parser == NULL)
@@ -24832,6 +24834,34 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
       node->info.function.percentile = ptr;
     }
 
+  if (node->info.function.analytic.adjusted)
+    {
+      /* if old expanded list existed, append to the select list */
+      if (node->info.function.analytic.expanded_list != NULL)
+	{
+	  old_ex_list =
+	    parser_copy_tree_list (parser,
+				   node->info.function.analytic.
+				   expanded_list);
+	  if (old_ex_list == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return NULL;
+	    }
+	  (void) parser_append_node (old_ex_list, select_list);
+	}
+
+      return node;
+    }
+
+  /* get the last node of select_list */
+  last_node = select_list;
+  while (last_node->next != NULL)
+    {
+      last_node = last_node->next;
+    }
+
   /* walk order list and resolve nodes that were not found in select list */
   spec = node->info.function.analytic.partition_by;
   if (spec == NULL)
@@ -24933,6 +24963,25 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
+  /* Since the partition_by and order_by may be replaced as pt_value,
+   * the old expr should be reserved. */
+  if (last_node->next != NULL)
+    {
+      new_ex_list = parser_copy_tree_list (parser, last_node->next);
+      if (new_ex_list == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
+
+      assert (node->info.function.analytic.expanded_list == NULL);
+      node->info.function.analytic.expanded_list = new_ex_list;
+    }
+
+  /* set the analytic has been adjusted and expanded */
+  node->info.function.analytic.adjusted = true;
+
   /* all ok */
   return node;
 }
@@ -25000,6 +25049,12 @@ pt_adjust_analytic_sort_specs (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   if (node == NULL || !PT_IS_ANALYTIC_NODE (node))
+    {
+      /* nothing to do */
+      return;
+    }
+
+  if (node->info.function.analytic.adjusted)
     {
       /* nothing to do */
       return;

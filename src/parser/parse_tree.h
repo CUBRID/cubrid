@@ -2315,6 +2315,8 @@ struct pt_function_info
     PT_NODE *order_by;		/* ordering PT_SORT_SPEC list */
     PT_NODE *default_value;	/* LEAD/LAG function default value */
     PT_NODE *offset;		/* LEAD/LAG/NTH_VALUE function offset */
+    PT_NODE *expanded_list;	/* reserved list when expand partition_by/order_by */
+    bool adjusted;		/* whether the partition_by/order_by be adjusted and expanded */
     bool from_last;		/* determines whether the calculation begins at the last or first row */
     bool ignore_nulls;		/* determines whether the calculation eliminate or includes null values */
     bool is_analytic;		/* is analytic clause */
