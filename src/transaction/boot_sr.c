@@ -5038,7 +5038,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
   msgcat_final ();
   if (is_er_final == true)
     {
-      er_final (1);
+      er_final (ER_ALL_FINAL);
     }
   lang_final ();
   tz_unload ();

@@ -44,6 +44,8 @@
 #define ARG_FILE_LINE           __FILE__, __LINE__
 #define NULL_LEVEL              0
 
+#define ER_EMERGENCY_BUF_SIZE (256)
+
 /* Shorthand for simple warnings and errors */
 #define ERROR0(error, code) \
   do { error = code; \
@@ -109,6 +111,12 @@ enum er_level
 {
   ER_LEVEL_SYSTEM, ER_LEVEL_APPLICATION
 };
+
+typedef enum er_final_code
+{
+  ER_THREAD_FINAL = 0,
+  ER_ALL_FINAL = 1
+} ER_FINAL_CODE;
 
 typedef void (*PTR_FNERLOG) (int err_id);
 
@@ -216,11 +224,7 @@ extern int er_init (const char *msglog_filename, int exit_ask);
 extern int er_init_access_log (void);
 extern void er_set_print_property (int print_console);
 
-#if defined (SERVER_MODE)
-extern void er_final (bool do_global_final);
-#else /* SERVER_MODE */
-extern void er_final (void);
-#endif /* SERVER_MODE */
+extern void er_final (ER_FINAL_CODE do_global_final);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern PTR_FNERLOG er_fnerlog (int severity, PTR_FNERLOG new_fnlog);
 #endif

@@ -1254,7 +1254,7 @@ main (int argc, char **argv)
 
   /* close the message catalog and let the master daemon reopen. */
   (void) msgcat_final ();
-  er_final ();
+  er_final (ER_ALL_FINAL);
 
 #if !defined(WINDOWS)
   if (envvar_get ("NO_DAEMON") == NULL)

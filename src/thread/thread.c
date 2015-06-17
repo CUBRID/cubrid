@@ -2612,7 +2612,7 @@ thread_worker (void *arg_p)
       tsd_ptr->on_trace = false;
     }
 
-  er_final (0);
+  er_final (ER_THREAD_FINAL);
 
   tsd_ptr->conn_entry = NULL;
   tsd_ptr->tran_index = -1;
@@ -2754,7 +2754,7 @@ thread_deadlock_detect_thread (void *arg_p)
   thread_Deadlock_detect_thread.is_available = false;
   pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -2847,7 +2847,7 @@ thread_vacuum_master_thread (void *arg_p)
   thread_Vacuum_master_thread.is_available = false;
   pthread_mutex_unlock (&thread_Vacuum_master_thread.lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -2933,7 +2933,7 @@ thread_vacuum_worker_thread (void *arg_p)
   thread_monitor->is_available = false;
   pthread_mutex_unlock (&thread_monitor->lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -3032,7 +3032,7 @@ thread_session_control_thread (void *arg_p)
   thread_Session_control_thread.is_running = false;
   pthread_mutex_unlock (&thread_Session_control_thread.lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -3109,7 +3109,7 @@ thread_checkpoint_thread (void *arg_p)
   thread_Checkpoint_thread.is_running = false;
   pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -3230,7 +3230,7 @@ thread_purge_archive_logs_thread (void *arg_p)
   thread_Purge_archive_logs_thread.is_running = false;
   pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -3431,7 +3431,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
   thread_Check_ha_delay_info_thread.is_available = false;
   pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -3533,7 +3533,7 @@ thread_page_flush_thread (void *arg_p)
   thread_Page_flush_thread.is_available = false;
   pthread_mutex_unlock (&thread_Page_flush_thread.lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   thread_Page_flush_thread.is_running = false;
@@ -3669,7 +3669,7 @@ thread_flush_control_thread (void *arg_p)
   pthread_mutex_unlock (&thread_Flush_control_thread.lock);
 
   fileio_flush_control_finalize ();
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
 
 error:
   tsd_ptr->status = TS_DEAD;
@@ -3825,7 +3825,7 @@ thread_log_flush_thread (void *arg_p)
   thread_Log_flush_thread.is_running = false;
   pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
 #if defined(CUBRID_DEBUG)
@@ -3960,7 +3960,7 @@ thread_log_clock_thread (void *arg_p)
   thread_Log_clock_thread.is_available = false;
   thread_Log_clock_thread.is_running = false;
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -4065,7 +4065,7 @@ thread_auto_volume_expansion_thread (void *arg_p)
   (void) pthread_mutex_destroy (&boot_Auto_addvol_job.lock);
   (void) pthread_cond_destroy (&boot_Auto_addvol_job.cond);
 
-  er_final (false);
+  er_final (ER_THREAD_FINAL);
   thread_Auto_volume_expansion_thread.is_available = false;
   tsd_ptr->status = TS_DEAD;
 

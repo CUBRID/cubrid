@@ -833,7 +833,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  er_final ();
+  er_final (ER_ALL_FINAL);
   if (output_file != stdout)
     {
       fclose (output_file);
@@ -848,7 +848,7 @@ print_delete_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
-  er_final ();
+  er_final (ER_ALL_FINAL);
   if (output_file != stdout && output_file != NULL)
     {
       fclose (output_file);
@@ -1427,7 +1427,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
     {
       boot_delete (src_db_name, true);
     }
-  er_final ();
+  er_final (ER_ALL_FINAL);
 
   return EXIT_SUCCESS;
 
@@ -1438,7 +1438,7 @@ print_copy_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
-  er_final ();
+  er_final (ER_ALL_FINAL);
 
   return EXIT_FAILURE;
 }

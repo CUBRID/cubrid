@@ -988,7 +988,7 @@ cas_main (void)
 	    as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id,
 			       shm_shard_cas_id, shm_as_index,
 			       cas_shard_flag);
-	    er_final ();
+	    er_final (ER_ALL_FINAL);
 	    as_info->cas_err_log_reset = 0;
 	  }
 #endif

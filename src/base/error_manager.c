@@ -147,24 +147,6 @@ static const char *er_unknown_severity = "Unknown severity level";
 #define SPEC_CODE_LONGLONG ((char)0x88)
 #define SPEC_CODE_SIZE_T ((char)0x89)
 
-/*
- * Use this macro for freeing msg_area things so that you don't forget
- * and someday accidentally try to free the er_emergency_buf.
- */
-#if defined (SERVER_MODE)
-#define ER_FREE_AREA(area, th_entry) \
-    do { \
-      if ((area) && (area) != th_entry->er_emergency_buf) \
-  free((area)); \
-    } while(0)
-#else /* SERVER_MODE */
-#define ER_FREE_AREA(area) \
-    do { \
-      if ((area) && (area) != er_emergency_buf) \
-  free((area)); \
-    } while(0)
-#endif /* SERVER_MODE */
-
 #define MAX_LINE 4096
 
 /*
@@ -286,7 +268,7 @@ static int er_Fmt_msg_fail_count = -ER_LAST_ERROR;
 #if !defined (SERVER_MODE)
 static ER_MSG ermsg_Buf = { 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0 };
 static ER_MSG *er_Msg = NULL;
-static char er_emergency_buf[256];	/* message when all else fails */
+static char er_emergency_buf[ER_EMERGENCY_BUF_SIZE];	/* message when all else fails */
 static er_log_handler_t er_Handler = NULL;
 #endif /* !SERVER_MODE */
 static unsigned int er_Eid = 0;
@@ -298,10 +280,16 @@ static jmp_buf er_Event_jmp_buf;
 static SIGNAL_HANDLER_FUNCTION saved_Sig_handler;
 
 /* Other supporting global variables */
+static bool er_Logfile_opened = false;
 static bool er_Hasalready_initiated = false;
 static bool er_Isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
 static int er_Print_to_console = ER_DO_NOT_PRINT;
+
+static ER_MSG *er_get_er_entry (THREAD_ENTRY * thread_p);
+static ER_MSG *er_get_er_entry_buffer_ptr (THREAD_ENTRY * thread_p);
+static char *er_get_emergency_buffer (THREAD_ENTRY * thread_p, int *buf_size);
+static void er_free_msg_area (THREAD_ENTRY * thread_p, char *msg_area);
 
 static void er_event_sigpipe_handler (int sig);
 static void er_event (void);
@@ -312,13 +300,7 @@ static FILE *er_file_open (const char *path);
 static bool er_file_isa_null_device (const char *path);
 static FILE *er_file_backup (FILE * fp, const char *path);
 
-#if defined (SERVER_MODE)
-static bool logfile_Opened = false;
-
-static int er_start (THREAD_ENTRY * th_entry);
-#else /* SERVER_MODE */
-static int er_start (void);
-#endif /* SERVER_MODE */
+static int er_start (THREAD_ENTRY * thread_p);
 
 static void er_call_stack_dump_on_error (int severity, int err_id);
 static void er_notify_event_on_error (int err_id);
@@ -337,15 +319,12 @@ static ER_FMT *er_find_fmt (int err_id, int num_args);
 static void er_init_fmt (ER_FMT * fmt);
 static ER_FMT *er_create_fmt_msg (ER_FMT * fmt, int err_id, const char *msg);
 static void er_clear_fmt (ER_FMT * fmt);
-#if defined (SERVER_MODE)
-static int er_make_room (int size, THREAD_ENTRY * th_entry);
-#else /* SERVER_MODE */
-static int er_make_room (int size);
-#endif /* SERVER_MODE */
+static int er_make_room (THREAD_ENTRY * thread_p, int size);
 static void er_internal_msg (ER_FMT * fmt, int code, int msg_num);
 static void *er_malloc_helper (int size, const char *file, int line);
-static void er_emergency (const char *file, int line, const char *fmt, ...);
-static int er_vsprintf (ER_FMT * fmt, va_list * ap);
+static void er_emergency (THREAD_ENTRY * thread_p, const char *file, int line,
+			  const char *fmt, ...);
+static int er_vsprintf (THREAD_ENTRY * thread_p, ER_FMT * fmt, va_list * ap);
 
 static int er_call_stack_init (void);
 static int er_fname_free (const void *key, void *data, void *args);
@@ -359,6 +338,112 @@ static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
   er_log,			/* ER_WARNING_SEVERITY */
   er_log			/* ER_NOTIFICATION_SEVERITY */
 };
+
+/*
+ * er_get_er_entry - Return the error entry of the thread
+ *   return: ER_MSG *
+ */
+static ER_MSG *
+er_get_er_entry (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
+  return thread_p->er_Msg;
+#else
+  return er_Msg;
+#endif
+}
+
+/*
+ * er_get_er_entry_buffer_ptr - Return ptr to the error entry buffer of the thread
+ *   return: ER_MSG *
+ */
+static ER_MSG *
+er_get_er_entry_buffer_ptr (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
+  return &thread_p->ermsg;
+#else
+  return &ermsg_Buf;
+#endif
+}
+
+/*
+ * er_register_er_entry - Register the given error entry to thread's
+ *   return: void
+ */
+static void
+er_register_er_entry (THREAD_ENTRY * thread_p, ER_MSG * er_entry_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
+  thread_p->er_Msg = er_entry_p;
+#else
+  er_Msg = er_entry_p;
+#endif
+}
+
+/*
+ * er_get_emergency_buffer - Return the emergency error msg buffer
+ *   return: local emergency msg buffer
+ *   buf_size(out): the size of the local emergency msg buffer
+ */
+static char *
+er_get_emergency_buffer (THREAD_ENTRY * thread_p, int *buf_size)
+{
+#if defined (SERVER_MODE)
+  assert (buf_size != NULL);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
+  *buf_size = sizeof (thread_p->er_emergency_buf);
+
+  return thread_p->er_emergency_buf;
+#else
+  assert (buf_size != NULL);
+
+  *buf_size = sizeof (er_emergency_buf);
+
+  return er_emergency_buf;
+#endif
+}
+
+/*
+ * er_free_msg_area - free message area
+ *   return: void
+ *
+ * NOTE: The local emergency buffer will not be freed.
+ */
+static void
+er_free_msg_area (THREAD_ENTRY * thread_p, char *msg_area)
+{
+  int dummy;
+
+  if (msg_area && msg_area != er_get_emergency_buffer (thread_p, &dummy))
+    {
+      free (msg_area);
+    }
+}
 
 /*
  * er_get_msglog_filename - Find the error message log file name
@@ -678,11 +763,7 @@ er_init (const char *msglog_filename, int exit_ask)
 
   if (er_Hasalready_initiated)
     {
-#if defined (SERVER_MODE)
-      er_final (1);
-#else
-      er_final ();
-#endif
+      er_final (ER_ALL_FINAL);
     }
 
   for (i = 0; i < (int) DIM (er_Builtin_msg); i++)
@@ -905,19 +986,20 @@ er_file_backup (FILE * fp, const char *path)
   return fopen (path, "w");
 }
 
-#if defined (SERVER_MODE)
 /*
  * er_start - Start the error message module
  *   return: NO_ERROR or ER_FAILED
- *   th_entry(in):
+ *   thread_p(in):
  *
  * Note: Error message areas are initialized, the text message and the
  *       log message files are opened. In addition, the behavior of the
  *       system when a fatal error condition is set, is defined.
+ * NOTE: To re-find er entry by er_get_er_entry should be followed.
  */
 static int
-er_start (THREAD_ENTRY * th_entry)
+er_start (THREAD_ENTRY * thread_p)
 {
+  ER_MSG *er_entry_p, *er_entry_buffer_p;
   int status = NO_ERROR;
   int r;
   int i;
@@ -931,33 +1013,50 @@ er_start (THREAD_ENTRY * th_entry)
 	  return ER_FAILED;
 	}
     }
-  if (th_entry->er_Msg != NULL)
+
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p != NULL)
     {
+      ER_FINAL_CODE er_final_code;
+
       fprintf (stderr, er_Cached_msg[ER_ER_HEADER], __LINE__);
       fflush (stderr);
-      er_final (0);
+
+#if defined (SERVER_MODE)
+      er_final_code = ER_THREAD_FINAL;
+#else
+      er_final_code = ER_ALL_FINAL;
+#endif
+      er_final (er_final_code);
     }
-  memset (&th_entry->ermsg, 0, sizeof (ER_MSG));
 
-  th_entry->er_Msg = &th_entry->ermsg;
-  th_entry->er_Msg->err_id = NO_ERROR;
-  th_entry->er_Msg->severity = ER_WARNING_SEVERITY;
-  th_entry->er_Msg->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
-  th_entry->er_Msg->line_no = -1;
-  th_entry->er_Msg->stack = NULL;
-  th_entry->er_Msg->msg_area = th_entry->er_emergency_buf;
-  th_entry->er_Msg->msg_area_size = sizeof (th_entry->er_emergency_buf);
-  th_entry->er_Msg->args = NULL;
-  th_entry->er_Msg->nargs = 0;
+  /* find its own er buffer */
+  er_entry_buffer_p = er_get_er_entry_buffer_ptr (thread_p);
 
+  memset (er_entry_buffer_p, 0, sizeof (ER_MSG));
+
+  er_entry_p = er_entry_buffer_p;
+  er_entry_p->err_id = NO_ERROR;
+  er_entry_p->severity = ER_WARNING_SEVERITY;
+  er_entry_p->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
+  er_entry_p->line_no = -1;
+  er_entry_p->stack = NULL;
+  er_entry_p->msg_area =
+    er_get_emergency_buffer (thread_p, &er_entry_p->msg_area_size);
+  er_entry_p->args = NULL;
+  er_entry_p->nargs = 0;
+  er_register_er_entry (thread_p, er_entry_p);
+
+#if defined (SERVER_MODE)
   r = ER_CSECT_ENTER_LOG_FILE ();
   if (r != NO_ERROR)
     {
       return ER_FAILED;
     }
+#endif
 
   /* Define message log file */
-  if (logfile_Opened == false)
+  if (er_Logfile_opened == false)
     {
       if (er_Msglog_filename)
 	{
@@ -971,8 +1070,10 @@ er_start (THREAD_ENTRY * th_entry)
 	  else
 	    {
 	      /* want to err on the side of doing production style error logs
-	       * because this may be getting set at some naive customer site.*/
+	       * because this may be getting set at some naive customer site.
+	       */
 	      char path[PATH_MAX];
+
 	      sprintf (path, "%s.%d", er_Msglog_filename, getpid ());
 	      er_Msglog_fh = er_file_open (path);
 	    }
@@ -1003,8 +1104,10 @@ er_start (THREAD_ENTRY * th_entry)
 	  else
 	    {
 	      /* want to err on the side of doing production style error logs
-	       * because this may be getting set at some naive customer site.*/
+	       * because this may be getting set at some naive customer site.
+	       */
 	      char path[PATH_MAX];
+
 	      sprintf (path, "%s.%d", er_Accesslog_filename, getpid ());
 	      er_Accesslog_fh = er_file_open (path);
 	    }
@@ -1022,7 +1125,7 @@ er_start (THREAD_ENTRY * th_entry)
 	  er_Accesslog_fh = stderr;
 	}
 
-      logfile_Opened = true;
+      er_Logfile_opened = true;
     }
 
   /*
@@ -1032,7 +1135,8 @@ er_start (THREAD_ENTRY * th_entry)
    */
   if (msgcat_init () != NO_ERROR)
     {
-      er_emergency (__FILE__, __LINE__, er_Cached_msg[ER_ER_NO_CATALOG]);
+      er_emergency (thread_p, __FILE__, __LINE__,
+		    er_Cached_msg[ER_ER_NO_CATALOG]);
       status = ER_FAILED;
     }
   else if (er_Is_cached_msg == false)
@@ -1064,163 +1168,13 @@ er_start (THREAD_ENTRY * th_entry)
 
       er_Is_cached_msg = true;
     }
-
-  r = ER_CSECT_EXIT_LOG_FILE ();
-  return status;
-}
-
-#else /* SERVER_MODE */
-
-/*
- * er_start - Start the error message module
- *   return: NO_ERROR or ER_FAILED
- *
- * Note: Error message areas are initialized, the text message and the
- *       log message files are opened. In addition, the behavior of the
- *       system when a fatal error condition is set, is defined.
- */
-static int
-er_start (void)
-{
-  int status = NO_ERROR;
-  int i;
-
-  /* Make sure that the behavior of the module has been defined */
-
-  if (er_Hasalready_initiated == false)
-    {
-      (void) er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE),
-		      prm_get_integer_value (PRM_ID_ER_EXIT_ASK));
-    }
-
-  /*
-   * If the error module has already been initialized, shutted down
-   * before it is reinitialized again.
-   */
-
-  if (er_Msg != NULL)
-    {
-      er_final ();
-    }
-
-  er_Msg = &ermsg_Buf;
-  er_Msg->err_id = NO_ERROR;
-  er_Msg->severity = ER_WARNING_SEVERITY;
-  er_Msg->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
-  er_Msg->line_no = -1;
-  er_Msg->stack = NULL;
-  er_Msg->msg_area = er_emergency_buf;
-  er_Msg->msg_area_size = sizeof (er_emergency_buf);
-  er_Msg->args = NULL;
-  er_Msg->nargs = 0;
-
-  /* Define message log file */
-
-  if (er_Msglog_filename)
-    {
-      er_Isa_null_device = er_file_isa_null_device (er_Msglog_filename);
-
-      if (er_Isa_null_device
-	  || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
-	{
-	  er_Msglog_fh = er_file_open (er_Msglog_filename);
-	}
-      else
-	{
-	  /* want to err on the side of doing production style error logs
-	   * because this may be getting set at some naive customer site. */
-	  char path[PATH_MAX];
-	  sprintf (path, "%s.%d", er_Msglog_filename, getpid ());
-	  er_Msglog_fh = er_file_open (path);
-	}
-
-      if (er_Msglog_fh == NULL)
-	{
-	  er_Msglog_fh = stderr;
-	  er_log_debug (ARG_FILE_LINE, er_Cached_msg[ER_LOG_MSGLOG_WARNING],
-			er_Msglog_filename);
-	}
-    }
-  else
-    {
-      er_Msglog_fh = stderr;
-    }
-
-  if (er_Accesslog_filename)
-    {
-      er_Isa_null_device = er_file_isa_null_device (er_Accesslog_filename);
-
-      if (er_Isa_null_device
-	  || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
-	{
-	  er_Accesslog_fh = er_file_open (er_Accesslog_filename);
-	}
-      else
-	{
-	  /* want to err on the side of doing production style error logs
-	   * because this may be getting set at some naive customer site. */
-	  char path[PATH_MAX];
-	  sprintf (path, "%s.%d", er_Accesslog_filename, getpid ());
-	  er_Accesslog_fh = er_file_open (path);
-	}
-
-      if (er_Accesslog_fh == NULL)
-	{
-	  er_Accesslog_fh = stderr;
-	  er_log_debug (ARG_FILE_LINE, er_Cached_msg[ER_LOG_MSGLOG_WARNING],
-			er_Accesslog_filename);
-	}
-    }
-  else
-    {
-      er_Accesslog_fh = stderr;
-    }
-
-  /*
-   * Message catalog may be initialized by msgcat_init() during bootstrap.
-   * But, try once more to call msgcat_init() because there could be
-   * an exception case that get here before bootstrap.
-   */
-  if (msgcat_init () != NO_ERROR)
-    {
-      er_emergency (__FILE__, __LINE__, er_Cached_msg[ER_ER_NO_CATALOG]);
-      status = ER_FAILED;
-    }
-  else if (er_Is_cached_msg == false)
-    {
-      /* cache the messages */
-
-      /*
-       * Remember, we skip code 0.  If we can't find enough memory to
-       * copy the silly message, things are going to be pretty tight
-       * anyway, so just use the default version.
-       */
-      for (i = 1; i < (int) DIM (er_Cached_msg); i++)
-	{
-	  const char *msg;
-	  char *tmp;
-
-	  msg =
-	    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_INTERNAL, i);
-	  if (msg && *msg)
-	    {
-	      tmp = (char *) malloc (strlen (msg) + 1);
-	      if (tmp)
-		{
-		  strcpy (tmp, msg);
-		  er_Cached_msg[i] = tmp;
-		}
-	    }
-	}
-
-      er_Is_cached_msg = true;
-    }
-
-  return status;
-}
-#endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
+  r = ER_CSECT_EXIT_LOG_FILE ();
+#endif
+
+  return status;
+}
 
 /*
  * er_final - Terminate the error message module
@@ -1228,48 +1182,51 @@ er_start (void)
  *   do_global_final(in):
  */
 void
-er_final (bool do_global_final)
+er_final (ER_FINAL_CODE do_global_final)
 {
+  THREAD_ENTRY *thread_p;
   FILE *fh;
-  THREAD_ENTRY *th_entry;
+  ER_MSG *er_entry_p;
+  int i;
 
-  th_entry = thread_get_thread_entry_info ();
-  if (th_entry != NULL)
+  thread_p = thread_get_thread_entry_info ();
+
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p != NULL)
     {
-      if (th_entry->er_Msg != NULL)
-	{
-	  er_stack_clearall ();
-	}
+      er_stack_clearall ();
 
-      if (th_entry->er_Msg)
+      er_entry_p = er_get_er_entry (thread_p);
+      if (er_entry_p)
 	{
-	  ER_FREE_AREA (th_entry->er_Msg->msg_area, th_entry);
-	  th_entry->er_Msg->msg_area = th_entry->er_emergency_buf;
-	  th_entry->er_Msg->msg_area_size =
-	    sizeof (th_entry->er_emergency_buf);
-	  if (th_entry->er_Msg->args)
+	  er_free_msg_area (thread_p, er_entry_p->msg_area);
+	  er_entry_p->msg_area =
+	    er_get_emergency_buffer (thread_p, &er_entry_p->msg_area_size);
+	  if (er_entry_p->args)
 	    {
-	      free_and_init (th_entry->er_Msg->args);
+	      free_and_init (er_entry_p->args);
 	    }
-	  th_entry->er_Msg->nargs = 0;
+	  er_entry_p->nargs = 0;
 
-	  th_entry->er_Msg = NULL;
+	  /* unlink the current er entry */
+	  er_entry_p = NULL;
+	  er_register_er_entry (thread_p, er_entry_p);
 	}
     }
 
-  if (do_global_final)
+  if (do_global_final == ER_ALL_FINAL)
     {
-      int i;
-
+#if defined (SERVER_MODE)
       if (ER_CSECT_ENTER_LOG_FILE () != NO_ERROR)
 	{
 	  assert (false);
 	  return;
 	}
+#endif
 
       er_event_final ();
 
-      if (logfile_Opened == true)
+      if (er_Logfile_opened == true)
 	{
 	  if (er_Msglog_fh != NULL && er_Msglog_fh != stderr)
 	    {
@@ -1277,7 +1234,7 @@ er_final (bool do_global_final)
 	      er_Msglog_fh = NULL;
 	      (void) fclose (fh);
 	    }
-	  logfile_Opened = false;
+	  er_Logfile_opened = false;
 
 	  if (er_Accesslog_fh != NULL && er_Accesslog_fh != stderr)
 	    {
@@ -1303,77 +1260,13 @@ er_final (bool do_global_final)
 	}
 
       er_Hasalready_initiated = false;
+#if defined (SERVER_MODE)
       ER_CSECT_EXIT_LOG_FILE ();
+#endif
 
       er_call_stack_final ();
     }
 }
-
-#else /* SERVER_MODE */
-
-/*
- * er_final - Terminate the error message module
- *   return: none
- */
-void
-er_final (void)
-{
-  int i;
-  FILE *fh;
-
-  er_event_final ();
-
-  if (er_Hasalready_initiated)
-    {
-      er_stack_clear ();
-      if (er_Msglog_fh != NULL && er_Msglog_fh != stderr)
-	{
-	  fh = er_Msglog_fh;
-	  er_Msglog_fh = NULL;
-	  (void) fclose (fh);
-	}
-
-      if (er_Accesslog_fh != NULL && er_Accesslog_fh != stderr)
-	{
-	  fh = er_Accesslog_fh;
-	  er_Accesslog_fh = NULL;
-	  (void) fclose (fh);
-	}
-
-      for (i = 0; i < (int) DIM (er_Fmt_list); i++)
-	{
-	  er_clear_fmt (&er_Fmt_list[i]);
-	}
-    }
-
-  if (er_Msg != NULL)
-    {
-      ER_FREE_AREA (er_Msg->msg_area);
-      er_Msg->msg_area = er_emergency_buf;
-      er_Msg->msg_area_size = sizeof (er_emergency_buf);
-      if (er_Msg->args)
-	{
-	  free_and_init (er_Msg->args);
-	}
-      er_Msg->nargs = 0;
-
-      er_Msg = NULL;
-    }
-
-  for (i = 0; i < (int) DIM (er_Cached_msg); i++)
-    {
-      if (er_Cached_msg[i] != er_Builtin_msg[i])
-	{
-	  free_and_init (er_Cached_msg[i]);
-	  er_Cached_msg[i] = (char *) er_Builtin_msg[i];
-	}
-    }
-
-  er_call_stack_final ();
-
-  er_Hasalready_initiated = false;
-}
-#endif /* SERVER_MODE */
 
 /*
  * er_clear - Clear any error message
@@ -1384,38 +1277,25 @@ er_final (void)
 void
 er_clear (void)
 {
+  THREAD_ENTRY *thread_p;
+  ER_MSG *er_entry_p;
   char *buf;
-  int size;
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
-  if (th_entry->er_Msg == NULL)
+  thread_p = thread_get_thread_entry_info ();
+
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p == NULL)
     {
-      (void) er_start (th_entry);
+      (void) er_start (thread_p);
+      er_entry_p = er_get_er_entry (thread_p);
     }
 
-  th_entry->er_Msg->err_id = NO_ERROR;
-  th_entry->er_Msg->severity = ER_WARNING_SEVERITY;
-  th_entry->er_Msg->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
-  th_entry->er_Msg->line_no = -1;
-  buf = th_entry->er_Msg->msg_area;
-  size = th_entry->er_Msg->msg_area_size;
-#else /* SERVER_MODE */
-  if (er_Msg == NULL)
-    {
-      (void) er_start ();
-    }
+  er_entry_p->err_id = NO_ERROR;
+  er_entry_p->severity = ER_WARNING_SEVERITY;
+  er_entry_p->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
+  er_entry_p->line_no = -1;
 
-  er_Msg->err_id = NO_ERROR;
-  er_Msg->severity = ER_WARNING_SEVERITY;
-  er_Msg->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
-  er_Msg->line_no = -1;
-  buf = er_Msg->msg_area;
-  size = er_Msg->msg_area_size;
-#endif /* SERVER_MODE */
-
+  buf = er_entry_p->msg_area;
   if (buf)
     {
       buf[0] = '\0';
@@ -1614,10 +1494,8 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   int r;
   int ret_val = NO_ERROR;
   bool need_stack_pop = false;
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry;
-#endif
+  THREAD_ENTRY *thread_p;
+  ER_MSG *er_entry_p;
 
   /* check iff not used error code */
   assert (err_id != ER_TP_INCOMPATIBLE_DOMAINS);
@@ -1634,10 +1512,8 @@ er_set_internal (int severity, const char *file_name, const int line_no,
       return ER_FAILED;
     }
 
-#if defined (SERVER_MODE)
-  th_entry = thread_get_thread_entry_info ();
-  er_Msg = th_entry->er_Msg;
-#endif
+  thread_p = thread_get_thread_entry_info ();
+  er_entry_p = er_get_er_entry (thread_p);
 
   /*
    * Get the UNIX error message if needed. We need to get this as soon
@@ -1647,32 +1523,28 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 
   memcpy (&ap, ap_ptr, sizeof (ap));
 
-#if defined (SERVER_MODE)
-  if (er_Msg == NULL)
+  if (er_entry_p == NULL)
     {
-      (void) er_start (th_entry);
-      er_Msg = th_entry->er_Msg;
+      (void) er_start (thread_p);
+      er_entry_p = er_get_er_entry (thread_p);
     }
-#else /* SERVER_MODE */
-  if (er_Msg == NULL)
-    (void) er_start ();
-#endif /* SERVER_MODE */
 
-  if ((severity == ER_NOTIFICATION_SEVERITY && er_Msg->err_id != NO_ERROR)
-      || (er_Msg->err_id == ER_INTERRUPTED))
+  if ((severity == ER_NOTIFICATION_SEVERITY && er_entry_p->err_id != NO_ERROR)
+      || (er_entry_p->err_id == ER_INTERRUPTED))
     {
       er_stack_push ();
-#if defined (SERVER_MODE)
-      er_Msg = th_entry->er_Msg;
-#endif
+
+      /* re-find the current er entry */
+      er_entry_p = er_get_er_entry (thread_p);
+
       need_stack_pop = true;
     }
 
   /* Initialize the area... */
-  er_Msg->err_id = err_id;
-  er_Msg->severity = severity;
-  er_Msg->file_name = file_name;
-  er_Msg->line_no = line_no;
+  er_entry_p->err_id = err_id;
+  er_entry_p->severity = severity;
+  er_entry_p->file_name = file_name;
+  er_entry_p->line_no = line_no;
 
   /*
    * Get hold of the compiled format string for this message and get an
@@ -1703,30 +1575,22 @@ er_set_internal (int severity, const char *file_name, const int line_no,
     }
 
   /* Do any necessary allocation for the buffer. */
-#if defined (SERVER_MODE)
-  if (er_make_room (new_size + 1, th_entry) == ER_FAILED)
+  if (er_make_room (thread_p, new_size + 1) == ER_FAILED)
     {
       ret_val = ER_FAILED;
       goto end;
     }
-#else /* SERVER_MODE */
-  if (er_make_room (new_size + 1) == ER_FAILED)
-    {
-      ret_val = ER_FAILED;
-      goto end;
-    }
-#endif /* SERVER_MODE */
 
   /* And now format the silly thing. */
-  if (er_vsprintf (er_fmt, ap_ptr) == ER_FAILED)
+  if (er_vsprintf (thread_p, er_fmt, ap_ptr) == ER_FAILED)
     {
       ret_val = ER_FAILED;
       goto end;
     }
   if (os_error)
     {
-      strcat (er_Msg->msg_area, "... ");
-      strcat (er_Msg->msg_area, os_error);
+      strcat (er_entry_p->msg_area, "... ");
+      strcat (er_entry_p->msg_area, os_error);
     }
 
   /* Call the logging function if any */
@@ -1762,9 +1626,9 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 	}
 
       if (er_Print_to_console && severity <= ER_ERROR_SEVERITY
-	  && er_Msg->msg_area)
+	  && er_entry_p->msg_area)
 	{
-	  fprintf (stderr, "%s\n", er_Msg->msg_area);
+	  fprintf (stderr, "%s\n", er_entry_p->msg_area);
 	}
     }
 
@@ -1779,13 +1643,13 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 
   if (severity == ER_NOTIFICATION_SEVERITY)
     {
-      er_Msg->err_id = NO_ERROR;
-      er_Msg->severity = ER_WARNING_SEVERITY;
-      er_Msg->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
-      er_Msg->line_no = -1;
-      if (er_Msg->msg_area != NULL)
+      er_entry_p->err_id = NO_ERROR;
+      er_entry_p->severity = ER_WARNING_SEVERITY;
+      er_entry_p->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
+      er_entry_p->line_no = -1;
+      if (er_entry_p->msg_area != NULL)
 	{
-	  er_Msg->msg_area[0] = '\0';
+	  er_entry_p->msg_area[0] = '\0';
 	}
     }
 
@@ -2034,11 +1898,7 @@ er_log (int err_id)
 	case ER_EXIT_DONT_ASK:
 	  (void) fprintf (er_Msglog_fh, "%s", er_Cached_msg[ER_ER_EXIT]);
 	  (void) fflush (er_Msglog_fh);
-#if defined (SERVER_MODE)
-	  er_final (1);
-#else /* SERVER_MODE */
-	  er_final ();
-#endif /* SERVER_MODE */
+	  er_final (ER_ALL_FINAL);
 	  exit (EXIT_FAILURE);
 	  break;
 
@@ -2077,17 +1937,11 @@ er_register_log_handler (er_log_handler_t handler)
 int
 er_errid (void)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  er_entry_p = er_get_er_entry (NULL);
 
-  return ((th_entry->er_Msg != NULL) ? th_entry->er_Msg->err_id : NO_ERROR);
-#else /* SERVER_MODE */
-  return ((er_Msg != NULL) ? er_Msg->err_id : NO_ERROR);
-#endif /* SERVER_MODE */
+  return (er_entry_p != NULL) ? er_entry_p->err_id : NO_ERROR;
 }
 
 /*
@@ -2100,27 +1954,20 @@ er_errid (void)
 int
 er_errid_if_has_error (void)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-  ER_MSG *er_Msg;
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  er_entry_p = er_get_er_entry (NULL);
 
-  er_Msg = th_entry->er_Msg;
-#endif
-
-  if (er_Msg == NULL)
+  if (er_entry_p == NULL)
     {
       return NO_ERROR;
     }
 
-  if (er_Msg->severity == ER_FATAL_ERROR_SEVERITY
-      || er_Msg->severity == ER_ERROR_SEVERITY
-      || er_Msg->severity == ER_SYNTAX_ERROR_SEVERITY)
+  if (er_entry_p->severity == ER_FATAL_ERROR_SEVERITY
+      || er_entry_p->severity == ER_ERROR_SEVERITY
+      || er_entry_p->severity == ER_SYNTAX_ERROR_SEVERITY)
     {
-      return er_Msg->err_id;
+      return er_entry_p->err_id;
     }
   else
     {
@@ -2135,23 +1982,14 @@ er_errid_if_has_error (void)
 void
 er_clearid (void)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  er_entry_p = er_get_er_entry (NULL);
 
-  if (th_entry->er_Msg != NULL)
+  if (er_entry_p != NULL)
     {
-      th_entry->er_Msg->err_id = NO_ERROR;
+      er_entry_p->err_id = NO_ERROR;
     }
-#else /* SERVER_MODE */
-  if (er_Msg != NULL)
-    {
-      er_Msg->err_id = NO_ERROR;
-    }
-#endif /* SERVER_MODE */
 }
 
 /*
@@ -2162,23 +2000,14 @@ er_clearid (void)
 void
 er_setid (int err_id)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  er_entry_p = er_get_er_entry (NULL);
 
-  if (th_entry->er_Msg != NULL)
+  if (er_entry_p != NULL)
     {
-      th_entry->er_Msg->err_id = err_id;
+      er_entry_p->err_id = err_id;
     }
-#else /* SERVER_MODE */
-  if (er_Msg != NULL)
-    {
-      er_Msg->err_id = err_id;
-    }
-#endif /* SERVER_MODE */
 }
 
 /*
@@ -2188,18 +2017,11 @@ er_setid (int err_id)
 int
 er_severity (void)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  er_entry_p = er_get_er_entry (NULL);
 
-  return ((th_entry->er_Msg != NULL) ? th_entry->er_Msg->severity
-	  : ER_WARNING_SEVERITY);
-#else /* SERVER_MODE */
-  return ((er_Msg != NULL) ? er_Msg->severity : ER_WARNING_SEVERITY);
-#endif /* SERVER_MODE */
+  return (er_entry_p != NULL) ? er_entry_p->severity : ER_WARNING_SEVERITY;
 }
 
 /*
@@ -2210,19 +2032,13 @@ er_severity (void)
 bool
 er_has_error (void)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
   int severity;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  er_entry_p = er_get_er_entry (NULL);
 
-  severity = ((th_entry->er_Msg != NULL) ? th_entry->er_Msg->severity
-	      : ER_WARNING_SEVERITY);
-#else /* SERVER_MODE */
-  severity = ((er_Msg != NULL) ? er_Msg->severity : ER_WARNING_SEVERITY);
-#endif /* SERVER_MODE */
+  severity =
+    ((er_entry_p != NULL) ? er_entry_p->severity : ER_WARNING_SEVERITY);
 
   if (severity == ER_FATAL_ERROR_SEVERITY || severity == ER_ERROR_SEVERITY
       || severity == ER_SYNTAX_ERROR_SEVERITY)
@@ -2245,17 +2061,11 @@ er_has_error (void)
 int
 er_nlevels (void)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  er_entry_p = er_get_er_entry (NULL);
 
-  return th_entry->er_Msg ? 1 : 0;
-#else /* SERVER_MODE */
-  return er_Msg ? 1 : 0;
-#endif /* SERVER_MODE */
+  return (er_entry_p != NULL) ? 1 : 0;
 }
 
 /*
@@ -2266,35 +2076,20 @@ er_nlevels (void)
 const char *
 er_file_line (int *line_no)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  er_entry_p = er_get_er_entry (NULL);
 
-  if (th_entry->er_Msg != NULL)
+  if (er_entry_p != NULL)
     {
-      *line_no = th_entry->er_Msg->line_no;
-      return th_entry->er_Msg->file_name;
+      *line_no = er_entry_p->line_no;
+      return er_entry_p->file_name;
     }
   else
     {
       *line_no = -1;
       return NULL;
     }
-#else /* SERVER_MODE */
-  if (er_Msg != NULL)
-    {
-      *line_no = er_Msg->line_no;
-      return er_Msg->file_name;
-    }
-  else
-    {
-      *line_no = -1;
-      return NULL;
-    }
-#endif /* SERVER_MODE */
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -2307,47 +2102,25 @@ er_file_line (int *line_no)
  *       need to keep it for some length of time.
  */
 const char *
-er_msg ()
+er_msg (void)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-
-  if (th_entry->er_Msg == NULL)
+  er_entry_p = er_get_er_entry (NULL);
+  if (er_entry_p == NULL)
     {
       (void) er_clear ();
-    }
-
-  if (th_entry->er_Msg == NULL)
-    {
       return NULL;
     }
 
-  if (th_entry->er_Msg->msg_area[0] == '\0')
+  if (er_entry_p->msg_area[0] == '\0')
     {
-      strncpy (th_entry->er_Msg->msg_area, er_Cached_msg[ER_ER_MISSING_MSG],
-	       th_entry->er_Msg->msg_area_size);
-      th_entry->er_Msg->msg_area[th_entry->er_Msg->msg_area_size - 1] = '\0';
+      strncpy (er_entry_p->msg_area, er_Cached_msg[ER_ER_MISSING_MSG],
+	       er_entry_p->msg_area_size);
+      er_entry_p->msg_area[er_entry_p->msg_area_size - 1] = '\0';
     }
 
-  return th_entry->er_Msg->msg_area;
-#else /* SERVER_MODE */
-  if (er_Msg == NULL)
-    {
-      (void) er_clear ();
-    }
-  if (!er_Msg->msg_area[0])
-    {
-      strncpy (er_Msg->msg_area, er_Cached_msg[ER_ER_MISSING_MSG],
-	       er_Msg->msg_area_size);
-      er_Msg->msg_area[er_Msg->msg_area_size - 1] = '\0';
-    }
-
-  return er_Msg->msg_area;
-#endif /* SERVER_MODE */
+  return er_entry_p->msg_area;
 }
 
 /*
@@ -2366,23 +2139,17 @@ void
 er_all (int *err_id, int *severity, int *n_levels, int *line_no,
 	const char **file_name, const char **error_msg)
 {
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-  er_Msg = th_entry->er_Msg;
-#endif /* SERVER_MODE */
+  er_entry_p = er_get_er_entry (NULL);
 
-  if (er_Msg != NULL)
+  if (er_entry_p != NULL)
     {
-      *err_id = er_Msg->err_id;
-      *severity = er_Msg->severity;
+      *err_id = er_entry_p->err_id;
+      *severity = er_entry_p->severity;
       *n_levels = 1;
-      *line_no = er_Msg->line_no;
-      *file_name = er_Msg->file_name;
+      *line_no = er_entry_p->line_no;
+      *file_name = er_entry_p->file_name;
       *error_msg = er_msg ();
     }
   else
@@ -2459,10 +2226,8 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
   struct timeval tv;
   char time_array[256];
   int r;
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  THREAD_ENTRY *thread_p;
+  ER_MSG *er_entry_p;
 
   if (er_Hasalready_initiated == false)
     {
@@ -2470,12 +2235,9 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
       return;
     }
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-  er_Msg = th_entry->er_Msg;
-#endif /* SERVER_MODE */
-
-  if (er_Msg == NULL)
+  thread_p = thread_get_thread_entry_info ();
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p == NULL)
     {
       /* Avoid infinite recursion in case of errors in error restart */
 
@@ -2483,12 +2245,8 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 	{
 	  doing_er_start = true;
 
-#if defined (SERVER_MODE)
-	  (void) er_start (th_entry);
-	  er_Msg = th_entry->er_Msg;
-#else /* SERVER_MODE */
-	  (void) er_start ();
-#endif /* SERVER_MODE */
+	  (void) er_start (thread_p);
+	  er_entry_p = er_get_er_entry (thread_p);
 
 	  doing_er_start = false;
 	}
@@ -2504,7 +2262,7 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 
   out = (er_Msglog_fh != NULL) ? er_Msglog_fh : stderr;
 
-  if (er_Msg != NULL)
+  if (er_entry_p != NULL)
     {
       er_time = time (NULL);
 
@@ -2548,38 +2306,26 @@ er_get_area_error (void *buffer, int *length)
   int len;
   char *ptr;
   const char *msg;
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
-
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-  er_Msg = th_entry->er_Msg;
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
   assert (*length > OR_INT_SIZE * 3);
 
-  /*
-   * Changed to use the OR_PUT_ macros rather than
-   * packing an ER_COPY_AREA structure.
-   */
-
-  if (er_Msg == NULL || er_Msg->err_id == NO_ERROR)
+  er_entry_p = er_get_er_entry (NULL);
+  if (er_entry_p == NULL || er_entry_p->err_id == NO_ERROR)
     {
       *length = 0;
       return NULL;
     }
 
   /* Now copy the information */
-  msg = er_Msg->msg_area ? er_Msg->msg_area : "(null)";
+  msg = er_entry_p->msg_area ? er_entry_p->msg_area : "(null)";
   len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
   *length = len = (*length > len) ? len : *length;
 
   ptr = buffer;
-  OR_PUT_INT (ptr, (int) (er_Msg->err_id));
+  OR_PUT_INT (ptr, (int) (er_entry_p->err_id));
   ptr += OR_INT_SIZE;
-  OR_PUT_INT (ptr, (int) (er_Msg->severity));
+  OR_PUT_INT (ptr, (int) (er_entry_p->severity));
   ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, len);
   ptr += OR_INT_SIZE;
@@ -2603,26 +2349,17 @@ er_set_area_error (void *server_area)
 {
   char *ptr;
   int err_id, severity, length, r;
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  THREAD_ENTRY *thread_p;
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-  er_Msg = th_entry->er_Msg;
+  thread_p = thread_get_thread_entry_info ();
 
-  if (er_Msg == NULL)
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p == NULL)
     {
-      (void) er_start (th_entry);
-      er_Msg = th_entry->er_Msg;
+      (void) er_start (thread_p);
+      er_entry_p = er_get_er_entry (thread_p);
     }
-#else /* SERVER_MODE */
-  if (er_Msg == NULL)
-    {
-      (void) er_start ();
-    }
-#endif /* SERVER_MODE */
 
   if (server_area == NULL)
     {
@@ -2638,27 +2375,21 @@ er_set_area_error (void *server_area)
   length = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
 
-  er_Msg->err_id = ((err_id >= 0 || err_id <= ER_LAST_ERROR) ? -1 : err_id);
-  er_Msg->severity = severity;
-  er_Msg->file_name = "Unknown from server";
-  er_Msg->line_no = -1;
+  er_entry_p->err_id =
+    ((err_id >= 0 || err_id <= ER_LAST_ERROR) ? -1 : err_id);
+  er_entry_p->severity = severity;
+  er_entry_p->file_name = "Unknown from server";
+  er_entry_p->line_no = -1;
 
   /* Note, current length is the length of the packet not the string,
      considering that this is NULL terminated, we don't really need to
      be sending this. Use the actual string length in the memcpy here! */
   length = strlen (ptr) + 1;
 
-#if defined (SERVER_MODE)
-  if (er_make_room (length, th_entry) == NO_ERROR)
+  if (er_make_room (thread_p, length) == NO_ERROR)
     {
-      memcpy (er_Msg->msg_area, ptr, length);
+      memcpy (er_entry_p->msg_area, ptr, length);
     }
-#else /* SERVER_MODE */
-  if (er_make_room (length) == NO_ERROR)
-    {
-      memcpy (er_Msg->msg_area, ptr, length);
-    }
-#endif /* SERVER_MODE */
 
   /* Call the logging function if any */
   if (severity <= prm_get_integer_value (PRM_ID_ER_LOG_LEVEL)
@@ -2673,13 +2404,13 @@ er_set_area_error (void *server_area)
 	}
 
       if (er_Print_to_console && severity <= ER_ERROR_SEVERITY
-	  && er_Msg->msg_area)
+	  && er_entry_p->msg_area)
 	{
-	  fprintf (stderr, "%s\n", er_Msg->msg_area);
+	  fprintf (stderr, "%s\n", er_entry_p->msg_area);
 	}
     }
 
-  return er_Msg->err_id;
+  return er_entry_p->err_id;
 }
 
 /*
@@ -2699,45 +2430,37 @@ er_set_area_error (void *server_area)
 int
 er_stack_push (void)
 {
-  ER_MSG *new_msg;
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  THREAD_ENTRY *thread_p;
+  ER_MSG *new_er_entry_p;
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-  er_Msg = th_entry->er_Msg;
-#endif /* SERVER_MODE */
+  thread_p = thread_get_thread_entry_info ();
 
-  if (er_Msg == NULL)
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p == NULL)
     {
       return ER_FAILED;
     }
 
-  new_msg = (ER_MSG *) ER_MALLOC (sizeof (ER_MSG));
-  if (new_msg == NULL)
+  new_er_entry_p = (ER_MSG *) ER_MALLOC (sizeof (ER_MSG));
+  if (new_er_entry_p == NULL)
     {
       return ER_FAILED;
     }
 
   /* Initialize the new message gadget. */
-  new_msg->err_id = NO_ERROR;
-  new_msg->severity = ER_WARNING_SEVERITY;
-  new_msg->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
-  new_msg->line_no = -1;
-  new_msg->msg_area_size = 0;
-  new_msg->msg_area = NULL;
-  new_msg->stack = er_Msg;
-  new_msg->args = NULL;
-  new_msg->nargs = 0;
+  new_er_entry_p->err_id = NO_ERROR;
+  new_er_entry_p->severity = ER_WARNING_SEVERITY;
+  new_er_entry_p->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
+  new_er_entry_p->line_no = -1;
+  new_er_entry_p->msg_area_size = 0;
+  new_er_entry_p->msg_area = NULL;
+  new_er_entry_p->stack = er_entry_p;
+  new_er_entry_p->args = NULL;
+  new_er_entry_p->nargs = 0;
 
-  /* Now make er_Msg be the new thing. */
-#if defined (SERVER_MODE)
-  th_entry->er_Msg = new_msg;
-#else
-  er_Msg = new_msg;
-#endif
+  /* Now make the error entry be the new thing. */
+  er_register_er_entry (thread_p, new_er_entry_p);
 
   return NO_ERROR;
 }
@@ -2750,45 +2473,32 @@ er_stack_push (void)
 int
 er_stack_pop (void)
 {
-  ER_MSG *old_msg;
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  THREAD_ENTRY *thread_p;
+  ER_MSG *popped_er_entry_p;
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-  er_Msg = th_entry->er_Msg;
+  thread_p = thread_get_thread_entry_info ();
 
-  if (er_Msg == NULL || er_Msg == &th_entry->ermsg)
+  er_entry_p = er_get_er_entry (thread_p);
+
+  if (er_entry_p == NULL
+      || er_entry_p == er_get_er_entry_buffer_ptr (thread_p))
     {
       return ER_FAILED;
     }
-#else /* SERVER_MODE */
-  if (er_Msg == NULL || er_Msg == &ermsg_Buf)
+
+  popped_er_entry_p = er_entry_p;
+
+  /* restore the existing one */
+  er_register_er_entry (thread_p, er_entry_p->stack);
+
+  er_free_msg_area (thread_p, popped_er_entry_p->msg_area);
+
+  if (popped_er_entry_p->args)
     {
-      return ER_FAILED;
+      free_and_init (popped_er_entry_p->args);
     }
-#endif /* SERVER_MODE */
-
-  old_msg = er_Msg;
-#if defined (SERVER_MODE)
-  th_entry->er_Msg = er_Msg->stack;
-#else
-  er_Msg = er_Msg->stack;
-#endif
-
-#if defined (SERVER_MODE)
-  ER_FREE_AREA (old_msg->msg_area, th_entry);
-#else /* SERVER_MODE */
-  ER_FREE_AREA (old_msg->msg_area);
-#endif /* SERVER_MODE */
-
-  if (old_msg->args)
-    {
-      free_and_init (old_msg->args);
-    }
-  free_and_init (old_msg);
+  free_and_init (popped_er_entry_p);
 
   return NO_ERROR;
 }
@@ -2801,33 +2511,24 @@ er_stack_pop (void)
 void
 er_stack_clear (void)
 {
+  THREAD_ENTRY *thread_p;
   ER_MSG *next_msg;
   ER_MSG *save_stack;
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p, *er_entry_buffer_p;
 
-#if defined (SERVER_MODE)
-  er_Msg = th_entry->er_Msg;
-  if (er_Msg == NULL || er_Msg == &th_entry->ermsg)
+  thread_p = thread_get_thread_entry_info ();
+
+  er_entry_p = er_get_er_entry (thread_p);
+  er_entry_buffer_p = er_get_er_entry_buffer_ptr (thread_p);
+
+  if (er_entry_p == NULL || er_entry_p == er_entry_buffer_p)
     {
       return;
     }
-#else /* SERVER_MODE */
-  if (er_Msg == NULL || er_Msg == &ermsg_Buf)
-    {
-      return;
-    }
-#endif /* SERVER_MODE */
 
-  next_msg = er_Msg->stack;
+  next_msg = er_entry_p->stack;
 
-#if defined (SERVER_MODE)
-  ER_FREE_AREA (next_msg->msg_area, th_entry);
-#else /* SERVER_MODE */
-  ER_FREE_AREA (next_msg->msg_area);
-#endif /* SERVER_MODE */
+  er_free_msg_area (thread_p, next_msg->msg_area);
 
   if (next_msg->args)
     {
@@ -2835,15 +2536,11 @@ er_stack_clear (void)
     }
 
   save_stack = next_msg->stack;
-  *next_msg = *er_Msg;
+  *next_msg = *er_entry_p;
   next_msg->stack = save_stack;
 
-  free_and_init (er_Msg);
-#if defined  SERVER_MODE
-  th_entry->er_Msg = next_msg;
-#else /* SERVER_MODE */
-  er_Msg = next_msg;
-#endif /* SERVER_MODE */
+  free_and_init (er_entry_p);
+  er_register_er_entry (thread_p, next_msg);
 }
 
 /*
@@ -2853,29 +2550,17 @@ er_stack_clear (void)
 void
 er_stack_clearall (void)
 {
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  THREAD_ENTRY *thread_p;
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
+  thread_p = thread_get_thread_entry_info ();
 
-  if (th_entry->er_Msg != NULL)
+  for (er_entry_p = er_get_er_entry (thread_p);
+       er_entry_p != NULL && er_entry_p->stack != NULL;
+       er_entry_p = er_get_er_entry (thread_p))
     {
-      while (th_entry->er_Msg->stack != NULL)
-	{
-	  er_stack_clear ();
-	}
+      er_stack_clear ();
     }
-#else /* SERVER_MODE */
-  if (er_Msg != NULL)
-    {
-      while (er_Msg->stack != NULL)
-	{
-	  er_stack_clear ();
-	}
-    }
-#endif /* SERVER_MODE */
 }
 
 /*
@@ -3428,9 +3113,8 @@ er_internal_msg (ER_FMT * fmt, int code, int msg_num)
   fmt->must_free = 0;
 }
 
-#if defined (SERVER_MODE)
 /*
- * enclosing_method -
+ * er_make_room -
  *   return:
  *   arg1(in):
  *   arg2(in):
@@ -3438,42 +3122,20 @@ er_internal_msg (ER_FMT * fmt, int code, int msg_num)
  * Note:
  */
 static int
-er_make_room (int size, THREAD_ENTRY * th_entry)
+er_make_room (THREAD_ENTRY * thread_p, int size)
 {
-  ER_MSG *er_Msg = th_entry->er_Msg;
-  if (th_entry->er_Msg->msg_area_size < size)
+  ER_MSG *er_entry_p;
+
+  er_entry_p = er_get_er_entry (thread_p);
+
+  if (er_entry_p->msg_area_size < size)
     {
-      ER_FREE_AREA (th_entry->er_Msg->msg_area, th_entry);
+      er_free_msg_area (thread_p, er_entry_p->msg_area);
 
-      er_Msg->msg_area_size = size;
-      er_Msg->msg_area = (char *) ER_MALLOC (size);
+      er_entry_p->msg_area_size = size;
+      er_entry_p->msg_area = (char *) ER_MALLOC (size);
 
-      if (er_Msg->msg_area == NULL)
-	return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-#else /* SERVER_MODE */
-/*
- * enclosing_method -
- *   return:
- *   arg1(in):
- *   arg2(in):
- *
- * Note:
- */
-static int
-er_make_room (int size)
-{
-  if (er_Msg->msg_area_size < size)
-    {
-      ER_FREE_AREA (er_Msg->msg_area);
-
-      er_Msg->msg_area_size = size;
-      er_Msg->msg_area = (char *) ER_MALLOC (size);
-
-      if (er_Msg->msg_area == NULL)
+      if (er_entry_p->msg_area == NULL)
 	{
 	  return ER_FAILED;
 	}
@@ -3481,7 +3143,6 @@ er_make_room (int size)
 
   return NO_ERROR;
 }
-#endif /* SERVER_MODE */
 
 /*
  * er_malloc_helper -
@@ -3498,7 +3159,8 @@ er_malloc_helper (int size, const char *file, int line)
   mem = malloc (size);
   if (mem == NULL)
     {
-      er_emergency (file, line, er_Cached_msg[ER_ER_OUT_OF_MEMORY], size);
+      er_emergency (NULL, file, line, er_Cached_msg[ER_ER_OUT_OF_MEMORY],
+		    size);
     }
 
   return mem;
@@ -3517,50 +3179,42 @@ er_malloc_helper (int size, const char *file, int line)
  *       from low-memory situations
  */
 static void
-er_emergency (const char *file, int line, const char *fmt, ...)
+er_emergency (THREAD_ENTRY * thread_p, const char *file, int line,
+	      const char *fmt, ...)
 {
   va_list args;
   const char *str, *p, *q;
   int limit, span;
   char buf[32];
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-  er_Msg = th_entry->er_Msg;
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
 
-  ER_FREE_AREA (er_Msg->msg_area, th_entry);
-#else /* SERVER_MODE */
-  ER_FREE_AREA (er_Msg->msg_area);
-#endif /* SERVER_MODE */
+  er_entry_p = er_get_er_entry (thread_p);
 
-  er_Msg->err_id = ER_GENERIC_ERROR;
-  er_Msg->severity = ER_ERROR_SEVERITY;
-  er_Msg->file_name = file;
-  er_Msg->line_no = line;
+  er_free_msg_area (thread_p, er_entry_p->msg_area);
 
-#if defined (SERVER_MODE)
-  er_Msg->msg_area = th_entry->er_emergency_buf;
-  er_Msg->msg_area_size = sizeof (th_entry->er_emergency_buf);
-#else /* SERVER_MODE */
-  er_Msg->msg_area = er_emergency_buf;
-  er_Msg->msg_area_size = sizeof (er_emergency_buf);
-#endif /* SERVER_MODE */
+  er_entry_p->err_id = ER_GENERIC_ERROR;
+  er_entry_p->severity = ER_ERROR_SEVERITY;
+  er_entry_p->file_name = file;
+  er_entry_p->line_no = line;
+  er_entry_p->msg_area =
+    er_get_emergency_buffer (thread_p, &er_entry_p->msg_area_size);
 
   /*
    * Assumes that er_emergency_buf is at least big enough to hold this
    * stuff.
    */
-  sprintf (er_Msg->msg_area, er_Cached_msg[ER_ER_HEADER], line);
-  limit = er_Msg->msg_area_size - strlen (er_Msg->msg_area) - 1;
+  sprintf (er_entry_p->msg_area, er_Cached_msg[ER_ER_HEADER], line);
+  limit = er_entry_p->msg_area_size - strlen (er_entry_p->msg_area) - 1;
 
   va_start (args, fmt);
 
   p = fmt;
-  er_Msg->msg_area[0] = '\0';
+  er_entry_p->msg_area[0] = '\0';
   while ((q = strchr (p, '%')) && limit > 0)
     {
       /*
@@ -3568,7 +3222,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
        */
       span = CAST_STRLEN (q - p);
       span = MIN (limit, span);
-      strncat (er_Msg->msg_area, p, span);
+      strncat (er_entry_p->msg_area, p, span);
       p = q + 2;
       limit -= span;
 
@@ -3588,12 +3242,16 @@ er_emergency (const char *file, int line, const char *fmt, ...)
 	      str = buf;
 	    }
 	  else
-	    str = "???";
+	    {
+	      str = "???";
+	    }
 	  break;
 	case 's':
 	  str = va_arg (args, const char *);
 	  if (str == NULL)
-	    str = "(null)";
+	    {
+	      str = "(null)";
+	    }
 	  break;
 	case '%':
 	  str = "%";
@@ -3602,7 +3260,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
 	  str = "???";
 	  break;
 	}
-      strncat (er_Msg->msg_area, str, limit);
+      strncat (er_entry_p->msg_area, str, limit);
       limit -= strlen (str);
       limit = MAX (limit, 0);
     }
@@ -3614,15 +3272,11 @@ er_emergency (const char *file, int line, const char *fmt, ...)
    * making sure that we null-terminate the buffer (since strncat won't
    * do it if it reaches the end of the buffer).
    */
-  strncat (er_Msg->msg_area, p, limit);
-#if defined (SERVER_MODE)
-  er_Msg->msg_area[sizeof (th_entry->er_emergency_buf) - 1] = '\0';
-#else /* SERVER_MODE */
-  er_Msg->msg_area[sizeof (er_emergency_buf) - 1] = '\0';
-#endif /* SERVER_MODE */
+  strncat (er_entry_p->msg_area, p, limit);
+  er_entry_p->msg_area[er_entry_p->msg_area_size - 1] = '\0';
 
   /* Now get it into the log. */
-  er_log (er_Msg->err_id);
+  er_log (er_entry_p->err_id);
 }
 
 
@@ -3633,29 +3287,22 @@ er_emergency (const char *file, int line, const char *fmt, ...)
  *   ap(in):
  */
 static int
-er_vsprintf (ER_FMT * fmt, va_list * ap)
+er_vsprintf (THREAD_ENTRY * thread_p, ER_FMT * fmt, va_list * ap)
 {
   const char *p;		/* The start of the current non-spec part of fmt */
   const char *q;		/* The start of the next conversion spec        */
-  char *s;			/* The end of the valid part of er_Msg->msg_area */
+  char *s;			/* The end of the valid part of er_entry_p->msg_area */
   int n;			/* The va_list position of the current arg      */
   int i;
   va_list args;
-#if defined (SERVER_MODE)
-  ER_MSG *er_Msg;
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  ER_MSG *er_entry_p;
 
-#if defined (SERVER_MODE)
-  assert (th_entry != NULL);
-
-  er_Msg = th_entry->er_Msg;
-#endif /* SERVER_MODE */
+  er_entry_p = er_get_er_entry (thread_p);
 
   /*
    *                  *** WARNING ***
    *
-   * This routine assumes that er_Msg->msg_area is large enough to
+   * This routine assumes that er_entry_p->msg_area is large enough to
    * receive the message being formatted.  If you haven't done your
    * homework with er_estimate_size() before calling this, you may be
    * in for a bruising.
@@ -3668,8 +3315,8 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
    */
   if (fmt == NULL || fmt->fmt == NULL)
     {
-      strncpy (er_Msg->msg_area, er_Cached_msg[ER_ER_SUBSTITUTE_MSG],
-	       er_Msg->msg_area_size);
+      strncpy (er_entry_p->msg_area, er_Cached_msg[ER_ER_SUBSTITUTE_MSG],
+	       er_entry_p->msg_area_size);
       return ER_FAILED;
     }
 
@@ -3683,22 +3330,22 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
    * we're printing the format, we may not have the luxury of printing
    * the arguments in the same order that they appear in the va_list.
    */
-  if (er_Msg->nargs < fmt->nspecs)
+  if (er_entry_p->nargs < fmt->nspecs)
     {
       int size;
 
-      if (er_Msg->args)
+      if (er_entry_p->args)
 	{
-	  free_and_init (er_Msg->args);
+	  free_and_init (er_entry_p->args);
 	}
 
       size = fmt->nspecs * sizeof (ER_VA_ARG);
-      er_Msg->args = (ER_VA_ARG *) ER_MALLOC (size);
-      if (er_Msg->args == NULL)
+      er_entry_p->args = (ER_VA_ARG *) ER_MALLOC (size);
+      if (er_entry_p->args == NULL)
 	{
 	  return ER_FAILED;
 	}
-      er_Msg->nargs = fmt->nspecs;
+      er_entry_p->nargs = fmt->nspecs;
     }
 
   /*
@@ -3711,35 +3358,35 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
       switch (fmt->spec[i].code)
 	{
 	case 'i':
-	  er_Msg->args[i].int_value = va_arg (args, int);
+	  er_entry_p->args[i].int_value = va_arg (args, int);
 	  break;
 	case SPEC_CODE_LONGLONG:
-	  er_Msg->args[i].longlong_value = va_arg (args, long long);
+	  er_entry_p->args[i].longlong_value = va_arg (args, long long);
 	  break;
 	case SPEC_CODE_SIZE_T:
 	  if (sizeof (size_t) == sizeof (long long int))
 	    {
-	      er_Msg->args[i].longlong_value = va_arg (args, long long);
+	      er_entry_p->args[i].longlong_value = va_arg (args, long long);
 	    }
 	  else
 	    {
-	      er_Msg->args[i].int_value = va_arg (args, int);
+	      er_entry_p->args[i].int_value = va_arg (args, int);
 	    }
 	  break;
 	case 'p':
-	  er_Msg->args[i].pointer_value = va_arg (args, void *);
+	  er_entry_p->args[i].pointer_value = va_arg (args, void *);
 	  break;
 	case 'f':
-	  er_Msg->args[i].double_value = va_arg (args, double);
+	  er_entry_p->args[i].double_value = va_arg (args, double);
 	  break;
 	case 'L':
-	  er_Msg->args[i].longdouble_value = va_arg (args, long double);
+	  er_entry_p->args[i].longdouble_value = va_arg (args, long double);
 	  break;
 	case 's':
-	  er_Msg->args[i].string_value = va_arg (args, char *);
-	  if (er_Msg->args[i].string_value == NULL)
+	  er_entry_p->args[i].string_value = va_arg (args, char *);
+	  if (er_entry_p->args[i].string_value == NULL)
 	    {
-	      er_Msg->args[i].string_value = "(null)";
+	      er_entry_p->args[i].string_value = "(null)";
 	    }
 	  break;
 	default:
@@ -3748,7 +3395,7 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
 	   * er_study_fmt() should have protected us from that.  If
 	   * we're here, it's likely that memory has been corrupted.
 	   */
-	  er_emergency (__FILE__, __LINE__,
+	  er_emergency (thread_p, __FILE__, __LINE__,
 			er_Cached_msg[ER_LOG_UNKNOWN_CODE],
 			fmt->spec[i].code);
 	  return ER_FAILED;
@@ -3766,7 +3413,7 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
 
   p = fmt->fmt;
   q = p;
-  s = er_Msg->msg_area;
+  s = er_entry_p->msg_area;
   i = 0;
   while ((q = strchr (p, '%')))
     {
@@ -3810,32 +3457,34 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
       switch (fmt->spec[n].code)
 	{
 	case 'i':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].int_value);
+	  sprintf (s, fmt->spec[n].spec, er_entry_p->args[n].int_value);
 	  break;
 	case SPEC_CODE_LONGLONG:
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].longlong_value);
+	  sprintf (s, fmt->spec[n].spec, er_entry_p->args[n].longlong_value);
 	  break;
 	case SPEC_CODE_SIZE_T:
 	  if (sizeof (size_t) == sizeof (long long int))
 	    {
-	      sprintf (s, fmt->spec[n].spec, er_Msg->args[n].longlong_value);
+	      sprintf (s, fmt->spec[n].spec,
+		       er_entry_p->args[n].longlong_value);
 	    }
 	  else
 	    {
-	      sprintf (s, fmt->spec[n].spec, er_Msg->args[n].int_value);
+	      sprintf (s, fmt->spec[n].spec, er_entry_p->args[n].int_value);
 	    }
 	  break;
 	case 'p':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].pointer_value);
+	  sprintf (s, fmt->spec[n].spec, er_entry_p->args[n].pointer_value);
 	  break;
 	case 'f':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].double_value);
+	  sprintf (s, fmt->spec[n].spec, er_entry_p->args[n].double_value);
 	  break;
 	case 'L':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].longdouble_value);
+	  sprintf (s, fmt->spec[n].spec,
+		   er_entry_p->args[n].longdouble_value);
 	  break;
 	case 's':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].string_value);
+	  sprintf (s, fmt->spec[n].spec, er_entry_p->args[n].string_value);
 	  break;
 	default:
 	  /*

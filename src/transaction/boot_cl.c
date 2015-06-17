@@ -1688,7 +1688,7 @@ boot_client_all_finalize (bool is_er_final)
       msgcat_final ();
       if (is_er_final)
 	{
-	  er_final ();
+	  er_final (ER_ALL_FINAL);
 	}
       lang_final ();
       tz_unload ();
