@@ -11662,10 +11662,6 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 
 	  if (!BTID_IS_EQUAL (&con->index_btid, &new_con->index_btid))
 	    {
-	      /* We don't know if this case is reachable or handled properly.
-	       * Added an assert here to discover the cases that can reach it.
-	       */
-	      assert (false);
 	      if (BTID_IS_NULL (&(new_con->index_btid)))
 		{
 		  /* Template index isn't set, transfer the old one
