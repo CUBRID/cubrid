@@ -4120,8 +4120,6 @@ locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush)
   mflush->mop_uoids = NULL;
   mflush->mop_tail_toid = NULL;
   mflush->mop_tail_uoid = NULL;
-  mflush->mobjs->start_multi_update = 0;
-  mflush->mobjs->end_multi_update = 0;
   mflush->mobjs->num_objs = 0;
   mflush->obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs);
   LC_RECDES_IN_COPYAREA (mflush->copy_area, &mflush->recdes);
