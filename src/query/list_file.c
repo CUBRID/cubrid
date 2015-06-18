@@ -1151,7 +1151,7 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
   if (file_alloc_iterator_init (thread_p, &xasl_id->temp_vfid, iter_p) ==
       NULL)
     {
-      assert (false);
+      /* probably the thread was interrupted. */
       goto error;
     }
 
