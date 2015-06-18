@@ -27990,8 +27990,8 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
 		  if (oid_count < 0)
 		    {
 		      /* Unexpected error. */
-		      assert (false);
-		      return ER_FAILED;
+		      ASSERT_ERROR ();
+		      return oid_count;
 		    }
 		}
 	      total_oid_count = bts->n_oids_read_last_iteration + oid_count;
