@@ -1690,7 +1690,6 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   char **strs;
   const char *kludge;
   PARSER_VARCHAR *buffer;
-  int part_count = 0;
   SM_CLASS *subclass;
   char *description;
   char name_buf[SM_MAX_IDENTIFIER_LENGTH + SM_MAX_CLASS_COMMENT_LENGTH + 50];
@@ -1699,6 +1698,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   bool has_comment = false;
   int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
   size_t buf_size = 0;
+  STRLIST *str_list_head = NULL, *current_str = NULL, *tmp_str = NULL;
 
   buffer = NULL;
   if (parser == NULL)
@@ -1902,14 +1902,6 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		}
 
 	      i++;
-	      if (au_fetch_class
-		  (user->op, &subclass, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-		{
-		  if (subclass->partition != NULL)
-		    {
-		      part_count++;
-		    }
-		}
 	    }
 	  strs[i] = NULL;
 	  info->subs = strs;
@@ -2301,20 +2293,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	{
 	  bool is_print_partition = true;
 
-	  buf_size = sizeof (char *) * (part_count + 2);
-	  strs = (char **) malloc (buf_size);
-	  if (strs == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-	      goto error_exit;
-	    }
-	  memset (strs, 0, buf_size);
-
-	  description =
-	    obj_print_describe_partition_info (parser, class_->partition);
-	  strs[0] = obj_print_copy_string (description);
-	  i = 1;
+	  count = 0;
 
 	  /* Show create table will not print the sub partition for hash 
 	   * partition table.
@@ -2330,20 +2309,86 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      for (user = class_->users; user != NULL; user = user->next)
 		{
 		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
-				      AU_SELECT) == NO_ERROR)
+				      AU_SELECT) != NO_ERROR)
 		    {
-		      if (subclass->partition)
-			{
-			  description =
-			    obj_print_describe_partition_parts (parser,
-								subclass->
-								partition,
-								prt_type);
-			  strs[i++] = obj_print_copy_string (description);
-			}
+		      goto error_exit;
 		    }
+
+		  if (subclass->partition)
+		    {
+		      description =
+			obj_print_describe_partition_parts (parser,
+							    subclass->
+							    partition,
+							    prt_type);
+
+		      /* Temporarily store it into STRLIST, later we will
+		       * copy it into a fixed length array of which the
+		       * size should be determined by the counter of this
+		       * iteration.
+		       */
+		      buf_size = sizeof (STRLIST);
+		      tmp_str = (STRLIST *) malloc (buf_size);
+		      if (tmp_str == NULL)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+			  goto error_exit;
+			}
+
+		      tmp_str->next = NULL;
+		      tmp_str->string = description;
+
+		      /* Whether it is the first node. */
+		      if (str_list_head == NULL)
+			{
+			  /* Set the head of the list. */
+			  str_list_head = tmp_str;
+			}
+		      else
+			{
+			  /* Link it at the end of the list. */
+			  current_str->next = tmp_str;
+			}
+
+		      current_str = tmp_str;
+
+		      count++;
+		    }
+
 		}
 	    }
+
+	  /* Allocate a fixed array to store the strings involving
+	   * class-partition, sub-partitions and a NULL to indicate
+	   * the end position.
+	   */
+	  buf_size = sizeof (char *) * (count + 2);
+	  strs = (char **) malloc (buf_size);
+	  if (strs == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      goto error_exit;
+	    }
+
+	  memset (strs, 0, buf_size);
+
+	  description =
+	    obj_print_describe_partition_info (parser, class_->partition);
+	  strs[0] = obj_print_copy_string (description);
+
+	  /* Copy all from the list into the array and release the list */
+	  for (current_str = str_list_head, i = 1; current_str != NULL; i++)
+	    {
+	      strs[i] = obj_print_copy_string (current_str->string);
+
+	      tmp_str = current_str;
+	      current_str = current_str->next;
+
+	      free_and_init (tmp_str);
+	    }
+
 	  strs[i] = NULL;
 	  info->partition = strs;
 	}
@@ -2355,6 +2400,14 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   return info;
 
 error_exit:
+
+  for (current_str = str_list_head; current_str != NULL;)
+    {
+      tmp_str = current_str;
+      current_str = current_str->next;
+      free_and_init (tmp_str);
+    }
+
   if (info)
     {
       obj_print_help_free_class (info);
