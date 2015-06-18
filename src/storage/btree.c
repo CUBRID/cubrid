@@ -6244,9 +6244,8 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   alignment = BTREE_MAX_ALIGN;
-  if (btree_initialize_new_page
-      (thread_p, &btid->vfid, FILE_BTREE, &root_vpid, 1,
-       (void *) &alignment) == false)
+  if (btree_initialize_new_page (thread_p, &btid->vfid, FILE_BTREE, &root_vpid, 
+				 1, (void *) &alignment) == false)
     {
       goto error;
     }
