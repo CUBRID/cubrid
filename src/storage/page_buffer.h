@@ -485,6 +485,7 @@ extern PAGE_TYPE pgbuf_get_page_ptype (THREAD_ENTRY * thread_p,
 extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
 extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);
 extern void pgbuf_refresh_max_permanent_volume_id (VOLID volid);
+extern VOLID pgbuf_get_max_permanent_volume_id (void);
 extern void pgbuf_cache_permanent_volume_for_temporary (VOLID volid);
 extern void pgbuf_force_to_check_for_interrupts (void);
 extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);

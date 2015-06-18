@@ -4794,6 +4794,18 @@ pgbuf_refresh_max_permanent_volume_id (VOLID volid)
 }
 
 /*
+ * pgbuf_get_max_permanent_volume_id () - Return the maxmim permanent
+ *                             volume identifier cached by the page buffer pool
+ *   return: VOLID
+ *
+ */
+VOLID
+pgbuf_get_max_permanent_volume_id (void)
+{
+  return pgbuf_Pool.last_perm_volid;
+}
+
+/*
  * pgbuf_cache_permanent_volume_for_temporary () - The given permanent volume
  *                                  is remembered for temporary storage purposes
  *   return: void

@@ -8944,9 +8944,14 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * Record the checkpoint address on every volume header
    */
 
-  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID;
+  for (volid = LOG_DBFIRST_VOLID;
+       volid != NULL_VOLID && volid <= pgbuf_get_max_permanent_volume_id ();
        volid = fileio_find_next_perm_volume (thread_p, volid))
     {
+      /* When volid is greater than pgbuf_Pool.last_perm_volid, 
+       * it means that the volume is now adding. 
+       * We don't need to care for the new volumes in here.
+       */
       (void) disk_set_checkpoint (thread_p, volid, &chkpt_lsa);
     }
 
