@@ -107,6 +107,14 @@
 #define NUM_ASSIGNED_TRAN_INDICES log_Gl.trantable.num_assigned_indices
 #define NUM_TOTAL_TRAN_INDICES log_Gl.trantable.num_total_indices
 
+#if !defined(SERVER_MODE)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)   0
+#define pthread_mutex_trylock(a)   0
+#define pthread_mutex_unlock(a)
+#endif /* not SERVER_MODE */
+
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested
@@ -4499,6 +4507,8 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   MVCC_TRANS_STATUS *trans_status;
 #if defined(HAVE_ATOMIC_BUILTINS)
   MVCC_TRANS_STATUS *current_trans_status;
+#else
+  int r;
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -4539,7 +4549,7 @@ start_get_mvcc_table:
 					 0LL);
   bit_area_length = ATOMIC_INC_32 (&trans_status->bit_area_length, 0);
 #else
-  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
   trans_status = &mvcc_table->current_trans_status;
   bit_area_start_mvccid = trans_status->bit_area_start_mvccid;
   bit_area_length = trans_status->bit_area_length;
@@ -4578,7 +4588,7 @@ start_get_mvcc_table:
       goto start_get_mvcc_table;
     }
 #else
-  (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
 
   logtb_get_lowest_active_mvccid (snapshot->bit_area, bit_area_length,
@@ -4619,9 +4629,9 @@ start_get_mvcc_table:
        * logtb_get_lowest_active_mvccid will read lowest active MVCCID
        * using write mode in this case
        */
-      (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+      r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
       *p_transaction_lowest_active_mvccid = lowest_active_mvccid;
-      (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+      pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
     }
 
@@ -4708,6 +4718,9 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   MVCC_TRANS_STATUS *current_trans_status;
   int index;
   unsigned int current_trans_status_version;
+#if !defined(HAVE_ATOMIC_BUILTINS)
+  int r;
+#endif
 
   mvcc_table = &log_Gl.mvcc_table;
 
@@ -4755,7 +4768,7 @@ start_get_oldest_active:
 #else
   current_trans_status = &mvcc_table->current_trans_status;
   /* need atomic read for lowest active mvccid */
-  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
   local_bit_start_mvccid = current_trans_status->bit_area_start_mvccid;
   local_bit_area_length = current_trans_status->bit_area_length;
 #endif
@@ -4779,7 +4792,7 @@ start_get_oldest_active:
       goto start_get_oldest_active;
     }
 #else
-  (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif /* HAVE_ATOMIC_BUILTINS */
 
   logtb_get_lowest_active_mvccid (local_bit_area, local_bit_area_length,
@@ -4828,6 +4841,7 @@ logtb_get_new_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
   MVCCID id;
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
   MVCC_TRANS_STATUS *current_trans_status = &mvcc_table->current_trans_status;
+  int r;
 #if !defined(NDEBUG) && defined(HAVE_ATOMIC_BUILTINS)
   int bit_area_length;
 #endif
@@ -4835,14 +4849,14 @@ logtb_get_new_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
   assert (curr_mvcc_info != NULL && curr_mvcc_info->id == MVCCID_NULL);
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-  (void) pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
+  r = pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
 #if !defined(NDEBUG)
   bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
   assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS
 	  && bit_area_length >= 0);
 #endif
 #else
-  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 #endif
   /* generate new MVCCID and increase bit area length */
   id = log_Gl.hdr.mvcc_next_id;
@@ -4857,9 +4871,9 @@ logtb_get_new_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
 
   /* allow to readers / local writers to start */
 #if defined(HAVE_ATOMIC_BUILTINS)
-  (void) pthread_mutex_unlock (&mvcc_table->new_mvccid_lock);
+  pthread_mutex_unlock (&mvcc_table->new_mvccid_lock);
 #else
-  (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
   /* store MVCCID in MVCCINFO */
   curr_mvcc_info->id = id;
@@ -5030,6 +5044,8 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   int bit_area_long_transaction_threshold =
     MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
   UINT64 *p_area = NULL;
+  int r;
+
   assert (tdes != NULL);
 
   curr_mvcc_info = &tdes->mvccinfo;
@@ -5049,7 +5065,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #else
       /* Transaction completed - set corresponding bit to 1 */
-      (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+      r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
       bit_area_start_mvccid = current_trans_status->bit_area_start_mvccid;
       bit_area_length = current_trans_status->bit_area_length;
 #endif
@@ -5059,7 +5075,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	{
 #if defined(HAVE_ATOMIC_BUILTINS)
 	  /* called rarely - current transaction is a long transaction */
-	  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+	  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 
 	  next_history_position = (mvcc_table->trans_status_history_position
 				   + 1) & trans_status_history_last_position;
@@ -5111,7 +5127,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
 #if defined(HAVE_ATOMIC_BUILTINS)
       /* Transaction completed - set corresponding bit to 1 */
-      (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+      r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 
       /* set version to last MVCC table in queue - need to detect snapshots */
       next_history_position = (mvcc_table->trans_status_history_position + 1)
@@ -5334,7 +5350,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 		     next_history_position);
 #endif
 
-      (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+      pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
     }
   else
     {
@@ -5343,9 +5359,9 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
        * logtb_get_lowest_active_mvccid will read lowest active MVCCID
        * using write mode in this case
        */
-      (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+      r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
       *p_transaction_lowest_active_mvccid = MVCCID_NULL;
-      (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+      pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
 #if defined(SA_MODE)
       if (committed
@@ -5952,6 +5968,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
   MVCCID id = MVCCID_NULL, mvcc_subid;
   MVCCTABLE *mvcc_table;
   int shifts_count = 0;
+  int r;
   MVCC_TRANS_STATUS *current_trans_status =
     &log_Gl.mvcc_table.current_trans_status;
 #if !defined(NDEBUG) && defined(HAVE_ATOMIC_BUILTINS)
@@ -5992,14 +6009,14 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
   mvcc_table = &log_Gl.mvcc_table;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-  (void) pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
+  r = pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
 #if !defined(NDEBUG)
   bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
   assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS
 	  && bit_area_length >= 0);
 #endif
 #else
-  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 #endif
 
   /* generate new MVCCID and increase bit area length */
@@ -6028,9 +6045,9 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
 #endif
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-  (void) pthread_mutex_unlock (&mvcc_table->new_mvccid_lock);
+  pthread_mutex_unlock (&mvcc_table->new_mvccid_lock);
 #else
-  (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
   /* store MVCCID in MVCCINFO */
   if (MVCCID_IS_VALID (id))
@@ -6071,6 +6088,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
   MVCCID *p_area = NULL;
   UINT64 mask;
+  int r;
 
   assert (tdes != NULL);
 
@@ -6089,7 +6107,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #else
   /* Transaction completed - set corresponding bit to 1 */
-  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
   bit_area_start_mvccid = current_trans_status->bit_area_start_mvccid;
   bit_area_length = current_trans_status->bit_area_length;
 #endif
@@ -6098,7 +6116,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
 #if defined(HAVE_ATOMIC_BUILTINS)
       /* called rarely - current transaction is a long transaction */
-      (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+      r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 
       next_history_position = (mvcc_table->trans_status_history_position
 			       + 1) & trans_status_history_last_position;
@@ -6138,7 +6156,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 
   next_history_position = (mvcc_table->trans_status_history_position
 			   + 1) & trans_status_history_last_position;
@@ -6340,7 +6358,7 @@ end_completed:
   /* prevent code rearrangement */
   ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position,
 		 next_history_position);
-  (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 
   curr_mvcc_info->is_sub_active = false;
 
