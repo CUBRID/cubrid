@@ -11993,8 +11993,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r2 = r1 = pt_print_bytes (parser, arg3);
 	}
       r3 = pt_print_bytes (parser, p->info.expr.arg1);
-      r4 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL
-	: pt_print_bytes (parser, p->info.expr.arg2);
+      r4 = ((p->info.expr.arg2 == NULL
+	     || p->info.expr.arg2->type_enum == PT_TYPE_NULL)
+	    ? NULL : pt_print_bytes (parser, p->info.expr.arg2));
       if (!p->info.expr.continued_case)
 	{
 	  q = pt_append_nulstring (parser, q, "decode(");
