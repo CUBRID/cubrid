@@ -11027,6 +11027,9 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	    }
 	  goto exit;
 	}
+
+      /* to proceed ordered fix the pages, forget any underlying error. */
+      er_status = NO_ERROR;
     }
 
   saved_pages_cnt = 0;
