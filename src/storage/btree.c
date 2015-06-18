@@ -6225,15 +6225,20 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   /* create a file descriptor, allocate and initialize the root page */
   if (file_create_check_not_dropped (thread_p, &btid->vfid, 2, FILE_BTREE,
-				     &btree_descriptor, &first_page_vpid, 1)
-      == NULL || btree_get_root_page (thread_p, btid, &root_vpid) == NULL)
+				     &btree_descriptor, &first_page_vpid,
+				     1) == NULL)
+    {
+      goto error;
+    }
+
+  is_file_created = true;
+
+  if (btree_get_root_page (thread_p, btid, &root_vpid) == NULL)
     {
       goto error;
     }
 
   assert (VPID_EQ (&first_page_vpid, &root_vpid));
-
-  is_file_created = true;
 
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
@@ -6251,9 +6256,8 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
    * btree_initialize_new_page; we want the current contents of
    * the page.
    */
-  page_ptr =
-    pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-	       PGBUF_UNCONDITIONAL_LATCH);
+  page_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
       goto error;
@@ -6295,8 +6299,8 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   root_header->reverse_reserved = 0;	/* unused */
 
-  if (btree_init_root_header
-      (thread_p, &btid->vfid, page_ptr, root_header, key_type) != NO_ERROR)
+  if (btree_init_root_header (thread_p, &btid->vfid, page_ptr, root_header,
+			      key_type) != NO_ERROR)
     {
       goto error;
     }
@@ -6341,6 +6345,11 @@ error:
   if (is_file_created)
     {
       (void) file_destroy (thread_p, &btid->vfid);
+      /* remove the file from new file cache.
+       * Since we are in a top operation, 
+       * file_destroy didn't change the file as OLD_FILE.
+       */
+      file_new_declare_as_old (thread_p, &btid->vfid);
     }
 
   VFID_SET_NULL (&btid->vfid);

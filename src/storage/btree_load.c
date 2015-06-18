@@ -894,15 +894,20 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   init_pgcnt = BTREE_NUM_ALLOC_PAGES;
 
   if (file_create_check_not_dropped (thread_p, &btid->vfid, init_pgcnt,
-				     FILE_BTREE, &btdes, &first_page_vpid, 1)
-      == NULL || btree_get_root_page (thread_p, btid, &root_vpid) == NULL)
+				     FILE_BTREE, &btdes, &first_page_vpid,
+				     1) == NULL)
+    {
+      goto error;
+    }
+
+  file_created = 1;
+
+  if (btree_get_root_page (thread_p, btid, &root_vpid) == NULL)
     {
       goto error;
     }
 
   assert (VPID_EQ (&first_page_vpid, &root_vpid));
-
-  file_created = 1;
 
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
@@ -1115,6 +1120,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 	  goto error;
 	}
       file_created = 0;
+      /* remove the file from new file cache */
+      file_new_declare_as_old (thread_p, &btid->vfid);
+
       os_free_and_init (load_args->leaf_nleaf_recdes.data);
       os_free_and_init (load_args->ovf_recdes.data);
       pr_clear_value (&load_args->current_key);
@@ -1236,6 +1244,11 @@ error:
   if (file_created)
     {
       (void) file_destroy (thread_p, &btid->vfid);
+      /* remove the file from new file cache.
+       * Since we are in a top operation, 
+       * file_destroy didn't change the file as OLD_FILE.
+       */
+      file_new_declare_as_old (thread_p, &btid->vfid);
     }
   VFID_SET_NULL (&btid->vfid);
   btid->root_pageid = NULL_PAGEID;
