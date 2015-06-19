@@ -48,37 +48,56 @@
 
 /* Shorthand for simple warnings and errors */
 #define ERROR0(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
+  do \
+    { \
+      error = code; \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); \
+    } \
+  while (0)
 
 #define ERROR1(error, code, arg1) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 1, arg1); } while (0)
+  do \
+    { \
+      error = code; \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 1, arg1); \
+    } \
+  while (0)
 
 #define ERROR2(error, code, arg1, arg2) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2); \
-       } while (0)
+  do \
+    { \
+      error = code; \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2); \
+    } \
+  while (0)
 
 #define ERROR3(error, code, arg1, arg2, arg3) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); \
-       } while (0)
+  do \
+    { \
+      error = code; \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); \
+    } \
+  while (0)
 
 #define ERROR4(error, code, arg1, arg2, arg3, arg4) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, \
-	   arg1, arg2, arg3, arg4); } while (0)
+  do \
+    { \
+      error = code; \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, \
+	      arg1, arg2, arg3, arg4); \
+    } \
+  while (0)
 
 /*
  * custom assert macro for release mode
  */
 #if defined(NDEBUG)
 #define STRINGIZE(s) #s
-#define assert_release(e)						\
-  ((void) ((e) ? 0 : (er_set(ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,	\
-                             ER_FAILED_ASSERTION, 1,			\
-                             STRINGIZE(e)))))
+#define assert_release(e) \
+  ((void) ((e) ? 0 \
+               : (er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, \
+                          ER_FAILED_ASSERTION, 1, \
+                          STRINGIZE(e)))))
 #else
 #define assert_release(e) assert(e)
 #endif
@@ -120,23 +139,23 @@ typedef enum er_final_code
 
 typedef void (*PTR_FNERLOG) (int err_id);
 
-#define ER_IS_LOCK_TIMEOUT_ERROR(err)                            \
-           ((err) == ER_LK_UNILATERALLY_ABORTED                  \
-            || (err) == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG          \
-            || (err) == ER_LK_OBJECT_TIMEOUT_CLASS_MSG           \
-            || (err) == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG         \
-            || (err) == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG       \
-            || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG        \
-            || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)
+#define ER_IS_LOCK_TIMEOUT_ERROR(err) \
+  ((err) == ER_LK_UNILATERALLY_ABORTED \
+   || (err) == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG \
+   || (err) == ER_LK_OBJECT_TIMEOUT_CLASS_MSG \
+   || (err) == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG \
+   || (err) == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG \
+   || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG \
+   || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)
 
-#define ER_IS_ABORTED_DUE_TO_DEADLOCK(err)                       \
-           ((err) == ER_LK_UNILATERALLY_ABORTED)
+#define ER_IS_ABORTED_DUE_TO_DEADLOCK(err) \
+  ((err) == ER_LK_UNILATERALLY_ABORTED)
 
-#define ER_IS_SERVER_DOWN_ERROR(err)                            \
-           ((err) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED     \
-            || (err) == ER_NET_SERVER_CRASHED                   \
-            || (err) == ER_OBJ_NO_CONNECT                       \
-            || (err) == ER_BO_CONNECT_FAILED)
+#define ER_IS_SERVER_DOWN_ERROR(err) \
+  ((err) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED \
+   || (err) == ER_NET_SERVER_CRASHED \
+   || (err) == ER_OBJ_NO_CONNECT \
+   || (err) == ER_BO_CONNECT_FAILED)
 
 /* Macros to assert that error is set. */
 #define ASSERT_ERROR() \
