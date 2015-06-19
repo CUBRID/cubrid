@@ -454,6 +454,18 @@ xboot_find_last_permanent (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * xboot_peek_last_permanent () - peek the volid of last permanent volume
+ * 
+ * return : volid of last permanent volume
+ * NOTE: This function does NOT hold CSECT_BOOT_SR_DBPARM.
+ */
+VOLID
+xboot_peek_last_permanent (THREAD_ENTRY * thread_p)
+{
+  return boot_Db_parm->last_volid;
+}
+
+/*
  * xboot_find_last_temp () - find the volid of next temporary volume
  *
  * return : volid of next temporary volume

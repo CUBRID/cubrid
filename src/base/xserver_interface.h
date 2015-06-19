@@ -84,6 +84,7 @@ extern int xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
 extern int xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p);
 extern int xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p);
 extern VOLID xboot_find_last_permanent (THREAD_ENTRY * thread_p);
+extern VOLID xboot_peek_last_permanent (THREAD_ENTRY * thread_p);
 extern VOLID xboot_find_last_temp (THREAD_ENTRY * thread_p);
 
 extern LC_FIND_CLASSNAME xlocator_reserve_class_names (THREAD_ENTRY *
