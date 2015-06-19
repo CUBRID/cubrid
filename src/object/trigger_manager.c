@@ -1642,29 +1642,36 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
       if (activity->statement == NULL
 	  || pt_has_error ((PARSER_CONTEXT *) activity->parser))
 	{
-	  err = pt_get_errors ((PARSER_CONTEXT *) activity->parser);
-	  if (err == NULL)
+	  error = er_errid ();
+	  /* Do not overwrite UNILATERALLY ABORTED error */
+	  if (!ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
 	    {
-	      /* missing compiler error list */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_INTERNAL_ERROR,
-		      1, trigger->name);
-	    }
-	  else
-	    {
-	      error = ER_EMERGENCY_ERROR;
-	      while (err != NULL)
+	      err = pt_get_errors ((PARSER_CONTEXT *) activity->parser);
+	      if (err == NULL)
 		{
-		  err = pt_get_next_error (err, &stmt, &line, &column, &msg);
-		  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-			  msg);
+		  /* missing compiler error list */
+		  error = ER_TR_INTERNAL_ERROR;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+			  trigger->name);
 		}
+	      else
+		{
+		  error = ER_EMERGENCY_ERROR;
+		  while (err != NULL)
+		    {
+		      err =
+			pt_get_next_error (err, &stmt, &line, &column, &msg);
+		      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, error,
+			      1, msg);
+		    }
 
-	      /* package up the last error into a general trigger error */
-	      error =
-		(with_evaluate) ? ER_TR_CONDITION_COMPILE :
-		ER_TR_ACTION_COMPILE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-		      trigger->name, msg);
+		  /* package up the last error into a general trigger error */
+		  error =
+		    (with_evaluate) ? ER_TR_CONDITION_COMPILE :
+		    ER_TR_ACTION_COMPILE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			  trigger->name, msg);
+		}
 	    }
 
 	  /*
@@ -1774,11 +1781,21 @@ validate_trigger (TR_TRIGGER * trigger)
       if (compile_trigger_activity (trigger, trigger->condition, 1))
 	{
 	  trigger->status = TR_STATUS_INVALID;
+	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
+	    {
+	      /* UNILATERALLY ABORTED error must be returned */
+	      return er_errid ();
+	    }
 	}
 
       if (compile_trigger_activity (trigger, trigger->action, 0))
 	{
 	  trigger->status = TR_STATUS_INVALID;
+	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
+	    {
+	      /* UNILATERALLY ABORTED error must be returned */
+	      return er_errid ();
+	    }
 	}
 
     }
@@ -2672,6 +2689,11 @@ tr_validate_schema_cache (TR_SCHEMA_CACHE * cache, MOP class_mop)
 		      /* we got some kind of severe error, abort */
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
+		      if (ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+			{
+			  /* UNILATERALLY ABORTED error must be returned */
+			  return error;
+			}
 		    }
 		  else
 		    {
