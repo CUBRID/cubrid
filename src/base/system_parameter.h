@@ -361,6 +361,7 @@ enum param_id
   PRM_ID_VACUUM_WORKER_COUNT,
   PRM_ID_ER_LOG_VACUUM,
   PRM_ID_DISABLE_VACUUM,
+  PRM_ID_SA_MODE_AUTO_VACUUM,
 
   /* Debugging system parameter */
   PRM_ID_LOG_BTREE_OPS,

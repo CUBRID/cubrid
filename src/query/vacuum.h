@@ -309,6 +309,8 @@ extern void vacuum_rv_redo_start_or_end_job_dump (FILE * fp, int length,
 						  void *data);
 extern int vacuum_rv_redo_save_blocks (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
+extern int vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p,
+					   LOG_RCV * rcv);
 
 extern int vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 						  bool

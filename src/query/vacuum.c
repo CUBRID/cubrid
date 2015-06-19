@@ -34,6 +34,7 @@
 #include "lock_free.h"
 #include "perf_monitor.h"
 #include "dbtype.h"
+#include "transaction_cl.h"
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -591,7 +592,8 @@ static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
 static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
 static int vacuum_process_log_block (THREAD_ENTRY * thread_p,
 				     VACUUM_DATA_ENTRY * block_data,
-				     BLOCK_LOG_BUFFER * block_log_buffer);
+				     BLOCK_LOG_BUFFER * block_log_buffer,
+				     bool sa_mode_partial_block);
 static void vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p,
 					  VACUUM_DATA_ENTRY * block_data,
 					  bool is_vacuum_complete);
@@ -707,22 +709,33 @@ xvacuum (THREAD_ENTRY * thread_p)
   error_code = ER_VACUUM_CS_NOT_AVAILABLE;
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_CS_NOT_AVAILABLE, 0);
   return error_code;
-#elif defined (SA_MODE)
+#else	/* !SERVER_MODE */		   /* SA_MODE */
 
+  if (vacuum_Data->n_table_entries == 0
+      && LSA_ISNULL (&vacuum_Data->first_blocks_to_recover)
+      && LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer)
+      && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
+    {
+      /* Nothing to vacuum. */
+      return;
+    }
+
+  assert (vacuum_Assigned_workers_count <= 1);
   VACUUM_CONVERT_THREAD_TO_VACUUM_WORKER (thread_p, &vacuum_Workers[0],
 					  dummy_save_type);
-  do
+  if (vacuum_Assigned_workers_count == 0)
     {
-      vacuum_process_vacuum_data (thread_p);
+      /* Assign worker and allocate required resources. */
+      vacuum_assign_worker (thread_p);
     }
-  while (vacuum_Data->n_table_entries > 0);
+
+  /* Process vacuum data and run vacuum . */
+  vacuum_process_vacuum_data (thread_p);
 
   VACUUM_RESTORE_THREAD (thread_p, dummy_save_type);
 
   return error_code;
-#else
-  return error_code;
-#endif
+#endif /* SA_MODE */
 }
 
 /*
@@ -2647,27 +2660,38 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   int n_jobs;
   int new_created_jobs;
   INT64 vacuum_block_data_buffer_aprox_size;
-#else
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   VACUUM_DATA_ENTRY vacuum_data_entry;
-#endif
+  bool save_check_interrupt;
+#endif /* SA_MODE */
 
   vacuum_Global_oldest_active_mvccid =
     logtb_get_oldest_active_mvccid (thread_p);
 
   if (vacuum_Data == NULL
       || (vacuum_Data->n_table_entries <= 0
-	  && LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer)))
+	  && LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer)
+	  && LSA_ISNULL (&vacuum_Data->first_blocks_to_recover)))
     {
       /* Vacuum data was not loaded yet from disk or it doesn't have any
        * entries.
        */
+#if defined (SA_MODE)
+      goto finish_sa_mode;
+#else	/* !SA_MODE */	       /* SERVER_MODE */
       return;
+#endif /* SERVER_MODE */
     }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       return;
     }
+
+#if defined (SA_MODE)
+  /* Restart if we have to recover blocks from log. */
+restart:
+#endif
 
   /* Lock vacuum data */
   VACUUM_LOCK_DATA ();
@@ -2715,6 +2739,19 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
        * on next iteration.
        */
       VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry);
+      if (!VACUUM_BLOCK_IS_INTERRUPTED (entry))
+	{
+	  /* Log that a new job is starting. After recovery, the system will
+	   * then know this job was partially executed. Logging the start of a
+	   * job already interrupted is not necessary.
+	   * We do it here rather than when vacuum job is really started to
+	   * avoid locking vacuum data again (logging vacuum data cannot be
+	   * done without locking).
+	   */
+	  log_append_redo_data2 (thread_p, RVVAC_START_OR_END_JOB, NULL, NULL,
+				 0, sizeof (entry->blockid), &entry->blockid);
+	}
+
 #if defined (SERVER_MODE)
       vacuum_job_entry.vacuum_data_entry = *entry;
 
@@ -2779,27 +2816,137 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 #else
       vacuum_data_entry = *entry;
       error_code =
-	vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return;
-	}
+	vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
+      assert (error_code == NO_ERROR);
 #endif
     }
+
+#if defined (SA_MODE)
+  if (!LSA_ISNULL (&vacuum_Data->last_blocks_to_recover))
+    {
+      /* Not all vacuum data was processed. We must recover blocks from log
+       * and execute vacuum again. It is unlikely (and extremely unwanted)
+       * to reach this, but it is important to handle it.
+       */
+      goto restart;
+    }
+
+  assert (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer));
+
+  /* Remove vacuumed entries */
+  vacuum_data_remove_finished_entries (thread_p);
+  /* Update oldest MVCCID */
+  vacuum_update_oldest_mvccid (thread_p);
+
+  assert (vacuum_Data->n_table_entries == 0);
+
+finish_sa_mode:
+
+  /* We don't want to interrupt next operation. */
+  save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+
+  /* Can we generate another block on information cached in log header? */
+  if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid)
+      > vacuum_Data->last_blockid)
+    {
+      /* Execute vacuum based on the block not generated yet. */
+
+      /* Create vacuum data entry for the job. */
+      vacuum_data_entry.blockid =
+	vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
+      LSA_COPY (&vacuum_data_entry.start_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
+      vacuum_data_entry.oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
+      vacuum_data_entry.newest_mvccid = log_Gl.hdr.last_block_newest_mvccid;
+      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (&vacuum_data_entry);
+
+      /* Update vacuum_Data as if it would contain only this entry.
+       * Do not update last_blockid since it may be generated again.
+       */
+      vacuum_Data->oldest_mvccid = vacuum_data_entry.oldest_mvccid;
+      vacuum_Data->newest_mvccid = vacuum_data_entry.newest_mvccid;
+      vacuum_Data->n_table_entries = 1;
+      vacuum_Data->vacuum_data_table[0] = vacuum_data_entry;
+
+      /* We do not log here. We could have a problem if the server crashes,
+       * because same vacuum tasks may be re-executed. The worst that can
+       * happen is to hit an assert in debug mode.
+       * Instead of doing a voodoo fix here, it is better to live with the
+       * bug.
+       */
+
+      /* Execute vacuum. */
+      (void) vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL,
+				       true);
+    }
+
+  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+
+  /* All vacuum complete. */
+  vacuum_Data->n_table_entries = 0;
+  vacuum_Data->oldest_mvccid = log_Gl.hdr.mvcc_next_id;
+  vacuum_Data->newest_mvccid = log_Gl.hdr.mvcc_next_id;
+  assert (vacuum_Data->n_blocks_to_recover == 0);
+  assert (LSA_ISNULL (&vacuum_Data->first_blocks_to_recover));
+
+  log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, NULL, 0,
+			 sizeof (log_Gl.hdr.mvcc_next_id),
+			 &log_Gl.hdr.mvcc_next_id);
+  logpb_flush_pages_direct (thread_p);
+
+  /* Reset log header information saved for vacuum. */
+  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
+  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
+  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+#endif
+}
+
+/*
+ * vacuum_rv_redo_vacuum_complete () - Redo recovery of vacuum complete.
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  MVCCID oldest_newest_mvccid = MVCCID_NULL;
+
+  assert (rcv->data != NULL && rcv->length == sizeof (MVCCID));
+
+  oldest_newest_mvccid = *((MVCCID *) rcv->data);
+
+  /* All vacuum complete. */
+  vacuum_Data->n_table_entries = 0;
+  vacuum_Data->oldest_mvccid = oldest_newest_mvccid;
+  vacuum_Data->newest_mvccid = oldest_newest_mvccid;
+  assert (vacuum_Data->n_blocks_to_recover == 0);
+  assert (LSA_ISNULL (&vacuum_Data->first_blocks_to_recover));
+
+  /* Reset log header information saved for vacuum. */
+  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
+  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
+  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+
+  return NO_ERROR;
 }
 
 /*
  * vacuum_process_log_block () - Vacuum heap and b-tree entries using log
  *				 information found in a block of pages.
  *
- * return	   : Error code.
- * thread_p (in)   : Thread entry.
- * data (in) : Block data.
- * block_log_buffer (in) : Block log page buffer identifier
+ * return		      : Error code.
+ * thread_p (in)	      : Thread entry.
+ * data (in)		      : Block data.
+ * block_log_buffer (in)      : Block log page buffer identifier
+ * sa_mode_partial_block (in) : True when SA_MODE vacuum based on partial
+ *				block information from log header.
+ *				Logging is skipped if true.
  */
 static int
 vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
-			  BLOCK_LOG_BUFFER * block_log_buffer)
+			  BLOCK_LOG_BUFFER * block_log_buffer,
+			  bool sa_mode_partial_block)
 {
   VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
   LOG_LSA log_lsa;
@@ -2878,24 +3025,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   worker->n_heap_objects = 0;
 
   was_interrupted = VACUUM_BLOCK_IS_INTERRUPTED (data);
-  if (!was_interrupted)
-    {
-      /* Log that a new job is starting. After recovery, the system will then
-       * know this job was partially executed. Logging the start of a job
-       * already interrupted is not necessary.
-       */
-      /* TODO: I think this can be done in an unsynchronized way. Since we
-       *       we don't need to be utterly precise when a job is started,
-       *       we may just change vacuum_set_vacuum_data_lsa handle this
-       *       case (set only LSA that increment vacuum_Data->crt_lsa).
-       *       However, to be on the safe side, it is preferable to lock
-       *       vacuum data.
-       */
-      VACUUM_LOCK_DATA ();
-      log_append_redo_data2 (thread_p, RVVAC_START_OR_END_JOB, NULL, NULL, 0,
-			     sizeof (data->blockid), &data->blockid);
-      VACUUM_UNLOCK_DATA ();
-    }
 
   /* Follow the linked records starting with start_lsa */
   for (LSA_COPY (&log_lsa, &VACUUM_DATA_ENTRY_START_LSA (data));
@@ -3211,11 +3340,14 @@ end:
 #endif /* SERVER_MODE */
 
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
-  /* TODO: Check that if start_lsa can be set to a different value when
-   *       vacuum is not complete, to avoid processing the same log data
-   *       again.
-   */
-  vacuum_finished_block_vacuum (thread_p, data, vacuum_complete);
+  if (!sa_mode_partial_block)
+    {
+      /* TODO: Check that if start_lsa can be set to a different value when
+       *       vacuum is not complete, to avoid processing the same log data
+       *       again.
+       */
+      vacuum_finished_block_vacuum (thread_p, data, vacuum_complete);
+    }
 
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
@@ -3260,7 +3392,7 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
-  /* Allocate page buffer */
+  /* Allocate heap objects buffer */
   worker->heap_objects_capacity = VACUUM_DEFAULT_HEAP_OBJECT_BUFFER_SIZE;
   worker->heap_objects =
     (VACUUM_HEAP_OBJECT *)
@@ -3493,7 +3625,8 @@ vacuum_start_new_job (THREAD_ENTRY * thread_p)
 
       /* Run vacuum */
       (void) vacuum_process_log_block (thread_p, entry,
-				       &vacuum_job_entry.block_log_buffer);
+				       &vacuum_job_entry.block_log_buffer,
+				       false);
     }
 
   /* Decrement running workers */

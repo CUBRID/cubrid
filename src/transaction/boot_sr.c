@@ -3991,6 +3991,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       goto error;
     }
 
+#if defined (SA_MODE)
+  if (prm_get_bool_value (PRM_ID_SA_MODE_AUTO_VACUUM))
+    {
+      /* Completely vacuum database. */
+      xvacuum (thread_p);
+    }
+#endif
+
   /* read only mode ? */
   if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE))
     {

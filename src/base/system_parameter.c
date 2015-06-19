@@ -580,6 +580,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DISABLE_VACUUM "vacuum_disable"
 
+#define PRM_NAME_SA_MODE_AUTO_VACUUM "sa_mode_auto_vacuum"
+
 #define PRM_NAME_ER_LOG_VACUUM "er_log_vacuum"
 
 #define PRM_NAME_LOG_BTREE_OPS "log_btree_operations"
@@ -1948,6 +1950,10 @@ static unsigned int prm_er_log_vacuum_flag = 0;
 bool PRM_DISABLE_VACUUM = false;
 static bool prm_disable_vacuum_default = false;
 static unsigned int prm_disable_vacuum_flag = 0;
+
+bool PRM_SA_MODE_AUTO_VACUUM = true;
+static bool prm_sa_mode_auto_vacuum_default = true;
+static unsigned int prm_sa_mode_auto_vacuum_flag = 0;
 
 bool PRM_LOG_BTREE_OPS = false;
 static bool prm_log_btree_ops_default = false;
@@ -4705,6 +4711,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_disable_vacuum_flag,
    (void *) &prm_disable_vacuum_default,
    (void *) &PRM_DISABLE_VACUUM,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_SA_MODE_AUTO_VACUUM,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   (void *) &prm_sa_mode_auto_vacuum_flag,
+   (void *) &prm_sa_mode_auto_vacuum_default,
+   (void *) &PRM_SA_MODE_AUTO_VACUUM,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,

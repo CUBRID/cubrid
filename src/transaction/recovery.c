@@ -936,6 +936,12 @@ struct rvfun RV_fun[] = {
    "RVFL_FHDR_UPDATE_NUM_USER_PAGES",
    file_rv_fhdr_undoredo_update_num_user_pages,
    file_rv_fhdr_undoredo_update_num_user_pages,
+   NULL, NULL},
+
+  {RVVAC_COMPLETE,
+   "RVVAC_COMPLETE",
+   NULL,
+   vacuum_rv_redo_vacuum_complete,
    NULL, NULL}
 };
 
