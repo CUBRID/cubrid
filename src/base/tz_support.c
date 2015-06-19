@@ -80,6 +80,7 @@ struct tz_decode_info
 #define TZ_INVALID_OFFSET ((((23 * 60) + 59) * 60) + 59)
 #define TZ_MIN_OFFSET -12 * 3600
 #define TZ_MAX_OFFSET 14 * 3600
+#define MILLIS_IN_A_DAY (long)(86400000)	/* 24L * 60L * 60L * 1000 */
 
 static int tz_initialized = 0;
 
@@ -2979,6 +2980,12 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
       goto exit;
     }
 
+  if ((src_dt->time < 0) || (src_dt->time > MILLIS_IN_A_DAY))
+    {
+      err_status = ER_TIME_CONVERSION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+      goto exit;
+    }
   /* start decoding zone , GMT offset id, DST id */
   assert ((int) tz_info->zone.zone_id < tzd->timezone_count);
   timezone = &(tzd->timezones[tz_info->zone.zone_id]);
