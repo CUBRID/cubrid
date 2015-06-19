@@ -213,8 +213,6 @@ static LIST_MOPS *locator_fun_get_all_mops (MOP class_mop,
 static int locator_internal_flush_instance (MOP inst_mop, bool decache);
 
 static int locator_add_to_oidset_when_temp_oid (MOP mop, void *data);
-static LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name,
-						     OID * class_oid);
 
 static bool locator_can_skip_fetch_from_server (MOP mop, LOCK * lock,
 						LC_FETCH_VERSION_TYPE
@@ -4399,7 +4397,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	}
 
       /* Force the flushing area */
-      content_size = CAST_BUFLEN (mflush->recdes.data - mflush->copy_area->mem);
+      content_size =
+	CAST_BUFLEN (mflush->recdes.data - mflush->copy_area->mem);
       assert (content_size >= 0);
       error_code =
 	locator_force (mflush->copy_area, ws_Error_ignore_count,
@@ -6065,7 +6064,6 @@ locator_add_class (MOBJ class_obj, const char *classname)
 				 * class
 				 */
   MOP class_mop;		/* The Mop of the newly created class */
-  LC_FIND_CLASSNAME reserved;
   LOCK lock;
 
   if (classname == NULL)
@@ -6095,35 +6093,15 @@ locator_add_class (MOBJ class_obj, const char *classname)
     }
 
   /*
-   * Assign a temporarily OID. If the assigned OID is NULL, we need to flush to
-   * recycle the temporarily OIDs.
+   * Class name should be already reserved, and server generated a pseudo-oid
+   * for it. Get the OID.
    */
 
-  OID_ASSIGN_TEMPOID (&class_temp_oid);
-  if (OID_ISNULL (&class_temp_oid))
+  if (locator_get_reserved_class_name_oid (classname, &class_temp_oid)
+      != NO_ERROR)
     {
-      if (locator_all_flush () != NO_ERROR)
-	{
-	  return NULL;
-	}
-
-      OID_INIT_TEMPID ();
-      OID_ASSIGN_TEMPOID (&class_temp_oid);
-    }
-
-  /* Reserve the name for the class */
-
-  reserved = locator_reserve_class_name (classname, &class_temp_oid);
-  if (reserved != LC_CLASSNAME_RESERVED)
-    {
-      if (reserved == LC_CLASSNAME_EXIST)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST, 1,
-		  classname);
-	}
       return NULL;
     }
-
 
   /*
    * SCH_M_LOCK and IX_LOCK locks were indirectly acquired on the newly

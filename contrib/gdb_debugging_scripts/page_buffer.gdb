@@ -14,14 +14,58 @@ define pgbuf_print_holders
     if pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list != 0
       print $i
       print pgbuf_Pool.thrd_holder_info[$i]
-    end
+      set $phold = pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list
+      while $phold != 0
+        p $phold->bufptr->vpid
+        set $phold = $phold->thrd_link
+        end
+      end
     set $i=$i+1
+    end
   end
-end
+
+# pgbuf_print_holders_and_waiters
+# No arguments -
+#
+# Print all holders and waiters based on pgbuf_Pool.thrd_holder_info.
+#
+# Should help building a graph with thread dependencies (based on who waits for whom)
+# and finding dead-latch cycles.
+#
+# NOTE: Information here should be completed with waiters that timedout.
+#       They are removed from waiting lists but should be found by consulting the
+#       server log files (error -836).
+#       Careful some may still be missing and can only be found by consulting thread
+#       callstacks (thread can be in pgbuf_timed_sleep_error_handling or in
+#       pgbuf_timed_sleep right after er_set_return label).
+#
+define pgbuf_print_holders_and_waiters
+  set $i = 0
+  while $i < thread_Manager.num_total
+    if pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list != 0
+      printf "Holder: %d.\n", $i
+      set $phold = pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list
+      while $phold != 0
+        printf "Waiters for %d|%d: ", $phold->bufptr->vpid.volid, $phold->bufptr->vpid.pageid
+        set $buf = $phold->bufptr
+        set $thr = $buf->next_wait_thrd
+        while $thr != 0
+          printf "%d ", $thr->index
+          set $thr = $thr->next_wait_thrd
+          end
+        printf "\n"
+        set $phold = $phold->thrd_link
+        end
+      printf "\n"
+      end
+    set $i=$i+1
+    end
+  end
 
 
 # pgbuf_print_page_holders
-# $arg0 (in) : VPID *
+# $arg0 (in) : VOLID
+# $arg1 (in) : PAGEID
 #
 # Prints all holder of the give page.
 #
@@ -31,16 +75,16 @@ define find_page_holders
     if pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list != 0
       set $th = pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list
       while $th != 0
-        if $th->bufptr->vpid.pageid == $arg0->pageid && $th->bufptr->vpid.volid == $arg0->volid
+        if $th->bufptr->vpid.pageid == $arg1 && $th->bufptr->vpid.volid == $arg0
           print $i
           print pgbuf_Pool.thrd_holder_info[$i]
-        end
+          end
         set $th = $th->thrd_link
+        end
       end
-    end
     set $i=$i+1
+    end
   end
-end
 
 
 # pgbuf_get_vpid

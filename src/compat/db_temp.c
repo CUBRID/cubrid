@@ -56,6 +56,8 @@
 
 #define ATTR_RENAME_SAVEPOINT          "aTTrNAMeSAVE"
 
+static DB_CTMPL *dbt_reserve_name (DB_CTMPL * def, const char *name);
+
 /*
  * SCHEMA TEMPLATES
  */
@@ -80,6 +82,11 @@ dbt_create_class (const char *name)
 
   def = smt_def_class (name);
 
+  if (def != NULL)
+    {
+      def = dbt_reserve_name (def, name);
+    }
+
   return (def);
 }
 
@@ -102,6 +109,11 @@ dbt_create_vclass (const char *name)
   CHECK_MODIFICATION_NULL ();
 
   def = smt_def_typed_class (name, SM_VCLASS_CT);
+
+  if (def != NULL)
+    {
+      def = dbt_reserve_name (def, name);
+    }
 
   return (def);
 }
@@ -155,9 +167,47 @@ dbt_copy_class (const char *new_name, const char *existing_name,
 
   def = smt_copy_class (new_name, existing_name, class_);
 
+  if (def != NULL)
+    {
+      def = dbt_reserve_name (def, new_name);
+    }
+
   return (def);
 }
 
+/*
+ * dbt_reserve_name () - Reserve new class or view name.
+ *
+ * return    : Class template.
+ * def (in)  : Class template.
+ * name (in) : Class name.
+ */
+static DB_CTMPL *
+dbt_reserve_name (DB_CTMPL * def, const char *name)
+{
+  LC_FIND_CLASSNAME reserved;
+  OID class_oid = OID_INITIALIZER;
+
+  assert (def != NULL);
+  assert (name != NULL);
+
+  reserved = locator_reserve_class_name (def->name, &class_oid);
+  if (reserved != LC_CLASSNAME_RESERVED)
+    {
+      if (reserved == LC_CLASSNAME_EXIST)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST,
+		  1, name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+      smt_quit (def);
+      return NULL;
+    }
+  return def;
+}
 
 /*
  * dbt_finish_class() - This function applies a class template. If the template

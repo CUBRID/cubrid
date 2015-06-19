@@ -104,6 +104,8 @@ extern LC_FIND_CLASSNAME locator_reserve_class_names (const int num_classes,
 						      const char
 						      **class_names,
 						      OID * class_oids);
+extern int locator_get_reserved_class_name_oid (const char *classname,
+						OID * class_oid);
 extern LC_FIND_CLASSNAME locator_delete_class_name (const char *class_name);
 extern LC_FIND_CLASSNAME locator_rename_class_name (const char *old_name,
 						    const char *new_name,

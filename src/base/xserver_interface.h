@@ -90,13 +90,16 @@ extern LC_FIND_CLASSNAME xlocator_reserve_class_names (THREAD_ENTRY *
 						       thread_p,
 						       const int num_classes,
 						       const char **classname,
-						       const OID * class_oid);
+						       OID * class_oid);
+extern int xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p,
+						 const char *classname,
+						 OID * class_oid);
 extern LC_FIND_CLASSNAME xlocator_delete_class_name (THREAD_ENTRY * thread_p,
 						     const char *classname);
 extern LC_FIND_CLASSNAME xlocator_rename_class_name (THREAD_ENTRY * thread_p,
 						     const char *oldname,
 						     const char *newname,
-						     const OID * class_oid);
+						     OID * class_oid);
 extern LC_FIND_CLASSNAME xlocator_find_class_oid (THREAD_ENTRY * thread_p,
 						  const char *classname,
 						  OID * class_oid, LOCK lock);

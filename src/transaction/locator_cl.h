@@ -155,4 +155,7 @@ extern int locator_decache_all_lock_instances (MOP class_mop);
 extern int locator_get_append_lsa (LOG_LSA * lsa);
 extern int locator_flush_replication_info (REPL_INFO * repl_info);
 
+extern LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name,
+						     OID * class_oid);
+
 #endif /* _LOCATOR_CL_H_ */

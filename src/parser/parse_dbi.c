@@ -1919,22 +1919,27 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 	  const char *name;
 
 	  name = dt->info.data_type.entity->info.name.original;
-	  class_obj = db_find_class (name);
+	  assert (name != NULL);
 
-	  /* If the attribute domain is the name of the class being created,
-	     indicate with a -1. */
-	  if (class_obj == NULL)
+	  if (class_name != NULL
+	      && intl_identifier_casecmp (name, class_name) == 0)
 	    {
-	      if (class_name != NULL && name != NULL
-		  && intl_identifier_casecmp (name, class_name) != 0)
-		{
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-			  ER_SM_DOMAIN_NOT_A_CLASS, 1,
-			  dt->info.data_type.entity->info.name.original);
-		  return NULL;
-		}
+	      /* If the attribute domain is the name of the class being
+	       * created, indicate with a -1.
+	       */
 	      class_obj = (DB_OBJECT *) TP_DOMAIN_SELF_REF;
 	    }
+	  else
+	    {
+	      class_obj = db_find_class (name);
+	      if (class_obj == NULL)
+		{
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			  ER_SM_DOMAIN_NOT_A_CLASS, 1, name);
+		  return NULL;
+		}
+	    }
+	  assert (class_obj != NULL);
 	}
       break;
 

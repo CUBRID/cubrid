@@ -1559,6 +1559,45 @@ slocator_reserve_classnames (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * slocator_get_reserved_class_name_oid () - Send to client whether class name was
+ *					reserved by it.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * rid (in)      : ??
+ * request (in)  : Request data.
+ * reqlen (in)   : Request.
+ */
+void
+slocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p,
+				      unsigned int rid, char *request,
+				      int reqlen)
+{
+  char *classname;
+  OID class_oid = OID_INITIALIZER;
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+
+  (void) or_unpack_string_nocopy (request, &classname);
+
+  error =
+    xlocator_get_reserved_class_name_oid (thread_p, classname, &class_oid);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return_error_to_client (thread_p, rid);
+    }
+  else
+    {
+      assert (!OID_ISNULL (&class_oid));
+    }
+  (void) or_pack_oid (reply, &class_oid);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * slocator_delete_class_name -
  *
  * return:

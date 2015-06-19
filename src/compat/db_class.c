@@ -74,6 +74,7 @@ db_create_class (const char *name)
 {
   SM_TEMPLATE *def;
   MOP class_;
+  OID class_oid = OID_INITIALIZER;
 
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (name);
@@ -83,6 +84,15 @@ db_create_class (const char *name)
   def = smt_def_class (name);
   if (def != NULL)
     {
+      /* Reserve class name. We don't expect failures. */
+      if (locator_reserve_class_name (def->name, &class_oid)
+	  != LC_CLASSNAME_RESERVED)
+	{
+	  assert_release (false);
+	  smt_quit (def);
+	  return NULL;
+	}
+
       if (sm_update_class (def, &class_) != NO_ERROR)
 	{
 	  smt_quit (def);

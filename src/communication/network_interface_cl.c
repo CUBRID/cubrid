@@ -1160,6 +1160,60 @@ locator_reserve_class_names (const int num_classes, const char **class_names,
 }
 
 /*
+ * locator_get_reserved_class_name_oid () - Get OID of reserved class.
+ *
+ * return	   : Error code.
+ * classname (in)  : Class name.
+ * class_oid (out) : Class OID.
+ */
+int
+locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
+{
+#if defined(CS_MODE)
+  int request_size;
+  int request_error = NO_ERROR;
+  char *request = NULL;
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_reply;
+  char *reply = NULL;
+  int is_reserved = 0;
+
+  assert (classname != NULL);
+  assert (class_oid != NULL);
+
+  OID_SET_NULL (class_oid);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (classname, NULL);
+  request = (char *) malloc (request_size);
+  if (!request)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  (void) pack_const_string (request, classname);
+
+  request_error =
+    net_client_request (NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID, request,
+			request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
+
+  free_and_init (request);
+
+  if (request_error != NO_ERROR)
+    {
+      return request_error;
+    }
+  (void) or_unpack_oid (reply, class_oid);
+  return NO_ERROR;
+
+#else
+  return xlocator_get_reserved_class_name_oid (NULL, classname, class_oid);
+#endif
+}
+
+/*
  * locator_delete_class_name -
  *
  * return:

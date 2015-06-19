@@ -209,7 +209,7 @@ typedef enum
 
   RVHF_PARTITION_LINK_FLAG = 135,
 
-  RVLOC_CLASS_RENAME = 136,
+  RVLOC_CLASSNAME_DUMMY = 136,
 
   RVHF_INSERT_NEWHOME = 137,	/* Same as RVHF_INSERT but no replication */
 

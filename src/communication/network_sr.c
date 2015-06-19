@@ -342,6 +342,11 @@ net_server_init (void)
   req_p->processing_function = slocator_reserve_classnames;
   req_p->name = "NET_SERVER_LC_RESERVE_CLASSNAME";
 
+  req_p = &net_Requests[NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = slocator_get_reserved_class_name_oid;
+  req_p->name = "NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID";
+
   req_p = &net_Requests[NET_SERVER_LC_DELETE_CLASSNAME];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_delete_class_name;

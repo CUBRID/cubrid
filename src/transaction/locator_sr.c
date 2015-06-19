@@ -159,6 +159,11 @@ static MHT_TABLE *locator_Mht_classnames = NULL;
 
 static const HFID NULL_HFID = { {-1, -1}, -1 };
 
+/* Pseudo pageid used to generate pseudo OID for reserved class names. */
+static const INT32 locator_Pseudo_pageid_first = -2;
+static const INT32 locator_Pseudo_pageid_last = -0x7FFF;
+static INT32 locator_Pseudo_pageid_crt = -2;
+
 static int locator_permoid_class_name (THREAD_ENTRY * thread_p,
 				       const char *classname,
 				       const OID * class_oid);
@@ -334,7 +339,7 @@ static bool locator_was_index_already_applied (HEAP_CACHE_ATTRINFO *
 					       int pos);
 static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p,
 						      const char *classname,
-						      const OID * class_oid);
+						      OID * class_oid);
 
 static int locator_filter_errid (THREAD_ENTRY * thread_p,
 				 int num_ignore_error_count,
@@ -367,6 +372,9 @@ static DISK_ISVALID locator_repair_btree_by_delete (THREAD_ENTRY * thread_p,
 						    OID * class_oid,
 						    BTID * btid,
 						    OID * inst_oid);
+
+static void locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p,
+					       OID * class_oid);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -551,11 +559,11 @@ locator_finalize (THREAD_ENTRY * thread_p)
  *
  *   num_classes(in): Number of classes
  *   classnames(in): Names of the classes
- *   class_oids(in): Object identifiers of the classes
+ *   class_oids(in/out): Object identifiers of the classes
  */
 LC_FIND_CLASSNAME
 xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes,
-			      const char **classnames, const OID * class_oids)
+			      const char **classnames, OID * class_oids)
 {
   int i = 0;
   LC_FIND_CLASSNAME result = LC_CLASSNAME_RESERVED;
@@ -588,7 +596,7 @@ xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes,
  *                                  LC_CLASSNAME_ERROR)
  *
  *   classname(in): Name of class
- *   class_oid(in): Object identifier of the class
+ *   class_oid(in/out): Object identifier of the class
  *
  * Note: Reserve the name of a class.
  *              If there is an entry on the memory classname table,
@@ -603,7 +611,7 @@ xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes,
  */
 static LC_FIND_CLASSNAME
 xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname,
-			     const OID * class_oid)
+			     OID * class_oid)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LOCATOR_CLASSNAME_ACTION *old_action;
@@ -694,7 +702,20 @@ start:
 		}
 
 	      entry->e_current.action = LC_CLASSNAME_RESERVED;
+	      if (OID_ISNULL (class_oid))
+		{
+		  locator_generate_class_pseudo_oid (thread_p, class_oid);
+		}
 	      COPY_OID (&entry->e_current.oid, class_oid);
+
+	      /* Add dummy log to make sure we can revert transient state
+	       * change.
+	       * See comment in xlocator_rename_class_name. Since reserve
+	       * has been moved before any change (or flush) is done,
+	       * same scenario can happen here.
+	       */
+	      log_append_redo_data2 (thread_p, RVLOC_CLASSNAME_DUMMY, NULL,
+				     NULL, 0, 0, NULL);
 	    }
 	  else
 	    {
@@ -766,9 +787,21 @@ start:
       entry->e_tran_index = tran_index;
 
       entry->e_current.action = LC_CLASSNAME_RESERVED;
+      if (OID_ISNULL (class_oid))
+	{
+	  locator_generate_class_pseudo_oid (thread_p, class_oid);
+	}
       COPY_OID (&entry->e_current.oid, class_oid);
       LSA_SET_NULL (&entry->e_current.savep_lsa);
       entry->e_current.prev = NULL;
+
+      /* Add dummy log to make sure we can revert transient state change.
+       * See comment in xlocator_rename_class_name. Since reserve has been
+       * moved before any change (or flush) is done, same scenario can happen
+       * here.
+       */
+      log_append_redo_data2 (thread_p, RVLOC_CLASSNAME_DUMMY, NULL, NULL, 0,
+			     0, NULL);
 
       assert (locator_is_exist_class_name_entry (thread_p, entry) == false);
 
@@ -828,6 +861,63 @@ start:
     }
 
   return reserve;
+}
+
+/*
+ * xlocator_get_reserved_class_name_oid () - Is class name reserved by this
+ *					transaction?
+ *
+ * return          : Error code.
+ * thread_p (in)   : Thread entry.
+ * classname (in)  : Class name.
+ * class_oid (out) : Class OID.
+ */
+int
+xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p,
+				      const char *classname, OID * class_oid)
+{
+  int tran_index;
+  LOCATOR_CLASSNAME_ENTRY *entry;
+  bool is_reserved = false;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE,
+			     INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return false;
+    }
+  entry =
+    (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+  if (entry == NULL)
+    {
+      assert (false);
+      goto error;
+    }
+
+  if (entry->e_current.action != LC_CLASSNAME_RESERVED)
+    {
+      assert (false);
+      goto error;
+    }
+
+  if (entry->e_tran_index != tran_index)
+    {
+      assert (false);
+      goto error;
+    }
+
+  COPY_OID (class_oid, &entry->e_current.oid);
+
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
+  return NO_ERROR;
+
+error:
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+  return ER_FAILED;
 }
 
 /*
@@ -1019,15 +1109,15 @@ error:
  *                                  LC_CLASSNAME_EXIST,
  *                                  LC_CLASSNAME_ERROR)
  *
- *   oldname(in): Oldname of class
- *   newname(in): Newname of class
- *   class_oid(in): Object identifier of the class
+ *   oldname(in): Old name of class
+ *   newname(in): New name of class
+ *   class_oid(in/out): Object identifier of the class
  *
  * Note: Rename a class in transient form.
  */
 LC_FIND_CLASSNAME
 xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
-			    const char *newname, const OID * class_oid)
+			    const char *newname, OID * class_oid)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME renamed;
@@ -1085,8 +1175,8 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
 	   * Therefore, the delete action is not removed when alter statement
 	   * is aborted and a new table with the same name may be created.
 	   */
-	  log_append_redo_data2 (thread_p, RVLOC_CLASS_RENAME, NULL, NULL, 0,
-				 0, NULL);
+	  log_append_redo_data2 (thread_p, RVLOC_CLASSNAME_DUMMY, NULL, NULL,
+				 0, 0, NULL);
 	}
       else
 	{
@@ -1970,6 +2060,34 @@ locator_dump_class_names (THREAD_ENTRY * thread_p, FILE * out_fp)
 #if defined(NDEBUG)		/* skip at debug build */
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 #endif
+}
+
+/*
+ * locator_generate_class_pseudo_oid () - Generate a pseudo-OID to be used
+ *					  by reserved class name until a
+ *					  permanent one is provided.
+ *
+ * return : 
+ * thread_p (in) :
+ * class_oid (in) :
+ */
+static void
+locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  assert (csect_check_own (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE) == 1);
+
+  class_oid->volid = -2;
+  class_oid->slotid = -2;
+  class_oid->pageid = locator_Pseudo_pageid_crt;
+
+  if (locator_Pseudo_pageid_crt == locator_Pseudo_pageid_last)
+    {
+      locator_Pseudo_pageid_crt = locator_Pseudo_pageid_first;
+    }
+  else
+    {
+      locator_Pseudo_pageid_crt--;
+    }
 }
 
 /*

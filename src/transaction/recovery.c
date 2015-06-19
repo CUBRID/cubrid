@@ -897,8 +897,8 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL},
 
-  {RVLOC_CLASS_RENAME,
-   "RVLOC_CLASS_RENAME",
+  {RVLOC_CLASSNAME_DUMMY,
+   "RVLOC_CLASSNAME_DUMMY",
    NULL,
    locator_rv_redo_rename,
    NULL,

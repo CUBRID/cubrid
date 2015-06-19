@@ -332,7 +332,8 @@ static int get_att_order_from_def (PT_NODE * attribute, bool * ord_first,
 
 static int get_att_default_from_def (PARSER_CONTEXT * parser,
 				     PT_NODE * attribute,
-				     DB_VALUE ** default_value);
+				     DB_VALUE ** default_value,
+				     const char *classname);
 
 static int do_update_new_notnull_cols_without_default (PARSER_CONTEXT *
 						       parser,
@@ -7395,7 +7396,9 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     }
 
   assert (default_value == &stack_value);
-  error = get_att_default_from_def (parser, attribute, &default_value);
+  error =
+    get_att_default_from_def (parser, attribute, &default_value,
+			      ctemplate->name);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -10784,7 +10787,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 
   /* default value: for CLASS and SHARED attributes this changes the value
    * itself of the atribute*/
-  error = get_att_default_from_def (parser, attribute, &default_value);
+  error = get_att_default_from_def (parser, attribute, &default_value, NULL);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -13316,39 +13319,120 @@ get_att_order_from_def (PT_NODE * attribute, bool * ord_first,
  *			   as NULL if a DEFAULT is not specified for the
  *			   attribute, otherwise the DEFAULT value is returned
  *			   (the initially passed value is used for storage)
+ *  classname(in): If part of create class statement, this argument will be
+ *		   the name of the class. We want to avoid fetching it since
+ *		   it doesn't exist yet.
  *
  */
 static int
 get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
-			  DB_VALUE ** default_value)
+			  DB_VALUE ** default_value, const char *classname)
 {
   int error = NO_ERROR;
+  PT_NODE *def_val = NULL;
+  DB_DEFAULT_EXPR_TYPE def_expr;
+  PT_TYPE_ENUM desired_type = attribute->type_enum;
+  bool has_self_ref = false;
 
   assert (attribute->node_type == PT_ATTR_DEF);
 
   if (attribute->info.attr_def.data_default == NULL)
     {
       *default_value = NULL;
+      return NO_ERROR;
     }
-  else
-    {
-      PT_NODE *def_val = NULL;
-      DB_DEFAULT_EXPR_TYPE def_expr;
-      PT_TYPE_ENUM desired_type = attribute->type_enum;
 
-      def_expr = attribute->info.attr_def.data_default->info.data_default.
-	default_expr;
-      /* try to coerce the default value into the attribute's type */
-      def_val =
-	attribute->info.attr_def.data_default->info.data_default.
-	default_value;
-      def_val = pt_semantic_check (parser, def_val);
-      if (pt_has_error (parser) || def_val == NULL)
+  def_expr =
+    attribute->info.attr_def.data_default->info.data_default.default_expr;
+  def_val =
+    attribute->info.attr_def.data_default->info.data_default.default_value;
+  def_val = pt_semantic_check (parser, def_val);
+  if (pt_has_error (parser) || def_val == NULL)
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      return er_errid ();
+    }
+
+  if (classname != NULL && attribute->data_type != NULL)
+    {
+      PT_NODE *dt = NULL;
+
+      for (dt = attribute->data_type; dt != NULL; dt = dt->next)
 	{
+	  if (dt->info.data_type.entity != NULL
+	      && dt->info.data_type.entity->node_type == PT_NAME
+	      && intl_identifier_casecmp (dt->info.data_type.entity->
+					  info.name.original, classname) == 0)
+	    {
+	      has_self_ref = true;
+	      break;
+	    }
+	}
+    }
+
+  if (has_self_ref)
+    {
+      /* We are creating a new class, and expected domain of default value
+       * has a self reference. Class cannot be resolved yet, since it doesn't
+       * exist. It is only reserved and it has a temporary OID.
+       * Thus, we need to handle it here and avoid fetching the object
+       * (which will hit assert due to temporary OID).
+       *
+       * We can only accept a NULL default value, or if the expected type is
+       * a collection (that contains self references too), we can only accept
+       * an empty set.
+       */
+      DB_VALUE *value;
+
+      if (desired_type != PT_TYPE_OBJECT
+	  && !PT_IS_COLLECTION_TYPE (desired_type))
+	{
+	  /* Should we even be here? */
+	  PT_INTERNAL_ERROR (parser,
+			     "Self referencing attribute unexpected type.");
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
 	  return er_errid ();
 	}
+      /* Desired type either PT_TYPE_OBJECT or collection type. */
 
+      /* We allow default value if:
+       * 1. Not a default expression.
+       * 2. Value is NULL or value is empty set and collection type is
+       *    expected.
+       */
+      value = &def_val->info.value.db_value;
+      if (def_expr == DB_DEFAULT_NONE
+	  && (db_value_is_null (value)
+	      || (desired_type != PT_TYPE_OBJECT
+		  && TP_IS_SET_TYPE (value->domain.general_info.type)
+		  && value->data.set->set->size == 0)))
+	{
+	  /* We can accept the default value. */
+	  pt_evaluate_tree (parser, def_val, *default_value, 1);
+	}
+      else
+	{
+	  /* Cannot coerce. */
+	  if (desired_type == PT_TYPE_OBJECT)
+	    {
+	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			   pt_short_print (parser, def_val), classname);
+	    }
+	  else
+	    {
+	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			   pt_short_print (parser, def_val),
+			   pt_show_type_enum (desired_type));
+	    }
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  return er_errid ();
+	}
+    }
+  else
+    {
+      /* try to coerce the default value into the attribute type */
       if (def_expr == DB_DEFAULT_NONE)
 	{
 	  error = pt_coerce_value (parser, def_val, def_val, desired_type,
@@ -13381,7 +13465,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
 	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			   pt_short_print (parser, def_val),
-			   pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
+			   pt_show_type_enum (desired_type));
 	      return ER_IT_INCOMPATIBLE_DATATYPE;
 	    }
 	}
@@ -13937,7 +14021,7 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       attr_chg_prop->class_has_subclass = true;
     }
 
-  error = get_att_default_from_def (parser, attribute, &ptr_def);
+  error = get_att_default_from_def (parser, attribute, &ptr_def, NULL);
   if (error != NO_ERROR)
     {
       goto exit;

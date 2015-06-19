@@ -140,6 +140,7 @@ db_create_vclass (const char *name)
   SM_TEMPLATE *def;
   DB_OBJECT *virtual_class;
   PR_TYPE *type;
+  OID class_oid = OID_INITIALIZER;
 
   CHECK_CONNECT_NULL ();
   CHECK_MODIFICATION_NULL ();
@@ -164,10 +165,19 @@ db_create_vclass (const char *name)
 	    }
 	  else
 	    {
-	      error = sm_update_class (def, &virtual_class);
-	      if (error)
+	      if (locator_reserve_class_name (def->name, &class_oid)
+		  != LC_CLASSNAME_RESERVED)
 		{
+		  assert_release (false);
 		  smt_quit (def);
+		}
+	      else
+		{
+		  error = sm_update_class (def, &virtual_class);
+		  if (error)
+		    {
+		      smt_quit (def);
+		    }
 		}
 	    }
 	}

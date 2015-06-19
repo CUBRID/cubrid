@@ -7232,7 +7232,6 @@ xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
   bool existed = false;
-  int tran_index;
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
 
