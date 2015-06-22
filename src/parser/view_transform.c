@@ -335,6 +335,10 @@ static PT_NODE *mq_clear_other_ids (PARSER_CONTEXT * parser, PT_NODE * node,
 				    void *void_arg, int *continue_walk);
 static PT_NODE *mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node,
 				   void *void_arg, int *continue_walk);
+static PT_NODE *mq_reset_spec_in_method_names (PARSER_CONTEXT * parser,
+					       PT_NODE * node,
+					       void *void_arg,
+					       int *continue_walk);
 static PT_NODE *mq_get_references_node (PARSER_CONTEXT * parser,
 					PT_NODE * node, void *void_arg,
 					int *continue_walk);
@@ -1914,6 +1918,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 
 	  goto exit_on_error;
 	}
+
+      /* Due to tree copy, the spec ids of methods are broken. Reset spec ids */
+      mq_reset_ids_in_methods (parser, tmp_result);
 
       /* get statement spec */
       switch (tmp_result->node_type)
@@ -7472,9 +7479,41 @@ mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 }
 
 /*
- * mq_reset_ids_in_statement() - walks the statement and for each spec,
- *                               reset ids that reference that spec
+ * mq_reset_spec_in_method_names() - resets spec id in method name
  *   return:
+ *   parser(in):
+ *   node(in):
+ *   void_arg(in):
+ *   continue_walk(in):
+ *
+ * NOTE: Currently this function reset spec_id only if the spec_id is
+ *  a name node.
+ */
+static PT_NODE *
+mq_reset_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node,
+			       void *void_arg, int *continue_walk)
+{
+  if (node->node_type == PT_METHOD_CALL)
+    {
+      PT_NODE *method_name;
+      method_name = node->info.method_call.method_name;
+      if (method_name)
+	{
+	  PT_NODE *spec = (PT_NODE *) method_name->info.name.spec_id;
+	  if (spec && spec->node_type == PT_NAME)
+	    {
+	      method_name->info.name.spec_id = (UINTPTR) method_name;
+	    }
+	}
+    }
+
+  return (node);
+}
+
+/*
+ * mq_reset_ids_in_statement() - walks the statement and for each spec,
+ *									reset ids that reference that spec
+ *   return: statement having methods ids reseted
  *   parser(in):
  *   statement(in):
  */
@@ -7487,6 +7526,23 @@ mq_reset_ids_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   return (statement);
 
+}
+
+/*
+ * mq_reset_ids_in_methods() - walks the statement and for each method reset id
+ *
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ */
+PT_NODE *
+mq_reset_ids_in_methods (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  statement = parser_walk_tree (parser, statement,
+				mq_reset_spec_in_method_names,
+				NULL, NULL, NULL);
+
+  return (statement);
 }
 
 /*
