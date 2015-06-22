@@ -2578,6 +2578,10 @@ extern int logtb_find_client_name_host_pid (int tran_index,
 					    char **client_user_name,
 					    char **client_host_name,
 					    int *client_pid);
+extern int logtb_find_current_client_name_host_pid (char **client_prog_name,
+						    char **client_user_name,
+						    char **client_host_name,
+						    int *client_pid);
 extern int logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info);
 
 extern int logtb_find_current_client_type (THREAD_ENTRY * thread_p);
@@ -2723,5 +2727,9 @@ extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p,
 				       INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p,
 				     INT64 db_restore_time);
+
+#if !defined (NDEBUG)
+extern int logtb_collect_local_clients (int **local_client_pids);
+#endif /* !NDEBUG */
 
 #endif /* _LOG_IMPL_H_ */

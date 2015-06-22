@@ -2734,11 +2734,11 @@ logtb_find_client_hostname (int tran_index)
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
  *   tran_index(in): Index of transaction
- *   client_prog_name(in/out): Name of the client program
- *   client_user_name(in/out): Name of the client user
- *   client_host_name(in/out): Name of the client host
- *   client_pid(in/out): Identifier of the process of the host where the client
- *                      client transaction runs.
+ *   client_prog_name(out): Name of the client program
+ *   client_user_name(out): Name of the client user
+ *   client_host_name(out): Name of the client host
+ *   client_pid(out): Identifier of the process of the host where the client
+ *                    client transaction runs.
  *
  * Note: Find the client user name, host name, and process identifier
  *              associated with the given transaction index.
@@ -2771,6 +2771,15 @@ logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
   return NO_ERROR;
 }
 
+/*
+ * logtb_find_client_ids - find client identifiers OF TRANSACTION INDEX
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   tran_index(in): Index of transaction
+ *   client_info(out): pointer to LOG_CLIENTIDS structure
+ *
+ */
 int
 logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info)
 {
@@ -7249,3 +7258,38 @@ xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
 
   return existed;
 }
+
+#if !defined (NDEBUG)
+int
+logtb_collect_local_clients (int **local_clients_pids)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int i, num_client;
+  int *table;
+
+  *local_clients_pids = NULL;
+
+  table = (int *) malloc (NUM_TOTAL_TRAN_INDICES * sizeof (int));
+  if (table == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  memset (table, 0, NUM_TOTAL_TRAN_INDICES * sizeof (int));
+
+  for (i = 0, num_client = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+    {
+      tdes = log_Gl.trantable.all_tdes[i];
+      if (tdes != NULL && tdes->client.process_id > 0
+	  && tdes->client.host_name != NULL
+	  && (strcmp (tdes->client.host_name, boot_Host_name) == 0
+	      || strcmp (tdes->client.host_name, "localhost") == 0))
+	{
+	  table[num_client++] = tdes->client.process_id;
+	}
+    }
+
+  *local_clients_pids = table;
+  return num_client;
+}
+#endif /* !NDEBUG */

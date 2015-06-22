@@ -50,6 +50,7 @@
 #include "system_parameter.h"
 #include "perf_monitor.h"
 #include "util_func.h"
+#include "log_impl.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -65,6 +66,9 @@ LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException,
 #else /* WINDOWS */
 static void register_fatal_signal_handler (int signo);
 static void crash_handler (int signo, siginfo_t * siginfo, void *dummyp);
+#if !defined (NDEBUG)
+static void abort_handler (int signo, siginfo_t * siginfo, void *dummyp);
+#endif /* !NDEBUG */
 #endif /* WINDOWS */
 
 static const char *database_name = "";
@@ -110,6 +114,21 @@ register_fatal_signal_handler (int signo)
   act.sa_flags |= SA_SIGINFO;
   sigaction (signo, &act, NULL);
 }
+
+#if !defined (NDEBUG)
+static void
+register_abort_signal_handler (int signo)
+{
+  struct sigaction act;
+
+  act.sa_handler = NULL;
+  act.sa_sigaction = abort_handler;
+  sigemptyset (&act.sa_mask);
+  act.sa_flags = 0;
+  act.sa_flags |= SA_SIGINFO;
+  sigaction (signo, &act, NULL);
+}
+#endif /* !NDEBUG */
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -256,6 +275,49 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       exit (0);
     }
 }
+
+#if !defined (NDEBUG)
+static void
+abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
+{
+  int *local_clients_pid = NULL;
+  int i, num_clients, client_pid;
+
+  if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
+    {
+      return;
+    }
+
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      return;
+    }
+
+  num_clients = logtb_collect_local_clients (&local_clients_pid);
+
+  for (i = 0; i < num_clients; i++)
+    {
+      client_pid = local_clients_pid[i];
+      if (client_pid == 0)
+	{
+	  /* reached the end. */
+	  break;
+	}
+
+      assert (client_pid > 0);
+
+      kill (client_pid, SIGABRT);
+    }
+
+  if (local_clients_pid != NULL)
+    {
+      free (local_clients_pid);
+    }
+
+  /* abort the server itself */
+  abort ();
+}
+#endif /* !NDEBUG */
 #endif /* WINDOWS */
 
 /*
@@ -277,9 +339,12 @@ main (int argc, char **argv)
   FreeConsole ();
 
   __try
-  {
 #else /* WINDOWS */
+#if !defined (NDEBUG)
+  register_abort_signal_handler (SIGABRT);
+#else
   register_fatal_signal_handler (SIGABRT);
+#endif
   register_fatal_signal_handler (SIGILL);
   register_fatal_signal_handler (SIGFPE);
   register_fatal_signal_handler (SIGBUS);
@@ -287,42 +352,44 @@ main (int argc, char **argv)
   register_fatal_signal_handler (SIGSYS);
 #endif /* WINDOWS */
 
+  {				/* to make indent happy */
 #if !defined(WINDOWS)
-  /* Block SIGURG signal except oob-handler thread */
-  sigemptyset (&sigurg_mask);
-  sigaddset (&sigurg_mask, SIGURG);
-  sigprocmask (SIG_BLOCK, &sigurg_mask, NULL);
+    /* Block SIGURG signal except oob-handler thread */
+    sigemptyset (&sigurg_mask);
+    sigaddset (&sigurg_mask, SIGURG);
+    sigprocmask (SIG_BLOCK, &sigurg_mask, NULL);
 #endif /* !WINDOWS */
 
-  if (argc < 2)
-    {
-      PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
-      return 1;
-    }
+    if (argc < 2)
+      {
+	PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
+	return 1;
+      }
 
-  fprintf (stdout, "\nThis may take a long time depending on the amount "
-	   "of recovery works to do.\n");
+    fprintf (stdout, "\nThis may take a long time depending on the amount "
+	     "of recovery works to do.\n");
 
-  /* save executable path */
-  binary_name = basename (argv[0]);
-  (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
-  /* save database name */
-  database_name = argv[1];
+    /* save executable path */
+    binary_name = basename (argv[0]);
+    (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
+    /* save database name */
+    database_name = argv[1];
 
 #if !defined(WINDOWS)
-  hb_set_exec_path (executable_path);
-  hb_set_argv (argv);
+    hb_set_exec_path (executable_path);
+    hb_set_argv (argv);
 
-  /* create a new session */
-  setsid ();
+    /* create a new session */
+    setsid ();
 #endif
 
-  ret_val = net_server_start (database_name);
+    ret_val = net_server_start (database_name);
 
+  }
 #if defined(WINDOWS)
-} __except (CreateMiniDump (GetExceptionInformation (), argv[1]))
-{
-}
+  __except (CreateMiniDump (GetExceptionInformation (), argv[1]))
+  {
+  }
 #endif
-return ret_val;
+  return ret_val;
 }
