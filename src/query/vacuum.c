@@ -375,12 +375,6 @@ static VPID vacuum_Dropped_files_vpid;
 /* Total count of dropped files */
 static INT32 vacuum_Dropped_files_count = 0;
 
-/* Temporary buffer used to move memory data from the first page of dropped
- * files. An exclusive latch on this first page is required to synchronize
- * buffer usage. For other pages, memmove should be used.
- */
-static char vacuum_Dropped_files_tmp_buffer[IO_MAX_PAGE_SIZE];
-
 /* Dropped file entry */
 typedef struct vacuum_dropped_file VACUUM_DROPPED_FILE;
 struct vacuum_dropped_file
@@ -6267,9 +6261,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 {
   MVCCID save_mvccid;
   VPID vpid, prev_vpid;
-  int page_count, mem_size, npages = 0, compare;
+  int page_count, mem_size, compare;
   char *ptr = NULL;
-  char *temp_buf = (char *) &vacuum_Dropped_files_tmp_buffer;
   VACUUM_DROPPED_FILES_PAGE *page = NULL, *new_page = NULL;
   INT16 min, max, mid, position;
   LOG_DATA_ADDR addr;
@@ -6500,7 +6493,6 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	  if (VACUUM_DROPPED_FILES_PAGE_CAPACITY <= page_count)
 	    {
 	      /* No room left for new entries, try next page */
-	      npages++;
 
 #if !defined (NDEBUG)
 	      if (!VPID_ISNULL (&vpid))
@@ -6525,22 +6517,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
       mem_size = (page_count - position) * sizeof (VACUUM_DROPPED_FILE);
       if (mem_size > 0)
 	{
-	  if (npages == 0)
-	    {
-	      /* Use temporary buffer to move data. */
-	      /* Copy from max position to buffer. */
-	      memcpy (temp_buf, &page->dropped_files[position], mem_size);
-	      /* Copy from buffer to (max + 1) position. */
-	      memcpy (&page->dropped_files[position + 1], temp_buf, mem_size);
-	    }
-	  else
-	    {
-	      /* Buffer can be used only when exclusive latch on the first
-	       * page is held. Use memmove instead.
-	       */
-	      memmove (&page->dropped_files[position + 1],
-		       &page->dropped_files[position], mem_size);
-	    }
+	  memmove (&page->dropped_files[position + 1],
+		   &page->dropped_files[position], mem_size);
 	}
 
       /* Increment page count */
@@ -6889,10 +6867,8 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  /* Make room for new record */
 	  mem_size =
 	    (page->n_dropped_files - position) * sizeof (VACUUM_DROPPED_FILE);
-	  memcpy (vacuum_Dropped_files_tmp_buffer,
-		  &page->dropped_files[position], mem_size);
-	  memcpy (&page->dropped_files[position + 1],
-		  vacuum_Dropped_files_tmp_buffer, mem_size);
+	  memmove (&page->dropped_files[position + 1],
+		   &page->dropped_files[position], mem_size);
 	}
 
       /* Copy new dropped file */
@@ -7049,11 +7025,9 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
   VPID vpid;
   VACUUM_DROPPED_FILES_PAGE *page = NULL;
   int page_count, mem_size;
-  char *temp_buffer = (char *) &vacuum_Dropped_files_tmp_buffer;
   VPID last_page_vpid, last_non_empty_page_vpid;
   INT16 removed_entries[VACUUM_DROPPED_FILES_MAX_PAGE_CAPACITY];
   INT16 n_removed_entries, i;
-  bool is_first_page = true;
 #if !defined (NDEBUG)
   VACUUM_TRACK_DROPPED_FILES *track_page =
     (VACUUM_TRACK_DROPPED_FILES *) vacuum_Track_dropped_files;
@@ -7128,21 +7102,8 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 		{
 		  mem_size =
 		    (page_count - i - 1) * sizeof (VACUUM_DROPPED_FILE);
-		  if (is_first_page)
-		    {
-		      /* User buffer to move data */
-		      memcpy (temp_buffer, &page->dropped_files[i + 1],
-			      mem_size);
-		      memcpy (&page->dropped_files[i], temp_buffer, mem_size);
-		    }
-		  else
-		    {
-		      /* Buffer can only be used if exclusive latch on first
-		       * page is held. Use memmove instead.
-		       */
-		      memmove (&page->dropped_files[i],
-			       &page->dropped_files[i + 1], mem_size);
-		    }
+		  memmove (&page->dropped_files[i],
+			   &page->dropped_files[i + 1], mem_size);
 		}
 	    }
 	}
@@ -7411,7 +7372,6 @@ vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int offset = 0, mem_size;
   VACUUM_DROPPED_FILES_PAGE *page = (VACUUM_DROPPED_FILES_PAGE *) rcv->pgptr;
   INT32 *countp = NULL;
-  char *tmp_buffer = NULL;
   INT16 *indexes;
   INT16 n_indexes, i;
 
@@ -7427,9 +7387,6 @@ vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   /* Check that all recovery data has been processed */
   assert (offset == rcv->length);
-
-  /* Get count pointer and temporary buffer according to dropped type */
-  tmp_buffer = (char *) &vacuum_Dropped_files_tmp_buffer;
 
   /* Cleanup starting from last entry */
   for (i = 0; i < n_indexes; i++)
@@ -7448,8 +7405,8 @@ vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       assert (mem_size >= 0);
       if (mem_size > 0)
 	{
-	  memcpy (tmp_buffer, &page->dropped_files[indexes[i] + 1], mem_size);
-	  memcpy (&page->dropped_files[indexes[i]], tmp_buffer, mem_size);
+	  memmove (&page->dropped_files[indexes[i]],
+		   &page->dropped_files[indexes[i] + 1], mem_size);
 	}
 
       /* Update dropped files page counter */
