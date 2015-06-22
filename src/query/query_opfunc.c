@@ -4621,7 +4621,7 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMETZ:
       {
-	DB_VALUE timetz_val, val_res;
+	DB_VALUE timetz_val;
 	DB_TIMETZ timetz;
 
 	/* perform the operation as TIMETZ operand (keep session timezone when
@@ -4634,7 +4634,7 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p,
 	  }
 	DB_MAKE_TIMETZ (&timetz_val, &timetz);
 
-	err = qdata_subtract_timetz_to_dbval (&timetz_val, dbval_p, &val_res);
+	err = qdata_subtract_timetz_to_dbval (&timetz_val, dbval_p, result_p);
 	break;
       }
 
