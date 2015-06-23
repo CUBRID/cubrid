@@ -5790,6 +5790,10 @@ au_user_name (void)
     }
   else
     {
+      int save;
+
+      AU_DISABLE (save);
+
       if (obj_get (Au_user, "name", &value) == NO_ERROR)
 	{
 	  if (!IS_STRING (&value))
@@ -5808,6 +5812,8 @@ au_user_name (void)
 	      pr_clear_value (&value);
 	    }
 	}
+
+      AU_ENABLE (save);
     }
 
   return name;

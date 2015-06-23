@@ -10187,6 +10187,11 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
   PT_NODE *node = NULL;
 
   user_name = au_user_name ();
+  if (user_name == NULL)
+    {
+      return NULL;
+    }
+
   node = pt_make_query_show_grants (parser, user_name);
 
   if (user_name != NULL)
