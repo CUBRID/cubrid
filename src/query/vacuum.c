@@ -696,13 +696,11 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid,
 int
 xvacuum (THREAD_ENTRY * thread_p)
 {
-  int error_code = NO_ERROR;
   int dummy_save_type = 0;
 
 #if defined(SERVER_MODE)
-  error_code = ER_VACUUM_CS_NOT_AVAILABLE;
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_CS_NOT_AVAILABLE, 0);
-  return error_code;
+  return ER_VACUUM_CS_NOT_AVAILABLE;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 
   if (vacuum_Data->n_table_entries == 0
@@ -711,7 +709,7 @@ xvacuum (THREAD_ENTRY * thread_p)
       && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
     {
       /* Nothing to vacuum. */
-      return;
+      return NO_ERROR;
     }
 
   assert (vacuum_Assigned_workers_count <= 1);
@@ -728,7 +726,7 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   VACUUM_RESTORE_THREAD (thread_p, dummy_save_type);
 
-  return error_code;
+  return NO_ERROR;
 #endif /* SA_MODE */
 }
 
