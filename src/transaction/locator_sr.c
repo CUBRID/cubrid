@@ -4769,6 +4769,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
   bool clear_pcontext = false;
   OR_CLASSREP *classrepr = NULL;
   int classrepr_cacheindex = -1;
+  BTREE_SEARCH ret;
 
   DB_MAKE_NULL (&dbvalue);
 
@@ -4859,10 +4860,10 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 		  goto error;
 		}
 	    }
-	  if (xbtree_find_unique (thread_p, &local_btid,
-				  S_SELECT_WITH_LOCK, key_dbvalue,
-				  &part_oid, &unique_oid,
-				  true) != BTREE_KEY_FOUND)
+	  ret = xbtree_find_unique (thread_p, &local_btid,
+				    S_SELECT_WITH_LOCK, key_dbvalue,
+				    &part_oid, &unique_oid, true);
+	  if (ret == BTREE_KEY_NOTFOUND)
 	    {
 	      char *val_print = NULL;
 
@@ -4888,6 +4889,12 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 
 	      goto error;
 	    }
+	  else if (ret == BTREE_ERROR_OCCURRED)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto error;
+	    }
+	  assert (ret == BTREE_KEY_FOUND);
 	  /* TODO: For read committed... Do we need to keep the lock? */
 	}
 
