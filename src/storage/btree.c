@@ -297,6 +297,9 @@
    && pgbuf_is_valid_page (thread_p, pgbuf_get_vpid_ptr (page), true, NULL, \
 			   NULL) \
    && pgbuf_get_page_ptype (thread_p, page) == PAGE_BTREE \
+   && spage_get_slot (page, HEADER) != NULL \
+   && spage_get_slot (page, HEADER)->record_length \
+      == sizeof (BTREE_NODE_HEADER) \
    && (btree_get_node_header (page))->node_level == 1)
 
 /*
