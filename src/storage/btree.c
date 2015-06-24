@@ -37608,7 +37608,7 @@ btree_key_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p,
        * is flushed and then server crashes, the delete is not yet executed.
        * This case must be handled here.
        */
-      assert (*old_version_page == NULL && old_version_prev_page == NULL);
+      assert (*old_version_page == NULL && *old_version_prev_page == NULL);
       /* Delete was not executed. So we have to find the old version ready to
        * be deleted.
        */
