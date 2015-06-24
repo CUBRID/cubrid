@@ -279,6 +279,7 @@ MVCCID vacuum_Global_oldest_active_mvccid;
 #define VACUUM_BLOCK_CLEAR_INTERRUPTED(entry) \
   (entry->blockid &= ~VACUUM_BLOCK_FLAG_INTERRUPTED)
 
+#if defined (SERVER_MODE)
 /* A block entry in vacuum data can be vacuumed if:
  * 1. block is marked as available (is not assigned to any thread and no
  *    worker is currently processing the block).
@@ -294,6 +295,11 @@ MVCCID vacuum_Global_oldest_active_mvccid;
   (VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry) \
    && MVCC_ID_PRECEDES (VACUUM_DATA_ENTRY_NEWEST_MVCCID (entry), mvccid) \
    && entry->start_lsa.pageid + 1 < log_Gl.append.prev_lsa.pageid)
+#else	/* !SERVER_MODE */		   /* SA_MODE */
+/* Stand-alone mode can always vacuum a block (no concurrency) */
+#define VACUUM_LOG_BLOCK_CAN_VACUUM(entry, mvccid) \
+  (true)
+#endif
 
 /*
  * Vacuum oldest not flushed lsa section.
