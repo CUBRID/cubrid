@@ -1369,6 +1369,27 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	      goto end;
 	    }
 	}
+
+      if (pgbuf_has_any_non_vacuum_waiters (helper.home_page))
+	{
+	  /* release latch to favour other threads */
+	  vacuum_heap_page_log_and_reset (thread_p, &helper, false, true);
+
+	  helper.home_page =
+	    pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE,
+		       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (helper.home_page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
+			     "VACUUM ERROR: Failed to fix page %d|%d.\n",
+			     helper.home_vpid.volid, helper.home_vpid.pageid);
+	      assert (helper.forward_page == NULL);
+	      return error_code;
+	    }
+	  (void) pgbuf_check_page_ptype (thread_p, helper.home_page,
+					 PAGE_HEAP);
+	}
       /* Continue to next object. */
     }
   /* Finished processing all objects. */

@@ -12366,6 +12366,39 @@ pgbuf_has_any_waiters (PAGE_PTR pgptr)
 }
 
 /*
+ * pgbuf_has_any_non_vacuum_waiters () - Check if page has any non-vacuum
+ *					 waiters.
+ *
+ * return     : True if page has waiters, false otherwise.
+ * pgptr (in) : Page pointer.
+ */
+bool
+pgbuf_has_any_non_vacuum_waiters (PAGE_PTR pgptr)
+{
+#if defined (SERVER_MODE)
+  PGBUF_BCB *bufptr = NULL;
+  THREAD_ENTRY *thread_entry_p;
+
+  assert (pgptr != NULL);
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  thread_entry_p = bufptr->next_wait_thrd;
+  while (thread_entry_p != NULL)
+    {
+      if (thread_entry_p->type != TT_VACUUM_WORKER)
+	{
+	  return true;
+	}
+      thread_entry_p = thread_entry_p->next_wait_thrd;
+    }
+
+  return false;
+#else
+  return false;
+#endif
+}
+
+/*
  * pgbuf_has_prevent_dealloc () - Quick check if page has any scanners.
  *
  * return     : True if page has any waiters, false otherwise.
