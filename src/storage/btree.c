@@ -6244,8 +6244,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   alignment = BTREE_MAX_ALIGN;
-  if (btree_initialize_new_page (thread_p, &btid->vfid, FILE_BTREE, &root_vpid, 
-				 1, (void *) &alignment) == false)
+  if (btree_initialize_new_page
+      (thread_p, &btid->vfid, FILE_BTREE, &root_vpid, 1,
+       (void *) &alignment) == false)
     {
       goto error;
     }
@@ -26860,8 +26861,10 @@ btree_count_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 
 /*
  * btree_range_scan_count_oids_leaf_and_one_ovf () - Count key objects from
- *						     leaf record and from
- *						     the first overflow page.
+ *						     leaf record and if it
+ *						     has an overflow page,
+ *						     also add its full
+ *						     capacity.
  *
  * return	 : OID count or error code.
  * thread_p (in) : Thread entry.
@@ -26871,16 +26874,8 @@ static int
 btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY * thread_p,
 					      BTREE_SCAN * bts)
 {
-  int leaf_oids_count = 0, ovf_oids_count = 0;
+  int leaf_oids_count = 0;
   int error_code = NO_ERROR;
-  PAGE_PTR overflow_page = NULL;
-  RECDES overflow_record;
-  int oid_size = OR_OID_SIZE;
-
-  if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
-    {
-      oid_size += OR_OID_SIZE;
-    }
 
   /* Count leaf objects. */
   leaf_oids_count =
@@ -26897,34 +26892,13 @@ btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY * thread_p,
       /* No overflow. */
       return leaf_oids_count;
     }
-  /* Get count from overflow. */
-  overflow_page =
-    pgbuf_fix (thread_p, &bts->leaf_rec_info.ovfl, OLD_PAGE, PGBUF_LATCH_READ,
-	       PGBUF_UNCONDITIONAL_LATCH);
-  if (overflow_page == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-  /* Get overflow record. */
-  if (spage_get_record (overflow_page, 1, &overflow_record, PEEK)
-      != S_SUCCESS)
-    {
-      assert_release (false);
-      pgbuf_unfix_and_init (thread_p, overflow_page);
-      return ER_FAILED;
-    }
-  ovf_oids_count =
-    btree_record_get_num_oids (thread_p, &bts->btid_int, &overflow_record, 0,
-			       BTREE_OVERFLOW_NODE);
-  pgbuf_unfix_and_init (thread_p, overflow_page);
-  if (ovf_oids_count < 0)
-    {
-      ASSERT_ERROR ();
-      return ovf_oids_count;
-    }
-  /* Add objects count to total count. */
-  return (leaf_oids_count + ovf_oids_count);
+  /* Estimate one overflow. Do not just count first overflow records. They may
+   * be all invisible, in which case we need to proceed to next overflow.
+   * Just to be on the safe side, take into consideration one full overflow
+   * page.
+   */
+  return
+    leaf_oids_count + BTREE_MAX_OIDCOUNT_IN_OVERFLOW_RECORD (&bts->btid_int);
 }
 
 /*
