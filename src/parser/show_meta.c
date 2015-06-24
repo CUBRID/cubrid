@@ -111,6 +111,7 @@ metadata_of_volume_header (void)
     {"Num_max_pages", "int"},
     {"Num_used_data_pages", "int"},
     {"Num_used_index_pages", "int"},
+    {"Db_charset", "int"},
     {"Checkpoint_lsa", "varchar(64)"},
     {"Boot_hfid", "varchar(64)"},
     {"Full_name", "varchar(255)"},

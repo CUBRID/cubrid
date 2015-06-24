@@ -2131,6 +2131,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   vhdr->free_sects = 0;
   vhdr->used_data_npages = 0;
   vhdr->used_index_npages = 0;
+  vhdr->db_charset = lang_charset ();
+  vhdr->dummy1 = vhdr->dummy2 = vhdr->dummy3 = 0;
 
   /* page/sect alloctable must be created with max_npages.
    * not initial size(extend_npages) */
@@ -3194,6 +3196,11 @@ disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hfid)
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
+  if (HFID_IS_NULL (hfid))
+    {
+      return NULL;
+    }
+
   return hfid;
 }
 
@@ -3907,6 +3914,43 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
   return remarks;
+}
+
+/*
+ * disk_get_boot_db_charset () - Find the system boot charset
+ *   return: hfid on success or NULL on failure
+ *   volid(in): Permanent volume identifier
+ *   db_charset(out): System boot charset
+ */
+int *
+disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid,
+			  int *db_charset)
+{
+  DISK_VAR_HEADER *vhdr;
+  VPID vpid;
+  PAGE_PTR pgptr = NULL;
+
+  assert (db_charset != NULL);
+
+  vpid.volid = volid;
+  vpid.pageid = DISK_VOLHEADER_PAGE;
+
+  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+		     PGBUF_UNCONDITIONAL_LATCH);
+  if (pgptr == NULL)
+    {
+      return NULL;
+    }
+
+  (void) disk_verify_volume_header (thread_p, pgptr);
+
+  vhdr = (DISK_VAR_HEADER *) pgptr;
+
+  *db_charset = vhdr->db_charset;
+
+  pgbuf_unfix_and_init (thread_p, pgptr);
+
+  return db_charset;
 }
 
 /* TODO: check not use */
@@ -6145,6 +6189,9 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
   db_make_int (out_values[idx], vhdr->used_index_npages);
   idx++;
 
+  db_make_int (out_values[idx], vhdr->db_charset);
+  idx++;
+
   error = db_make_string_copy (out_values[idx],
 			       lsa_to_string (buf, sizeof (buf),
 					      &vhdr->chkpt_lsa));
@@ -6267,6 +6314,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
 		  "Boot_hfid: volid %d, fileid %d header_pageid %d\n",
 		  vhdr->boot_hfid.vfid.volid, vhdr->boot_hfid.vfid.fileid,
 		  vhdr->boot_hfid.hpgid);
+  (void) fprintf (fp, " db_charset = %d\n", vhdr->db_charset);
 
   return ret;
 }

@@ -872,7 +872,7 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_Install_Option, ua_Install_Option_Map},
   {DIAGDB, SA_ONLY, 1, UTIL_OPTION_DIAGDB, "diagdb",
    ua_Diag_Option, ua_Diag_Option_Map},
-  {PATCHDB, SA_ONLY, 1, UTIL_OPTION_PATCHDB, "patchdb",
+  {PATCHDB, SA_ONLY, 2, UTIL_OPTION_PATCHDB, "patchdb",
    ua_Patch_Option, ua_Patch_Option_Map},
   {CHECKDB, SA_CS, 1, UTIL_OPTION_CHECKDB, "checkdb",
    ua_Check_Option, ua_Check_Option_Map},

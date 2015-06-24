@@ -260,7 +260,8 @@ extern int boot_copy (const char *from_dbname, const char *new_db_name,
 		      const char *fileof_vols_and_copypaths,
 		      bool newdb_overwrite);
 extern int boot_emergency_patch (const char *db_name, bool recreate_log,
-				 DKNPAGES log_npages, FILE * out_fp);
+				 DKNPAGES log_npages, const char *db_locale,
+				 FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state,
 					    bool force, int timeout);
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);

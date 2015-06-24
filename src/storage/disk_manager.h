@@ -150,7 +150,10 @@ struct disk_var_header
 				 * if this volume is auto extended */
   INT32 used_data_npages;	/* allocated pages for data purpose */
   INT32 used_index_npages;	/* allocated pages for index purpose */
-  INT32 dummy;			/* Dummy field for 8byte align */
+  INT8 db_charset;		/* charset of database */
+  INT8 dummy1;			/* Dummy fields for 8byte align */
+  INT8 dummy2;
+  INT8 dummy3;
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the
 				   recovery process of this volume */
   HFID boot_hfid;		/* System Heap file for booting purposes and

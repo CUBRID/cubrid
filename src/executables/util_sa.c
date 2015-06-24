@@ -1750,8 +1750,10 @@ error_exit:
 int
 patchdb (UTIL_FUNCTION_ARG * arg)
 {
+  char er_msg_file[PATH_MAX];
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   const char *db_name;
+  const char *db_locale = NULL;
   bool recreate_log;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
@@ -1763,7 +1765,18 @@ patchdb (UTIL_FUNCTION_ARG * arg)
   recreate_log =
     utility_get_option_bool_value (arg_map, PATCH_RECREATE_LOG_S);
 
-  if (utility_get_option_string_table_size (arg_map) != 1)
+  if (recreate_log == true)
+    {
+      db_locale =
+	utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+      if (db_locale == NULL)
+	{
+	  goto print_patch_usage;
+	}
+    }
+
+  if (utility_get_option_string_table_size (arg_map) !=
+      (recreate_log ? 2 : 1))
     {
       goto print_patch_usage;
     }
@@ -1773,9 +1786,16 @@ patchdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (boot_emergency_patch (db_name, recreate_log, 0, NULL) != NO_ERROR)
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (boot_emergency_patch (db_name, recreate_log, 0, db_locale, NULL)
+      != NO_ERROR)
     {
-      fprintf (stderr, "emergency patch fail.\n");
+      fprintf (stderr, "emergency patch fail:%s\n", db_error_string (3));
+      er_final (ER_ALL_FINAL);
       goto error_exit;
     }
 

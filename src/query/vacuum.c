@@ -760,7 +760,17 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
   /* Initialize vacuum dropped files */
   vacuum_Dropped_files_loaded = false;
   VFID_COPY (&vacuum_Dropped_files_vfid, dropped_files_vfid);
-  VPID_SET_NULL (&vacuum_Dropped_files_vpid);
+
+  /* Save first page vpid. */
+  if (vacuum_get_first_page_dropped_files (thread_p,
+					   &vacuum_Dropped_files_vpid)
+      == NULL)
+    {
+      assert (false);
+      goto error;
+    }
+  assert (!VPID_ISNULL (&vacuum_Dropped_files_vpid));
+
   vacuum_Dropped_files_version = 0;
   vacuum_Dropped_files_count = 0;
   pthread_mutex_init (&vacuum_Dropped_files_mutex, NULL);
@@ -4161,15 +4171,6 @@ vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  /* Save first page vpid. */
-  if (vacuum_get_first_page_dropped_files (thread_p,
-					   &vacuum_Dropped_files_vpid)
-      == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
   assert (!VPID_ISNULL (&vacuum_Dropped_files_vpid));
 
   /* Save total count. */
@@ -6483,7 +6484,10 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 		}
 
 #if !defined (NDEBUG)
-	      memcpy (&track_page->dropped_data_page, page, DB_PAGESIZE);
+	      if (track_page != NULL)
+		{
+		  memcpy (&track_page->dropped_data_page, page, DB_PAGESIZE);
+		}
 #endif
 	      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
 			     "VACUUM: thread(%d): add dropped file: found "
@@ -6514,7 +6518,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	      /* No room left for new entries, try next page */
 
 #if !defined (NDEBUG)
-	      if (!VPID_ISNULL (&vpid))
+	      if (track_page != NULL && !VPID_ISNULL (&vpid))
 		{
 		  /* Don't advance from last track page. A new page will be
 		   * added and we need to set a link between last track page
@@ -6571,7 +6575,10 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	}
 
 #if !defined (NDEBUG)
-      memcpy (&track_page->dropped_data_page, page, DB_PAGESIZE);
+      if (track_page != NULL)
+	{
+	  memcpy (&track_page->dropped_data_page, page, DB_PAGESIZE);
+	}
 #endif
 
       vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
@@ -6632,28 +6639,32 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
   ATOMIC_INC_32 (&vacuum_Dropped_files_count, 1);
 
 #if !defined(NDEBUG)
-  if (track_page->next_tracked_page == NULL)
+  if (track_page != NULL)
     {
-      new_track_page =
-	(VACUUM_TRACK_DROPPED_FILES *)
-	malloc (VACUUM_TRACK_DROPPED_FILES_SIZE);
-      if (new_track_page == NULL)
+      if (track_page->next_tracked_page == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, VACUUM_TRACK_DROPPED_FILES_SIZE);
-	  vacuum_unfix_dropped_entries_page (thread_p, page);
-	  vacuum_unfix_dropped_entries_page (thread_p, new_page);
-	  return ER_FAILED;
+	  new_track_page =
+	    (VACUUM_TRACK_DROPPED_FILES *)
+	    malloc (VACUUM_TRACK_DROPPED_FILES_SIZE);
+	  if (new_track_page == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      VACUUM_TRACK_DROPPED_FILES_SIZE);
+	      vacuum_unfix_dropped_entries_page (thread_p, page);
+	      vacuum_unfix_dropped_entries_page (thread_p, new_page);
+	      return ER_FAILED;
+	    }
 	}
-    }
-  else
-    {
-      new_track_page = track_page->next_tracked_page;
-    }
+      else
+	{
+	  new_track_page = track_page->next_tracked_page;
+	}
 
-  memcpy (&new_track_page->dropped_data_page, new_page, DB_PAGESIZE);
-  new_track_page->next_tracked_page = NULL;
-  track_page->next_tracked_page = new_track_page;
+      memcpy (&new_track_page->dropped_data_page, new_page, DB_PAGESIZE);
+      new_track_page->next_tracked_page = NULL;
+      track_page->next_tracked_page = new_track_page;
+    }
 #endif
 
   if (postpone_ref_lsa != NULL)
@@ -6701,7 +6712,10 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
   vacuum_log_dropped_files_set_next_page (thread_p, (PAGE_PTR) page, &vpid);
 
 #if !defined(NDEBUG)
-  VPID_COPY (&track_page->dropped_data_page.next_page, &vpid);
+  if (track_page != NULL)
+    {
+      VPID_COPY (&track_page->dropped_data_page.next_page, &vpid);
+    }
 #endif
 
   /* Set dirty and unfix last page */

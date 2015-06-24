@@ -136,9 +136,11 @@ extern int xboot_delete (THREAD_ENTRY * thread_p, const char *db_name,
 			 bool force_delete);
 extern int xboot_emergency_patch (THREAD_ENTRY * thread_p,
 				  const char *db_name, bool recreate_log,
-				  DKNPAGES log_npages, FILE * out_fp);
+				  DKNPAGES log_npages, const char *db_locale,
+				  FILE * out_fp);
 extern void boot_server_all_finalize (THREAD_ENTRY * thread_p,
-				      bool is_er_final);
+				      bool is_er_final,
+				      bool shutdown_common_modules);
 extern int boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids,
 			    int n_classes, int space_to_process,
 			    int instance_lock_timeout, int class_lock_timeout,

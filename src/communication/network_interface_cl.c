@@ -6128,7 +6128,8 @@ boot_copy (const char *from_dbname, const char *new_db_name,
  */
 int
 boot_emergency_patch (const char *db_name, bool recreate_log,
-		      DKNPAGES log_npages, FILE * out_fp)
+		      DKNPAGES log_npages, const char *db_locale,
+		      FILE * out_fp)
 {
 #if defined(CS_MODE)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -6140,7 +6141,8 @@ boot_emergency_patch (const char *db_name, bool recreate_log,
   ENTER_SERVER ();
 
   error_code =
-    xboot_emergency_patch (NULL, db_name, recreate_log, log_npages, out_fp);
+    xboot_emergency_patch (NULL, db_name, recreate_log, log_npages, db_locale,
+			   out_fp);
 
   EXIT_SERVER ();
 
