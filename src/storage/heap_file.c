@@ -25254,8 +25254,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
       goto end;
     }
 
-  assert (type == REC_HOME || type == REC_BIGONE || type == REC_RELOCATION
-	  || type == REC_MVCC_NEXT_VERSION);
+  assert (type == REC_HOME || type == REC_BIGONE || type == REC_RELOCATION);
 
   /* We should have required pages fixed. */
   assert (HEAP_IS_PAGE_OF_OID (home_page_watcher->pgptr, oid));
@@ -25267,44 +25266,28 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 	      && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr, &forward_oid)));
 
   /* Get MVCC header. */
-  if (type != REC_MVCC_NEXT_VERSION)
+  scan_code = heap_get_mvcc_header (thread_p, oid, &forward_oid,
+				    home_page_watcher->pgptr,
+				    fwd_page_watcher.pgptr, type,
+				    &mvcc_header);
+  if (scan_code != S_SUCCESS)
     {
-      scan_code = heap_get_mvcc_header (thread_p, oid, &forward_oid,
-					home_page_watcher->pgptr,
-					fwd_page_watcher.pgptr, type,
-					&mvcc_header);
-      if (scan_code != S_SUCCESS)
-	{
-	  goto end;
-	}
-      if (OID_ISNULL (&partition_oid)
-	  && !MVCC_IS_HEADER_PARTITION_OID_VALID (&mvcc_header))
-	{
-	  /* no partition link present */
-	  goto end;
-	}
+      goto end;
     }
-  else
+  if (OID_ISNULL (&partition_oid)
+      && !MVCC_IS_HEADER_PARTITION_OID_VALID (&mvcc_header))
     {
-      if (OID_ISNULL (&partition_oid))
-	{
-	  /* no partition link present */
-	  goto end;
-	}
+      /* no partition link present */
+      goto end;
     }
 
   /* a partition link has been found. Save the current values */
-  if (type != REC_MVCC_NEXT_VERSION && OID_ISNULL (&partition_oid)
+  if (OID_ISNULL (&partition_oid)
       && MVCC_IS_HEADER_PARTITION_OID_VALID (&mvcc_header))
     {
       COPY_OID (&partition_oid, &MVCC_GET_PARTITION_OID (&mvcc_header));
       COPY_OID (&save_next_version, &MVCC_GET_NEXT_VERSION (&mvcc_header));
       COPY_OID (&save_partition_oid, &MVCC_GET_PARTITION_OID (&mvcc_header));
-    }
-  else
-    {
-      COPY_OID (&save_next_version, &forward_oid);
-      COPY_OID (&save_partition_oid, &partition_oid);
     }
 
   /* search the partition class OID in the list of dropped partitions */
@@ -25370,33 +25353,30 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 
   /* cleanup the partition link, according to record type. The record's length
    * will always either decrease */
-  if (type != REC_MVCC_NEXT_VERSION)
-    {
-      if (!OID_ISNULL (&next_version))
-	{
-	  /* update the next version in MVCC header */
-	  MVCC_SET_NEXT_VERSION (&mvcc_header, &next_version);
 
-	  if (!OID_ISNULL (&next_partition_oid))
-	    {
-	      /* update the partition link in MVCC header */
-	      COPY_OID (&(mvcc_header.partition_oid), &next_partition_oid);
-	    }
-	  else
-	    {
-	      MVCC_CLEAR_FLAG_BITS (&mvcc_header,
-				    OR_MVCC_FLAG_VALID_PARTITION_OID);
-	    }
+  if (!OID_ISNULL (&next_version))
+    {
+      /* update the next version in MVCC header */
+      MVCC_SET_NEXT_VERSION (&mvcc_header, &next_version);
+
+      if (!OID_ISNULL (&next_partition_oid))
+	{
+	  /* update the partition link in MVCC header */
+	  COPY_OID (&(mvcc_header.partition_oid), &next_partition_oid);
 	}
       else
 	{
-	  /* no next version present */
-	  MVCC_CLEAR_FLAG_BITS (&mvcc_header,
-				OR_MVCC_FLAG_VALID_NEXT_VERSION);
 	  MVCC_CLEAR_FLAG_BITS (&mvcc_header,
 				OR_MVCC_FLAG_VALID_PARTITION_OID);
 	}
     }
+  else
+    {
+      /* no next version present */
+      MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_NEXT_VERSION);
+      MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_PARTITION_OID);
+    }
+
 
   switch (type)
     {
@@ -25465,28 +25445,6 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
 					   &next_version,
 					   &next_partition_oid, 0, addr_p);
       pgbuf_set_dirty (thread_p, fwd_page_watcher.pgptr, DONT_FREE);
-      break;
-
-    case REC_MVCC_NEXT_VERSION:
-      COPY_OID (&rec_buffer[0], &next_version);
-      COPY_OID (&rec_buffer[1], &next_partition_oid);
-
-      recdes.type = type;
-      recdes.area_size = 2 * OR_OID_SIZE;
-      recdes.length = 2 * OR_OID_SIZE;
-      recdes.data = (char *) rec_buffer;
-
-      if (spage_update (thread_p, home_page_watcher->pgptr, oid->slotid,
-			&recdes) != SP_SUCCESS)
-	{
-	  scan_code = S_ERROR;
-	  goto error;
-	}
-      heap_mvcc_log_remove_partition_link (thread_p, &save_next_version,
-					   &save_partition_oid,
-					   &next_version, &next_partition_oid,
-					   0, addr_p);
-      pgbuf_set_dirty (thread_p, home_page_watcher->pgptr, DONT_FREE);
       break;
 
     default:
@@ -25690,7 +25648,6 @@ heap_remove_partition_links (THREAD_ENTRY * thread_p, OID * class_oid,
 		}
 
 	      if (recdes.type != REC_HOME
-		  && recdes.type != REC_MVCC_NEXT_VERSION
 		  && recdes.type != REC_BIGONE
 		  && recdes.type != REC_RELOCATION)
 		{
