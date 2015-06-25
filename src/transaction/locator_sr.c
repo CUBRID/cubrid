@@ -8076,6 +8076,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 
   for (i = 0; i < mobjs->num_objs; i++)
     {
+      er_clear ();
+
       obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
 
       packed_key_value_len =
