@@ -133,7 +133,7 @@ extern int xboot_soft_rename (THREAD_ENTRY * thread_p,
 			      bool new_db_overwrite, bool extern_rename,
 			      bool force_delete);
 extern int xboot_delete (THREAD_ENTRY * thread_p, const char *db_name,
-			 bool force_delete);
+			 bool force_delete, bool shutdown_common_modules);
 extern int xboot_emergency_patch (THREAD_ENTRY * thread_p,
 				  const char *db_name, bool recreate_log,
 				  DKNPAGES log_npages, const char *db_locale,

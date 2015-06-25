@@ -5404,7 +5404,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 	    }
 	  (void) xboot_shutdown_server (thread_p, false);
 
-	  error_code = xboot_delete (thread_p, new_db_name, true);
+	  error_code = xboot_delete (thread_p, new_db_name, true, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -5877,7 +5877,8 @@ end:
  *              run when there are multiusers in the system.
  */
 int
-xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
+xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
+	      bool shutdown_common_modules)
 {
   char log_path[PATH_MAX];
   const char *log_prefix = NULL;
@@ -6056,7 +6057,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
   /* Shutdown the server */
   if (error_code == NO_ERROR)
     {
-      boot_server_all_finalize (thread_p, true, true);
+      boot_server_all_finalize (thread_p, true, shutdown_common_modules);
     }
   else
     {
@@ -7220,9 +7221,6 @@ boot_rv_dump_del_volume (FILE * fp, int length_ignore, void *data)
 {
   fprintf (fp, "Remove volume: Volid = %d\n", *((int *) data));
 }
-
-
-
 
 /*
  * boot_get_db_charset_from_header () - Get DB charset from volumes

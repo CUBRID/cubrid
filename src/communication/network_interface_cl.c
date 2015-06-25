@@ -4970,7 +4970,7 @@ boot_delete (const char *db_name, bool force_delete)
 
   ENTER_SERVER ();
 
-  error_code = xboot_delete (NULL, db_name, force_delete);
+  error_code = xboot_delete (NULL, db_name, force_delete, true);
 
   EXIT_SERVER ();
 
