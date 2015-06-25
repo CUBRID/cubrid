@@ -599,10 +599,10 @@ cub_commdb: このユーティリティーは使わないでください。そ�
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: 緊急状況でデータベースログのパッチ\n\
-使い方: %1$s emergency_patchlog [オプション] <データベース名>\n\
+usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
 \n\
 オプション:\n\
-  -r, --recreate-log           ログファイルをまた生成する。\n
+  -r, --recreate-log           recreate log files; use carefully (needs database-locale argument)\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB

@@ -600,10 +600,10 @@ opciones validas:\n\
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: Parchar una base de datos en caso de emergencia.\n\
-uso: %1$s emergency_patchlog [OPTION] database-name\n\
+usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
 \n\
 opciones validas:\n\
-  -r, --recreate-log           recrear archivo de registro; utilizar atentamente\n
+  -r, --recreate-log           recreate log files; use carefully (needs database-locale argument)\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB

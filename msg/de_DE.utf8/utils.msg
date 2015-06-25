@@ -599,10 +599,10 @@ gültige Optionen:\n\
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: Eine Datenbank im Notfall patchen.\n\
-Anwendung: %1$s emergency_patchlog [OPTION] Datenbanknamen\n\
+usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
 \n\
 gültige Optionen:\n\
-  -r, --recreate-log           Logdateien wiederherstellen; sorgfältig anwenden\n
+  -r, --recreate-log           recreate log files; use carefully (needs database-locale argument)\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB

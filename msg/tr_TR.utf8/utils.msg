@@ -600,10 +600,10 @@ geçerli seçenekler:\n\
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: Patch acil durumlarda bir veritabanı.\n\
-kullanım: %1$s emergency_patchlog [SEÇENEK] database-name\n\
+usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
 \n\
 geçerli seçenekler:\n\
-  -r, --recreate-log           log dosyalarını yeniden; dikkatli bir şekilde kullanın\n
+  -r, --recreate-log           recreate log files; use carefully (needs database-locale argument)\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB

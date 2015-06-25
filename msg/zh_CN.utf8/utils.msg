@@ -600,10 +600,10 @@ cub_commdb: 这个工具不赞成使用. 用 'cubrid' 命令来代替.\n\
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: 紧急情况下修补一个数据库.\n\
-用法: %1$s emergency_patchlog [选项] 数据库名\n\
+usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
 \n\
 可用选项:\n\
-  -r, --recreate-log           重建日志文件; 小心使用\n
+  -r, --recreate-log           recreate log files; use carefully (needs database-locale argument)\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB

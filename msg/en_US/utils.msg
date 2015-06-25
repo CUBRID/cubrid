@@ -602,10 +602,10 @@ valid options:\n\
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: Patch a database in case of emergency.\n\
-usage: %1$s emergency_patchlog [OPTION] database-name\n\
+usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
 \n\
 valid options:\n\
-  -r, --recreate-log           recreate log files; use carefully\n
+  -r, --recreate-log           recreate log files; use carefully (needs database-locale argument)\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
