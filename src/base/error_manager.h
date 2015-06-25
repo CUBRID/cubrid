@@ -290,4 +290,6 @@ extern void er_clearid (void);
 extern void er_setid (int err_id);
 
 extern bool er_has_error (void);
+extern void er_print_callstack (const char *file_name, const int line_no,
+				const char *fmt, ...);
 #endif /* _ERROR_MANAGER_H_ */

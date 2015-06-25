@@ -6372,9 +6372,9 @@ struct parser_context *
 sm_virtual_queries (DB_OBJECT * class_object)
 {
   SM_CLASS *cl;
-  unsigned int current_schema_id;
   PARSER_CONTEXT *cache = NULL, *tmp = NULL, *old_cache = NULL;
   int error = NO_ERROR;
+  bool recache = false;
 
   if (au_fetch_class_force (class_object, &cl, AU_FETCH_READ) != NO_ERROR)
     {
@@ -6412,15 +6412,39 @@ sm_virtual_queries (DB_OBJECT * class_object)
 	}
     }
 
-  current_schema_id = (sm_local_schema_version ()
-		       + sm_global_schema_version ());
-
-  if (cl->virtual_query_cache != NULL
-      && (cl->virtual_cache_schema_id != current_schema_id
-	  || error == ER_HEAP_UNKNOWN_OBJECT))
+  if (cl->virtual_query_cache != NULL)
     {
-      old_cache = cl->virtual_query_cache;
-      cl->virtual_query_cache = NULL;
+      if (error == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  /* Recache (I don't know what the case means. */
+	  recache = true;
+	}
+      else if (cl->virtual_cache_local_schema_id
+	       != sm_local_schema_version ())
+	{
+	  /* Always recache if current client bumped schema version. */
+	  recache = true;
+	}
+      else if ((cl->virtual_cache_global_schema_id
+		!= sm_global_schema_version ())
+	       && (cl->virtual_cache_snapshot_version
+		   != ws_get_mvcc_snapshot_version ()))
+	{
+	  /* Recache if somebody else bumped schema version and if we are
+	   * not protected by current snapshot.
+	   * We don't want to recache virtual queries already cached in
+	   * current statement preparation (most of all, because we can cause
+	   * terrible damage).
+	   * For RR, it also helps keeping cached virtual queries for the
+	   * entire transaction.
+	   */
+	  recache = true;
+	}
+      if (recache)
+	{
+	  old_cache = cl->virtual_query_cache;
+	  cl->virtual_query_cache = NULL;
+	}
     }
 
   if (cl->class_type != SM_CLASS_CT && cl->virtual_query_cache == NULL)
@@ -6456,11 +6480,13 @@ sm_virtual_queries (DB_OBJECT * class_object)
 	  cl->virtual_query_cache = tmp;
 	}
 
-      /* need to re-evalutate current_schema_id as global_schema_version
-       * was changed by the call to mq_virtual_queries() */
-      current_schema_id = (sm_local_schema_version ()
-			   + sm_global_schema_version ());
-      cl->virtual_cache_schema_id = current_schema_id;
+      /* Save local schema ID, global schema ID and snapshot version. They
+       * will be used to decide on using current virtual queries or to
+       * recache them on next call.
+       */
+      cl->virtual_cache_local_schema_id = sm_local_schema_version ();
+      cl->virtual_cache_global_schema_id = sm_global_schema_version ();
+      cl->virtual_cache_snapshot_version = ws_get_mvcc_snapshot_version ();
     }
 
   cache = cl->virtual_query_cache;

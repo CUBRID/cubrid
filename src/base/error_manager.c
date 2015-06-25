@@ -328,6 +328,9 @@ static int er_call_stack_init (void);
 static int er_fname_free (const void *key, void *data, void *args);
 static void er_call_stack_final (void);
 
+static void _er_log_debug_internal (const char *file_name, const int line_no,
+				    const char *fmt, va_list * ap);
+
 /* vector of functions to call when an error is set */
 static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
   er_log,			/* ER_FATAL_ERROR_SEVERITY */
@@ -1434,6 +1437,30 @@ er_notify_event_on_error (int err_id)
 }
 
 /*
+ * er_print_callstack () - Print message with callstack (should help for
+ *			   debug).
+ *
+ * return : 
+ * const char * file_name (in) :
+ * const int line_no (in) :
+ * const char * fmt (in) :
+ * ... (in) :
+ */
+void
+er_print_callstack (const char *file_name, const int line_no, const char *fmt,
+		    ...)
+{
+  va_list ap;
+
+  va_start (ap, fmt);
+  _er_log_debug_internal (file_name, line_no, fmt, &ap);
+  va_end (ap);
+
+  er_dump_call_stack (er_Msglog_fh);
+  fprintf (er_Msglog_fh, "\n");
+}
+
+/*
  * er_call_stack_dump_on_error - call stack dump
  *   return: none
  *   severity(in):
@@ -2203,19 +2230,38 @@ er_print (void)
 }
 
 /*
- * er_log_debug - Print debugging message to the log file
- *   return: none
- *   file_name(in):
- *   line_no(in):
- *   fmt(in):
- *   ...(in):
+ * _er_log_debug () - Print message to error log file.
  *
- * Note:
+ * return	  : Void.
+ * file_name (in) : __FILE__
+ * line_no (in)	  : __LINE__
+ * fmt (in)	  : Formatted message.
+ * ... (in)	  : Arguments for formatted message.
  */
 void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
   va_list ap;
+
+  va_start (ap, fmt);
+  _er_log_debug_internal (file_name, line_no, fmt, &ap);
+  va_end (ap);
+}
+
+/*
+ * er_log_debug - Print debugging message to the log file
+ *   return: none
+ *   file_name(in):
+ *   line_no(in):
+ *   fmt(in):
+ *   ap(in):
+ *
+ * Note:
+ */
+static void
+_er_log_debug_internal (const char *file_name, const int line_no,
+			const char *fmt, va_list * ap)
+{
   FILE *out;
   static bool doing_er_start = false;
   time_t er_time;
@@ -2256,8 +2302,6 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
       return;
     }
 
-  va_start (ap, fmt);
-
   out = (er_Msglog_fh != NULL) ? er_Msglog_fh : stderr;
 
   if (er_entry_p != NULL)
@@ -2282,10 +2326,8 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
     }
 
   /* Print out remainder of message */
-  vfprintf (out, fmt, ap);
+  vfprintf (out, fmt, *ap);
   fflush (out);
-
-  va_end (ap);
 
   ER_CSECT_EXIT_LOG_FILE ();
 }

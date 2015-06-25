@@ -7367,7 +7367,9 @@ classobj_make_class (const char *name)
   class_->flags = 0;
 
   class_->properties = NULL;
-  class_->virtual_cache_schema_id = 0;
+  class_->virtual_cache_local_schema_id = 0;
+  class_->virtual_cache_global_schema_id = 0;
+  class_->virtual_cache_snapshot_version = 0;
   class_->virtual_query_cache = NULL;
   class_->triggers = NULL;
   class_->constraints = NULL;

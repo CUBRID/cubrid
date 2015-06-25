@@ -141,3 +141,238 @@ define log_block_find_page_records_for_vacuum
   end
 end
   
+# log_sizeof_rectype_data
+# arg0 (in)  : LOG_RECTYPE
+# arg1 (out) : size of log data.
+#
+# Get log record data size
+#
+define log_sizeof_rectype_data
+  set $rectype = $arg0
+  set $sizeof = -1
+  if $rectype == LOG_REDO_DATA
+    set $sizeof = sizeof (struct log_redo)
+    end
+  if $rectype == LOG_UNDO_DATA
+    set $sizeof = sizeof (struct log_undo)
+    end
+  if $rectype == LOG_UNDOREDO_DATA || $rectype == LOG_DIFF_UNDOREDO_DATA
+    set $sizeof = sizeof (struct log_undoredo)
+    end
+  if $rectype == LOG_MVCC_REDO_DATA
+    set $sizeof = sizeof (struct log_mvcc_redo)
+    end
+  if $rectype == LOG_MVCC_UNDO_DATA
+    set $sizeof = sizeof (struct log_mvcc_undo)
+    end
+  if $rectype == LOG_MVCC_UNDOREDO_DATA || $rectype == LOG_DIFF_UNDOREDO_DATA
+    set $sizeof = sizeof (struct log_mvcc_undoredo)
+    end
+    
+  if $sizeof == -1
+    #printf "Cannot handle rectype: %d\n", $rectype
+    end
+
+  set $arg1 = $sizeof
+  end
+  
+# log_record_back
+# $arg0 (in)  : LOG_RECORD_HEADER *
+# $arg1 (out) : Previous PAGEID
+# $arg2 (out) : Previous OFFSET
+# $arg3 (out) : Previous LOG_RECORD_HEADER *
+#
+# Go to previous log record.
+#
+# Prerequisite:
+# log_record_get_header
+#
+define log_record_back
+  set $arg1 = $arg0->back_lsa.pageid
+  set $arg2 = $arg0->back_lsa.offset
+  if $arg1 != -1
+    log_record_get_header $arg1 $arg2 $arg3
+  else
+    printf "Cannot go back\n"
+    end
+  end
+  
+# log_record_forward
+# $arg0 (in)  : LOG_RECORD_HEADER *
+# $arg1 (out) : Previous PAGEID
+# $arg2 (out) : Previous OFFSET
+# $arg3 (out) : Previous LOG_RECORD_HEADER *
+#
+# Go to next log record.
+#
+# Prerequisite:
+# log_record_get_header
+#
+define log_record_forward
+  set $arg1 = $arg0->forw_lsa.pageid
+  set $arg2 = $arg0->forw_lsa.offset
+  log_record_get_header $arg1 $arg2 $arg3
+  if $arg1 != -1
+    log_record_get_header $arg1 $arg2 $arg3
+  else
+    printf "Cannot go forward\n"
+    end
+  end
+
+# log_advance_if_not_fit
+# $arg0 (in/out) : LOG_PAGEID.
+# $arg1 (in/out) : LOG_OFFSET.
+# $arg2 (in/out) : LOG_PAGE
+# $arg3 (in)     : Data size
+#
+# Advance to next page when given size doesn't fit current page.
+#
+# Prerequisite:
+# logpb_get_page
+#
+define log_advance_if_not_fit
+  set $lpid = $arg0
+  set $loff = $arg1
+  set $size = $arg3
+  if $loff + $size >= 16368
+    set $lpid = $lpid + 1
+    set $offset = 0
+    logpb_get_page $lpid $lpage
+    end
+  set $arg0 = $lpid
+  set $arg1 = $loff
+  set $arg2 = $lpage
+  end
+
+# log_record_data
+# $arg0 (in)  : LOG_PAGEID
+# $arg1 (in)  : LOG_OFFSET
+# $arg2 (out) : struct log_data * OR 0
+#
+# Get log record data.
+#
+# Prerequisite:
+# logpb_get_page
+# log_record_get_header
+# log_sizeof_rectype_data
+# log_advance_if_not_fit
+#
+define log_record_data
+  set $lpgid = $arg0
+  set $loff = $arg1
+  logpb_get_page $lpgid $lpage
+  log_record_get_header $lpgid $loff $lheader
+  log_sizeof_rectype_data $lheader->type $data_size
+  if $data_size == 0
+    p "Cannot handle rectype:"
+    p $lheader->type
+    set $arg2 = 0
+  else
+    log_advance_if_not_fit $lpgid $loff $lpage $data_size
+    set $arg2 = (struct log_data *) $lpage->area + $loff
+    end
+  end
+
+# log_next_record_for_page
+# $arg0 (in)  : VOLID
+# $arg1 (in)  : PAGEID
+# $arg2 (in)  : LOG_PAGEID
+# $arg3 (in)  : LOG_OFFSET
+# $arg4 (in)  : 0 for backward direction, otherwise forward direction
+#
+# Get previous/next record which belongs to given page.
+#
+# Prerequisites:
+# log_record_get_header
+# log_record_forward
+# log_record_back
+# log_record_data
+#
+define log_next_record_for_page
+  set $volid = $arg0
+  set $pgid = $arg1
+  set $lpgid = $arg2
+  set $loff = $arg3
+  set $fwd_dir = $arg4
+  set $ldata = 0
+  log_record_get_header $lpgid $loff $lheader
+
+  while 1
+    if $fwd_dir != 0
+      log_record_forward $lheader $lpgid $loff $lheader
+    else
+      log_record_back $lheader $lpgid $loff $lheader
+      end
+
+    if $lpgid == -1
+      printf "Search ended"
+      loop_break
+      end
+
+    set $lpgid_save = $lpgid
+    set $loff_save = $loff
+    log_record_data $lpgid $loff $ldata
+
+    if $ldata != 0 && $ldata->pageid == $pgid && $ldata->volid == $volid
+      p *$ldata
+      p $lpgid_save
+      p $loff_save
+      p *$lheader
+      loop_break
+      end
+    end
+  end
+
+# log_next_record_for_oid
+# $arg0 (in)  : VOLID
+# $arg1 (in)  : PAGEID
+# $arg2 (in)  : SLOTID
+# $arg3 (in)  : LOG_PAGEID
+# $arg4 (in)  : LOG_OFFSET
+# $arg5 (in)  : 0 for backward direction, otherwise forward direction
+#
+# Get previous/next record which belongs to given OID.
+#
+# Prerequisites:
+# log_record_get_header
+# log_record_forward
+# log_record_back
+# log_record_data
+#  
+define log_next_record_for_oid
+  set $volid = $arg0
+  set $pgid = $arg1
+  set $slotid = $arg2
+  set $lpgid = $arg3
+  set $loff = $arg4
+  set $fwd_dir = $arg5
+  set $ldata = 0
+  log_record_get_header $lpgid $loff $lheader
+
+  while 1
+    if $fwd_dir != 0
+      log_record_forward $lheader $lpgid $loff $lheader
+    else
+      log_record_back $lheader $lpgid $loff $lheader
+      end
+
+    if $lpgid == -1
+      printf "Search ended"
+      loop_break
+      end
+
+    set $lpgid_save = $lpgid
+    set $loff_save = $loff
+    log_record_data $lpgid $loff $ldata
+
+    if $ldata != 0 && $ldata->pageid == $pgid && $ldata->volid == $volid \
+       && ($ldata->offset == $slotid || $ldata->offset == ($slotid | 0x8000))
+      p *$ldata
+      p $lpgid_save
+      p $loff_save
+      p *$lheader
+      loop_break
+      end
+    end
+  end
+    

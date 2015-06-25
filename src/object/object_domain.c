@@ -12247,6 +12247,8 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	{
 	  status = DOMAIN_COMPATIBLE;
+	  pr_clear_value (dest);
+	  DB_MAKE_NULL (dest);
 	}
     }
 

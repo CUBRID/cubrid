@@ -9383,7 +9383,10 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p,
 							regu_var_p->domain);
 		      return NULL;
 		    }
-		  assert (dom_type == DB_VALUE_TYPE (peek_value_p));
+		  assert (dom_type == DB_VALUE_TYPE (peek_value_p)
+			  || (prm_get_bool_value
+			      (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
+			      && DB_IS_NULL (peek_value_p)));
 		}
 	    }
 	}

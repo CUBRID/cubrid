@@ -3799,13 +3799,13 @@ ws_abort_mops (bool only_unpinned)
 	  mop->pinned = 0;
 
 	  /*
-	   * If the object has an exclusive lock, decache the object. As
-	   * a security measure we also check for the dirty bit.
+	   * Decache all objects in commit link. Even though they are not
+	   * marked as dirty and do not have exclusive locks, they may have
+	   * been decached (and reset) during a partial rollback. Now we are
+	   * not allowed to miss any cached objects that may have been
+	   * modified during last transaction.
 	   */
-	  if (IS_WRITE_EXCLUSIVE_LOCK (ws_get_lock (mop)) || WS_ISDIRTY (mop))
-	    {
-	      ws_decache (mop);
-	    }
+	  ws_decache (mop);
 	}
 
       /* clear all hint fields including the lock */
