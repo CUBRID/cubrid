@@ -9228,6 +9228,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_VCLASS:
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      do_rollback_on_error = true;
+
       if (node->info.create_entity.or_replace && db_find_class (class_name))
 	{
 	  /* drop existing view */
@@ -9238,13 +9245,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      error = er_errid ();
 	      goto error_exit;
 	    }
-
-	  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	  do_rollback_on_error = true;
 
 	  error = drop_class_name (class_name, false);
 	  if (error != NO_ERROR)
