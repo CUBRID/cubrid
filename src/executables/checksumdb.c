@@ -245,7 +245,8 @@ chksum_report_diff (FILE * fp)
 	    CHKSUM_TABLE_CHUNK_ID_COL ", "
 	    CHKSUM_TABLE_LOWER_BOUND_COL " FROM %s WHERE "
 	    CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> "
-	    CHKSUM_TABLE_CHUNK_CHECKSUM_COL, chksum_Table_name);
+	    CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR "
+	    CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL", chksum_Table_name);
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -257,6 +258,7 @@ chksum_report_diff (FILE * fp)
 	{
 	  out_val_idx = 0;
 
+	  /* class name */
 	  error =
 	    db_query_get_tuple_value (query_result, out_val_idx++,
 				      &out_value);
@@ -268,6 +270,7 @@ chksum_report_diff (FILE * fp)
 	  CHKSUM_PRINT_AND_LOG (fp, "%-15s ", db_get_string (&out_value));
 	  db_value_clear (&out_value);
 
+	  /* chunk id */
 	  error =
 	    db_query_get_tuple_value (query_result, out_val_idx++,
 				      &out_value);
@@ -279,6 +282,7 @@ chksum_report_diff (FILE * fp)
 	  CHKSUM_PRINT_AND_LOG (fp, "%-15d ", DB_GET_INT (&out_value));
 	  db_value_clear (&out_value);
 
+	  /* lower bound */
 	  error =
 	    db_query_get_tuple_value (query_result, out_val_idx++,
 				      &out_value);
@@ -332,7 +336,9 @@ chksum_report_summary (FILE * fp)
 	    CHKSUM_TABLE_CLASS_NAME_COL ", "
 	    "COUNT (*), "
 	    "COUNT(CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL
-	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " THEN 1 END), "
+	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL
+	    " OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL
+	    " IS NULL THEN 1 END), "
 	    " SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
 	    " MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
 	    " MAX (" CHKSUM_TABLE_ELAPSED_TIME_COL ") "
@@ -526,7 +532,7 @@ chksum_drop_and_create_checksum_table (void)
 	    " %s INT NOT NULL,"	/* 3 */
 	    " %s VARCHAR,"	/* 4 */
 	    " %s INT NOT NULL,"	/* 5 */
-	    " %s INT NOT NULL,"	/* 6 */
+	    " %s INT,"		/* 6 */
 	    " %s INT,"		/* 7 */
 	    " %s DATETIME DEFAULT sys_datetime,"	/* 8 */
 	    " %s INT,"		/* 9 */
