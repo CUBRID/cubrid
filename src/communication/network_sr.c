@@ -1515,11 +1515,11 @@ net_server_start (const char *server_name)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 
-	  xboot_shutdown_server (NULL, false);
+	  xboot_shutdown_server (NULL, ER_THREAD_FINAL);
 	}
       else
 	{
-	  (void) xboot_shutdown_server (NULL, true);
+	  (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
 	}
 
 #if defined(CUBRID_DEBUG)

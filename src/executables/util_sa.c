@@ -1073,7 +1073,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      boot_shutdown_server (true);
+      boot_shutdown_server (ER_ALL_FINAL);
     }
 
   return EXIT_SUCCESS;
@@ -4161,7 +4161,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      boot_shutdown_server (true);
+      boot_shutdown_server (ER_ALL_FINAL);
     }
 
   db_localdatetime (&restart_arg.db_creation, &datetime);

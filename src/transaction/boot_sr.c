@@ -142,6 +142,10 @@ struct boot_dbparm
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
 };
 
+typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
+enum remove_temp_vol_action
+{ REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
+
 #if defined(SERVER_MODE)
 AUTO_ADDVOL_JOB boot_Auto_addvol_job = BOOT_AUTO_ADDVOL_JOB_INITIALIZER;
 #endif
@@ -215,12 +219,14 @@ static int boot_get_db_parm (THREAD_ENTRY * thread_p,
 static VOLID boot_add_volume (THREAD_ENTRY * thread_p,
 			      DBDEF_VOL_EXT_INFO * ext_info);
 static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
-				    bool only_physical_delete);
+				    REMOVE_TEMP_VOL_ACTION delete_action);
+
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p,
-					 bool only_physical_delete);
+					 REMOVE_TEMP_VOL_ACTION
+					 delete_action);
 static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 				     const char *ignore_vlabel,
-				     void *only_physical_delete_arg);
+				     void *delete_action_arg);
 static int boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid);
 static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
@@ -329,7 +335,7 @@ boot_shutdown_server_at_exit (void)
     {
       /* Avoid infinite looping if someone calls exit during shutdown */
       boot_Server_process_id++;
-      (void) xboot_shutdown_server (NULL, true);
+      (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
     }
 }
 
@@ -766,7 +772,8 @@ error:
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
  *   volid(in): Volume identifier to remove
- *   only_physical_delete(in): true if logical heap operation are not needed
+ *   delete_action(in): ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION if logical heap operation 
+ *				are not needed
  *
  * Note: Remove a volume from the database. The deletion of the volume is done
  *       independently of the destiny of the current transaction. That is,
@@ -778,7 +785,7 @@ error:
  */
 static int
 boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
-			 bool only_physical_delete)
+			 REMOVE_TEMP_VOL_ACTION delete_action)
 {
   HEAP_OPERATION_CONTEXT update_context;
   RECDES recdes;		/* Record descriptor which describe the
@@ -822,7 +829,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 
   vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
 
-  if (only_physical_delete == false)
+  if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
     {
       /*
        * Start a TOP SYSTEM OPERATION.
@@ -851,7 +858,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
       boot_Db_parm->temp_last_volid = volid + 1;
     }
 
-  if (only_physical_delete == false)
+  if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
     {
       recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
       recdes.data = (char *) boot_Db_parm;
@@ -901,7 +908,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 	}
     }
 
-  if (only_physical_delete == false)
+  if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
     }
@@ -1912,12 +1919,14 @@ boot_get_temp_temp_vol_max_npages (void)
  */
 static int
 boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p,
-			      bool only_physical_delete)
+			      REMOVE_TEMP_VOL_ACTION delete_action)
 {
   RECDES recdes;
   bool old_object;
   int error_code = NO_ERROR;
-  bool only_physical_delete_arg = true;
+  REMOVE_TEMP_VOL_ACTION delete_action_arg;
+
+  delete_action_arg = ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION;
 
   /*
    * if volumes exist beyond bo_Dbparm.temp_last_volid,
@@ -1937,10 +1946,9 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p,
     }
 
   boot_find_rest_temp_volumes (thread_p, NULL_VOLID, boot_xremove_temp_volume,
-			       (void *) &only_physical_delete_arg, true,
-			       true);
+			       (void *) &delete_action_arg, true, true);
 
-  if (only_physical_delete)
+  if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
       return error_code;
     }
@@ -2077,19 +2085,20 @@ end:
  *
  *   volid(in): Volume identifier to remove
  *   ignore_vlabel(in): Volume label (Unused)
- *   only_physical_delete_arg: pointer to user data (physical delete flag)
+ *   delete_action_arg: pointer to user data (physical delete flag)
  *
  * Note: Pass control to boot_remove_temp_volume to remove the temporary volume.
  */
 static int
 boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
-			  const char *ignore_vlabel,
-			  void *only_physical_delete_arg)
+			  const char *ignore_vlabel, void *delete_action_arg)
 {
-  bool only_physical_delete =
-    (only_physical_delete_arg != NULL)
-    ? *(bool *) only_physical_delete_arg : false;
-  return boot_remove_temp_volume (thread_p, volid, only_physical_delete);
+  REMOVE_TEMP_VOL_ACTION delete_action =
+    ((delete_action_arg != NULL)
+     ? *(REMOVE_TEMP_VOL_ACTION *) delete_action_arg
+     : REMOVE_TEMP_VOL_DEFAULT_ACTION);
+
+  return boot_remove_temp_volume (thread_p, volid, delete_action);
 }
 
 /*
@@ -3000,7 +3009,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   /* If the server is already restarted, shutdown the server */
   if (BO_IS_SERVER_RESTARTED ())
     {
-      (void) xboot_shutdown_server (thread_p, true);
+      (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
     }
 
   log_prefix = fileio_get_base_file_name (client_credential->db_name);
@@ -3335,7 +3344,8 @@ exit_on_error:
     }
 
   er_stack_push ();
-  boot_server_all_finalize (thread_p, false, false);
+  boot_server_all_finalize (thread_p, ER_THREAD_FINAL,
+			    BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
 
   return NULL_TRAN_INDEX;
@@ -3894,7 +3904,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    * Remove any database temporary volumes
    */
 
-  (void) boot_remove_all_temp_volumes (thread_p, false);
+  (void) boot_remove_all_temp_volumes (thread_p,
+				       REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
   (void) disk_goodvol_refresh (thread_p, boot_Db_parm->nvols);
 
@@ -4130,7 +4141,8 @@ error:
 #endif
 
   er_stack_push ();
-  boot_server_all_finalize (thread_p, false, false);
+  boot_server_all_finalize (thread_p, ER_THREAD_FINAL,
+			    BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
 
   return error_code;
@@ -4233,7 +4245,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
  *       is destroyed.
  */
 bool
-xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
+xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
 {
   if (BO_IS_SERVER_RESTARTED ())
     {
@@ -4261,17 +4273,20 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
 	  vacuum_finalize (thread_p);
 	}
 
-      (void) boot_remove_all_temp_volumes (thread_p, false);
+      (void) boot_remove_all_temp_volumes (thread_p,
+					   REMOVE_TEMP_VOL_DEFAULT_ACTION);
       log_final (thread_p);
 
-      if (is_er_final)
+      if (is_er_final == ER_ALL_FINAL)
 	{
-	  boot_server_all_finalize (thread_p, is_er_final, false);
+	  boot_server_all_finalize (thread_p, is_er_final,
+				    BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
 	}
       else
 	{
 	  er_stack_push ();
-	  boot_server_all_finalize (thread_p, is_er_final, false);
+	  boot_server_all_finalize (thread_p, is_er_final,
+				    BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
 	  er_stack_pop ();
 	}
 #if defined(SA_MODE)
@@ -4548,7 +4563,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 #endif /* CUBRID_DEBUG */
 
 #if defined(SA_MODE)
-  (void) xboot_shutdown_server (NULL, true);
+  (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
 #endif /* SA_MODE */
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
@@ -5031,14 +5046,14 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag,
  * 				 except the log/recovery manager
  *   is_er_final(in): Terminate the error module..
  *   shutdown_common_modules(in): Terminate all common modules (for SA mode)
- *				  if SERVER_MODE, this is implied true.
+ *				  if SERVER_MODE, this is implied BOOT_SHUTDOWN_ALL_MODULES.
  *
  * Note: Every single module except the log/recovery manager are
  *       uninitialized. All data volumes are unmounted.
  */
 void
-boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final,
-			  bool shutdown_common_modules)
+boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
+			  BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
   logtb_finalize_global_unique_stats_table (thread_p);
   locator_finalize (thread_p);
@@ -5059,10 +5074,10 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final,
   close_diag_mgr ();
 #endif /* DIAG_DEVEL */
   /* server mode shuts down all modules */
-  shutdown_common_modules = true;
+  shutdown_common_modules = BOOT_SHUTDOWN_ALL_MODULES;
 #endif
 
-  if (shutdown_common_modules == true)
+  if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
       es_final ();
       tp_final ();
@@ -5071,10 +5086,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final,
       sysprm_final ();
       area_final ();
       msgcat_final ();
-      if (is_er_final == true)
-	{
-	  er_final (ER_ALL_FINAL);
-	}
+      er_final (ER_ALL_FINAL);
       lang_final ();
       tz_unload ();
     }
@@ -5402,9 +5414,10 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 	      fileio_dismount (thread_p, dbtxt_vdes);
 	      dbtxt_vdes = NULL_VOLDES;
 	    }
-	  (void) xboot_shutdown_server (thread_p, false);
+	  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 
-	  error_code = xboot_delete (thread_p, new_db_name, true, false);
+	  error_code = xboot_delete (thread_p, new_db_name, true,
+				     BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -5528,7 +5541,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
       fileio_dismount (thread_p, dbtxt_vdes);
     }
 
-  (void) xboot_shutdown_server (thread_p, false);
+  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
   return error_code;
 
 error:
@@ -5542,7 +5555,7 @@ error:
       fileio_dismount (thread_p, dbtxt_vdes);
     }
 
-  (void) xboot_shutdown_server (thread_p, false);
+  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 
   return error_code;
 }
@@ -5878,7 +5891,7 @@ end:
  */
 int
 xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
-	      bool shutdown_common_modules)
+	      BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
   char log_path[PATH_MAX];
   const char *log_prefix = NULL;
@@ -6057,12 +6070,14 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
   /* Shutdown the server */
   if (error_code == NO_ERROR)
     {
-      boot_server_all_finalize (thread_p, true, shutdown_common_modules);
+      boot_server_all_finalize (thread_p, ER_ALL_FINAL,
+				shutdown_common_modules);
     }
   else
     {
       er_stack_push ();
-      boot_server_all_finalize (thread_p, false, true);
+      boot_server_all_finalize (thread_p, ER_THREAD_FINAL,
+				BOOT_SHUTDOWN_ALL_MODULES);
       er_stack_pop ();
     }
   return error_code;
@@ -6073,7 +6088,8 @@ error_dirty_delete:
 
   /* Shutdown the server */
   er_stack_push ();
-  boot_server_all_finalize (thread_p, false, true);
+  boot_server_all_finalize (thread_p, ER_THREAD_FINAL,
+			    BOOT_SHUTDOWN_ALL_MODULES);
   er_stack_pop ();
 
   return error_code;
@@ -6365,7 +6381,8 @@ error:
     }
 
   er_stack_push ();
-  boot_server_all_finalize (thread_p, false, false);
+  boot_server_all_finalize (thread_p, ER_THREAD_FINAL,
+			    BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
 
   return NULL_TRAN_INDEX;
@@ -6480,7 +6497,8 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
 
       log_restart_emergency (thread_p, db_fullname, log_path, log_prefix);
 
-      (void) boot_remove_all_temp_volumes (thread_p, true);
+      (void) boot_remove_all_temp_volumes (thread_p,
+					   ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION);
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
 
@@ -6842,7 +6860,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
   boot_server_status (BOOT_SERVER_UP);
 
   (void) xtran_server_commit (thread_p, false);
-  (void) xboot_shutdown_server (thread_p, true);
+  (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
 
   return error_code;
 
@@ -6853,7 +6871,8 @@ error_exit:
       error_code = ER_FAILED;
     }
 
-  boot_server_all_finalize (thread_p, false, true);
+  boot_server_all_finalize (thread_p, ER_THREAD_FINAL,
+			    BOOT_SHUTDOWN_ALL_MODULES);
 
   return error_code;
 }

@@ -68,6 +68,10 @@ enum boot_server_status
 { BOOT_SERVER_UP = 1, BOOT_SERVER_DOWN, BOOT_SERVER_MAINTENANCE };
 extern BOOT_SERVER_STATUS boot_Server_status;
 
+typedef enum boot_server_shutdown_mode BOOT_SERVER_SHUTDOWN_MODE;
+enum boot_server_shutdown_mode
+{ BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES, BOOT_SHUTDOWN_ALL_MODULES };
+
 #if defined (SERVER_MODE)
 extern AUTO_ADDVOL_JOB boot_Auto_addvol_job;
 #endif
@@ -114,7 +118,8 @@ extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p,
 				      int print_restart, const char *db_name,
 				      BO_RESTART_ARG * r_args);
-extern bool xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final);
+extern bool xboot_shutdown_server (THREAD_ENTRY * thread_p,
+				   ER_FINAL_CODE is_er_final);
 extern int xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 		       const char *new_db_name, const char *new_db_path,
 		       const char *new_log_path, const char *new_lob_path,
@@ -133,14 +138,16 @@ extern int xboot_soft_rename (THREAD_ENTRY * thread_p,
 			      bool new_db_overwrite, bool extern_rename,
 			      bool force_delete);
 extern int xboot_delete (THREAD_ENTRY * thread_p, const char *db_name,
-			 bool force_delete, bool shutdown_common_modules);
+			 bool force_delete,
+			 BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules);
 extern int xboot_emergency_patch (THREAD_ENTRY * thread_p,
 				  const char *db_name, bool recreate_log,
 				  DKNPAGES log_npages, const char *db_locale,
 				  FILE * out_fp);
 extern void boot_server_all_finalize (THREAD_ENTRY * thread_p,
-				      bool is_er_final,
-				      bool shutdown_common_modules);
+				      ER_FINAL_CODE is_er_final,
+				      BOOT_SERVER_SHUTDOWN_MODE
+				      shutdown_common_modules);
 extern int boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids,
 			    int n_classes, int space_to_process,
 			    int instance_lock_timeout, int class_lock_timeout,

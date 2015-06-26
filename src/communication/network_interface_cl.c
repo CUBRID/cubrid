@@ -4970,7 +4970,8 @@ boot_delete (const char *db_name, bool force_delete)
 
   ENTER_SERVER ();
 
-  error_code = xboot_delete (NULL, db_name, force_delete, true);
+  error_code = xboot_delete (NULL, db_name, force_delete,
+			     BOOT_SHUTDOWN_ALL_MODULES);
 
   EXIT_SERVER ();
 
@@ -5015,7 +5016,7 @@ boot_restart_from_backup (int print_restart, const char *db_name,
  * NOTE:
  */
 bool
-boot_shutdown_server (bool iserfinal)
+boot_shutdown_server (ER_FINAL_CODE iserfinal)
 {
 #if defined(CS_MODE)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ONLY_IN_STANDALONE, 1, "");

@@ -243,7 +243,7 @@ extern int boot_find_last_temp (void);
 extern int boot_delete (const char *db_name, bool force_delete);
 extern int boot_restart_from_backup (int print_restart, const char *db_name,
 				     BO_RESTART_ARG * r_args);
-extern bool boot_shutdown_server (bool iserfinal);
+extern bool boot_shutdown_server (ER_FINAL_CODE iserfinal);
 extern int boot_soft_rename (const char *old_db_name,
 			     const char *new_db_name, const char *new_db_path,
 			     const char *new_log_path,
