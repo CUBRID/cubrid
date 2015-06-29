@@ -1931,7 +1931,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /* Check the existance of the given XASL. If someone marked it
+  /* Check the existence of the given XASL. If someone marked it
      to be deleted, then remove it if possible. */
   cache_clone_p = NULL;		/* mark as pop */
   xasl_cache_entry_p =
@@ -1968,7 +1968,14 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 		}
 	    }
 	}
-      if (check_xasl_cache)
+      if (xasl_cache_entry_p->deletion_marker)
+	{
+	  /* Entry is actually deleted. */
+	  qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p,
+						 false);
+	  xasl_cache_entry_p = NULL;
+	}
+      else if (check_xasl_cache)
 	{
 	  qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p,
 						 false);

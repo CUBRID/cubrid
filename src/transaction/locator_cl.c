@@ -909,6 +909,12 @@ error:
     {
       tran_abort_only_client (false);
     }
+  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+    {
+      /* Deleted object. */
+      WS_SET_DELETED (mop);
+      ws_decache (mop);
+    }
 
   return error_code;
 }

@@ -18543,7 +18543,8 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec,
 
 	      if (o_num > prev_o_num && o_num > (*nump))
 		{
-		  *(t_list + o_num - 1) = -1;	/* init #pages */
+		  /* init #pages */
+		  *(t_list + o_num - 1) = XASL_CLASS_NO_TCARD;
 
 		  /* get #pages of the given class
 		   */
@@ -18706,7 +18707,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser,
   (void) lsearch (serial_oid_p, o_list, &o_num, sizeof (OID), oid_compare);
   if (o_num > prev_o_num && o_num > (int) *nump)
     {
-      *(t_list + o_num - 1) = -1;	/* init #pages */
+      *(t_list + o_num - 1) = XASL_SERIAL_OID_TCARD;	/* init #pages */
     }
 
   if (o_num >= o_size)
@@ -19410,7 +19411,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* set spec oid */
 	  xasl->class_oid_list[0] = insert->class_oid;
-	  xasl->tcard_list[0] = -1;	/* init #pages */
+	  xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
 
 	  xasl->dbval_cnt = aptr->dbval_cnt;
 	}
@@ -19438,7 +19439,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* set spec oid */
 	  xasl->n_oid_list += 1;
 	  xasl->class_oid_list[0] = insert->class_oid;
-	  xasl->tcard_list[0] = -1;	/* init #pages */
+	  xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
 	}
     }
 
@@ -26814,7 +26815,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   /* set spec oid */
   xasl->class_oid_list[0] = insert->class_oid;
-  xasl->tcard_list[0] = -1;	/* init #pages */
+  xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
   xasl->dbval_cnt = aptr->dbval_cnt;
 
 cleanup:

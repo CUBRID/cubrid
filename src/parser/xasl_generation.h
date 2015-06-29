@@ -124,10 +124,17 @@ typedef struct
 extern char *query_Plan_dump_filename;
 extern FILE *query_Plan_dump_fp;
 
+/* TCARD predefined values. Set -1 for no cardinality needed or -2 to mark
+ * OID's that are not classes and actually belong to serials.
+ */
+#define XASL_CLASS_NO_TCARD -1
+#define XASL_SERIAL_OID_TCARD -2
+
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node,
 					   UNBOX unbox);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * p, PT_NODE * node,
-				   REGU_VARIABLE_LIST * regu_list_last_version);
+				   REGU_VARIABLE_LIST *
+				   regu_list_last_version);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * p,
 					    PT_NODE * node, int *argp,
 					    REGU_VARIABLE_LIST *

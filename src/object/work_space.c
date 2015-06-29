@@ -3033,6 +3033,13 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 	  /* add to the classname cache */
 	  ws_add_classname (obj, mop, sm_ch_name (obj));
 	}
+
+      if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
+	{
+	  er_print_callstack (ARG_FILE_LINE, "Cache class %s mop %d|%d|%d.\n",
+			      sm_ch_name (mop->object), ws_oid (mop)->volid,
+			      ws_oid (mop)->pageid, ws_oid (mop)->slotid);
+	}
     }
   else
     {
@@ -3171,6 +3178,13 @@ ws_decache (MOP mop)
     }
   else
     {
+      if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
+	{
+	  er_print_callstack (ARG_FILE_LINE, "Decache class %s "
+			      "mop %d|%d|%d.\n",
+			      sm_ch_name (mop->object), ws_oid (mop)->volid,
+			      ws_oid (mop)->pageid, ws_oid (mop)->slotid);
+	}
       /* free class object, not sure if this should be done here */
       if (mop->object != NULL && mop->object != (MOBJ) (&sm_Root_class))
 	{
@@ -3388,6 +3402,16 @@ ws_get_lock (MOP mop)
 void
 ws_set_lock (MOP mop, LOCK lock)
 {
+  if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG)
+      && mop->class_mop == sm_Root_class_mop && mop != sm_Root_class_mop
+      && mop->object != NULL && lock != mop->lock)
+    {
+      er_print_callstack (ARG_FILE_LINE, "Change class %s mop %d|%d|%d "
+			  "lock from %d to %d.\n",
+			  sm_ch_name (mop->object), ws_oid (mop)->volid,
+			  ws_oid (mop)->pageid, ws_oid (mop)->slotid,
+			  mop->lock, lock);
+    }
   mop = ws_mvcc_latest_version (mop);
   if (mop != NULL)
     {
@@ -3684,7 +3708,7 @@ ws_map (MAPFUNC function, void *args)
  *    transaction commit.  Note that we always clear the no_objects field
  *    for classes because once they are commited to a database, we must
  *    assume that other users have access to the current representation and
- *    can create instances with that represenatation.
+ *    can create instances with that representation.
  */
 void
 ws_clear_hints (MOP mop, bool leave_pinned)
@@ -3693,6 +3717,15 @@ ws_clear_hints (MOP mop, bool leave_pinned)
    * Don't decache non-updatable view objects because they cannot be
    * recreated.  Let garbage collection eventually decache them.
    */
+  if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG)
+      && mop->class_mop == sm_Root_class_mop && mop != sm_Root_class_mop
+      && mop->object != NULL)
+    {
+      er_print_callstack (ARG_FILE_LINE, "Clear class %s mop %d|%d|%d.\n",
+			  sm_ch_name (mop->object), ws_oid (mop)->volid,
+			  ws_oid (mop)->pageid, ws_oid (mop)->slotid);
+    }
+
   if (WS_ISVID (mop))
     {
       if (!vid_is_updatable (mop))

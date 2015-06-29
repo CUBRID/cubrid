@@ -74,6 +74,7 @@
 
 #include "partition.h"
 #include "tsc_timer.h"
+#include "xasl_generation.h"
 
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
@@ -11633,9 +11634,6 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 
       if (r == BTREE_KEY_FOUND)
 	{
-	  SCAN_CODE scan_code;
-	  OID updated_oid;
-
 	  if (pruning_type != DB_NOT_PARTITIONED_CLASS)
 	    {
 	      COPY_OID (&attr_info->inst_oid, &unique_oid);
@@ -16087,7 +16085,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   ftime (&tloc);
   c_time_struct = localtime_r (&tloc.time, &tm_val);
 
-  xasl_state.vd.sys_epochtime = tloc.time;
+  xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) tloc.time;
 
   if (c_time_struct != NULL)
     {
@@ -17903,8 +17901,9 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
     {
       if (*tcardp < 0)
 	{
-	  assert (*tcardp == -1);
-	  continue;		/* nop; is not class */
+	  assert (*tcardp == XASL_CLASS_NO_TCARD
+		  || *tcardp == XASL_SERIAL_OID_TCARD);
+	  continue;		/* nop; is not class or RT is not appliable */
 	}
 
 #if 1				/* TODO - for speed-up purpose; do not delete me */
@@ -18097,13 +18096,13 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 
 	  for (i = 0; i < ent->n_oid_list; i++)
 	    {
-	      if (ent->tcard_list[i] < 0)
+	      if (ent->tcard_list[i] == XASL_SERIAL_OID_TCARD)
 		{
 		  /* Not a class */
-		  assert (ent->tcard_list[i] == -1);
 		}
 	      else
 		{
+		  assert (ent->tcard_list[i] >= -1);
 		  n_classes++;
 		}
 	    }
@@ -18125,7 +18124,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	    }
 	  for (i = 0; i < ent->n_oid_list; i++)
 	    {
-	      if (ent->tcard_list[i] >= 0)
+	      if (ent->tcard_list[i] != XASL_SERIAL_OID_TCARD)
 		{
 		  (*class_oid_list)[k++] = ent->class_oid_list[i];
 		}

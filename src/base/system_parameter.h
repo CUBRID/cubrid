@@ -389,8 +389,10 @@ enum param_id
   PRM_ID_COMPENSATE_DEBUG,
   PRM_ID_POSTPONE_DEBUG,
 
+  PRM_ID_CLIENT_CLASS_CACHE_DEBUG,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_POSTPONE_DEBUG
+  PRM_LAST_ID = PRM_ID_CLIENT_CLASS_CACHE_DEBUG
 };
 
 /*
