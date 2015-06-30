@@ -5070,12 +5070,13 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   serial_finalize_cache_pool ();
   partition_cache_finalize (thread_p);
 #if defined(SERVER_MODE)
+  /* server mode shuts down all modules */
+  shutdown_common_modules = BOOT_SHUTDOWN_ALL_MODULES;
+
 #if defined(DIAG_DEVEL)
   close_diag_mgr ();
 #endif /* DIAG_DEVEL */
-  /* server mode shuts down all modules */
-  shutdown_common_modules = BOOT_SHUTDOWN_ALL_MODULES;
-#endif
+#endif /* SERVER_MODE */
 
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
@@ -5086,7 +5087,10 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
       sysprm_final ();
       area_final ();
       msgcat_final ();
-      er_final (ER_ALL_FINAL);
+      if (is_er_final == ER_ALL_FINAL)
+	{
+	  er_final (ER_ALL_FINAL);
+	}
       lang_final ();
       tz_unload ();
     }
