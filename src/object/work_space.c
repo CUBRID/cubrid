@@ -3102,9 +3102,9 @@ abort_it:
  *    class(in): class of object
  */
 void
-ws_cache_dirty (MOBJ obj, MOP op, MOP class_)
+ws_cache_dirty (MOBJ obj, MOP op, MOP class_mop)
 {
-  ws_cache (obj, op, class_);
+  ws_cache (obj, op, class_mop);
   ws_dirty (op);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -3119,17 +3119,17 @@ ws_cache_dirty (MOBJ obj, MOP op, MOP class_)
  *
  */
 MOP
-ws_cache_with_oid (MOBJ obj, OID * oid, MOP class_)
+ws_cache_with_oid (MOBJ obj, OID * oid, MOP class_mop)
 {
   MOP mop;
 
-  mop = ws_mop (oid, class_);
+  mop = ws_mop (oid, class_mop);
   if (mop != NULL)
     {
-      ws_cache (obj, mop, class_);
+      ws_cache (obj, mop, class_mop);
     }
 
-  return (mop);
+  return mop;
 }
 
 /*
@@ -3565,7 +3565,7 @@ ws_mark_deleted (MOP mop)
 int
 ws_find (MOP mop, MOBJ * obj)
 {
-  int status = WS_FIND_MOP_NOTDELETED;
+  int status;
 
   mop = ws_mvcc_latest_version (mop);
 
@@ -3573,13 +3573,15 @@ ws_find (MOP mop, MOBJ * obj)
   if (mop && !WS_IS_DELETED (mop))
     {
       *obj = (MOBJ) mop->object;
+
+      status = WS_FIND_MOP_NOTDELETED;
     }
   else
     {
       status = WS_FIND_MOP_DELETED;
     }
 
-  return (status);
+  return status;
 }
 
 /*
@@ -3617,11 +3619,11 @@ ws_mop_compare (MOP mop1, MOP mop2)
  *    at the end of a transaction by ws_clear_hints.
  */
 void
-ws_class_has_object_dependencies (MOP class_)
+ws_class_has_object_dependencies (MOP class_mop)
 {
-  if (class_ != NULL)
+  if (class_mop != NULL)
     {
-      class_->no_objects = 0;
+      class_mop->no_objects = 0;
     }
 }
 
@@ -3631,12 +3633,12 @@ ws_class_has_object_dependencies (MOP class_)
  *    class(in): class to examin
  */
 int
-ws_class_has_cached_objects (MOP class_)
+ws_class_has_cached_objects (MOP class_mop)
 {
   MOP obj;
   int cached = 0;
 
-  for (obj = class_->class_link; obj != Null_object && !cached;
+  for (obj = class_mop->class_link; obj != Null_object && !cached;
        obj = obj->class_link)
     {
       if (obj->object != NULL)
@@ -3644,7 +3646,7 @@ ws_class_has_cached_objects (MOP class_)
 	  cached = 1;
 	}
     }
-  return (cached);
+  return cached;
 }
 
 #if defined (CUBRID_DEBUG)

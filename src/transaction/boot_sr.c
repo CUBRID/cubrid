@@ -7256,8 +7256,6 @@ boot_get_db_charset_from_header (THREAD_ENTRY * thread_p,
   int vol_header_db_charset = INTL_CODESET_ERROR;
   int log_header_db_charset = INTL_CODESET_ERROR;
 
-
-
   log_header_db_charset =
     log_get_charset_from_header_page (thread_p, boot_Db_full_name, log_path,
 				      log_prefix);
