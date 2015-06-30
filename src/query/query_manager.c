@@ -4874,6 +4874,7 @@ int
 xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id, int wait,
 		  QFILE_LIST_ID * new_list_id_p, int call_from_server)
 {
+#if defined (ENABLE_UNUSED_FUNCTION)
   QMGR_QUERY_ENTRY *query_p = NULL;
   QMGR_TRAN_ENTRY *tran_entry_p;
   int trans_ind, rv, prev_error;
@@ -4967,6 +4968,10 @@ end:
     }
 
   return NO_ERROR;
+#else /* ENABLE_UNUSED_FUNCTION */
+  /* We are not using ASYNC_EXEC mode. */
+  return NO_ERROR;
+#endif /* !ENABLE_UNUSED_FUNCTION */
 }
 
 /*

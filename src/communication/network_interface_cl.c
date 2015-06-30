@@ -1213,7 +1213,8 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
 
   ENTER_SERVER ();
 
-  is_reserved = xlocator_get_reserved_class_name_oid (NULL, classname, class_oid);
+  is_reserved =
+    xlocator_get_reserved_class_name_oid (NULL, classname, class_oid);
 
   EXIT_SERVER ();
 
@@ -8660,6 +8661,7 @@ int
 qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait)
 {
 #if defined(CS_MODE)
+#if defined (ENABLE_UNUSED_FUNCTION)
   int req_error;
   OR_ALIGNED_BUF (OR_PTR_SIZE + OR_INT_SIZE) a_request;
   char *request, *ptr;
@@ -8698,7 +8700,13 @@ qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait)
     }
 
   return status;
+#else /* ENABLE_UNUSED_FUNCTION */
+  /* We are not using ASYNC_EXEC mode. */
+  return NO_ERROR;
+#endif /* !ENABLE_UNUSED_FUNCTION */
+
 #else /* CS_MODE */
+
   /* Cannot run in standalone mode */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1,
 	  "query sync");

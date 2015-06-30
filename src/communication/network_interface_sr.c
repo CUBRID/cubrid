@@ -7179,6 +7179,7 @@ void
 sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		  char *request, int reqlen)
 {
+#if defined (ENABLE_UNUSED_FUNCTION)
   QUERY_ID query_id;
   int wait, success;
   char *ptr;
@@ -7233,6 +7234,10 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid,
 				     list_data, list_length);
   qfile_clear_list_id (&new_list_id);
   db_private_free_and_init (thread_p, list_data);
+#else /* ENABLE_UNUSED_FUNCTION */
+  /* We are not using ASYNC_EXEC mode. */
+  return;
+#endif /* !ENABLE_UNUSED_FUNCTION */
 }
 
 /*
