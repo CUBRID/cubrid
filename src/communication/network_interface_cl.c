@@ -1175,7 +1175,6 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
   char *request = NULL;
   OR_ALIGNED_BUF (OR_OID_SIZE) a_reply;
   char *reply = NULL;
-  int is_reserved = 0;
 
   assert (classname != NULL);
   assert (class_oid != NULL);
@@ -1205,11 +1204,20 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
     {
       return request_error;
     }
-  (void) or_unpack_oid (reply, class_oid);
-  return NO_ERROR;
 
+  (void) or_unpack_oid (reply, class_oid);
+
+  return NO_ERROR;
 #else
-  return xlocator_get_reserved_class_name_oid (NULL, classname, class_oid);
+  int is_reserved;
+
+  ENTER_SERVER ();
+
+  is_reserved = xlocator_get_reserved_class_name_oid (NULL, classname, class_oid);
+
+  EXIT_SERVER ();
+
+  return is_reserved;
 #endif
 }
 

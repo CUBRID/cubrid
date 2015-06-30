@@ -886,7 +886,7 @@ xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p,
 			     INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      return false;
+      return ER_FAILED;
     }
   entry =
     (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
