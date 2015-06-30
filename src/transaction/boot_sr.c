@@ -3725,7 +3725,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
   db_charset_db_header = boot_get_db_charset_from_header (thread_p, log_path,
 							  log_prefix);
-  if (db_charset_db_header == INTL_CODESET_ERROR)
+  if (db_charset_db_header <= INTL_CODESET_NONE
+      || INTL_CODESET_LAST < db_charset_db_header)
     {
       char er_msg[ERR_MSG_SIZE];
       snprintf (er_msg, sizeof (er_msg) - 1, "Cannot find a valid charset "
@@ -6727,7 +6728,8 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
     {
       db_charset_db_header =
 	boot_get_db_charset_from_header (thread_p, log_path, log_prefix);
-      if (db_charset_db_header == INTL_CODESET_ERROR)
+      if (db_charset_db_header <= INTL_CODESET_NONE
+	  || INTL_CODESET_LAST < db_charset_db_header)
 	{
 	  char er_msg[ERR_MSG_SIZE];
 	  snprintf (er_msg, sizeof (er_msg) - 1,
