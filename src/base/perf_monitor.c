@@ -3772,7 +3772,7 @@ mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type,
 
       assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
       assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-      assert (promote_cond >= PERF_PROMOTE_SINGLE_READER
+      assert (promote_cond >= PERF_PROMOTE_ONLY_READER
 	      && promote_cond < PERF_PROMOTE_CONDITION_CNT);
       assert (holder_latch >= PERF_HOLDER_LATCH_READ
 	      && holder_latch < PERF_HOLDER_LATCH_CNT);
@@ -4487,7 +4487,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
       for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
 	   page_type++)
 	{
-	  for (promote_cond = PERF_PROMOTE_SINGLE_READER;
+	  for (promote_cond = PERF_PROMOTE_ONLY_READER;
 	       promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
 	    {
 	      for (holder_latch = PERF_HOLDER_LATCH_READ;
@@ -4812,8 +4812,8 @@ perf_stat_promote_cond_name (const int cond_type)
 {
   switch (cond_type)
     {
-    case PERF_PROMOTE_SINGLE_READER:
-      return "SINGLE_READER";
+    case PERF_PROMOTE_ONLY_READER:
+      return "ONLY_READER";
     case PERF_PROMOTE_SHARED_READER:
       return "SHARED_READER";
     default:
@@ -4942,7 +4942,7 @@ perf_stat_dump_promote_page_array_stat (const UINT64 * stats_ptr,
       for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT;
 	   page_type++)
 	{
-	  for (promote_cond = PERF_PROMOTE_SINGLE_READER;
+	  for (promote_cond = PERF_PROMOTE_ONLY_READER;
 	       promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
 	    {
 	      for (holder_latch = PERF_HOLDER_LATCH_READ;

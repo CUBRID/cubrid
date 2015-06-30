@@ -29648,20 +29648,11 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
    * changed almost every time and using promotion can actually lead to poor
    * performance).
    * NOTE 3:
-   * Due to always using exclusive latches on leaf node, promotion for their
-   * parents are more restrictive: promote succeeds only if there is no other
-   * reader on that node (that could be blocked on same leaf node).
-   * Consider this case:
-   * 1. Thread 1 holds shared latch on parent and exclusive latch on leaf.
-   * 2. Thread 2 also holds shared latch on parent but is blocked on exclusive
-   *    latch on leaf.
-   * 3. Thread 1 decides that split is required and wants to promote parent
-   *    latch to exclusive. If promotion would be allowed (because there
-   *    are no other promoters waiting), a dead-latch between threads 1 and 2
-   *    would occur (thread 1 waiting on promotion, thread 2 waiting on leaf
-   *    node).
-   * Therefore, seeing that there is at least one more reader, thread 1 is
-   * very defensive and decides to abort promotion (and restart traversal).
+   * Promotion of current page is always done using ONLY_READER. This prevents
+   * dead-latches between three or more threads like the following:
+   *    T1: Holds READ on P1 and P2, waits on T2 for P1 promotion
+   *    T2: Holds READ on P1, waits on T3 for READ on P2
+   *    T3: Holds READ on P2 and another page, waits on T1 for P2 promotion
    */
 
   /* Root case. */
@@ -30082,13 +30073,10 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       && insert_helper->nonleaf_latch_mode == PGBUF_LATCH_READ
       && !insert_helper->is_crt_node_write_latched)
     {
-      /* Promote mode depends on whether child is leaf or not. See NOTE 3 from
-       * the above big comment.
-       */
+      /* Promote mode is always ONLY_READER */
       error_code =
 	pgbuf_promote_read_latch (thread_p, crt_page,
-				  is_child_leaf ? PGBUF_PROMOTE_SINGLE_READER
-				  : PGBUF_PROMOTE_SHARED_READER);
+				  PGBUF_PROMOTE_ONLY_READER);
       if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
 	{
 	  /* Could not promote. Restart insert from root by using write latch
@@ -34129,7 +34117,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	      /* First promote root. */
 	      error_code =
 		pgbuf_promote_read_latch (thread_p, crt_page,
-					  PGBUF_PROMOTE_SHARED_READER);
+					  PGBUF_PROMOTE_ONLY_READER);
 
 	      if (error_code == NO_ERROR && *crt_page != NULL)
 		{
@@ -34307,7 +34295,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
        * btree_split_node_and_advance).
        */
       child_latch = PGBUF_LATCH_WRITE;
-      promote_cond = PGBUF_PROMOTE_SINGLE_READER;
+      promote_cond = PGBUF_PROMOTE_ONLY_READER;
     }
   else
     {
@@ -34380,7 +34368,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	    {
 	      /* Promote latch on current node. */
 	      error_code =
-		pgbuf_promote_read_latch (thread_p, crt_page, promote_cond);
+		pgbuf_promote_read_latch (thread_p, crt_page,
+					  PGBUF_PROMOTE_ONLY_READER);
 	      if (error_code == NO_ERROR && *crt_page != NULL
 		  && child_latch != PGBUF_LATCH_WRITE)
 		{
@@ -34559,7 +34548,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	    {
 	      /* Promote latches. */
 	      error_code =
-		pgbuf_promote_read_latch (thread_p, crt_page, promote_cond);
+		pgbuf_promote_read_latch (thread_p, crt_page,
+					  PGBUF_PROMOTE_ONLY_READER);
 	      if (error_code == NO_ERROR && *crt_page != NULL
 		  && child_latch != PGBUF_LATCH_WRITE)
 		{

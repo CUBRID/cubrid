@@ -2010,7 +2010,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
     }
 
   /* check condition */
-  if (condition != PGBUF_PROMOTE_SINGLE_READER
+  if (condition != PGBUF_PROMOTE_ONLY_READER
       && condition != PGBUF_PROMOTE_SHARED_READER)
     {
       assert_release (false);
@@ -2034,9 +2034,9 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
       PGBUF_GET_PAGE_TYPE_FOR_STAT (*pgptr_p, perf_page_type);
 
       /* promote condition */
-      if (condition == PGBUF_PROMOTE_SINGLE_READER)
+      if (condition == PGBUF_PROMOTE_ONLY_READER)
 	{
-	  perf_promote_cond_type = PERF_PROMOTE_SINGLE_READER;
+	  perf_promote_cond_type = PERF_PROMOTE_ONLY_READER;
 	}
       else
 	{
@@ -2081,7 +2081,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
     }
   else
     {
-      if ((condition == PGBUF_PROMOTE_SINGLE_READER)
+      if ((condition == PGBUF_PROMOTE_ONLY_READER)
 	  || (bufptr->next_wait_thrd != NULL
 	      && bufptr->next_wait_thrd->wait_for_latch_promote))
 	{
@@ -2089,7 +2089,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 	   * CASE #1: first waiter is from a latch promotion - we can't
 	   * guarantee both will see the same page they initially fixed so
 	   * we'll abort the current promotion
-	   * CASE #2: PGBUF_PROMOTE_SINGLE_READER condition, we're only allowed
+	   * CASE #2: PGBUF_PROMOTE_ONLY_READER condition, we're only allowed
 	   * to promote if we're the only reader; this is not the case
 	   */
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
