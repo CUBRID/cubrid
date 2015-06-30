@@ -4126,6 +4126,32 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	      /* Do we need to redo anything ? */
 
+	      if (redo->data.rcvindex == RVVAC_COMPLETE)
+		{
+		  /* RVVAC_COMPLETE has a collateral effect on log global
+		   * header. Collected MVCC info must be reset. In the context
+		   * of recovery we also need to reset partially collect MVCC
+		   * info.
+		   */
+		  vacuum_er_log (VACUUM_ER_LOG_RECOVERY
+				 | VACUUM_ER_LOG_VACUUM_DATA,
+				 "Found RVVAC_COM");
+		  /* Reset log header MVCC info */
+		  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
+		  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
+		  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+		  /* Reset MVCC info collected by recovery. */
+		  LSA_SET_NULL (&last_mvcc_op_lsa);
+		  last_block_oldest_mvccid = MVCCID_NULL;
+		  last_block_newest_mvccid = MVCCID_NULL;
+		  is_chkpt_block_incomplete = false;
+		  is_chkpt_block = false;
+		  LSA_SET_NULL (&chkpt_block_first_lsa);
+		  LSA_SET_NULL (&chkpt_block_start_lsa);
+		  chkpt_block_oldest_mvccid = MVCCID_NULL;
+		  chkpt_block_newest_mvccid = MVCCID_NULL;
+		}
+
 	      /* For vacuum data records check vacuum data lsa */
 	      if (LOG_IS_VACUUM_DATA_RECOVERY (redo->data.rcvindex))
 		{
