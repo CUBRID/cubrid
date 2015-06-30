@@ -5056,13 +5056,11 @@ locator_mflush (MOP mop, void *mf)
     {
       /* Delete operation */
 
-      /*
-       * if this is a new object (i.e., it has not been flushed), we only
-       * need to decache the object
-       */
-
       if (OID_ISTEMP (oid))
 	{
+	  /* if this is a new object (i.e., it has not been flushed), we only
+	   * need to decache the object.
+	   */
 	  ws_decache (mop);
 	  return WS_MAP_CONTINUE;
 	}
@@ -5295,7 +5293,6 @@ locator_mflush (MOP mop, void *mf)
       mop_uoid->obj = mflush->mobjs->num_objs;
       mop_uoid->next = mflush->mop_uoids;
       mflush->mop_uoids = mop_uoid;
-
     }
 
   if (HFID_IS_NULL (hfid))
@@ -5361,11 +5358,21 @@ locator_mflush (MOP mop, void *mf)
 
   wasted_length = DB_WASTED_ALIGN (round_length, MAX_ALIGNMENT);
 
-#if !defined(NDEBUG)
-  /* suppress valgrind UMW error */
-  memset (mflush->recdes.data + round_length, 0,
-	  MIN (wasted_length, mflush->recdes.area_size - round_length));
+#if !defined (NDEBUG)
+  if (round_length < mflush->recdes.area_size)
+    {
+      /* suppress valgrind UMW error */
+      size_t hole_size;
+
+      hole_size =
+	MIN (wasted_length, mflush->recdes.area_size - round_length);
+      if (0 < hole_size)
+	{
+	  memset (mflush->recdes.data + round_length, 0, hole_size);
+	}
+    }
 #endif
+
   round_length = round_length + wasted_length;
   mflush->recdes.data += round_length;
   mflush->recdes.area_size -= round_length + sizeof (*(mflush->obj));
