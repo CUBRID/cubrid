@@ -22110,15 +22110,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	    is_d = ER_DATE_CONVERSION;
 	    is_t = ER_TIME_CONVERSION;
 	    is_timezone = 1;
-
-	    error_status = tz_utc_datetimetz_to_local (&dt_tz.datetime,
-						       &dt_tz.tz_id,
-						       &db_datetime);
-	    if (error_status != NO_ERROR)
-	      {
-		goto error;
-	      }
-	    dt_p = &db_datetime;
+	    db_datetime = dt_tz.datetime;
 	    tz_id = dt_tz.tz_id;
 	  }
 	/* try to figure out the string format */
@@ -22198,14 +22190,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
 	dt_tz_p = DB_GET_DATETIMETZ (date);
 
-	error_status = tz_utc_datetimetz_to_local (&dt_tz_p->datetime,
-						   &dt_tz_p->tz_id,
-						   &db_datetime);
-	if (error_status != NO_ERROR)
-	  {
-	    goto error;
-	  }
-	dt_p = &db_datetime;
+	dt_p = &dt_tz_p->datetime;
 	tz_id = dt_tz_p->tz_id;
 	is_dt = 1;
 	is_timezone = 1;
@@ -22388,8 +22373,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
   else if (is_dt >= 0)
     {
       assert (dt_p != NULL);
-
       y = m = d = h = mi = s = ms = 0;
+
       db_datetime_decode (dt_p, &m, &d, &y, &h, &mi, &s, &ms);
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0
@@ -22423,6 +22408,42 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
+	}
+
+      if (is_timezone > 0)
+	{
+	  TZ_REGION dest_tz_region;
+	  DB_DATETIME utc_datetime;
+	  DB_DATETIME local_datetime;
+
+	  tz_id_to_region (&tz_id, &dest_tz_region);
+	  error_status = db_date_encode (&db_date, m, d, y);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  error_status = db_time_encode (&db_time, h, mi, s);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  utc_datetime.date = db_date;
+	  utc_datetime.time = db_time * 1000;
+
+	  error_status = tz_conv_tz_datetime_w_region (&utc_datetime,
+						       tz_get_utc_tz_region(), 
+						       &dest_tz_region,
+						       &local_datetime, NULL,
+						       NULL);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  local_datetime.time /= 1000;
+	  db_date_decode (&local_datetime.date, &m, &d, &y);
+	  db_time_decode (&local_datetime.time, &h, &mi, &s);
 	}
 
       db_datetime.date = db_datetime.time = 0;
@@ -22500,14 +22521,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
       if (is_timezone > 0)
 	{
-	  TZ_REGION tz_region;
-	  tz_id_to_region (&tz_id, &tz_region);
-	  error_status =
-	    db_timestamp_decode_w_reg (ts_p, &tz_region, &db_date, &db_time);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	  db_timestamp_decode_utc (ts_p, &db_date, &db_time);
 	}
       else
 	{
@@ -22552,6 +22566,36 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
+	}
+
+      if (is_timezone > 0)
+	{
+	  TZ_REGION tz_region;
+	  tz_id_to_region (&tz_id, &tz_region);
+
+	  error_status = db_date_encode (&db_date, m, d, y);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  error_status = db_time_encode (&db_time, h, mi, s);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  error_status = db_timestamp_encode_utc (&db_date, &db_time, ts_p);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  error_status =
+	    db_timestamp_decode_w_reg (ts_p, &tz_region, &db_date, &db_time);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  db_date_decode (&db_date, &m, &d, &y);
+	  db_time_decode (&db_time, &h, &mi, &s);
 	}
 
       db_datetime.date = db_datetime.time = 0;
