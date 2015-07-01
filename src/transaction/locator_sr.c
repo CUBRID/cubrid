@@ -2820,6 +2820,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
   SCAN_OPERATION_TYPE operation_type;
   OID updated_oid, *p_oid = oid;
   bool object_locked = false;
+  int is_mvcc_disabled_class = -1;
 
   if (class_oid == NULL)
     {
@@ -2948,6 +2949,23 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 		  || class_lock >= SIX_LOCK)));
 #endif
 
+  if (!OID_IS_ROOTOID (class_oid) && lock > NULL_LOCK)
+    {
+      if (lock == IS_LOCK)
+	{
+	  /* Use S_LOCK. This lock will be transformed into NULL_LOCK
+	   * if op_type is S_SELECT and MVCC is not disabled for class OID.
+	   */
+	  lock = S_LOCK;
+	}
+      else if (lock == IX_LOCK)
+	{
+	  assert (0);
+	  lock = X_LOCK;
+	}
+      assert (lock == S_LOCK || lock == X_LOCK);
+    }
+
   /*
    * Lock and fetch the object and its class.
    */
@@ -2994,6 +3012,34 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 					operation_type);
       if (scan == S_SUCCESS)
 	{
+	  if (!object_locked)
+	    {
+	      is_mvcc_disabled_class =
+		heap_is_mvcc_disabled_for_class (class_oid);
+	      if (is_mvcc_disabled_class == true)
+		{
+		  if (lock > NULL_LOCK)
+		    {
+		      /* Non-MVCC: Always lock object */
+		      object_locked = true;
+		    }
+		}
+	      else if (lock == X_LOCK)
+		{
+		  /* MVCC X_LOCK: Need exclusive lock on object.
+		   * Get MVCC object version for delete/update.
+		   */
+		  object_locked = true;
+		}
+	      else if (operation_type == S_SELECT_WITH_LOCK)
+		{
+		  /* MVCC S_SELECT_WITH_LOCK: We need to read and lock last
+		   * object version found with satisfy dirty rules.
+		   * This object must be also locked.
+		   */
+		  object_locked = true;
+		}
+	    }
 	  break;
 	}
 
@@ -3104,26 +3150,21 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 error:
   if (lock != NULL_LOCK)
     {
-      if (!OID_IS_ROOTOID (class_oid) && lock == IS_LOCK)
-	{
-	  lock = S_LOCK;
-	}
-
       if (error_code != NO_ERROR)
 	{
-	  if (!OID_IS_ROOTOID (class_oid) && lock == IX_LOCK)
+	  if (object_locked)
 	    {
-	      assert (0);
-	      lock = X_LOCK;
+	      lock_unlock_object_donot_move_to_non2pl (thread_p, p_oid,
+						       class_oid, lock);
 	    }
-
-	  lock_unlock_object_donot_move_to_non2pl (thread_p, p_oid, class_oid,
-						   lock);
 	}
-      else if (heap_is_mvcc_disabled_for_class (class_oid))
+      else if (is_mvcc_disabled_class == true
+	       || (is_mvcc_disabled_class == -1
+		   && heap_is_mvcc_disabled_for_class (class_oid)))
 	{
 	  if (lock <= S_LOCK)
 	    {
+	      assert (object_locked);
 	      lock_unlock_object (thread_p, p_oid, class_oid, lock, false);
 	    }
 	}
