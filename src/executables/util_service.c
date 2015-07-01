@@ -4302,6 +4302,12 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name,
     {0, 0, 0, 0}
   };
 
+  if (argc < 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+      return ER_GENERIC_ERROR;
+    }
+
   *db_name = *node_name = *remote_host_name = '\0';
 
   /* dummy program name + user given argv */
