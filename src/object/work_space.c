@@ -1175,7 +1175,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
   ws_insert_mop_on_hash_link (new_mop, slot);
   assert (ws_check_hash_link (slot) == NO_ERROR);
 
-  return (new_mop);
+  return new_mop;
 
 abort_it:
   if (new_mop != NULL)
@@ -1183,11 +1183,6 @@ abort_it:
       ws_free_mop (new_mop);
     }
 
-  if (vid_info != NULL)
-    {
-      pr_clear_value (&vid_info->keys);
-      free (vid_info);
-    }
   return NULL;
 }
 
