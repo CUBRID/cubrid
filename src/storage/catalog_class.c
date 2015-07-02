@@ -5103,6 +5103,13 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p,
 	{
 	  if (heap_value->attrid == charset_att_id)
 	    {
+	      if (DB_IS_NULL (&heap_value->dbvalue))
+		{
+		  error = ER_FAILED;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
+			  0);
+		  goto exit;
+		}
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
 		      == DB_TYPE_INTEGER);
 
@@ -5112,6 +5119,14 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p,
 	    {
 	      char *lang_str = NULL;
 	      int lang_str_len;
+
+	      if (DB_IS_NULL (&heap_value->dbvalue))
+		{
+		  error = ER_FAILED;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
+			  0);
+		  goto exit;
+		}
 
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
 		      == DB_TYPE_STRING);
@@ -5136,6 +5151,14 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p,
 	    {
 	      char *checksum = NULL;
 	      int checksum_len;
+
+	      if (DB_IS_NULL (&heap_value->dbvalue))
+		{
+		  error = ER_FAILED;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
+			  0);
+		  goto exit;
+		}
 
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue))
 		      == DB_TYPE_STRING);

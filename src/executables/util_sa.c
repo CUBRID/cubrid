@@ -359,6 +359,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto print_create_usage;
     }
 
+  /* initialize time zone data */
+  if (tz_load () != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
@@ -660,12 +666,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
   sm_mark_system_classes ();
 
   (void) lang_db_put_charset ();
-
-  /* initialize time zone data, optional module */
-  if (tz_load () != NO_ERROR)
-    {
-      goto error_exit;
-    }
 
   tzd = tz_get_data ();
   if (put_timezone_checksum (tzd->checksum) != NO_ERROR)

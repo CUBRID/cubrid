@@ -263,6 +263,7 @@ static FILE *er_Accesslog_fh = NULL;
 
 static ER_FMT er_Fmt_list[(-ER_LAST_ERROR) + 1];
 static int er_Fmt_msg_fail_count = -ER_LAST_ERROR;
+static int er_Errid_not_initialized = 0;
 #if !defined (SERVER_MODE)
 static ER_MSG ermsg_Buf = { 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0 };
 static ER_MSG *er_Msg = NULL;
@@ -347,6 +348,11 @@ static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
 static ER_MSG *
 er_get_er_entry (THREAD_ENTRY * thread_p)
 {
+  if (!er_Hasalready_initiated)
+    {
+      return NULL;
+    }
+
 #if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
@@ -1534,6 +1540,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 
   if (er_Hasalready_initiated == false)
     {
+      er_Errid_not_initialized = err_id;
       return ER_FAILED;
     }
 
@@ -1964,6 +1971,11 @@ er_errid (void)
 {
   ER_MSG *er_entry_p;
 
+  if (!er_Hasalready_initiated)
+    {
+      return er_Errid_not_initialized;
+    }
+
   er_entry_p = er_get_er_entry (NULL);
 
   return (er_entry_p != NULL) ? er_entry_p->err_id : NO_ERROR;
@@ -1980,6 +1992,11 @@ int
 er_errid_if_has_error (void)
 {
   ER_MSG *er_entry_p;
+
+  if (!er_Hasalready_initiated)
+    {
+      return er_Errid_not_initialized;
+    }
 
   er_entry_p = er_get_er_entry (NULL);
 
@@ -2009,6 +2026,12 @@ er_clearid (void)
 {
   ER_MSG *er_entry_p;
 
+  if (!er_Hasalready_initiated)
+    {
+      er_Errid_not_initialized = NO_ERROR;
+      return;
+    }
+
   er_entry_p = er_get_er_entry (NULL);
 
   if (er_entry_p != NULL)
@@ -2026,6 +2049,12 @@ void
 er_setid (int err_id)
 {
   ER_MSG *er_entry_p;
+
+  if (!er_Hasalready_initiated)
+    {
+      er_Errid_not_initialized = err_id;
+      return;
+    }
 
   er_entry_p = er_get_er_entry (NULL);
 
@@ -2131,6 +2160,11 @@ er_msg (void)
 {
   ER_MSG *er_entry_p;
 
+  if (!er_Hasalready_initiated)
+    {
+      return "Not available";
+    }
+
   er_entry_p = er_get_er_entry (NULL);
   if (er_entry_p == NULL)
     {
@@ -2179,7 +2213,14 @@ er_all (int *err_id, int *severity, int *n_levels, int *line_no,
     }
   else
     {
-      *err_id = NO_ERROR;
+      if (!er_Hasalready_initiated)
+	{
+	  *err_id = er_Errid_not_initialized;
+	}
+      else
+	{
+	  *err_id = NO_ERROR;
+	}
       *severity = ER_WARNING_SEVERITY;
       *n_levels = 0;
       *line_no = -1;
@@ -3168,7 +3209,7 @@ er_make_room (THREAD_ENTRY * thread_p, int size)
 
   er_entry_p = er_get_er_entry (thread_p);
 
-  if (er_entry_p->msg_area_size < size)
+  if (er_entry_p != NULL && er_entry_p->msg_area_size < size)
     {
       er_free_msg_area (thread_p, er_entry_p->msg_area);
 
@@ -3234,6 +3275,10 @@ er_emergency (THREAD_ENTRY * thread_p, const char *file, int line,
     }
 
   er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p == NULL)
+    {
+      return;
+    }
 
   er_free_msg_area (thread_p, er_entry_p->msg_area);
 

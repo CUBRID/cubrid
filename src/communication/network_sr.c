@@ -1453,6 +1453,13 @@ net_server_start (const char *server_name)
       goto end;
     }
 
+  /* initialize time zone data, optional module */
+  if (tz_load () != NO_ERROR)
+    {
+      status = -1;
+      goto end;
+    }
+
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
 
@@ -1473,13 +1480,6 @@ net_server_start (const char *server_name)
 	       prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
-      status = -1;
-      goto end;
-    }
-
-  /* initialize time zone data, optional module */
-  if (tz_load () != NO_ERROR)
-    {
       status = -1;
       goto end;
     }
