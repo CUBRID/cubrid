@@ -12806,6 +12806,11 @@ pt_replace_names_in_update_values (PARSER_CONTEXT * parser, PT_NODE * update)
     }
 
   prev = update->info.update.assignment;
+  if (prev == NULL)
+    {
+      return NULL;
+    }
+
   if (prev->next == NULL)
     {
       /* only one assignment, nothing to be done */
