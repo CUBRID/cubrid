@@ -7463,7 +7463,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
        * the object. Assignments may depend on current object values which
        * cannot be modified by others.
        */
-      error = db_lock_write (oid);
+      error = obj_inst_lock (oid, 1);
       if (error != NO_ERROR)
 	{
 	  PT_INTERNAL_ERROR (parser,

@@ -4783,13 +4783,13 @@ obj_is_instance_of (MOP obj, MOP class_mop)
 
 /*
  * obj_lock - Simplified interface for obtaining the basic read/write locks
- *    on an object.
+ *	      on an object.
  *    return: error code
  *    op(in): object to lock
  *    for_write(in): non-zero to get a write lock
- *
+ * NOTE: This is a generic function can be used when a caller does not know
+ *       whether op is an instance or a class mop.
  */
-
 int
 obj_lock (MOP op, int for_write)
 {
@@ -4806,28 +4806,74 @@ obj_lock (MOP op, int for_write)
 		   ? DB_FETCH_CLREAD_INSTWRITE : DB_FETCH_CLREAD_INSTREAD);
   if (locator_is_class (op, class_purpose))
     {
-      if (for_write)
-	{
-	  error = au_fetch_class (op, NULL, AU_FETCH_UPDATE, AU_ALTER);
-	}
-      else
-	{
-	  error = au_fetch_class (op, NULL, AU_FETCH_READ, AU_SELECT);
-	}
+      return obj_class_lock (op, for_write);
     }
   else
     {
-      if (for_write)
-	{
-	  error = au_fetch_instance (op, NULL, AU_FETCH_UPDATE,
-				     LC_FETCH_MVCC_VERSION, AU_UPDATE);
-	}
-      else
-	{
-	  /* get dirty version, since need to lock the object */
-	  error = au_fetch_instance (op, NULL, AU_FETCH_READ,
-				     LC_FETCH_DIRTY_VERSION, AU_SELECT);
-	}
+      return obj_inst_lock (op, for_write);
+    }
+}
+
+/*
+ * obj_class_lock - Simplified interface for obtaining the basic read/write locks 
+ *		    on a class object.
+ *    return: error code
+ *    op(in): object to lock
+ *    for_write(in): non-zero to get a write lock
+ * NOTE: Callers should know op is a class mop.
+ */
+int
+obj_class_lock (MOP op, int for_write)
+{
+  int error = NO_ERROR;
+
+  if (op->is_temp)
+    {
+      /* if it is a temporary object, just ignore the request */
+      return NO_ERROR;
+    }
+
+  if (for_write)
+    {
+      error = au_fetch_class (op, NULL, AU_FETCH_UPDATE, AU_ALTER);
+    }
+  else
+    {
+      error = au_fetch_class (op, NULL, AU_FETCH_READ, AU_SELECT);
+    }
+
+  return error;
+}
+
+/*
+ * obj_inst_lock - Simplified interface for obtaining the basic read/write locks 
+ *		   on an instance object.
+ *    return: error code
+ *    op(in): object to lock
+ *    for_write(in): non-zero to get a write lock
+ * NOTE: Callers should know op is an instance mop.
+ */
+int
+obj_inst_lock (MOP op, int for_write)
+{
+  int error = NO_ERROR;
+
+  if (op->is_temp)
+    {
+      /* if it is a temporary object, just ignore the request */
+      return NO_ERROR;
+    }
+
+  if (for_write)
+    {
+      error = au_fetch_instance (op, NULL, AU_FETCH_UPDATE,
+				 LC_FETCH_MVCC_VERSION, AU_UPDATE);
+    }
+  else
+    {
+      /* get dirty version, since need to lock the object */
+      error = au_fetch_instance (op, NULL, AU_FETCH_READ,
+				 LC_FETCH_DIRTY_VERSION, AU_SELECT);
     }
 
   return error;

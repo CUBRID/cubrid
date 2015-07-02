@@ -186,6 +186,8 @@ extern int obj_is_instance_of (MOP obj, MOP class_mop);
 
 /* Misc operations */
 extern int obj_lock (MOP op, int for_write);
+extern int obj_class_lock (MOP op, int for_write);
+extern int obj_inst_lock (MOP op, int for_write);
 extern MOP obj_find_unique (MOP op, const char *attname, DB_VALUE * value,
 			    AU_FETCHMODE fetchmode);
 extern MOP obj_find_object_by_pkey (MOP classop, DB_VALUE * key,

@@ -1760,7 +1760,7 @@ au_update_new_auth (MOP grantor, MOP user, MOP class_mop,
 	      return er_errid ();
 	    }
 
-	  error = obj_lock (au_obj, 1);
+	  error = obj_inst_lock (au_obj, 1);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -1806,7 +1806,7 @@ au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
 	      return er_errid ();
 	    }
 
-	  error = obj_lock (au_obj, 1);
+	  error = obj_inst_lock (au_obj, 1);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -2979,7 +2979,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 	    }
 	  else
 	    {
-	      error = obj_lock (member, 1);
+	      error = obj_inst_lock (member, 1);
 	      if (error == NO_ERROR)
 		{
 		  error = au_get_set (member, "groups", &member_groups);
@@ -3175,7 +3175,7 @@ au_drop_member (MOP group, MOP member)
 	    }
 	  else
 	    {
-	      error = obj_lock (member, 1);
+	      error = obj_inst_lock (member, 1);
 	      if (error == NO_ERROR)
 		{
 		  error = au_get_set (member, "direct_groups",
@@ -4418,7 +4418,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      error = ER_AU_CANT_UPDATE;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
-	  else if ((error = obj_lock (auth, 1)) == NO_ERROR
+	  else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR
 		   && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	    {
 	      gindex = find_grant_entry (grants, class_mop, Au_user);
@@ -4804,7 +4804,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 	{
 	  if (!g->legal)
 	    {
-	      if ((error = obj_lock (g->auth_object, 1)) == NO_ERROR
+	      if ((error = obj_inst_lock (g->auth_object, 1)) == NO_ERROR
 		  && (error =
 		      get_grants (g->auth_object, &grants, 0)) == NO_ERROR)
 		{
@@ -4839,7 +4839,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 	{
 	  if (!g->legal)
 	    {
-	      if ((error = obj_lock (g->auth_object, 1)) == NO_ERROR
+	      if ((error = obj_inst_lock (g->auth_object, 1)) == NO_ERROR
 		  && (error
 		      = get_grants (g->auth_object, &grants, 0)) == NO_ERROR)
 		{
@@ -4967,7 +4967,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  goto fail_end;
 	}
-      else if ((error = obj_lock (auth, 1)) == NO_ERROR
+      else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR
 	       && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
 	  gindex = find_grant_entry (grants, class_mop, Au_user);

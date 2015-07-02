@@ -1934,7 +1934,7 @@ register_user_trigger (DB_OBJECT * object)
 
   AU_DISABLE (save);
   if (Au_user != NULL
-      && (error = obj_lock (Au_user, 1)) == NO_ERROR
+      && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
       && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -2015,7 +2015,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 
   AU_DISABLE (save);
   if (Au_user != NULL
-      && (error = obj_lock (Au_user, 1)) == NO_ERROR
+      && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
       && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -3037,7 +3037,7 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
   AU_DISABLE (save);
 
   if (Au_root != NULL
-      && (error = obj_lock (Au_root, 1)) == NO_ERROR
+      && (error = obj_inst_lock (Au_root, 1)) == NO_ERROR
       && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -3248,7 +3248,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
   /* change the name */
   AU_DISABLE (save);
   if (Au_root != NULL
-      && (error = obj_lock (Au_root, 1)) == NO_ERROR
+      && (error = obj_inst_lock (Au_root, 1)) == NO_ERROR
       && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -3321,7 +3321,7 @@ trigger_table_drop (const char *name)
   AU_DISABLE (save);
 
   if (Au_root != NULL
-      && (error = obj_lock (Au_root, 1)) == NO_ERROR
+      && (error = obj_inst_lock (Au_root, 1)) == NO_ERROR
       && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
