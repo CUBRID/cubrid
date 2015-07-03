@@ -11707,7 +11707,7 @@ db_get_time_item (const DB_VALUE * src_date, const int item_type,
  *  milliseconds. Other specifiers produce a NULL value or 0.
  */
 int
-db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
+db_time_format (const DB_VALUE * src_value, const DB_VALUE * format,
 		const DB_VALUE * date_lang, DB_VALUE * result,
 		const TP_DOMAIN * domain)
 {
@@ -11733,6 +11733,10 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
   char hours_or_minutes[4];
   int tzh = 0, tzm = 0;
   bool is_valid_tz = false;
+  DB_VALUE new_time_value;
+  const DB_VALUE *time_value = src_value;
+  const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+  TP_DOMAIN_STATUS status;
 
   is_date = is_datetime = is_timestamp = is_time = 0;
   h = mi = s = ms = 0;
@@ -11743,6 +11747,8 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 
   res = NULL;
   res2 = NULL;
+
+  DB_MAKE_NULL (&new_time_value);
 
   if (time_value == NULL || format == NULL
       || DB_IS_NULL (time_value) || DB_IS_NULL (format))
@@ -11777,6 +11783,21 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 
   res_type = DB_VALUE_DOMAIN_TYPE (time_value);
 
+  if ((res_type == DB_TYPE_DATE)
+      || !(TP_IS_DATE_OR_TIME_TYPE (res_type) || TP_IS_CHAR_TYPE (res_type)))
+    {
+      status = tp_value_auto_cast (time_value, &new_time_value, new_domain);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+      time_value = &new_time_value;
+    }
+
+  res_type = DB_VALUE_DOMAIN_TYPE (time_value);
+
   /* 1. Get date values */
   switch (res_type)
     {
@@ -11788,7 +11809,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 	error_status = tz_create_session_tzid_for_timestamp (ts_p, &tz_id);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	(void) db_timestamp_decode_ses (ts_p, &db_date, &db_time);
@@ -11799,7 +11820,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	is_valid_tz = true;
       }
@@ -11817,7 +11838,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 						    &time);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	db_time_decode (&time, &h, &mi, &s);
@@ -11826,7 +11847,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	is_valid_tz = true;
       }
@@ -11844,13 +11865,13 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	error_status = db_timestamp_decode_w_tz_id (tsmp, &tz_id, &date,
 						    &time);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	db_time_decode (&time, &h, &mi, &s);
@@ -11859,7 +11880,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	is_valid_tz = true;
       }
@@ -11874,7 +11895,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 	  tz_create_session_tzid_for_datetime (dt_p, true, &tz_id);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	db_datetime_decode (dt_p, &month, &day, &year, &h, &mi, &s, &ms);
 	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1,
@@ -11882,7 +11903,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	is_valid_tz = true;
       }
@@ -11898,7 +11919,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 						   &dt_tz->tz_id, &dt_local);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	db_datetime_decode (&dt_local, &month, &day, &year, &h, &mi, &s, &ms);
 
@@ -11907,7 +11928,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	is_valid_tz = true;
       }
@@ -11922,13 +11943,13 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 	error_status = tz_create_session_tzid_for_datetime (dt, true, &tz_id);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	error_status = tz_utc_datetimetz_to_local (dt, &tz_id, &dt_local);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	db_datetime_decode (&dt_local, &month, &day, &year, &h, &mi, &s, &ms);
 
@@ -11937,7 +11958,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	is_valid_tz = true;
@@ -11954,7 +11975,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 	error_status = tz_create_session_tzid_for_time (t_p, true, &tz_id);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	db_time_decode (t_p, &h, &mi, &s);
@@ -11963,7 +11984,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	is_valid_tz = true;
       }
@@ -11981,7 +12002,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 				  &time_local);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	db_time_decode (&time_local, &h, &mi, &s);
@@ -11990,7 +12011,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	is_valid_tz = true;
       }
@@ -12006,13 +12027,13 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 	error_status = tz_create_session_tzid_for_time (t_p, true, &tz_id);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	error_status = tz_utc_timetz_to_local (t_p, &tz_id, &time_local);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 
 	db_time_decode (&time_local, &h, &mi, &s);
@@ -12021,7 +12042,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 					 &tzm);
 	if (error_status != NO_ERROR)
 	  {
-	    return error_status;
+	    goto error;
 	  }
 	is_valid_tz = true;
       }
@@ -12083,6 +12104,8 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
     }
+
+  db_value_clear (&new_time_value);
 
   /* 2. Compute the value for each format specifier */
   if (mi < 0)
@@ -12163,7 +12186,8 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
     default:
       /* we should not get a nonstring format */
       assert (false);
-      return ER_FAILED;
+      error_status = ER_FAILED;
+      goto error;
     }
 
   len = 1024;
@@ -12305,6 +12329,8 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
   return error_status;
 
 error:
+  db_value_clear (&new_time_value);
+
   if (res != NULL)
     {
       db_private_free_and_init (NULL, res);
@@ -23370,7 +23396,7 @@ error:
       db_private_free_and_init (NULL, res);
     }
 
-  if (res != NULL)
+  if (res2 != NULL)
     {
       db_private_free_and_init (NULL, res2);
     }

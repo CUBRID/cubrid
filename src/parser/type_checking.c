@@ -2435,7 +2435,21 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_TIME_FORMAT:
       num = 0;
 
-      /* two overloads */
+      /* three overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATETIME;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
 
       /* arg1 */
       sig.arg1_type.is_generic = true;
@@ -2453,7 +2467,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       /* arg1 */
       sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATETIME;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_ANY;
       /* arg2 */
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
