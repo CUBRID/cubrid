@@ -1659,6 +1659,32 @@ qo_sscan_cost (QO_PLAN * planp)
 }
 
 /*
+ * qo_index_has_bit_attr () - temporary function
+ *    determines if index has any bit/varbit attributes
+ *    return: true/false
+ *    index_entyp(in):
+ */
+bool
+qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp)
+{
+  TP_DOMAIN *domain;
+  int col_num = index_entryp->col_num;
+  int j;
+
+  for (j = 0; j < col_num; j++)
+    {
+      domain = index_entryp->constraints->attributes[j]->domain;
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_BIT ||
+	  TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_index_scan_new () -
  *   return:
  *   info(in):
@@ -1915,7 +1941,8 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
       if (qo_is_prefix_index (index_entryp) == false)
 	{
 	  if (scan_method == QO_SCANMETHOD_INDEX_SCAN
-	      && qo_is_index_covering_scan (plan))
+	      && qo_is_index_covering_scan (plan)
+	      && !qo_index_has_bit_attr (index_entryp))
 	    {
 	      /* covering index, no key-range, no data-filter;
 	       * mark as loose index scan
