@@ -10788,7 +10788,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 	else
 	  {
-	    type_specifier = DATETIME_SPECIFIER;
+	    type_specifier = PT_TYPE_MAYBE;
 	  }
 
 	/* default is date (i.e.: -> when no format supplied) */
@@ -10817,6 +10817,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    /* if other value, the db_str_to_date will return NULL */
 	    node->type_enum = PT_TYPE_NULL;
+	  }
+	else if (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE)
+	  {
+	    node->type_enum = PT_TYPE_MAYBE;
 	  }
 	break;
       }
@@ -22403,6 +22407,7 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_GREATEST:
     case PT_FROM_TZ:
     case PT_NEW_TIME:
+    case PT_STR_TO_DATE:
       return true;
     default:
       return false;
