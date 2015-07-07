@@ -28340,6 +28340,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
 	{
 	  /* Early out. */
 	  pgbuf_unfix_and_init (thread_p, overflow_page);
+	  VPID_SET_NULL (&bts->O_vpid);
 	  return NO_ERROR;
 	}
       if (save_oid_count < bts->n_oids_read_last_iteration)
