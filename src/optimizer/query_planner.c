@@ -297,6 +297,8 @@ static void qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent);
 static void qo_plan_follow_print_text (FILE * fp, QO_PLAN * plan, int indent);
 static void qo_plan_print_text (FILE * fp, QO_PLAN * plan, int indent);
 
+static bool qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp);
+
 static QO_PLAN_VTBL qo_seq_scan_plan_vtbl = {
   "sscan",
   qo_scan_fprint,
@@ -1664,7 +1666,7 @@ qo_sscan_cost (QO_PLAN * planp)
  *    return: true/false
  *    index_entyp(in):
  */
-bool
+static bool
 qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp)
 {
   TP_DOMAIN *domain;
@@ -1674,8 +1676,8 @@ qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp)
   for (j = 0; j < col_num; j++)
     {
       domain = index_entryp->constraints->attributes[j]->domain;
-      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_BIT ||
-	  TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_BIT
+	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)
 	{
 	  return true;
 	}
