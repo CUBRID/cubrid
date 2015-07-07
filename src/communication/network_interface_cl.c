@@ -7440,8 +7440,9 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
 #else /* CS_MODE */
 
       ENTER_SERVER ();
-      status = xbtree_find_unique (NULL, btid, S_SELECT, key, class_oid,
-				   oid, false);
+      status =
+	xbtree_find_unique (NULL, btid, S_SELECT_WITH_LOCK, key, class_oid,
+			    oid, false);
       EXIT_SERVER ();
 
 #endif /* !CS_MODE */

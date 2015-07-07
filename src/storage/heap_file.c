@@ -11734,6 +11734,70 @@ exit_on_end:
 }
 
 /*
+ * heap_does_exist_visible () - Similar to heap does exist, but also checks
+ *				MVCC chain to find a visible version.
+ *
+ * return	  : True if visible version of object exists, false otherwise.
+ * thread_p (in)  : Thread entry.
+ * class_oid (in) : Class OID.
+ * oid (in)	  : Instance OID.
+ */
+bool
+heap_does_exist_visible (THREAD_ENTRY * thread_p, OID * class_oid,
+			 const OID * oid)
+{
+  bool old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  bool doesexist = false;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan = S_SUCCESS;
+  OID local_class_oid = OID_INITIALIZER;
+
+  if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+    {
+      goto exit_on_end;
+    }
+
+  /*
+   * If the class is not NULL and it is different from the Root class,
+   * make sure that it exist. Root class always exist.. not need to check
+   * for it
+   */
+  if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid)
+      && HEAP_ISVALID_OID (class_oid) != DISK_VALID)
+    {
+      goto exit_on_end;
+    }
+  if (class_oid == NULL)
+    {
+      class_oid = &local_class_oid;
+    }
+
+  if (heap_scancache_quick_start (&scan_cache) != NO_ERROR)
+    {
+      goto exit_on_end;
+    }
+  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  scan =
+    heap_mvcc_lock_and_get_object_version (thread_p, (OID *) oid, class_oid,
+					   NULL, &scan_cache, S_SELECT, PEEK,
+					   NULL_CHN, NULL, NULL);
+  heap_scancache_end (thread_p, &scan_cache);
+  if (scan != S_SUCCESS)
+    {
+      goto exit_on_end;
+    }
+  assert (!OID_ISNULL (class_oid));
+
+  /* Check class exists. */
+  doesexist = heap_does_exist (thread_p, oid_Root_class_oid, class_oid);
+
+exit_on_end:
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+
+  return doesexist;
+}
+
+/*
  * heap_get_num_objects () - Count the number of objects
  *   return: number of records or -1 in case of an error
  *   hfid(in): Object heap file identifier
@@ -25235,7 +25299,6 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
   OID save_partition_oid;
   OID next_version;
   OID next_partition_oid;
-  OID rec_buffer[2];
   char buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);

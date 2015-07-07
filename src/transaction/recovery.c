@@ -942,7 +942,20 @@ struct rvfun RV_fun[] = {
    "RVVAC_COMPLETE",
    NULL,
    vacuum_rv_redo_vacuum_complete,
-   NULL, NULL}
+   NULL, NULL},
+
+  {RVBT_DELETE_OBJECT_POSTPONE,
+   "RVBT_DELETE_OBJECT_POSTPONE",
+   NULL,
+   btree_rv_remove_marked_for_delete,
+   NULL,
+   btree_rv_keyval_dump},
+  {RVBT_MARK_DELETED,
+   "RVBT_MARK_DELETED",
+   btree_rv_keyval_undo_insert_mvcc_delid,
+   btree_rv_redo_record_modify,
+   btree_rv_keyval_dump,
+   log_rv_dump_hexa},
 };
 
 /*

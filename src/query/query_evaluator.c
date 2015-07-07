@@ -1992,8 +1992,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		}
 
 	      if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
-		  && !heap_does_exist (thread_p, (OID *) NULL,
-				       DB_PULL_OID (peek_val1)))
+		  && !heap_does_exist_visible (thread_p, (OID *) NULL,
+					       DB_PULL_OID (peek_val1)))
 		{
 		  result = V_TRUE;
 		}
@@ -2374,7 +2374,8 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
     }
 
   if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
-      && !heap_does_exist (thread_p, (OID *) NULL, DB_PULL_OID (peek_val1)))
+      && !heap_does_exist_visible (thread_p, (OID *) NULL,
+				   DB_PULL_OID (peek_val1)))
     {
       return V_TRUE;
     }

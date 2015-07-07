@@ -11116,7 +11116,7 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	   */
 	  (void) vacuum_notify_dropped_file (thread_p, &rcv, &ref_lsa);
 	}
-      else if (rcvindex == RVFL_POSTPONE_DESTROY_FILE)
+      else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
 	{
 	  if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
 	    {
@@ -11126,7 +11126,7 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 			     (int) ref_lsa.offset);
 	    }
 	  LSA_COPY (&rcv.reference_lsa, &ref_lsa);
-	  if (file_rv_postpone_destroy_file (thread_p, &rcv) != NO_ERROR)
+	  if ((*RV_fun[rcvindex].redofun) (thread_p, &rcv) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }

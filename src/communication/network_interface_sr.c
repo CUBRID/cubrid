@@ -5397,7 +5397,7 @@ sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_btid (ptr, &btid);
 
   OID_SET_NULL (&oid);
-  success = xbtree_find_unique (thread_p, &btid, S_SELECT, &key,
+  success = xbtree_find_unique (thread_p, &btid, S_SELECT_WITH_LOCK, &key,
 				&class_oid, &oid, false);
   if (success == BTREE_ERROR_OCCURRED)
     {

@@ -1093,7 +1093,7 @@ struct btree_delete_helper
   int rv_keyval_data_length;
   char *rv_redo_data;
   char *rv_redo_data_ptr;
-  LOG_LSA compensate_undo_nxlsa;
+  LOG_LSA reference_lsa;
   bool is_system_op_started;
 };
 #define BTREE_DELETE_HELPER_INITIALIZER \
@@ -1117,7 +1117,7 @@ struct btree_delete_helper
     0 /* rv_keyval_data_length */, \
     NULL /* rv_redo_data */, \
     NULL /* rv_redo_data_ptr */, \
-    LSA_INITIALIZER, /* compensate_undo_nxlsa */ \
+    LSA_INITIALIZER, /* reference_lsa */ \
     false /* is_system_op_started */ \
   }
 
@@ -2257,6 +2257,11 @@ static int btree_key_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p,
 
 static int btree_rv_record_modify_internal (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv, bool is_undo);
+static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid,
+				   OR_BUF * buffered_key,
+				   BTREE_OBJECT_INFO * btree_obj,
+				   MVCCID tran_mvccid,
+				   LOG_LSA * reference_lsa);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID,
@@ -10502,6 +10507,8 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 					 * started to provide atomicity.
 					 */
   LOG_LSA prev_lsa;
+  char leaf_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  RECDES leaf_record;
 
   assert (delete_helper->is_system_op_started == false);
   assert (delete_helper->purpose != BTREE_OP_UNDO_SAME_KEY_DIFF_OID
@@ -10528,6 +10535,13 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	    }
 	  is_system_op_started = true;
 	}
+      else if (delete_helper->purpose
+	       == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+	{
+	  log_start_postpone_system_op (thread_p,
+					&delete_helper->reference_lsa);
+	  is_system_op_started = true;
+	}
       /* Delete overflow key. */
       ret =
 	btree_delete_overflow_key (thread_p, btid, leaf_pg,
@@ -10548,6 +10562,22 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
       assert_release (false);
       ret = ER_FAILED;
       goto exit_on_error;
+    }
+
+  if (is_system_op_started)
+    {
+      /* Before deleting the slot, we will need the record data for undo
+       * logging.
+       */
+      leaf_record.area_size = DB_PAGESIZE;
+      leaf_record.data = PTR_ALIGN (leaf_record_buffer, BTREE_MAX_ALIGN);
+      if (spage_get_record (leaf_pg, search_key->slotid, &leaf_record, COPY)
+	  != S_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
     }
 
   /* now delete the btree slot */
@@ -10584,7 +10614,20 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
   assert (!BTREE_RV_HAS_DEBUG_INFO (delete_helper->leaf_addr.offset));
 
   /* Add logging. */
-  if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
+  if (is_system_op_started)
+    {
+      /* We need undoredo logging. */
+      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
+	      || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID
+	      || delete_helper->purpose
+	      == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
+
+      /* TODO: Add debugging info for undo. */
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO,
+				&delete_helper->leaf_addr, leaf_record.length,
+				0, leaf_record.data, NULL);
+    }
+  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
     {
       /* Undo-redo logging. No actual redo data, since the record is removed
        * completely (and only a flag saved in leaf_addr.offset is used.
@@ -10601,13 +10644,18 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     delete_helper->leaf_addr.offset, leaf_pg,
 			     0, NULL, LOG_FIND_CURRENT_TDES (thread_p));
     }
+  else if (delete_helper->purpose
+	   == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+    {
+      log_append_run_postpone (thread_p, RVBT_DELETE_OBJECT_PHYSICAL,
+			       &delete_helper->leaf_addr,
+			       pgbuf_get_vpid_ptr (leaf_pg), 0, NULL,
+			       &delete_helper->reference_lsa);
+    }
   else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
     {
       /* We now know everything is successfully executed. Vacuum no longer
        * needs undo logging.
-       */
-      /* TODO: If system op is started, we also need undo recovery. Otherwise,
-       *       there is a chance that the deallocated page is leaked.
        */
       log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL,
 			    &delete_helper->leaf_addr, 0, NULL);
@@ -10801,8 +10849,14 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	       || delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID)
 	{
 	  log_start_compensate_system_op (thread_p,
-					  &delete_helper->
-					  compensate_undo_nxlsa);
+					  &delete_helper->reference_lsa);
+	  delete_helper->is_system_op_started = true;
+	}
+      else if (delete_helper->purpose
+	       == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+	{
+	  log_start_postpone_system_op (thread_p,
+					&delete_helper->reference_lsa);
 	  delete_helper->is_system_op_started = true;
 	}
     }
@@ -13436,6 +13490,7 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p,
 	}
       return NO_ERROR;
 
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
       /* Match delete MVCCID to not remove the wrong object (reused). */
       assert (match_mvccid != NULL
@@ -13449,6 +13504,10 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p,
       else
 	{
 	  /* Not a match. */
+	  /* This is acceptable only for vacuum. Postpone delete expects to
+	   * find an exact match.
+	   */
+	  assert (purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
 	}
       return NO_ERROR;
 
@@ -13528,6 +13587,7 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p,
 
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_INSERT_MVCC_DELID:
+    case BTREE_OP_INSERT_MARK_DELETED:
     case BTREE_OP_UPDATE_SAME_KEY_DIFF_OID:
     default:
       /* We are looking for an object not deleted. It is possible to find same
@@ -19199,6 +19259,16 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid,
 	}
       break;
 
+    case BTREE_OP_INSERT_MARK_DELETED:
+      /* We need delete MVCCID to log data since the log record will not be
+       * MVCC type and will not include transaction MVCCID.
+       */
+      assert (mvcc_info != NULL);
+      assert (BTREE_MVCC_INFO_IS_DELID_VALID (mvcc_info)
+	      && mvcc_info->delete_mvccid == logtb_get_current_mvccid (NULL));
+      BTREE_OID_SET_MVCC_FLAG (&oid_and_flags, BTREE_OID_HAS_MVCC_DELID);
+      break;
+
     default:
       /* No MVCC information needs packing. It doesn't exist or it can be
        * recovered in other ways.
@@ -20398,7 +20468,7 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
   OID oid;
   char *datap;
   int datasize;
-  BTREE_MVCC_INFO dummy_mvcc_info;
+  BTREE_MVCC_INFO mvcc_info;
   int err = NO_ERROR;
   MVCCID delete_mvccid;
 
@@ -20410,10 +20480,19 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
   datasize = recv->length;
 
   btree_rv_read_keybuf_nocopy (thread_p, datap, datasize, &btid, &cls_oid,
-			       &oid, &dummy_mvcc_info, &key_buf);
+			       &oid, &mvcc_info, &key_buf);
   assert (!OID_ISNULL (&oid));
 
-  delete_mvccid = recv->mvcc_id;
+  if (recv->mvcc_id == MVCCID_NULL)
+    {
+      /* Not a MVCC log record. MVCCID should be saved in log data. */
+      assert (BTREE_MVCC_INFO_IS_DELID_VALID (&mvcc_info));
+      delete_mvccid = mvcc_info.delete_mvccid;
+    }
+  else
+    {
+      delete_mvccid = recv->mvcc_id;
+    }
   assert (MVCCID_IS_NOT_ALL_VISIBLE (delete_mvccid));
   err =
     btree_undo_mvcc_delete (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid,
@@ -20514,6 +20593,44 @@ btree_rv_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     btree_undo_mvcc_update_same_key (thread_p, btree_info.sys_btid, &key_buf,
 				     &old_version, &new_version,
 				     rcv->mvcc_id, &rcv->reference_lsa);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+    }
+  return error_code;
+}
+
+/*
+ * btree_rv_remove_marked_for_delete () - Part of run postpone to remove an
+ *					  object which was previously marked
+ *					  for delete.
+ *				       
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+btree_rv_remove_marked_for_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  BTID_INT btree_info;
+  BTID sys_btid;
+  OR_BUF key_buf;
+  BTREE_OBJECT_INFO object_info = BTREE_OBJECT_INFO_INITIALIZER;
+  int error_code = NO_ERROR;
+
+  assert (!LSA_ISNULL (&rcv->reference_lsa));
+
+  btree_info.sys_btid = &sys_btid;
+  btree_rv_read_keybuf_nocopy (thread_p, (char *) rcv->data, rcv->length,
+			       &btree_info, &object_info.class_oid,
+			       &object_info.oid, &object_info.mvcc_info,
+			       &key_buf);
+
+  error_code =
+    btree_delete_postponed (thread_p, btree_info.sys_btid, &key_buf,
+			    &object_info, object_info.mvcc_info.delete_mvccid,
+			    &rcv->reference_lsa);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -23682,6 +23799,9 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p,
   assert (slot_id > 0);
   assert (rec != NULL);
   assert (oid_offset >= 0);
+  assert (insert_helper != NULL);
+  assert (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED);
 
   /* Prepare logging. */
   /* Initialize log address data */
@@ -23696,7 +23816,7 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p,
 				   BTREE_INSERT_CLASS_OID (insert_helper),
 				   BTREE_INSERT_OID (insert_helper),
 				   BTREE_INSERT_MVCC_INFO (insert_helper),
-				   BTREE_OP_INSERT_MVCC_DELID,
+				   insert_helper->purpose,
 				   rv_undo_data_bufalign, &rv_undo_data,
 				   &rv_undo_data_capacity,
 				   &rv_undo_data_length);
@@ -23736,9 +23856,20 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p,
   /* Logging. */
   BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data,
 			    rv_redo_data_length);
-  log_append_undoredo_data (thread_p, RVBT_MVCC_DELETE_OBJECT, &addr,
-			    rv_undo_data_length, rv_redo_data_length,
-			    rv_undo_data, rv_redo_data);
+  if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID)
+    {
+      log_append_undoredo_data (thread_p, RVBT_MVCC_DELETE_OBJECT, &addr,
+				rv_undo_data_length, rv_redo_data_length,
+				rv_undo_data, rv_redo_data);
+    }
+  else				/* BTREE_OP_INSERT_MARK_DELETED */
+    {
+      log_append_undoredo_data (thread_p, RVBT_MARK_DELETED, &addr,
+				rv_undo_data_length, rv_redo_data_length,
+				rv_undo_data, rv_redo_data);
+      log_append_postpone (thread_p, RVBT_DELETE_OBJECT_POSTPONE, &addr,
+			   rv_undo_data_length, rv_undo_data);
+    }
 
   if (insert_helper->log_operations)
     {
@@ -26733,7 +26864,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
        */
       if (heap_is_mvcc_disabled_for_class (class_oid))
 	{
-	  find_unique_helper.snapshot = NULL;
+	  find_unique_helper.snapshot = logtb_get_mvcc_snapshot (thread_p);
 	  key_function = btree_key_find_unique_version_oid;
 	  find_unique_helper.lock_mode = NULL_LOCK;
 	}
@@ -28996,7 +29127,8 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   assert (oid != NULL);
   /* Assert class OID is valid or not required. */
   assert ((purpose != BTREE_OP_INSERT_NEW_OBJECT
-	   && purpose != BTREE_OP_INSERT_MVCC_DELID)
+	   && purpose != BTREE_OP_INSERT_MVCC_DELID
+	   && purpose != BTREE_OP_INSERT_MARK_DELETED)
 	  || (class_oid != NULL && !OID_ISNULL (class_oid)));
 
   /* Save OID, class OID and MVCC info in insert helper. */
@@ -29027,6 +29159,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       key_insert_func = btree_key_insert_new_object;
       break;
     case BTREE_OP_INSERT_MVCC_DELID:
+    case BTREE_OP_INSERT_MARK_DELETED:
       key_insert_func = btree_key_insert_delete_mvccid;
       break;
     case BTREE_OP_UPDATE_SAME_KEY_DIFF_OID:
@@ -29127,7 +29260,8 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	{
 	  unique_stat_info->num_keys--;
 	}
-      else if (purpose == BTREE_OP_INSERT_MVCC_DELID)
+      else if (purpose == BTREE_OP_INSERT_MVCC_DELID
+	       || purpose == BTREE_OP_INSERT_MARK_DELETED)
 	{
 	  unique_stat_info->num_keys++;
 	}
@@ -29196,6 +29330,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
    */
   assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
 	  || insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED
 	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE
 	  || insert_helper->purpose == BTREE_OP_UPDATE_SAME_KEY_DIFF_OID);
 
@@ -29289,7 +29424,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
       && insert_helper->purpose != BTREE_OP_UPDATE_SAME_KEY_DIFF_OID)
     {
       /* Is increment positive/negative? (is object inserted/deleted?) */
-      if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID)
+      if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
 	{
 	  /* Object is being logically deleted. */
 	  increment = -1;
@@ -29356,8 +29492,10 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 	  _er_log_debug (ARG_FILE_LINE,
 			 "BTREE_INSERT: A NULL object was %s "
 			 "index (%d, %d|%d).\n",
-			 insert_helper->purpose
-			 == BTREE_OP_INSERT_MVCC_DELID ?
+			 (insert_helper->purpose
+			  == BTREE_OP_INSERT_MVCC_DELID
+			  || insert_helper->purpose
+			  == BTREE_OP_INSERT_MARK_DELETED) ?
 			 "deleted from" : "inserted into",
 			 btid_int->sys_btid->root_pageid,
 			 btid_int->sys_btid->vfid.volid,
@@ -29367,6 +29505,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+      || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED
       || insert_helper->purpose == BTREE_OP_UPDATE_SAME_KEY_DIFF_OID)
     {
       /* This is a deleted object. From here on, the code is for inserting
@@ -29683,7 +29822,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  max_new_data_size +=
 	    BTREE_NEW_ENTRY_MAX_SIZE (max_key_len, node_type);
 	}
-      else if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID)
+      else if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+	       || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
 	{
 	  /* Only adding DELID is required.
 	   */
@@ -30044,7 +30184,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       /* A new entry is possible due to split of child or due to new key. */
       max_new_data_size += BTREE_NEW_ENTRY_MAX_SIZE (max_key_len, node_type);
     }
-  else if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID)
+  else if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+	   || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
     {
       /* Only adding DELID is required and maybe an overflow OID VPID. */
       max_new_data_size += OR_MVCCID_SIZE;
@@ -31674,6 +31815,8 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (leaf_page != NULL && *leaf_page != NULL);
   assert (search_key != NULL);
   assert (insert_helper != NULL);
+  assert (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED);
 
   if (search_key->result != BTREE_KEY_FOUND)
     {
@@ -33184,11 +33327,50 @@ btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 		     class_oid->volid, class_oid->pageid, class_oid->slotid,
 		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid);
     }
+  if (oid_is_serial (class_oid))
+    {
+      /* Before starting, we have to handle the special case of serials. Since
+       * next key locking was removed, deleting a key from serial is not
+       * protected.
+       * Somebody may insert same key, and if the deleter undoes work, two
+       * objects for the same key will be found.
+       * Therefore, it is better to postpone deleting object from index after
+       * commit. While the deleter is still active, others will be blocked on
+       * the key. After deleter commits, it is no longer critical to block new
+       * transactions checking the key (since it will not exist anyway).
+       *
+       * However, object is still accessible to current transaction. Imagine
+       * next scenario (auto-commit off):
+       * drop serial s1;
+       * create serial s1;
+       * If we leave the serial "s1" in index, creating it again will fail.
+       * Therefore we must also mark existing object as deleted.
+       * We'll do this by using MVCC delete system: mark deletion using
+       * MVCCID. After commit, the marked object will be removed. If
+       * transaction aborts, delete MVCCID will be removed.
+       *
+       * This should actually apply to all unique indexes of non-MVCC classes.
+       * But since we don't have this information yet (we must access the
+       * index root page to find out). In the future, maybe index uniqueness
+       * can be easily accessible (through a hash or any other system). Then
+       * we can apply same rules to all unique non-MVCC indexes.
+       */
+      MVCCID tran_mvccid = logtb_get_current_mvccid (thread_p);
 
-  return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info,
-				key, NULL, unique, op_type, unique_stat_info,
-				MVCCID_NULL, NULL, NULL,
-				BTREE_OP_DELETE_OBJECT_PHYSICAL);
+      BTREE_MVCC_INFO_SET_DELID (&mvcc_info, tran_mvccid);
+
+      return btree_insert_internal (thread_p, btid, key, class_oid, oid,
+				    op_type, unique_stat_info, unique,
+				    &mvcc_info, NULL, NULL,
+				    BTREE_OP_INSERT_MARK_DELETED);
+    }
+  else
+    {
+      return btree_delete_internal (thread_p, btid, oid, class_oid,
+				    &mvcc_info, key, NULL, unique, op_type,
+				    unique_stat_info, MVCCID_NULL, NULL, NULL,
+				    BTREE_OP_DELETE_OBJECT_PHYSICAL);
+    }
 }
 
 /*
@@ -33434,6 +33616,45 @@ btree_vacuum_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID * btid,
 }
 
 /*
+ * btree_delete_postponed () - Delete b-tree object on postpone.
+ *
+ * return	      : Error code.
+ * thread_p (in)      : Thread entry.
+ * btid (in)	      : B-tree ID.
+ * buffered_key (in)  : Key value (buffered).
+ * btree_obj (in)     : B-tree object info.
+ * tran_mvccid (in)   : Transaction MVCCID.
+ * reference_lsa (in) : Postpone reference LSA.
+ */
+static int
+btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid,
+			OR_BUF * buffered_key, BTREE_OBJECT_INFO * btree_obj,
+			MVCCID tran_mvccid, LOG_LSA * reference_lsa)
+{
+  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "BTREE_DELETE: Execute postponed delete: "
+		     "object %d|%d|%d, class_oid %d|%d|%d, "
+		     "mvcc_info=%llu|%llu, in index (%d, %d|%d).\n",
+		     btree_obj->oid.volid, btree_obj->oid.pageid,
+		     btree_obj->oid.slotid, btree_obj->class_oid.volid,
+		     btree_obj->class_oid.pageid, btree_obj->class_oid.slotid,
+		     (unsigned long long int)
+		     btree_obj->mvcc_info.insert_mvccid,
+		     (unsigned long long int)
+		     btree_obj->mvcc_info.delete_mvccid,
+		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid);
+    }
+
+  return btree_delete_internal (thread_p, btid, &btree_obj->oid,
+				&btree_obj->class_oid, &btree_obj->mvcc_info,
+				NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
+				NULL, tran_mvccid, reference_lsa, NULL,
+				BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
+}
+
+/*
  * btree_delete_internal () - Index internal function to delete data from a
  *			      b-tree key.
  *
@@ -33450,7 +33671,7 @@ btree_vacuum_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID * btid,
  * unique_stat_info (in) : Unique statistics collector.
  * match_mvccid (in)	 : MVCCID to be matched by either insert or delete
  *			   MVCCID.
- * undo_nxlsa (in)	 : UNDO next lsa for logical compensate.
+ * ref_lsa (in)		 : UNDO/Postpone reference LSA.
  * updated_to (in)	 : B-tree object info for new version after an MVCC
  *			   update same key.
  * purpose (in)		 : Purpose/context for function call.
@@ -33460,7 +33681,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
 		       OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 		       DB_VALUE * key, OR_BUF * buffered_key, int *unique,
 		       int op_type, BTREE_UNIQUE_STATS * unique_stat_info,
-		       MVCCID match_mvccid, LOG_LSA * undo_nxlsa,
+		       MVCCID match_mvccid, LOG_LSA * ref_lsa,
 		       BTREE_OBJECT_INFO * updated_to,
 		       BTREE_OP_PURPOSE purpose)
 {
@@ -33491,10 +33712,11 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
   /* Choose internal function based on purpose. */
   switch (purpose)
     {
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_UNDO_INSERT:
-      /* Set undo_nxlsa. */
-      assert (undo_nxlsa != NULL);
-      LSA_COPY (&delete_helper.compensate_undo_nxlsa, undo_nxlsa);
+      /* Set ref_lsa. */
+      assert (ref_lsa != NULL);
+      LSA_COPY (&delete_helper.reference_lsa, ref_lsa);
       /* Fall through. */
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
@@ -33504,15 +33726,15 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
       key_func = btree_key_remove_insert_mvccid;
       break;
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
-      /* Set undo_nxlsa. */
-      assert (undo_nxlsa != NULL);
-      LSA_COPY (&delete_helper.compensate_undo_nxlsa, undo_nxlsa);
+      /* Set ref_lsa. */
+      assert (ref_lsa != NULL);
+      LSA_COPY (&delete_helper.reference_lsa, ref_lsa);
       key_func = btree_key_remove_delete_mvccid;
       break;
     case BTREE_OP_UNDO_SAME_KEY_DIFF_OID:
-      /* Set undo_nxlsa. */
-      assert (undo_nxlsa != NULL);
-      LSA_COPY (&delete_helper.compensate_undo_nxlsa, undo_nxlsa);
+      /* Set ref_lsa. */
+      assert (ref_lsa != NULL);
+      LSA_COPY (&delete_helper.reference_lsa, ref_lsa);
       /* Fall through. */
     case BTREE_OP_VACUUM_SAME_KEY_DIFF_OID:
       key_func = btree_key_remove_mvcc_update_same_key;
@@ -33658,7 +33880,9 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid,
 	  || delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
 	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_INSID
 	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID);
+	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID
+	  || delete_helper->purpose
+	  == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
 
   /* Root node is being fixed. */
   delete_helper->is_root = true;
@@ -33763,7 +33987,8 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid,
     }
   if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
       || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_DELID
-      || delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID)
+      || delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
+      || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
     {
       if (BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
@@ -33774,6 +33999,14 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid,
 	    {
 	      COPY_OID (BTREE_DELETE_CLASS_OID (delete_helper),
 			&btid_int->topclass_oid);
+
+	      /* BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED is used only for
+	       * non-MVCC classes.
+	       */
+	      assert (delete_helper->purpose
+		      != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
+		      || heap_is_mvcc_disabled_for_class
+		      (BTREE_DELETE_CLASS_OID (delete_helper)));
 	    }
 	  if (delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
 	      && OID_ISNULL (&delete_helper->updated_to.class_oid))
@@ -33781,6 +34014,14 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid,
 	      COPY_OID (&delete_helper->updated_to.class_oid,
 			&btid_int->topclass_oid);
 	    }
+	}
+      else
+	{
+	  /* BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED is used only for
+	   * unique indexes.
+	   */
+	  assert (delete_helper->purpose
+		  != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
 	}
       /* Undo operations don't need to go further. */
       return NO_ERROR;
@@ -34766,7 +35007,9 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (delete_helper != NULL);
   assert (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
 	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT);
+	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
+	  || delete_helper->purpose
+	  == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
 
   if (search_key->result == BTREE_KEY_FOUND)
     {
@@ -35179,6 +35422,16 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p,
 			     delete_helper->rv_redo_data,
 			     LOG_FIND_CURRENT_TDES (thread_p));
     }
+  else if (delete_helper->purpose
+	   == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+    {
+      log_append_run_postpone (thread_p, RVBT_RECORD_MODIFY_NO_UNDO,
+			       &delete_helper->leaf_addr,
+			       pgbuf_get_vpid_ptr (leaf_page),
+			       rv_redo_data_length,
+			       delete_helper->rv_redo_data,
+			       &delete_helper->reference_lsa);
+    }
   else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
     {
       log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL,
@@ -35270,7 +35523,9 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
 	  || delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
-	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID);
+	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID
+	  || delete_helper->purpose
+	  == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
   assert (delete_helper->rv_redo_data != NULL
 	  && delete_helper->rv_redo_data_ptr != NULL);
 
@@ -35350,6 +35605,15 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 			     page, rv_redo_data_length,
 			     delete_helper->rv_redo_data,
 			     LOG_FIND_CURRENT_TDES (thread_p));
+    }
+  else if (delete_helper->purpose
+	   == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+    {
+      log_append_run_postpone (thread_p, RVBT_RECORD_MODIFY_NO_UNDO,
+			       addr, pgbuf_get_vpid_ptr (page),
+			       rv_redo_data_length,
+			       delete_helper->rv_redo_data,
+			       &delete_helper->reference_lsa);
     }
   else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
     {
@@ -35639,8 +35903,14 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key,
 		   == BTREE_OP_UNDO_SAME_KEY_DIFF_OID)
 	    {
 	      log_start_compensate_system_op (thread_p,
-					      &delete_helper->
-					      compensate_undo_nxlsa);
+					      &delete_helper->reference_lsa);
+	      delete_helper->is_system_op_started = true;
+	    }
+	  else if (delete_helper->purpose
+		   == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+	    {
+	      log_start_postpone_system_op (thread_p,
+					    &delete_helper->reference_lsa);
 	      delete_helper->is_system_op_started = true;
 	    }
 	}
@@ -35789,7 +36059,9 @@ btree_leaf_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
 	  || delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
-	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID);
+	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID
+	  || delete_helper->purpose
+	  == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
 
 #if !defined (NDEBUG)
   (void) btree_check_valid_record (thread_p, btid_int, leaf_record,
@@ -36474,7 +36746,7 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p,
        * undoredo logging.
        */
       log_start_compensate_system_op (thread_p,
-				      &delete_helper->compensate_undo_nxlsa);
+				      &delete_helper->reference_lsa);
       delete_helper->is_system_op_started = true;
       rv_undo_data_ptr = rv_undo_data;
     }
@@ -37703,8 +37975,7 @@ btree_key_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p,
     {
       /* We need a system operation to handle multiple pages. */
 
-      log_start_compensate_system_op (thread_p,
-				      &helper->compensate_undo_nxlsa);
+      log_start_compensate_system_op (thread_p, &helper->reference_lsa);
       helper->is_system_op_started = true;
       /* Undoredo logging is required. */
       rv_undo_data_ptr = rv_undo_data;

@@ -473,11 +473,30 @@ enum btree_op_purpose
   BTREE_OP_INSERT_MVCC_DELID,	/* Insert delete MVCCID for object when
 				 * deleted.
 				 */
+  BTREE_OP_INSERT_MARK_DELETED,	/* Mark object as deleted. This is used on a
+				 * unique index of a non-MVCC class.
+				 * It is very similar to
+				 * BTREE_OP_INSERT_MVCC_DELID. The differences
+				 * are:
+				 * 1. The context they are used for. MVCC
+				 *    delete is used to delete from
+				 *    MVCC-enabled classes. Mark deleted is
+				 *    used for unique indexes of MVCC-disabled
+				 *    classes like db_serial.
+				 * 2. Mark deleted is followed by a postpone
+				 *    operation which removes the object after
+				 *    commit.
+				 * 3. Mark deleted is not vacuumed. Object
+				 *    will be "cleaned" on commit/rollback.
+				 */
   BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE,	/* Undo of physical delete. */
 
   BTREE_OP_DELETE_OBJECT_PHYSICAL,	/* Physically delete an object from
 					 * b-tree when MVCC is enabled.
 					 */
+  BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED,	/* Physical delete was
+						 * postponed.
+						 */
   BTREE_OP_DELETE_UNDO_INSERT,	/* Undo insert */
   BTREE_OP_DELETE_UNDO_INSERT_DELID,	/* Remove only delete MVCCID for an
 					 * object in b-tree. It is called when
@@ -698,6 +717,8 @@ extern int btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
 extern int btree_rv_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);
+extern int btree_rv_remove_marked_for_delete (THREAD_ENTRY * thread_p,
+					      LOG_RCV * rcv);
 extern void btree_rv_keyval_dump (FILE * fp, int length, void *data);
 extern void btree_rv_keyval_mvcc_update_same_key_dump (FILE * fp, int length,
 						       void *data);

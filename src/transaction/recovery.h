@@ -222,7 +222,10 @@ typedef enum
 
   RVVAC_COMPLETE = 142,
 
-  RV_LAST_LOGID = RVVAC_COMPLETE,
+  RVBT_DELETE_OBJECT_POSTPONE = 143,
+  RVBT_MARK_DELETED = 144,
+
+  RV_LAST_LOGID = RVBT_MARK_DELETED,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -272,13 +275,16 @@ extern void rv_check_rvfuns (void);
    || ((idx) == RVBT_MVCC_DELETE_OBJECT) \
    || ((idx) == RVBT_MVCC_INSERT_OBJECT) \
    || ((idx) == RVBT_NON_MVCC_INSERT_OBJECT) \
-   || ((idx) == RVBT_MVCC_UPDATE_SAME_KEY))
+   || ((idx) == RVBT_MVCC_UPDATE_SAME_KEY) \
+   || ((idx) == RVBT_MARK_DELETED) \
+   || ((idx) == RVBT_DELETE_OBJECT_POSTPONE))
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   ((((vpid)->volid == NULL_VOLID) \
     || ((vpid)->pageid == NULL_PAGEID) \
     || RCV_IS_BTREE_LOGICAL_LOG (idx) \
     || ((idx) == RVBT_MVCC_INCREMENTS_UPD) \
-    || ((idx) == RVBT_CREATE_INDEX)) ? true : false)
+    || ((idx) == RVBT_CREATE_INDEX) \
+    || ((idx) == RVFL_POSTPONE_DESTROY_FILE)) ? true : false)
 
 #endif /* _RECOVERY_H_ */

@@ -2842,7 +2842,6 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   int found = 0, r = 0, save;
   bool au_disable_flag = false;
-  SM_CLASS *class_;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2904,12 +2903,6 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   AU_DISABLE (save);
   au_disable_flag = true;
-
-  error = au_fetch_class (serial_object, &class_, AU_FETCH_WRITE, AU_DELETE);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
 
   error = db_drop (serial_object);
   if (error < 0)
