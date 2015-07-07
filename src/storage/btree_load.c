@@ -4233,6 +4233,15 @@ btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   ret = logtb_delete_global_unique_stats (thread_p, btid);
   if (ret == NO_ERROR)
     {
+      LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
+
+      unique_stats = logtb_tran_find_btid_stats (thread_p, btid, false);
+
+      if (unique_stats != NULL)
+	{
+	  unique_stats->deleted = true;
+	}
+
       ret = file_destroy (thread_p, &btid->vfid);
     }
   assert (ret == NO_ERROR);

@@ -33130,10 +33130,19 @@ btree_rv_redo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
   if (unique_pk)
     {
+      LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
+
       ret = logtb_delete_global_unique_stats (thread_p, &btid);
       if (ret != NO_ERROR)
 	{
 	  goto error;
+	}
+
+      unique_stats = logtb_tran_find_btid_stats (thread_p, &btid, false);
+
+      if (unique_stats != NULL)
+	{
+	  unique_stats->deleted = true;
 	}
     }
 
