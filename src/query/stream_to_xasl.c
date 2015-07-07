@@ -429,6 +429,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree,
   OID_SET_NULL (&xasl->creator_oid);
   xasl->n_oid_list = 0;
   xasl->class_oid_list = NULL;
+  xasl->class_locks = NULL;
   xasl->tcard_list = NULL;
 
   /* initialize the query in progress flag to FALSE.  Note that this flag

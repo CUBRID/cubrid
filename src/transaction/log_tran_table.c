@@ -2898,8 +2898,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	      /* retrieve query statement in the xasl_cache entry */
 	      ent =
 		qexec_check_xasl_cache_ent_by_xasl (thread_p, &tdes->xasl_id,
-						    -1, NULL, NULL, 0, NULL,
-						    NULL);
+						    -1, NULL);
 
 	      /* entry can be NULL, if xasl cache entry is deleted */
 	      if (ent != NULL)

@@ -605,67 +605,45 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
         (sizeof(XASL_CACHE_ENTRY)       /* space for structure */ \
          + sizeof(char) * MAX_NTRANS	/* space for tran_fix_count_array */ \
          + sizeof(OID) * (noid)         /* space for class_oid_list */ \
+	 + sizeof(int) * (noid)	    /* space for class locks */ \
          + sizeof(int) * (noid)    /* space for tcard_list */ \
          + (qlen))		/* space for sql_hash_text, sql_plan_text, sql_user_text */
 #define XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY(ent) \
-        (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY))
+        (int *) (((char *) (ent)) + sizeof(XASL_CACHE_ENTRY))
 #define XASL_CACHE_ENTRY_CLASS_OID_LIST(ent) \
-        (OID *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
+        (OID *) (((char *) XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY(ent)) + \
                  sizeof(char) * MAX_NTRANS)
-#define XASL_CACHE_ENTRY_TCARD_LIST(ent) \
-        (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
-                      sizeof(char) * MAX_NTRANS + \
-                      sizeof(OID) * ent->n_oid_list)
-#define XASL_CACHE_ENTRY_SQL_HASH_TEXT(ent) \
-        (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
-                  sizeof(char) * MAX_NTRANS + \
-                  sizeof(OID) * ent->n_oid_list + \
-                  sizeof(int) * ent->n_oid_list)
-#define XASL_CACHE_ENTRY_SQL_PLAN_TEXT(ent) \
-        (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
-                  sizeof(char) * MAX_NTRANS + \
-                  sizeof(OID) * ent->n_oid_list + \
-                  sizeof(int) * ent->n_oid_list + \
-                  strlen (ent->sql_info.sql_hash_text) + 1)
-
-#define XASL_CACHE_ENTRY_SQL_USER_TEXT(ent) \
-        (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
-                  sizeof(char) * MAX_NTRANS + \
-                  sizeof(OID) * ent->n_oid_list + \
-                  sizeof(int) * ent->n_oid_list + \
-                  strlen (ent->sql_info.sql_hash_text) + 1 + \
-                  (ent->sql_info.sql_plan_text ? \
-		  (strlen (ent->sql_info.sql_plan_text) + 1) : 0))
 
 #else /* SA_MODE */
 
 #define XASL_CACHE_ENTRY_ALLOC_SIZE(qlen, noid) \
         (sizeof(XASL_CACHE_ENTRY)       /* space for structure */ \
          + sizeof(OID) * (noid)         /* space for class_oid_list */ \
+	 + sizeof(int) * (noid)	    /* space for class locks */ \
          + sizeof(int) * (noid)    /* space for tcard_list */ \
          + (qlen))		/* space for sql_hash_text, sql_plan_text, sql_user_text */
 #define XASL_CACHE_ENTRY_CLASS_OID_LIST(ent) \
         (OID *) ((char *) ent + sizeof(XASL_CACHE_ENTRY))
+
+#endif /* SA_MODE */
+
+#define XASL_CACHE_ENTRY_CLASS_LOCKS(ent) \
+        (int *) (((char *) XASL_CACHE_ENTRY_CLASS_OID_LIST(ent)) + \
+                 sizeof(OID) * (ent)->n_oid_list)
 #define XASL_CACHE_ENTRY_TCARD_LIST(ent) \
-        (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
-                      sizeof(OID) * ent->n_oid_list)
+        (int *) (((char *) XASL_CACHE_ENTRY_CLASS_LOCKS(ent)) + \
+                 sizeof(int) * (ent)->n_oid_list)
 #define XASL_CACHE_ENTRY_SQL_HASH_TEXT(ent) \
-        (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
-                  sizeof(OID) * ent->n_oid_list + \
-                  sizeof(int) * ent->n_oid_list)
+        (char *) (((char *) XASL_CACHE_ENTRY_TCARD_LIST(ent)) + \
+                  sizeof(int) * (ent)->n_oid_list)
 #define XASL_CACHE_ENTRY_SQL_PLAN_TEXT(ent) \
-        (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
-                  sizeof(OID) * ent->n_oid_list + \
-                  sizeof(int) * ent->n_oid_list + \
-                  strlen(ent->sql_info.sql_hash_text) + 1)
+        (char *) (XASL_CACHE_ENTRY_SQL_HASH_TEXT(ent) + \
+                  strlen (ent->sql_info.sql_hash_text) + 1)
+
 #define XASL_CACHE_ENTRY_SQL_USER_TEXT(ent) \
-        (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
-                  sizeof(OID) * ent->n_oid_list + \
-                  sizeof(int) * ent->n_oid_list + \
-                  strlen(ent->sql_info.sql_hash_text) + 1 + \
+        (char *) (XASL_CACHE_ENTRY_SQL_PLAN_TEXT(ent) + \
                   (ent->sql_info.sql_plan_text ? \
-		  (strlen(ent->sql_info.sql_plan_text) + 1) : 0))
-#endif /* SERVER_MODE */
+		  (strlen (ent->sql_info.sql_plan_text) + 1) : 0))
 
 static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p,
 					   XASL_NODE * xasl,
@@ -16734,6 +16712,15 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
 	       ent->class_oid_list[i].slotid, ent->class_oid_list[i].volid);
     }
   fprintf (fp, " ]\n");
+  fprintf (fp, "       class_locks = [");
+  if (ent->class_locks != NULL)
+    {
+      for (i = 0; i < ent->n_oid_list; i++)
+	{
+	  fprintf (fp, " %s", LOCK_TO_LOCKMODE_STRING (ent->class_locks[i]));
+	}
+    }
+  fprintf (fp, " ]\n");
   fprintf (fp, "        tcard_list = [");
   if (ent->tcard_list)
     {
@@ -17414,11 +17401,12 @@ end:
  *   return:
  *   context(in)       : sql_hash_text is used as hash key
  *   stream(in)        : xasl stream, size & xasl_id info
- *   oid(in)    : creator oid
- *   n_oids(in) : # of class_oids
- *   class_oids(in)     : class_oids which have relation with xasl
- *   tcards(in)       : #pages of class_oids
- *   dbval_cnt(in)      :
+ *   oid(in)	       : creator oid
+ *   n_oids(in)	       : # of class_oids
+ *   class_oids(in)    : class_oids which have relation with xasl
+ *   class_locks(in)   : locks required for each class
+ *   tcards(in)        : #pages of class_oids
+ *   dbval_cnt(in)     :
  *
  * Note: Update XASL cache entry if exist or create new one
  * As a side effect, the given 'xasl_id' can be change if the entry which has
@@ -17429,7 +17417,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 			     COMPILE_CONTEXT * context,
 			     XASL_STREAM * stream,
 			     const OID * oid, int n_oids,
-			     const OID * class_oids,
+			     const OID * class_oids, const int *class_locks,
 			     const int *tcards, int dbval_cnt)
 {
   XASL_CACHE_ENTRY *ent, *victim_ent;
@@ -17466,6 +17454,16 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 	  ent = NULL;
 	  goto end;
 	}
+
+#if defined (SERVER_MODE)
+      if (ent->num_fixed_tran > 0)
+	{
+	  /* Trying to overwrite entity that is in use. */
+	  assert (false);
+	  ent = NULL;
+	  goto end;
+	}
+#endif /* SERVER_MODE */
 
       /* the other competing thread which is running the same query
          already updated this entry after that this and the thread had failed
@@ -17591,6 +17589,13 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
       ent->class_oid_list =
 	(OID *) memcpy (XASL_CACHE_ENTRY_CLASS_OID_LIST (ent),
 			(void *) class_oids, n_oids * sizeof (OID));
+    }
+
+  if (class_locks)
+    {
+      ent->class_locks =
+	(int *) memcpy (XASL_CACHE_ENTRY_CLASS_LOCKS (ent),
+			(void *) class_locks, n_oids * sizeof (int));
     }
 
   if (tcards)
@@ -17996,11 +18001,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 XASL_CACHE_ENTRY *
 qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 				    const XASL_ID * xasl_id, int dbval_cnt,
-				    XASL_CACHE_CLONE ** clop,
-				    OID * class_oid_buffer,
-				    int class_oid_buffer_size,
-				    OID ** class_oid_list,
-				    int *class_oid_list_size)
+				    XASL_CACHE_CLONE ** clop)
 {
   XASL_CACHE_ENTRY *ent;
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -18086,51 +18087,6 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	    {
 	      assert (0);
 	    }
-	}
-
-      if (ent != NULL && class_oid_list != NULL)
-	{
-	  int n_classes = 0;
-	  int i = 0;
-	  int k = 0;
-
-	  for (i = 0; i < ent->n_oid_list; i++)
-	    {
-	      if (ent->tcard_list[i] == XASL_SERIAL_OID_TCARD)
-		{
-		  /* Not a class */
-		}
-	      else
-		{
-		  assert (ent->tcard_list[i] >= -1);
-		  n_classes++;
-		}
-	    }
-	  assert (class_oid_list_size != NULL);
-	  if (class_oid_buffer != NULL && class_oid_buffer_size >= n_classes)
-	    {
-	      *class_oid_list = class_oid_buffer;
-	    }
-	  else
-	    {
-	      *class_oid_list = malloc (n_classes * sizeof (OID));
-	      if (*class_oid_list == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  ent->n_oid_list * sizeof (OID));
-		  return NULL;
-		}
-	    }
-	  for (i = 0; i < ent->n_oid_list; i++)
-	    {
-	      if (ent->tcard_list[i] != XASL_SERIAL_OID_TCARD)
-		{
-		  (*class_oid_list)[k++] = ent->class_oid_list[i];
-		}
-	    }
-	  assert (k == n_classes);
-	  *class_oid_list_size = n_classes;
 	}
     }
 
@@ -26825,6 +26781,8 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	(OID *) memcpy (XASL_CACHE_ENTRY_CLASS_OID_LIST (ent),
 			(void *) class_oids, n_oids * sizeof (OID));
     }
+  /* No class locks for filter predicates */
+  ent->class_locks = NULL;
 
   if (tcards)
     {

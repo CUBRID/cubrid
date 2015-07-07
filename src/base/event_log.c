@@ -365,8 +365,7 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp,
       return;
     }
 
-  ent = qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id, -1, NULL,
-					    NULL, 0, NULL, NULL);
+  ent = qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id, -1, NULL);
 
   if (ent != NULL && ent->sql_info.sql_hash_text != NULL)
     {

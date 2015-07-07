@@ -1034,6 +1034,7 @@ struct xasl_node
   int n_oid_list;		/* size of the referenced OID list */
   OID *class_oid_list;		/* list of class/serial OIDs referenced
 				 * in the XASL */
+  int *class_locks;		/* list of locks for class_oid_list. */
   int *tcard_list;		/* list of #pages of the class OIDs */
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
@@ -1042,7 +1043,7 @@ struct xasl_node
 
 struct pred_expr_with_context
 {
-  PRED_EXPR *pred;		/* predicate expresion */
+  PRED_EXPR *pred;		/* predicate expression */
   int num_attrs_pred;		/* number of atts from the predicate */
   ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
   HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
@@ -1145,6 +1146,7 @@ struct xasl_cache_ent
 #endif
   const OID *class_oid_list;	/* list of class/serial OIDs referenced
 				 * in the XASL */
+  const int *class_locks;	/* Class locks */
   const int *tcard_list;	/* list of #pages of the class OIDs */
   struct timeval time_created;	/* when this entry created */
   struct timeval time_last_used;	/* when this entry used lastly */
@@ -1229,6 +1231,7 @@ extern XASL_CACHE_ENTRY *qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 						      const OID * oid,
 						      int n_oids,
 						      const OID * class_oids,
+						      const int *class_locks,
 						      const int *repr_ids,
 						      int dbval_cnt);
 extern XASL_CACHE_ENTRY *qexec_update_filter_pred_cache_ent (THREAD_ENTRY *
@@ -1264,20 +1267,12 @@ extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY *
 							     xasl_id,
 							     int dbval_cnt,
 							     XASL_CACHE_CLONE
-							     ** clop,
-							     OID *
-							     class_oid_buffer,
-							     int
-							     class_oid_buffer_size,
-							     OID **
-							     class_oid_list,
-							     int
-							     *class_oid_list_size);
+							     ** clop);
 extern XASL_CACHE_ENTRY
-  *qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
-					      const XASL_ID * xasl_id,
-					      int dbval_cnt,
-					      XASL_CACHE_CLONE ** clop);
+  * qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
+					       const XASL_ID * xasl_id,
+					       int dbval_cnt,
+					       XASL_CACHE_CLONE ** clop);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int qexec_free_xasl_cache_clo (XASL_CACHE_CLONE * clo);
 #endif /* ENABLE_UNUSED_FUNCTION */

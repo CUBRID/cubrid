@@ -2869,6 +2869,8 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   for (i = 0; i < xasl_p->n_oid_list; ++i)
     {
       qdump_print_oid (&xasl_p->class_oid_list[i]);
+      fprintf (foutput, "/%s ",
+	       LOCK_TO_LOCKMODE_STRING (xasl_p->class_locks[i]));
       fprintf (foutput, "/%d ", xasl_p->tcard_list[i]);
     }
 
