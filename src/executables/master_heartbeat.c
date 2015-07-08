@@ -4125,7 +4125,6 @@ hb_is_registered_process (CSS_CONN_ENTRY * conn, char *args)
   if (hb_Resource->shutdown)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
-      css_remove_entry_by_conn (conn, &css_Master_socket_anchor);
       return false;
     }
 
