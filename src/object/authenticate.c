@@ -2950,6 +2950,8 @@ au_add_member_internal (MOP group, MOP member, int new_user)
   char *member_name;
 
   AU_DISABLE (save);
+  group = ws_mvcc_latest_version (group);
+  member = ws_mvcc_latest_version (member);
   db_make_object (&membervalue, member);
   db_make_object (&groupvalue, group);
 
@@ -8503,7 +8505,7 @@ au_install (void)
     const char *names[] = { "name", NULL };
     int ret_code;
 
-    ret_code = db_add_constraint (user, DB_CONSTRAINT_INDEX, NULL, names, 0);
+    ret_code = db_add_constraint (user, DB_CONSTRAINT_UNIQUE, NULL, names, 0);
 
     if (ret_code)
       {
