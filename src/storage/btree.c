@@ -1419,6 +1419,7 @@ static BTREE_MERGE_STATUS btree_node_mergeable (THREAD_ENTRY * thread_p,
 static DB_VALUE *btree_find_split_point (THREAD_ENTRY * thread_p,
 					 BTID_INT * btid, PAGE_PTR page_ptr,
 					 int *mid_slot, DB_VALUE * key,
+					 BTREE_INSERT_HELPER * helper,
 					 bool * clear_midkey);
 static int btree_split_next_pivot (BTREE_NODE_SPLIT_INFO * split_info,
 				   float new_value, int max_index);
@@ -1428,12 +1429,13 @@ static int btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
 			     VPID * P_vpid, VPID * Q_vpid, VPID * R_vpid,
 			     INT16 p_slot_id, BTREE_NODE_TYPE node_type,
-			     DB_VALUE * key, VPID * child_vpid);
+			     DB_VALUE * key, BTREE_INSERT_HELPER * helper,
+			     VPID * child_vpid);
 static int btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
 			     VPID * P_vpid, VPID * Q_vpid, VPID * R_vpid,
 			     BTREE_NODE_TYPE node_type, DB_VALUE * key,
-			     VPID * child_vpid);
+			     BTREE_INSERT_HELPER * helper, VPID * child_vpid);
 static PAGE_PTR btree_locate_key (THREAD_ENTRY * thread_p,
 				  BTID_INT * btid_int, DB_VALUE * key,
 				  VPID * pg_vpid, INT16 * slot_id,
@@ -1973,6 +1975,12 @@ static int btree_split_node_and_advance (THREAD_ENTRY * thread_p,
 					 BTREE_SEARCH_KEY_HELPER * search_key,
 					 bool * stop, bool * restart,
 					 void *other_args);
+static int btree_get_max_new_data_size (THREAD_ENTRY * thread_p,
+					BTID_INT * btid_int, PAGE_PTR page,
+					BTREE_NODE_TYPE node_type,
+					int key_len,
+					BTREE_INSERT_HELPER * helper,
+					bool known_to_be_found);
 static int btree_key_insert_new_object (THREAD_ENTRY * thread_p,
 					BTID_INT * btid_int, DB_VALUE * key,
 					PAGE_PTR * leaf_page,
@@ -14013,7 +14021,8 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2,
  *   btid(in):
  *   page_ptr(in): Pointer to the page
  *   mid_slot(out): Set to contain the record number for the split point slot
- *   key(in): Key to be inserted to the index
+ *   key(in): Key to be inserted to the index (or modified).
+ *   helper(in): B-tree insert helper.
  *   clear_midkey(in):
  *
  * Note: Finds the split point of the given page by considering the
@@ -14036,7 +14045,8 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2,
 static DB_VALUE *
 btree_find_split_point (THREAD_ENTRY * thread_p,
 			BTID_INT * btid, PAGE_PTR page_ptr,
-			int *mid_slot, DB_VALUE * key, bool * clear_midkey)
+			int *mid_slot, DB_VALUE * key,
+			BTREE_INSERT_HELPER * helper, bool * clear_midkey)
 {
   RECDES rec;
   BTREE_NODE_HEADER *header = NULL;
@@ -14154,16 +14164,9 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 
   if (node_type == BTREE_LEAF_NODE)
     {
-      if (found)
-	{
-	  /* A new object can be inserted while one can be deleted. */
-	  new_ent_size = BTREE_OBJECT_FIXED_SIZE (btid) + OR_MVCCID_SIZE;
-	}
-      else
-	{
-	  /* New key will be inserted into leaves. */
-	  new_ent_size = LEAF_ENTRY_MAX_SIZE (key_len);
-	}
+      new_ent_size =
+	btree_get_max_new_data_size (thread_p, btid, page_ptr, node_type,
+				     key_len, helper, found);
 
       /* Until we know where new entity belongs, we must reserve enough
        * space in both left and right leaf.
@@ -14179,7 +14182,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
        *       by not using fence keys when they are not required.
        */
       max_key_len = MAX (key_len, header->max_key_len);
-      new_fence_size = LEAF_FENCE_MAX_SIZE (max_key_len);
+      new_fence_size = LEAF_FENCE_MAX_SIZE (max_key_len) + spage_slot_size ();
 
       /* Adjust maximum size for both leaves. */
       left_max_size -= new_fence_size;
@@ -14232,6 +14235,18 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 	  left_max_size += new_ent_size;
 	  right_max_size += new_ent_size;
 	  left_min_size -= new_ent_size;
+
+	  if (found)
+	    {
+	      /* The key is already considered in the left. We can't add just
+	       * a portion of it (new_ent_size). Add the rest of the record
+	       * to the left (even if left_size is not more than
+	       * left_min_size).
+	       */
+	      record_size = spage_get_space_for_record (page_ptr, i);
+	      left_size += record_size;
+	      continue;
+	    }
 	}
       record_size = spage_get_space_for_record (page_ptr, i);
       if (left_size < left_min_size)
@@ -14891,8 +14906,9 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
  *   R_vpid(in): Page identifier for page R
  *   p_slot_id(in): The slot of parent page P which points to page Q
  *   node_type(in): shows whether page Q is a leaf page, or not
- *   key(out): Set to contain the middle key of the split operation
- *   child_vpid(out): Set to the child page identifier
+ *   key(in): the key caller is trying to follow
+ *   helper(in): B-tree insert helper structure
+ *   child_vpid(out): Set to the child page identifier based on key
  *
  * Note: Page Q is split into two pages: Q and R. The second half of
  * of the page Q is move to page R. The middle key of of the
@@ -14908,7 +14924,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 		  PAGE_PTR Q, PAGE_PTR R, VPID * P_vpid,
 		  VPID * Q_vpid, VPID * R_vpid, INT16 p_slot_id,
 		  BTREE_NODE_TYPE node_type, DB_VALUE * key,
-		  VPID * child_vpid)
+		  BTREE_INSERT_HELPER * helper, VPID * child_vpid)
 {
   int key_cnt, leftcnt, rightcnt;
   RECDES peek_rec, rec;
@@ -15001,7 +15017,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       goto exit_on_error;
     }
 
-  sep_key = btree_find_split_point (thread_p, btid, Q, &leftcnt, key,
+  sep_key = btree_find_split_point (thread_p, btid, Q, &leftcnt, key, helper,
 				    &clear_sep_key);
   assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
@@ -15783,10 +15799,10 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key,
  *   P_vpid(in): Page identifier for root page P
  *   Q_vpid(in): Page identifier for page Q
  *   R_vpid(in): Page identifier for page R
- *   node_type(in): shows whether root is currenly a leaf page,
- *                  or not
- *   key(out): Set to contain the middle key of the split operation
- *   child_vpid(out): Set to the child page identifier
+ *   node_type(in): shows whether root is currently a leaf page, or not
+ *   key(in): the key caller is trying to follow
+ *   helper(in): B-tree insert helper structure
+ *   child_vpid(out): Set to the child page identifier based on key.
  *
  * Note: The root page P is split into two pages: Q and R. In order
  * not to change the actual root page, the first half of the page
@@ -15802,7 +15818,8 @@ static int
 btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 		  PAGE_PTR Q, PAGE_PTR R, VPID * P_vpid,
 		  VPID * Q_vpid, VPID * R_vpid, BTREE_NODE_TYPE node_type,
-		  DB_VALUE * key, VPID * child_vpid)
+		  DB_VALUE * key, BTREE_INSERT_HELPER * helper,
+		  VPID * child_vpid)
 {
   int key_cnt, leftcnt, rightcnt;
   RECDES rec, peek_rec;
@@ -15908,7 +15925,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    ***   keys after split in pages Q and R, respectively
    ********************************************************************/
 
-  sep_key = btree_find_split_point (thread_p, btid, P, &leftcnt, key,
+  sep_key = btree_find_split_point (thread_p, btid, P, &leftcnt, key, helper,
 				    &clear_sep_key);
   assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
@@ -29619,6 +29636,88 @@ error:
 }
 
 /*
+ * btree_get_max_new_data_size () - Get new data size required based on node
+ *				    type and operation.
+ *
+ * return		  : Maximum require size for operation.
+ * thread_p (in)	  : Thread entry.
+ * btid_int (in)	  : B-tree info.
+ * page (in)		  : B-tree node.
+ * node_type (in)	  : B-tree node type.
+ * key_len (in)		  : Key length to be considered for new entries.
+ * helper (in)		  : B-tree insert helper.
+ * known_to_be_found (in) : True if key was searched and found.
+ */
+static int
+btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+			     PAGE_PTR page, BTREE_NODE_TYPE node_type,
+			     int key_len, BTREE_INSERT_HELPER * helper,
+			     bool known_to_be_found)
+{
+  assert (btid_int != NULL);
+  assert (page != NULL);
+  assert (node_type == BTREE_NON_LEAF_NODE || node_type == BTREE_LEAF_NODE);
+  assert (key_len > 0);
+  assert (helper != NULL);
+
+  if (node_type == BTREE_NON_LEAF_NODE)
+    {
+      return NON_LEAF_ENTRY_MAX_SIZE (key_len) + spage_slot_size ();
+    }
+
+  /* TODO: We can always know if key is found for leaf nodes. */
+  switch (helper->purpose)
+    {
+    case BTREE_OP_INSERT_NEW_OBJECT:
+    case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
+      if (known_to_be_found)
+	{
+	  /* Possible inserted data:
+	   * 1. New object (consider maximum size including all info).
+	   * 2. Link to overflow page (and setting first object to max size).
+	   *    In worst case scenario it will insert same data as a fixed
+	   *    size object.
+	   */
+	  return BTREE_OBJECT_FIXED_SIZE (btid_int);
+	}
+      else
+	{
+	  /* A new entry max size (including new slot). */
+	  return LEAF_ENTRY_MAX_SIZE (key_len) + spage_slot_size ();
+	}
+
+    case BTREE_OP_INSERT_MVCC_DELID:
+    case BTREE_OP_INSERT_MARK_DELETED:
+      /* Always a delete MVCCID is added. */
+      return OR_MVCCID_SIZE;
+
+    case BTREE_OP_UPDATE_SAME_KEY_DIFF_OID:
+      /* Possible inserted data:
+       * 1. Relocate first object (size can modify from OR_OID_SIZE to
+       *    object fixed size) and replace with new object (up to fixed size
+       *    object).
+       *    Total maximum size: 2 * fixed size - OR_OID_SIZE.
+       * 2. Insert new object (consider fixed size) and one delete
+       *    MVCCID.
+       *    Total maximum size: fixed size + OR_MVCCID_SIZE.
+       */
+      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  return (2 * BTREE_OBJECT_FIXED_SIZE (btid_int) - OR_OID_SIZE);
+	}
+      else
+	{
+	  return (BTREE_OBJECT_FIXED_SIZE (btid_int) + OR_MVCCID_SIZE);
+	}
+
+    default:
+      /* Unhandled. */
+      assert_release (false);
+      return ER_FAILED;
+    }
+}
+
+/*
  * btree_split_node_and_advance () - BTREE_ADVANCE_WITH_KEY_FUNCTION used by
  *				     btree_insert_internal while advancing
  *				     following key. It also has the role
@@ -29813,38 +29912,16 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	key_len_in_page : node_header->max_key_len;
 
       /* Compute the maximum possible size of data being inserted in node. */
-      max_new_data_size = 0;
-      if (node_type == BTREE_NON_LEAF_NODE || is_new_key_possible)
-	{
-	  /* A new entry is possible for all non-leaf nodes because their
-	   * children can be split and for leaf nodes if new key can be
-	   * inserted.
-	   */
-	  max_new_data_size +=
-	    BTREE_NEW_ENTRY_MAX_SIZE (max_key_len, node_type);
-	}
-      else if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
-	       || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
-	{
-	  /* Only adding DELID is required.
-	   */
-	  max_new_data_size += OR_MVCCID_SIZE;
-	}
-      else
-	{
-	  assert (insert_helper->purpose ==
-		  BTREE_OP_UPDATE_SAME_KEY_DIFF_OID);
-	  /* One object is deleted and one object is inserted. */
-	  max_new_data_size +=
-	    BTREE_OBJECT_FIXED_SIZE (btid_int) + OR_MVCCID_SIZE;
-	}
+      max_new_data_size =
+	btree_get_max_new_data_size (thread_p, btid_int, *crt_page, node_type,
+				     max_key_len, insert_helper, false);
 
       /* Split is needed if there is a risk that inserted data doesn't fit the
        * root node.
        */
       need_split =
 	(max_new_data_size
-	 > spage_max_space_for_new_record (thread_p, *crt_page));
+	 > spage_get_free_space_without_saving (thread_p, *crt_page, NULL));
 
       /* If root node should suffer changes, its latch must be promoted to
        * exclusive.
@@ -29976,7 +30053,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  error_code =
 	    btree_split_root (thread_p, btid_int, *crt_page, new_page1,
 			      new_page2, crt_vpid, &new_page_vpid1,
-			      &new_page_vpid2, node_type, key, &advance_vpid);
+			      &new_page_vpid2, node_type, key, insert_helper,
+			      &advance_vpid);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -30179,28 +30257,13 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   max_key_len =
     need_update_max_key_len ? insert_helper->key_len_in_page : node_header->
     max_key_len;
-  max_new_data_size = 0;
-  if (!is_child_leaf || is_new_key_possible)
-    {
-      /* A new entry is possible due to split of child or due to new key. */
-      max_new_data_size += BTREE_NEW_ENTRY_MAX_SIZE (max_key_len, node_type);
-    }
-  else if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
-	   || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
-    {
-      /* Only adding DELID is required and maybe an overflow OID VPID. */
-      max_new_data_size += OR_MVCCID_SIZE;
-    }
-  else if (insert_helper->purpose == BTREE_OP_UPDATE_SAME_KEY_DIFF_OID)
-    {
-      /* One object may be delete (delete MVCCID added) and a new object
-       * version may be added.
-       */
-      max_new_data_size +=
-	BTREE_OBJECT_FIXED_SIZE (btid_int) + OR_MVCCID_SIZE;
-    }
+  max_new_data_size =
+    btree_get_max_new_data_size (thread_p, btid_int, child_page, node_type,
+				 max_key_len, insert_helper, false);
+
   need_split =
-    max_new_data_size > spage_max_space_for_new_record (thread_p, child_page);
+    max_new_data_size
+    > spage_get_free_space_without_saving (thread_p, child_page, NULL);
 
   /* If split is needed, we first need to make sure current node is latched
    * exclusively. A new entry must be added.
@@ -30341,7 +30404,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       error_code =
 	btree_split_node (thread_p, btid_int, *crt_page, child_page,
 			  new_page1, crt_vpid, &child_vpid, &new_page_vpid1,
-			  child_slotid, node_type, key, &advance_vpid);
+			  child_slotid, node_type, key, insert_helper,
+			  &advance_vpid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
