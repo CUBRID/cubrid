@@ -17455,16 +17455,6 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 	  goto end;
 	}
 
-#if defined (SERVER_MODE)
-      if (ent->num_fixed_tran > 0)
-	{
-	  /* Trying to overwrite entity that is in use. */
-	  assert (false);
-	  ent = NULL;
-	  goto end;
-	}
-#endif /* SERVER_MODE */
-
       /* the other competing thread which is running the same query
          already updated this entry after that this and the thread had failed
          to find the query in the cache;
