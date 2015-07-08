@@ -5020,8 +5020,11 @@ process_heartbeat (int command_type, int argc, const char **argv)
       break;
     case SC_COPYLOGDB:
     case SC_APPLYLOGDB:
-    case SC_PREFETCHLOGDB:
       status = process_heartbeat_util (&ha_conf, command_type, argc, argv);
+      break;
+    case SC_PREFETCHLOGDB:
+      status = ER_GENERIC_ERROR;
+      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
       break;
     case REPLICATION:
       status = process_heartbeat_replication (&ha_conf, argc, argv);

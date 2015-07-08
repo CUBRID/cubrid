@@ -67,7 +67,6 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
-$       50      prefetchlogdb
 $       51      gen_tz
 $       52      dump_tz
 $       53      restoreslave
@@ -121,7 +120,6 @@ Vorhandene Admin-Utilitynamen:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
-    prefetchlogdb\n\
     gen_tz\n\
     dump_tz\n\
     restoreslave\n\
@@ -236,7 +234,6 @@ Vorhandene Befehle:\n\
     stop           [-h <host-name>] [-i] [database-name]\n\
     copylogdb      <start|stop> [-h <host-name>] database-name node-name\n\
     applylogdb     <start|stop> [-h <host-name>] database-name node-name\n\
-    prefetchlogdb  <start|stop> [-h <host-name>] database-name node-name\n\
     replication    <start|stop> node-name\n\
     status         [-v] [-h <host-name>]\n\
     reload\n

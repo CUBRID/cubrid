@@ -67,7 +67,6 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
-$       50      prefetchlogdb
 $       51      gen_tz
 $       52      dump_tz
 $       53      restoreslave
@@ -121,7 +120,6 @@ cubrid 管理工具，版本 %1$s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
-    prefetchlogdb\n\
     gen_tz\n\
     dump_tz\n\
     restoreslave\n\
@@ -236,7 +234,6 @@ cubrid 管理工具，版本 %1$s\n\
     stop           [-h <host-name>] [-i] [数据库名]\n\
     copylogdb      <start|stop> [-h <host-name>] 数据库名 节点名\n\
     applylogdb     <start|stop> [-h <host-name>] 数据库名 节点名\n\
-    prefetchlogdb  <start|stop> [-h <host-name>] 数据库名 节点名\n\
     replication    <start|stop> 节点名\n\
     status         [-v] [-h <host-name>]\n\
     reload\n

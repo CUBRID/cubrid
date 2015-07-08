@@ -3313,13 +3313,13 @@ prefetchlogdb (UTIL_FUNCTION_ARG * arg)
 
   log_path =
     utility_get_option_string_value (arg_map, PREFETCH_LOG_PATH_S, 0);
+  if (log_path != NULL)
+    {
+      log_path = realpath (log_path, log_path_buf);
+    }
   if (log_path == NULL)
     {
       goto print_prefetchlog_usage;
-    }
-  else
-    {
-      log_path = realpath (log_path, log_path_buf);
     }
 
   if (check_database_name (database_name))
@@ -3361,6 +3361,15 @@ prefetchlogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE) == false)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_PREFETCHLOGDB,
+				       PREFETCHLOGDB_MSG_FEATURE_DISABLE));
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       /* initialize heartbeat */
@@ -3376,6 +3385,14 @@ prefetchlogdb (UTIL_FUNCTION_ARG * arg)
 	    }
 	  return EXIT_FAILURE;
 	}
+    }
+  else
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_PREFETCHLOGDB,
+				       PREFETCHLOGDB_MSG_NOT_HA_MODE));
+      error = ER_FAILED;
+      goto error_exit;
     }
 
 retry:
@@ -3402,20 +3419,20 @@ retry:
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
-    {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_PREFETCHLOGDB,
-				       PREFETCHLOGDB_MSG_NOT_HA_MODE));
-      db_shutdown ();
-      goto error_exit;
-    }
-
   if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE) == false)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_PREFETCHLOGDB,
 				       PREFETCHLOGDB_MSG_FEATURE_DISABLE));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_PREFETCHLOGDB,
+				       PREFETCHLOGDB_MSG_NOT_HA_MODE));
       db_shutdown ();
       goto error_exit;
     }

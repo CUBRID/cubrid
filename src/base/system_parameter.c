@@ -9630,8 +9630,6 @@ prm_tune_parameters (void)
 	{
 	  prm_set (force_remove_log_archives_prm, "yes", false);
 	}
-
-      prm_set (ha_prefetchlogdb_enable_prm, "no", false);
     }
   else
     {
@@ -9645,6 +9643,8 @@ prm_tune_parameters (void)
 	}
     }
 #endif /* !SA_MODE && !WINDOWS */
+  /* disable them temporarily */
+  prm_set (ha_prefetchlogdb_enable_prm, "no", false);
 
   if (ha_node_list_prm == NULL
       || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))
@@ -9807,10 +9807,10 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%ds", ha_check_disk_failure_interval_value);
 	  prm_set (ha_check_disk_failure_interval_prm, newval, false);
 	}
-
-      /* disable them temporarily */
-      prm_set (ha_prefetchlogdb_enable_prm, "no", false);
     }
+
+  /* disable them temporarily */
+  prm_set (ha_prefetchlogdb_enable_prm, "no", false);
 
   if (ha_node_list_prm == NULL
       || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))

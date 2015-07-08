@@ -67,7 +67,6 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
-$       50      prefetchlogdb
 $       51      gen_tz
 $       52      dump_tz
 $       53      restoreslave
@@ -121,7 +120,6 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
-    prefetchlogdb\n\
     gen_tz\n\
     dump_tz\n\
     restoreslave\n\
@@ -236,7 +234,6 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     stop           [-h <호스트 이름>] [-i] [데이터베이스 이름]\n\
     copylogdb      <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
     applylogdb     <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
-    prefetchlogdb  <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
     replication    <start|stop> <노드 이름>\n\
     status         [-v] [-h <호스트 이름>]\n\
     reload\n
