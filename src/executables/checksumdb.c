@@ -1629,6 +1629,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
   int chunk_id = 0;
   int repid = -1;
   int prev_repid = -1;
+  bool force_refetch_class_info;
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR,
 	  2, "checksum calculation started", 0);
@@ -1699,6 +1700,11 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	}
 
       table_name = db_get_class_name (classobj);
+      if (table_name == NULL)
+	{
+	  continue;
+	}
+
       if (chksum_need_skip_table (table_name, chksum_arg) == true)
 	{
 	  continue;
@@ -1708,6 +1714,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
       chunk_id = 0;
       lower_bound = NULL;
       error = NO_ERROR;
+      force_refetch_class_info = false;
 
       parser = parser_create_parser ();
 
@@ -1719,8 +1726,9 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	      /* the table has been deleted in the middle of calculation */
 	      break;
 	    }
-	  else if (repid != prev_repid)
+	  else if (repid != prev_repid || force_refetch_class_info == true)
 	    {
+	      /* schema has been changed or previous tran aborted */
 	      table_name = db_get_class_name (classobj);
 	      attributes = db_get_attributes (classobj);
 	      if (table_name == NULL || attributes == NULL)
@@ -1746,6 +1754,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 		}
 
 	      prev_repid = repid;
+	      force_refetch_class_info = false;
 	    }
 
 	  if (locator_fetch_class (classobj, DB_FETCH_QUERY_READ) == NULL)
@@ -1779,6 +1788,9 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 		      break;
 		    }
 
+		  error = NO_ERROR;
+		  force_refetch_class_info = true;
+
 		  SLEEP_MILISEC (0, chksum_arg->sleep_msecs);
 		  continue;
 		}
@@ -1805,6 +1817,9 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 		  break;
 		}
 
+	      error = NO_ERROR;
+	      force_refetch_class_info = true;
+
 	      SLEEP_MILISEC (0, chksum_arg->sleep_msecs);
 	      continue;
 	    }
@@ -1822,6 +1837,9 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 		  break;
 		}
 
+	      error = NO_ERROR;
+	      force_refetch_class_info = true;
+
 	      SLEEP_MILISEC (0, chksum_arg->sleep_msecs);
 	      continue;
 	    }
@@ -1834,8 +1852,6 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	      break;
 	    }
 
-	  SLEEP_MILISEC (0, chksum_arg->sleep_msecs);
-
 	  if (lower_bound == NULL)
 	    {
 	      /* move onto the next table */
@@ -1846,6 +1862,8 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	    {
 	      chunk_id++;
 	    }
+
+	  SLEEP_MILISEC (0, chksum_arg->sleep_msecs);
 	}
 
       parser_free_parser (parser);
@@ -1865,6 +1883,11 @@ chksum_start (CHKSUM_ARG * chksum_arg)
     }
 
 exit:
+  if (tbl_list != NULL)
+    {
+      db_objlist_free (tbl_list);
+    }
+
   if (chksum_Prev_results != NULL)
     {
       chksum_free_results (chksum_Prev_results);
