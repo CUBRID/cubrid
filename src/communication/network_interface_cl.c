@@ -11764,7 +11764,8 @@ locator_cleanup_partition_links (OID * class_oid, int no_oids, OID * oid_list)
 }
 
 int
-chksum_insert_repl_log_and_unlock_all (REPL_INFO * repl_info)
+chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info,
+					      const OID * class_oidp)
 {
 #if defined(CS_MODE)
   int req_error, success = ER_FAILED;
@@ -11780,7 +11781,8 @@ chksum_insert_repl_log_and_unlock_all (REPL_INFO * repl_info)
     {
     case REPL_INFO_TYPE_SBR:
       repl_stmt = (REPL_INFO_SBR *) repl_info->info;
-      request_size = OR_INT_SIZE	/* REPL_INFO.REPL_INFO_TYPE */
+      request_size = OR_OID_SIZE	/* class oid */
+	+ OR_INT_SIZE		/* REPL_INFO.REPL_INFO_TYPE */
 	+ OR_INT_SIZE		/* REPL_INFO_SCHEMA.statement_type */
 	+ length_const_string (repl_stmt->name, &strlen1)
 	+ length_const_string (repl_stmt->stmt_text, &strlen2)
@@ -11790,7 +11792,8 @@ chksum_insert_repl_log_and_unlock_all (REPL_INFO * repl_info)
       request = (char *) malloc (request_size);
       if (request)
 	{
-	  ptr = or_pack_int (request, REPL_INFO_TYPE_SBR);
+	  ptr = or_pack_oid (request, class_oidp);
+	  ptr = or_pack_int (ptr, REPL_INFO_TYPE_SBR);
 	  ptr = or_pack_int (ptr, repl_stmt->statement_type);
 	  ptr = pack_const_string_with_length (ptr, repl_stmt->name, strlen1);
 	  ptr =
@@ -11822,8 +11825,13 @@ chksum_insert_repl_log_and_unlock_all (REPL_INFO * repl_info)
   int r = ER_FAILED;
 
   ENTER_SERVER ();
-  r = xchksum_insert_repl_log_and_unlock_all (NULL, repl_info);
+
+  r =
+    xchksum_insert_repl_log_and_demote_table_lock (NULL, repl_info,
+						   class_oidp);
+
   EXIT_SERVER ();
+
   return r;
 #endif /* !CS_MODE */
 }

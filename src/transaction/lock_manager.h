@@ -301,4 +301,9 @@ extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid,
 				    int tran_index, LOCK lock);
 extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock,
 			       int cond_flag);
+extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY *
+							thread_p,
+							int tran_index,
+							const OID *
+							class_oid);
 #endif /* _LOCK_MANAGER_H_ */

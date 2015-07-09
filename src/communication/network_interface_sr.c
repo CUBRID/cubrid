@@ -11307,25 +11307,27 @@ sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * schksum_insert_repl_log_and_unlock_all -
+ * schksum_insert_repl_log_and_demote_table_lock -
  *
  * return: error code
  *
- * NOTE: insert replication log and release all locks
+ * NOTE: insert replication log and demote the read lock of the table
  */
 void
-schksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
-					unsigned int rid, char *request,
-					int reqlen)
+schksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p,
+					       unsigned int rid,
+					       char *request, int reqlen)
 {
   int success = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
+  OID class_oid;
   REPL_INFO repl_info = { NULL, 0, false };
   REPL_INFO_SBR repl_stmt = { 0, NULL, NULL, NULL, NULL };
 
-  ptr = or_unpack_int (request, &repl_info.repl_info_type);
+  ptr = or_unpack_oid (request, &class_oid);
+  ptr = or_unpack_int (ptr, &repl_info.repl_info_type);
   switch (repl_info.repl_info_type)
     {
     case REPL_INFO_TYPE_SBR:
@@ -11346,7 +11348,9 @@ schksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
 
   if (success == NO_ERROR)
     {
-      success = xchksum_insert_repl_log_and_unlock_all (thread_p, &repl_info);
+      success =
+	xchksum_insert_repl_log_and_demote_table_lock (thread_p, &repl_info,
+						       &class_oid);
     }
 
   (void) or_pack_int (reply, success);

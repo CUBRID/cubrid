@@ -510,8 +510,12 @@ extern int xsession_remove_query_entry_info (THREAD_ENTRY * thread_p,
 extern int xsession_clear_query_entry_info (THREAD_ENTRY * thread_p,
 					    const QUERY_ID query_id);
 
-extern int xchksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
-						   REPL_INFO * repl_info);
+extern int xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY *
+							  thread_p,
+							  REPL_INFO *
+							  repl_info,
+							  const OID *
+							  class_oidp);
 extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p,
 					   const char *user_name);
 #endif /* _XSERVER_INTERFACE_H_ */

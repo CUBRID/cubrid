@@ -4954,6 +4954,104 @@ lock_demote_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
 	}
     }
 }
+
+/*
+ * lock_demote_read_class_lock_for_checksumdb -  Demote one shared class lock
+ *                                    to intention shared only for checksumdb
+ *
+ * return:
+ *
+ *   tran_index(in):
+ *   class_oid(in):
+ *
+ * Note: This is exported ONLY for checksumdb. NEVER consider to use this function
+ *       for any other clients/threads.
+ *
+ * Note:This function finds the lock entry whose lock object id is same
+ *     with the given class_oid in the transaction lock hold list. And then,
+ *     demote the class lock if the class lock is shared mode.
+ */
+void
+lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p,
+					    int tran_index,
+					    const OID * class_oid)
+{
+  LK_ENTRY *entry_ptr;
+  enum
+  { SKIP, DEMOTE, DECREMENT_COUNT };
+  int demote = SKIP;
+  LK_ACQUISITION_HISTORY *prev, *last, *p;
+
+  /* The caller is not holding any mutex */
+
+  /* demote only one class lock */
+  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
+  if (entry_ptr == NULL)
+    {
+      assert (entry_ptr != NULL);
+      return;
+    }
+
+  /* I think there's no need to acquire the mutex here. */
+  if (entry_ptr->history)
+    {
+      last = entry_ptr->recent;
+      prev = last->prev;
+
+      if (last->req_mode == S_LOCK && entry_ptr->granted_mode == S_LOCK)
+	{
+	  p = entry_ptr->history;
+	  while (p != last)
+	    {
+	      if (p->req_mode == S_LOCK)
+		{
+		  break;
+		}
+	      p = p->next;
+	    }
+
+	  if (p != last)
+	    {
+	      /* do not demote shared class lock */
+	      assert (p == last);
+	    }
+	  else
+	    {
+	      demote = DEMOTE;
+	    }
+	}
+      else
+	{
+	  /* unexpected lock entry */
+	  assert (0);
+	}
+
+      /* free the last node */
+      if (prev == NULL)
+	{
+	  entry_ptr->history = NULL;
+	  entry_ptr->recent = NULL;
+	}
+      else
+	{
+	  prev->next = NULL;
+	  entry_ptr->recent = prev;
+	}
+      free_and_init (last);
+    }
+  else
+    {
+      if (entry_ptr->granted_mode == S_LOCK)
+	{
+	  demote = DEMOTE;
+	}
+    }
+
+  if (demote == DEMOTE)
+    {
+      (void) lock_internal_demote_shared_class_lock (thread_p, entry_ptr);
+    }
+}
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)

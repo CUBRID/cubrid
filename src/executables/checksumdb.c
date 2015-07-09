@@ -169,9 +169,13 @@ static PARSER_VARCHAR *chksum_print_update_master_checksum (PARSER_CONTEXT *
 static int chksum_update_master_checksum (PARSER_CONTEXT * parser,
 					  const char *table_name,
 					  int chunk_id);
-static int chksum_set_repl_info_and_unlock_all (const char *table_name,
-						const char *checksum_query);
+static int chksum_set_repl_info_and_demote_table_lock (const char *table_name,
+						       const char
+						       *checksum_query,
+						       const OID *
+						       class_oidp);
 static int chksum_calculate_checksum (PARSER_CONTEXT * parser,
+				      const OID * class_oidp,
 				      const char *table_name,
 				      DB_ATTRIBUTE * attributes,
 				      PARSER_VARCHAR * lower_bound,
@@ -1450,17 +1454,18 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser,
 }
 
 /*
- * chksum_set_repl_info_and_unlock_all -
+ * chksum_set_repl_info_and_demote_table_lock -
  * return: error code
  *
  * table_name(in):
  * checksum_query(in):
  *
- * NOTE: insert replication log and release all locks
+ * NOTE: insert replication log and release demote table lock to IS lock
  */
 static int
-chksum_set_repl_info_and_unlock_all (const char *table_name,
-				     const char *checksum_query)
+chksum_set_repl_info_and_demote_table_lock (const char *table_name,
+					    const char *checksum_query,
+					    const OID * class_oidp)
 {
   REPL_INFO repl_info;
   REPL_INFO_SBR repl_stmt;
@@ -1474,13 +1479,15 @@ chksum_set_repl_info_and_unlock_all (const char *table_name,
   repl_info.repl_info_type = REPL_INFO_TYPE_SBR;
   repl_info.info = (char *) &repl_stmt;
 
-  return chksum_insert_repl_log_and_unlock_all (&repl_info);
+  return chksum_insert_repl_log_and_demote_table_lock (&repl_info,
+						       class_oidp);
 }
 
 /*
  * chksum_calculate_checksum () - calculate checksum for a chunk
  *   return: error code
  *   parser(in):
+ *   class_oidp(in): source table class oid
  *   table_name(in): source table name
  *   attributes(in): table attributes
  *   lower_bound(in): starting point of chunk
@@ -1488,7 +1495,8 @@ chksum_set_repl_info_and_unlock_all (const char *table_name,
  *   chunk_size(in):
  */
 static int
-chksum_calculate_checksum (PARSER_CONTEXT * parser, const char *table_name,
+chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp,
+			   const char *table_name,
 			   DB_ATTRIBUTE * attributes,
 			   PARSER_VARCHAR * lower_bound, int chunk_id,
 			   int chunk_size)
@@ -1519,7 +1527,9 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const char *table_name,
    * write replication log first and release all locks
    * to avoid long lock wait of other concurrent clients on active server
    */
-  error = chksum_set_repl_info_and_unlock_all (table_name, query);
+  error =
+    chksum_set_repl_info_and_demote_table_lock (table_name, query,
+						class_oidp);
   if (error != NO_ERROR)
     {
       snprintf (err_msg, LINE_MAX,
@@ -1622,6 +1632,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
   DB_CONSTRAINT *constraints = NULL, *pk_cons = NULL;
   DB_ATTRIBUTE *attributes;
   PARSER_VARCHAR *lower_bound, *next_lower_bound;
+  OID *class_oidp;
 
   char err_msg[LINE_MAX];
   const char *table_name;
@@ -1769,6 +1780,8 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	      break;
 	    }
 
+	  class_oidp = ws_oid (classobj);
+
 	  tran_set_query_timeout (chksum_arg->timeout_msecs);
 
 	  if (chunk_id == 0 && lower_bound == NULL)
@@ -1805,9 +1818,10 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 
 	  assert (lower_bound != NULL);
 
-	  error = chksum_calculate_checksum (parser, table_name, attributes,
-					     lower_bound, chunk_id,
-					     chksum_arg->chunk_size);
+	  error =
+	    chksum_calculate_checksum (parser, class_oidp, table_name,
+				       attributes, lower_bound, chunk_id,
+				       chksum_arg->chunk_size);
 	  if (error != NO_ERROR)
 	    {
 	      (void) db_abort_transaction ();

@@ -14589,17 +14589,18 @@ locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p,
 }
 
 /*
- * xchksum_insert_repl_log_and_unlock_all -
+ * xchksum_insert_repl_log_and_demote_table_lock -
  *
  * return: error code
  *
  *   repl_info(in):
  *
- * NOTE: insert replication log and release all locks
+ * NOTE: insert replication log and demote the read lock of the table
  */
 int
-xchksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
-					REPL_INFO * repl_info)
+xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p,
+					       REPL_INFO * repl_info,
+					       const OID * class_oidp)
 {
   LOG_TDES *tdes;
   int error = NO_ERROR;
@@ -14641,7 +14642,16 @@ xchksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
       (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
     }
 
-  lock_unlock_all (thread_p);
+#if defined (SERVER_MODE)
+  /* demote S-lock to IS-lock to allow blocking writers to resume. 
+   * This will not hurt transactional consistencies of checksumdb.
+   */
+  lock_demote_read_class_lock_for_checksumdb (thread_p, tdes->tran_index,
+					      class_oidp);
+
+  assert (lock_get_object_lock (class_oidp, oid_Root_class_oid,
+				tdes->tran_index) == IS_LOCK);
+#endif /* SERVER_MODE */
 
   return error;
 }

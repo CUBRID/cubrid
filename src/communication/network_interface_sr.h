@@ -527,11 +527,12 @@ extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p,
 extern void slocator_cleanup_partition_links (THREAD_ENTRY * thread_p,
 					      unsigned int rid, char *request,
 					      int reqlen);
-extern void schksum_insert_repl_log_and_unlock_all (THREAD_ENTRY * thread_p,
-						    unsigned int rid,
-						    char *request,
-						    int reqlen);
+extern void schksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY *
+							   thread_p,
+							   unsigned int rid,
+							   char *request,
+							   int reqlen);
 extern void slogtb_does_active_user_exist (THREAD_ENTRY * thread_p,
-					   unsigned int rid,
-					   char *request, int reqlen);
+					   unsigned int rid, char *request,
+					   int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */
