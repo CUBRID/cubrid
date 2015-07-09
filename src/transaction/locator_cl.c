@@ -2218,7 +2218,8 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
       is_prefetch = false;
     }
   doesexist = locator_does_exist (oid, chn, lock, class_oid, class_chn, true,
-				  is_prefetch, &fetch_area);
+				  is_prefetch, &fetch_area,
+				  TM_TRAN_READ_FETCH_VERSION ());
   if (doesexist != LC_ERROR)
     {
       /* We were able to acquired the lock. Was the cached object valid ? */
@@ -3501,7 +3502,8 @@ locator_does_exist_object (MOP mop, DB_FETCH_MODE purpose)
     }
 
   lock =
-    locator_fetch_mode_to_lock (purpose, isclass, LC_FETCH_DIRTY_VERSION);
+    locator_fetch_mode_to_lock (purpose, isclass,
+				TM_TRAN_READ_FETCH_VERSION ());
 
   return locator_lock_and_doesexist (mop, lock, isclass);
 }

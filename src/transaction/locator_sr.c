@@ -2822,6 +2822,11 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
   bool object_locked = false;
   int is_mvcc_disabled_class = -1;
 
+  /* We assume that the object have to be locked;
+   * after it is locked or we determine that this is not necessary,
+   * object_need_locking will be set to false; */
+  bool object_need_locking = true;
+
   if (class_oid == NULL)
     {
       /* The class_oid is not known by the caller. */
@@ -2887,9 +2892,13 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
       mvcc_snapshot = NULL;
       operation_type = S_SELECT;
 
-      if (lock != NULL_LOCK)
+      /* object already locked or it doesn't need locking */
+      object_need_locking = false;
+
+      if (lock > NULL_LOCK
+	  && (snapshot_type != SNAPSHOT_TYPE_MVCC
+	      || heap_is_mvcc_disabled_for_class (class_oid)))
 	{
-	  /* object already locked */
 	  object_locked = true;
 	}
 
@@ -3008,12 +3017,13 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
       scan =
 	locator_lock_and_return_object (thread_p, &nxobj, class_oid, p_oid,
 					chn, original_oid,
-					object_locked ? NULL_LOCK : lock,
-					operation_type);
+					object_need_locking ? lock :
+					NULL_LOCK, operation_type);
       if (scan == S_SUCCESS)
 	{
-	  if (!object_locked)
+	  if (object_need_locking)
 	    {
+	      object_need_locking = false;
 	      is_mvcc_disabled_class =
 		heap_is_mvcc_disabled_for_class (class_oid);
 	      if (is_mvcc_disabled_class == true)

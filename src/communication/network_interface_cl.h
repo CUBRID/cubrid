@@ -79,7 +79,8 @@ extern int locator_fetch_all (const HFID * hfid, LOCK * lock,
 extern int locator_does_exist (OID * oidp, int chn, LOCK lock,
 			       OID * class_oid, int class_chn,
 			       int need_fetching, int prefetch,
-			       LC_COPYAREA ** fetch_copyarea);
+			       LC_COPYAREA ** fetch_copyarea,
+			       LC_FETCH_VERSION_TYPE fetch_version_type);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
 extern int locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 			  int *ignore_error_list, int content_size);

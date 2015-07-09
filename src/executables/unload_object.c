@@ -1663,7 +1663,9 @@ process_value (DB_VALUE * value)
 
 	if ((error = locator_does_exist (ref_oid, NULL_CHN, IS_LOCK,
 					 &ref_class_oid, NULL_CHN,
-					 false, false, NULL)) == LC_EXIST)
+					 false, false, NULL,
+					 TM_TRAN_READ_FETCH_VERSION ()))
+	    == LC_EXIST)
 	  {
 	    if ((classop = is_class (ref_oid, &ref_class_oid)))
 	      {

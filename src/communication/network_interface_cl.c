@@ -431,7 +431,8 @@ locator_fetch_all (const HFID * hfid, LOCK * lock,
 int
 locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
 		    int class_chn, int need_fetching, int prefetch,
-		    LC_COPYAREA ** fetch_copyarea)
+		    LC_COPYAREA ** fetch_copyarea,
+		    LC_FETCH_VERSION_TYPE fetch_version_type)
 {
 #if defined(CS_MODE)
   int does_exist = LC_ERROR;
@@ -450,7 +451,7 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
   ptr = or_pack_oid (request, oidp);
   ptr = or_pack_int (ptr, chn);
   ptr = or_pack_lock (ptr, lock);
-  ptr = or_pack_int (ptr, (int) LC_FETCH_DIRTY_VERSION);
+  ptr = or_pack_int (ptr, (int) fetch_version_type);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, class_chn);
   ptr = or_pack_int (ptr, need_fetching);
@@ -489,7 +490,7 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
   ENTER_SERVER ();
 
   success =
-    xlocator_does_exist (NULL, oidp, chn, lock, LC_FETCH_DIRTY_VERSION,
+    xlocator_does_exist (NULL, oidp, chn, lock, fetch_version_type,
 			 class_oid, class_chn, need_fetching, prefetch,
 			 fetch_copyarea);
 

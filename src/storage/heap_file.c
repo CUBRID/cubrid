@@ -12226,7 +12226,7 @@ heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
     }
 
   /* Handle locks. */
-  if (lock_mode > NULL_LOCK)
+  if (lock_mode > NULL_LOCK && snapshot_type != SNAPSHOT_TYPE_MVCC)
     {
       if (lock_mode <= S_LOCK)
 	{
