@@ -22545,7 +22545,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
       y = m = d = h = mi = s = ms = 0;
 
-      if (is_timezone > 0)
+      if (is_timezone > 0 || is_local_timezone > 0)
 	{
 	  db_timestamp_decode_utc (ts_p, &db_date, &db_time);
 	}
@@ -22594,7 +22594,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  goto error;
 	}
 
-      if (is_timezone > 0)
+      if (is_timezone > 0 || is_local_timezone > 0)
 	{
 	  TZ_REGION tz_region;
 	  tz_id_to_region (&tz_id, &tz_region);
@@ -22614,8 +22614,22 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	    {
 	      goto error;
 	    }
-	  error_status =
-	    db_timestamp_decode_w_reg (ts_p, &tz_region, &db_date, &db_time);
+	  if (is_timezone > 0)
+	    {
+	      error_status =
+		db_timestamp_decode_w_reg (ts_p, &tz_region, &db_date,
+					   &db_time);
+	    }
+	  else
+	    {
+	      TZ_REGION tz_session_region;
+
+	      tz_get_session_tz_region (&tz_session_region);
+	      error_status =
+		db_timestamp_decode_w_reg (ts_p, &tz_session_region, &db_date,
+					   &db_time);
+	    }
+
 	  if (error_status != NO_ERROR)
 	    {
 	      goto error;
