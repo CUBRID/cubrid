@@ -4011,8 +4011,8 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
 	  else
 	    {
 	      /*
-	       * bufptr->avoid_victim will be released
-	       * in pgbuf_flush_with_wal() function.
+	       * bufptr->avoid_victim is released by pgbuf_flush_with_wal()
+	       * only if buf is dirty at the time of flush
 	       */
 	      bufptr->avoid_victim = true;
 	      vpid = bufptr->vpid;
@@ -4043,7 +4043,10 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
 				&bufptr->oldest_unflush_lsa);
 		    }
 
-		  if (pgptr == NULL)
+		  if (pgptr == NULL
+		      || (bufptr->avoid_victim == true
+			  && VPID_EQ (&bufptr->vpid,
+				      &f_list[seq_flusher->flush_idx].vpid)))
 		    {
 		      bufptr->avoid_victim = false;
 		    }
@@ -4052,6 +4055,10 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
 		}
 	      else
 		{
+		  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
+		  bufptr->avoid_victim = false;
+		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+
 		  /* pgbuf_flush_with_wal successful */
 		  seq_flusher->flushed_pages++;
 		}
