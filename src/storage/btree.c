@@ -28021,7 +28021,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
   bool stop = false;		/* Set to true when processing record should
 				 * stop.
 				 */
-  VPID overflow_vpid;		/* Overflow VPID. */
+  VPID overflow_vpid = VPID_INITIALIZER;	/* Overflow VPID. */
   PAGE_PTR overflow_page = NULL;	/* Current overflow page. */
   PAGE_PTR prev_overflow_page = NULL;	/* Previous overflow page. */
   RECDES ovf_record;		/* Overflow page record. */
@@ -28223,6 +28223,10 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
 	    }
 	}
     }
+  else
+    {
+      assert (!bts->is_key_partially_processed);
+    }
 
   /* Start processing key objects. */
 
@@ -28302,43 +28306,43 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
 	  pgbuf_unfix_and_init (thread_p, overflow_page);
 	  return ER_FAILED;
 	}
-      /* Can we save all objects? */
-      oid_count =
-	btree_record_get_num_oids (thread_p, &bts->btid_int, &ovf_record, 0,
-				   BTREE_OVERFLOW_NODE);
-      if (!BTS_IS_HARD_CAPACITY_ENOUGH (bts,
-					bts->n_oids_read_last_iteration
-					+ oid_count))
+      if (!BTS_IS_INDEX_MRO (bts) && !BTS_NEED_COUNT_ONLY (bts))
 	{
-	  /* We don't know how many visible objects there are in this page,
-	   * and we don't want to process the page partially.
-	   * Stop here and we will continue from last overflow page that
-	   * had visible objects.
-	   */
-	  /* Index coverage uses a list file and can handle all objects for
-	   * this key.
-	   */
+	  /* Can we save all objects? */
+	  oid_count =
+	    btree_record_get_num_oids (thread_p, &bts->btid_int, &ovf_record,
+				       0, BTREE_OVERFLOW_NODE);
+	  if (!BTS_IS_HARD_CAPACITY_ENOUGH (bts,
+					    bts->n_oids_read_last_iteration
+					    + oid_count))
+	    {
+	      /* We don't know how many visible objects there are in this
+	       * page, and we don't want to process the page partially.
+	       * Stop here and we will continue from last overflow page that
+	       * had visible objects.
+	       */
+	      /* Index coverage uses a list file and can handle all objects
+	       * for this key.
+	       */
 
-	  /* Safe guard: we should have at least one page with visible objects
-	   *             here. We already processed at least ~7.5k.
-	   */
-	  assert (bts->n_oids_read_last_iteration > 0);
-	  assert (!VPID_ISNULL (&last_visible_overflow));
+	      assert (bts->n_oids_read_last_iteration > 0);
+	      assert (!VPID_ISNULL (&last_visible_overflow));
 
-	  /* Save page to resume. */
-	  VPID_COPY (&bts->O_vpid, &last_visible_overflow);
-	  /* Mark key as partially processed to know to resume from an
-	   * overflow page.
-	   */
-	  bts->is_key_partially_processed = true;
-	  /* End current iteration. */
-	  bts->end_one_iteration = true;
+	      /* Save page to resume. */
+	      VPID_COPY (&bts->O_vpid, &last_visible_overflow);
+	      /* Mark key as partially processed to know to resume from an
+	       * overflow page.
+	       */
+	      bts->is_key_partially_processed = true;
+	      /* End current iteration. */
+	      bts->end_one_iteration = true;
 
-	  /* Unfix current overflow page. */
-	  pgbuf_unfix_and_init (thread_p, overflow_page);
-	  return NO_ERROR;
+	      /* Unfix current overflow page. */
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
+	      return NO_ERROR;
+	    }
+	  /* We can handle all current objects. */
 	}
-      /* We can handle all current objects. */
 
       /* Process this overflow OID's. */
       error_code =
