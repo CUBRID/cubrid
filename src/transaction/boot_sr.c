@@ -967,14 +967,19 @@ int
 xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
 			    bool clear_cached)
 {
+  int r;
+
   if (xdisk_is_volume_exist (thread_p, volid) == false)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_UNKNOWN_VOLUME, 1, volid);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1,
+	      volid);
       return ER_BO_UNKNOWN_VOLUME;
     }
 
-  (void) disk_cache_disable_new_files (thread_p, volid);
+  if (disk_cache_disable_new_files (thread_p, volid) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   if (clear_cached
       && xdisk_get_purpose (thread_p, volid) == DISK_TEMPVOL_TEMP_PURPOSE)
@@ -990,16 +995,13 @@ xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
       (void) file_destroy_cached_tmp (thread_p, volid);
     }
 
-  if (disk_is_empty_volume (thread_p, volid) == false)
+  r = disk_del_volume_extension (thread_p, volid);
+  if (r != NO_ERROR)
     {
       (void) disk_cache_enable_new_files (thread_p, volid);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_A_EMPTY_VOLUME,
-	      1, volid);
-      return ER_NOT_A_EMPTY_VOLUME;
     }
 
-  return disk_del_volume_extension (thread_p, volid);
+  return r;
 }
 
 /*

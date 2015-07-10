@@ -115,6 +115,14 @@ typedef enum
   DISK_ALLOCTABLE_CLEAR
 } DISK_ALLOCTABLE_MODE;
 
+typedef enum
+{
+  DISK_VOL_UNKNOWN_CONT_PAGES = -2,
+  DISK_VOL_ERROR = -1,
+  DISK_VOL_HAS_NOT_ENOUGH_CONT_PAGES = 0,
+  DISK_VOL_HAS_ENOUGH_CONT_PAGES = 1
+} DISK_VOL_HAS_CONT_PAGES;
+
 typedef struct disk_recv_mtab_bits DISK_RECV_MTAB_BITS;
 struct disk_recv_mtab_bits
 {				/* Recovery for allocation table */
@@ -220,6 +228,9 @@ static DISK_CACHE_VOLINFO disk_Cache_struct = {
 
 static DISK_CACHE_VOLINFO *disk_Cache = &disk_Cache_struct;
 
+#define DISK_CACHE_GET_NUM_VOLUMES(vol_purpose) \
+  disk_Cache->purpose[(vol_purpose)].nvols
+
 static char *disk_vhdr_get_vol_fullname (const DISK_VAR_HEADER * vhdr);
 static char *disk_vhdr_get_next_vol_fullname (const DISK_VAR_HEADER * vhdr);
 static char *disk_vhdr_get_vol_remarks (const DISK_VAR_HEADER * vhdr);
@@ -291,11 +302,10 @@ static void disk_scramble_newpages (INT16 volid, INT32 first_pageid,
 				    INT32 npages,
 				    DISK_VOLPURPOSE vol_purpose);
 #endif /* CUBRID_DEBUG */
-static bool disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p,
-						    INT16 volid,
-						    INT32
-						    arecontiguous_npages,
-						    INT32 * num_freepgs);
+static DISK_VOL_HAS_CONT_PAGES
+disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p, INT16 volid,
+					INT32 arecontiguous_npages,
+					INT32 * num_freepgs);
 
 static bool disk_check_sector_has_npages (THREAD_ENTRY * thread_p,
 					  INT16 volid, INT32 at_pg1,
@@ -329,6 +339,8 @@ static int disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr);
 
 static int disk_rv_alloctable_helper (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 				      DISK_ALLOCTABLE_MODE mode);
+static bool disk_is_empty_volume (THREAD_ENTRY * thread_p,
+				  DISK_VAR_HEADER * vhdr);
 static void disk_set_page_to_zeros (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
 static INLINE void disk_verify_volume_header (THREAD_ENTRY * thread_p,
@@ -336,15 +348,15 @@ static INLINE void disk_verify_volume_header (THREAD_ENTRY * thread_p,
   __attribute__ ((ALWAYS_INLINE));
 static bool disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid,
 				     void *arg);
-static int disk_find_cache_index_of_purpose (DISK_VOLPURPOSE vol_purpose,
-					     int *start, int *end);
+static int disk_find_cache_entry_info_of_purpose (DISK_VOLPURPOSE vol_purpose,
+						  int *start, int *end,
+						  int *nvols);
 
-static void disk_alloctable_vhdr_update (THREAD_ENTRY * thread_p,
-					 PAGE_PTR vhdr_page, int num_pages,
-					 int deallid_type,
-					 DISK_PAGE_TYPE page_type,
-					 DISK_ALLOCTABLE_MODE mode,
-					 bool * need_to_add_generic_volume);
+static INT32 disk_alloctable_vhdr_update (THREAD_ENTRY * thread_p,
+					  PAGE_PTR vhdr_page, int num_pages,
+					  int deallid_type,
+					  DISK_PAGE_TYPE page_type,
+					  DISK_ALLOCTABLE_MODE mode);
 static void disk_alloctable_bitmap_update (THREAD_ENTRY * thread_p,
 					   PAGE_PTR alloctable_page,
 					   INT32 start_byte,
@@ -528,8 +540,9 @@ disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid,
   if (xdisk_get_purpose_and_space_info (thread_p, volid,
 					&vol_purpose, &space_info) == volid)
     {
-      if (disk_find_cache_index_of_purpose (vol_purpose, NULL, &vol_index) !=
-	  NO_ERROR)
+      if (disk_find_cache_entry_info_of_purpose (vol_purpose, NULL,
+						 &vol_index,
+						 NULL) != NO_ERROR)
 	{
 	  return true;
 	}
@@ -746,41 +759,31 @@ static int
 disk_cache_set_disable_new_files (THREAD_ENTRY * thread_p, VOLID volid,
 				  bool disable)
 {
-  DISK_VOLPURPOSE vol_purpose;
-  VOL_SPACE_INFO space_info;
-  int i, start_at, end_at;
+  int i;
 
-  if (csect_enter (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) !=
-      NO_ERROR)
+  if (csect_enter (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT)
+      != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (xdisk_get_purpose_and_space_info (thread_p, volid,
-					&vol_purpose, &space_info) == volid)
+  for (i = 0; i < disk_Cache->nvols; i++)
     {
-      if (disk_find_cache_index_of_purpose (vol_purpose, &start_at, &end_at)
-	  != NO_ERROR)
+      if (disk_Cache->vols[i].volid == volid)
 	{
+	  disk_Cache->vols[i].disable_new_files = disable;
+
 	  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 	  return NO_ERROR;
-	}
-
-      for (i = start_at; i < end_at; i++)
-	{
-	  if (disk_Cache->vols[i].volid == volid)
-	    {
-	      disk_Cache->vols[i].disable_new_files = disable;
-	      break;
-	    }
 	}
     }
 
   csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
-  return NO_ERROR;
-}
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, volid);
 
+  return ER_FAILED;
+}
 
 /* TODO: STL::vector for disk_Cache->purpose */
 /* TODO: STL::list for disk_Cache->vols */
@@ -794,7 +797,8 @@ disk_cache_set_disable_new_files (THREAD_ENTRY * thread_p, VOLID volid,
  *                          for deallocated and positive for allocated
  *   do_update_total(in): Flag is true if total_pages should be updated
  *                        on purpose information
- *   need_to_add_generic_volume(out):
+ *   need_to_add_generic_volume (out) : If not null, outputs whether a new
+ *				        generic volume is required.
  */
 static int
 disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
@@ -805,13 +809,12 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
   int start_at = -1;
   int end_at = -1;
   int i;
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  int rv;
-#endif
-
 #if defined (SERVER_MODE)
   int total_free_pages = 0;
   bool need_to_check_auto_volume_ext = false;
+#endif
+#if !defined(HAVE_ATOMIC_BUILTINS)
+  int rv;
 #endif
 
   if (log_is_in_crash_recovery ())
@@ -841,8 +844,8 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
       return ER_FAILED;
     }
 
-  if (disk_find_cache_index_of_purpose (vol_purpose, &start_at, &end_at) !=
-      NO_ERROR)
+  if (disk_find_cache_entry_info_of_purpose (vol_purpose, &start_at, &end_at,
+					     NULL) != NO_ERROR)
     {
       csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
       return ER_FAILED;
@@ -880,6 +883,13 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
     }
   ATOMIC_INC_32 (&(disk_Cache->purpose[vol_purpose].free_pages),
 		 nfree_pages_toadd);
+
+  if (disk_Cache->purpose[vol_purpose].free_pages < 0)
+    {
+      /* safe guard */
+      assert (false);
+      disk_Cache->purpose[vol_purpose].free_pages = 0;
+    }
 #else /* HAVE_ATOMIC_BUILTINS */
   rv = pthread_mutex_lock (&(disk_Cache->purpose[vol_purpose].update_lock));
   if (do_update_total)
@@ -887,15 +897,14 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
       disk_Cache->purpose[vol_purpose].total_pages += nfree_pages_toadd;
     }
   disk_Cache->purpose[vol_purpose].free_pages += nfree_pages_toadd;
-#endif /* HAVE_ATOMIC_BUILTINS */
 
   if (disk_Cache->purpose[vol_purpose].free_pages < 0)
     {
+      /* safe guard */
       assert (false);
       disk_Cache->purpose[vol_purpose].free_pages = 0;
     }
 
-#if !defined(HAVE_ATOMIC_BUILTINS)
   pthread_mutex_unlock (&(disk_Cache->purpose[vol_purpose].update_lock));
 #endif /* ! HAVE_ATOMIC_BUILTINS */
 
@@ -903,11 +912,8 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
   if (need_to_check_auto_volume_ext == true)
     {
       /* calculate remained free pages of generic */
-      start_at = (disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols +
-		  disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols);
-      end_at =
-	start_at + disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols;
-
+      disk_find_cache_entry_info_of_purpose (DISK_PERMVOL_GENERIC_PURPOSE,
+					     &start_at, &end_at, NULL);
       for (i = start_at; i < end_at; i++)
 	{
 	  total_free_pages += disk_Cache->vols[i].hint_freepages;
@@ -918,12 +924,17 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
   csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
 #if defined (SERVER_MODE)
-  if (need_to_check_auto_volume_ext == true
-      && total_free_pages <
-      (int) (prm_get_bigint_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE)
-	     / IO_PAGESIZE))
+  if (need_to_check_auto_volume_ext == true)
     {
-      *need_to_add_generic_volume = true;
+      int prealloc_size;
+
+      prealloc_size =
+	(int) (prm_get_bigint_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE)
+	       / IO_PAGESIZE);
+      if (total_free_pages < prealloc_size)
+	{
+	  *need_to_add_generic_volume = true;
+	}
     }
 #endif
 
@@ -1020,39 +1031,38 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 					     INT32 exp_numpages, int start_at,
 					     int num_vols)
 {
-  int i;
+  DISK_VOLFREEPGS *v;
+  int i, r;
   INT16 contiguous_best_volid;
 
   /* Assume we have enter critical section */
   contiguous_best_volid = NULL_VOLID;
 
-  for (i = start_at; i < num_vols + start_at; i++)
+  for (i = start_at; i < start_at + num_vols; i++)
     {
-      if (disk_Cache->vols[i].disable_new_files == true)
+      v = &disk_Cache->vols[i];
+      if (v->disable_new_files == true)
 	{
-	  /* 
-	   * This volume can not create new files. 
+	  /* This volume can not create new files. 
 	   * so this volume is not desirable volume.
 	   */
 	  continue;
 	}
 
-      if (disk_Cache->vols[i].hint_freepages >= exp_numpages
-	  && disk_Cache->vols[i].hint_freepages > *best_numpages
-	  && undesirable_volid != disk_Cache->vols[i].volid)
+      if (exp_numpages <= v->hint_freepages
+	  && *best_numpages < v->hint_freepages
+	  && undesirable_volid != v->volid)
 	{
-
 	  /* This seems to be a good volume for the desired number of
 	     pages. Make sure that this is the case. */
+	  r = DISK_VOL_UNKNOWN_CONT_PAGES;
 	  if (exp_numpages == 1
-	      || disk_get_hint_contiguous_free_numpages (thread_p,
-							 disk_Cache->
-							 vols[i].volid,
-							 exp_numpages,
-							 &disk_Cache->
-							 vols
-							 [i].hint_freepages)
-	      == true)
+	      || ((r =
+		   disk_get_hint_contiguous_free_numpages (thread_p, v->volid,
+							   exp_numpages,
+							   &v->
+							   hint_freepages))
+		  == DISK_VOL_HAS_ENOUGH_CONT_PAGES))
 	    {
 	      /*
 	       * Contiguous pages. This is a very good volume
@@ -1061,14 +1071,14 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	       * volume
 	       */
 	      if (contiguous_best_volid == NULL_VOLID
-		  || disk_Cache->vols[i].hint_freepages > *best_numpages)
+		  || *best_numpages < v->hint_freepages)
 		{
-		  *best_numpages = disk_Cache->vols[i].hint_freepages;
-		  *best_volid = disk_Cache->vols[i].volid;
+		  *best_numpages = v->hint_freepages;
+		  *best_volid = v->volid;
 		  contiguous_best_volid = *best_volid;
 		}
 	    }
-	  else
+	  else if (r == DISK_VOL_HAS_NOT_ENOUGH_CONT_PAGES)
 	    {
 	      /*
 	       * There is not that number of contiguous pages. However, we may
@@ -1076,11 +1086,17 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	       * Reset only when we do not have a contiguous volume
 	       */
 	      if (contiguous_best_volid == NULL_VOLID
-		  && disk_Cache->vols[i].hint_freepages > *best_numpages)
+		  && *best_numpages < v->hint_freepages)
 		{
-		  *best_numpages = disk_Cache->vols[i].hint_freepages;
-		  *best_volid = disk_Cache->vols[i].volid;
+		  *best_numpages = v->hint_freepages;
+		  *best_volid = v->volid;
 		}
+	    }
+	  else
+	    {
+	      assert (r == DISK_VOL_ERROR);
+	      /* an error case, probably interrupted */
+	      return NULL_VOLID;
 	    }
 	}
       else
@@ -1088,11 +1104,11 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	  /* Reset only if we do not have a contiguous volume and we guess that
 	     the number of free pages is larger than the current cached value */
 	  if (contiguous_best_volid == NULL_VOLID
-	      && undesirable_volid != disk_Cache->vols[i].volid
-	      && disk_Cache->vols[i].hint_freepages > *best_numpages)
+	      && undesirable_volid != v->volid
+	      && *best_numpages < v->hint_freepages)
 	    {
-	      *best_numpages = disk_Cache->vols[i].hint_freepages;
-	      *best_volid = disk_Cache->vols[i].volid;
+	      *best_numpages = v->hint_freepages;
+	      *best_volid = v->volid;
 	    }
 	}
     }
@@ -1162,21 +1178,32 @@ disk_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
  *  volid(in):
  */
 int
-disk_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
+disk_del_volume_extension (THREAD_ENTRY * thread_p, INT16 volid)
 {
   PAGE_PTR vhdr_pgptr = NULL;
-  LOG_DATA_ADDR addr;
+  DISK_VAR_HEADER *vhdr;
   VPID vpid;
+  LOG_DATA_ADDR addr;
 
-  vpid.volid = LOG_DBFIRST_VOLID;
+  vpid.volid = volid;
   vpid.pageid = DISK_VOLHEADER_PAGE;
 
-  vhdr_pgptr = pgbuf_fix_with_retry (thread_p, &vpid, OLD_PAGE,
-				     PGBUF_LATCH_WRITE, 10);
-
+  vhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			  PGBUF_UNCONDITIONAL_LATCH);
   if (vhdr_pgptr == NULL)
     {
       return ER_FAILED;
+    }
+
+  vhdr = (DISK_VAR_HEADER *) vhdr_pgptr;
+
+  if (disk_is_empty_volume (thread_p, vhdr) == false)
+    {
+      pgbuf_unfix_and_init (thread_p, vhdr_pgptr);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_A_EMPTY_VOLUME,
+	      1, volid);
+      return ER_NOT_A_EMPTY_VOLUME;
     }
 
   addr.pgptr = vhdr_pgptr;
@@ -1283,8 +1310,7 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
 {
   VOLID best_volid = NULL_VOLID;
   INT32 best_numpages = -1;
-  INT16 num_data_vols, num_index_vols, num_generic_vols;
-  INT16 num_ptemp_vols, num_ttemp_vols;
+  int search_from, search_nvols, r;
   bool found_contiguous = true;
 
   /* If disk cache is not initialized, we do it here. */
@@ -1294,8 +1320,8 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
       return NULL_VOLID;
     }
 
-  if (csect_enter_as_reader
-      (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) != NO_ERROR)
+  if (csect_enter_as_reader (thread_p, CSECT_DISK_REFRESH_GOODVOL,
+			     INF_WAIT) != NO_ERROR)
     {
       return NULL_VOLID;
     }
@@ -1308,31 +1334,38 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
        * 1) A volume with main purpose = DATA
        * 2) A volume with main purpose = GENERIC
        */
-      num_data_vols = disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols;
-      if (num_data_vols > 0
-	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
-							  &best_volid,
-							  &best_numpages,
-							  undesirable_volid,
-							  exp_numpages, 0,
-							  num_data_vols) !=
-	  NULL_VOLID)
-	{
-	  break;
-	}
 
-      num_generic_vols =
-	disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols;
-      num_index_vols = disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols;
-      if (num_generic_vols > 0
+      /* 1st: search DATA volumes */
+      disk_find_cache_entry_info_of_purpose (DISK_PERMVOL_DATA_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+
+      if (search_nvols > 0
 	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
 							  &best_volid,
 							  &best_numpages,
 							  undesirable_volid,
 							  exp_numpages,
-							  (num_data_vols +
-							   num_index_vols),
-							  num_generic_vols) !=
+							  search_from,
+							  search_nvols) !=
+	  NULL_VOLID)
+	{
+	  break;
+	}
+
+      /* 2nd: search GENERIC volumes */
+      disk_find_cache_entry_info_of_purpose (DISK_PERMVOL_GENERIC_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+      best_numpages = -1;
+      if (search_nvols > 0
+	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
+							  &best_volid,
+							  &best_numpages,
+							  undesirable_volid,
+							  exp_numpages,
+							  search_from,
+							  search_nvols) !=
 	  NULL_VOLID)
 	{
 	  break;
@@ -1348,32 +1381,37 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
        * 1) A volume with main purpose = INDEX
        * 2) A volume with main purpose = GENERIC
        */
-      num_index_vols = disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols;
-      num_data_vols = disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols;
-      if (num_index_vols > 0
+
+      /* 1st: search INDEX volumes */
+      disk_find_cache_entry_info_of_purpose (DISK_PERMVOL_INDEX_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+      if (search_nvols > 0
 	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
 							  &best_volid,
 							  &best_numpages,
 							  undesirable_volid,
 							  exp_numpages,
-							  num_data_vols,
-							  num_index_vols) !=
+							  search_from,
+							  search_nvols) !=
 	  NULL_VOLID)
 	{
 	  break;
 	}
 
-      num_generic_vols =
-	disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols;
-      if (num_generic_vols > 0
+      /* 2nd: search GENERIC volumes */
+      disk_find_cache_entry_info_of_purpose (DISK_PERMVOL_GENERIC_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+      best_numpages = -1;
+      if (search_nvols > 0
 	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
 							  &best_volid,
 							  &best_numpages,
 							  undesirable_volid,
 							  exp_numpages,
-							  num_data_vols +
-							  num_index_vols,
-							  num_generic_vols) !=
+							  search_from,
+							  search_nvols) !=
 	  NULL_VOLID)
 	{
 	  break;
@@ -1390,19 +1428,17 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
        * The best volume is one in the following range
        * 1) A volume with main purpose = GENERIC
        */
-      num_generic_vols =
-	disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols;
-      num_data_vols = disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols;
-      num_index_vols = disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols;
-      if (num_generic_vols > 0
+      disk_find_cache_entry_info_of_purpose (DISK_PERMVOL_GENERIC_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+      if (search_nvols > 0
 	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
 							  &best_volid,
 							  &best_numpages,
 							  undesirable_volid,
 							  exp_numpages,
-							  (num_data_vols +
-							   num_index_vols),
-							  num_generic_vols) !=
+							  search_from,
+							  search_nvols) !=
 	  NULL_VOLID)
 	{
 	  break;
@@ -1413,78 +1449,93 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
       break;
 
     case DISK_TEMPVOL_TEMP_PURPOSE:
-      if (fileio_is_temp_volume (thread_p, hint_volid)
-	  && disk_get_hint_contiguous_free_numpages (thread_p, hint_volid,
-						     exp_numpages,
-						     &best_numpages) == true)
-	{
-	  /* This is a temporary volume */
-	  best_volid = hint_volid;
-	  break;
-	}
-
       /*
        * The best volume is one in the following range
        * 1) The given hinted volume
        * 2) A volume with main purpose = TEMP TEMP
        * 3) A volume with main purpose = PERM TEMP
        */
-      num_ttemp_vols = disk_Cache->purpose[DISK_TEMPVOL_TEMP_PURPOSE].nvols;
-      num_data_vols = disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols;
-      num_index_vols = disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols;
-      num_generic_vols =
-	disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols;
-      num_ptemp_vols = disk_Cache->purpose[DISK_PERMVOL_TEMP_PURPOSE].nvols;
 
-      if (num_ttemp_vols
-	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
-							  &best_volid,
-							  &best_numpages,
-							  undesirable_volid,
-							  exp_numpages,
-							  (num_data_vols +
-							   num_index_vols +
-							   num_generic_vols +
-							   num_ptemp_vols),
-							  num_ttemp_vols) !=
-	  NULL_VOLID)
-	{
-	  break;
-	}
-      /* Fall throu DISK_PERMVOL_TEMP_PURPOSE case */
-
-    case DISK_PERMVOL_TEMP_PURPOSE:
+      /* 1st: the given hinted volume */
+      r = DISK_VOL_UNKNOWN_CONT_PAGES;
       if (fileio_is_temp_volume (thread_p, hint_volid)
-	  && disk_get_hint_contiguous_free_numpages (thread_p, hint_volid,
-						     exp_numpages,
-						     &best_numpages) == true)
+	  && ((r =
+	       disk_get_hint_contiguous_free_numpages (thread_p, hint_volid,
+						       exp_numpages,
+						       &best_numpages))
+	      == DISK_VOL_HAS_ENOUGH_CONT_PAGES))
 	{
 	  /* This is a temporary volume */
 	  best_volid = hint_volid;
 	  break;
 	}
 
-      /*
-       * The best volume is one in the following range
-       * 1) The given hinted volume
-       * 2) A volume with main purpose = PERM TEMP
-       */
-      num_ptemp_vols = disk_Cache->purpose[DISK_PERMVOL_TEMP_PURPOSE].nvols;
-      num_data_vols = disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols;
-      num_index_vols = disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols;
-      num_generic_vols =
-	disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols;
+      if (r == DISK_VOL_ERROR)
+	{
+	  return NULL_VOLID;
+	}
 
-      if (num_ptemp_vols > 0
+      /* 2nd: TEMP TEMP volumes */
+      disk_find_cache_entry_info_of_purpose (DISK_TEMPVOL_TEMP_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+      best_numpages = -1;
+      if (search_nvols > 0
 	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
 							  &best_volid,
 							  &best_numpages,
 							  undesirable_volid,
 							  exp_numpages,
-							  (num_data_vols +
-							   num_index_vols +
-							   num_generic_vols),
-							  num_ptemp_vols) !=
+							  search_from,
+							  search_nvols) !=
+	  NULL_VOLID)
+	{
+	  break;
+	}
+
+      /* fall through */
+      /* 3rd: DISK_PERMVOL_TEMP_PURPOSE case */
+
+    case DISK_PERMVOL_TEMP_PURPOSE:
+      /*
+       * The best volume is one in the following range
+       * 1) The given hinted volume
+       * 2) A volume with main purpose = PERM TEMP
+       */
+
+      /* 1st: the given hinted volume */
+      r = DISK_VOL_UNKNOWN_CONT_PAGES;
+      if (fileio_is_temp_volume (thread_p, hint_volid)
+	  && ((r =
+	       disk_get_hint_contiguous_free_numpages (thread_p,
+						       hint_volid,
+						       exp_numpages,
+						       &best_numpages))
+	      == DISK_VOL_HAS_ENOUGH_CONT_PAGES))
+	{
+	  /* This is a temporary volume */
+	  best_volid = hint_volid;
+	  break;
+	}
+
+      if (r == DISK_VOL_ERROR)
+	{
+	  return NULL_VOLID;
+	}
+
+      /* 2nd: PERM TEMP volumes */
+      disk_find_cache_entry_info_of_purpose (DISK_PERMVOL_TEMP_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+      best_numpages = -1;
+      if (search_nvols > 0
+	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
+							  &best_volid,
+							  &best_numpages,
+							  undesirable_volid,
+							  exp_numpages,
+							  search_from,
+							  search_nvols) !=
 	  NULL_VOLID)
 	{
 	  break;
@@ -1493,56 +1544,65 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
       /* We did not find contiguous pages. */
       found_contiguous = false;
       break;
-
     case DISK_EITHER_TEMP_PURPOSE:
+      /*
+       * The best volume is one in the following range
+       * 1) The given hinted volume
+       * 2) A volume with main purpose = PERM TEMP
+       * 3) A volume with main purpose = TEMP TEMP
+       */
+
+      /* 1st: the given hinted volume */
+      r = DISK_VOL_UNKNOWN_CONT_PAGES;
       if (fileio_is_temp_volume (thread_p, hint_volid)
-	  && disk_get_hint_contiguous_free_numpages (thread_p, hint_volid,
-						     exp_numpages,
-						     &best_numpages) == true)
+	  && ((r =
+	       disk_get_hint_contiguous_free_numpages (thread_p,
+						       hint_volid,
+						       exp_numpages,
+						       &best_numpages))
+	      == DISK_VOL_HAS_ENOUGH_CONT_PAGES))
 	{
 	  /* This is a temporary volume */
 	  best_volid = hint_volid;
 	  break;
 	}
 
-      /*
-       * The best volume is one in the following range
-       * 1) A volume with main purpose = PERM TEMP
-       * 2) A volume with main purpose = TEMP TEMP
-       */
-      num_ptemp_vols = disk_Cache->purpose[DISK_PERMVOL_TEMP_PURPOSE].nvols;
-      num_data_vols = disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols;
-      num_index_vols = disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols;
-      num_generic_vols =
-	disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols;
+      if (r == DISK_VOL_ERROR)
+	{
+	  return NULL_VOLID;
+	}
 
-      if (num_ptemp_vols
+      /* 2nd: search PERM TEMP volumes */
+      disk_find_cache_entry_info_of_purpose (DISK_PERMVOL_TEMP_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+      best_numpages = -1;
+      if (search_nvols > 0
 	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
 							  &best_volid,
 							  &best_numpages,
 							  undesirable_volid,
 							  exp_numpages,
-							  (num_data_vols +
-							   num_index_vols +
-							   num_generic_vols),
-							  num_ptemp_vols) !=
+							  search_from,
+							  search_nvols) !=
 	  NULL_VOLID)
 	{
 	  break;
 	}
 
-      num_ttemp_vols = disk_Cache->purpose[DISK_TEMPVOL_TEMP_PURPOSE].nvols;
-      if (num_ttemp_vols > 0
+      /* 3rd: search TEMP TEMP volumes */
+      disk_find_cache_entry_info_of_purpose (DISK_TEMPVOL_TEMP_PURPOSE,
+					     &search_from, NULL,
+					     &search_nvols);
+      best_numpages = -1;
+      if (search_nvols > 0
 	  && disk_probe_disk_cache_to_find_desirable_vol (thread_p,
 							  &best_volid,
 							  &best_numpages,
 							  undesirable_volid,
 							  exp_numpages,
-							  (num_data_vols +
-							   num_index_vols +
-							   num_generic_vols +
-							   num_ptemp_vols),
-							  num_ttemp_vols) !=
+							  search_from,
+							  search_nvols) !=
 	  NULL_VOLID)
 	{
 	  break;
@@ -1666,15 +1726,17 @@ disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
 }
 
 /*
- * disk_find_cache_index_of_purpose () - Find the index range of the given purpose
+ * disk_find_cache_entry_info_of_purpose () - Find the index range and the num of 
+ *					      volumes of the given purpose
  *   return: NO_ERROR or ER_FAILED
  *   vol_purpose(in):
  *   start(out): first index of the given purpose volume 
  *   end(out): first index of the next purpose volume
+ *   nvols(out): the number of volumesof the given purpose volume
  */
 static int
-disk_find_cache_index_of_purpose (DISK_VOLPURPOSE vol_purpose, int *start,
-				  int *end)
+disk_find_cache_entry_info_of_purpose (DISK_VOLPURPOSE vol_purpose,
+				       int *start, int *end, int *nvols)
 {
   int start_at = 0;
   int end_at = 0;
@@ -1690,16 +1752,23 @@ disk_find_cache_index_of_purpose (DISK_VOLPURPOSE vol_purpose, int *start,
     {
       start_at += disk_Cache->purpose[purpose].nvols;
     }
+
   end_at = start_at + disk_Cache->purpose[vol_purpose].nvols;
+  if (nvols)
+    {
+      *nvols = disk_Cache->purpose[vol_purpose].nvols;
+    }
 
   if (start)
     {
       *start = start_at;
     }
+
   if (end)
     {
       *end = end_at;
     }
+
   return NO_ERROR;
 }
 
@@ -1890,9 +1959,9 @@ disk_vhdr_set_vol_fullname (DISK_VAR_HEADER * vhdr, const char *vol_fullname)
     }
 
   (void) memcpy (disk_vhdr_get_vol_fullname (vhdr),
-		 vol_fullname, MIN ((ssize_t) strlen (vol_fullname) + 1,
-				    DB_MAX_PATH_LENGTH));
-
+		 vol_fullname,
+		 MIN ((ssize_t) strlen (vol_fullname) + 1,
+		      DB_MAX_PATH_LENGTH));
   return ret;
 }
 
@@ -2507,15 +2576,14 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
   vhdr->total_sects += nsects_toadd;
   vhdr->free_sects += nsects_toadd;
 
-  /* Update total_pages and free_pages on disk_Cache. */
-  disk_cache_goodvol_update (thread_p, volid, DISK_TEMPVOL_TEMP_PURPOSE,
-			     npages_toadd, true, NULL);
-
   (void) disk_verify_volume_header (thread_p, hdr_pgptr);
 
   /* Set dirty header page, free it, and unlock it */
   pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
 
+  /* Update total_pages and free_pages on disk_Cache. */
+  disk_cache_goodvol_update (thread_p, volid, DISK_TEMPVOL_TEMP_PURPOSE,
+			     npages_toadd, true, NULL);
   return npages_toadd;
 
 error:
@@ -2547,7 +2615,7 @@ disk_expand_perm (THREAD_ENTRY * thread_p, INT16 volid, INT32 npages)
   LOG_DATA_ADDR addr;
   DISK_VOLPURPOSE purpose;
   DISK_RECV_INIT_PAGES_INFO log_data;
-
+  bool reached_max_size = false;
   vpid.volid = volid;
   vpid.pageid = DISK_VOLHEADER_PAGE;
 
@@ -2646,20 +2714,24 @@ disk_expand_perm (THREAD_ENTRY * thread_p, INT16 volid, INT32 npages)
 			sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr),
 			vhdr);
 
-  /* Update total_pages and free_pages on disk_Cache. */
-  disk_cache_goodvol_update (thread_p, volid, vhdr->purpose, npages, true,
-			     NULL);
-
   if (vhdr->total_pages >= vhdr->max_npages)
     {
       /* This generic volume was extended to the max */
-      disk_cache_set_auto_extend_volid (thread_p, NULL_VOLID);
+      reached_max_size = true;
     }
 
   (void) disk_verify_volume_header (thread_p, hdr_pgptr);
 
   /* Set dirty header page, free it, and unlock it */
   pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
+
+  /* Update total_pages and free_pages on disk_Cache. */
+  disk_cache_goodvol_update (thread_p, volid, purpose, npages, true, NULL);
+
+  if (reached_max_size == true)
+    {
+      disk_cache_set_auto_extend_volid (thread_p, NULL_VOLID);
+    }
 
   return npages;
 }
@@ -4305,11 +4377,9 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
     }
   else
     {
-      need_to_add_generic_volume = false;
-      disk_alloctable_vhdr_update (thread_p, addr.pgptr, npages, DISK_PAGE,
-				   alloc_page_type, DISK_ALLOCTABLE_SET,
-				   &need_to_add_generic_volume);
-
+      (void) disk_alloctable_vhdr_update (thread_p, addr.pgptr, npages,
+					  DISK_PAGE, alloc_page_type,
+					  DISK_ALLOCTABLE_SET);
       if (sectid == DISK_SECTOR_WITH_ALL_PAGES
 	  && (vhdr->hint_allocsect >= (new_pageid / vhdr->sect_npgs))
 	  && (vhdr->hint_allocsect <=
@@ -4352,6 +4422,11 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
       addr.pgptr = NULL;
+
+      /* Update volume cache. */
+      need_to_add_generic_volume = false;
+      disk_cache_goodvol_update (thread_p, volid, vol_purpose,
+				 npages, false, &need_to_add_generic_volume);
 
       if (need_to_add_generic_volume)
 	{
@@ -5145,6 +5220,9 @@ disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr,
       /* Do not add postpones. Add undoredo and deallocate pages. */
       LOG_DATA_ADDR vol_header_addr;
       VPID vhdr_vpid;
+      DISK_VAR_HEADER *vhdr;
+      INT32 updated_npages;
+      DISK_VOLPURPOSE vol_purpose;
 
       /* Get volume header. */
       vol_header_addr.vfid = addr->vfid;
@@ -5161,10 +5239,14 @@ disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr,
 	  return;
 	}
 
+      vhdr = (DISK_VAR_HEADER *) vol_header_addr.pgptr;
+      vol_purpose = vhdr->purpose;
+
       /* Update volume header. */
-      disk_alloctable_vhdr_update (thread_p, vol_header_addr.pgptr, recv->num,
-				   recv->deallid_type, recv->page_type,
-				   DISK_ALLOCTABLE_CLEAR, NULL);
+      updated_npages =
+	disk_alloctable_vhdr_update (thread_p, vol_header_addr.pgptr,
+				     recv->num, recv->deallid_type,
+				     recv->page_type, DISK_ALLOCTABLE_CLEAR);
       log_append_undoredo_data (thread_p, RVDK_IDDEALLOC_VHDR_ONLY,
 				&vol_header_addr, sizeof (*recv),
 				sizeof (*recv), recv, recv);
@@ -5179,6 +5261,14 @@ disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr,
       /* Mark pages dirty and unfix volume header. */
       pgbuf_set_dirty (thread_p, addr->pgptr, DONT_FREE);
       pgbuf_set_dirty (thread_p, vol_header_addr.pgptr, FREE);
+
+      if (updated_npages != 0)
+	{
+	  /* Update volume cache. */
+	  disk_cache_goodvol_update (thread_p, vhdr_vpid.volid, vol_purpose,
+				     updated_npages, false, NULL);
+	}
+
     }
   else
     {
@@ -5250,7 +5340,7 @@ end:
 /*
  * disk_get_hint_contiguous_free_numpages () - Find number of free pages if there are
  *                                   the given contiguous pages
- *   return: true if there are the given contiguous pages, or false
+ *   return: DISK_VOL_HAS_CONT_PAGES
  *   volid(in): Permanent volume identifier
  *   arecontiguous_npages(in): Number of desired contiguous pages
  *   num_freepgs(out): Number of free pages
@@ -5259,8 +5349,9 @@ end:
  *       since the bit map is not locked during its computation. That is,
  *       someone else can allocate pages from that pool of contiguous pages.
  */
-static bool
-disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p, INT16 volid,
+static DISK_VOL_HAS_CONT_PAGES
+disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p,
+					INT16 volid,
 					INT32 arecontiguous_npages,
 					INT32 * num_freepgs)
 {
@@ -5276,8 +5367,7 @@ disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p, INT16 volid,
 		     PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr == NULL)
     {
-      *num_freepgs = -1;
-      return false;
+      return DISK_VOL_ERROR;
     }
 
   (void) disk_verify_volume_header (thread_p, pgptr);
@@ -5288,7 +5378,7 @@ disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p, INT16 volid,
   if (*num_freepgs <= arecontiguous_npages)
     {
       pgbuf_unfix_and_init (thread_p, pgptr);
-      return false;
+      return DISK_VOL_HAS_NOT_ENOUGH_CONT_PAGES;
     }
 
   if (arecontiguous_npages > 1)
@@ -5308,7 +5398,9 @@ disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p, INT16 volid,
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
-  return (npages >= arecontiguous_npages) ? true : false;
+  return ((npages >= arecontiguous_npages)
+	  ? DISK_VOL_HAS_ENOUGH_CONT_PAGES
+	  : DISK_VOL_HAS_NOT_ENOUGH_CONT_PAGES);
 }
 
 /*
@@ -6765,15 +6857,13 @@ disk_rv_alloctable_bitmap_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
  * deallid_type (in)		    : Volume type.
  * page_type (in)		    : Type of pages.
  * mode (in)			    : Set/clear (for allocate/deallocate).
- * need_to_add_generic_volume (out) : If not null, outputs whether a new
- *				      generic volume is required.
  */
-static void
-disk_alloctable_vhdr_update (THREAD_ENTRY * thread_p, PAGE_PTR vhdr_page,
-			     int num_pages, int deallid_type,
+static INT32
+disk_alloctable_vhdr_update (THREAD_ENTRY * thread_p,
+			     PAGE_PTR vhdr_page, int num_pages,
+			     int deallid_type,
 			     DISK_PAGE_TYPE page_type,
-			     DISK_ALLOCTABLE_MODE mode,
-			     bool * need_to_add_generic_volume)
+			     DISK_ALLOCTABLE_MODE mode)
 {
   DISK_VAR_HEADER *vhdr = NULL;
   INT32 delta = 0;
@@ -6798,6 +6888,8 @@ disk_alloctable_vhdr_update (THREAD_ENTRY * thread_p, PAGE_PTR vhdr_page,
     {
       /* Update free sectors count. */
       vhdr->free_sects += delta;
+      /* no need to update disk_Cache */
+      return 0;
     }
   else
     {
@@ -6868,9 +6960,7 @@ disk_alloctable_vhdr_update (THREAD_ENTRY * thread_p, PAGE_PTR vhdr_page,
 		  && page_type != DISK_PAGE_INDEX_TYPE);
 	}
 
-      /* Update volume cache. */
-      disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose,
-				 delta, false, need_to_add_generic_volume);
+      return delta;
     }
 }
 
@@ -6886,12 +6976,34 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 			      DISK_ALLOCTABLE_MODE mode)
 {
   DISK_RECV_MTAB_BITS_WITH *mtb;	/* Recovery structure of bits */
+  DISK_VAR_HEADER *vhdr;
+  VOLID volid;
+  DISK_VOLPURPOSE vol_purpose;
+  INT32 updated_npages;
 
   mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
 
-  disk_alloctable_vhdr_update (thread_p, rcv->pgptr, mtb->num,
-			       mtb->deallid_type, mtb->page_type, mode, NULL);
+  vhdr = (DISK_VAR_HEADER *) rcv->pgptr;
+  volid = vhdr->volid;
+  vol_purpose = vhdr->purpose;
+
+  updated_npages =
+    disk_alloctable_vhdr_update (thread_p, rcv->pgptr, mtb->num,
+				 mtb->deallid_type, mtb->page_type, mode);
+
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  /* FIXME:
+   * We may suffer a deadlock between CSECT_DISK_REFRESH_GOODVOL and 
+   * a volume header page. It seems we need to redesign and implement disk_Cache
+   * with a lock-free manner. 
+   */
+  if (updated_npages != 0)
+    {
+      /* Update volume cache. */
+      disk_cache_goodvol_update (thread_p, volid, vol_purpose,
+				 updated_npages, false, NULL);
+    }
 
   return NO_ERROR;
 }
@@ -6953,32 +7065,28 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 
   if (ref_lsa != NULL)
     {
-      /*
-       * append below two log for synchronization between
+      /* append below two log for synchronization between
        * volume header and bitmap page
        */
       page_addr.offset = rcv->offset;
       page_addr.pgptr = rcv->pgptr;
 
-      log_append_run_postpone (thread_p,
-			       RVDK_IDDEALLOC_BITMAP_ONLY,
-			       &page_addr,
-			       &page_vpid, rcv->length, rcv->data, ref_lsa);
+      log_append_run_postpone (thread_p, RVDK_IDDEALLOC_BITMAP_ONLY,
+			       &page_addr, &page_vpid, rcv->length, rcv->data,
+			       ref_lsa);
 
       vhdr_addr.offset = 0;
       vhdr_addr.pgptr = vhdr_rcv.pgptr;
 
-      log_append_run_postpone (thread_p,
-			       RVDK_IDDEALLOC_VHDR_ONLY,
-			       &vhdr_addr,
-			       &vhdr_vpid, rcv->length, rcv->data, ref_lsa);
+      log_append_run_postpone (thread_p, RVDK_IDDEALLOC_VHDR_ONLY,
+			       &vhdr_addr, &vhdr_vpid, rcv->length, rcv->data,
+			       ref_lsa);
     }
 
   pgbuf_unfix (thread_p, vhdr_rcv.pgptr);
 
   return NO_ERROR;
 }
-
 
 /*
  * disk_rv_set_alloctable_vhdr_only () - Redo (undo) update of allocation
@@ -7400,27 +7508,14 @@ disk_set_alloctables (DISK_VOLPURPOSE vol_purpose,
 /*
  * disk_is_empty_volume () - check whether the volume is empty
  *   return: true if the volume is empty or false
- *   volid(in):
+ *   vhdr(in):
  */
-bool
-disk_is_empty_volume (THREAD_ENTRY * thread_p, INT16 volid)
+static bool
+disk_is_empty_volume (THREAD_ENTRY * thread_p, DISK_VAR_HEADER * vhdr)
 {
-  DISK_VAR_HEADER *vhdr;
-  VPID vpid;
-  PAGE_PTR vhdr_pgptr = NULL;
   bool is_empty_volume, not_allocated;
 
-  vpid.volid = volid;
-  vpid.pageid = DISK_VOLHEADER_PAGE;
-
-  vhdr_pgptr =
-    pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
-	       PGBUF_UNCONDITIONAL_LATCH);
-  if (vhdr_pgptr == NULL)
-    {
-      return false;
-    }
-  vhdr = (DISK_VAR_HEADER *) vhdr_pgptr;
+  assert (vhdr != NULL);
 
   is_empty_volume =
     (vhdr->total_pages == (vhdr->free_pages + vhdr->sys_lastpage + 1));
@@ -7433,11 +7528,9 @@ disk_is_empty_volume (THREAD_ENTRY * thread_p, INT16 volid)
       assert (vhdr->used_data_npages == 0);
       assert (vhdr->used_index_npages == 0);
 
-      pgbuf_unfix (thread_p, vhdr_pgptr);
       return true;
     }
 
-  pgbuf_unfix (thread_p, vhdr_pgptr);
   return false;
 }
 
