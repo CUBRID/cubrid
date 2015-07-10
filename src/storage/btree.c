@@ -29439,6 +29439,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 	  COPY_OID (BTREE_INSERT_CLASS_OID (insert_helper),
 		    &btid_int->topclass_oid);
 	}
+      key_len = btree_get_disk_size_of_key (key);
+      insert_helper->key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (key_len);
       return NO_ERROR;
     }
 
