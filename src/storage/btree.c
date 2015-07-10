@@ -14070,6 +14070,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
   int left_min_size = 0;
   int right_max_size = 0;
   int record_size = 0;
+  int do_increment = 1;
 
   key_cnt = btree_node_number_of_keys (page_ptr);
   if (key_cnt <= 0)
@@ -14222,13 +14223,14 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
   /* Find the last slot ID belonging to left node (and save it in the mid_slot
    * pointer).
    */
-  for (i = start_with, left_size = 0; true; i++)
+  for (i = start_with, left_size = 0; true; i = i + do_increment)
     {
-      if (node_type == BTREE_LEAF_NODE && i == slot_id)
+      do_increment = 1;
+      if (node_type == BTREE_LEAF_NODE && i == slot_id
+	  && !is_key_added_to_left)
 	{
 	  /* New entity belongs to left leaf. Ignore it for non-leaf. */
 	  is_key_added_to_left = true;
-	  left_size += new_ent_size;
 
 	  /* Adjust leaf sizes now that we know the key belongs to left leaf.
 	   */
@@ -14238,17 +14240,22 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 
 	  if (found)
 	    {
-	      /* The key is already considered in the left. We can't add just
-	       * a portion of it (new_ent_size). Add the rest of the record
-	       * to the left (even if left_size is not more than
-	       * left_min_size).
-	       */
+	      /* Consider current record with new data. */
 	      record_size = spage_get_space_for_record (page_ptr, i);
-	      left_size += record_size;
-	      continue;
+	      record_size += new_ent_size;
+	    }
+	  else
+	    {
+	      /* Consider new record. */
+	      record_size = new_ent_size;
+	      /* Do not increment i this iteration. */
+	      do_increment = 0;
 	    }
 	}
-      record_size = spage_get_space_for_record (page_ptr, i);
+      else
+	{
+	  record_size = spage_get_space_for_record (page_ptr, i);
+	}
       if (left_size < left_min_size)
 	{
 	  /* Right node is too large. Keep adding records to left node. */
