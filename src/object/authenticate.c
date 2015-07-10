@@ -2010,6 +2010,7 @@ au_is_dba_group_member (MOP user)
   DB_SET *groups;
   DB_VALUE value;
   bool is_member = false;
+  LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
   if (!user)
     {
@@ -2021,12 +2022,19 @@ au_is_dba_group_member (MOP user)
       return true;
     }
 
+  /* Set fetch version type to read dirty version. */
+  read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
+  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
+
   if (au_get_set (user, "groups", &groups) == NO_ERROR)
     {
       db_make_object (&value, Au_dba_user);
       is_member = set_ismember (groups, &value);
       set_free (groups);
     }
+
+  /* Restore fetch version type. */
+  db_set_read_fetch_instance_version (read_fetch_instance_version);
 
   return is_member;
 }
