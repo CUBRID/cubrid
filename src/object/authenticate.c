@@ -8393,6 +8393,7 @@ au_install (void)
   pass = db_create_class (AU_PASSWORD_CLASS_NAME);
   auth = db_create_class (AU_AUTH_CLASS_NAME);
   old = db_create_class (AU_OLD_ROOT_CLASS_NAME);
+
   if (root == NULL || user == NULL || pass == NULL || auth == NULL
       || old == NULL)
     {
@@ -8406,9 +8407,12 @@ au_install (void)
   sm_mark_system_class (old, 1);
 
   /*
+   * db_root
+   */
+
+  /*
    * Authorization root, might not need this if we restrict the generation of
-   * user and  group objects but could be useful in other ways - nice to
-   * have the methods here for adding/dropping user
+   * user and  group objects but could be useful in other ways. 
    */
   def = smt_edit_class_mop (root, AU_ALTER);
   if (def == NULL)
@@ -8438,7 +8442,16 @@ au_install (void)
 			"au_change_trigger_owner_method");
   smt_add_class_method (def, "get_owner", "au_get_owner_method");
   smt_add_class_method (def, "change_sp_owner", "au_change_sp_owner_method");
-  sm_update_class (def, NULL);
+
+  if (sm_update_class (def, NULL) != NO_ERROR
+      || locator_create_heap_if_needed (root, false) == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  /*
+   * db_authorizations
+   */
 
   /*
    * temporary support for the old name, need to migrate
@@ -8463,9 +8476,17 @@ au_install (void)
   smt_add_class_method (def, "change_trigger_owner",
 			"au_change_trigger_owner_method");
   smt_add_class_method (def, "get_owner", "au_get_owner_method");
-  sm_update_class (def, NULL);
 
-  /* User/group objects */
+  if (sm_update_class (def, NULL) != NO_ERROR
+      || locator_create_heap_if_needed (old, false) == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  /*
+   * db_user
+   */
+
   def = smt_edit_class_mop (user, AU_ALTER);
   if (def == NULL)
     {
@@ -8498,29 +8519,44 @@ au_install (void)
   smt_assign_argument_domain (def, "find_user", true, NULL, 0, "string",
 			      (DB_DOMAIN *) 0);
   smt_add_class_method (def, "login", "au_login_method");
-  sm_update_class (def, NULL);
 
-  /* Add Index */
+  if (sm_update_class (def, NULL) != NO_ERROR
+      || locator_create_heap_if_needed (user, false) == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  /* Add Unique Index */
   {
     const char *names[] = { "name", NULL };
-    int ret_code;
 
-    ret_code = db_add_constraint (user, DB_CONSTRAINT_UNIQUE, NULL, names, 0);
-
-    if (ret_code)
+    if (db_add_constraint (user, DB_CONSTRAINT_UNIQUE, NULL, names,
+			   0) != NO_ERROR)
       {
 	goto exit_on_error;
       }
   }
 
-  /* Password objects */
+  /*
+   * db_password
+   */
+
   def = smt_edit_class_mop (pass, AU_ALTER);
   if (def == NULL)
     {
       goto exit_on_error;
     }
   smt_add_attribute (def, "password", "string", (DB_DOMAIN *) 0);
-  sm_update_class (def, NULL);
+
+  if (sm_update_class (def, NULL) != NO_ERROR
+      || locator_create_heap_if_needed (pass, false) == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  /*
+   * db_authorization
+   */
 
   /*
    * Authorization object, the grant set could go directly in the user object
@@ -8535,7 +8571,13 @@ au_install (void)
     }
   smt_add_attribute (def, "owner", AU_USER_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "grants", "sequence", (DB_DOMAIN *) 0);
-  sm_update_class (def, NULL);
+
+  if (sm_update_class (def, NULL) != NO_ERROR
+      || locator_create_heap_if_needed (auth, false) == NULL)
+    {
+      goto exit_on_error;
+    }
+
 
   /* Create the single authorization root object */
   Au_root = obj_create (root);
