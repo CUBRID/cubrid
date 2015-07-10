@@ -2777,6 +2777,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
   DB_VALUE *vals;
   DB_DATETIME access_time;
   LAST_ACCESS_STATUS *access_status;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
   OID_SET_NULL (&inst_oid);
 
@@ -2827,8 +2828,15 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
       goto end;
     }
 
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
   error = heap_scancache_start (thread_p, &scan_cache, &hfid,
-				NULL, true, false, NULL);
+				NULL, true, false, mvcc_snapshot);
   if (error != NO_ERROR)
     {
       goto end;
