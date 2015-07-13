@@ -81,6 +81,8 @@ struct tz_decode_info
 #define TZ_MIN_OFFSET -12 * 3600
 #define TZ_MAX_OFFSET 14 * 3600
 #define MILLIS_IN_A_DAY (long)(86400000)	/* 24L * 60L * 60L * 1000 */
+#define TZ_MASK_TZ_ID_FLAG 0xc0000000
+#define TZ_BIT_SHIFT_TZ_ID_FLAG 30
 
 static int tz_initialized = 0;
 
@@ -1645,11 +1647,6 @@ tz_create_timetz_ext (const DB_TIME * time,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
       return ER_TZ_INVALID_TIMEZONE;
     }
-  if (*zone_str != '+' && *zone_str != '-')
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_GEOGRAPHIC_ZONE, 0);
-      return ER_TZ_GEOGRAPHIC_ZONE;
-    }
 
   err_status =
     tz_str_to_region (zone_str, len_timezone - (zone_str - timezone),
@@ -1664,6 +1661,7 @@ tz_create_timetz_ext (const DB_TIME * time,
     {
       time_tz->time = dt_tz.datetime.time / 1000;
       time_tz->tz_id = dt_tz.tz_id;
+      tz_tzid_convert_region_to_offset (&time_tz->tz_id);
     }
 
   return err_status;
@@ -1702,12 +1700,6 @@ tz_conv_tz_time_w_zone_name (const DB_TIME * time_source,
   if (err_status != NO_ERROR)
     {
       return err_status;
-    }
-
-  if (source.type != TZ_REGION_OFFSET || dest.type != TZ_REGION_OFFSET)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_GEOGRAPHIC_ZONE, 0);
-      return ER_TZ_GEOGRAPHIC_ZONE;
     }
 
   src_dt.date = tz_get_current_date ();
@@ -2264,7 +2256,7 @@ tz_decode_tz_id (const TZ_ID * tz_id, const bool is_full_decode,
 		 TZ_DECODE_INFO * tz_info)
 {
   unsigned int val = (unsigned int) *tz_id;
-  unsigned int flag = (val & 0xc0000000) >> 30;
+  unsigned int flag = (val & TZ_MASK_TZ_ID_FLAG) >> TZ_BIT_SHIFT_TZ_ID_FLAG;
 
   memset (tz_info, 0, sizeof (tz_info[0]));
 
@@ -5063,4 +5055,40 @@ check_timezone_compat (const char *client_checksum,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * tz_tzid_convert_region_to_offset - if the timezone encoded in tz_id
+ *				      is of region type the function converts
+ *                                    it to an offset type
+ *				      				        
+ * Returns : 
+ * tz_id(in): timezone id
+ */
+void
+tz_tzid_convert_region_to_offset (TZ_ID * tz_id)
+{
+  unsigned int flag;
+
+  flag = ((*tz_id) & TZ_MASK_TZ_ID_FLAG) >> TZ_BIT_SHIFT_TZ_ID_FLAG;
+
+  if (flag == 0)
+    {
+      TZ_DECODE_INFO tz_info;
+      int total_offset;
+
+      tz_decode_tz_id (tz_id, true, &tz_info);
+      assert (tz_info.zone.p_zone_off_rule != NULL);
+      total_offset = tz_info.zone.p_zone_off_rule->gmt_off;
+
+      if (tz_info.zone.p_zone_off_rule->ds_type == DS_TYPE_RULESET_ID
+	  && tz_info.zone.p_ds_rule != NULL)
+	{
+	  total_offset += tz_info.zone.p_ds_rule->save_time;
+	}
+
+      tz_info.type = TZ_REGION_OFFSET;
+      tz_info.offset = total_offset;
+      tz_encode_tz_id (&tz_info, tz_id);
+    }
 }

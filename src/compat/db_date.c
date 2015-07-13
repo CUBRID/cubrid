@@ -797,7 +797,7 @@ db_timestamp_decode_ses (const DB_TIMESTAMP * utime, DB_DATE * date,
  * db_timestamp_decode_utc() - This function converts a DB_TIMESTAMP into
  *    a DB_DATE and DB_TIME pair using UTC time reference
  * return : void
- * time(in): universal time
+ * utime(in): universal time
  * date(out): return julian date or zero date
  * time(out): return relative time
  */

@@ -622,7 +622,8 @@ static int tp_null_terminate (const DB_VALUE * src, char **strp, int str_len,
 			      bool * do_alloc);
 #endif
 static int tp_atotime (const DB_VALUE * src, DB_TIME * temp);
-static int tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp);
+static int tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp,
+			 bool to_timeltz);
 static int tp_atodate (const DB_VALUE * src, DB_DATE * temp);
 static int tp_atoutime (const DB_VALUE * src, DB_UTIME * temp);
 static int tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp);
@@ -4881,20 +4882,23 @@ tp_atotime (const DB_VALUE * src, DB_TIME * temp)
  *    return: NO_ERROR or error code
  *    src(in): string DB_VALUE
  *    temp(out): time with TZ info container
+ *    to_timeltz(in): flag that tells us if src will be converted to a timeltz
+ *		      type
+
  * Note:
  *    Accepts strings that are not null terminated. Don't call this unless
  *    src is a string db_value.
  */
 static int
-tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp)
+tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp, bool to_timeltz)
 {
   char *strp = DB_GET_STRING (src);
   int str_len = DB_GET_STRING_SIZE (src);
   int status = NO_ERROR;
   bool dummy_has_zone;
 
-  if (db_string_to_timetz_ex (strp, str_len, false, temp, &dummy_has_zone)
-      != NO_ERROR)
+  if (db_string_to_timetz_ex
+      (strp, str_len, to_timeltz, temp, &dummy_has_zone) != NO_ERROR)
     {
       status = ER_FAILED;
     }
@@ -6629,7 +6633,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_TIMETZ time_tz = { 0, 0 };
 
-	    if (tp_atotimetz (src, &time_tz) != NO_ERROR)
+	    if (tp_atotimetz (src, &time_tz, false) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -6645,12 +6649,6 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    bool time_is_utc = (original_type == DB_TYPE_TIMELTZ)
 	      ? true : false;
 
-	    if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-
 	    time_tz.time = *time;
 	    if (tz_create_session_tzid_for_time (time, time_is_utc,
 						 &time_tz.tz_id) != NO_ERROR)
@@ -6658,6 +6656,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
+
+	    tz_tzid_convert_region_to_offset (&time_tz.tz_id);
 	    db_make_timetz (target, &time_tz);
 	    break;
 	  }
@@ -6668,11 +6668,6 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
       break;
 
     case DB_TYPE_TIMELTZ:
-      if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	{
-	  err = ER_FAILED;
-	  break;
-	}
       switch (original_type)
 	{
 	case DB_TYPE_CHAR:
@@ -6682,7 +6677,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_TIMETZ time_tz = { 0, 0 };
 
-	    if (tp_atotimetz (src, &time_tz) != NO_ERROR)
+	    if (tp_atotimetz (src, &time_tz, true) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -6695,6 +6690,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_TIMETZ *time_tz = DB_GET_TIMETZ (src);
 
+	    assert (tz_check_geographic_tz (&time_tz->tz_id) == NO_ERROR);
+
 	    /* copy time value (UTC) */
 	    db_make_timeltz (target, &time_tz->time);
 	    break;
@@ -6703,6 +6700,12 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_TIME *time = DB_GET_TIME (src);
 	    DB_TIMETZ time_tz;
+
+	    if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
 
 	    err = tz_create_timetz_from_ses (time, &time_tz);
 	    if (err != NO_ERROR)
@@ -9311,15 +9314,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
       break;
 
     case DB_TYPE_TIMELTZ:
-      if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	{
-	  status = DOMAIN_ERROR;
-	  break;
-	}
       switch (original_type)
 	{
 	case DB_TYPE_TIME:
 	  v_time = *(DB_GET_TIME (src));
+
+	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+
 	  if (tz_create_timetz_from_ses (DB_GET_TIME (src), &v_timetz)
 	      != NO_ERROR)
 	    {
@@ -9330,6 +9335,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 	case DB_TYPE_TIMETZ:
 	  v_timetz = *(DB_GET_TIMETZ (src));
+	  assert (tz_check_geographic_tz (&v_timetz.tz_id) == NO_ERROR);
 	  /* copy time value (UTC) */
 	  db_make_timeltz (target, &v_timetz.time);
 	  break;
@@ -9394,6 +9400,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	  assert (DB_VALUE_TYPE (&temp) == DB_TYPE_TIME);
 
+	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
 	  if (tz_create_timetz_from_ses (DB_GET_TIME (&temp), &v_timetz)
 	      != NO_ERROR)
 	    {
@@ -9406,7 +9417,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  if (tp_atotimetz (src, &v_timetz) == NO_ERROR)
+	  if (tp_atotimetz (src, &v_timetz, true) == NO_ERROR)
 	    {
 	      db_time_decode (&v_timetz.time, &hour, &minute, &second);
 	      db_time_encode (&v_time, hour, minute, second);
@@ -9462,91 +9473,89 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 	case DB_TYPE_UTIME:
 	case DB_TYPE_TIMESTAMPLTZ:
-	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_timestamp_decode_utc (DB_GET_UTIME (src), NULL, &v_time);
-	  if (tz_create_session_tzid_for_time (&v_time, true,
-					       &v_timetz.tz_id) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  v_timetz.time = v_time;
-	  db_make_timetz (target, &v_timetz);
-	  break;
+	  {
+	    db_timestamp_decode_utc (DB_GET_UTIME (src), NULL, &v_time);
+	    if (tz_create_session_tzid_for_time (&v_time, true,
+						 &v_timetz.tz_id) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    v_timetz.time = v_time;
+
+	    /* Convert region zone into offset zone for timetz type */
+	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
+	    db_make_timetz (target, &v_timetz);
+	    break;
+	  }
 	case DB_TYPE_TIMESTAMPTZ:
-	  v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
-	  if (tz_check_geographic_tz (&v_timestamptz.tz_id) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_timestamp_decode_utc (&v_timestamptz.timestamp, NULL, &v_time);
-	  v_timetz.time = v_time;
-	  v_timetz.tz_id = v_timestamptz.tz_id;
+	  {
+	    v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
 
-	  db_make_timetz (target, &v_timetz);
-	  break;
+	    db_timestamp_decode_utc (&v_timestamptz.timestamp, NULL, &v_time);
+	    v_timetz.time = v_time;
+	    v_timetz.tz_id = v_timestamptz.tz_id;
+
+	    /* Convert region zone into offset zone for timetz type */
+	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
+	    db_make_timetz (target, &v_timetz);
+	    break;
+	  }
 	case DB_TYPE_DATETIME:
-	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
+	  {
+	    if (tz_create_datetimetz_from_ses (DB_GET_DATETIME (src),
+					       &v_datetimetz) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
 
-	  if (tz_create_datetimetz_from_ses (DB_GET_DATETIME (src),
-					     &v_datetimetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
+	    db_datetime_decode (&v_datetimetz.datetime, &month,
+				&day, &year, &hour, &minute, &second,
+				&millisecond);
+	    db_time_encode (&v_time, hour, minute, second);
+	    v_timetz.time = v_time;
+	    v_timetz.tz_id = v_datetimetz.tz_id;
 
-	  db_datetime_decode (&v_datetimetz.datetime, &month,
-			      &day, &year, &hour, &minute, &second,
-			      &millisecond);
-	  db_time_encode (&v_time, hour, minute, second);
-	  v_timetz.time = v_time;
-	  v_timetz.tz_id = v_datetimetz.tz_id;
-	  db_make_timetz (target, &v_timetz);
-	  break;
+	    /* Convert region zone into offset zone for timetz type */
+	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
+	    db_make_timetz (target, &v_timetz);
+	    break;
+	  }
 	case DB_TYPE_DATETIMELTZ:
-	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
+	  {
+	    db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month,
+				&day, &year, &hour, &minute, &second,
+				&millisecond);
+	    db_time_encode (&v_time, hour, minute, second);
+	    if (tz_create_session_tzid_for_time (&v_time, true,
+						 &v_timetz.tz_id) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
 
-	  db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month,
-			      &day, &year, &hour, &minute, &second,
-			      &millisecond);
-	  db_time_encode (&v_time, hour, minute, second);
-	  if (tz_create_session_tzid_for_time (&v_time, true,
-					       &v_timetz.tz_id) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  v_timetz.time = v_time;
-	  db_make_timetz (target, &v_timetz);
-	  break;
+	    /* Convert region zone into offset zone for timetz type */
+	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
+	    v_timetz.time = v_time;
+	    db_make_timetz (target, &v_timetz);
+	    break;
+	  }
 	case DB_TYPE_DATETIMETZ:
-	  v_datetimetz = *DB_GET_DATETIMETZ (src);
-	  if (tz_check_geographic_tz (&v_datetimetz.tz_id) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_datetime_decode (&v_datetimetz.datetime, &month,
-			      &day, &year, &hour, &minute, &second,
-			      &millisecond);
-	  db_time_encode (&v_time, hour, minute, second);
-	  v_timetz.time = v_time;
-	  v_timetz.tz_id = v_datetimetz.tz_id;
-	  db_make_timetz (target, &v_timetz);
-	  break;
+	  {
+	    v_datetimetz = *DB_GET_DATETIMETZ (src);
+	    db_datetime_decode (&v_datetimetz.datetime, &month,
+				&day, &year, &hour, &minute, &second,
+				&millisecond);
+	    db_time_encode (&v_time, hour, minute, second);
+	    v_timetz.time = v_time;
+	    v_timetz.tz_id = v_datetimetz.tz_id;
+
+	    /* Convert region zone into offset zone for timetz type */
+	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
+	    db_make_timetz (target, &v_timetz);
+	    break;
+	  }
 	case DB_TYPE_SHORT:
 	case DB_TYPE_INTEGER:
 	case DB_TYPE_BIGINT:
@@ -9577,7 +9586,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  if (tp_atotimetz (src, &v_timetz) == NO_ERROR)
+	  if (tp_atotimetz (src, &v_timetz, false) == NO_ERROR)
 	    {
 	      db_make_timetz (target, &v_timetz);
 	    }

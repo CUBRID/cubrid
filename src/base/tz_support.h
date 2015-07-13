@@ -307,6 +307,7 @@ extern "C"
 				    const char *server_checksum,
 				    const char *client_text,
 				    const char *server_text);
+  extern void tz_tzid_convert_region_to_offset (TZ_ID * tz_id);
 
 #ifdef __cplusplus
 }
