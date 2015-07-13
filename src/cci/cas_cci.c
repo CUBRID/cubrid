@@ -6252,6 +6252,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       handle->datasource = ds;
       ds->con_handles[i] = handle->id;
       handle->used = false;
+      hm_release_connection (id, &handle);
     }
 
   ds->is_init = 1;
@@ -6499,7 +6500,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
       gettimeofday (&tv, NULL);
       ts.tv_sec = tv.tv_sec + (ds->max_wait / 1000);
       ts.tv_nsec = (tv.tv_usec + (ds->max_wait % 1000) * 1000) * 1000;
-      if (ts.tv_nsec > 1000000000)
+      if (ts.tv_nsec >= 1000000000)
 	{
 	  ts.tv_sec += 1;
 	  ts.tv_nsec -= 1000000000;
