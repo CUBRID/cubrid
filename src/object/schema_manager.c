@@ -427,13 +427,11 @@ static int allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 				       SM_TEMPLATE * template_);
 static int allocate_foreign_key (MOP classop, SM_CLASS * class_,
 				 SM_CLASS_CONSTRAINT * con,
-				 DB_OBJLIST * subclasses,
-				 bool * recache_cls_cons);
+				 DB_OBJLIST * subclasses);
 static int allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 					   SM_CLASS_CONSTRAINT * con,
 					   DB_OBJLIST * subclasses,
-					   SM_TEMPLATE * template_,
-					   bool * recache_cls_cons);
+					   SM_TEMPLATE * template_);
 static int allocate_disk_structures (MOP classop, SM_CLASS * class_,
 				     DB_OBJLIST * subclasses,
 				     SM_TEMPLATE * template_);
@@ -11094,12 +11092,10 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
  *   class(in): class structure
  *   con(in): constraint info
  *   subclasses(in): subclasses
- *   recache_cls_cons(out):
  */
 static int
 allocate_foreign_key (MOP classop, SM_CLASS * class_,
-		      SM_CLASS_CONSTRAINT * con, DB_OBJLIST * subclasses,
-		      bool * recache_cls_cons)
+		      SM_CLASS_CONSTRAINT * con, DB_OBJLIST * subclasses)
 {
   SM_CLASS_CONSTRAINT *pk, *existing_con;
   MOP ref_clsop;
@@ -11169,7 +11165,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      *recache_cls_cons = true;
+      class_->recache_constraints = 1;
     }
   else if (!classobj_is_exist_foreign_key_ref (ref_clsop, con->fk_info)
 	   || con->shared_cons_name != NULL)
@@ -11192,14 +11188,12 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
  *   con(in):constraint info
  *   subclasses(in): sub class list
  *   template_(in): object template
- *   recache_cls_cons(out):
  */
 static int
 allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 				SM_CLASS_CONSTRAINT * con,
 				DB_OBJLIST * subclasses,
-				SM_TEMPLATE * template_,
-				bool * recache_cls_cons)
+				SM_TEMPLATE * template_)
 {
   int error = NO_ERROR;
   int reverse;
@@ -11233,8 +11227,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 	}
       else if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
-	  error = allocate_foreign_key (classop, class_, con, subclasses,
-					recache_cls_cons);
+	  error = allocate_foreign_key (classop, class_, con, subclasses);
 	}
 
       if (error != NO_ERROR)
@@ -11285,7 +11278,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
   SM_CLASS_CONSTRAINT *con;
   int num_indexes = 0;
   int err;
-  bool recache_cls_cons = false;
+  bool dont_decache_and_flush = false;
 
   assert (classop != NULL);
 
@@ -11294,10 +11287,17 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
       return ER_FAILED;
     }
 
-  if (classobj_cache_class_constraints (class_))
+  /* Allocate_disk_structures may be called twice on the call-stack.
+   * Make sure constraints are not decached or recached while they are
+   * processed.
+   */
+  dont_decache_and_flush = class_->dont_decache_constraints_or_flush;
+
+  if (!dont_decache_and_flush && classobj_cache_class_constraints (class_))
     {
       goto structure_error;
     }
+  class_->dont_decache_constraints_or_flush = 1;
 
   if (OID_ISTEMP (ws_oid (classop)))
     {
@@ -11311,8 +11311,8 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	  && con->attributes[0] != NULL && con->shared_cons_name == NULL)
 	{
 	  if (allocate_disk_structures_index (classop, class_, con,
-					      subclasses, template_,
-					      &recache_cls_cons) != NO_ERROR)
+					      subclasses, template_)
+	      != NO_ERROR)
 	    {
 	      goto structure_error;
 	    }
@@ -11328,9 +11328,8 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	  && con->attributes[0] != NULL && con->shared_cons_name != NULL)
 	{
 	  if (allocate_disk_structures_index (classop, class_, con,
-					      subclasses,
-					      template_,
-					      &recache_cls_cons) != NO_ERROR)
+					      subclasses, template_)
+	      != NO_ERROR)
 	    {
 	      goto structure_error;
 	    }
@@ -11339,26 +11338,40 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	}
     }
 
-  /* recache class constraint for foreign key */
-  if (recache_cls_cons && classobj_cache_class_constraints (class_))
+  if (!dont_decache_and_flush)
     {
-      goto structure_error;
-    }
+      /* recache class constraint for foreign key */
+      if (class_->recache_constraints
+	  && classobj_cache_class_constraints (class_))
+	{
+	  goto structure_error;
+	}
+      class_->recache_constraints = 0;
 
-  /* when we're done, make sure that each attribute's cache is also updated */
-  if (!classobj_cache_constraints (class_))
-    {
-      goto structure_error;
-    }
+      /* when we're done, make sure that each attribute cache is also updated.
+       */
+      if (!classobj_cache_constraints (class_))
+	{
+	  goto structure_error;
+	}
 
-  if (locator_update_class (classop) == NULL)
-    {
-      goto structure_error;
-    }
+      if (locator_update_class (classop) == NULL)
+	{
+	  goto structure_error;
+	}
 
-  if (locator_flush_class (classop) != NO_ERROR)
+      if (locator_flush_class (classop) != NO_ERROR)
+	{
+	  goto structure_error;
+	}
+
+      class_->dont_decache_constraints_or_flush = 0;
+    }
+  else
     {
-      goto structure_error;
+      /* Class constraints will be recached, updated and flushed on a previous
+       * call.
+       */
     }
 
   return num_indexes;
@@ -11367,9 +11380,8 @@ structure_error:
   /* the workspace has already been damaged by this point, the caller will
    * have to recognize the error and abort the transaction.
    */
-  assert (er_errid () != NO_ERROR);
-  err = er_errid ();
-  return ((err == NO_ERROR) ? ER_FAILED : err);
+  ASSERT_ERROR_AND_SET (err);
+  return err;
 }
 
 /*
@@ -12826,15 +12838,16 @@ update_subclasses (DB_OBJLIST * subclasses)
 		   */
 		  num_indexes = allocate_disk_structures (sub->op, class_,
 							  NULL, NULL);
-		  if (num_indexes > 0)
-		    {
-		      error = sm_update_statistics (sub->op,
-						    STATS_WITH_SAMPLING);
-		    }
-		  else if (num_indexes < 0)
+		  if (num_indexes < 0)
 		    {
 		      /* an error has happened */
 		      error = num_indexes;
+		    }
+		  else if (!class_->dont_decache_constraints_or_flush
+			   && num_indexes > 0)
+		    {
+		      error = sm_update_statistics (sub->op,
+						    STATS_WITH_SAMPLING);
 		    }
 
 		  classobj_free_template (class_->new_);

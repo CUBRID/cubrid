@@ -909,6 +909,10 @@ struct sm_class
 
   unsigned triggers_validated:1;	/* set when trigger cache is validated */
   unsigned has_active_triggers:1;	/* set if trigger processing is required */
+  unsigned dont_decache_constraints_or_flush:1;	/* prevent decaching class
+						 * constraint and flushing.
+						 */
+  unsigned recache_constraints:1;	/* class constraints need recache. */
 };
 
 
