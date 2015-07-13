@@ -4299,6 +4299,18 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
+
+      if (vhdr->free_pages == 0)
+	{
+	  /* a safe guard - disk vol cache entry is out dated. */
+	  int expected_nfree_pages;
+
+	  expected_nfree_pages = (vhdr->free_pages
+				  - disk_Cache->vols[volid].hint_freepages);
+	  disk_cache_goodvol_update (thread_p, volid, vol_purpose,
+				     expected_nfree_pages, true, NULL);
+	}
+
       return NULL_PAGEID;
     }
 
@@ -4426,7 +4438,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       /* Update volume cache. */
       need_to_add_generic_volume = false;
       disk_cache_goodvol_update (thread_p, volid, vol_purpose,
-				 npages, false, &need_to_add_generic_volume);
+				 -npages, false, &need_to_add_generic_volume);
 
       if (need_to_add_generic_volume)
 	{
