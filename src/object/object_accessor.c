@@ -3712,7 +3712,7 @@ notfound:
    * since this is a common case, set this as a warning so we don't clutter
    * up the error log.
    */
-  if (found == NULL)
+  if (found == NULL && er_errid () != ER_LK_UNILATERALLY_ABORTED)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
     }
