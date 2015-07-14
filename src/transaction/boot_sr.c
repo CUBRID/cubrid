@@ -3780,6 +3780,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	}
     }
 
+  oid_set_root (&boot_Db_parm->rootclass_oid);
+
   /*
    * Now restart the recovery manager and execute any recovery actions
    */
@@ -3810,8 +3812,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       error_code = ER_FAILED;
       goto error;
     }
-
-  oid_set_root (&boot_Db_parm->rootclass_oid);
 
   error_code = catcls_find_and_set_cached_class_oid (thread_p);
   if (error_code != NO_ERROR)
