@@ -10501,11 +10501,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  return ER_FAILED;
 	}
     }
-  /* release all locks if the hint was given */
-  if (update->release_lock)
-    {
-      lock_unlock_all (thread_p);
-    }
 
 #if 0				/* yaw */
   /* remove query result cache entries which are relevant with this class */
@@ -11274,12 +11269,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
 	}
-    }
-
-  /* release all locks if the hint was given */
-  if (delete_->release_lock)
-    {
-      lock_unlock_all (thread_p);
     }
 
 #if 0				/* yaw */
@@ -12934,12 +12923,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  qexec_failure_line (__LINE__, xasl_state);
 	  GOTO_EXIT_ON_ERROR;
 	}
-    }
-
-  /* release all locks if the hint was given */
-  if (insert->release_lock)
-    {
-      lock_unlock_all (thread_p);
     }
 
 #if 0				/* yaw */

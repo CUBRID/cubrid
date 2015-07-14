@@ -19385,7 +19385,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
       insert->no_logging = (statement->info.insert.hint & PT_HINT_NO_LOGGING);
-      insert->release_lock = (statement->info.insert.hint & PT_HINT_REL_LOCK);
       insert->do_replace = (statement->info.insert.do_replace ? 1 : 0);
 
       if (error >= 0 && (no_vals + no_default_expr > 0))
@@ -21334,8 +21333,6 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       delete_->no_logging =
 	(statement->info.delete_.hint & PT_HINT_NO_LOGGING);
-      delete_->release_lock =
-	(statement->info.delete_.hint & PT_HINT_REL_LOCK);
     }
 
   if (pt_has_error (parser) || error < 0)
@@ -22055,7 +22052,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
   update->no_logging = (statement->info.update.hint & PT_HINT_NO_LOGGING);
-  update->release_lock = (statement->info.update.hint & PT_HINT_REL_LOCK);
 
   /* iterate through classes and check constants */
   for (p = from, cls_idx = no_classes; p; p = p->next)
@@ -26500,7 +26496,6 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
   update->no_logging = (info->hint & PT_HINT_NO_LOGGING);
-  update->release_lock = (info->hint & PT_HINT_REL_LOCK);
 
   /* check constants */
   class_obj = from->info.spec.flat_entity_list->info.name.db_object;
@@ -26837,7 +26832,6 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
   insert->no_logging = (statement->info.merge.hint & PT_HINT_NO_LOGGING);
-  insert->release_lock = (statement->info.merge.hint & PT_HINT_REL_LOCK);
   insert->do_replace = 0;
 
   if (no_vals + no_default_expr > 0)

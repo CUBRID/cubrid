@@ -9061,10 +9061,6 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, " NO_LOGGING");
 	}
-      if (p->info.delete_.hint & PT_HINT_REL_LOCK)
-	{
-	  q = pt_append_nulstring (parser, q, " RELEASE_LOCK");
-	}
 
       if (p->info.delete_.hint & PT_HINT_ORDERED)
 	{
@@ -13301,10 +13297,6 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  b = pt_append_nulstring (parser, b, " NO_LOGGING");
 	}
-      if (p->info.insert.hint & PT_HINT_REL_LOCK)
-	{
-	  b = pt_append_nulstring (parser, b, " RELEASE_LOCK");
-	}
       if (p->info.insert.hint & PT_HINT_INSERT_MODE)
 	{
 	  PARSER_VARCHAR *vc;
@@ -16182,10 +16174,6 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  b = pt_append_nulstring (parser, b, " NO_LOGGING");
 	}
-      if (p->info.update.hint & PT_HINT_REL_LOCK)
-	{
-	  b = pt_append_nulstring (parser, b, " RELEASE_LOCK");
-	}
 
       if (p->info.update.hint & PT_HINT_ORDERED)
 	{
@@ -17808,10 +17796,6 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.merge.hint & PT_HINT_NO_LOGGING)
 	{
 	  q = pt_append_nulstring (parser, q, " NO_LOGGING");
-	}
-      if (p->info.merge.hint & PT_HINT_REL_LOCK)
-	{
-	  q = pt_append_nulstring (parser, q, " RELEASE_LOCK");
 	}
       if (p->info.merge.hint & PT_HINT_USE_UPDATE_IDX)
 	{

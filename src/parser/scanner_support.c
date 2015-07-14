@@ -333,25 +333,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      hint_table[i].arg_list = NULL;
 	      break;
-	    case PT_HINT_REL_LOCK:	/* release lock */
-	      if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint |= hint_table[i].hint;
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint |= hint_table[i].hint;
-		}
-	      else if (node->node_type == PT_INSERT)
-		{
-		  node->info.insert.hint |= hint_table[i].hint;
-		}
-	      else if (node->node_type == PT_MERGE)
-		{
-		  node->info.merge.hint |= hint_table[i].hint;
-		}
-	      hint_table[i].arg_list = NULL;
-	      break;
 	    case PT_HINT_QUERY_CACHE:	/* query_cache */
 	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 		{

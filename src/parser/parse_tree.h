@@ -1187,7 +1187,8 @@ typedef enum
   PT_HINT_ORDERED = 0x01,	/* 0000 0001 *//* force join left-to-right */
   PT_HINT_NO_INDEX_SS = 0x02,	/* 0000 0010 *//* disable index skip scan */
   PT_HINT_INDEX_SS = 0x04,	/* 0000 0100 *//* enable index skip scan */
-  PT_HINT_Y = 0x08,		/* 0000 1000 -- not used */
+  PT_HINT_SELECT_BTREE_NODE_INFO = 0x08,	/* temporarily use the unused hint PT_HINT_Y */
+  /* SELECT b-tree node information */
   PT_HINT_USE_NL = 0x10,	/* 0001 0000 *//* force nl-join */
   PT_HINT_USE_IDX = 0x20,	/* 0010 0000 *//* force idx-join */
   PT_HINT_USE_MERGE = 0x40,	/* 0100 0000 *//* force m-join */
@@ -1195,7 +1196,7 @@ typedef enum
   PT_HINT_RECOMPILE = 0x0100,	/* 0000 0001 0000 0000 *//* recompile */
   PT_HINT_LK_TIMEOUT = 0x0200,	/* 0000 0010 0000 0000 *//* lock_timeout */
   PT_HINT_NO_LOGGING = 0x0400,	/* 0000 0100 0000 0000 *//* no_logging */
-  PT_HINT_REL_LOCK = 0x0800,	/* 0000 1000 0000 0000 *//* release_lock */
+  PT_HINT_UNUSED1 = 0x0800,	/* 0000 1000 0000 0000 *//* not used */
   PT_HINT_QUERY_CACHE = 0x1000,	/* 0001 0000 0000 0000 *//* query_cache */
   PT_HINT_REEXECUTE = 0x2000,	/* 0010 0000 0000 0000 *//* reexecute */
   PT_HINT_JDBC_CACHE = 0x4000,	/* 0100 0000 0000 0000 *//* jdbc_cache */
@@ -1221,10 +1222,8 @@ typedef enum
   /* SELECT record info from tuple header instead of data */
   PT_HINT_SELECT_PAGE_INFO = 0x40000000,	/* 0100 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT page header information from heap file instead of record data */
-  PT_HINT_SELECT_KEY_INFO = 0x80000000,	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
-  /* SELECT key information from index b-tree instead of table record data */
-  PT_HINT_SELECT_BTREE_NODE_INFO = 0x08	/* temporarily use the unused hint PT_HINT_Y */
-    /* SELECT b-tree node information */
+  PT_HINT_SELECT_KEY_INFO = 0x80000000	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
+    /* SELECT key information from index b-tree instead of table record data */
 } PT_HINT_ENUM;
 
 

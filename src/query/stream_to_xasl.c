@@ -4110,7 +4110,6 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, &update_info->wait_msecs);
   ptr = or_unpack_int (ptr, &update_info->no_logging);
-  ptr = or_unpack_int (ptr, &update_info->release_lock);
   ptr = or_unpack_int (ptr, &(update_info->no_orderby_keys));
 
   /* restore MVCC condition reevaluation data */
@@ -4170,7 +4169,6 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, &delete_info->wait_msecs);
   ptr = or_unpack_int (ptr, &delete_info->no_logging);
-  ptr = or_unpack_int (ptr, &delete_info->release_lock);
 
   /* restore MVCC condition reevaluation data */
   ptr = or_unpack_int (ptr, &delete_info->no_reev_classes);
@@ -4267,7 +4265,6 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &insert_info->has_uniques);
   ptr = or_unpack_int (ptr, &insert_info->wait_msecs);
   ptr = or_unpack_int (ptr, &insert_info->no_logging);
-  ptr = or_unpack_int (ptr, &insert_info->release_lock);
   ptr = or_unpack_int (ptr, &insert_info->do_replace);
   ptr = or_unpack_int (ptr, &insert_info->pruning_type);
 
