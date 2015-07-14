@@ -22457,11 +22457,11 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  utc_datetime.date = db_date;
 	  utc_datetime.time = db_time * 1000;
 
-	  error_status = tz_conv_tz_datetime_w_region (&utc_datetime,
-						       tz_get_utc_tz_region(), 
-						       &dest_tz_region,
-						       &local_datetime, NULL,
-						       NULL);
+	  error_status =
+	    tz_conv_tz_datetime_w_region (&utc_datetime,
+					  tz_get_utc_tz_region (),
+					  &dest_tz_region, &local_datetime,
+					  NULL, NULL);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto error;
@@ -22596,46 +22596,38 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
       if (is_timezone > 0 || is_local_timezone > 0)
 	{
-	  TZ_REGION tz_region;
-	  tz_id_to_region (&tz_id, &tz_region);
+	  DB_DATETIMETZ dt_tz_utc;
+	  DB_DATETIME dt_utc;
 
-	  error_status = db_date_encode (&db_date, m, d, y);
+	  error_status = db_datetime_encode (&dt_utc, m, d, y, h, mi, s, ms);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  error_status = db_time_encode (&db_time, h, mi, s);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  error_status = db_timestamp_encode_utc (&db_date, &db_time, ts_p);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
+
+	  dt_tz_utc.datetime = dt_utc;
 	  if (is_timezone > 0)
 	    {
-	      error_status =
-		db_timestamp_decode_w_reg (ts_p, &tz_region, &db_date,
-					   &db_time);
+	      dt_tz_utc.tz_id = tz_id;
+	      error_status = tz_datetimetz_fix_zone (&dt_tz_utc, &dt_tz);
+
 	    }
 	  else
 	    {
 	      TZ_REGION tz_session_region;
 
 	      tz_get_session_tz_region (&tz_session_region);
-	      error_status =
-		db_timestamp_decode_w_reg (ts_p, &tz_session_region, &db_date,
-					   &db_time);
+	      error_status = tz_create_datetimetz_from_utc (&dt_utc,
+							    &tz_session_region,
+							    &dt_tz);
 	    }
-
 	  if (error_status != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  db_date_decode (&db_date, &m, &d, &y);
-	  db_time_decode (&db_time, &h, &mi, &s);
+
+	  db_date_decode (&dt_tz.datetime.date, &m, &d, &y);
+	  db_time_decode (&dt_tz.datetime.time, &h, &mi, &s);
 	}
 
       db_datetime.date = db_datetime.time = 0;
@@ -22660,25 +22652,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  /* datetime, date + time units, timestamp => return datetime */
 	  if (is_local_timezone > 0)
 	    {
-	      error_status = tz_create_datetimetz_from_ses (&db_datetime,
-							    &dt_tz);
-	      if (error_status != NO_ERROR)
-		{
-		  goto error;
-		}
 	      DB_MAKE_DATETIMELTZ (result, &dt_tz.datetime);
 	    }
 	  else if (is_timezone > 0)
 	    {
-	      TZ_REGION tz_region;
-
-	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
-						   &tz_region, &dt_tz, NULL);
-	      if (error_status != NO_ERROR)
-		{
-		  goto error;
-		}
 	      DB_MAKE_DATETIMETZ (result, &dt_tz);
 	    }
 	  else

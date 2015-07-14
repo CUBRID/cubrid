@@ -5092,3 +5092,35 @@ tz_tzid_convert_region_to_offset (TZ_ID * tz_id)
       tz_encode_tz_id (&tz_info, tz_id);
     }
 }
+
+/*
+ * tz_create_datetimetz_from_utc () - Creates a datetimetz from an UTC time
+ *				      and a timezone region
+ *			       
+ * Return: error code
+ * src_dt(in): datetime value in UTC reference
+ * dest_region(in): timezone region for dest_dt_tz
+ * dest_dt_tz(out): DATETIMETZ value
+ *
+ */
+int
+tz_create_datetimetz_from_utc (const DB_DATETIME * src_dt,
+			       const TZ_REGION * dest_region,
+			       DB_DATETIMETZ * dest_dt_tz)
+{
+  int er_status = NO_ERROR;
+  TZ_DECODE_INFO tz_info;
+
+  tz_decode_tz_region (dest_region, &tz_info);
+
+  er_status = tz_datetime_utc_conv (src_dt, &tz_info,
+				    true, true, &(dest_dt_tz->datetime));
+  if (er_status != NO_ERROR)
+    {
+      return er_status;
+    }
+
+  tz_encode_tz_id (&tz_info, &(dest_dt_tz->tz_id));
+
+  return er_status;
+}

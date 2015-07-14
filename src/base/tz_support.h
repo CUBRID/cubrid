@@ -308,7 +308,9 @@ extern "C"
 				    const char *client_text,
 				    const char *server_text);
   extern void tz_tzid_convert_region_to_offset (TZ_ID * tz_id);
-
+  extern int tz_create_datetimetz_from_utc (const DB_DATETIME * src_dt,
+					    const TZ_REGION * dest_region,
+					    DB_DATETIMETZ * dest_dt_tz);
 #ifdef __cplusplus
 }
 #endif
