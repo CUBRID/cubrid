@@ -200,6 +200,10 @@ static MOP ws_mop_if_exists (OID * oid);
 static MOP ws_mvcc_latest_permanent_version (MOP mop);
 static MOP ws_mvcc_latest_temporary_version (MOP mop);
 
+#if !defined (NDEBUG)
+static void ws_examine_no_mop_has_cached_lock (void);
+#endif /* !NDEBUG */
+
 /*
  * MEMORY CRISES
  */
@@ -3794,6 +3798,13 @@ ws_clear_all_hints (bool retain_lock)
     }
   ws_Commit_mops = NULL;
   ws_Num_dirty_mop = 0;
+
+#if !defined (NDEBUG)
+  if (prm_get_bool_value (PRM_ID_EXAMINE_CLIENT_CACHED_LOCKS) == true)
+    {
+      ws_examine_no_mop_has_cached_lock ();
+    }
+#endif /* NDEBUG */
 }
 
 /*
@@ -3865,6 +3876,13 @@ ws_abort_mops (bool only_unpinned)
       ws_Commit_mops = NULL;
       ws_Num_dirty_mop = 0;
     }
+
+#if !defined (NDEBUG)
+  if (prm_get_bool_value (PRM_ID_EXAMINE_CLIENT_CACHED_LOCKS) == true)
+    {
+      ws_examine_no_mop_has_cached_lock ();
+    }
+#endif /* NDEBUG */
 }
 
 /*
@@ -6054,6 +6072,33 @@ ws_add_label_value_to_mop (MOP mop, DB_VALUE * val)
 
   return NO_ERROR;
 }
+
+#if !defined (NDEBUG)
+static void
+ws_examine_no_mop_has_cached_lock (void)
+{
+  MOP mop;
+  DB_OBJLIST *m = NULL;
+  unsigned int slot;
+
+  for (m = ws_Resident_classes; m != NULL; m = m->next)
+    {
+      for (mop = m->op->class_link; mop != NULL && mop != Null_object;
+	   mop = mop->class_link)
+	{
+	  assert (mop->lock == NULL_LOCK);
+	}
+    }
+
+  for (slot = 0; slot < ws_Mop_table_size; slot++)
+    {
+      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
+	{
+	  assert (mop->lock == NULL_LOCK);
+	}
+    }
+}
+#endif /* !NDEBUG */
 
 /*
  * ws_clean_label_value_list() - clean mop value list

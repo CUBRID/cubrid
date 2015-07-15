@@ -612,6 +612,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CLIENT_CLASS_CACHE_DEBUG "client_class_cache_debug"
 
+#define PRM_NAME_EXAMINE_CLIENT_CACHED_LOCKS "examine_client_cached_locks"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
 /*
@@ -2042,6 +2044,10 @@ static unsigned int prm_postpone_debug_flag = 0;
 bool PRM_CLIENT_CLASS_CACHE_DEBUG = false;
 static const bool prm_client_class_cache_debug_default = false;
 static unsigned int prm_client_class_cache_debug_flag = 0;
+
+bool PRM_EXAMINE_CLIENT_CACHED_LOCKS = false;
+static bool prm_examine_client_cached_locks_default = false;
+static bool prm_examine_client_cached_locks_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4918,6 +4924,16 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_client_class_cache_debug_flag,
    (void *) &prm_client_class_cache_debug_default,
    (void *) &PRM_CLIENT_CLASS_CACHE_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_EXAMINE_CLIENT_CACHED_LOCKS,
+   (PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_examine_client_cached_locks_flag,
+   (void *) &prm_examine_client_cached_locks_default,
+   (void *) &PRM_EXAMINE_CLIENT_CACHED_LOCKS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
