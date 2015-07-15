@@ -11340,6 +11340,9 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 
   if (!dont_decache_and_flush)
     {
+      /* Reset dont_decache_constraints_or_flush */
+      class_->dont_decache_constraints_or_flush = 0;
+
       /* recache class constraint for foreign key */
       if (class_->recache_constraints
 	  && classobj_cache_class_constraints (class_))
@@ -11364,8 +11367,6 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	{
 	  goto structure_error;
 	}
-
-      class_->dont_decache_constraints_or_flush = 0;
     }
   else
     {

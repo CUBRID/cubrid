@@ -4179,6 +4179,7 @@ other_error:
 void
 classobj_decache_class_constraints (SM_CLASS * class_)
 {
+  assert (!class_->dont_decache_constraints_or_flush);
   if (class_->constraints != NULL)
     {
       classobj_free_class_constraints (class_->constraints);
@@ -7598,7 +7599,7 @@ classobj_insert_ordered_attribute (SM_ATTRIBUTE ** attlist,
  *    This now also goes through and assigns storage_order because this
  *    isn't currently stored as part of the disk representation.
  *   return: none
- *   class(in/out): class to ordrer
+ *   class(in/out): class to order
  */
 
 void
@@ -7697,11 +7698,14 @@ classobj_fixup_loaded_class (SM_CLASS * class_)
       meth->order = i;
     }
 
-  /* Cache constraints into both the class constraint list & the attribute
-   * constraint lists.
-   */
-  (void) classobj_cache_class_constraints (class_);
-  (void) classobj_cache_constraints (class_);
+  if (!class_->dont_decache_constraints_or_flush)
+    {
+      /* Cache constraints into both the class constraint list & the attribute
+       * constraint lists.
+       */
+      (void) classobj_cache_class_constraints (class_);
+      (void) classobj_cache_constraints (class_);
+    }
 }
 
 /*
@@ -8108,18 +8112,20 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
   class_->partition = flat->partition;
   flat->partition = NULL;
 
-  /* Cache constraints into both the class constraint list & the attribute
-   * constraint lists.
-   */
-  if (classobj_cache_class_constraints (class_))
+  if (!class_->dont_decache_constraints_or_flush)
     {
-      goto memory_error;
+      /* Cache constraints into both the class constraint list & the attribute
+       * constraint lists.
+       */
+      if (classobj_cache_class_constraints (class_))
+	{
+	  goto memory_error;
+	}
+      if (!classobj_cache_constraints (class_))
+	{
+	  goto memory_error;
+	}
     }
-  if (!classobj_cache_constraints (class_))
-    {
-      goto memory_error;
-    }
-
 
   return NO_ERROR;
 
