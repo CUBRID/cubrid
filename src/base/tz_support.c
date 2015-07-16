@@ -4170,18 +4170,10 @@ tz_create_datetimetz_from_zoneid_and_tzd (const DB_DATETIME * dt,
 
   if (zone_id != -1)
     {
-      if (is_time_tz == true)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_GEOGRAPHIC_ZONE, 0);
-	  return ER_TZ_INVALID_TIMEZONE;
-	}
-      else
-	{
-	  tz_info.type = TZ_REGION_ZONE;
-	  tz_info.zone.zone_id = zone_id;
-	  tz_info.zone.dst_id = TZ_DS_ID_MAX;
-	  tz_info.zone.offset_id = TZ_OFFSET_ID_MAX;
-	}
+      tz_info.type = TZ_REGION_ZONE;
+      tz_info.zone.zone_id = zone_id;
+      tz_info.zone.dst_id = TZ_DS_ID_MAX;
+      tz_info.zone.offset_id = TZ_OFFSET_ID_MAX;
     }
   else
     {
@@ -4209,7 +4201,7 @@ tz_create_datetimetz_from_zoneid_and_tzd (const DB_DATETIME * dt,
       return err_status;
     }
 
-  if (is_time_tz == true && zone_id == -1)
+  if (is_time_tz == true)
     {
       offset = (int) (dt->date - utc_dt.date) * 3600 * 24 +
 	(int) (dt->time - utc_dt.time) / 1000;
