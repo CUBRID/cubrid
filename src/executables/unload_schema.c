@@ -2464,6 +2464,12 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	case DB_DEFAULT_CURR_USER:
 	  fprintf (output_file, "CURRENT_USER");
 	  break;
+	case DB_DEFAULT_CURRENTDATETIME:
+	  fprintf (output_file, "CURRENT_DATETIME");
+	  break;
+	case DB_DEFAULT_CURRENTTIMESTAMP:
+	  fprintf (output_file, "CURRENT_TIMESTAMP");
+	  break;
 	default:
 	  /* these are set during the object load phase */
 	  if (ex_contains_object_reference (default_value))

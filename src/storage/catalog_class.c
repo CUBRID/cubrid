@@ -1568,6 +1568,14 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	  strcpy (str_val, "CURRENT_USER");
 	  break;
 
+	case DB_DEFAULT_CURRENTDATETIME:
+	  strcpy (str_val, "CURRENT_DATETIME");
+	  break;
+
+	case DB_DEFAULT_CURRENTTIMESTAMP:
+	  strcpy (str_val, "CURRENT_TIMESTAMP");
+	  break;
+
 	default:
 	  pr_clear_value (&default_expr);
 	  pr_clear_value (&val);

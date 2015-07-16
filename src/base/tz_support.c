@@ -147,6 +147,8 @@ static int tz_get_iana_zone_id_by_windows_zone (const char
 						*windows_zone_name);
 #endif
 
+static TZ_REGION tz_region_system;
+
 #if !defined(SERVER_MODE)
 static TZ_REGION tz_region_session;
 #endif
@@ -740,6 +742,15 @@ const char *
 tz_get_system_timezone (void)
 {
   return prm_get_string_value (PRM_ID_SERVER_TIMEZONE);
+}
+
+/*
+ * tz_get_system_tz_region() - get the system timezone region
+ */
+void
+tz_get_system_tz_region (TZ_REGION * tz_region)
+{
+  *tz_region = tz_region_system;
 }
 
 /*
@@ -4640,6 +4651,17 @@ tz_resolve_os_timezone (char *timezone, int buf_len)
     }
   return ret;
 #endif
+}
+
+/*
+ * tz_set_tz_region_system() - set a reference to the global 
+ *                             tz_region_system variable
+ * Returns: reference to the tz_region_system variable
+ */
+void
+tz_set_tz_region_system (const TZ_REGION * tz_region)
+{
+  tz_region_system = *tz_region;
 }
 
 /*

@@ -2392,6 +2392,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       break;
 
     case PT_SYS_DATETIME:
+    case PT_CURRENT_DATETIME:
       num = 0;
 
       /* one overload */
@@ -2420,6 +2421,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_SYS_TIMESTAMP:
     case PT_UTC_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
       num = 0;
 
       /* one overload */
@@ -6913,7 +6915,9 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_SYS_DATE:
     case PT_SYS_TIME:
     case PT_SYS_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
     case PT_SYS_DATETIME:
+    case PT_CURRENT_DATETIME:
     case PT_UTC_TIME:
     case PT_UTC_DATE:
     case PT_TO_CHAR:
@@ -18983,6 +18987,27 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	return 1;
       }
 
+    case PT_CURRENT_TIMESTAMP:
+      {
+	DB_DATETIME *tmp_datetime;
+	DB_DATE tmp_date = 0;
+	DB_TIME tmp_time = 0;
+	DB_TIMESTAMP tmp_timestamp;
+
+	db_value_domain_init (result, DB_TYPE_TIMESTAMP,
+			      DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	tmp_date = tmp_datetime->date;
+	tmp_time = tmp_datetime->time / 1000;
+
+	(void) db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp,
+					NULL);
+	db_make_timestamp (result, tmp_timestamp);
+
+	return 1;
+      }
+
     case PT_SYS_DATETIME:
       {
 	DB_DATETIME *tmp_datetime;
@@ -18992,6 +19017,31 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 
 	db_make_datetime (result, tmp_datetime);
+
+	return 1;
+      }
+
+    case PT_CURRENT_DATETIME:
+      {
+	TZ_REGION system_tz_region, session_tz_region;
+	DB_DATETIME *tmp_datetime, dest_dt;
+	int err_status;
+
+	db_value_domain_init (result, DB_TYPE_DATETIME,
+			      DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	tz_get_system_tz_region (&system_tz_region);
+	tz_get_session_tz_region (&session_tz_region);
+	err_status = tz_conv_tz_datetime_w_region (tmp_datetime,
+						   &system_tz_region,
+						   &session_tz_region,
+						   &dest_dt, NULL, NULL);
+	if (err_status != NO_ERROR)
+	  {
+	    return err_status;
+	  }
+
+	db_make_datetime (result, &dest_dt);
 
 	return 1;
       }

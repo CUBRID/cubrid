@@ -3851,8 +3851,12 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "sys_time ";
     case PT_SYS_TIMESTAMP:
       return "sys_timestamp ";
+    case PT_CURRENT_TIMESTAMP:
+      return "current_timestamp ";
     case PT_SYS_DATETIME:
       return "sys_datetime ";
+    case PT_CURRENT_DATETIME:
+      return "current_datetime ";
     case PT_UTC_TIME:
       return "utc_time ";
     case PT_UTC_DATE:
@@ -10839,10 +10843,17 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " SYS_TIMESTAMP ");
       break;
 
+    case PT_CURRENT_TIMESTAMP:
+      q = pt_append_nulstring (parser, q, " CURRENT_TIMESTAMP ");
+      break;
+
     case PT_SYS_DATETIME:
       q = pt_append_nulstring (parser, q, " SYS_DATETIME ");
       break;
 
+    case PT_CURRENT_DATETIME:
+      q = pt_append_nulstring (parser, q, " CURRENT_DATETIME ");
+      break;
     case PT_UTC_TIME:
       q = pt_append_nulstring (parser, q, " utc_time() ");
       break;
@@ -18408,7 +18419,9 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_SYS_DATE:
 	case PT_SYS_TIME:
 	case PT_SYS_TIMESTAMP:
+	case PT_CURRENT_TIMESTAMP:
 	case PT_SYS_DATETIME:
+	case PT_CURRENT_DATETIME:
 	case PT_UTC_TIME:
 	case PT_UTC_DATE:
 	case PT_LOCAL_TRANSACTION_ID:

@@ -155,6 +155,7 @@ extern "C"
   extern const TZ_DATA *tz_get_data (void);
   extern const char *tz_get_system_timezone (void);
   extern const char *tz_get_session_local_timezone (void);
+  extern void tz_get_system_tz_region (TZ_REGION * tz_region);
   extern void tz_get_session_tz_region (TZ_REGION * tz_region);
   extern void tz_id_to_region (const TZ_ID * tz_id, TZ_REGION * tz_region);
   extern const TZ_ID *tz_get_utc_tz_id (void);
@@ -280,6 +281,7 @@ extern "C"
 							DB_TIMESTAMPTZ *
 							timestamp_tz);
   extern int tz_resolve_os_timezone (char *timezone, int buf_size);
+  extern void tz_set_tz_region_system (const TZ_REGION * tz_region);
 #if !defined(SERVER_MODE)
   extern TZ_REGION *tz_get_client_tz_region_session (void);
 #else

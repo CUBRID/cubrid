@@ -3227,7 +3227,9 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_SYS_DATE:
     case PT_SYS_TIME:
     case PT_SYS_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
     case PT_SYS_DATETIME:
+    case PT_CURRENT_DATETIME:
     case PT_UTC_TIME:
     case PT_UTC_DATE:
 
@@ -3995,7 +3997,9 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_SYS_DATE:
 	case PT_SYS_TIME:
 	case PT_SYS_TIMESTAMP:
+	case PT_CURRENT_TIMESTAMP:
 	case PT_SYS_DATETIME:
+	case PT_CURRENT_DATETIME:
 	case PT_UTC_TIME:
 	case PT_UTC_DATE:
 	case PT_LOCAL_TRANSACTION_ID:

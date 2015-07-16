@@ -8373,7 +8373,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      else if (node->info.expr.op == PT_SYS_DATE
 		       || node->info.expr.op == PT_SYS_TIME
 		       || node->info.expr.op == PT_SYS_TIMESTAMP
+		       || node->info.expr.op == PT_CURRENT_TIMESTAMP
 		       || node->info.expr.op == PT_SYS_DATETIME
+		       || node->info.expr.op == PT_CURRENT_DATETIME
 		       || node->info.expr.op == PT_UTC_TIME
 		       || node->info.expr.op == PT_UTC_DATE
 		       || node->info.expr.op == PT_PI
@@ -9230,9 +9232,19 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 					     T_SYS_TIMESTAMP, domain);
 		  break;
 
+		case PT_CURRENT_TIMESTAMP:
+		  regu = pt_make_regu_arith (NULL, NULL, NULL,
+					     T_CURRENT_TIMESTAMP, domain);
+		  break;
+
 		case PT_SYS_DATETIME:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL,
 					     T_SYS_DATETIME, domain);
+		  break;
+
+		case PT_CURRENT_DATETIME:
+		  regu = pt_make_regu_arith (NULL, NULL, NULL,
+					     T_CURRENT_DATETIME, domain);
 		  break;
 
 		case PT_UTC_TIME:

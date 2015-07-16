@@ -795,7 +795,7 @@ static FUNCTION_MAP functions[] = {
   {"months_between", PT_MONTHS_BETWEEN},
   {"new_time", PT_NEW_TIME},
   {"format", PT_FORMAT},
-  {"now", PT_SYS_DATETIME},
+  {"now", PT_CURRENT_DATETIME},
   {"nvl", PT_NVL},
   {"nvl2", PT_NVL2},
   {"orderby_num", PT_ORDERBY_NUM},
@@ -1171,7 +1171,7 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2616 of glr.c.  */
+/* Line 2604 of glr.c.  */
 #line 1176 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1

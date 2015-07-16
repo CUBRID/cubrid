@@ -479,6 +479,14 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	      error = DB_MAKE_STRING (&att->default_value.value, user_name);
 	      att->default_value.value.need_clear = true;
 	      break;
+	    case DB_DEFAULT_CURRENTDATETIME:
+	      error = pr_clone_value (&parser->sys_datetime,
+				      &att->default_value.value);
+	      break;
+	    case DB_DEFAULT_CURRENTTIMESTAMP:
+	      error = db_datetime_to_timestamp (&parser->sys_datetime,
+						&att->default_value.value);
+	      break;
 	    default:
 	      break;
 	    }

@@ -459,7 +459,8 @@
 
 #define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
     (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
-    (v) == DB_DEFAULT_UNIX_TIMESTAMP)
+    (v) == DB_DEFAULT_UNIX_TIMESTAMP || (v) == DB_DEFAULT_CURRENTDATETIME || \
+    (v) == DB_DEFAULT_CURRENTTIMESTAMP)
 
 /* This defines the basic type identifier constants.  These are used in
    the domain specifications of attributes and method arguments and
@@ -943,7 +944,9 @@ typedef enum
   DB_DEFAULT_SYSTIMESTAMP = 3,
   DB_DEFAULT_UNIX_TIMESTAMP = 4,
   DB_DEFAULT_USER = 5,
-  DB_DEFAULT_CURR_USER = 6
+  DB_DEFAULT_CURR_USER = 6,
+  DB_DEFAULT_CURRENTDATETIME = 7,
+  DB_DEFAULT_CURRENTTIMESTAMP = 8
 } DB_DEFAULT_EXPR_TYPE;
 
 typedef DB_DATETIME DB_C_DATETIME;

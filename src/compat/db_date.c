@@ -636,6 +636,28 @@ db_timestamp_encode_ses (const DB_DATE * date, const DB_TIME * timeval,
 }
 
 /*
+ * db_timestamp_encode_sys() - This function is used to construct DB_TIMESTAMP
+ *    from DB_DATE and DB_TIME, considering the time and date in system timezone
+ *
+ * return : error code
+ * date(in): encoded julian date
+ * timeval(in): relative time
+ * utime(out): pointer to universal time value
+ * dest_tz_id(out): pointer to packed timezone identifier of the result
+ *		    (can be NULL, in which case no identifier is provided)
+ */
+int
+db_timestamp_encode_sys (const DB_DATE * date, const DB_TIME * timeval,
+			 DB_TIMESTAMP * utime, TZ_ID * dest_tz_id)
+{
+  TZ_REGION sys_tz_region;
+  tz_get_system_tz_region (&sys_tz_region);
+
+  return db_timestamp_encode_w_reg (date, timeval, &sys_tz_region, utime,
+				    dest_tz_id);
+}
+
+/*
  * db_timestamp_encode_utc() - This function is used to construct DB_TIMESTAMP
  *			       from DB_DATE and DB_TIME considering the date and 
  *			       time in UTC
@@ -797,7 +819,7 @@ db_timestamp_decode_ses (const DB_TIMESTAMP * utime, DB_DATE * date,
  * db_timestamp_decode_utc() - This function converts a DB_TIMESTAMP into
  *    a DB_DATE and DB_TIME pair using UTC time reference
  * return : void
- * utime(in): universal time
+ * time(in): universal time
  * date(out): return julian date or zero date
  * time(out): return relative time
  */

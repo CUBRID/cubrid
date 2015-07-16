@@ -4635,6 +4635,8 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree,
     case PT_SYS_DATE:
     case PT_SYS_DATETIME:
     case PT_SYS_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
+    case PT_CURRENT_DATETIME:
     case PT_USER:
     case PT_CURRENT_USER:
     case PT_UNIX_TIMESTAMP:
@@ -5901,7 +5903,9 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TO_NUMBER:
     case PT_SYS_TIME:
     case PT_SYS_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
     case PT_SYS_DATETIME:
+    case PT_CURRENT_DATETIME:
     case PT_UTC_TIME:
     case PT_UTC_DATE:
     case PT_TO_TIME:

@@ -4010,6 +4010,10 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return "SYS_DATETIME";
     case DB_DEFAULT_SYSTIMESTAMP:
       return "SYS_TIMESTAMP";
+    case DB_DEFAULT_CURRENTDATETIME:
+      return "CURRENT_DATETIME";
+    case DB_DEFAULT_CURRENTTIMESTAMP:
+      return "CURRENT_TIMESTAMP";
     case DB_DEFAULT_UNIX_TIMESTAMP:
       return "UNIX_TIMESTAMP";
     case DB_DEFAULT_USER:

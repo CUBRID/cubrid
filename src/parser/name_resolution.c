@@ -9377,6 +9377,12 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
     case DB_DEFAULT_CURR_USER:
       return PT_CURRENT_USER;
 
+    case DB_DEFAULT_CURRENTDATETIME:
+      return PT_CURRENT_DATETIME;
+
+    case DB_DEFAULT_CURRENTTIMESTAMP:
+      return PT_CURRENT_TIMESTAMP;
+
     default:
       return (PT_OP_TYPE) 0;
     }

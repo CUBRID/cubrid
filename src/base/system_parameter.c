@@ -5927,10 +5927,41 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	    }
 	}
 
-      if ((strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0 && on_client) ||
-	  (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0 && on_server))
+      if (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0 && on_server)
 	{
 	  continue;
+	}
+
+      if (strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0)
+	{
+	  TZ_REGION tz_region_system;
+	  int er_status = NO_ERROR;
+
+	  if (value != NULL)
+	    {
+	      /* offset timezone can work without timezone lib */
+	      er_status =
+		tz_str_to_region (value, strlen (value), &tz_region_system);
+	      if (er_status != NO_ERROR)
+		{
+		  /* we may have geographic region name, make sure timezone lib
+		   * is loaded */
+		  if (tz_load () != NO_ERROR)
+		    {
+		      return PRM_ERR_BAD_VALUE;
+		    }
+		  er_status = tz_str_to_region (value, strlen (value),
+						&tz_region_system);
+		}
+	      if (er_status != NO_ERROR)
+		{
+		  error = PRM_ERR_BAD_VALUE;
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i],
+					error, file);
+		  return error;
+		}
+	      tz_set_tz_region_system (&tz_region_system);
+	    }
 	}
 
       if ((on_server || on_client)
@@ -8903,12 +8934,32 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 #endif /* SERVER_MODE */
 
   sysprm_set_system_parameter_value (prm, value);
+
+  /* Set the cached parsed system timezone region on the server */
+  if (sysprm_get_id (prm) == PRM_ID_SERVER_TIMEZONE)
+    {
+      TZ_REGION tz_region_system;
+      int err_status = 0;
+
+      err_status = tz_str_to_region (value.str, strlen (value.str),
+				     &tz_region_system);
+      if (err_status != NO_ERROR)
+	{
+	  return PRM_ERR_BAD_PARAM;
+	}
+      tz_set_tz_region_system (&tz_region_system);
+    }
   /* Set the cached parsed session timezone region on the client */
 #if !defined(SERVER_MODE)
   if (sysprm_get_id (prm) == PRM_ID_TIMEZONE)
     {
-      tz_str_to_region (value.str, strlen (value.str),
-			tz_get_client_tz_region_session ());
+      int err_status = 0;
+      err_status = tz_str_to_region (value.str, strlen (value.str),
+				     tz_get_client_tz_region_session ());
+      if (err_status != NO_ERROR)
+	{
+	  return PRM_ERR_BAD_PARAM;
+	}
     }
 #endif
 
@@ -8965,6 +9016,7 @@ sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value)
     case PRM_BIGINT:
       prm_set_bigint_value (prm_id, value.bi);
       break;
+
     default:
       assert_release (0);
       break;

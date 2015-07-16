@@ -224,7 +224,7 @@ static FUNCTION_MAP functions[] = {
   {"months_between", PT_MONTHS_BETWEEN},
   {"new_time", PT_NEW_TIME},
   {"format", PT_FORMAT},
-  {"now", PT_SYS_DATETIME},
+  {"now", PT_CURRENT_DATETIME},
   {"nvl", PT_NVL},
   {"nvl2", PT_NVL2},
   {"orderby_num", PT_ORDERBY_NUM},
@@ -5725,6 +5725,12 @@ alter_column_clause_mysql_specific
 				      case PT_SYS_TIMESTAMP:
 					node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
 					break;
+				      case PT_CURRENT_TIMESTAMP:
+					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+					break;
+				      case PT_CURRENT_DATETIME:
+					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+					break;
 				      case PT_USER:
 					node->info.data_default.default_expr = DB_DEFAULT_USER;
 					break;
@@ -10024,6 +10030,12 @@ column_default_constraint_def
 				    break;
 				  case PT_SYS_TIMESTAMP:
 				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+				    break;
+				  case PT_CURRENT_TIMESTAMP:
+				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+				    break;
+				  case PT_CURRENT_DATETIME:
+				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
 				    break;
 				  case PT_USER:
 				    node->info.data_default.default_expr = DB_DEFAULT_USER;
@@ -15205,10 +15217,26 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| of_datetimes
+	| of_current_timestamp
+		{{
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_CURRENT_TIMESTAMP, NULL, NULL, NULL);
+			$$ = expr;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| of_sys_datetime
 		{{
 
 			PT_NODE *expr = parser_make_expression (this_parser, PT_SYS_DATETIME, NULL, NULL, NULL);
+			$$ = expr;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| of_current_datetime
+		{{
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_CURRENT_DATETIME, NULL, NULL, NULL);
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -15626,11 +15654,6 @@ of_session_timezone_
 
 of_timestamps
 	: SYS_TIMESTAMP
-	| CURRENT_TIMESTAMP
-	| CURRENT_TIMESTAMP
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP); }
-	  '(' ')'
-		{ pop_msg(); }
 	| LOCALTIME
 	| LOCALTIME
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIME); }
@@ -15643,9 +15666,19 @@ of_timestamps
 		{ pop_msg(); }
 	;
 
-of_datetimes
+of_current_timestamp
+	: CURRENT_TIMESTAMP
+	| CURRENT_TIMESTAMP
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP); }
+	  '(' ')'
+		{ pop_msg(); }
+	;
+
+of_sys_datetime
 	: SYS_DATETIME
-	| CURRENT_DATETIME
+
+of_current_datetime
+	: CURRENT_DATETIME
 	| CURRENT_DATETIME
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATETIME); }
 	  '(' ')'
@@ -22513,7 +22546,8 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 	}
 
       if (OP == PT_SYS_TIME || OP == PT_SYS_DATE
-	  || OP == PT_SYS_DATETIME || OP == PT_SYS_TIMESTAMP 
+	  || OP == PT_SYS_DATETIME || OP == PT_SYS_TIMESTAMP
+	  || OP == PT_CURRENT_TIMESTAMP || OP == PT_CURRENT_DATETIME
 	  || OP == PT_UTC_TIME || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP
 	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP)
 	{
@@ -23802,6 +23836,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_SYS_DATE:
     case PT_SYS_DATETIME:
     case PT_SYS_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
+    case PT_CURRENT_DATETIME:
     case PT_UTC_TIME:
     case PT_UTC_DATE:
     case PT_VERSION:

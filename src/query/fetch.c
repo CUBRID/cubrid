@@ -641,6 +641,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_SYS_TIME:
     case T_SYS_TIMESTAMP:
     case T_SYS_DATETIME:
+    case T_CURRENT_TIMESTAMP:
+    case T_CURRENT_DATETIME:
     case T_UTC_TIME:
     case T_UTC_DATE:
     case T_LOCAL_TRANSACTION_ID:
@@ -2260,6 +2262,40 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_SYS_DATETIME:
       DB_MAKE_DATETIME (arithptr->value, &vd->sys_datetime);
+      break;
+
+    case T_CURRENT_TIMESTAMP:
+      {
+	DB_TIMESTAMP db_timestamp;
+	DB_TIME db_time;
+
+	db_time = vd->sys_datetime.time / 1000;
+
+	db_timestamp_encode_sys (&vd->sys_datetime.date, &db_time,
+				 &db_timestamp, NULL);
+
+	db_make_timestamp (arithptr->value, db_timestamp);
+      }
+      break;
+
+    case T_CURRENT_DATETIME:
+      {
+	TZ_REGION system_tz_region, session_tz_region;
+	DB_DATETIME dest_dt;
+	int err_status = 0;
+
+	tz_get_system_tz_region (&system_tz_region);
+	tz_get_session_tz_region (&session_tz_region);
+	err_status = tz_conv_tz_datetime_w_region (&vd->sys_datetime,
+						   &system_tz_region,
+						   &session_tz_region,
+						   &dest_dt, NULL, NULL);
+	if (err_status != NO_ERROR)
+	  {
+	    return err_status;
+	  }
+	DB_MAKE_DATETIME (arithptr->value, &dest_dt);
+      }
       break;
 
     case T_UTC_TIME:

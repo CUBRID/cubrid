@@ -103,6 +103,9 @@ extern int db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date,
 extern int db_timestamp_encode_ses (const DB_DATE * date,
 				    const DB_TIME * timeval,
 				    DB_TIMESTAMP * utime, TZ_ID * dest_tz_id);
+extern int db_timestamp_encode_sys (const DB_DATE * date,
+				    const DB_TIME * timeval,
+				    DB_TIMESTAMP * utime, TZ_ID * dest_tz_id);
 extern int db_timestamp_encode_utc (const DB_DATE * date,
 				    const DB_TIME * timeval,
 				    DB_TIMESTAMP * utime);

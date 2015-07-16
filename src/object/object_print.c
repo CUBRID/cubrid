@@ -731,6 +731,14 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 	    case DB_DEFAULT_CURR_USER:
 	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_USER");
 	      break;
+	    case DB_DEFAULT_CURRENTDATETIME:
+	      buffer =
+		pt_append_nulstring (parser, buffer, "CURRENT_DATETIME");
+	      break;
+	    case DB_DEFAULT_CURRENTTIMESTAMP:
+	      buffer =
+		pt_append_nulstring (parser, buffer, "CURRENT_TIMESTAMP");
+	      break;
 	    default:
 	      buffer = describe_value (parser, buffer,
 				       &attribute_p->default_value.value);
