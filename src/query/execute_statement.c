@@ -12627,6 +12627,18 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       DB_MAKE_OBJECT (ins_val, (DB_OBJECT *) NULL);
     }
 
+  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ
+      && statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+    {
+      /* We need to make sure snapshot is generated for this execution. */
+      error = log_get_mvcc_snapshot ();
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+    }
+
   if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
     {
       if (error != NO_ERROR)

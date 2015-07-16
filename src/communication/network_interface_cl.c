@@ -11408,6 +11408,42 @@ log_invalidate_mvcc_snapshot (void)
 }
 
 /*
+ * log_get_mvcc_snapshot () - Get MVCC snapshot on server.
+ *
+ * return : Error code.
+ */
+int
+log_get_mvcc_snapshot (void)
+{
+#if defined(CS_MODE)
+  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  int err = NO_ERROR;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  err = net_client_request (NET_SERVER_GET_MVCC_SNAPSHOT, NULL, 0,
+			    reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			    NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      or_unpack_int (reply, &err);
+    }
+
+  return err;
+#else /* !CS_MODE */
+  int err;
+
+  ENTER_SERVER ();
+
+  err = xlogtb_get_mvcc_snapshot (NULL);
+
+  EXIT_SERVER ();
+
+  return err;
+#endif /* CS_MODE */
+}
+
+/*
  * locator_upgrade_instances_domain () - performs an upgrade of domain for
  *					 instances of a class
  * return : NO_ERROR if all OK, error status otherwise

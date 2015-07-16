@@ -978,6 +978,10 @@ net_server_init (void)
   req_p->processing_function = slogtb_invalidate_mvcc_snapshot;
   req_p->name = "NET_SERVER_INVALIDATE_MVCC_SNAPSHOT";
 
+  req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
+  req_p->processing_function = slogtb_get_mvcc_snapshot;
+  req_p->name = "NET_SERVER_GET_MVCC_SNAPSHOT";
+
   req_p = &net_Requests[NET_SERVER_LOCK_RR];
   req_p->processing_function = stran_lock_rep_read;
   req_p->name = "NET_SERVER_LOCK_RR";

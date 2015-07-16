@@ -16069,6 +16069,15 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   xasl_state.qp_xasl_line = 0;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ)
+    {
+      /* We need to be sure we have a snapshot. Insert ... values execution
+       * might not get any snapshot. Then next select may obtain weird
+       * results (since things that changed after executing insert will be
+       * visible).
+       */
+      (void) logtb_get_mvcc_snapshot (thread_p);
+    }
 
   do
     {

@@ -4693,6 +4693,26 @@ xlogtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * xlogtb_get_mvcc_snapshot () - Make sure snapshot is generated.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+int
+xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
+{
+  /* Get transaction descriptor */
+  MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
+  int error_code = NO_ERROR;
+
+  if (snapshot == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+    }
+  return error_code;
+}
+
+/*
  * logtb_get_oldest_active_mvccid () - Get oldest MVCCID that was running
  *				       when any active transaction started.
  *

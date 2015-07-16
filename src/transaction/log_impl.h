@@ -2649,6 +2649,7 @@ extern int logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
 extern int xlogtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
+extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p,

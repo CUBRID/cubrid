@@ -518,6 +518,9 @@ extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 extern void slogtb_invalidate_mvcc_snapshot (THREAD_ENTRY * thread_p,
 					     unsigned int rid, char *request,
 					     int reqlen);
+extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p,
+				      unsigned int rid, char *request,
+				      int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid,
 				 char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p,
