@@ -14272,7 +14272,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 	  *mid_slot = i - 1;
 #if !defined (NDEBUG)
 	  /* Update left_size for debug checks. */
-	  left_size -= spage_get_space_for_record (page_ptr, i);
+	  left_size -= record_size;
 #endif /* !NDEBUG */
 	  break;
 	}
