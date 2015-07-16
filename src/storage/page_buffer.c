@@ -753,6 +753,9 @@ static int pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p,
 				      PGBUF_BCB * bufptr,
 				      PGBUF_HOLDER_STAT * holder_perf_stat_p);
 #if !defined(NDEBUG)
+static int pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
+				  PGBUF_LATCH_MODE request_mode,
+				  const char *caller_file, int caller_line);
 static int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p,
 				     PGBUF_BCB * bufptr,
 				     PGBUF_LATCH_MODE request_mode,
@@ -771,6 +774,8 @@ static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 			    bool as_promote, const char *caller_file,
 			    int caller_line);
 #else /* NDEBUG */
+static int pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
+				  PGBUF_LATCH_MODE request_mode);
 static int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p,
 				     PGBUF_BCB * bufptr,
 				     PGBUF_LATCH_MODE request_mode,
@@ -2992,7 +2997,7 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid,
 #endif				/* NDEBUG */
 {
   PGBUF_BCB *bufptr;
-  int i;
+  int i, ret = NO_ERROR;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -3032,12 +3037,13 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid,
       if (pgbuf_flush_bcb (thread_p, bufptr, true) != NO_ERROR)
 #endif /* NDEBUG */
 	{
-	  return ER_FAILED;
+	  /* best efforts */
+	  ret = ER_FAILED;
 	}
       /* Above function released BCB_mutex regardless of its return value. */
     }
 
-  return NO_ERROR;
+  return ret;
 }
 
 /*
@@ -5873,6 +5879,61 @@ exit_on_error:
   return err;
 }
 
+#if !defined (NDEBUG)
+static int
+pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
+		       PGBUF_LATCH_MODE request_mode, const char *caller_file,
+		       int caller_line)
+#else
+static int
+pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
+		       PGBUF_LATCH_MODE request_mode)
+#endif
+{
+  PGBUF_HOLDER *holder = NULL;
+  bool buf_is_dirty;
+
+  buf_is_dirty = bufptr->dirty;
+
+  bufptr->latch_mode = request_mode;
+  bufptr->fcnt = 1;
+
+  pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+  /* allocate a BCB holder entry */
+
+  assert (pgbuf_find_thrd_holder (thread_p, bufptr) == NULL);
+
+  holder = pgbuf_allocate_thrd_holder_entry (thread_p);
+  if (holder == NULL)
+    {
+      /* This situation must not be occurred. */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  holder->fix_count = 1;
+  holder->bufptr = bufptr;
+  holder->perf_stat.dirtied_by_holder = 0;
+  if (request_mode == PGBUF_LATCH_WRITE)
+    {
+      holder->perf_stat.hold_has_write_latch = 1;
+      holder->perf_stat.hold_has_read_latch = 0;
+    }
+  else
+    {
+      holder->perf_stat.hold_has_read_latch = 1;
+      holder->perf_stat.hold_has_write_latch = 0;
+    }
+  holder->perf_stat.dirty_before_hold = buf_is_dirty;
+#if !defined(NDEBUG)
+  sprintf (holder->fixed_at, "%s:%d ", caller_file, caller_line);
+  holder->fixed_at_size = strlen (holder->fixed_at);
+#endif /* NDEBUG */
+
+  return NO_ERROR;
+}
+
 /*
  * pgbuf_latch_bcb_upon_fix () -
  *   return: NO_ERROR, or ER_code
@@ -5918,6 +5979,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  bool is_page_idle;
   bool buf_is_dirty;
 
   /* parameter validation */
@@ -5932,45 +5994,34 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
   buf_is_dirty = bufptr->dirty;
 
   /* the caller is holding bufptr->BCB_mutex */
+  is_page_idle = false;
   if (buf_lock_acquired || bufptr->latch_mode == PGBUF_NO_LATCH)
     {
-      bufptr->latch_mode = request_mode;
-      bufptr->fcnt = 1;
-
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
-
-      /* allocate a BCB holder entry */
-
-      assert (pgbuf_find_thrd_holder (thread_p, bufptr) == NULL);
-
-      holder = pgbuf_allocate_thrd_holder_entry (thread_p);
+      is_page_idle = true;
+    }
+#if defined (SA_MODE)
+  else
+    {
+      holder = pgbuf_find_thrd_holder (thread_p, bufptr);
       if (holder == NULL)
 	{
-	  /* This situation must not be occurred. */
-	  assert (false);
-	  return ER_FAILED;
+	  /* It means bufptr->latch_mode was leaked by the previous holder, 
+	   * since there should be no user except me in SA_MODE.
+	   */
+	  assert (0);
+	  is_page_idle = true;
 	}
+    }
+#endif
 
-      holder->fix_count = 1;
-      holder->bufptr = bufptr;
-      holder->perf_stat.dirtied_by_holder = 0;
-      if (request_mode == PGBUF_LATCH_WRITE)
-	{
-	  holder->perf_stat.hold_has_write_latch = 1;
-	  holder->perf_stat.hold_has_read_latch = 0;
-	}
-      else
-	{
-	  holder->perf_stat.hold_has_read_latch = 1;
-	  holder->perf_stat.hold_has_write_latch = 0;
-	}
-      holder->perf_stat.dirty_before_hold = buf_is_dirty;
-#if !defined(NDEBUG)
-      sprintf (holder->fixed_at, "%s:%d ", caller_file, caller_line);
-      holder->fixed_at_size = strlen (holder->fixed_at);
-#endif /* NDEBUG */
-
-      return NO_ERROR;
+  if (is_page_idle == true)
+    {
+#if !defined (NDEBUG)
+      return pgbuf_latch_idle_page (thread_p, bufptr, request_mode,
+				    caller_file, caller_line);
+#else
+      return pgbuf_latch_idle_page (thread_p, bufptr, request_mode);
+#endif
     }
 
   if ((request_mode == PGBUF_LATCH_READ)
@@ -6000,7 +6051,8 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #endif /* SERVER_MODE */
 
 	  /* increment the fix count */
-	  bufptr->fcnt += 1;
+	  bufptr->fcnt++;
+	  assert (0 < bufptr->fcnt);
 
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 
@@ -6010,7 +6062,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	  if (holder != NULL)
 	    {
 	      /* the caller is the holder of the buffer page */
-	      holder->fix_count += 1;
+	      holder->fix_count++;
 	      /* holder->dirty_before_holder not changed */
 	      if (request_mode == PGBUF_LATCH_WRITE)
 		{
@@ -6062,6 +6114,11 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	  return NO_ERROR;
 	}
 
+#if defined (SA_MODE)
+      /* It is impossible to have a blocked waiter under SA_MODE. */
+      assert (0);
+#endif /* SA_MODE */
+
       /* at here, there is some blocked reader/writer. */
 
       holder = pgbuf_find_thrd_holder (thread_p, bufptr);
@@ -6072,13 +6129,14 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	}
 
       /* in case that the caller is the holder */
-      bufptr->fcnt += 1;
+      bufptr->fcnt++;
+      assert (0 < bufptr->fcnt);
 
       pthread_mutex_unlock (&bufptr->BCB_mutex);
 
       /* set BCB holder entry */
 
-      holder->fix_count += 1;
+      holder->fix_count++;
       /* holder->dirty_before_holder not changed */
       if (request_mode == PGBUF_LATCH_WRITE)
 	{
@@ -6099,6 +6157,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
   if (holder == NULL)
     {
       /* in case that the caller is not the holder */
+#if defined (SA_MODE)
+      assert (0);
+#endif
       goto do_block;
     }
 
@@ -6127,12 +6188,14 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
     {				/* only the holder */
       assert (bufptr->fcnt == holder->fix_count);
 
-      bufptr->fcnt += 1;
+      bufptr->fcnt++;
+      assert (0 < bufptr->fcnt);
+
       pthread_mutex_unlock (&bufptr->BCB_mutex);
 
       /* set BCB holder entry */
 
-      holder->fix_count += 1;
+      holder->fix_count++;
       /* holder->dirty_before_holder not changed */
       if (request_mode == PGBUF_LATCH_WRITE)
 	{
@@ -6159,13 +6222,14 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
       if (bufptr->fcnt == holder->fix_count)
 	{
 	  bufptr->latch_mode = request_mode;	/* PGBUF_LATCH_WRITE */
-	  bufptr->fcnt += 1;
+	  bufptr->fcnt++;
+	  assert (0 < bufptr->fcnt);
 
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 
 	  /* set BCB holder entry */
 
-	  holder->fix_count += 1;
+	  holder->fix_count++;
 	  /* holder->dirty_before_holder not changed */
 	  if (request_mode == PGBUF_LATCH_WRITE)
 	    {
@@ -6219,6 +6283,10 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
     }
 
 do_block:
+
+#if defined (SA_MODE)
+  assert (0);
+#endif
 
   if (condition == PGBUF_CONDITIONAL_LATCH)
     {
@@ -6692,6 +6760,13 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	{
 	  return ER_FAILED;
 	}
+
+#if !defined (NDEBUG)
+      /* To hold BCB_mutex is not required because I hold the latch. 
+       * This means at least my fix count is kept.
+       */
+      assert (0 < bufptr->fcnt);
+#endif
     }
 #endif /* SERVER_MODE */
 
@@ -7813,6 +7888,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 #endif				/* NDEBUG */
 {
   PGBUF_HOLDER *holder;
+  PGBUF_LATCH_MODE saved_latch_mode;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -7833,9 +7909,12 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
   if (bufptr->latch_mode == PGBUF_NO_LATCH
       || bufptr->latch_mode == PGBUF_LATCH_READ)
     {
+      saved_latch_mode = bufptr->latch_mode;
       bufptr->latch_mode = PGBUF_LATCH_FLUSH;
+
       if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
 	{
+	  bufptr->latch_mode = saved_latch_mode;
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 
 	  return ER_FAILED;
