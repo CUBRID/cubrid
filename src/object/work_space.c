@@ -195,7 +195,6 @@ static int ws_check_hash_link (int slot);
 static void ws_insert_mop_on_hash_link (MOP mop, int slot);
 static void ws_insert_mop_on_hash_link_with_position (MOP mop, int slot,
 						      MOP prev);
-static MOP ws_mop_if_exists (OID * oid);
 
 static MOP ws_mvcc_latest_permanent_version (MOP mop);
 static MOP ws_mvcc_latest_temporary_version (MOP mop);
@@ -786,7 +785,7 @@ MOP
 ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
 		     bool updated_by_me)
 {
-  MOP mop = NULL, new_mop = NULL;
+  MOP mop = NULL, new_mop = NULL, cached_mop_of_new = NULL;
   int error_code = NO_ERROR;
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
 
@@ -805,7 +804,33 @@ ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
 	  /* Decache old object */
 	  ws_decache (mop);
 
-	  new_mop = ws_mop (new_oid, class_mop);
+	  cached_mop_of_new = ws_mop_if_exists (new_oid);
+	  if (cached_mop_of_new == NULL)
+	    {
+	      /* new_oid has not been cached. Cache as a new object. */
+	      new_mop = ws_new_mop (new_oid, class_mop);
+	    }
+	  else
+	    {
+	      /* Since new_oid may be deleted and reused for another object,
+	       * to decache cached mop and unlink mvcc_link to cache a new object.
+	       */
+
+	      assert (cached_mop_of_new->lock == NULL_LOCK);
+
+	      ws_decache (cached_mop_of_new);
+
+	      cached_mop_of_new->mvcc_link = NULL;
+	      cached_mop_of_new->permanent_mvcc_link = 0;
+
+	      /* ws_mop will remove the old class_mop link and link to the new one
+	       * and reset mop->decached to reuse it.
+	       */
+	      new_mop = ws_mop (new_oid, class_mop);
+	    }
+
+	  assert (new_mop->mvcc_link == NULL
+		  && new_mop->permanent_mvcc_link == 0);
 	  mop->mvcc_link = new_mop;
 
 	  new_mop->pruning_type = pruning_type;
@@ -843,7 +868,7 @@ ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
  * return	  : MOP or NULL if not found.
  * oid (in)	  : Object identifier.
  */
-static MOP
+MOP
 ws_mop_if_exists (OID * oid)
 {
   MOP mop = NULL;
@@ -1336,7 +1361,6 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
   return true;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_new_mop - optimized version of ws_mop when OID being entered into the
  * workspace is guaranteed to be unique.
@@ -1389,7 +1413,6 @@ ws_new_mop (OID * oid, MOP class_mop)
 
   return (mop);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ws_update_oid_and_class - change the OID of a MOP and recache the class mop

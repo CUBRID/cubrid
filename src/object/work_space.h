@@ -549,13 +549,12 @@ extern void ws_area_final (void);
 
 /* MOP allocation functions */
 extern MOP ws_mop (OID * oid, MOP class_mop);
+extern MOP ws_mop_if_exists (OID * oid);
 extern MOP ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
 				bool updated_by_me);
 extern MOP ws_vmop (MOP class_mop, int flags, DB_VALUE * keys);
 extern bool ws_rehash_vmop (MOP mop, MOBJ class_obj, DB_VALUE * newkey);
-#if defined (ENABLE_UNUSED_FUNCTION)
 extern MOP ws_new_mop (OID * oid, MOP class_mop);
-#endif
 extern void ws_update_oid (MOP mop, OID * newoid);
 extern int ws_update_oid_and_class (MOP mop, OID * new_oid,
 				    OID * new_class_oid);

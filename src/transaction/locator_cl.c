@@ -4514,6 +4514,9 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 				  &obj->class_oid)))
 		{
 		  MOP new_mop;
+		  MOP cached_mop_of_new;
+		  OID *new_oid;
+
 		  MOP new_class_mop =
 		    ws_mop (&obj->class_oid, sm_Root_class_mop);
 
@@ -4535,9 +4538,34 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 						  &smclass, AU_FETCH_READ);
 			}
 
-		      new_mop =
-			ws_mop (OID_ISNULL (&obj->updated_oid) ?
-				&obj->oid : &obj->updated_oid, new_class_mop);
+		      new_oid = OID_ISNULL (&obj->updated_oid) ?
+			&obj->oid : &obj->updated_oid;
+		      cached_mop_of_new = ws_mop_if_exists (new_oid);
+		      if (cached_mop_of_new == NULL)
+			{
+			  /* new_oid has not been cached. Cache as a new object. */
+			  new_mop = ws_new_mop (new_oid, new_class_mop);
+			}
+		      else
+			{
+			  /* Since new_oid may be deleted and reused for another
+			   * lobject, to decache cached mop and unlink mvcc_link
+			   * to cache a new object.
+			   */
+
+			  assert (cached_mop_of_new->lock == NULL_LOCK);
+
+			  ws_decache (cached_mop_of_new);
+
+			  cached_mop_of_new->mvcc_link = NULL;
+			  cached_mop_of_new->permanent_mvcc_link = 0;
+
+			  /* ws_mop will remove the old class_mop link and link to the new one
+			   * and reset mop->decached to reuse it. 
+			   */
+			  new_mop = ws_mop (new_oid, new_class_mop);
+			}
+
 		      if (new_mop == NULL)
 			{
 			  error_code = ER_FAILED;
@@ -4565,6 +4593,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 			  new_mop->pruning_type = mop_toid->mop->pruning_type;
 
 			  /* Set MVCC link */
+			  assert (new_mop->mvcc_link == NULL
+				  && new_mop->permanent_mvcc_link == 0);
 			  mop_toid->mop->mvcc_link = new_mop;
 			  /* Mvcc is link is not yet permanent */
 			  mop_toid->mop->permanent_mvcc_link = 0;
