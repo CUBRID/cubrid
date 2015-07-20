@@ -872,7 +872,8 @@ static FUNCTION_MAP functions[] = {
   {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
   {"to_time_tz", PT_TO_TIME_TZ},
   {"utc_timestamp", PT_UTC_TIMESTAMP},
-  {"crc32", PT_CRC32}
+  {"crc32", PT_CRC32},
+  {"schema_def", PT_SCHEMA_DEF}
 };
 
 
@@ -1160,7 +1161,7 @@ int g_original_buffer_len;
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 597 "../../src/parser/csql_grammar.y"
+#line 598 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1171,8 +1172,8 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2604 of glr.c.  */
-#line 1176 "../../src/parser/csql_grammar.h"
+/* Line 2616 of glr.c.  */
+#line 1177 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

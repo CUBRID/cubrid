@@ -4047,6 +4047,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "utc_timestamp ";
     case PT_CRC32:
       return "crc32 ";
+    case PT_SCHEMA_DEF:
+      return "schema_def";
     default:
       return "unknown opcode";
     }
@@ -12494,6 +12496,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+    case PT_SCHEMA_DEF:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " schema_def(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
     }
 
   for (t = p->or_next; t; t = t->or_next)
@@ -18251,6 +18259,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_ROW_COUNT:
 	case PT_DEFAULTF:
 	case PT_OID_OF_DUPLICATE_KEY:
+	case PT_SCHEMA_DEF:
 	  return true;
 	case PT_FLOOR:
 	case PT_CEIL:

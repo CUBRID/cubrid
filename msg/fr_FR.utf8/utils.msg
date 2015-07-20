@@ -1203,4 +1203,5 @@ valid options:\n\
   -r, --report-only             report replication integrity based on checksum calculation\n\
                                 any options except --table-name will be ignored\n\
       --resume                  resume calculating checksum\n\
+      --schema-only             check only schema consistency\n\
       --cont-on-error           continue on calculation error\n

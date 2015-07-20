@@ -188,6 +188,9 @@ extern int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 
 extern void help_print_trigger (const char *name, FILE * fpp);
 
+extern PARSER_VARCHAR *obj_print_describe_class (const PARSER_CONTEXT * parser,
+                                       CLASS_HELP *class_schema,
+                                       DB_OBJECT *class_op);
 #endif /* !SERVER_MODE */
 
 extern PARSER_VARCHAR *describe_money (const PARSER_CONTEXT * parser,

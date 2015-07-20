@@ -4892,6 +4892,22 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads_count = num;
       break;
+    case PT_SCHEMA_DEF:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
 
     default:
       return false;
@@ -7060,6 +7076,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_TO_TIME_TZ:
     case PT_UTC_TIMESTAMP:
     case PT_CRC32:
+    case PT_SCHEMA_DEF:
       return false;
 
     default:
@@ -9358,6 +9375,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_CRC32:
+    case PT_SCHEMA_DEF:
       return true;
 
     default:
@@ -12739,6 +12757,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_SCHEMA:
     case PT_CURRENT_USER:
     case PT_INET_NTOA:
+    case PT_SCHEMA_DEF:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
       if (op != PT_TO_CHAR)
@@ -20055,6 +20074,41 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	{
 	  return 1;
 	}
+    case PT_SCHEMA_DEF:
+      {
+	error = db_get_schema_def_dbval (result, arg1);
+	if (error < 0)
+	  {
+	    const char * table_name = NULL;
+	    if (error != ER_QSTR_INVALID_DATA_TYPE)
+	      {
+		table_name = db_get_string (arg1);
+		assert (table_name != NULL);
+
+		if (error == ER_OBJ_NOT_A_CLASS)
+		  {
+		    PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC,
+		                 MSGCAT_SEMANTIC_IS_NOT_A,  table_name,
+		                 pt_show_misc_type (PT_CLASS));
+		    return 0;
+		  }
+		else if (error == ER_AU_SELECT_FAILURE)
+		  {
+		    PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_RUNTIME,
+		       MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+		       "select", table_name);
+		    return 0;
+		  }
+	      }
+
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	else
+	  {
+	    return 1;
+	  }
+      }
 
     default:
       break;

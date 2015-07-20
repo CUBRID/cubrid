@@ -1545,6 +1545,8 @@ typedef struct _ha_config
 #define CHECKSUM_TABLE_NAME_L			"table-name"
 #define CHECKSUM_REPORT_ONLY_S			'r'
 #define CHECKSUM_REPORT_ONLY_L			"report-only"
+#define CHECKSUM_SCHEMA_ONLY_S			14002
+#define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"

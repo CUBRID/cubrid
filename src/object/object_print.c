@@ -1676,6 +1676,217 @@ obj_print_help_free_class (CLASS_HELP * info)
 }
 
 /*
+ * describe_class () - Describes the definition of a class
+ *   return: create table string
+ *   parser(in):
+ *   class_schema(in):
+ *   class_op(in):
+ */
+PARSER_VARCHAR *
+obj_print_describe_class (const PARSER_CONTEXT *parser, CLASS_HELP *class_schema, DB_OBJECT *class_op)
+{
+  PARSER_VARCHAR *buffer;
+  char **line_ptr;
+
+  buffer = NULL;
+
+  /* class name */
+  buffer = pt_append_nulstring (parser, buffer, "CREATE TABLE ");
+  buffer = pt_append_nulstring (parser, buffer, class_schema->name);
+
+  /* under or as subclass of */
+  if (class_schema->supers != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " UNDER ");
+
+      for (line_ptr = class_schema->supers; *line_ptr != NULL; line_ptr++)
+	{
+	  if (line_ptr != class_schema->supers)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	}
+    }
+
+  /* class attributes */
+  if (class_schema->class_attributes != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " CLASS ATTRIBUTE (");
+
+      for (line_ptr = class_schema->class_attributes; *line_ptr != NULL;
+	   line_ptr++)
+	{
+	  if (line_ptr != class_schema->class_attributes)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	}
+
+      buffer = pt_append_nulstring (parser, buffer, ")");
+    }
+
+  /* attributes and constraints */
+  if (class_schema->attributes != NULL || class_schema->constraints != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " (");
+      if (class_schema->attributes != NULL)
+	{
+	  for (line_ptr = class_schema->attributes; *line_ptr != NULL;
+	       line_ptr++)
+	    {
+	      if (line_ptr != class_schema->attributes)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	    }
+	}
+      if (class_schema->constraints != NULL)
+	{
+	  for (line_ptr = class_schema->constraints; *line_ptr != NULL;
+	       line_ptr++)
+	    {
+	      if (line_ptr != class_schema->constraints
+		  || class_schema->attributes != NULL)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	    }
+	}
+      buffer = pt_append_nulstring (parser, buffer, ")");
+    }
+
+  /* reuse_oid flag */
+  if (sm_is_reuse_oid_class (class_op))
+    {
+      buffer = pt_append_nulstring (parser, buffer, " REUSE_OID");
+      if (class_schema->collation != NULL)
+	{
+	  buffer = pt_append_nulstring (parser, buffer, ",");
+	}
+      else
+	{
+	  buffer = pt_append_nulstring (parser, buffer, " ");
+	}
+
+    }
+
+  /* collation */
+  if (class_schema->collation != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " COLLATE ");
+      buffer = pt_append_nulstring (parser, buffer, class_schema->collation);
+    }
+
+  /* methods and class_methods  */
+  if (class_schema->methods != NULL || class_schema->class_methods != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " METHOD ");
+      if (class_schema->methods != NULL)
+	{
+	  for (line_ptr = class_schema->methods; *line_ptr != NULL;
+	       line_ptr++)
+	    {
+	      if (line_ptr != class_schema->methods)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	    }
+	}
+      if (class_schema->class_methods != NULL)
+	{
+	  for (line_ptr = class_schema->class_methods; *line_ptr != NULL;
+	       line_ptr++)
+	    {
+	      if (line_ptr != class_schema->class_methods
+		  || class_schema->methods != NULL)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, " CLASS ");
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	    }
+	}
+    }
+
+  /* method files */
+  if (class_schema->method_files != NULL)
+    {
+      char tmp[PATH_MAX + 2];
+
+      buffer = pt_append_nulstring (parser, buffer, " FILE ");
+      for (line_ptr = class_schema->method_files; *line_ptr != NULL;
+	   line_ptr++)
+	{
+	  if (line_ptr != class_schema->method_files)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  snprintf (tmp, PATH_MAX + 2, "'%s'", *line_ptr);
+	  buffer = pt_append_nulstring (parser, buffer, tmp);
+	}
+    }
+
+  /* inherit */
+  if (class_schema->resolutions != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " INHERIT ");
+      for (line_ptr = class_schema->resolutions; *line_ptr != NULL;
+	   line_ptr++)
+	{
+	  if (line_ptr != class_schema->resolutions)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", ");
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	}
+    }
+
+  /* partition */
+  if (class_schema->partition != NULL)
+    {
+      char **first_ptr;
+
+      line_ptr = class_schema->partition;
+      buffer = pt_append_nulstring (parser, buffer, " ");
+      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+      line_ptr++;
+      if (*line_ptr != NULL)
+	{
+	  buffer = pt_append_nulstring (parser, buffer, " (");
+	  for (first_ptr = line_ptr; *line_ptr != NULL; line_ptr++)
+	    {
+	      if (line_ptr != first_ptr)
+		{
+		  buffer = pt_append_nulstring (parser, buffer, ", ");
+		}
+	      buffer = pt_append_nulstring (parser, buffer, *line_ptr);
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, ")");
+	}
+    }
+
+  /* comment */
+  if (class_schema->comment != NULL && class_schema->comment[0] != '\0')
+    {
+      DB_VALUE comment_value;
+      DB_MAKE_NULL (&comment_value);
+      DB_MAKE_STRING (&comment_value, class_schema->comment);
+
+      buffer = pt_append_nulstring (parser, buffer, " COMMENT=");
+      buffer = describe_value (parser, buffer, &comment_value);
+
+      pr_clear_value (&comment_value);
+    }
+
+  return buffer;
+}
+
+/*
  * obj_print_help_class () - Constructs a class help structure containing textual
  *                 information about the class.
  *   return: class help structure

@@ -9312,7 +9312,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    parser_free_node (parser, current_user_val);
 		    break;
 		  }
+		case PT_SCHEMA_DEF:
+		  {
+		    /* cannot get here */
+		    assert (false);
 
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+		    PT_ERRORc (parser, node, er_msg ());
+
+		    return NULL;
+		  }
 		case PT_USER:
 		  {
 		    char *user = NULL;

@@ -2404,3 +2404,111 @@ db_get_btree_statistics (DB_CONSTRAINT * cons,
 
   return NO_ERROR;
 }
+
+/*
+ * db_get_schema_def_dbval() - get "show create table" string for a given class
+ * return : error code
+ * result(out):
+ * name_val(in):
+ */
+int
+db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
+{
+  PARSER_CONTEXT *parser;
+  DB_TYPE type;
+  DB_OBJECT *class_op;
+  CLASS_HELP *class_schema = NULL;
+  PARSER_VARCHAR *buffer;
+  const char *table_name;
+  char *schema_str;
+  int error_status = NO_ERROR;
+
+  assert (result != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (name_val))
+    {
+      PRIM_SET_NULL (result);
+      return NO_ERROR;
+    }
+
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      goto error;
+    }
+
+      type = DB_VALUE_DOMAIN_TYPE (name_val);
+      if (QSTR_IS_ANY_CHAR (type))
+	{
+	  table_name = db_get_string (name_val);
+	  assert (table_name != NULL);
+
+	  class_op = sm_find_class (table_name);
+	  if (class_op == NULL)
+	    {
+	      goto error;
+	    }
+
+	  if (db_is_class (class_op) == false)
+	    {
+	      error_status = ER_OBJ_NOT_A_CLASS;
+	      goto error;
+	    }
+
+	  class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
+	  if (class_schema == NULL)
+	    {
+	      goto error;
+	    }
+
+	  buffer = obj_print_describe_class (parser, class_schema, class_op);
+	  if (buffer == NULL)
+	    {
+	      goto error;
+	    }
+
+	  schema_str = (char *) pt_get_varchar_bytes (buffer);
+	  db_make_string_copy (result, schema_str);
+	}
+      else
+	{
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	  goto error;
+	}
+
+  if (parser != NULL)
+    {
+      parser_free_parser (parser);
+    }
+
+  if (class_schema != NULL)
+    {
+      obj_print_help_free_class (class_schema);
+    }
+
+  return error_status;
+
+error:
+  PRIM_SET_NULL (result);
+
+  if (parser != NULL)
+    {
+      parser_free_parser (parser);
+    }
+
+  if (class_schema != NULL)
+    {
+      obj_print_help_free_class (class_schema);
+    }
+
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      return NO_ERROR;
+    }
+  else if (error_status == NO_ERROR)
+    {
+      error_status = er_errid ();
+    }
+
+  return error_status;
+}

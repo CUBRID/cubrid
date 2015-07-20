@@ -301,7 +301,8 @@ static FUNCTION_MAP functions[] = {
   {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
   {"to_time_tz", PT_TO_TIME_TZ},
   {"utc_timestamp", PT_UTC_TIMESTAMP},
-  {"crc32", PT_CRC32}
+  {"crc32", PT_CRC32},
+  {"schema_def", PT_SCHEMA_DEF}
 };
 
 
@@ -23941,16 +23942,34 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
     case PT_CRC32:
-      if (c != 1)
-        {
-	  return NULL;
-	}
-      a1 = args;
-      if (key->op == PT_COERCIBILITY && a1)
-	{
-	  a1->do_not_fold = 1;
-	}
-      return parser_make_expression (this_parser, key->op, a1, NULL, NULL);
+    case PT_SCHEMA_DEF:
+      {
+	PT_NODE *expr;
+	if (c != 1)
+	  {
+	    return NULL;
+	  }
+	a1 = args;
+	if (key->op == PT_COERCIBILITY && a1)
+	  {
+	    a1->do_not_fold = 1;
+	  }
+	
+	expr = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
+	if (key->op == PT_SCHEMA_DEF && a1)
+	  {
+	    if (!PT_IS_VALUE_NODE (a1) 
+		|| (a1->type_enum != PT_TYPE_NULL 
+		    && !PT_IS_STRING_TYPE(a1->type_enum)))
+	      {
+		PT_ERRORf (this_parser, a1, "%s argument must be "
+		    "a string literal", pt_short_print (this_parser, expr));
+		return NULL;
+	      }
+	  }
+	
+	return expr;
+      }
 
     case PT_UNIX_TIMESTAMP:
       if (c > 1)

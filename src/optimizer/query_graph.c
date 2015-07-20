@@ -3329,6 +3329,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_DBTIMEZONE:
     case PT_SESSIONTIMEZONE:
     case PT_UTC_TIMESTAMP:
+    case PT_SCHEMA_DEF:
       return RANK_EXPR_LIGHT;
 
       /* Group 2 -- medium */
@@ -3850,6 +3851,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_DEFAULTF:
 	case PT_LIST_DBS:
 	case PT_OID_OF_DUPLICATE_KEY:
+	case PT_SCHEMA_DEF:
 	  return true;
 	case PT_FLOOR:
 	case PT_CEIL:
