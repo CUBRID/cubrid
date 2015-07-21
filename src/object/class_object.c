@@ -7706,6 +7706,10 @@ classobj_fixup_loaded_class (SM_CLASS * class_)
       (void) classobj_cache_class_constraints (class_);
       (void) classobj_cache_constraints (class_);
     }
+  else
+    {
+      class_->recache_constraints = 1;
+    }
 }
 
 /*
@@ -8125,6 +8129,10 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
 	{
 	  goto memory_error;
 	}
+    }
+  else
+    {
+      class_->recache_constraints = 1;
     }
 
   return NO_ERROR;
