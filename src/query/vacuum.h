@@ -380,4 +380,8 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY *
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 
 extern void vacuum_check_interrupted_jobs (THREAD_ENTRY * thread_p);
+extern int vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p,
+					      LOG_RCV * rcv);
+extern int vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p,
+					      LOG_RCV * rcv);
 #endif /* _VACUUM_H_ */

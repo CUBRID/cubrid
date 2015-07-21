@@ -956,6 +956,13 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_record_modify,
    btree_rv_keyval_dump,
    log_rv_dump_hexa},
+
+  {RVVAC_HEAP_RECORD_VACUUM,
+   "RVVAC_HEAP_RECORD_VACUUM",
+   vacuum_rv_undo_vacuum_heap_record,
+   vacuum_rv_redo_vacuum_heap_record,
+   NULL,
+   log_rv_dump_hexa}
 };
 
 /*
