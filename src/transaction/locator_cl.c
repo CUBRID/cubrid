@@ -4548,14 +4548,11 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 			}
 		      else
 			{
-			  /* Since new_oid may be deleted and reused for another
-			   * lobject, to decache cached mop and unlink mvcc_link
-			   * to cache a new object.
-			   */
-
-			  assert (cached_mop_of_new->lock == NULL_LOCK);
-
-			  ws_decache (cached_mop_of_new);
+			  if (!cached_mop_of_new->decached)
+			    {
+			      assert (!cached_mop_of_new->dirty);
+			      ws_decache (cached_mop_of_new);
+			    }
 
 			  cached_mop_of_new->mvcc_link = NULL;
 			  cached_mop_of_new->permanent_mvcc_link = 0;
