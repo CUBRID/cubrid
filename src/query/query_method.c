@@ -317,7 +317,7 @@ method_invoke_for_server (unsigned int rc,
   int value_count;
   DB_VALUE value;
   METHOD_SIG *meth_sig_p;
-  int error;
+  int error = NO_ERROR;
   VACOMM_BUFFER vacomm_buffer;
   int count;
   DB_VALUE *value_p;
@@ -439,13 +439,19 @@ method_invoke_for_server (unsigned int rc,
 	      /* Don't call the method if the object is NULL or it has been
 	       * deleted.  A method call on a NULL object is NULL.
 	       */
-	      if ((DB_IS_NULL (values_p[0])) ||
-		  !(db_is_any_class (DB_GET_OBJECT (values_p[0])) ||
-		    db_is_instance (DB_GET_OBJECT (values_p[0]))))
+	      if (!DB_IS_NULL (values_p[0]))
+		{
+		  error = db_is_any_class (DB_GET_OBJECT (values_p[0]));
+		  if (error == 0)
+		    {
+		      error = db_is_instance (DB_GET_OBJECT (values_p[0]));
+		    }
+		}
+	      if (error == ER_HEAP_UNKNOWN_OBJECT)
 		{
 		  error = NO_ERROR;
 		}
-	      else
+	      else if (error > 0)
 		{
 		  /* methods must run with authorization turned on and database
 		   * modifications turned off.

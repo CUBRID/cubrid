@@ -1377,7 +1377,7 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      for (i = 0; i < *num_classes; ++i)
 		{
 		  if (sm_is_reuse_oid_class ((*classes)[i])
-		      || sm_is_system_class ((*classes)[i]))
+		      || sm_is_system_class ((*classes)[i]) > 0)
 		    {
 		      local &= PT_NOT_UPDATABLE;
 		      break;
@@ -2480,7 +2480,7 @@ mq_translatable_class (PARSER_CONTEXT * parser, PT_NODE * class_)
     }
 
   /* vclasses, aka views, are otherwise translatable */
-  if (db_is_vclass (class_->info.name.db_object))
+  if (db_is_vclass (class_->info.name.db_object) > 0)
     {
       return 1;
     }
@@ -4466,6 +4466,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   bool viable;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   int what_for = DB_AUTH_INSERT;
+  int is_class = 0;
 
   insert_statement->next = NULL;
   from = insert_statement->info.insert.spec;
@@ -4641,7 +4642,12 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	    }
 
 	  viable = false;
-	  if (db_is_class (flat->info.name.db_object))
+	  is_class = db_is_class (flat->info.name.db_object);
+	  if (is_class < 0)
+	    {
+	      return NULL;
+	    }
+	  if (is_class)
 	    {
 	      viable = true;
 	    }
@@ -4880,7 +4886,7 @@ mq_push_paths_select (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  flat = path->info.spec.flat_entity_list;
 	  if (flat)
 	    {
-	      if (!db_is_class (flat->info.name.db_object))
+	      if (db_is_class (flat->info.name.db_object) <= 0)
 		{
 		  if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
 		    {
@@ -4895,7 +4901,7 @@ mq_push_paths_select (PARSER_CONTEXT * parser, PT_NODE * statement,
 		    }
 		  else
 		    if (spec->info.spec.derived_table_type
-			&& db_is_vclass (flat->info.name.db_object))
+			&& db_is_vclass (flat->info.name.db_object) > 0)
 		    {
 		      subquery =
 			mq_fetch_subqueries_for_update (parser, flat,
@@ -5650,7 +5656,8 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
 		       */
 		      if ((attr_class = attr_type->info.data_type.entity))
 			{
-			  if (db_is_vclass (attr_class->info.name.db_object))
+			  if (db_is_vclass (attr_class->info.name.db_object) >
+			      0)
 			    {
 			      col_type->info.data_type.virt_object =
 				attr_class->info.name.db_object;
@@ -5829,8 +5836,16 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
 
   cascaded_check = sm_get_class_flag (class_object,
 				      SM_CLASSFLAG_WITHCHECKOPTION);
+  if (cascaded_check < 0)
+    {
+      return NULL;
+    }
   local_check = sm_get_class_flag (class_object,
 				   SM_CLASSFLAG_LOCALCHECKOPTION);
+  if (local_check < 0)
+    {
+      return NULL;
+    }
 
   while (db_query_spec)
     {
@@ -5870,9 +5885,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
       if (!query_spec)
 	return NULL;
 
-      if (sm_get_class_flag (class_object,
-			     SM_CLASSFLAG_LOCALCHECKOPTION)
-	  && query_spec->node_type == PT_SELECT)
+      if (local_check && query_spec->node_type == PT_SELECT)
 	{
 	  /* We have a local check option for a simple select statement.
 	   * This is the ANSI test case. It does not handle a union
@@ -8486,7 +8499,7 @@ mq_translate_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  PT_INTERNAL_ERROR (parser, "translate");
 	}
       else if (flat && flat->info.name.meta_class == PT_CLASS	/* NOT PT_META_CLASS */
-	       && (db_is_vclass (flat->info.name.db_object)))
+	       && (db_is_vclass (flat->info.name.db_object) > 0))
 	{
 	  next = path_spec->next;
 	  references = mq_get_references (parser, statement, path_spec);
@@ -8540,7 +8553,7 @@ mq_translate_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	       *          1) relational proxies can inherently only refer
 	       *             to one table.
 	       */
-	      if (db_is_class (real_class->info.name.db_object))
+	      if (db_is_class (real_class->info.name.db_object) > 0)
 		{
 		  /* find all the rest of the matches */
 		  for (; flat != NULL; flat = flat->next)
@@ -10103,7 +10116,7 @@ mq_set_virt_object (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       /* To distinguish between "V" and "class V" (V is a view) */
       && cls->info.name.meta_class != PT_META_CLASS)
     {
-      if (db_is_vclass (cls->info.name.db_object))
+      if (db_is_vclass (cls->info.name.db_object) > 0)
 	{
 	  dt->info.data_type.virt_object = cls->info.name.db_object;
 	  if (mq_is_updatable (cls->info.name.db_object))
@@ -10162,7 +10175,7 @@ mq_fix_derived (PARSER_CONTEXT * parser, PT_NODE * select_statement,
 	    {
 	      /* To distinguish between "V" and "class V" (V is a view) */
 	      if (cls->info.name.meta_class != PT_META_CLASS
-		  && db_is_vclass (cls->info.name.db_object))
+		  && db_is_vclass (cls->info.name.db_object) > 0)
 		{
 		  dt->info.data_type.virt_object = cls->info.name.db_object;
 		  had_virtual = 1;
@@ -10334,7 +10347,7 @@ mq_translate_value (PARSER_CONTEXT * parser, PT_NODE * value)
       && (data_type = value->data_type)
       && (class_ = data_type->info.data_type.entity)
       && class_->node_type == PT_NAME
-      && db_is_vclass (class_->info.name.db_object))
+      && db_is_vclass (class_->info.name.db_object) > 0)
     {
       data_type->info.data_type.virt_object = class_->info.name.db_object;
       real_object = db_real_instance (value->info.value.data_value.op);
@@ -10713,6 +10726,7 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser,
 {
   PARSER_CONTEXT *query_cache;
   DB_OBJECT *class_object;
+  int is_class = 0;
 
   if (!class_ || !(class_object = class_->info.name.db_object)
       || !qry_cache || db_is_class (class_object))

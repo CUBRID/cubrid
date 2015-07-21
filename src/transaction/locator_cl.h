@@ -71,7 +71,7 @@ typedef enum
 } LC_OBJTYPE;
 
 extern bool locator_is_root (MOP mop);
-extern bool locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose);
+extern int locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose);
 extern LOCK locator_fetch_mode_to_lock (DB_FETCH_MODE purpose,
 					LC_OBJTYPE type, LC_FETCH_VERSION_TYPE
 					fetch_version_type);

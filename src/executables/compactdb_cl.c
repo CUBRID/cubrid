@@ -1379,6 +1379,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
   bool can_reclaim_addresses = true;
   LIST_MOPS *lmops = NULL;
   HFID *hfid = NULL;
+  int is_class = 0;
 
   assert (!OID_ISNULL (&class_oid));
   assert (any_class_can_be_referenced != NULL);
@@ -1420,7 +1421,13 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
       goto error_exit;
     }
 
-  if (!locator_is_class (class_mop, DB_FETCH_WRITE))
+  is_class = locator_is_class (class_mop, DB_FETCH_WRITE);
+  if (is_class < 0)
+    {
+      skipped_error_code = is_class;
+      goto error_exit;
+    }
+  if (!is_class)
     {
       skipped_error_code = ER_FAILED;
       goto error_exit;

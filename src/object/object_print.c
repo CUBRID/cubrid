@@ -1683,7 +1683,8 @@ obj_print_help_free_class (CLASS_HELP * info)
  *   class_op(in):
  */
 PARSER_VARCHAR *
-obj_print_describe_class (const PARSER_CONTEXT *parser, CLASS_HELP *class_schema, DB_OBJECT *class_op)
+obj_print_describe_class (const PARSER_CONTEXT * parser,
+			  CLASS_HELP * class_schema, DB_OBJECT * class_op)
 {
   PARSER_VARCHAR *buffer;
   char **line_ptr;
@@ -1909,6 +1910,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   char **strs;
   const char *kludge;
   PARSER_VARCHAR *buffer;
+  int is_class = 0;
   SM_CLASS *subclass;
   char *description;
   char name_buf[SM_MAX_IDENTIFIER_LENGTH + SM_MAX_CLASS_COMMENT_LENGTH + 50];
@@ -1931,7 +1933,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
   include_inherited = (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND);
 
-  if (!locator_is_class (op, DB_FETCH_READ) || locator_is_root (op))
+  is_class = locator_is_class (op, DB_FETCH_READ);
+  if (is_class < 0)
+    {
+      goto error_exit;
+    }
+  if (!is_class || locator_is_root (op))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       goto error_exit;
@@ -3055,7 +3062,7 @@ help_obj (MOP op)
   SM_CLASS *class_;
   SM_ATTRIBUTE *attribute_p;
   char *obj;
-  int i, count;
+  int i, count, is_class = 0;
   OBJ_HELP *info = NULL;
   char **strs;
   char temp_buffer[SM_MAX_IDENTIFIER_LENGTH + 4];	/* Include room for _=_\0 */
@@ -3075,7 +3082,15 @@ help_obj (MOP op)
 
   buffer = NULL;
 
-  if (op == NULL || locator_is_class (op, DB_FETCH_READ))
+  if (op != NULL)
+    {
+      is_class = locator_is_class (op, DB_FETCH_READ);
+      if (is_class < 0)
+	{
+	  goto error_exit;
+	}
+    }
+  if (op == NULL || is_class)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       goto error_exit;
@@ -3200,7 +3215,12 @@ help_fprint_obj (FILE * fp, MOP obj)
   TRIGGER_HELP *tinfo;
   int i, status;
 
-  if (locator_is_class (obj, DB_FETCH_READ))
+  status = locator_is_class (obj, DB_FETCH_READ);
+  if (status < 0)
+    {
+      return;
+    }
+  if (status > 0)
     {
       if (locator_is_root (obj))
 	{
@@ -3661,7 +3681,7 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 
 	  required =
 	    strlen (oidbuffer) + strlen (sm_ch_name ((MOBJ) class_)) + 2;
-	  if (locator_is_class (obj, DB_FETCH_READ))
+	  if (locator_is_class (obj, DB_FETCH_READ) > 0)
 	    {
 	      required++;
 	      if (maxlen >= required)

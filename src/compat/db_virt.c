@@ -216,7 +216,7 @@ db_is_real_instance (DB_OBJECT * obj)
   CHECK_CONNECT_ZERO ();
   CHECK_1ARG_ZERO (obj);
 
-  if (locator_is_class (obj, DB_FETCH_READ))
+  if (locator_is_class (obj, DB_FETCH_READ) > 0)
     {
       return 1;
     }
@@ -272,7 +272,7 @@ db_real_instance (DB_OBJECT * obj)
  *   objects are equal. Two objects are equal if both are updatable and they
  *   represent the same object, or if both are non-updatable but their
  *   attributes are equal. If the objects are not equal, 0 is returned.
- * return : non-zero if obj1 is equal to obj2
+ * return : < 0 if error, > 0 if obj1 is equal to obj2, 0 otherwise
  * obj1(in): an object
  * obj2(in): an object
  */
@@ -281,6 +281,7 @@ db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2)
 {
   int retval;
   int obj1_is_updatable, obj2_is_updatable;
+  int is_class = 0;
 
   CHECK_CONNECT_ZERO ();
   CHECK_2ARGS_ZERO (obj1, obj2);
@@ -290,8 +291,23 @@ db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2)
       return 1;
     }
 
-  if (locator_is_class (obj1, DB_FETCH_READ)
-      || locator_is_class (obj2, DB_FETCH_READ))
+  is_class = locator_is_class (obj1, DB_FETCH_READ);
+  if (is_class < 0)
+    {
+      return is_class;
+    }
+  if (is_class)
+    {
+      /* We have already checked obj1 pointer vs obj2 pointer. The classes
+         cannot be equal if they are not the same MOP. */
+      return 0;
+    }
+  is_class = locator_is_class (obj2, DB_FETCH_READ);
+  if (is_class < 0)
+    {
+      return is_class;
+    }
+  if (is_class)
     {
       /* We have already checked obj1 pointer vs obj2 pointer. The classes
          cannot be equal if they are not the same MOP. */
@@ -331,7 +347,7 @@ db_is_updatable_object (DB_OBJECT * obj)
   CHECK_CONNECT_ZERO ();
   CHECK_1ARG_ZERO (obj);
 
-  if (locator_is_class (obj, DB_FETCH_READ))
+  if (locator_is_class (obj, DB_FETCH_READ) > 0)
     {
       if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
@@ -387,7 +403,7 @@ db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name)
   CHECK_CONNECT_ZERO ();
   CHECK_1ARG_ZERO (obj);
 
-  if (locator_is_class (obj, DB_FETCH_WRITE))
+  if (locator_is_class (obj, DB_FETCH_WRITE) > 0)
     {
       ERROR_SET (error, ER_OBJ_INVALID_ARGUMENTS);
       return 0;
@@ -658,15 +674,16 @@ db_get_object_id (MOP vclass)
 }
 
 /*
- * db_is_vclass() - This function returns a non-zero value if and only if the
+ * db_is_vclass() - This function returns a > 0 value if and only if the
  *    object is a virtual class.
- * return : non-zero if the object is a virtual class
+ * return : < 0 if error, > 0 if the object is a virtual class, = 0 otherwise
  * op(in): class pointer
  */
 int
 db_is_vclass (DB_OBJECT * op)
 {
   SM_CLASS *class_ = NULL;
+  int error = 0;
 
   CHECK_CONNECT_ZERO ();
 
@@ -674,13 +691,15 @@ db_is_vclass (DB_OBJECT * op)
     {
       return 0;
     }
-  if (!locator_is_class (op, DB_FETCH_READ))
+  error = locator_is_class (op, DB_FETCH_READ);
+  if (error <= 0)
     {
-      return 0;
+      return error;
     }
-  if (au_fetch_class_force (op, &class_, AU_FETCH_READ) != NO_ERROR)
+  error = au_fetch_class_force (op, &class_, AU_FETCH_READ);
+  if (error < 0)
     {
-      return 0;
+      return error;
     }
   if (sm_get_class_type (class_) != SM_VCLASS_CT)
     {

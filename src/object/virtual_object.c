@@ -1923,6 +1923,7 @@ vid_encode_object (DB_OBJECT * object, char *string,
 {
   DB_OBJECT *class_;
   OID *temp_oid;
+  int is_class = 0;
 
   if (object == NULL || (class_ = db_get_class (object)) == NULL)
     {
@@ -1952,7 +1953,20 @@ vid_encode_object (DB_OBJECT * object, char *string,
       return ER_FAILED;
     }
 
-  if (db_is_any_class (object) || db_is_class (class_))
+  is_class = db_is_any_class (object);
+  if (is_class < 0)
+    {
+      return is_class;
+    }
+  if (!is_class)
+    {
+      is_class = db_is_class (class_);
+      if (is_class < 0)
+	{
+	  return is_class;
+	}
+    }
+  if (is_class)
     {
       /* if the specified string length is less than */
       /* MIN_STRING_OID_LENGTH, we return this actual length          */
@@ -2009,7 +2023,12 @@ vid_encode_object (DB_OBJECT * object, char *string,
 	/* get {view,proxy,keys} of this vclass instance */
 	view = WS_OID (class_);
 	real_class = db_get_class (real_object);
-	if (db_is_class (real_class))
+	is_class = db_is_class (real_class);
+	if (is_class < 0)
+	  {
+	    return is_class;
+	  }
+	else if (is_class > 0)
 	  {
 	    /*
 	     * it's an instance of a vclass of a class

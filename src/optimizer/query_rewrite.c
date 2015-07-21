@@ -6989,7 +6989,7 @@ qo_can_generate_single_table_connect_by (PARSER_CONTEXT * parser,
       return false;
     }
 
-  if (sm_is_partitioned_class (name->info.name.db_object))
+  if (sm_is_partitioned_class (name->info.name.db_object) > 0)
     {
       return false;
     }

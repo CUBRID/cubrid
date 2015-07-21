@@ -452,7 +452,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
   int arg;
   int turn_on_auth = 1;
   DB_VALUE val;
-  int error;
+  int error = NO_ERROR;
   HL_HEAPID save_pri_heap_id;
   METHOD_SIG_LIST *method_sig_list;
 
@@ -506,16 +506,23 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      /* Don't call the method if the object is NULL or it has been
 	       * deleted.  A method call on a NULL object is NULL.
 	       */
-	      if ((DB_IS_NULL (scan_buffer_p->valptrs[0])) ||
-		  !(db_is_any_class
-		    (DB_GET_OBJECT (scan_buffer_p->valptrs[0]))
-		    ||
-		    db_is_instance (DB_GET_OBJECT
-				    (scan_buffer_p->valptrs[0]))))
+	      if (!DB_IS_NULL (scan_buffer_p->valptrs[0]))
+		{
+		  error =
+		    db_is_any_class (DB_GET_OBJECT
+				     (scan_buffer_p->valptrs[0]));
+		  if (error == 0)
+		    {
+		      error =
+			db_is_instance (DB_GET_OBJECT
+					(scan_buffer_p->valptrs[0]));
+		    }
+		}
+	      if (error == ER_HEAP_UNKNOWN_OBJECT)
 		{
 		  error = NO_ERROR;
 		}
-	      else
+	      else if (error > 0)
 		{
 		  /* methods must run with authorization turned on and database
 		   * modifications turned off.

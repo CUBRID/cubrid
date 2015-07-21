@@ -277,6 +277,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
   DB_OBJECT *obj1;
   const char *nam2;
   const char *label;
+  int is_class = 0;
 
   assert (parser != NULL);
   DB_MAKE_NULL (&val1);
@@ -377,7 +378,12 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	case PT_CLASSOID_ATTR:
 	  /* object is the class itself */
 	  db_make_object (val, obj1);
-	  if (!db_is_any_class (obj1))
+	  is_class = db_is_any_class (obj1);
+	  if (is_class < 0)
+	    {
+	      result = false;
+	    }
+	  else if (!is_class)
 	    {
 	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
 			  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
@@ -619,7 +625,12 @@ int
 pt_associate_label_with_value_check_reference (const char *label,
 					       DB_VALUE * val)
 {
-  if (pt_is_reference_to_reusable_oid (val))
+  int is_ref = pt_is_reference_to_reusable_oid (val);
+  if (is_ref < 0)
+    {
+      return is_ref;
+    }
+  if (is_ref > 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
@@ -631,14 +642,15 @@ pt_associate_label_with_value_check_reference (const char *label,
 /*
  * pt_is_reference_to_reusable_oid () - Returns true if the value passed in
  *                                      is an instance of a reusable OID class
- *   return: whether the value is an instance of a reusable OID class
+ *   return:  < 0 if error, > 0 if the value is an instance of a reusable OID
+ *	      class, == 0 otherwise
  *   val(in):
  * Note:
  * Instances of reusable OID classes are non-referable. References to such
  * instances should be only used internally by the server/client process with
  * great care.
  */
-bool
+int
 pt_is_reference_to_reusable_oid (DB_VALUE * val)
 {
   DB_OBJECT *obj_class = NULL;
@@ -646,7 +658,7 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
 
   if (val == NULL)
     {
-      return false;
+      return 0;
     }
 
   vtype = DB_VALUE_TYPE (val);
@@ -654,21 +666,27 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
   if (vtype == DB_TYPE_OBJECT)
     {
       DB_OBJECT *obj = DB_GET_OBJECT (val);
+      int is_class = 0;
 
       if (obj == NULL)
 	{
-	  return false;
+	  return 0;
 	}
 
-      if (db_is_class (obj))
+      is_class = db_is_class (obj);
+      if (is_class < 0)
 	{
-	  return false;
+	  return is_class;
+	}
+      if (is_class > 0)
+	{
+	  return 0;
 	}
 
       obj_class = db_get_class (obj);
       if (obj_class == NULL)
 	{
-	  return false;
+	  return 0;
 	}
     }
   else if (vtype == DB_TYPE_POINTER)
@@ -677,25 +695,25 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
 
       if (obj_tmpl == NULL)
 	{
-	  return false;
+	  return 0;
 	}
 
       obj_class = obj_tmpl->classobj;
       if (obj_class == NULL)
 	{
-	  return false;
+	  return 0;
 	}
     }
   else
     {
-      return false;
+      return 0;
     }
 
   if (sm_is_reuse_oid_class (obj_class))
     {
-      return true;
+      return 1;
     }
-  return false;
+  return 0;
 }
 
 /*
@@ -1113,7 +1131,15 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      if (serial_mop != NULL)
 		{
 		  serial_oid_p = db_identifier (serial_mop);
-		  error = do_get_serial_cached_num (&cached_num, serial_mop);
+		  if (serial_oid_p != NULL)
+		    {
+		      error =
+			do_get_serial_cached_num (&cached_num, serial_mop);
+		    }
+		  else
+		    {
+		      error = ER_FAILED;
+		    }
 		  if (error == NO_ERROR)
 		    {
 		      if (op == PT_CURRENT_VALUE)

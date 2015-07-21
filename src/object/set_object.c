@@ -4917,7 +4917,7 @@ static int
 assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
 		  bool implicit_coercion)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_ref = 0;
   TP_DOMAIN_STATUS status;
   TP_DOMAIN *domain;
   DB_VALUE temp;
@@ -4934,7 +4934,12 @@ assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
   swizzle_value (&temp, 1);
 
 #if !defined(SERVER_MODE)
-  if (pt_is_reference_to_reusable_oid (&temp))
+  is_ref = pt_is_reference_to_reusable_oid (&temp);
+  if (is_ref < 0)
+    {
+      return is_ref;
+    }
+  if (is_ref > 0)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);

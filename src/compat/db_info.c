@@ -276,7 +276,7 @@ db_get_base_classes (void)
 /*
  * db_is_class() - This function is used to test if a particular object
  *    pointer (MOP) actually is a reference to a class object.
- * return : non-zero if object is a class
+ * return :  < 0 if error, > 0 non-zero if object is a class, 0 otherwise
  * obj(in): a pointer to a class or instance
  *
  * note : If it can be detected that the MOP has been deleted, this will
@@ -287,6 +287,7 @@ int
 db_is_class (MOP obj)
 {
   SM_CLASS *class_ = NULL;
+  int result = 0;
 
   CHECK_CONNECT_ZERO ();
 
@@ -294,13 +295,19 @@ db_is_class (MOP obj)
     {
       return 0;
     }
-  if (!locator_is_class (obj, DB_FETCH_READ))
+  result = locator_is_class (obj, DB_FETCH_READ);
+  if (result < 0)
+    {
+      return result;
+    }
+  if (!result)
     {
       return 0;
     }
-  if (au_fetch_class_force (obj, &class_, AU_FETCH_READ) != NO_ERROR)
+  result = au_fetch_class_force (obj, &class_, AU_FETCH_READ);
+  if (result != NO_ERROR)
     {
-      return 0;
+      return result;
     }
 
   assert (class_ != NULL);
@@ -326,6 +333,7 @@ int
 db_is_any_class (MOP obj)
 {
   SM_CLASS *class_ = NULL;
+  int result = 0;
 
   CHECK_CONNECT_ZERO ();
 
@@ -333,13 +341,19 @@ db_is_any_class (MOP obj)
     {
       return 0;
     }
-  if (!locator_is_class (obj, DB_FETCH_READ))
+  result = locator_is_class (obj, DB_FETCH_READ);
+  if (result < 0)
+    {
+      return result;
+    }
+  if (!result)
     {
       return 0;
     }
-  if (au_fetch_class_force (obj, &class_, AU_FETCH_READ) != NO_ERROR)
+  result = au_fetch_class_force (obj, &class_, AU_FETCH_READ);
+  if (result != NO_ERROR)
     {
-      return 0;
+      return result;
     }
 
   assert (class_ != NULL);
@@ -467,7 +481,7 @@ db_is_system_class (MOP op)
   CHECK_CONNECT_ZERO ();
   CHECK_1ARG_ZERO (op);
 
-  retval = sm_is_system_class (op) ? true : false;
+  retval = sm_is_system_class (op);
 
   return retval;
 }
@@ -2437,44 +2451,45 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       goto error;
     }
 
-      type = DB_VALUE_DOMAIN_TYPE (name_val);
-      if (QSTR_IS_ANY_CHAR (type))
+  type = DB_VALUE_DOMAIN_TYPE (name_val);
+  if (QSTR_IS_ANY_CHAR (type))
+    {
+      table_name = db_get_string (name_val);
+      assert (table_name != NULL);
+
+      class_op = sm_find_class (table_name);
+      if (class_op == NULL)
 	{
-	  table_name = db_get_string (name_val);
-	  assert (table_name != NULL);
-
-	  class_op = sm_find_class (table_name);
-	  if (class_op == NULL)
-	    {
-	      goto error;
-	    }
-
-	  if (db_is_class (class_op) == false)
-	    {
-	      error_status = ER_OBJ_NOT_A_CLASS;
-	      goto error;
-	    }
-
-	  class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
-	  if (class_schema == NULL)
-	    {
-	      goto error;
-	    }
-
-	  buffer = obj_print_describe_class (parser, class_schema, class_op);
-	  if (buffer == NULL)
-	    {
-	      goto error;
-	    }
-
-	  schema_str = (char *) pt_get_varchar_bytes (buffer);
-	  db_make_string_copy (result, schema_str);
-	}
-      else
-	{
-	  error_status = ER_QSTR_INVALID_DATA_TYPE;
 	  goto error;
 	}
+
+      if (db_is_class (class_op) == false)
+	{
+	  error_status = ER_OBJ_NOT_A_CLASS;
+	  goto error;
+	}
+
+      class_schema =
+	obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
+      if (class_schema == NULL)
+	{
+	  goto error;
+	}
+
+      buffer = obj_print_describe_class (parser, class_schema, class_op);
+      if (buffer == NULL)
+	{
+	  goto error;
+	}
+
+      schema_str = (char *) pt_get_varchar_bytes (buffer);
+      db_make_string_copy (result, schema_str);
+    }
+  else
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
+    }
 
   if (parser != NULL)
     {

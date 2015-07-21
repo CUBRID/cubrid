@@ -1023,11 +1023,15 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      error = er_errid ();
 	      assert (error != NO_ERROR);
 	    }
-	  else if (sm_is_partitioned_class (super_class))
+	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_INHERIT_FROM_PARTITION_TABLE, 0);
-	      error = er_errid ();
+	      error = sm_is_partitioned_class (super_class);
+	      if (error > 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_INHERIT_FROM_PARTITION_TABLE, 0);
+		  error = er_errid ();
+		}
 	    }
 
 	  if (error != NO_ERROR)
@@ -9159,12 +9163,20 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      error = er_errid ();
 	      goto error_exit;
 	    }
-	  else if (sm_is_partitioned_class (super_class))
+	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_INHERIT_FROM_PARTITION_TABLE, 0);
-	      error = er_errid ();
-	      goto error_exit;
+	      error = sm_is_partitioned_class (super_class);
+	      if (error < 0)
+		{
+		  goto error_exit;
+		}
+	      if (error > 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_INHERIT_FROM_PARTITION_TABLE, 0);
+		  error = er_errid ();
+		  goto error_exit;
+		}
 	    }
 
 	  super_node = super_node->next;

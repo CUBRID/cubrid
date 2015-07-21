@@ -7157,22 +7157,29 @@ update_object_attribute (PARSER_CONTEXT * parser, DB_OTMPL * otemplate,
 			 PT_NODE * name, DB_ATTDESC * attr_desc,
 			 DB_VALUE * value)
 {
-  int error;
+  int error = NO_ERROR;
 
-  if (name->info.name.db_object && db_is_vclass (name->info.name.db_object))
+  if (name->info.name.db_object)
     {
-      /* this is a shared attribute of a view.
-       * this means this cannot be updated in the template for
-       * this real class. Its simply done separately by a db_put.
-       */
-      error = obj_set_shared (name->info.name.db_object,
-			      name->info.name.original, value);
+      error = db_is_vclass (name->info.name.db_object);
+      if (error < 0)
+	{
+	  return error;
+	}
+      if (error > 0)
+	{
+	  /* this is a shared attribute of a view.
+	   * this means this cannot be updated in the template for
+	   * this real class. Its simply done separately by a db_put.
+	   */
+	  error = obj_set_shared (name->info.name.db_object,
+				  name->info.name.original, value);
+	  return error;
+	}
     }
-  else
-    {
-      /* the normal case */
-      error = dbt_dput_internal (otemplate, attr_desc, value);
-    }
+
+  /* the normal case */
+  error = dbt_dput_internal (otemplate, attr_desc, value);
 
   return error;
 }
@@ -7223,8 +7230,14 @@ update_object_tuple (PARSER_CONTEXT * parser,
 	}
 
       object = DB_GET_OBJECT (cls_info->oid);
-      if (db_is_deleted (object))
+      error = db_is_deleted (object);
+      if (error < 0)
 	{
+	  return error;
+	}
+      if (error > 0)
+	{
+	  error = NO_ERROR;
 	  continue;
 	}
 
@@ -7303,16 +7316,29 @@ update_object_tuple (PARSER_CONTEXT * parser,
 	   assign != NULL && error == NO_ERROR; assign = assign->next)
 	{
 	  /* if this is the first update, get the attribute descriptor */
-	  if (assign->attr_desc == NULL
-	      /* don't get descriptors for shared attrs of views */
-	      && (assign->upd_col_name->info.name.db_object == NULL
-		  || !db_is_vclass (assign->upd_col_name->info.
-				    name.db_object)))
+	  if (assign->attr_desc == NULL)
 	    {
-	      error = db_get_attribute_descriptor (real_object,
-						   assign->upd_col_name->info.
-						   name.original, 0, 1,
-						   &assign->attr_desc);
+	      int is_vclass = 0;
+
+	      /* don't get descriptors for shared attrs of views */
+	      if (assign->upd_col_name->info.name.db_object != NULL)
+		{
+		  is_vclass =
+		    db_is_vclass (assign->upd_col_name->info.name.db_object);
+
+		  if (is_vclass < 0)
+		    {
+		      error = is_vclass;
+		    }
+		}
+	      if (!is_vclass)
+		{
+		  error =
+		    db_get_attribute_descriptor (real_object,
+						 assign->upd_col_name->info.
+						 name.original, 0, 1,
+						 &assign->attr_desc);
+		}
 	    }
 
 	  if (error == NO_ERROR)
@@ -9678,9 +9704,13 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      flat = spec->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-	      if (class_obj && db_is_vclass (class_obj))
+	      if (class_obj)
 		{
-		  err = sm_flush_objects (class_obj);
+		  err = db_is_vclass (class_obj);
+		  if (err > 0)
+		    {
+		      err = sm_flush_objects (class_obj);
+		    }
 		}
 
 	    }
@@ -9990,10 +10020,16 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	  mop = DB_GET_OBJECT (&oids[idx]);
 
-	  if (db_is_deleted (mop))
+	  error = db_is_deleted (mop);
+	  if (error < 0)
+	    {
+	      return error;
+	    }
+	  if (error > 0)
 	    {
 	      /* if the object is an invalid object (was already deleted) then
 	         skip the delete, instance flush and count steps */
+	      error = NO_ERROR;
 	      continue;
 	    }
 
@@ -10959,9 +10995,13 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      flat = node->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-	      if (class_obj && db_is_vclass (class_obj))
+	      if (class_obj)
 		{
-		  err = sm_flush_objects (class_obj);
+		  err = db_is_vclass (class_obj);
+		  if (err > 0)
+		    {
+		      err = sm_flush_objects (class_obj);
+		    }
 		}
 	    }
 
@@ -11134,7 +11174,7 @@ insert_object_attr (const PARSER_CONTEXT * parser,
 		    DB_OTMPL * otemplate, DB_VALUE * value,
 		    PT_NODE * name, DB_ATTDESC * attr_desc)
 {
-  int error;
+  int error = NO_ERROR;
 
   if (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT && !DB_IS_NULL (value))
     {
@@ -11144,7 +11184,11 @@ insert_object_attr (const PARSER_CONTEXT * parser,
       db_make_object (value, db_real_instance (db_get_object (value)));
     }
 
-  if (name->info.name.db_object && db_is_vclass (name->info.name.db_object))
+  if (name->info.name.db_object)
+    {
+      error = db_is_vclass (name->info.name.db_object);
+    }
+  if (error > 0)
     {
       /* this is a shared attribute of a view.
          this means this cannot be updated in the template for
@@ -11152,7 +11196,7 @@ insert_object_attr (const PARSER_CONTEXT * parser,
       error = obj_set_shared (name->info.name.db_object,
 			      name->info.name.original, value);
     }
-  else
+  else if (!error)
     {
       /* the normal case */
       SM_ATTRIBUTE *att;
@@ -12417,8 +12461,15 @@ do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
   for (i = 0; i < oids_count; i++)
     {
       obj = ws_mop (&oids[i], NULL);
-      if (db_is_deleted (obj))
+      error = db_is_deleted (obj);
+      if (error < 0)
 	{
+	  goto cleanup;
+	  retval = error;
+	}
+      if (error > 0)
+	{
+	  error = NO_ERROR;
 	  continue;
 	}
 
@@ -12456,7 +12507,12 @@ is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed)
   SM_CLASS *smclass = NULL;
 
   *allowed = 1;
-  if (sm_is_partitioned_class (obj))
+  error = sm_is_partitioned_class (obj);
+  if (error < 0)
+    {
+      return error;
+    }
+  if (error > 0)
     {
       return NO_ERROR;
     }
@@ -12809,14 +12865,26 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		}
 
 	      /* don't get descriptors for shared attrs of views */
-	      if (attr_descs[i] == NULL
-		  && (!attr->info.name.db_object
-		      || !db_is_vclass (attr->info.name.db_object)))
+	      if (attr_descs[i] == NULL)
 		{
-		  error =
-		    db_get_attribute_descriptor (class_->info.name.db_object,
-						 attr->info.name.original, 0,
-						 1, &attr_descs[i]);
+		  int is_vclass = 0;
+
+		  if (attr->info.name.db_object)
+		    {
+		      is_vclass = db_is_vclass (attr->info.name.db_object);
+		      if (is_vclass < 0)
+			{
+			  error = is_vclass;
+			}
+		    }
+		  if (!is_vclass)
+		    {
+		      error =
+			db_get_attribute_descriptor (class_->info.name.
+						     db_object,
+						     attr->info.name.original,
+						     0, 1, &attr_descs[i]);
+		    }
 		}
 	      if (error >= NO_ERROR)
 		{
@@ -13352,10 +13420,20 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			{
 			  if (attr_descs[k] == NULL)
 			    {
+			      int is_vclass = 0;
+
 			      /* don't get descriptors for shared attrs of views */
-			      if (!attr->info.name.db_object
-				  || !db_is_vclass (attr->info.
-						    name.db_object))
+			      if (attr->info.name.db_object)
+				{
+				  is_vclass =
+				    db_is_vclass (attr->info.name.db_object);
+
+				  if (is_vclass < 0)
+				    {
+				      error = is_vclass;
+				    }
+				}
+			      if (!is_vclass)
 				{
 				  error = db_get_attribute_descriptor
 				    (class_->info.name.db_object,
@@ -13727,8 +13805,8 @@ test_check_option (PARSER_CONTEXT * parser, PT_NODE * node,
   view = class_->info.name.virt_object;
   if (view)
     {
-      if (sm_get_class_flag (view, SM_CLASSFLAG_WITHCHECKOPTION)
-	  || sm_get_class_flag (view, SM_CLASSFLAG_LOCALCHECKOPTION))
+      if (sm_get_class_flag (view, SM_CLASSFLAG_WITHCHECKOPTION) > 0
+	  || sm_get_class_flag (view, SM_CLASSFLAG_LOCALCHECKOPTION) > 0)
 	{
 	  *found = 1;
 	  *continue_walk = PT_STOP_WALK;
@@ -16352,9 +16430,13 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       (void) tran_reset_wait_times (old_wait_msecs);
     }
 
-  if (err >= NO_ERROR && db_is_vclass (class_obj))
+  if (err >= NO_ERROR)
     {
-      err = sm_flush_objects (class_obj);
+      err = db_is_vclass (class_obj);
+      if (err > 0)
+	{
+	  err = sm_flush_objects (class_obj);
+	}
     }
 
 exit:
@@ -16426,7 +16508,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   PT_NODE *copy_assigns, *save_assigns;
 
-  int no_vals, no_consts;
+  int no_vals, no_consts, is_vclass = 0;
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
@@ -16500,8 +16582,19 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  has_virt = db_is_vclass (class_obj)
-    || ((flat) ? (flat->info.name.virt_object != NULL) : false);
+  if (err == NO_ERROR)
+    {
+      is_vclass = db_is_vclass (class_obj);
+      if (is_vclass < 0)
+	{
+	  err = is_vclass;
+	}
+      else
+	{
+	  has_virt = is_vclass
+	    || ((flat) ? (flat->info.name.virt_object != NULL) : false);
+	}
+    }
 
   AU_RESTORE (au_save);
 
@@ -17151,9 +17244,13 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  (void) tran_reset_wait_times (old_wait_msecs);
 	}
 
-      if (err >= NO_ERROR && db_is_vclass (class_obj))
+      if (err >= NO_ERROR)
 	{
-	  err = sm_flush_objects (class_obj);
+	  err = db_is_vclass (class_obj);
+	  if (err > 0)
+	    {
+	      err = sm_flush_objects (class_obj);
+	    }
 	}
     }
 
@@ -17800,6 +17897,7 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser,
   EVAL_INSERT_VALUE *eval = (EVAL_INSERT_VALUE *) arg;
   DB_OBJECT *obj;
   DB_VALUE db_value;
+  int is_class = 0;
 
   if (node == NULL || *continue_walk == PT_STOP_WALK || pt_has_error (parser))
     {
@@ -17824,7 +17922,12 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser,
 		  /* do nothing */
 		  return node;
 		}
-	      if (!db_is_any_class (obj))
+	      is_class = db_is_any_class (obj);
+	      if (is_class < 0)
+		{
+		  return node;
+		}
+	      if (!is_class)
 		{
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME,
 			      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,

@@ -274,7 +274,7 @@ locator_is_root (MOP mop)
 /*
  * locator_is_class () - Is mop a class mop?
  *
- * return:
+ * return: < 0 - error, == 0 is not a class, > 0 - is a class
  *
  *   mop(in): Memory Object pointer
  *   hint_purpose(in): Fetch purpose: Valid ones for this function
@@ -285,34 +285,69 @@ locator_is_root (MOP mop)
  *              class object. If the object does not exist, the function
  *              returns that the object is not a class.
  */
-bool
+int
 locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose)
 {
   MOP class_mop;
 
   if (!mop || WS_ISVID (mop))
     {
-      return false;
+      return 0;
     }
 
   class_mop = ws_class_mop (mop);
   if (class_mop == NULL)
     {
+      int error = NO_ERROR;
+      MOBJ obj = NULL;
+      bool error_saved = false;
+
+      if (er_errid () != NO_ERROR)
+	{
+	  error = er_stack_push ();
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  error_saved = true;
+	}
       /*
        * The class identifier of the object associated with the mop is stored
        * along with the object on the disk representation. The class mop is not
        * stored with the object since the object is not cached, fetch the object
        * and cache it into the workspace
        */
-      if (locator_fetch_object (mop, hint_purpose,
-				TM_TRAN_READ_FETCH_VERSION ()) == NULL)
+      obj = locator_fetch_object (mop, hint_purpose,
+				  TM_TRAN_READ_FETCH_VERSION ());
+      error = er_errid ();
+      if (error_saved)
 	{
-	  return false;		/* Object does not exist, so it is not a class */
+	  if (error == NO_ERROR)
+	    {
+	      error = er_stack_pop ();
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	  else
+	    {
+	      er_stack_clear ();
+	    }
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (obj == NULL)
+	{
+	  return 0;		/* Object does not exist, so it is not a class */
 	}
       class_mop = ws_class_mop (mop);
     }
 
-  return locator_is_root (class_mop);
+  return (locator_is_root (class_mop) ? 1 : 0);
 }
 
 /*

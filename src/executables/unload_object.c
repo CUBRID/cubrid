@@ -658,10 +658,24 @@ extractobjects (const char *exec_name)
 	  fh_put (cl_table, ws_oid (class_table->mops[i]), &i);
 	  if (input_filename)
 	    {
-	      if (is_req_class (class_table->mops[i])
-		  || (!required_class_only
-		      && sm_is_system_class (class_table->mops[i])))
-		MARK_CLASS_REQUESTED (i);
+	      if (is_req_class (class_table->mops[i]))
+		{
+		  MARK_CLASS_REQUESTED (i);
+		}
+	      else if (!required_class_only)
+		{
+		  error = sm_is_system_class (class_table->mops[i]);
+		  if (error < 0)
+		    {
+		      status = 1;
+		      goto end;
+		    }
+		  if (error > 0)
+		    {
+		      MARK_CLASS_REQUESTED (i);
+		      error = NO_ERROR;
+		    }
+		}
 	    }
 	  else
 	    MARK_CLASS_REQUESTED (i);

@@ -129,7 +129,7 @@ class_info (int argc, char *argv[], int opt_begin)
   for (temp = objlist; temp != NULL; temp = temp->next)
     {
       classobj = temp->op;
-      if (db_is_system_class (classobj))
+      if (db_is_system_class (classobj) > 0)
 	write_class_info (fp, classobj);
     }
   db_objlist_free (objlist);
@@ -187,7 +187,7 @@ write_class_info (FILE * fp, DB_OBJECT * classobj)
   if (objlist != NULL)
     db_objlist_free (objlist);
 
-  if (db_is_vclass (classobj))
+  if (db_is_vclass (classobj) > 0)
     fprintf (fp, MSGFMT, "virtual", "view");
   else
     fprintf (fp, MSGFMT, "virtual", "normal");

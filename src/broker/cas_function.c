@@ -1350,7 +1350,7 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       else
 	{
 	  er_clear ();
-	  if (db_is_instance (obj))
+	  if (db_is_instance (obj) > 0)
 	    {
 	      err_code = 1;
 	    }

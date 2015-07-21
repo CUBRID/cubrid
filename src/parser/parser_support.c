@@ -9528,6 +9528,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   CLASS_HELP *class_schema = NULL;
   PARSER_VARCHAR *buffer;
   char **line_ptr;
+  int is_class = 0;
 
   /* look up class in all schema's  */
   class_op = sm_find_class (table_name->info.name.original);
@@ -9540,7 +9541,16 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
       return NULL;
     }
 
-  if (!db_is_class (class_op))
+  is_class = db_is_class (class_op);
+  if (is_class < 0)
+    {
+      if (er_errid () != NO_ERROR)
+	{
+	  PT_ERRORc (parser, table_name, er_msg ());
+	}
+      return NULL;
+    }
+  if (!is_class)
     {
       PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_SEMANTIC,
 		   MSGCAT_SEMANTIC_IS_NOT_A, table_name->info.name.original,

@@ -1120,7 +1120,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes,
       for (cl = classes; cl != NULL; cl = cl->next)
 	{
 	  /* if its some sort of vclass then it can't have indexes */
-	  if (!db_is_vclass (cl->op))
+	  if (db_is_vclass (cl->op) <= 0)
 	    {
 	      emit_index_def (cl->op);
 	    }
@@ -1152,7 +1152,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	     EMIT_STORAGE_ORDER storage_order)
 {
   DB_OBJLIST *cl;
-  bool is_vclass;
+  int is_vclass;
   const char *class_type;
   int has_indexes = 0;
   const char *name;
@@ -1179,20 +1179,21 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	  class_ = NULL;
 	}
 
-      if (is_vclass)
+      if (is_vclass > 0)
 	{
-	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_WITHCHECKOPTION))
+	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_WITHCHECKOPTION) > 0)
 	    {
 	      fprintf (output_file, " WITH CHECK OPTION");
 	    }
-	  else if (sm_get_class_flag (cl->op, SM_CLASSFLAG_LOCALCHECKOPTION))
+	  else if (sm_get_class_flag (cl->op, SM_CLASSFLAG_LOCALCHECKOPTION) >
+		   0)
 	    {
 	      fprintf (output_file, " WITH LOCAL CHECK OPTION");
 	    }
 	}
       else
 	{
-	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_REUSE_OID))
+	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_REUSE_OID) > 0)
 	    {
 	      fprintf (output_file, " REUSE_OID");
 	      if (class_ != NULL)
@@ -1216,7 +1217,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	}
 
       fprintf (output_file, ";\n");
-      if (!is_vclass && storage_order == FOLLOW_STORAGE_ORDER)
+      if (is_vclass <= 0 && storage_order == FOLLOW_STORAGE_ORDER)
 	{
 	  emit_class_meta (cl->op);
 	}
@@ -1229,7 +1230,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
   for (cl = classes; cl != NULL; cl = cl->next)
     {
       is_vclass = db_is_vclass (cl->op);
-      class_type = (is_vclass) ? "VCLASS" : "CLASS";
+      class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
       (void) emit_superclasses (cl->op, class_type);
     }
 
@@ -1249,7 +1250,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	  continue;
 	}
 
-      class_type = (is_vclass) ? "VCLASS" : "CLASS";
+      class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
 
       if (emit_all_attributes (cl->op, class_type, &has_indexes,
 			       storage_order))
@@ -1288,7 +1289,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
   for (cl = classes; cl != NULL; cl = cl->next)
     {
       is_vclass = db_is_vclass (cl->op);
-      class_type = (is_vclass) ? "VCLASS" : "CLASS";
+      class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
       (void) emit_resolutions (cl->op, class_type);
     }
 
@@ -1367,7 +1368,7 @@ emit_query_specs (DB_OBJLIST * classes)
    */
   for (cl = classes; cl != NULL; cl = cl->next)
     {
-      if (!db_is_vclass (cl->op))
+      if (db_is_vclass (cl->op) <= 0)
 	{
 	  continue;
 	}
@@ -1445,7 +1446,7 @@ emit_query_specs (DB_OBJLIST * classes)
    */
   for (cl = classes; cl != NULL; cl = cl->next)
     {
-      if (!db_is_vclass (cl->op))
+      if (db_is_vclass (cl->op) <= 0)
 	{
 	  continue;
 	}
@@ -1511,7 +1512,7 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 
   for (cl = vclass_list_has_using_index; cl != NULL; cl = cl->next)
     {
-      if (!db_is_vclass (cl->op))
+      if (db_is_vclass (cl->op) <= 0)
 	{
 	  continue;
 	}
@@ -1554,7 +1555,7 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
   /* pass 2, emit full spec lists */
   for (cl = vclass_list_has_using_index; cl != NULL; cl = cl->next)
     {
-      if (!db_is_vclass (cl->op))
+      if (db_is_vclass (cl->op) <= 0)
 	{
 	  continue;
 	}

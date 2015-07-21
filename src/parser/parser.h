@@ -817,7 +817,7 @@ extern "C"
 					  PT_NODE * assignment);
   extern int pt_get_dup_key_oid_var_index (PARSER_CONTEXT * parser,
 					   PT_NODE * update_statement);
-  extern bool pt_is_reference_to_reusable_oid (DB_VALUE * val);
+  extern int pt_is_reference_to_reusable_oid (DB_VALUE * val);
   extern int pt_get_select_query_columns (PARSER_CONTEXT * parser,
 					  PT_NODE * create_select,
 					  DB_QUERY_TYPE ** query_columns);

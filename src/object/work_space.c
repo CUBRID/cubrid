@@ -1088,7 +1088,7 @@ MOP
 ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 {
   MOP mop, new_mop;
-  int slot;
+  int slot, is_vclass = 0;
   VID_INFO *vid_info;
   DB_TYPE keytype;
 
@@ -1105,7 +1105,12 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
        * swizzles oid's to objects.
        */
       mop = db_get_object (keys);
-      if (!db_is_vclass (class_mop))
+      is_vclass = db_is_vclass (class_mop);
+      if (is_vclass < 0)
+	{
+	  return NULL;
+	}
+      if (!is_vclass)
 	{
 	  return mop;
 	}
@@ -1134,7 +1139,12 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
        * oid's to objects.
        */
       mop = ws_mop (&keys->data.oid, class_mop);
-      if (!db_is_vclass (class_mop))
+      is_vclass = db_is_vclass (class_mop);
+      if (is_vclass < 0)
+	{
+	  return NULL;
+	}
+      if (!is_vclass)
 	{
 	  return mop;
 	}
@@ -1953,7 +1963,7 @@ ws_release_user_instance (MOP mop)
    * the mop up, and then truncate the table which leads updating
    * the serial mop to reset its values.
    */
-  if (db_is_system_class (mop->class_mop))
+  if (db_is_system_class (mop->class_mop) > 0)
     {
       return;
     }
@@ -3316,8 +3326,13 @@ ws_identifier_with_check (MOP mop, const bool check_non_referable)
 
   if (check_non_referable)
     {
-      class_mop =
-	locator_is_class (mop, DB_FETCH_READ) ? mop : ws_class_mop (mop);
+      int is_class = locator_is_class (mop, DB_FETCH_READ);
+
+      if (is_class < 0)
+	{
+	  goto end;
+	}
+      class_mop = is_class > 0 ? mop : ws_class_mop (mop);
       if (sm_is_reuse_oid_class (class_mop))
 	{
 	  /* should not return the oid of a non-referable instance */

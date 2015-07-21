@@ -3683,7 +3683,12 @@ ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf)
 
   er_clear ();
 
-  if (db_is_instance (obj))
+  err_code = db_is_instance (obj);
+  if (err_code < 0)
+    {
+      return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+    }
+  if (err_code > 0)
     {
       return 0;
     }
@@ -5789,7 +5794,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	      if (db_value_type (&oid_val) == DB_TYPE_OBJECT)
 		{
 		  db_obj = db_get_object (&oid_val);
-		  if (db_is_instance (db_obj))
+		  if (db_is_instance (db_obj) > 0)
 		    {
 		      dbobj_to_casobj (db_obj, &tuple_obj);
 		    }
@@ -7964,7 +7969,7 @@ ux_str_to_obj (char *str)
   oid.slotid = slot;
   oid.volid = vol;
   obj = db_object (&oid);
-  if (db_is_instance (obj))
+  if (db_is_instance (obj) > 0)
     {
       return obj;
     }
@@ -8224,6 +8229,7 @@ sch_superclass (T_NET_BUF * net_buf, char *class_name, char flag,
   int num_obj;
   T_CLASS_TABLE *class_table = NULL;
   int alloc_table_size = 0;
+  int cls_type;
 
   class_obj = db_find_class (class_name);
   if (flag)
@@ -8258,7 +8264,13 @@ sch_superclass (T_NET_BUF * net_buf, char *class_name, char flag,
       p = (char *) db_get_class_name (obj_tmp->op);
 
       class_table[num_obj].class_name = p;
-      class_table[num_obj].class_type = class_type (obj_tmp->op);
+      cls_type = class_type (obj_tmp->op);
+      if (cls_type < 0)
+	{
+	  db_objlist_free (obj_list);
+	  return cls_type;
+	}
+      class_table[num_obj].class_type = cls_type;
 
       num_obj++;
     }
@@ -8586,11 +8598,23 @@ attr_priv_finale:
 static int
 class_type (DB_OBJECT * class_obj)
 {
-  if (db_is_system_class (class_obj))
+  int error = db_is_system_class (class_obj);
+
+  if (error < 0)
+    {
+      return ERROR_INFO_SET (error, DBMS_ERROR_INDICATOR);
+    }
+  if (error > 0)
     {
       return 0;
     }
-  else if (db_is_vclass (class_obj))
+
+  error = db_is_vclass (class_obj);
+  if (error < 0)
+    {
+      return ERROR_INFO_SET (error, DBMS_ERROR_INDICATOR);
+    }
+  if (error > 0)
     {
       return 1;
     }

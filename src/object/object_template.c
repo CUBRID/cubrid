@@ -304,10 +304,16 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 {
   TP_DOMAIN_STATUS status;
   DB_VALUE *value;
+  int is_ref = 0;
 
   value = proposed_value;
 
-  if (pt_is_reference_to_reusable_oid (value))
+  is_ref = pt_is_reference_to_reusable_oid (value);
+  if (is_ref < 0)
+    {
+      return NULL;
+    }
+  if (is_ref > 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
@@ -1491,8 +1497,13 @@ OBJ_TEMPLATE *
 obt_def_object (MOP class_mop)
 {
   OBJ_TEMPLATE *template_ptr = NULL;
+  int is_class = locator_is_class (class_mop, DB_FETCH_CLREAD_INSTWRITE);
 
-  if (!locator_is_class (class_mop, DB_FETCH_CLREAD_INSTWRITE))
+  if (is_class < 0)
+    {
+      return NULL;
+    }
+  if (!is_class)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NOT_A_CLASS, 0);
     }
@@ -1517,8 +1528,13 @@ OBJ_TEMPLATE *
 obt_edit_object (MOP object)
 {
   OBJ_TEMPLATE *template_ptr = NULL;
+  int is_class = locator_is_class (object, DB_FETCH_CLREAD_INSTWRITE);
 
-  if (locator_is_class (object, DB_FETCH_CLREAD_INSTWRITE))
+  if (is_class < 0)
+    {
+      return NULL;
+    }
+  if (is_class)
     {
       /*
        * create a class object template, these are only allowed to

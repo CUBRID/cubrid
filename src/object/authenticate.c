@@ -6011,7 +6011,6 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
 	     AU_FETCHMODE fetchmode, FETCH_BY fetch_by)
 {
   int error = NO_ERROR;
-  bool is_class;
   MOP classmop = NULL;
   SM_CLASS *class_ = NULL;
 
@@ -6035,20 +6034,17 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
     }
   else
     {
-      er_stack_push ();
+      int is_class =
+	locator_is_class (op,
+			  ((fetchmode ==
+			    AU_FETCH_READ) ? DB_FETCH_READ : DB_FETCH_WRITE));
 
-      is_class = locator_is_class (op, ((fetchmode == AU_FETCH_READ)
-					? DB_FETCH_READ : DB_FETCH_WRITE));
-
-      error = er_errid ();
-      if (error != NO_ERROR)
+      if (is_class < 0)
 	{
-	  return error;
+	  return is_class;
 	}
 
-      er_stack_pop ();
-
-      if (is_class)
+      if (is_class > 0)
 	{
 	  classmop = op;
 	}

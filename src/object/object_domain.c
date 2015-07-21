@@ -9618,6 +9618,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
     case DB_TYPE_OBJECT:
       {
 	DB_OBJECT *v_obj = NULL;
+	int is_vclass = 0;
+
 	/* Make sure the domains are compatible.  Coerce view objects to
 	   real objects.
 	 */
@@ -9645,7 +9647,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	  case DB_TYPE_VOBJ:
 	    vid_vobj_to_object (src, &v_obj);
-	    if (!db_is_vclass (desired_domain->class_mop))
+	    is_vclass = db_is_vclass (desired_domain->class_mop);
+	    if (is_vclass < 0)
+	      {
+		return DOMAIN_ERROR;
+	      }
+	    if (!is_vclass)
 	      {
 		v_obj = db_real_instance (v_obj);
 	      }
@@ -9671,18 +9678,26 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		  {
 		    /* everything is also ok */
 		  }
-		else if (db_is_vclass (desired_domain->class_mop))
-		  {
-		    /*
-		     * This should still be an error, and the above
-		     * code should have constructed a virtual mop.
-		     * I'm not sure the rest of the code is consistent
-		     * in this regard.
-		     */
-		  }
 		else
 		  {
-		    status = DOMAIN_INCOMPATIBLE;
+		    is_vclass = db_is_vclass (desired_domain->class_mop);
+		    if (is_vclass < 0)
+		      {
+			return DOMAIN_ERROR;
+		      }
+		    if (is_vclass)
+		      {
+			/*
+			 * This should still be an error, and the above
+			 * code should have constructed a virtual mop.
+			 * I'm not sure the rest of the code is consistent
+			 * in this regard.
+			 */
+		      }
+		    else
+		      {
+			status = DOMAIN_INCOMPATIBLE;
+		      }
 		  }
 	      }
 	    db_make_object (target, v_obj);

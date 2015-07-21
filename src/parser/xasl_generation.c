@@ -3541,7 +3541,7 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	    }
 	  /* Also test if we need to flush partitions of each class */
-	  if (!locator_is_class (clsmop, DB_FETCH_READ))
+	  if (locator_is_class (clsmop, DB_FETCH_READ) <= 0)
 	    {
 	      continue;
 	    }
@@ -3715,7 +3715,7 @@ pt_flush_class_and_null_xasl (PARSER_CONTEXT * parser,
       if (entity)
 	{
 	  if (entity->info.name.meta_class != PT_META_CLASS
-	      && db_is_vclass (entity->info.name.db_object)
+	      && db_is_vclass (entity->info.name.db_object) > 0
 	      && !tree->info.data_type.virt_object)
 	    {
 	      tree->info.data_type.virt_object = entity->info.name.db_object;
@@ -6088,6 +6088,7 @@ regu_make_constant_vid (DB_VALUE * val, DB_VALUE ** dbvalptr)
   OID virt_oid, proxy_oid;
   DB_IDENTIFIER *dbid;
   DB_SEQ *seq;
+  int is_vclass = 0;
 
   assert (val != NULL);
 
@@ -6108,7 +6109,12 @@ regu_make_constant_vid (DB_VALUE * val, DB_VALUE ** dbvalptr)
 
   /* compute vmop's three canonical values: virt, proxy, keys */
   cls = db_get_class (vmop);
-  if (!db_is_vclass (cls))
+  is_vclass = db_is_vclass (cls);
+  if (is_vclass < 0)
+    {
+      return is_vclass;
+    }
+  if (!is_vclass)
     {
       OID_SET_NULL (&virt_oid);
       real_instance = vmop;
@@ -6307,10 +6313,21 @@ setof_mop_to_setof_vobj (PARSER_CONTEXT * parser, DB_SET * seq,
 		  oid = db_identifier (obj);
 		  if (oid == NULL)
 		    {
-		      goto failure;
+		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+			{
+			  db_value_domain_init (new_elem, DB_TYPE_OBJECT,
+						DB_DEFAULT_PRECISION,
+						DB_DEFAULT_SCALE);
+			}
+		      else
+			{
+			  goto failure;
+			}
 		    }
-
-		  db_make_object (new_elem, ws_mop (oid, NULL));
+		  else
+		    {
+		      db_make_object (new_elem, ws_mop (oid, NULL));
+		    }
 		}
 	    }
 	}
@@ -6621,6 +6638,10 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value,
 		{
 		  OID *oid;
 		  oid = db_identifier (DB_GET_OBJECT (db_value));
+		  if (oid == NULL)
+		    {
+		      return NULL;
+		    }
 
 		  /* need a new db_val that may be pointed later from other
 		   * regu variable */
@@ -9317,7 +9338,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    /* cannot get here */
 		    assert (false);
 
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_OBJ_INVALID_ARGUMENTS, 0);
 		    PT_ERRORc (parser, node, er_msg ());
 
 		    return NULL;
@@ -18593,6 +18615,8 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec,
 
 	      if (o_num > prev_o_num && o_num > (*nump))
 		{
+		  int is_class = 0;
+
 		  /* init #pages */
 		  *(t_list + o_num - 1) = XASL_CLASS_NO_TCARD;
 
@@ -18601,12 +18625,20 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec,
 		  class_obj = flat->info.name.db_object;
 
 		  assert (class_obj != NULL);
-		  assert (locator_is_class (class_obj, DB_FETCH_QUERY_READ));
+		  assert (locator_is_class (class_obj, DB_FETCH_QUERY_READ) >
+			  0);
 		  assert (!OID_ISTEMP (WS_OID (class_obj)));
 
-		  if (class_obj != NULL
-		      && locator_is_class (class_obj, DB_FETCH_QUERY_READ)
-		      && !OID_ISTEMP (WS_OID (class_obj)))
+		  if (class_obj != NULL)
+		    {
+		      is_class =
+			locator_is_class (class_obj, DB_FETCH_QUERY_READ);
+		      if (is_class < 0)
+			{
+			  goto error;
+			}
+		    }
+		  if (is_class && !OID_ISTEMP (WS_OID (class_obj)))
 		    {
 		      if (au_fetch_class (class_obj, &smclass, AU_FETCH_READ,
 					  AU_SELECT) == NO_ERROR)
@@ -18751,6 +18783,10 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser,
       goto error;
     }
   serial_oid_p = db_identifier (serial_mop);
+  if (serial_oid_p == NULL)
+    {
+      goto error;
+    }
 
   if (*oid_listp == NULL || *tcard_listp == NULL)
     {
@@ -20954,8 +20990,14 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  while (cl_name_node != NULL && !has_partitioned)
 	    {
-	      has_partitioned =
+	      error =
 		sm_is_partitioned_class (cl_name_node->info.name.db_object);
+	      if (error < 0)
+		{
+		  goto error_return;
+		}
+	      has_partitioned = (error ? true : false);
+	      error = NO_ERROR;
 	      cl_name_node = cl_name_node->next;
 	    }
 
@@ -21624,8 +21666,13 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    {
 	      goto cleanup;
 	    }
-	  has_partitioned =
-	    sm_is_partitioned_class (cl_name_node->info.name.db_object);
+	  error = sm_is_partitioned_class (cl_name_node->info.name.db_object);
+	  if (error < 0)
+	    {
+	      goto cleanup;
+	    }
+	  has_partitioned = (error ? true : false);
+	  error = NO_ERROR;
 	  cl_name_node = cl_name_node->next;
 	}
 

@@ -884,11 +884,17 @@ smt_edit_class_mop (MOP op, DB_AUTH db_auth_type)
 {
   SM_TEMPLATE *template_;
   SM_CLASS *class_;
+  int is_class = 0;
 
   template_ = NULL;
 
   /* op should be a class */
-  if (!locator_is_class (op, DB_FETCH_WRITE))
+  is_class = locator_is_class (op, DB_FETCH_WRITE);
+  if (is_class < 0)
+    {
+      return NULL;
+    }
+  if (!is_class)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NOT_A_CLASS, 0);
     }
@@ -954,11 +960,17 @@ SM_TEMPLATE *
 smt_copy_class_mop (const char *name, MOP op, SM_CLASS ** class_)
 {
   SM_TEMPLATE *template_ = NULL;
+  int is_class = 0;
 
   assert (*class_ == NULL);
 
   /* op should be a class */
-  if (!locator_is_class (op, DB_FETCH_READ))
+  is_class = locator_is_class (op, DB_FETCH_READ);
+  if (is_class < 0)
+    {
+      return NULL;
+    }
+  if (!is_class)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NOT_A_CLASS, 0);
       return NULL;
@@ -3561,17 +3573,45 @@ smt_add_super (SM_TEMPLATE * template_, MOP super_class)
     {
       ERROR0 (error, ER_SM_SUPER_CAUSES_CYCLES);
     }
-  else if ((template_->class_type == SM_CLASS_CT
-	    && !db_is_class (super_class))
-	   || (template_->class_type == SM_VCLASS_CT
-	       && !db_is_vclass (super_class)))
-    {
-      ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
-	      db_get_class_name (super_class), template_->name);
-    }
   else
     {
-      error = ml_append (&template_->inheritance, super_class, NULL);
+      if (template_->class_type == SM_CLASS_CT)
+	{
+	  int is_class = 0;
+
+	  is_class = db_is_class (super_class);
+	  if (is_class < 0)
+	    {
+	      error = is_class;
+	    }
+	  else if (!is_class)
+	    {
+	      ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
+		      db_get_class_name (super_class), template_->name);
+	    }
+	}
+      if (error == NO_ERROR)
+	{
+	  if (template_->class_type == SM_VCLASS_CT)
+	    {
+	      int is_vclass = 0;
+
+	      is_vclass = db_is_vclass (super_class);
+	      if (is_vclass < 0)
+		{
+		  error = is_vclass;
+		}
+	      if (!is_vclass)
+		{
+		  ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
+			  db_get_class_name (super_class), template_->name);
+		}
+	    }
+	  if (error == NO_ERROR)
+	    {
+	      error = ml_append (&template_->inheritance, super_class, NULL);
+	    }
+	}
     }
 
   return error;

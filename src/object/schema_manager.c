@@ -2339,10 +2339,16 @@ MOP
 sm_get_class (MOP obj)
 {
   MOP op = NULL;
+  int is_class = 0;
 
   if (obj != NULL)
     {
-      if (locator_is_class (obj, DB_FETCH_READ))
+      is_class = locator_is_class (obj, DB_FETCH_READ);
+      if (is_class < 0)
+	{
+	  return NULL;
+	}
+      if (is_class)
 	{
 	  op = obj;
 	}
@@ -2351,7 +2357,11 @@ sm_get_class (MOP obj)
 	  if (ws_class_mop (obj) == NULL)
 	    {
 	      /* force class load through object load */
-	      (void) au_fetch_class (obj, NULL, AU_FETCH_READ, AU_SELECT);
+	      if (au_fetch_class (obj, NULL, AU_FETCH_READ, AU_SELECT) !=
+		  NO_ERROR)
+		{
+		  return NULL;
+		}
 	    }
 	  op = ws_class_mop (obj);
 	}
@@ -2637,7 +2647,7 @@ sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE purpose,
   DB_OBJLIST *objects, *new_;
   MOP classmop;
   SM_CLASS_TYPE ct;
-  int i;
+  int i, is_class = 0;
 
   objects = NULL;
   classmop = NULL;
@@ -2645,7 +2655,12 @@ sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE purpose,
 
   if (op != NULL)
     {
-      if (locator_is_class (op, purpose))
+      is_class = locator_is_class (op, purpose);
+      if (is_class < 0)
+	{
+	  return NULL;
+	}
+      if (is_class)
 	{
 	  classmop = op;
 	}
@@ -3124,22 +3139,29 @@ sm_is_reuse_oid_class (MOP op)
 
 /*
  * sm_is_partitioned_class () - test if this class is partitioned
- * return : true for partitioned classes, false otherwise
+ * return : < 0 if error, > 0 for partitioned classes, 0 otherwise
  * op (in) : class object
  */
-bool
+int
 sm_is_partitioned_class (MOP op)
 {
   SM_CLASS *class_;
-  int save;
-  bool result = false;
+  int save, result = 0;
 
   if (locator_is_root (op))
     {
-      return false;
+      return 0;
     }
 
-  if (op != NULL && locator_is_class (op, DB_FETCH_READ))
+  if (op != NULL)
+    {
+      result = locator_is_class (op, DB_FETCH_READ);
+      if (result < 0)
+	{
+	  return result;
+	}
+    }
+  if (result)
     {
       AU_DISABLE (save);
       if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
@@ -3328,9 +3350,15 @@ sm_get_class_flag (MOP op, SM_CLASS_FLAG flag)
   SM_CLASS *class_;
   int result = 0;
 
-  if (op != NULL && locator_is_class (op, DB_FETCH_READ))
+  if (op != NULL)
     {
-      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
+      result = locator_is_class (op, DB_FETCH_READ);
+      if (result <= 0)
+	{
+	  return result;
+	}
+      result = au_fetch_class_force (op, &class_, AU_FETCH_READ);
+      if (result == NO_ERROR)
 	{
 	  result = class_->flags & flag;
 	}
@@ -3866,13 +3894,20 @@ SM_CLASS *
 sm_get_class_with_statistics (MOP classop)
 {
   SM_CLASS *class_ = NULL;
+  int is_class = 0;
 
   /* only try to get statistics if we know the class has been flushed
      if it has a temporary oid, it isn't flushed and there are no statistics */
 
-  if (classop != NULL
-      && locator_is_class (classop, DB_FETCH_QUERY_READ)
-      && !OID_ISTEMP (WS_OID (classop)))
+  if (classop != NULL)
+    {
+      is_class = locator_is_class (classop, DB_FETCH_QUERY_READ);
+      if (is_class < 0)
+	{
+	  return NULL;
+	}
+    }
+  if (is_class && !OID_ISTEMP (WS_OID (classop)))
     {
       if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) ==
 	  NO_ERROR)
@@ -3925,10 +3960,17 @@ sm_get_statistics_force (MOP classop)
 {
   SM_CLASS *class_;
   CLASS_STATS *stats = NULL;
+  int is_class = 0;
 
-  if (classop != NULL
-      && locator_is_class (classop, DB_FETCH_QUERY_READ)
-      && !OID_ISTEMP (WS_OID (classop)))
+  if (classop != NULL)
+    {
+      is_class = locator_is_class (classop, DB_FETCH_QUERY_READ);
+      if (is_class < 0)
+	{
+	  return NULL;
+	}
+    }
+  if (is_class && !OID_ISTEMP (WS_OID (classop)))
     {
       if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT)
 	  == NO_ERROR)
@@ -3960,7 +4002,7 @@ sm_get_statistics_force (MOP classop)
 int
 sm_update_statistics (MOP classop, bool with_fullscan)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
 
   assert_release (classop != NULL);
@@ -3968,8 +4010,15 @@ sm_update_statistics (MOP classop, bool with_fullscan)
   /* only try to get statistics if we know the class has been flushed
      if it has a temporary oid, it isn't flushed and there are no statistics */
 
-  if (classop != NULL && !OID_ISTEMP (WS_OID (classop))
-      && locator_is_class (classop, DB_FETCH_QUERY_READ))
+  if (classop != NULL && !OID_ISTEMP (WS_OID (classop)))
+    {
+      is_class = locator_is_class (classop, DB_FETCH_QUERY_READ);
+      if (is_class < 0)
+	{
+	  return is_class;
+	}
+    }
+  if (is_class > 0)
     {
 
       /* make sure the workspace is flushed before calculating stats */
@@ -5018,9 +5067,10 @@ sm_get_ch_heap (MOP classmop)
 {
   SM_CLASS *class_ = NULL;
   HFID *ch_heap;
+  int is_class = 0;
 
   ch_heap = NULL;
-  if (locator_is_class (classmop, DB_FETCH_READ))
+  if (locator_is_class (classmop, DB_FETCH_READ) > 0)
     {
       if (au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT) ==
 	  NO_ERROR)
@@ -5893,7 +5943,7 @@ sm_get_class_repid (MOP classop)
   SM_CLASS *class_;
   int id = -1;
 
-  if (classop != NULL && locator_is_class (classop, DB_FETCH_READ))
+  if (classop != NULL && locator_is_class (classop, DB_FETCH_READ) > 0)
     {
       if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) ==
 	  NO_ERROR)
@@ -6096,14 +6146,19 @@ sm_flush_objects (MOP obj)
 int
 sm_flush_and_decache_objects (MOP obj, int decache)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   MOBJ mem;
   MOP obj_class_mop;
   SM_CLASS *class_;
 
   if (obj != NULL)
     {
-      if (locator_is_class (obj, DB_FETCH_READ))
+      is_class = locator_is_class (obj, DB_FETCH_READ);
+      if (is_class < 0)
+	{
+	  return is_class;
+	}
+      if (is_class)
 	{
 	  /* always make sure the class is flushed as well */
 	  if (locator_flush_class (obj) != NO_ERROR)
@@ -6570,13 +6625,19 @@ sm_get_attribute_descriptor (DB_OBJECT * op, const char *name,
 
   if (!error && att != NULL)
     {
+      int is_class = 0;
+
       /* class must have been fetched at this point */
       class_purpose = ((for_update)
 		       ? DB_FETCH_CLREAD_INSTWRITE
 		       : DB_FETCH_CLREAD_INSTREAD);
 
-      classmop =
-	(locator_is_class (op, class_purpose)) ? op : ws_class_mop (op);
+      is_class = locator_is_class (op, class_purpose);
+      if (is_class < 0)
+	{
+	  return is_class;
+	}
+      classmop = (is_class) ? op : ws_class_mop (op);
 
       desc = classobj_make_descriptor (classmop, class_, (SM_COMPONENT *) att,
 				       for_update);
@@ -6632,8 +6693,12 @@ sm_get_method_descriptor (DB_OBJECT * op, const char *name,
   if (!error && method != NULL)
     {
       /* class must have been fetched at this point */
-      classmop =
-	(locator_is_class (op, DB_FETCH_READ)) ? op : ws_class_mop (op);
+      int is_class = locator_is_class (op, DB_FETCH_READ);
+      if (is_class < 0)
+	{
+	  return error;
+	}
+      classmop = (is_class) ? op : ws_class_mop (op);
 
       desc = classobj_make_descriptor (classmop, class_,
 				       (SM_COMPONENT *) method, 0);
@@ -11887,7 +11952,13 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
    *
    * UNIQUE constraints are inheritable but INDEX'es are not.
    */
-  is_partitioned = sm_is_partitioned_class (classop);
+  error = sm_is_partitioned_class (classop);
+  if (error < 0)
+    {
+      goto end;
+    }
+  is_partitioned = (error ? true : false);
+  error = NO_ERROR;
   for (con = flat_constraints;
        ((con != NULL) && (error == NO_ERROR)); con = con->next)
     {
@@ -13408,7 +13479,7 @@ end:
 int
 sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   DB_OBJLIST *oldsupers, *oldsubs;
   SM_CLASS *class_;
   SM_TEMPLATE *template_;
@@ -13468,12 +13539,19 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   sm_bump_local_schema_version ();
 
   /* op should be a class */
-  if (!locator_is_class (op, DB_FETCH_WRITE))
+  is_class = locator_is_class (op, DB_FETCH_WRITE);
+  if (is_class < 0)
+    {
+      error = is_class;
+      goto end;
+    }
+  if (!is_class)
     {
       ERROR0 (error, ER_OBJ_NOT_A_CLASS);
 
       goto end;
     }
+
   /* Authorization + pre-lock subclass lattice to the extent possible */
   error = au_fetch_class (op, &class_, AU_FETCH_WRITE, AU_ALTER);
   if (error != NO_ERROR)

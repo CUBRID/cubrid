@@ -187,11 +187,10 @@ static int
 find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
 		const char *name, int for_write)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
   DB_FETCH_MODE class_purpose;
-  bool error_saved = false;
   bool find_class_attribute = false;
 
   class_ = NULL;
@@ -199,35 +198,15 @@ find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
 
   if (!op->is_temp)
     {
-      if (er_errid () != NO_ERROR)
-	{
-	  er_stack_push ();
-	  error_saved = true;
-	}
-
       class_purpose = ((for_write) ? DB_FETCH_WRITE : DB_FETCH_READ);
 
-      find_class_attribute = locator_is_class (op, class_purpose);
+      is_class = locator_is_class (op, class_purpose);
 
-      error = er_errid ();
-      if (error_saved)
+      if (is_class < 0)
 	{
-	  if (error == NO_ERROR)
-	    {
-	      er_stack_pop ();
-	    }
-	  else
-	    {
-	      /* Current error(occured in locator_is_class) is returned,
-	       * and the previous error is cleared from the stack */
-	      er_stack_clear ();
-	    }
+	  return is_class;
 	}
-
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      find_class_attribute = (is_class > 0 ? true : false);
     }
 
   if (find_class_attribute)
@@ -366,7 +345,7 @@ int
 obj_locate_attribute (MOP op, int attid, int for_write,
 		      char **memp, SM_ATTRIBUTE ** attp)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
   SM_ATTRIBUTE *att, *found;
   MOBJ obj;
@@ -385,7 +364,12 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 
   class_purpose = ((for_write) ? DB_FETCH_WRITE : DB_FETCH_READ);
 
-  if (locator_is_class (op, class_purpose))
+  is_class = locator_is_class (op, class_purpose);
+  if (is_class < 0)
+    {
+      return is_class;
+    }
+  if (is_class)
     {
       if (for_write)
 	{
@@ -560,7 +544,7 @@ assign_null_value (MOP op, SM_ATTRIBUTE * att, char *mem)
 static int
 assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   MOP owner;
   SETREF *new_set, *current_set;
   DB_VALUE val;
@@ -573,9 +557,17 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
   else
     {
       owner = op;
-      if (mem == NULL && !locator_is_class (op, DB_FETCH_WRITE))
+      if (mem == NULL)
 	{
-	  owner = ws_class_mop (op);
+	  is_class = locator_is_class (op, DB_FETCH_WRITE);
+	  if (is_class < 0)
+	    {
+	      return is_class;
+	    }
+	  if (!is_class)
+	    {
+	      owner = ws_class_mop (op);
+	    }
 	}
 
       new_set = set_change_owner (setref, owner, att->id, att->domain);
@@ -765,7 +757,7 @@ static int
 obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	     DB_VALUE * value, SM_VALIDATION * valid)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   char *mem;
   int opin, cpin;
   MOP ref_mop;
@@ -791,7 +783,12 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 
       if (class_->triggers != NULL)
 	{
-	  if (locator_is_class (op, 1))
+	  is_class = locator_is_class (op, 1);
+	  if (is_class < 0)
+	    {
+	      return is_class;
+	    }
+	  if (is_class)
 	    {
 	      class_mop = op;
 	    }
@@ -1295,8 +1292,14 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
     }
   else
     {
+      int is_class = locator_is_class (op, DB_FETCH_READ);
+
+      if (is_class < 0)
+	{
+	  return is_class;
+	}
       /* note, we may have a temporary OP here ! */
-      if (!locator_is_class (op, DB_FETCH_READ))
+      if (!is_class)
 	{
 	  owner = ws_class_mop (op);	/* shared attribute, owner is class */
 	}
@@ -2077,41 +2080,55 @@ obj_copy (MOP op)
   DB_MAKE_NULL (&value);
 
   /* op must be an object */
-  if (op == NULL || locator_is_class (op, DB_FETCH_CLREAD_INSTWRITE))
+  if (op != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      int is_class = locator_is_class (op, DB_FETCH_CLREAD_INSTWRITE);
+
+      if (is_class < 0)
+	{
+	  return NULL;
+	}
+      if (is_class)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+		  0);
+	  return NULL;
+	}
     }
   else
     {
-      if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_INSERT) != NO_ERROR)
-	return NULL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return NULL;
+    }
 
-      /* do this so that we make really sure that op->class is set up */
-      if (au_fetch_instance (op, &src, AU_FETCH_READ,
-			     TM_TRAN_READ_FETCH_VERSION (), AU_SELECT)
-	  != NO_ERROR)
-	return NULL;
+  if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_INSERT) != NO_ERROR)
+    return NULL;
 
-      obj_template = obt_def_object (ws_class_mop (op));
-      if (obj_template != NULL)
+  /* do this so that we make really sure that op->class is set up */
+  if (au_fetch_instance (op, &src, AU_FETCH_READ,
+			 TM_TRAN_READ_FETCH_VERSION (), AU_SELECT)
+      != NO_ERROR)
+    return NULL;
+
+  obj_template = obt_def_object (ws_class_mop (op));
+  if (obj_template != NULL)
+    {
+      for (att = class_->attributes; att != NULL;
+	   att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  for (att = class_->attributes; att != NULL;
-	       att = (SM_ATTRIBUTE *) att->header.next)
-	    {
-	      if (obj_get_att (op, class_, att, &value) != NO_ERROR)
-		goto error;
+	  if (obj_get_att (op, class_, att, &value) != NO_ERROR)
+	    goto error;
 
-	      if (obt_assign (obj_template, att, 0, &value, NULL) != NO_ERROR)
-		goto error;
+	  if (obt_assign (obj_template, att, 0, &value, NULL) != NO_ERROR)
+	    goto error;
 
-	      (void) pr_clear_value (&value);
-	    }
+	  (void) pr_clear_value (&value);
+	}
 
-	  /* leaves new NULL if error */
-	  if (obt_update_internal (obj_template, &new_mop, 0) != NO_ERROR)
-	    {
-	      obt_quit (obj_template);
-	    }
+      /* leaves new NULL if error */
+      if (obt_update_internal (obj_template, &new_mop, 0) != NO_ERROR)
+	{
+	  obt_quit (obj_template);
 	}
     }
 
@@ -2164,7 +2181,7 @@ obj_free_memory (SM_CLASS * class_, MOBJ obj)
 int
 obj_delete (MOP op)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_ = NULL;
   SM_CLASS *base_class = NULL;
   DB_OBJECT *base_op = NULL;
@@ -2175,7 +2192,21 @@ obj_delete (MOP op)
   TR_STATE *trstate = NULL;
 
   /* op must be an object */
-  if (op == NULL || locator_is_class (op, DB_FETCH_WRITE))
+  if (op != NULL)
+    {
+      is_class = locator_is_class (op, DB_FETCH_WRITE);
+      if (is_class < 0)
+	{
+	  error = is_class;
+	  goto error_exit;
+	}
+      if (is_class > 0)
+	{
+	  ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+	  goto error_exit;
+	}
+    }
+  else
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_exit;
@@ -4686,7 +4717,12 @@ obj_isinstance (MOP obj)
   obj = ws_mvcc_latest_version (obj);
   if (obj != NULL)
     {
-      if (!locator_is_class (obj, DB_FETCH_READ))
+      status = locator_is_class (obj, DB_FETCH_READ);
+      if (status < 0)
+	{
+	  return status;
+	}
+      if (!status)
 	{
 	  if (obj->is_temp)
 	    {
@@ -4793,7 +4829,7 @@ obj_is_instance_of (MOP obj, MOP class_mop)
 int
 obj_lock (MOP op, int for_write)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, is_class = 0;
   DB_FETCH_MODE class_purpose;
 
   if (op->is_temp)
@@ -4804,7 +4840,12 @@ obj_lock (MOP op, int for_write)
 
   class_purpose = ((for_write)
 		   ? DB_FETCH_CLREAD_INSTWRITE : DB_FETCH_CLREAD_INSTREAD);
-  if (locator_is_class (op, class_purpose))
+  is_class = locator_is_class (op, class_purpose);
+  if (is_class < 0)
+    {
+      return is_class;
+    }
+  if (is_class)
     {
       return obj_class_lock (op, for_write);
     }

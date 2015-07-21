@@ -5001,11 +5001,17 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
 {
   HFID *hfid;
   SM_CLASS *smclass;
+  int is_class = 0;
 
   for (; p; p = p->next)
     {
       info->mop = p->info.name.db_object;
-      info->normal_class = db_is_class (info->mop);
+      is_class = db_is_class (info->mop);
+      if (is_class < 0)
+	{
+	  return NULL;
+	}
+      info->normal_class = is_class;
       if (info->mop)
 	{
 	  info->oid = *WS_OID (info->mop);

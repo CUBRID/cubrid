@@ -647,6 +647,7 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   PT_NODE *class_;
   MOP clsmop = NULL;
+  int is_class = 0;
 
   if (node->node_type == PT_SPEC)
     {
@@ -654,7 +655,17 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
 	   class_; class_ = class_->next)
 	{
 	  clsmop = class_->info.name.db_object;
-	  if (clsmop == NULL || !db_is_class (clsmop))
+	  if (clsmop == NULL)
+	    {
+	      continue;
+	    }
+	  is_class = db_is_class (clsmop);
+	  if (is_class < 0)
+	    {
+	      PT_ERRORc (parser, class_, er_msg ());
+	      continue;
+	    }
+	  if (is_class == 0)
 	    {
 	      continue;
 	    }

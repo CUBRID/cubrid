@@ -3629,7 +3629,7 @@ db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec)
 {
   PARSER_CONTEXT *parser = NULL;
   PT_NODE **spec = NULL;
-  int rc = NO_ERROR;
+  int rc = NO_ERROR, is_vclass = 0;
   const char *const vclass_name = db_get_class_name (vclass);
 
   if (vclass_name == NULL)
@@ -3639,7 +3639,12 @@ db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec)
       return rc;
     }
 
-  if (!db_is_vclass (vclass))
+  is_vclass = db_is_vclass (vclass);
+  if (is_vclass < 0)
+    {
+      return is_vclass;
+    }
+  if (!is_vclass)
     {
       rc = ER_SM_NOT_A_VIRTUAL_CLASS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rc, 1, vclass_name);
@@ -3779,7 +3784,12 @@ db_validate (DB_OBJECT * vc)
     }
   else
     {
-      if (!db_is_any_class (vc))
+      retval = db_is_any_class (vc);
+      if (retval < 0)
+	{
+	  return retval;
+	}
+      if (!retval)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NOT_A_CLASS, 0);
 	  retval = er_errid ();

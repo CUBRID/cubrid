@@ -1785,12 +1785,12 @@ pt_get_class_type (PARSER_CONTEXT * parser, const DB_OBJECT * cls)
       return PT_MISC_DUMMY;
     }
 
-  if (db_is_vclass ((DB_OBJECT *) cls))
+  if (db_is_vclass ((DB_OBJECT *) cls) > 0)
     {
       return PT_VCLASS;
     }
 
-  if (db_is_class ((DB_OBJECT *) cls))
+  if (db_is_class ((DB_OBJECT *) cls) > 0)
     {
       return PT_CLASS;
     }
@@ -4952,7 +4952,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 		  cls = db_find_class (styp_nam);
 		  if (cls != NULL)
 		    {
-		      if (db_is_vclass (cls))
+		      if (db_is_vclass (cls) > 0)
 			{
 			  PT_ERRORm (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
 				     MSGCAT_SEMANTIC_WANT_NO_VOBJ_IN_SETS);
@@ -5025,7 +5025,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 		{
 		case PT_CLASS:
 		  /* an attribute of a class must be of type class */
-		  if (db_is_vclass (cls))
+		  if (db_is_vclass (cls) > 0)
 		    {
 		      PT_ERRORmf (parser, att,
 				  MSGCAT_SET_PARSER_SEMANTIC,
@@ -5206,8 +5206,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   else
     {
       type = alter->info.alter.entity_type;
-      if ((type == PT_CLASS && !db_is_class (db))
-	  || (type == PT_VCLASS && !db_is_vclass (db)))
+      if ((type == PT_CLASS && db_is_class (db) <= 0)
+	  || (type == PT_VCLASS && db_is_vclass (db) <= 0))
 	{
 	  PT_ERRORmf2 (parser, alter,
 		       MSGCAT_SET_PARSER_SEMANTIC,
@@ -5624,7 +5624,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      switch (type)
 		{
 		case PT_CLASS:
-		  if (!db_is_class (super))
+		  if (db_is_class (super) <= 0)
 		    {
 		      PT_ERRORmf2 (parser, sup,
 				   MSGCAT_SET_PARSER_SEMANTIC,
@@ -5633,7 +5633,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    }
 		  break;
 		case PT_VCLASS:
-		  if (!db_is_vclass (super))
+		  if (db_is_vclass (super) <= 0)
 		    {
 		      PT_ERRORmf2 (parser, sup,
 				   MSGCAT_SET_PARSER_SEMANTIC,
@@ -8077,7 +8077,7 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser,
 	}
 
       class_object = entity_name->info.name.db_object;
-      if (!db_is_vclass (class_object))
+      if (db_is_vclass (class_object) <= 0)
 	{
 	  return node;
 	}
@@ -9129,7 +9129,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       if (!(entity_type == PT_VCLASS
 	    && node->info.create_entity.or_replace == 1
-	    && db_is_vclass (existing_entity))
+	    && db_is_vclass (existing_entity) > 0)
 	  /* If user sets "IF NOT EXISTS", do not throw ERROR if TABLE or
 	   * VIEW with the same name exists, to stay compatible with MySQL.
 	   */
@@ -9365,7 +9365,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  create_like->info.name.db_object = db_obj;
 	  pt_check_user_owns_class (parser, create_like);
-	  if (!db_is_class (db_obj))
+	  if (db_is_class (db_obj) <= 0)
 	    {
 	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_IS_NOT_A,
@@ -9395,8 +9395,8 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *name, *prefix_length, *col, *col_expr;
   DB_OBJECT *db_obj;
-
   int is_partition = DB_NOT_PARTITIONED_CLASS;
+
   /* check that there trying to create an index on a class */
   name = node->info.index.indexed_class->info.spec.entity_name;
   db_obj = db_find_class (name->info.name.original);
@@ -9411,7 +9411,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
   else
     {
       /* make sure it's not a virtual class */
-      if (db_is_class (db_obj) == 0)
+      if (db_is_class (db_obj) <= 0)
 	{
 	  PT_ERRORm (parser, name,
 		     MSGCAT_SET_PARSER_SEMANTIC,
@@ -9724,8 +9724,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		{
 		  name->info.name.db_object = db_obj;
 		  pt_check_user_owns_class (parser, name);
-		  if ((typ == PT_CLASS && !db_is_class (db_obj))
-		      || (typ == PT_VCLASS && !db_is_vclass (db_obj)))
+		  if ((typ == PT_CLASS && db_is_class (db_obj) <= 0)
+		      || (typ == PT_VCLASS && db_is_vclass (db_obj) <= 0))
 		    {
 		      PT_ERRORmf2 (parser, node,
 				   MSGCAT_SET_PARSER_SEMANTIC,
@@ -9735,7 +9735,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		}
 
 	      if (node->info.drop.is_cascade_constraints
-		  && db_is_vclass (db_obj))
+		  && db_is_vclass (db_obj) > 0)
 		{
 		  PT_ERRORmf (parser, node,
 			      MSGCAT_SET_PARSER_SEMANTIC,
@@ -9941,7 +9941,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (((target->node_type != PT_NAME)
 	       || (target->info.name.meta_class != PT_PARAMETER)
 	       || !pt_eval_path_expr (parser, target, &val)
-	       || !db_is_instance (DB_GET_OBJECT (&val)))
+	       || db_is_instance (DB_GET_OBJECT (&val)) <= 0)
 	      && target->node_type != PT_VALUE
 	      && (target->data_type->info.data_type.entity->info.
 		  name.meta_class != PT_META_CLASS))
@@ -9966,7 +9966,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
       if (((target->node_type != PT_NAME)
 	   || (target->info.name.meta_class != PT_PARAMETER)
 	   || !pt_eval_path_expr (parser, target, &val)
-	   || !db_is_instance (DB_GET_OBJECT (&val)))
+	   || db_is_instance (DB_GET_OBJECT (&val)) <= 0)
 	  && target->node_type != PT_VALUE
 	  && (target->data_type->info.data_type.entity->info.
 	      name.meta_class != PT_CLASS))
@@ -10020,7 +10020,7 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  name->info.name.db_object = db_obj;
 	  pt_check_user_owns_class (parser, name);
-	  if (!db_is_class (db_obj))
+	  if (db_is_class (db_obj) <= 0)
 	    {
 	      PT_ERRORmf2 (parser, node,
 			   MSGCAT_SET_PARSER_SEMANTIC,
@@ -10992,7 +10992,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 
 	  /* Update of views hierarchies not allowed */
 	  if (db_is_vclass
-	      (entity->info.spec.flat_entity_list->info.name.db_object)
+	      (entity->info.spec.flat_entity_list->info.name.db_object) > 0
 	      && entity->info.spec.only_all == PT_ALL)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
@@ -14661,7 +14661,7 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
       goto error_exit;
     }
 
-  if (!db_is_vclass (c))
+  if (db_is_vclass (c) <= 0)
     {
       error_code = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);

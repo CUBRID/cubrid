@@ -445,7 +445,7 @@ pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
   dt->type_enum = PT_TYPE_OBJECT;
   dt->info.data_type.entity = name;
   dt->info.data_type.virt_type_enum = PT_TYPE_OBJECT;
-  if (db_is_vclass (cls))
+  if (db_is_vclass (cls) > 0)
     {
       dt->info.data_type.virt_object = cls;
     }
@@ -3095,7 +3095,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
   DB_VALUE *val, *hv;
   DB_TYPE typ;
   TP_DOMAIN *hv_dom;
-  int i;
+  int i, is_ref = 0;
 
   if (parser == NULL || count <= 0 || values == NULL)
     {
@@ -3118,7 +3118,13 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
   for (val = values, hv = parser->host_variables, i = 0;
        i < parser->host_var_count; val++, hv++, i++)
     {
-      if (pt_is_reference_to_reusable_oid (val))
+      is_ref = pt_is_reference_to_reusable_oid (val);
+      if (is_ref < 0)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return;
+	}
+      if (is_ref > 0)
 	{
 	  PT_ERRORm (parser, NULL, MSGCAT_SET_ERROR,
 		     -(ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED));

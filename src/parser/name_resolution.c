@@ -3527,7 +3527,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  {
 	    entity_name->info.name.location = node->info.spec.location;
 	    if (entity_name->info.name.db_object
-		&& db_is_system_class (entity_name->info.name.db_object))
+		&& db_is_system_class (entity_name->info.name.db_object) > 0)
 	      {
 		bind_arg->sc_info->system_class = true;
 	      }
@@ -6843,7 +6843,7 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *rest_attrs, *rest_values;
   DB_OBJECT *db_obj;
   SM_ATTRIBUTE *db_attributes, *db_attr;
-  int is_values;
+  int is_values, is_vclass = 0;
   int is_subqery;
 
   if (!statement || statement->node_type != PT_INSERT)
@@ -6860,11 +6860,22 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
       return statement;
     }
   db_obj = entity_name->info.name.db_object;
-  if (!db_obj || !db_is_vclass (db_obj))
+  if (!db_obj)
     {
       /* this applies only for views */
       return statement;
     }
+  is_vclass = db_is_vclass (db_obj);
+  if (is_vclass < 0)
+    {
+      PT_ERRORc (parser, statement, er_msg ());
+      goto error;
+    }
+  if (!is_vclass)
+    {
+      return statement;
+    }
+
   value_clauses = statement->info.insert.value_clauses;
   value_list = value_clauses->info.node_list.list;
   attr_list = statement->info.insert.attr_list;

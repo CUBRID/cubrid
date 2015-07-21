@@ -3989,11 +3989,20 @@ tr_create_trigger (const char *name,
   trigger->class_mop = class_mop;
   trigger->comment = (comment == NULL) ? NULL : strdup (comment);
 
-  if (class_mop != NULL && db_is_vclass (class_mop))
+  if (class_mop != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_NO_VCLASSES, 1,
-	      db_get_class_name (class_mop));
-      goto error;
+      int is_vclass = db_is_vclass (class_mop);
+
+      if (is_vclass < 0)
+	{
+	  goto error;
+	}
+      if (is_vclass)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_NO_VCLASSES, 1,
+		  db_get_class_name (class_mop));
+	  goto error;
+	}
     }
 
   trigger->name = tr_process_name (name);
@@ -7160,6 +7169,8 @@ tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
 			}
 		      else
 			{
+			  int is_system_class = 0;
+
 			  if (trigger->class_mop != NULL
 			      && !is_required_trigger (trigger, classes))
 			    {
@@ -7167,8 +7178,12 @@ tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
 			    }
 
 			  /* don't dump system class triggers */
-			  if (trigger->class_mop == NULL
-			      || !sm_is_system_class (trigger->class_mop))
+			  if (trigger->class_mop != NULL)
+			    {
+			      is_system_class =
+				sm_is_system_class (trigger->class_mop);
+			    }
+			  if (is_system_class == 0)
 			    {
 			      if (trigger->status != TR_STATUS_INVALID)
 				{
@@ -7179,6 +7194,10 @@ tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
 					   trigger->name,
 					   get_user_name (trigger->owner));
 				}
+			    }
+			  else if (is_system_class < 0)
+			    {
+			      error = is_system_class;
 			    }
 			}
 		    }
