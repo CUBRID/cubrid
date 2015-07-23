@@ -4754,8 +4754,12 @@ do_rename_partition (MOP old_class, const char *newname)
 
   for (objs = smclass->users; objs; objs = objs->next)
     {
-      if ((au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT)
-	   == NO_ERROR) && subclass->partition)
+      error = au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  goto end_rename;
+	}
+      if (subclass->partition)
 	{
 	  ptr = strstr ((char *) sm_ch_name ((MOBJ) subclass),
 			PARTITIONED_SUB_CLASS_TAG);

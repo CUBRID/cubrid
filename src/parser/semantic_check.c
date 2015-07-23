@@ -7167,10 +7167,16 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   DB_MAKE_NULL (&null_val);
   for (objs = smclass->users; objs; objs = objs->next)
     {
-      if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ,
-			  AU_SELECT) != NO_ERROR || !subcls->partition)
+      if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ, AU_SELECT) !=
+	  NO_ERROR)
 	{
-	  continue;		/* not partitioned or no authority */
+	  PT_ERRORc (parser, stmt, er_msg ());
+	  goto check_end;
+	}
+
+      if (!subcls->partition)
+	{
+	  continue;		/* not partitioned */
 	}
 
       orig_cnt++;

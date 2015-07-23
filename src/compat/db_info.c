@@ -89,13 +89,20 @@ db_find_class_of_index (const char *const index_name,
   for (found = 0, clslist = db_fetch_all_classes (DB_FETCH_READ);
        clslist != NULL; clslist = clslist->next)
     {
-      if (au_fetch_class (clslist->op, &smcls, AU_FETCH_READ, AU_SELECT)
-	  == NO_ERROR && classobj_find_class_constraint (smcls->constraints,
-							 smtype, index_name))
+      if (au_fetch_class (clslist->op, &smcls, AU_FETCH_READ, AU_SELECT) !=
+	  NO_ERROR)
+	{
+	  retval = NULL;
+	  goto end;
+	}
+
+      if (classobj_find_class_constraint
+	  (smcls->constraints, smtype, index_name))
 	{
 	  retval = clslist->op;
 	  found++;
 	}
+
       if (found > 1)
 	{
 	  break;

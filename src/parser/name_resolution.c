@@ -6208,6 +6208,12 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
 	      partition_skip = 1;	/* partitioned sub class */
 	    }
 	}
+      else
+	{
+	  PT_ERRORc (parser, result, er_msg ());
+	  result = NULL;
+	  goto end;
+	}
 
       if (!partition_skip)
 	{
@@ -6225,7 +6231,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
       /* go to the next subclass */
       dbl = dbl->next;
     }
-
+end:
   /* Delete it only if we created it */
   if (ismymht && names_mht)
     {

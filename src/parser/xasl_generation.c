@@ -18650,6 +18650,11 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec,
 				smclass->stats->heap_num_pages;
 			    }
 			}
+		      else
+			{
+			  /* avoid continue in loop with error */
+			  goto error;
+			}
 		    }
 
 		  /* Lock for scans is IS_LOCK/IX_LOCK. */
