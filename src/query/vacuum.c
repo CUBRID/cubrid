@@ -1396,20 +1396,20 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 		{
 		  /* Unfix page. */
 		  pgbuf_unfix_and_init (thread_p, helper.home_page);
-		  goto end;
 		}
+	      /* Fall through and go to end. */
 	    }
 	  else
 	    {
 	      /* Finished vacuuming page. Unfix the page and go to end. */
 	      pgbuf_unfix_and_init (thread_p, helper.home_page);
-	      goto end;
 	    }
+	  goto end;
 	}
 
       if (pgbuf_has_any_non_vacuum_waiters (helper.home_page))
 	{
-	  /* release latch to favour other threads */
+	  /* release latch to favor other threads */
 	  vacuum_heap_page_log_and_reset (thread_p, &helper, false, true);
 
 	  helper.home_page =
