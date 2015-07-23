@@ -5312,7 +5312,9 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data;
   FILTER_INFO *p_range_filter = NULL, *p_key_filter = NULL;
-  OID updated_oid;
+  OID updated_oid, retry_oid;
+  LOG_LSA ref_lsa;
+  int is_peeking;
 
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
@@ -5329,14 +5331,24 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			 &hsidp->pred_attrs, scan_id->val_list,
 			 scan_id->vd, &hsidp->cls_oid, 0, NULL, NULL, NULL);
 
+  is_peeking = scan_id->fixed;
+  if (scan_id->grouped)
+    {
+      is_peeking = PEEK;
+    }
+
   while (1)
     {
+      COPY_OID (&retry_oid, &hsidp->curr_oid);
+
+    restart_scan_oid:
       /* get next object */
       if (scan_id->grouped)
 	{
 	  /* grouped, fixed scan */
 	  sp_scan = heap_scanrange_next (thread_p, &hsidp->curr_oid,
-					 &recdes, &hsidp->scan_range, PEEK);
+					 &recdes, &hsidp->scan_range,
+					 is_peeking);
 
 	  if (scan_id->mvcc_select_lock_needed && sp_scan == S_SUCCESS)
 	    {
@@ -5360,7 +5372,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		heap_mvcc_get_for_delete (thread_p, &current_oid, NULL,
 					  &recdes,
 					  &hsidp->scan_range.scan_cache,
-					  scan_id->fixed, NULL_CHN,
+					  is_peeking, NULL_CHN,
 					  &mvcc_reev_data, &updated_oid);
 	      if (sp_scan == S_SUCCESS
 		  && mvcc_reev_data.filter_result == V_FALSE)
@@ -5389,7 +5401,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  sp_scan =
 		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid,
 			       &hsidp->curr_oid, &recdes,
-			       &hsidp->scan_cache, scan_id->fixed);
+			       &hsidp->scan_cache, is_peeking);
 
 		  if (scan_id->mvcc_select_lock_needed
 		      && sp_scan == S_SUCCESS)
@@ -5414,7 +5426,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			heap_mvcc_get_for_delete (thread_p, &current_oid,
 						  NULL, &recdes,
 						  &hsidp->scan_cache,
-						  scan_id->fixed, NULL_CHN,
+						  is_peeking, NULL_CHN,
 						  &mvcc_reev_data,
 						  &updated_oid);
 		      if (sp_scan == S_SUCCESS
@@ -5440,7 +5452,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    heap_next_record_info (thread_p, &hsidp->hfid,
 					   &hsidp->cls_oid, &hsidp->curr_oid,
 					   &recdes, &hsidp->scan_cache,
-					   scan_id->fixed,
+					   is_peeking,
 					   hsidp->cache_recordinfo);
 		}
 	    }
@@ -5452,7 +5464,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  sp_scan =
 		    heap_prev (thread_p, &hsidp->hfid, &hsidp->cls_oid,
 			       &hsidp->curr_oid, &recdes,
-			       &hsidp->scan_cache, scan_id->fixed);
+			       &hsidp->scan_cache, is_peeking);
 
 		  if (scan_id->mvcc_select_lock_needed
 		      && sp_scan == S_SUCCESS)
@@ -5478,7 +5490,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			heap_mvcc_get_for_delete (thread_p, &current_oid,
 						  NULL, &recdes,
 						  &hsidp->scan_cache,
-						  scan_id->fixed, NULL_CHN,
+						  is_peeking, NULL_CHN,
 						  &mvcc_reev_data,
 						  &updated_oid);
 		      if (sp_scan == S_SUCCESS
@@ -5504,7 +5516,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    heap_prev_record_info (thread_p, &hsidp->hfid,
 					   &hsidp->cls_oid, &hsidp->curr_oid,
 					   &recdes, &hsidp->scan_cache,
-					   scan_id->fixed,
+					   is_peeking,
 					   hsidp->cache_recordinfo);
 		}
 	    }
@@ -5516,6 +5528,12 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return (sp_scan == S_END) ? S_END : S_ERROR;
 	}
 
+      if (hsidp->scan_cache.page_watcher.pgptr != NULL)
+	{
+	  LSA_COPY (&ref_lsa,
+		    pgbuf_get_lsa (hsidp->scan_cache.page_watcher.pgptr));
+	}
+
       if (hsidp->regu_list_last_version && hsidp->cls_regu_inited == false)
 	{
 	  if (eval_set_last_version (thread_p, &hsidp->cls_oid, hsidp->hfid,
@@ -5523,6 +5541,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      != NO_ERROR)
 	    {
 	      return S_ERROR;
+	    }
+
+	  if (is_peeking == PEEK
+	      && hsidp->scan_cache.page_watcher.page_was_unfixed
+	      && hsidp->scan_cache.page_watcher.pgptr != NULL
+	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr,
+					 &ref_lsa))
+	    {
+	      is_peeking = COPY;
+	      COPY_OID (&hsidp->curr_oid, &retry_oid);
+	      goto restart_scan_oid;
 	    }
 
 	  hsidp->cls_regu_inited = true;
@@ -5537,6 +5566,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (ev_res == V_ERROR)
 	    {
 	      return S_ERROR;
+	    }
+
+	  if (is_peeking == PEEK
+	      && hsidp->scan_cache.page_watcher.page_was_unfixed
+	      && hsidp->scan_cache.page_watcher.pgptr != NULL
+	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr,
+					 &ref_lsa))
+	    {
+	      is_peeking = COPY;
+	      COPY_OID (&hsidp->curr_oid, &retry_oid);
+	      goto restart_scan_oid;
 	    }
 
 	  if (scan_id->qualification == QPROC_QUALIFIED)
@@ -5676,6 +5716,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      return S_ERROR;
 	    }
 
+	  if (is_peeking == PEEK
+	      && hsidp->scan_cache.page_watcher.page_was_unfixed
+	      && hsidp->scan_cache.page_watcher.pgptr != NULL
+	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr,
+					 &ref_lsa))
+	    {
+	      is_peeking = COPY;
+	      COPY_OID (&hsidp->curr_oid, &retry_oid);
+	      goto restart_scan_oid;
+	    }
+
 	  /* fetch the rest of the values from the object instance */
 	  if (scan_id->val_list)
 	    {
@@ -5684,6 +5735,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 				  p_current_oid, NULL, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
+		}
+
+	      if (is_peeking == PEEK
+		  && hsidp->scan_cache.page_watcher.page_was_unfixed
+		  && hsidp->scan_cache.page_watcher.pgptr != NULL
+		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.
+					     pgptr, &ref_lsa))
+		{
+		  is_peeking = COPY;
+		  COPY_OID (&hsidp->curr_oid, &retry_oid);
+		  goto restart_scan_oid;
 		}
 	    }
 	}
@@ -5698,6 +5760,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 				  p_current_oid, NULL, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
+		}
+
+	      if (is_peeking == PEEK
+		  && hsidp->scan_cache.page_watcher.page_was_unfixed
+		  && hsidp->scan_cache.page_watcher.pgptr != NULL
+		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.
+					     pgptr, &ref_lsa))
+		{
+		  is_peeking = COPY;
+		  COPY_OID (&hsidp->curr_oid, &retry_oid);
+		  goto restart_scan_oid;
 		}
 	    }
 	}

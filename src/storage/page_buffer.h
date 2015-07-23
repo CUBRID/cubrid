@@ -473,6 +473,7 @@ extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			     int free_page);
 extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
+extern int pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa);
 extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 				     const LOG_LSA * lsa_ptr);
 extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
