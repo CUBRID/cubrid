@@ -2472,7 +2472,11 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 
   load_args = (LOAD_ARGS *) arg;
 
+#if defined (SERVER_MODE)
+  /* Make sure MVCCID for current transaction is generated. */
   (void) logtb_get_current_mvccid (thread_p);
+#endif /* SERVER_MODE */
+
   fixed_mvccid_size = 2 * OR_MVCCID_SIZE;
   if (BTREE_IS_UNIQUE (load_args->btid->unique_pk))
     {

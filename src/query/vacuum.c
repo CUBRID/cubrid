@@ -2987,6 +2987,9 @@ finish_sa_mode:
 			 &log_Gl.hdr.mvcc_next_id);
   logpb_flush_pages_direct (thread_p);
 
+  /* Cleanup dropped files. */
+  vacuum_cleanup_dropped_files (thread_p);
+
   /* Reset log header information saved for vacuum. */
   LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
   log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;

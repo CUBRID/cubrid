@@ -29189,9 +29189,17 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       break;
     case BTREE_OP_INSERT_MVCC_DELID:
     case BTREE_OP_INSERT_MARK_DELETED:
+#if defined (SA_MODE)
+      /* We should not be here */
+      assert (false);
+#endif /* SA_MODE */
       key_insert_func = btree_key_insert_delete_mvccid;
       break;
     case BTREE_OP_UPDATE_SAME_KEY_DIFF_OID:
+#if defined (SA_MODE)
+      /* We should not be here */
+      assert (false);
+#endif /* SA_MODE */
       key_insert_func = btree_key_mvcc_update_same_key;
       break;
     default:
@@ -33405,7 +33413,11 @@ btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 		     class_oid->volid, class_oid->pageid, class_oid->slotid,
 		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid);
     }
+#if defined (SERVER_MODE)
   if (oid_is_serial (class_oid))
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+  if (false)
+#endif /* SA_MODE */
     {
       /* Before starting, we have to handle the special case of serials. Since
        * next key locking was removed, deleting a key from serial is not

@@ -4953,6 +4953,10 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
+#if defined (SA_MODE)
+  /* We shouldn't be here */
+  assert (false);
+#endif /* SA_MODE */
   assert (tdes != NULL && curr_mvcc_info != NULL);
 
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)

@@ -4650,6 +4650,7 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
       goto error;
     }
 
+#if defined (SERVER_MODE)
   if (mvcc_rec_header.mvcc_ins_id == logtb_get_current_mvccid (thread_p))
     {
       /* The record is inserted by current transaction, update in-place
@@ -4662,6 +4663,9 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
       /* MVCC update */
       *need_mvcc_update = true;
     }
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+  *need_mvcc_update = false;
+#endif /* SA_MODE */
 
   if (home_page_watcher.pgptr != NULL)
     {

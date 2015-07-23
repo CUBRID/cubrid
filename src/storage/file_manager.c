@@ -2777,6 +2777,7 @@ file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid,
 			       VPID * first_prealloc_vpid,
 			       INT32 prealloc_npages)
 {
+#if defined (SERVER_MODE)
 #define FILE_NOT_DROPPED_CREATE_RETRIES 256
   VFID created_files[FILE_NOT_DROPPED_CREATE_RETRIES];
   int n_created_files = 0;
@@ -2828,6 +2829,10 @@ file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
     }
   return return_vfid;
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+  return file_create (thread_p, vfid, exp_numpages, file_type, file_des,
+		      first_prealloc_vpid, prealloc_npages);
+#endif /* SA_MODE */
 }
 
 /*
