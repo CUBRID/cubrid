@@ -5821,7 +5821,13 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
   int i;
   FILE_HEAP_DES hfdes;
   const FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
+  int file_created = 0;
 
+  addr_hdr.pgptr = NULL;
+  if (log_start_system_op (thread_p) == NULL)
+    {
+      return NULL;
+    }
   /* create a file descriptor */
   if (class_oid != NULL)
     {
@@ -5858,7 +5864,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
 		}
 	      vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid,
 					   VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-	      return hfid;
+	      goto end;
 	    }
 	}
 
@@ -5883,8 +5889,9 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
 				     file_type, &hfdes, &vpid, 1) == NULL)
     {
       /* Unable to create the heap file */
-      return NULL;
+      goto error;
     }
+  file_created = 1;
 
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid,
 			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
@@ -5894,10 +5901,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
   if (addr_hdr.pgptr == NULL)
     {
       /* something went wrong, destroy the file, and return */
-      (void) file_destroy (thread_p, &hfid->vfid);
-      hfid->vfid.fileid = NULL_FILEID;
-      hfid->hpgid = NULL_PAGEID;
-      return NULL;
+      goto error;
     }
 
   hfid->hpgid = vpid.pageid;
@@ -5977,11 +5981,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
 	}
 
       /* Free the page and release the lock */
-      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
-      (void) file_destroy (thread_p, &hfid->vfid);
-      hfid->vfid.fileid = NULL_FILEID;
-      hfid->hpgid = NULL_PAGEID;
-      return NULL;
+      goto error;
     }
   else
     {
@@ -5992,13 +5992,59 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
       addr_hdr.vfid = &hfid->vfid;
       addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
       log_append_redo_data (thread_p,
-			    reuse_oid ? RVHF_CREATE_REUSE_OID : RVHF_CREATE,
+			    reuse_oid ? RVHF_CREATE_HEADER_REUSE_OID :
+			    RVHF_CREATE_HEADER,
 			    &addr_hdr, sizeof (heap_hdr), &heap_hdr);
       pgbuf_set_dirty (thread_p, addr_hdr.pgptr, FREE);
       addr_hdr.pgptr = NULL;
     }
 
+end:
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
+  file_new_declare_as_old (thread_p, &hfid->vfid);
+
+  addr_hdr.vfid = NULL;
+  addr_hdr.pgptr = NULL;
+  addr_hdr.offset = 0;
+  log_append_undo_data (thread_p, RVHF_CREATE, &addr_hdr, sizeof (HFID),
+			hfid);
+
+  /* Already append a vacuum undo logging when file was created, but
+   * since that was included in the system operation which just got
+   * committed, we need to do it again in case of rollback.
+   */
+  vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid,
+			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+
+  LOG_CS_ENTER (thread_p);
+  logpb_flush_pages_direct (thread_p);
+  LOG_CS_EXIT (thread_p);
+
   return hfid;
+
+error:
+
+  if (addr_hdr.pgptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+    }
+
+  if (file_created)
+    {
+      (void) file_destroy (thread_p, &hfid->vfid);
+      /* remove the file from new file cache.
+       * Since we are in a top operation, 
+       * file_destroy didn't change the file as OLD_FILE.
+       */
+      file_new_declare_as_old (thread_p, &hfid->vfid);
+    }
+
+  hfid->vfid.fileid = NULL_FILEID;
+  hfid->hpgid = NULL_PAGEID;
+
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+  return NULL;
 }
 
 /*
@@ -20276,6 +20322,46 @@ void
 heap_rv_dump_reuse_page (FILE * fp, int ignore_length, void *ignore_data)
 {
   fprintf (fp, "Delete all objects in page for reuse purposes of page\n");
+}
+
+/*
+ * heap_rv_undo_create () - Undo the creation of an heap file
+ *   return: int
+ *   rcv(in): Recovery structure
+ *
+ * Note: The heap file is destroyed completely.
+ */
+int
+heap_rv_undo_create (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  HFID *hfid;
+  int ret;
+
+  hfid = (HFID *) rcv->data;
+
+  ret = file_destroy (thread_p, &hfid->vfid);
+
+  assert (ret == NO_ERROR);
+
+  return ((ret == NO_ERROR) ? NO_ERROR : er_errid ());
+}
+
+/*
+ * heap_rv_dump_create () -
+ *   return: int
+ *   length_ignore(in): Length of Recovery Data
+ *   data(in): The data being logged
+ *
+ * Note: Dump the information to undo the creation of an heap file
+ */
+void
+heap_rv_dump_create (FILE * fp, int length_ignore, void *data)
+{
+  VFID *vfid;
+
+  vfid = &((HFID *) data)->vfid;
+  (void) fprintf (fp, "Undo creation of Heap vfid: %d|%d\n",
+		  vfid->volid, vfid->fileid);
 }
 
 /*

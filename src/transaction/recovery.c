@@ -268,8 +268,8 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL},
 
-  {RVHF_CREATE,
-   "RVHF_CREATE",
+  {RVHF_CREATE_HEADER,
+   "RVHF_CREATE_HEADER",
    NULL,
    heap_rv_redo_newpage,
    NULL,
@@ -645,8 +645,8 @@ struct rvfun RV_fun[] = {
    disk_rv_dump_alloctable_with_vhdr,
    disk_rv_dump_alloctable_with_vhdr},
 
-  {RVHF_CREATE_REUSE_OID,
-   "RVHF_CREATE_REUSE_OID",
+  {RVHF_CREATE_HEADER_REUSE_OID,
+   "RVHF_CREATE_HEADER_REUSE_OID",
    NULL,
    heap_rv_redo_newpage_reuse_oid,
    NULL,
@@ -962,7 +962,14 @@ struct rvfun RV_fun[] = {
    vacuum_rv_undo_vacuum_heap_record,
    vacuum_rv_redo_vacuum_heap_record,
    NULL,
-   log_rv_dump_hexa}
+   log_rv_dump_hexa},
+
+  {RVHF_CREATE,
+   "RVHF_CREATE",
+   heap_rv_undo_create,
+   NULL,
+   heap_rv_dump_create,
+   NULL},
 };
 
 /*

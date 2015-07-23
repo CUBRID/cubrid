@@ -816,6 +816,8 @@ extern int heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv);
 extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length,
 				     void *data);
+extern int heap_rv_undo_create (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void heap_rv_dump_create (FILE * fp, int length_ignore, void *data);
 
 extern int heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p,
 					 const OID * class_oid, HFID * hfid);
