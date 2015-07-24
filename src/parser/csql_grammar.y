@@ -5717,6 +5717,9 @@ alter_column_clause_mysql_specific
 				  {
 				    switch (def->info.expr.op)
 				      {
+				      case PT_SYS_TIME:
+					node->info.data_default.default_expr = DB_DEFAULT_SYSTIME;
+					break;
 				      case PT_SYS_DATE:
 					node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
 					break;
@@ -5726,11 +5729,17 @@ alter_column_clause_mysql_specific
 				      case PT_SYS_TIMESTAMP:
 					node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
 					break;
-				      case PT_CURRENT_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+				      case PT_CURRENT_TIME:
+					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIME;
+					break;
+				      case PT_CURRENT_DATE:
+					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATE;
 					break;
 				      case PT_CURRENT_DATETIME:
 					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+					break;
+				      case PT_CURRENT_TIMESTAMP:
+					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
 					break;
 				      case PT_USER:
 					node->info.data_default.default_expr = DB_DEFAULT_USER;
@@ -10023,6 +10032,9 @@ column_default_constraint_def
 			      {
 				switch (def->info.expr.op)
 				  {
+				  case PT_SYS_TIME:
+				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIME;
+				    break;
 				  case PT_SYS_DATE:
 				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
 				    break;
@@ -10032,11 +10044,17 @@ column_default_constraint_def
 				  case PT_SYS_TIMESTAMP:
 				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
 				    break;
-				  case PT_CURRENT_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+				  case PT_CURRENT_TIME:
+				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIME;
+				    break;
+				  case PT_CURRENT_DATE:
+				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATE;
 				    break;
 				  case PT_CURRENT_DATETIME:
 				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+				    break;
+				  case PT_CURRENT_TIMESTAMP:
+				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
 				    break;
 				  case PT_USER:
 				    node->info.data_default.default_expr = DB_DEFAULT_USER;
@@ -15178,7 +15196,7 @@ reserved_func
 			parser_groupby_exception = PT_OID_ATTR;
 
 		DBG_PRINT}}
-	| of_dates
+	| SYS_DATE
 		{{
 
 			PT_NODE *expr = parser_make_expression (this_parser, PT_SYS_DATE, NULL, NULL, NULL);
@@ -15186,10 +15204,26 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| of_times
+	| of_current_date
+		{{
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_CURRENT_DATE, NULL, NULL, NULL);
+			$$ = expr;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SYS_TIME_
 		{{
 
 			PT_NODE *expr = parser_make_expression (this_parser, PT_SYS_TIME, NULL, NULL, NULL);
+			$$ = expr;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| of_current_time
+		{{
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_CURRENT_TIME, NULL, NULL, NULL);
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -15210,7 +15244,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| of_timestamps
+	| SYS_TIMESTAMP
 		{{
 
 			PT_NODE *expr = parser_make_expression (this_parser, PT_SYS_TIMESTAMP, NULL, NULL, NULL);
@@ -15218,7 +15252,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| of_current_timestamp
+	| of_current_timestamps
 		{{
 
 			PT_NODE *expr = parser_make_expression (this_parser, PT_CURRENT_TIMESTAMP, NULL, NULL, NULL);
@@ -15226,7 +15260,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| of_sys_datetime
+	| SYS_DATETIME
 		{{
 
 			PT_NODE *expr = parser_make_expression (this_parser, PT_SYS_DATETIME, NULL, NULL, NULL);
@@ -15618,19 +15652,17 @@ of_cume_dist_percent_rank_function
 			$$ = PT_PERCENT_RANK;
 		DBG_PRINT}}
     ;
-
-of_dates
-	: SYS_DATE
-	| CURRENT_DATE
+	
+of_current_date
+	: CURRENT_DATE
 	| CURRENT_DATE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATE); }
 	  '(' ')'
 		{ pop_msg(); }
 	;
 
-of_times
-	: SYS_TIME_
-	| CURRENT_TIME
+of_current_time
+	: CURRENT_TIME
 	| CURRENT_TIME
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIME); }
 	  '(' ')'
@@ -15653,11 +15685,10 @@ of_session_timezone_
 	      { pop_msg(); }
 	;
 
-of_timestamps
-	: SYS_TIMESTAMP
-	| LOCALTIME
-	| LOCALTIME
-		{ push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIME); }
+of_current_timestamps
+	: CURRENT_TIMESTAMP
+	| CURRENT_TIMESTAMP
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP); }
 	  '(' ')'
 		{ pop_msg(); }
 	| LOCALTIMESTAMP
@@ -15665,18 +15696,12 @@ of_timestamps
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIMESTAMP); }
 	  '(' ')'
 		{ pop_msg(); }
-	;
-
-of_current_timestamp
-	: CURRENT_TIMESTAMP
-	| CURRENT_TIMESTAMP
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP); }
+	| LOCALTIME
+	| LOCALTIME
+		{ push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIME); }
 	  '(' ')'
 		{ pop_msg(); }
 	;
-
-of_sys_datetime
-	: SYS_DATETIME
 
 of_current_datetime
 	: CURRENT_DATETIME
@@ -15685,7 +15710,6 @@ of_current_datetime
 	  '(' ')'
 		{ pop_msg(); }
 	;
-
 of_users
 	: CURRENT_USER
 	| SYSTEM_USER
@@ -22546,10 +22570,11 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 		       "ORDERBY_NUM()", "ORDERBY_NUM()");
 	}
 
-      if (OP == PT_SYS_TIME || OP == PT_SYS_DATE
-	  || OP == PT_SYS_DATETIME || OP == PT_SYS_TIMESTAMP
-	  || OP == PT_CURRENT_TIMESTAMP || OP == PT_CURRENT_DATETIME
-	  || OP == PT_UTC_TIME || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP
+      if (OP == PT_SYS_TIME || OP == PT_CURRENT_TIME || OP == PT_SYS_DATE
+	  || OP == PT_CURRENT_DATE || OP == PT_SYS_DATETIME
+	  || OP == PT_CURRENT_DATETIME || OP == PT_SYS_TIMESTAMP
+	  || OP == PT_CURRENT_TIMESTAMP || OP == PT_UTC_TIME
+	  || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP
 	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP)
 	{
 	  parser_si_datetime = true;
@@ -23837,8 +23862,10 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_SYS_DATE:
     case PT_SYS_DATETIME:
     case PT_SYS_TIMESTAMP:
-    case PT_CURRENT_TIMESTAMP:
+    case PT_CURRENT_TIME:
+    case PT_CURRENT_DATE:
     case PT_CURRENT_DATETIME:
+    case PT_CURRENT_TIMESTAMP:
     case PT_UTC_TIME:
     case PT_UTC_DATE:
     case PT_VERSION:

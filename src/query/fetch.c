@@ -641,6 +641,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_SYS_TIME:
     case T_SYS_TIMESTAMP:
     case T_SYS_DATETIME:
+    case T_CURRENT_DATE:
+    case T_CURRENT_TIME:
     case T_CURRENT_TIMESTAMP:
     case T_CURRENT_DATETIME:
     case T_UTC_TIME:
@@ -2247,6 +2249,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	break;
       }
 
+    case T_SYS_DATETIME:
+      {
+	DB_TIMESTAMP db_timestamp;
+	DB_TIME db_time;
+
+	db_time = vd->sys_datetime.time / 1000;
+
+	db_timestamp_encode_ses (&vd->sys_datetime.date, &db_time,
+				 &db_timestamp, NULL);
+
+	db_make_timestamp (arithptr->value, db_timestamp);
+      }
+      break;
+
     case T_SYS_TIMESTAMP:
       {
 	DB_TIMESTAMP db_timestamp;
@@ -2260,9 +2276,49 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       }
       break;
 
-    case T_SYS_DATETIME:
-      DB_MAKE_DATETIME (arithptr->value, &vd->sys_datetime);
-      break;
+    case T_CURRENT_DATE:
+      {
+	TZ_REGION system_tz_region, session_tz_region;
+	DB_DATETIME dest_dt;
+	int err_status = 0;
+
+	tz_get_system_tz_region (&system_tz_region);
+	tz_get_session_tz_region (&session_tz_region);
+	dest_dt = vd->sys_datetime;
+	err_status = tz_conv_tz_datetime_w_region (&vd->sys_datetime,
+						   &system_tz_region,
+						   &session_tz_region,
+						   &dest_dt, NULL, NULL);
+	if (err_status != NO_ERROR)
+	  {
+	    return err_status;
+	  }
+	DB_MAKE_ENCODED_DATE (arithptr->value, &dest_dt.date);
+	break;
+      }
+
+    case T_CURRENT_TIME:
+      {
+	DB_TIME cur_time, db_time;
+	const char *t_source, *t_dest;
+	int err_status = 0, len_source, len_dest;
+
+	t_source = tz_get_system_timezone ();
+	t_dest = tz_get_session_local_timezone ();
+	len_source = strlen (t_source);
+	len_dest = strlen (t_dest);
+	db_time = vd->sys_datetime.time / 1000;
+
+	err_status =
+	  tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest,
+				       len_dest, &cur_time);
+	if (err_status != NO_ERROR)
+	  {
+	    return err_status;
+	  }
+	DB_MAKE_ENCODED_TIME (arithptr->value, &cur_time);
+	break;
+      }
 
     case T_CURRENT_TIMESTAMP:
       {

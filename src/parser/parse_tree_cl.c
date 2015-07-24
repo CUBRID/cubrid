@@ -3847,8 +3847,12 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "months_between ";
     case PT_SYS_DATE:
       return "sys_date ";
+    case PT_CURRENT_DATE:
+      return "current_date ";
     case PT_SYS_TIME:
       return "sys_time ";
+    case PT_CURRENT_TIME:
+      return "current_time ";
     case PT_SYS_TIMESTAMP:
       return "sys_timestamp ";
     case PT_CURRENT_TIMESTAMP:
@@ -10837,8 +10841,16 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " SYS_DATE ");
       break;
 
+    case PT_CURRENT_DATE:
+      q = pt_append_nulstring (parser, q, " CURRENT_DATE ");
+      break;
+
     case PT_SYS_TIME:
       q = pt_append_nulstring (parser, q, " SYS_TIME ");
+      break;
+
+    case PT_CURRENT_TIME:
+      q = pt_append_nulstring (parser, q, " CURRENT_TIME ");
       break;
 
     case PT_SYS_TIMESTAMP:
@@ -18426,7 +18438,9 @@ pt_is_const_expr_node (PT_NODE * node)
 		  && pt_is_const_expr_node (node->info.
 					    expr.arg2)) ? true : false;
 	case PT_SYS_DATE:
+	case PT_CURRENT_DATE:
 	case PT_SYS_TIME:
+	case PT_CURRENT_TIME:
 	case PT_SYS_TIMESTAMP:
 	case PT_CURRENT_TIMESTAMP:
 	case PT_SYS_DATETIME:

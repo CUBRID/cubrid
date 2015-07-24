@@ -12289,6 +12289,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       insert->vals[k] = new_val;
       switch (attr->current_default_value.default_expr)
 	{
+	case DB_DEFAULT_SYSTIME:
+	  DB_MAKE_TIME (insert->vals[k], 1, 1, 1);
+	  insert->vals[k]->data.time = xasl_state->vd.sys_datetime.time;
+	  break;
 	case DB_DEFAULT_SYSDATE:
 	  DB_MAKE_DATE (insert->vals[k], 1, 1, 1);
 	  insert->vals[k]->data.date = xasl_state->vd.sys_datetime.date;
@@ -12299,6 +12303,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	case DB_DEFAULT_SYSTIMESTAMP:
 	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
 	  error = db_datetime_to_timestamp (insert->vals[k], insert->vals[k]);
+	  break;
+	case DB_DEFAULT_CURRENTTIME:
+	  DB_MAKE_TIME (insert->vals[k], 1, 1, 1);
+	  insert->vals[k]->data.time = xasl_state->vd.sys_datetime.time;
+	  break;
+	case DB_DEFAULT_CURRENTDATE:
+	  DB_MAKE_DATE (insert->vals[k], 1, 1, 1);
+	  insert->vals[k]->data.date = xasl_state->vd.sys_datetime.date;
 	  break;
 	case DB_DEFAULT_CURRENTDATETIME:
 	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
@@ -28562,6 +28574,9 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		case DB_DEFAULT_NONE:
 		  break;
+		case DB_DEFAULT_SYSTIME:
+		  db_make_string (out_values[idx_val++], "SYS_TIME");
+		  break;
 		case DB_DEFAULT_SYSDATE:
 		  db_make_string (out_values[idx_val++], "SYS_DATE");
 		  break;
@@ -28570,6 +28585,12 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  break;
 		case DB_DEFAULT_SYSTIMESTAMP:
 		  db_make_string (out_values[idx_val++], "SYS_TIMESTAMP");
+		  break;
+		case DB_DEFAULT_CURRENTTIME:
+		  db_make_string (out_values[idx_val++], "CURRENT_TIME");
+		  break;
+		case DB_DEFAULT_CURRENTDATE:
+		  db_make_string (out_values[idx_val++], "CURRENT_DATE");
 		  break;
 		case DB_DEFAULT_CURRENTDATETIME:
 		  db_make_string (out_values[idx_val++], "CURRENT_DATETIME");

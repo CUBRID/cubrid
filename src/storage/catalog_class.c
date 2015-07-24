@@ -1544,6 +1544,10 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 
       switch (DB_GET_INT (&default_expr))
 	{
+	case DB_DEFAULT_SYSTIME:
+	  strcpy (str_val, "SYS_TIME");
+	  break;
+
 	case DB_DEFAULT_SYSDATE:
 	  strcpy (str_val, "SYS_DATE");
 	  break;
@@ -1566,6 +1570,14 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 
 	case DB_DEFAULT_CURR_USER:
 	  strcpy (str_val, "CURRENT_USER");
+	  break;
+
+	case DB_DEFAULT_CURRENTTIME:
+	  strcpy (str_val, "CURRENT_TIME");
+	  break;
+
+	case DB_DEFAULT_CURRENTDATE:
+	  strcpy (str_val, "CURRENT_DATE");
 	  break;
 
 	case DB_DEFAULT_CURRENTDATETIME:

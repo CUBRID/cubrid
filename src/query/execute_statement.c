@@ -444,6 +444,10 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	{
 	  switch (att->default_value.default_expr)
 	    {
+	    case DB_DEFAULT_SYSTIME:
+	      error = pr_clone_value (&parser->sys_datetime,
+				      &att->default_value.value);
+	      break;
 	    case DB_DEFAULT_SYSDATE:
 	      if (DB_IS_NULL (&parser->sys_datetime))
 		{
@@ -478,6 +482,14 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	      user_name = db_get_user_name ();
 	      error = DB_MAKE_STRING (&att->default_value.value, user_name);
 	      att->default_value.value.need_clear = true;
+	      break;
+	    case DB_DEFAULT_CURRENTTIME:
+	      error = pr_clone_value (&parser->sys_datetime,
+				      &att->default_value.value);
+	      break;
+	    case DB_DEFAULT_CURRENTDATE:
+	      error = pr_clone_value (&parser->sys_datetime,
+				      &att->default_value.value);
 	      break;
 	    case DB_DEFAULT_CURRENTDATETIME:
 	      error = pr_clone_value (&parser->sys_datetime,

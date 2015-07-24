@@ -2379,6 +2379,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_UTC_DATE:
     case PT_SYS_DATE:
+    case PT_CURRENT_DATE:
       num = 0;
 
       /* one overload */
@@ -2407,6 +2408,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_UTC_TIME:
     case PT_SYS_TIME:
+    case PT_CURRENT_TIME:
       num = 0;
 
       /* one overload */
@@ -6929,7 +6931,9 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_LAST_DAY:
     case PT_MONTHS_BETWEEN:
     case PT_SYS_DATE:
+    case PT_CURRENT_DATE:
     case PT_SYS_TIME:
+    case PT_CURRENT_TIME:
     case PT_SYS_TIMESTAMP:
     case PT_CURRENT_TIMESTAMP:
     case PT_SYS_DATETIME:
@@ -18958,6 +18962,31 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	return 1;
       }
 
+    case PT_CURRENT_DATE:
+      {
+	TZ_REGION system_tz_region, session_tz_region;
+	DB_DATETIME *dest_dt, *tmp_datetime;
+	int err_status = 0;
+
+	db_value_domain_init (result, DB_TYPE_DATE, DB_DEFAULT_PRECISION,
+			      DB_DEFAULT_SCALE);
+	tz_get_system_tz_region (&system_tz_region);
+	tz_get_session_tz_region (&session_tz_region);
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	dest_dt = db_get_datetime (&parser->sys_datetime);
+	err_status = tz_conv_tz_datetime_w_region (tmp_datetime,
+						   &system_tz_region,
+						   &session_tz_region,
+						   dest_dt, NULL, NULL);
+	if (err_status != NO_ERROR)
+	  {
+	    return err_status;
+	  }
+	db_value_put_encoded_date (result, &dest_dt->date);
+
+	return 1;
+      }
+
     case PT_UTC_TIME:
       {
 	DB_TIME db_time;
@@ -18981,6 +19010,34 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	tmp_time = tmp_datetime->time / 1000;
 
 	db_value_put_encoded_time (result, &tmp_time);
+
+	return 1;
+      }
+
+    case PT_CURRENT_TIME:
+      {
+	DB_DATETIME *tmp_datetime;
+	DB_TIME cur_time, tmp_time;
+	const char *t_source, *t_dest;
+	int err_status = 0, len_source, len_dest;
+
+	db_value_domain_init (result, DB_TYPE_TIME, DB_DEFAULT_PRECISION,
+			      DB_DEFAULT_SCALE);
+	t_source = tz_get_system_timezone ();
+	t_dest = tz_get_session_local_timezone ();
+	len_source = strlen (t_source);
+	len_dest = strlen (t_dest);
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	tmp_time = tmp_datetime->time / 1000;
+
+	err_status =
+	  tz_conv_tz_time_w_zone_name (&tmp_time, t_source, len_source,
+				       t_dest, len_dest, &cur_time);
+	if (err_status != NO_ERROR)
+	  {
+	    return err_status;
+	  }
+	db_value_put_encoded_time (result, &cur_time);
 
 	return 1;
       }
@@ -20079,7 +20136,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	error = db_get_schema_def_dbval (result, arg1);
 	if (error < 0)
 	  {
-	    const char * table_name = NULL;
+	    const char *table_name = NULL;
 	    if (error != ER_QSTR_INVALID_DATA_TYPE)
 	      {
 		table_name = db_get_string (arg1);
@@ -20088,15 +20145,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		if (error == ER_OBJ_NOT_A_CLASS)
 		  {
 		    PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC,
-		                 MSGCAT_SEMANTIC_IS_NOT_A,  table_name,
-		                 pt_show_misc_type (PT_CLASS));
+				 MSGCAT_SEMANTIC_IS_NOT_A, table_name,
+				 pt_show_misc_type (PT_CLASS));
 		    return 0;
 		  }
 		else if (error == ER_AU_SELECT_FAILURE)
 		  {
 		    PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_RUNTIME,
-		       MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-		       "select", table_name);
+				 MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+				 "select", table_name);
 		    return 0;
 		  }
 	      }

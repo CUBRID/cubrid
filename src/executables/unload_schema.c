@@ -2447,8 +2447,17 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 
       switch (attribute->default_value.default_expr)
 	{
+	case DB_DEFAULT_SYSTIME:
+	  fprintf (output_file, "SYS_TIME");
+	  break;
 	case DB_DEFAULT_SYSDATE:
 	  fprintf (output_file, "SYS_DATE");
+	  break;
+	case DB_DEFAULT_CURRENTDATE:
+	  fprintf (output_file, "CURRENT_DATE");
+	  break;
+	case DB_DEFAULT_CURRENTTIME:
+	  fprintf (output_file, "CURRENT_TIME");
 	  break;
 	case DB_DEFAULT_SYSDATETIME:
 	  fprintf (output_file, "SYS_DATETIME");

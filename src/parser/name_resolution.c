@@ -9376,6 +9376,9 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 {
   switch (expr_type)
     {
+    case DB_DEFAULT_SYSTIME:
+      return PT_SYS_TIME;
+
     case DB_DEFAULT_SYSDATE:
       return PT_SYS_DATE;
 
@@ -9399,6 +9402,12 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 
     case DB_DEFAULT_CURRENTTIMESTAMP:
       return PT_CURRENT_TIMESTAMP;
+
+    case DB_DEFAULT_CURRENTTIME:
+      return PT_CURRENT_TIME;
+
+    case DB_DEFAULT_CURRENTDATE:
+      return PT_CURRENT_DATE;
 
     default:
       return (PT_OP_TYPE) 0;

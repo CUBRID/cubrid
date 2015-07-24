@@ -2495,8 +2495,10 @@ typedef unsigned int SESSION_ID;
 #define DB_UTIME_MAX       DB_UINT32_MAX
 
 #define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
+    (v) == DB_DEFAULT_CURRENTTIME || (v) == DB_DEFAULT_CURRENTDATE || \
     (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
-    (v) == DB_DEFAULT_UNIX_TIMESTAMP)
+    (v) == DB_DEFAULT_UNIX_TIMESTAMP || (v) == DB_DEFAULT_CURRENTDATETIME || \
+    (v) == DB_DEFAULT_CURRENTTIMESTAMP || (v) == DB_DEFAULT_SYSTIME)
 
 /* This defines the basic type identifier constants.  These are used in
    the domain specifications of attributes and method arguments and

@@ -4009,8 +4009,14 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 
   switch (attr->default_value.default_expr)
     {
+    case DB_DEFAULT_SYSTIME:
+      return "SYS_TIME";
     case DB_DEFAULT_SYSDATE:
       return "SYS_DATE";
+    case DB_DEFAULT_CURRENTDATE:
+      return "CURRENT_DATE";
+    case DB_DEFAULT_CURRENTTIME:
+      return "CURRENT_TIME";
     case DB_DEFAULT_SYSDATETIME:
       return "SYS_DATETIME";
     case DB_DEFAULT_SYSTIMESTAMP:

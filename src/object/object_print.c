@@ -713,8 +713,17 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 
 	  switch (attribute_p->default_value.default_expr)
 	    {
+	    case DB_DEFAULT_SYSTIME:
+	      buffer = pt_append_nulstring (parser, buffer, "SYS_TIME");
+	      break;
 	    case DB_DEFAULT_SYSDATE:
 	      buffer = pt_append_nulstring (parser, buffer, "SYS_DATE");
+	      break;
+	    case DB_DEFAULT_CURRENTDATE:
+	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_DATE");
+	      break;
+	    case DB_DEFAULT_CURRENTTIME:
+	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_TIME");
 	      break;
 	    case DB_DEFAULT_SYSDATETIME:
 	      buffer = pt_append_nulstring (parser, buffer, "SYS_DATETIME");

@@ -467,6 +467,8 @@ typedef enum
   T_CRC32,
   T_CURRENT_DATETIME,
   T_CURRENT_TIMESTAMP,
+  T_CURRENT_DATE,
+  T_CURRENT_TIME,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;
