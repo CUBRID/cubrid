@@ -373,6 +373,10 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 							    cls, entity, typs,
 							    (UINTPTR) typs,
 							    PT_CLASS);
+		      if (entity == NULL)
+			{
+			  return;
+			}
 		      new_typ->info.data_type.virt_type_enum = typ;
 		      if (new_typ->info.data_type.entity != NULL)
 			{

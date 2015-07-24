@@ -4296,6 +4296,10 @@ pt_add_class_to_entity_list (PARSER_CONTEXT * parser,
   flat_list = pt_make_subclass_list (parser, class_, parent->line_number,
 				     parent->column_number, id, meta_class,
 				     NULL);
+  if (flat_list == NULL)
+    {
+      return NULL;
+    }
 
   return pt_name_list_union (parser, entity, flat_list);
 }
@@ -4314,7 +4318,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 {
   DB_DOMAIN *dom;
   DB_OBJECT *db;
-  PT_NODE *result = NULL, *s, *result_last_node = NULL;
+  PT_NODE *result = NULL, *s, *result_last_node = NULL, *entity = NULL;
   PT_TYPE_ENUM t;
 
   t = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
@@ -4357,11 +4361,16 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	  if (db)
 	    {
 	      /* prim_type = PT_TYPE_OBJECT, attach db_object, attach name */
-	      result->info.data_type.entity
-		= pt_add_class_to_entity_list (parser, db,
-					       result->info.data_type.entity,
-					       result, (UINTPTR) result,
-					       PT_CLASS);
+	      entity =
+		pt_add_class_to_entity_list (parser, db,
+					     result->info.data_type.entity,
+					     result, (UINTPTR) result,
+					     PT_CLASS);
+	      if (entity == NULL)
+		{
+		  return NULL;
+		}
+	      result->info.data_type.entity = entity;
 	    }
 	  domain = (DB_DOMAIN *) db_domain_next (domain);
 	}
@@ -6122,12 +6131,14 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
 
   if (parser == NULL)
     {
+      assert (parser != NULL);
       return NULL;
     }
 
   /* get the name of THIS class and put it in a PT_NAME node */
   if (db == NULL)
     {
+      assert (db != NULL);
       return NULL;
     }
 
@@ -6147,6 +6158,11 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
   if (names_mht == NULL || !mht_get (names_mht, classname))
     {
       result = pt_name (parser, classname);
+      if (result == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
       result->line_number = line_num;
       result->column_number = col_num;
       result->info.name.db_object = db;
@@ -6154,13 +6170,17 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
       result->info.name.meta_class = meta_class;
       result->info.name.partition = NULL;
 
-      if ((au_fetch_class (db, &smclass, AU_FETCH_READ, AU_SELECT) ==
-	   NO_ERROR))
+      if ((au_fetch_class_force (db, &smclass, AU_FETCH_READ) == NO_ERROR))
 	{
 	  if (smclass->partition != NULL && smclass->partition->pname == NULL)
 	    {
 	      result->info.name.partition = smclass->partition;
 	    }
+	}
+      else
+	{
+	  PT_ERRORc (parser, result, er_msg ());
+	  return NULL;
 	}
 
       if (names_mht)
@@ -6191,6 +6211,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
 	}
       else			/* could not create hash table */
 	{
+	  PT_ERRORc (parser, result, er_msg ());
 	  return NULL;
 	}
     }
@@ -6200,8 +6221,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
     {
       partition_skip = 0;
 
-      if (au_fetch_class (dbl->op, &smclass,
-			  AU_FETCH_READ, AU_SELECT) == NO_ERROR)
+      if (au_fetch_class_force (dbl->op, &smclass, AU_FETCH_READ) == NO_ERROR)
 	{
 	  if (smclass->partition != NULL && smclass->partition->pname != NULL)
 	    {
@@ -6221,6 +6241,15 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db,
 	  temp = pt_make_subclass_list (parser, dbl->op,
 					line_num, col_num, id,
 					meta_class, names_mht);
+	  /* when names_mht != NULL, it is possible that temp is NULL
+	   * while no error happen. Such as: diamond problem of multiple
+	   * inheritance. So, check pt_has_error() is needed.
+	   */
+	  if (temp == NULL && pt_has_error (parser))
+	    {
+	      result = NULL;
+	      goto end;
+	    }
 	  /* and attach s to the tail of result.
 	     NOTE: ORDER IS IMPORTANT and MUST be maintained.  This used
 	     to call pt_name_list_union, but since we only add unique
