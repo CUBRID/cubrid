@@ -25,6 +25,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "byte_order.h"
 #include "utility.h"
 #include "db_date.h"
 #include "environment_variable.h"
@@ -3180,7 +3181,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
       tz_zone->gmt_off_rule_count = tz_raw_zone->offset_rule_count;
 
       if (tz_zone->gmt_off_rule_count == 0)
-	{	  
+	{
 	  /* if zone is an alias continue */
 	  if (tz_raw_zone->clone_of_id != -1)
 	    {
@@ -3193,7 +3194,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw),
 				  TZC_ERR_INVALID_ZONE, "Empty zone");
 	      goto exit;
-	  } 
+	    }
 	}
 
       for (j = 0; j < tz_zone->gmt_off_rule_count; j++)

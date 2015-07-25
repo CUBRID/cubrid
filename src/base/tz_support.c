@@ -160,11 +160,12 @@ static void *tz_lib_handle = NULL;
 #if defined(WINDOWS)
 static TZ_DATA timezone_data =
   { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0,
-  NULL
+  NULL, {'0'}
 };
 #else
 static TZ_DATA timezone_data =
-  { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL };
+  { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL,
+{'0'} };
 #endif
 
 static const int days_of_month[] =

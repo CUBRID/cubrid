@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if defined (LINUX)
+#include <arpa/inet.h>
+#endif /* LINUX */
+
 #if defined(sun)
 #include <sys/types.h>
 #endif /* sun */

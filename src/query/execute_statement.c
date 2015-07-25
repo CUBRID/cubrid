@@ -12003,7 +12003,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
   OR_BUF buf;
   DB_VALUE *val = NULL;
   TP_DOMAIN *attr_dom = NULL, *dom = NULL, *setdomain = NULL;
-  int *asc_desc = NULL;
+  const int *asc_desc = NULL;
 
   midxkey.buf = NULL;
   asc_desc = db_constraint_asc_desc (constraint);
@@ -18261,7 +18261,8 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 {
   DB_VALUE var[2];
   char *plan_str = NULL;
-  int format, i = 0;
+  int i = 0;
+  QUERY_TRACE_FORMAT format;
   size_t sizeloc;
   FILE *fp;
 

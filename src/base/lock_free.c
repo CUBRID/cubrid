@@ -988,6 +988,7 @@ lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc,
   pthread_mutex_t *entry_mutex;
   void **curr_p;
   void *curr;
+  int rv;
 
   assert (list_p != NULL && edesc != NULL);
   assert (key != NULL && entry != NULL);
@@ -1009,7 +1010,7 @@ lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc,
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
 		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-	      pthread_mutex_lock (entry_mutex);
+	      rv = pthread_mutex_lock (entry_mutex);
 	    }
 
 	  (*entry) = curr;
@@ -1044,6 +1045,7 @@ lf_io_list_find_or_insert (void **list_p, void *new_entry,
   void **curr_p;
   void *curr;
   void *key;
+  int rv;
 
   assert (list_p != NULL && edesc != NULL);
   assert (new_entry != NULL && entry != NULL);
@@ -1072,7 +1074,7 @@ restart_search:
 		  /* entry has a mutex protecting it's members; lock it */
 		  entry_mutex =
 		    (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-		  pthread_mutex_lock (entry_mutex);
+		  rv = pthread_mutex_lock (entry_mutex);
 		}
 
 	      (*entry) = curr;
@@ -1092,7 +1094,7 @@ restart_search:
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
 		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-	      pthread_mutex_lock (entry_mutex);
+	      rv = pthread_mutex_lock (entry_mutex);
 	    }
 
 	  /* attempt an add */
@@ -1137,6 +1139,7 @@ lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key,
   pthread_mutex_t *entry_mutex;
   void **curr_p;
   void *curr;
+  int rv;
 
   assert (tran != NULL);
   assert (list_p != NULL && edesc != NULL);
@@ -1166,7 +1169,7 @@ restart_search:
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
 		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-	      pthread_mutex_lock (entry_mutex);
+	      rv = pthread_mutex_lock (entry_mutex);
 
 	      /* mutex has been locked, no need to keep transaction */
 	      MEMORY_BARRIER ();
@@ -1231,6 +1234,7 @@ lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key,
   pthread_mutex_t *entry_mutex;
   void **curr_p;
   void *curr;
+  int rv;
 
   assert (tran != NULL);
   assert (list_p != NULL && edesc != NULL);
@@ -1274,7 +1278,7 @@ restart_search:
 		  /* entry has a mutex protecting it's members; lock it */
 		  entry_mutex =
 		    (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-		  pthread_mutex_lock (entry_mutex);
+		  rv = pthread_mutex_lock (entry_mutex);
 
 		  /* mutex has been locked, no need to keep transaction alive */
 		  MEMORY_BARRIER ();
@@ -1348,7 +1352,7 @@ restart_search:
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
 		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-	      pthread_mutex_lock (entry_mutex);
+	      rv = pthread_mutex_lock (entry_mutex);
 	    }
 
 	  /* attempt an add */
@@ -1428,6 +1432,7 @@ lf_list_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key,
   pthread_mutex_t *entry_mutex;
   void **curr_p;
   void *curr;
+  int rv;
 
   assert (tran != NULL);
   assert (list_p != NULL && edesc != NULL);
@@ -1520,7 +1525,7 @@ restart_search:
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex =
 		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-	      pthread_mutex_lock (entry_mutex);
+	      rv = pthread_mutex_lock (entry_mutex);
 	    }
 
 	  /* attempt an add */
@@ -1589,6 +1594,7 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key,
   pthread_mutex_t *entry_mutex;
   void **curr_p, **next_p;
   void *curr, *next;
+  int rv;
 
   /* reset success flag */
   if (success != NULL)
@@ -1645,7 +1651,7 @@ restart_search:
 	    {
 	      entry_mutex =
 		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-	      pthread_mutex_lock (entry_mutex);
+	      rv = pthread_mutex_lock (entry_mutex);
 
 	      /* since we set the mark, nobody else can delete it, so we have
 	         nothing else to check */
@@ -2045,14 +2051,14 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
   void *ret_head = NULL, *ret_tail = NULL;
   pthread_mutex_t *mutex_p;
   int ret = NO_ERROR;
-  int i, ret_count = 0;
+  int rv, i, ret_count = 0;
 
   assert (tran != NULL && table != NULL && table->freelist != NULL);
   edesc = table->entry_desc;
   assert (edesc != NULL);
 
   /* lock mutex */
-  pthread_mutex_lock (&table->backbuffer_mutex);
+  rv = pthread_mutex_lock (&table->backbuffer_mutex);
 
   /* swap bucket pointer with current backbuffer */
   do
@@ -2101,7 +2107,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 	      mutex_p =
 		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 
-	      pthread_mutex_lock (mutex_p);
+	      rv = pthread_mutex_lock (mutex_p);
 	      pthread_mutex_unlock (mutex_p);
 
 	      /* there should be only one mutex lock-unlock per entry per
@@ -2273,8 +2279,10 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      pthread_mutex_t *mx;
+	      int rv;
+
 	      mx = (pthread_mutex_t *) OF_GET_PTR (it->curr, edesc->of_mutex);
-	      pthread_mutex_lock (mx);
+	      rv = pthread_mutex_lock (mx);
 
 	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (it->curr, edesc->of_next)))
 		{

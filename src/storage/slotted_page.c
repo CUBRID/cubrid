@@ -366,8 +366,8 @@ spage_verify_header (PAGE_PTR page_p)
       || sphdr->cont_free < 0
       || sphdr->cont_free > sphdr->total_free
       || sphdr->offset_to_free_area >= DB_PAGESIZE
-      || PTR_ALIGN ((char *) sphdr->offset_to_free_area, sphdr->alignment)
-      != (char *) sphdr->offset_to_free_area
+      || (PTR_ALIGN (page_p + sphdr->offset_to_free_area, sphdr->alignment)
+	  != page_p + sphdr->offset_to_free_area)
       || sphdr->num_records < 0
       || sphdr->num_slots < 0 || sphdr->num_records > sphdr->num_slots)
     {
@@ -415,6 +415,7 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
     thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_ENTRY *entry, *current;
   SPAGE_SAVE_HEAD *head;
+  int rv;
 
   assert (first_save_entry != NULL);
 
@@ -435,7 +436,7 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
        * transaction uses only one thread (and thus cannot call this function
        * concurrently), we can assume that the entry we just fetched is valid
        * and in the hash table */
-      pthread_mutex_lock (&head->mutex);
+      rv = pthread_mutex_lock (&head->mutex);
 
       /* mutex acquired, no need for lock-free transaction */
       (void) lf_tran_end (t_entry);
@@ -450,9 +451,8 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 	    {
 	      int success = 0;
 
-	      if (lf_hash_delete
-		  (t_entry, &spage_saving_ht, (void *) &head->vpid,
-		   &success) != NO_ERROR)
+	      if (lf_hash_delete (t_entry, &spage_saving_ht,
+				  (void *) &head->vpid, &success) != NO_ERROR)
 		{
 		  /* we don't have clear operations on this hash table, this
 		     shouldn't happen */
@@ -1383,7 +1383,7 @@ spage_compact (PAGE_PTR page_p)
 		       (char *) page_p + slot_array[i]->offset_to_record,
 		       slot_array[i]->record_length);
 	      slot_array[i]->offset_to_record = to_offset;
-	      ASSERT_ALIGN ((char *) slot_array[i]->offset_to_record,
+	      ASSERT_ALIGN ((char *) page_p + slot_array[i]->offset_to_record,
 			    page_header_p->alignment);
 	      to_offset += slot_array[i]->record_length;
 	    }
@@ -1403,7 +1403,7 @@ spage_compact (PAGE_PTR page_p)
   page_header_p->cont_free = page_header_p->total_free;
 
   page_header_p->offset_to_free_area = to_offset;
-  ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+  ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		page_header_p->alignment);
 
   spage_verify_header (page_p);
@@ -1610,7 +1610,7 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   page_header_p->cont_free -= space;
   page_header_p->offset_to_free_area += (record_length + waste);
 
-  ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+  ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		page_header_p->alignment);
 
   spage_verify_header (page_p);
@@ -1891,7 +1891,7 @@ spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   page_header_p->cont_free -= space;
   page_header_p->offset_to_free_area += (record_length + waste);
 
-  ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+  ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		page_header_p->alignment);
 
   spage_verify_header (page_p);
@@ -2193,7 +2193,7 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
       if (record_descriptor_p->type != REC_ASSIGN_ADDRESS)
 	{
 	  if (slot_p->offset_to_record + record_descriptor_p->length
-	      > (unsigned int) DB_PAGESIZE)
+	      > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -2306,7 +2306,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
     {
       page_header_p->cont_free += free_space;
       page_header_p->offset_to_free_area -= free_space;
-      ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+      ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		    page_header_p->alignment);
     }
 
@@ -2640,8 +2640,7 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
   is_located_end = spage_is_record_located_at_end (page_header_p, slot_p);
 
   slot_p->record_length = record_descriptor_p->length;
-  if (slot_p->offset_to_record + record_descriptor_p->length >
-      (unsigned int) DB_PAGESIZE)
+  if (slot_p->offset_to_record + record_descriptor_p->length > DB_PAGESIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       assert_release (false);
@@ -2658,7 +2657,7 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
       page_header_p->cont_free -= space;
       page_header_p->offset_to_free_area += space;
 
-      ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+      ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		    page_header_p->alignment);
 
       SPAGE_VERIFY_HEADER (page_header_p);
@@ -2729,7 +2728,7 @@ spage_update_record_after_compact (PAGE_PTR page_p,
       if (spage_compact (page_p) != NO_ERROR)
 	{
 	  slot_p->offset_to_record = old_offset;
-	  ASSERT_ALIGN ((char *) slot_p->offset_to_record,
+	  ASSERT_ALIGN ((char *) page_p + slot_p->offset_to_record,
 			page_header_p->alignment);
 	  page_header_p->total_free -= (old_waste + slot_p->record_length);
 	  page_header_p->num_records++;
@@ -2761,7 +2760,7 @@ spage_update_record_after_compact (PAGE_PTR page_p,
   page_header_p->offset_to_free_area += (record_descriptor_p->length
 					 + new_waste);
 
-  ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+  ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		page_header_p->alignment);
 
   spage_verify_header (page_p);
@@ -3078,7 +3077,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       /* We are not wasting any space due to alignments. We do not need
          to move any data, just modify the length and offset of the slots. */
       new_slot_p->offset_to_record = slot_p->offset_to_record + offset;
-      ASSERT_ALIGN ((char *) new_slot_p->offset_to_record,
+      ASSERT_ALIGN ((char *) page_p + new_slot_p->offset_to_record,
 		    page_header_p->alignment);
       new_slot_p->record_length = remain_length;
       slot_p->record_length = offset;
@@ -3134,8 +3133,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	      return SP_ERROR;
 	    }
 
-	  if (slot_p->offset_to_record + offset + remain_length >
-	      (unsigned int) DB_PAGESIZE)
+	  if (slot_p->offset_to_record + offset + remain_length > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3173,12 +3171,11 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 
 	  /* Now update the record */
 	  new_slot_p->offset_to_record = page_header_p->offset_to_free_area;
-	  ASSERT_ALIGN ((char *) new_slot_p->offset_to_record,
+	  ASSERT_ALIGN ((char *) page_p + new_slot_p->offset_to_record,
 			page_header_p->alignment);
 	  new_slot_p->record_length = remain_length;
 
-	  if (new_slot_p->offset_to_record + remain_length >
-	      (unsigned int) DB_PAGESIZE)
+	  if (new_slot_p->offset_to_record + remain_length > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3194,8 +3191,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       else
 	{
 	  /* We can just move the second part to the end of the page */
-	  if (new_slot_p->offset_to_record + remain_length >
-	      (unsigned int) DB_PAGESIZE)
+	  if (new_slot_p->offset_to_record + remain_length > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3310,8 +3306,8 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	}
       else
 	{
-	  if (slot_p->offset_to_record + takeout_length +
-	      takeout_offset > (unsigned int) DB_PAGESIZE)
+	  if (slot_p->offset_to_record + takeout_length + takeout_offset
+	      > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3332,7 +3328,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	     remove a portion of the record and glue the remaining two pieces */
 	  if (slot_p->offset_to_record + takeout_offset +
 	      (slot_p->record_length - takeout_offset - takeout_length)
-	      > (unsigned int) DB_PAGESIZE)
+	      > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3361,7 +3357,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	  page_header_p->cont_free += takeout_length + old_waste - new_waste;
 	  page_header_p->offset_to_free_area -=
 	    takeout_length + old_waste - new_waste;
-	  ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+	  ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 			page_header_p->alignment);
 	}
     }
@@ -3501,10 +3497,9 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       if (!is_append)
 	{
 	  /* Move anything after offset, so we can insert the desired data */
-	  if (slot_p->offset_to_record + offset +
-	      record_descriptor_p->length + (slot_p->record_length -
-					     offset) >
-	      (unsigned int) DB_PAGESIZE)
+	  if ((slot_p->offset_to_record + offset
+	       + record_descriptor_p->length
+	       + (slot_p->record_length - offset)) > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3524,7 +3519,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       if (is_append)
 	{
 	  if (page_header_p->offset_to_free_area + slot_p->record_length
-	      > (unsigned int) DB_PAGESIZE)
+	      > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3544,10 +3539,9 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	    }
 	  memcpy ((char *) page_p + page_header_p->offset_to_free_area,
 		  (char *) page_p + slot_p->offset_to_record, offset);
-	  if (page_header_p->offset_to_free_area + offset +
-	      record_descriptor_p->length + (slot_p->record_length -
-					     offset) >
-	      (unsigned int) DB_PAGESIZE)
+	  if ((page_header_p->offset_to_free_area + offset
+	       + record_descriptor_p->length
+	       + (slot_p->record_length - offset)) > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3559,11 +3553,11 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 		   slot_p->record_length - offset);
 	}
       slot_p->offset_to_record = page_header_p->offset_to_free_area;
-      ASSERT_ALIGN ((char *) slot_p->offset_to_record,
+      ASSERT_ALIGN ((char *) page_p + slot_p->offset_to_record,
 		    page_header_p->alignment);
       page_header_p->offset_to_free_area += slot_p->record_length;	/* Don't increase waste here */
 
-      ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+      ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		    page_header_p->alignment);
 
       page_header_p->cont_free =
@@ -3597,8 +3591,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	  return SP_ERROR;
 	}
 
-      if (slot_p->offset_to_record + slot_p->record_length >
-	  (unsigned int) DB_PAGESIZE)
+      if (slot_p->offset_to_record + slot_p->record_length > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3615,7 +3608,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       if (spage_compact (page_p) != NO_ERROR)
 	{
 	  slot_p->offset_to_record = old_offset;
-	  ASSERT_ALIGN ((char *) slot_p->offset_to_record,
+	  ASSERT_ALIGN ((char *) page_p + slot_p->offset_to_record,
 			page_header_p->alignment);
 	  page_header_p->total_free -= (old_waste + slot_p->record_length);
 	  page_header_p->num_records++;
@@ -3628,8 +3621,8 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       /* Move the old data to the end */
       if (is_append)
 	{
-	  if (page_header_p->offset_to_free_area +
-	      slot_p->record_length > (unsigned int) DB_PAGESIZE)
+	  if (page_header_p->offset_to_free_area + slot_p->record_length
+	      > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3648,10 +3641,9 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	    }
 	  memcpy ((char *) page_p + page_header_p->offset_to_free_area,
 		  copyarea, offset);
-	  if (page_header_p->offset_to_free_area + offset +
-	      record_descriptor_p->length + (slot_p->record_length -
-					     offset) >
-	      (unsigned int) DB_PAGESIZE)
+	  if ((page_header_p->offset_to_free_area + offset +
+	       +record_descriptor_p->length
+	       + (slot_p->record_length - offset)) > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3663,7 +3655,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	}
       free_and_init (copyarea);
       slot_p->offset_to_record = page_header_p->offset_to_free_area;
-      ASSERT_ALIGN ((char *) slot_p->offset_to_record,
+      ASSERT_ALIGN ((char *) page_p + slot_p->offset_to_record,
 		    page_header_p->alignment);
       spage_reduce_contiguous_free_space (page_p, slot_p->record_length);
     }
@@ -3683,8 +3675,8 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
     }
   else
     {
-      if (slot_p->offset_to_record + offset +
-	  record_descriptor_p->length > (unsigned int) DB_PAGESIZE)
+      if ((slot_p->offset_to_record + offset
+	   + record_descriptor_p->length) > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3775,8 +3767,8 @@ spage_overwrite (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       return SP_ERROR;
     }
 
-  if (slot_p->offset_to_record + overwrite_offset +
-      record_descriptor_p->length > (unsigned int) DB_PAGESIZE)
+  if ((slot_p->offset_to_record + overwrite_offset
+       + record_descriptor_p->length) > DB_PAGESIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       assert_release (false);
@@ -3870,8 +3862,8 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
     {
       /* Move the first data to the end and remove wasted space from the first
          record, so we can append at the right place. */
-      if (page_header_p->offset_to_free_area +
-	  first_slot_p->record_length > (unsigned int) DB_PAGESIZE)
+      if ((page_header_p->offset_to_free_area
+	   + first_slot_p->record_length) > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3881,11 +3873,11 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
 	      (char *) page_p + first_slot_p->offset_to_record,
 	      first_slot_p->record_length);
       first_slot_p->offset_to_record = page_header_p->offset_to_free_area;
-      ASSERT_ALIGN ((char *) first_slot_p->offset_to_record,
+      ASSERT_ALIGN ((char *) page_p + first_slot_p->offset_to_record,
 		    page_header_p->alignment);
       page_header_p->offset_to_free_area += first_slot_p->record_length;
 
-      ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+      ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		    page_header_p->alignment);
 
       /* Don't increase waste here */
@@ -3914,7 +3906,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
 	}
 
       if (first_slot_p->offset_to_record + first_slot_p->record_length
-	  > (unsigned int) DB_PAGESIZE)
+	  > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3922,8 +3914,8 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
 	}
       memcpy (copyarea, (char *) page_p + first_slot_p->offset_to_record,
 	      first_slot_p->record_length);
-      if (second_slot_p->offset_to_record +
-	  second_slot_p->record_length > (unsigned int) DB_PAGESIZE)
+      if (second_slot_p->offset_to_record + second_slot_p->record_length
+	  > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3946,10 +3938,10 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
       if (spage_compact (page_p) != NO_ERROR)
 	{
 	  first_slot_p->offset_to_record = first_old_offset;
-	  ASSERT_ALIGN ((char *) first_slot_p->offset_to_record,
+	  ASSERT_ALIGN ((char *) page_p + first_slot_p->offset_to_record,
 			page_header_p->alignment);
 	  second_slot_p->offset_to_record = second_old_offset;
-	  ASSERT_ALIGN ((char *) second_slot_p->offset_to_record,
+	  ASSERT_ALIGN ((char *) page_p + second_slot_p->offset_to_record,
 			page_header_p->alignment);
 	  page_header_p->total_free -=
 	    (first_slot_p->record_length + second_slot_p->record_length +
@@ -3963,9 +3955,9 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
       page_header_p->num_records += 2;
 
       /* Move the old data to the end */
-      if (page_header_p->offset_to_free_area +
-	  (first_slot_p->record_length + second_slot_p->record_length)
-	  > (unsigned int) DB_PAGESIZE)
+      if ((page_header_p->offset_to_free_area
+	   + first_slot_p->record_length + second_slot_p->record_length)
+	  > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3976,7 +3968,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
       free_and_init (copyarea);
 
       first_slot_p->offset_to_record = page_header_p->offset_to_free_area;
-      ASSERT_ALIGN ((char *) first_slot_p->offset_to_record,
+      ASSERT_ALIGN ((char *) page_p + first_slot_p->offset_to_record,
 		    page_header_p->alignment);
       first_slot_p->record_length += second_slot_p->record_length;
       second_slot_p->record_length = 0;
@@ -3991,8 +3983,8 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
   /* Now perform the append operation if needed */
   if (second_slot_p->record_length != 0)
     {
-      if (page_header_p->offset_to_free_area +
-	  second_slot_p->record_length > (unsigned int) DB_PAGESIZE)
+      if (page_header_p->offset_to_free_area + second_slot_p->record_length
+	  > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -4281,8 +4273,7 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p,
 	  return S_DOESNT_FIT;
 	}
 
-      if (slot_p->offset_to_record + slot_p->record_length >
-	  (unsigned int) DB_PAGESIZE)
+      if (slot_p->offset_to_record + slot_p->record_length > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -4381,7 +4372,7 @@ spage_get_record_mvcc_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p,
 	  return S_DOESNT_FIT;
 	}
 
-      if (slot_p->offset_to_record + header_size > (unsigned int) DB_PAGESIZE)
+      if (slot_p->offset_to_record + header_size > DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -5219,7 +5210,7 @@ spage_add_contiguous_free_space (PAGE_PTR page_p, int space)
   page_header_p->cont_free += space;
   page_header_p->offset_to_free_area -= space;
 
-  ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+  ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		page_header_p->alignment);
 
   spage_verify_header (page_p);
@@ -5446,7 +5437,6 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
 	  forward_recdes.data = (char *) next_version;
 	}
 
-      ASSERT_ALIGN ((char *) size, page_header_p->alignment);
       forward_recdes.length = size;
       forward_recdes.area_size = size;
       waste =
@@ -5512,7 +5502,7 @@ spage_reduce_contiguous_free_space (PAGE_PTR page_p, int space)
   page_header_p->cont_free -= space;
   page_header_p->offset_to_free_area += space;
 
-  ASSERT_ALIGN ((char *) page_header_p->offset_to_free_area,
+  ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area,
 		page_header_p->alignment);
 
   spage_verify_header (page_p);

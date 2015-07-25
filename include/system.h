@@ -258,7 +258,7 @@ typedef UINTPTR HL_HEAPID;
 #define HL_NULL_HEAPID 0
 
 typedef UINTPTR QUERY_ID;
-#define NULL_QUERY_ID (~0)
+#define NULL_QUERY_ID ((QUERY_ID) (~0))
 
 #if defined(WINDOWS)
 #define SSIZEOF(val) ((SSIZE_T) sizeof(val))

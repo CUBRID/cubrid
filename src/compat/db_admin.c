@@ -1679,8 +1679,8 @@ db_find_user_to_drop (const char *name, DB_OBJECT ** user)
 {
   DB_OBJECT *retval;
 
-  CHECK_CONNECT_NULL ();
-  CHECK_1ARG_NULL (name);
+  CHECK_CONNECT_ERROR ();
+  CHECK_1ARG_ERROR (name);
 
   return au_find_user_to_drop (name, user);
 }

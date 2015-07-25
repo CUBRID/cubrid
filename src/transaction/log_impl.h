@@ -612,9 +612,9 @@ struct logwr_info
     PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
     PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
     PTHREAD_MUTEX_INITIALIZER,                                 \
-    false, false, false, false,                                       \
+    false, false, false, false,                                \
     /* last_writer_client_info */                              \
-    { -1, {'0'}, {'0'}, {'0'}, {'0'}, {'0'}, 0 },              \
+    { -1, {'0'}, {'0'}, {'0'}, {'0'}, {'0'}, 0, false },       \
     0                                                          \
    }
 
