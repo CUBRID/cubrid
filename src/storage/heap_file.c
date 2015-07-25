@@ -19409,11 +19409,12 @@ heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes,
   int n_redo_crumbs = 0, data_copy_offset = 0, chn_offset;
   LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS];
   INT32 mvcc_flags;
-  HEAP_PAGE_VACUUM_STATUS vacuum_status =
-    heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
+  HEAP_PAGE_VACUUM_STATUS vacuum_status;
 
   assert (p_recdes != NULL);
   assert (p_addr != NULL);
+
+  vacuum_status = heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
 
   /* Update chain. */
   heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr,
@@ -19513,9 +19514,11 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       mvcc_flag = (char) ((repid_and_flags >> OR_MVCC_FLAG_SHIFT_BITS) &
 			  OR_MVCC_FLAG_MASK);
+
       assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID
 			     | OR_MVCC_FLAG_VALID_LONG_CHN
 			     | OR_MVCC_FLAG_VALID_NEXT_VERSION)));
+
       if ((repid_and_flags & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE)
 	{
 	  offset_size = OR_BYTE_SIZE;
