@@ -980,4 +980,6 @@ extern void heap_stats_update (THREAD_ENTRY * thread_p,
 			       int prev_freespace);
 extern bool heap_should_try_update_stat (const int current_freespace,
 					 const int prev_freespace);
+extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p,
+					   LOG_RCV * rcv);
 #endif /* _HEAP_FILE_H_ */

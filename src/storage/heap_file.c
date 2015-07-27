@@ -1123,6 +1123,10 @@ heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p,
 				 MVCC_SNAPSHOT * mvcc_snapshot_p,
 				 PAGE_PTR ovf_first_pgptr);
 
+static void heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p,
+					RECDES * p_recdes,
+					LOG_DATA_ADDR * p_addr);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 static INLINE int
 heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
@@ -26648,6 +26652,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
   MVCC_REC_HEADER mvcc_rec_header;
   MVCCID mvcc_id;
   int record_size = recdes_p->length;
+  bool insert_from_reorganize = false;
 
   /* read MVCC header from record */
   if (or_mvcc_get_header (recdes_p, &mvcc_rec_header) != NO_ERROR)
@@ -26655,8 +26660,13 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (context->type != HEAP_OPERATION_UPDATE
-      || context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
+  insert_from_reorganize =
+    (context->type == HEAP_OPERATION_INSERT
+     && context->update_in_place == UPDATE_INPLACE_OLD_MVCCID);
+
+  if ((context->type != HEAP_OPERATION_UPDATE
+       || context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
+      && insert_from_reorganize == false)
     {
       if (is_mvcc_op)
 	{
@@ -27205,8 +27215,21 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 
   if (is_mvcc_op)
     {
-      /* MVCC logging */
-      heap_mvcc_log_insert (thread_p, recdes_p, &log_addr);
+      INT32 mvcc_flags;
+
+      mvcc_flags = OR_GET_MVCC_FLAG (recdes_p->data);
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+	{
+	  /* this is actually a deleted record, inserted due to a PARTITION
+	   * reorganize operation. Log this operation separately
+	   */
+	  heap_mvcc_log_redistribute (thread_p, recdes_p, &log_addr);
+	}
+      else
+	{
+	  /* MVCC logging */
+	  heap_mvcc_log_insert (thread_p, recdes_p, &log_addr);
+	}
     }
   else
     {
@@ -30884,6 +30907,176 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p,
 
   /* set the new node as the current node */
   HEAP_SCANCACHE_SET_NODE (scan_cache, partition_oid, &hfid, scanid_bit);
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_mvcc_log_redistribute () - Log partition redistribute data
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * p_recdes (in) : Newly inserted record.
+ * p_addr (in)	 : Log address data.
+ */
+static void
+heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes,
+			    LOG_DATA_ADDR * p_addr)
+{
+#define HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS	    4
+
+  int n_redo_crumbs = 0, data_copy_offset = 0;
+  LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS];
+  MVCCID delid;
+  MVCC_REC_HEADER mvcc_rec_header;
+  HEAP_PAGE_VACUUM_STATUS vacuum_status;
+
+  assert (p_recdes != NULL);
+  assert (p_addr != NULL);
+
+  vacuum_status = heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
+
+  /* Update chain. */
+  heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr,
+					logtb_get_current_mvccid (thread_p));
+  if (vacuum_status != heap_page_get_vacuum_status (thread_p, p_addr->pgptr))
+    {
+      /* Mark status change for recovery. */
+      p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
+    }
+
+  /* Build redo crumbs */
+  /* Add record type */
+  redo_crumbs[n_redo_crumbs].length = sizeof (p_recdes->type);
+  redo_crumbs[n_redo_crumbs++].data = &p_recdes->type;
+
+  if (p_recdes->type != REC_BIGONE)
+    {
+      or_mvcc_get_header (p_recdes, &mvcc_rec_header);
+      assert (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID));
+
+      /* Add representation ID and flags field */
+      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
+      redo_crumbs[n_redo_crumbs++].data = p_recdes->data;
+
+      redo_crumbs[n_redo_crumbs].length = OR_MVCCID_SIZE;
+      redo_crumbs[n_redo_crumbs++].data = &delid;
+
+      /* Set data copy offset after the record header */
+      data_copy_offset = OR_HEADER_SIZE (p_recdes->data);
+    }
+
+  /* Add record data - record may be skipped if the record is not big one */
+  redo_crumbs[n_redo_crumbs].length = p_recdes->length - data_copy_offset;
+  redo_crumbs[n_redo_crumbs++].data = p_recdes->data + data_copy_offset;
+
+  /* Safe guard */
+  assert (n_redo_crumbs <= HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS);
+
+  /* Append redo crumbs; undo crumbs not necessary as the spage_delete physical
+     operation uses the offset field of the address */
+  log_append_undoredo_crumbs (thread_p, RVHF_MVCC_REDISTRIBUTE, p_addr,
+			      0, n_redo_crumbs, NULL, redo_crumbs);
+}
+
+/*
+ * heap_rv_mvcc_redo_redistribute () - Redo the MVCC redistribute partition data
+ *   return: int
+ *   rcv(in): Recovery structure
+ *
+ */
+int
+heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  INT16 slotid;
+  RECDES recdes;
+  int sp_success;
+  MVCCID delid;
+  MVCC_REC_HEADER mvcc_rec_header;
+  INT16 record_type;
+  bool vacuum_status_change = false;
+
+  assert (rcv->pgptr != NULL);
+
+  slotid = rcv->offset;
+  if (slotid & HEAP_RV_FLAG_VACUUM_STATUS_CHANGE)
+    {
+      vacuum_status_change = true;
+    }
+  slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+  assert (slotid > 0);
+
+  record_type = *(INT16 *) rcv->data;
+  if (record_type == REC_BIGONE)
+    {
+      /* no data header */
+      HEAP_SET_RECORD (&recdes, rcv->length - sizeof (record_type),
+		       rcv->length - sizeof (record_type), REC_BIGONE,
+		       rcv->data + sizeof (record_type));
+    }
+  else
+    {
+      char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE +
+		       MAX_ALIGNMENT];
+      int repid_and_flags, offset, mvcc_flag, offset_size;
+
+      offset = sizeof (record_type);
+
+      repid_and_flags = OR_GET_INT (rcv->data + offset);
+      offset += OR_INT_SIZE;
+
+      OR_GET_MVCCID (rcv->data + offset, &delid);
+      offset += OR_MVCCID_SIZE;
+
+      mvcc_flag = (char) ((repid_and_flags >> OR_MVCC_FLAG_SHIFT_BITS) &
+			  OR_MVCC_FLAG_MASK);
+
+      assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_LONG_CHN
+			     | OR_MVCC_FLAG_VALID_NEXT_VERSION)));
+
+      if ((repid_and_flags & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE)
+	{
+	  offset_size = OR_BYTE_SIZE;
+	}
+      else if ((repid_and_flags & OR_OFFSET_SIZE_FLAG) ==
+	       OR_OFFSET_SIZE_2BYTE)
+	{
+	  offset_size = OR_SHORT_SIZE;
+	}
+      else
+	{
+	  offset_size = OR_INT_SIZE;
+	}
+
+      MVCC_SET_REPID (&mvcc_rec_header, repid_and_flags & OR_MVCC_REPID_MASK);
+      MVCC_SET_FLAG (&mvcc_rec_header, mvcc_flag);
+      MVCC_SET_INSID (&mvcc_rec_header, rcv->mvcc_id);
+      MVCC_SET_DELID (&mvcc_rec_header, delid);
+
+      HEAP_SET_RECORD (&recdes,
+		       IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0,
+		       record_type, PTR_ALIGN (data_buffer, MAX_ALIGNMENT));
+      or_mvcc_add_header (&recdes, &mvcc_rec_header,
+			  repid_and_flags & OR_BOUND_BIT_FLAG, offset_size);
+
+      memcpy (recdes.data + recdes.length, rcv->data + offset,
+	      rcv->length - offset);
+      recdes.length += (rcv->length - offset);
+    }
+
+  sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid,
+					  &recdes);
+
+  if (sp_success != SP_SUCCESS)
+    {
+      /* Unable to redo insertion */
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  heap_page_rv_chain_update (thread_p, rcv->pgptr, rcv->mvcc_id,
+			     vacuum_status_change);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
 }

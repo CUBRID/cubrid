@@ -224,7 +224,8 @@ static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 HEAP_SCANCACHE * scan_cache,
 				 int *force_count, int pruning_type,
 				 PRUNING_CONTEXT * pcontext,
-				 FUNC_PRED_UNPACK_INFO * func_preds);
+				 FUNC_PRED_UNPACK_INFO * func_preds,
+				 UPDATE_INPLACE_STYLE force_in_place);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 OID * class_oid, OID * oid, OID * new_oid_p,
 				 BTID * search_btid,
@@ -375,6 +376,10 @@ static DISK_ISVALID locator_repair_btree_by_delete (THREAD_ENTRY * thread_p,
 
 static void locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p,
 					       OID * class_oid);
+
+static int redistribute_partition_data (THREAD_ENTRY * thread_p,
+					OID * class_oid, int no_oids,
+					OID * oid_list);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -5760,6 +5765,7 @@ error3:
  *   pruning_type(in): type of pruning that should be performed
  *   pcontext(in): partition pruning context
  *   func_preds(in): cached function index expressions
+ *   force_in_place:
  *
  * Note: The given object is inserted on this heap and all appropriate
  *              index entries are inserted.
@@ -5769,7 +5775,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		      OID * oid, RECDES * recdes, int has_index, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count,
 		      int pruning_type, PRUNING_CONTEXT * pcontext,
-		      FUNC_PRED_UNPACK_INFO * func_preds)
+		      FUNC_PRED_UNPACK_INFO * func_preds,
+		      UPDATE_INPLACE_STYLE force_in_place)
 {
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -5896,6 +5903,19 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   /* prepare context */
   heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes,
 			      local_scan_cache, use_bigone_maxsize);
+  context.update_in_place = force_in_place;
+
+  if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
+    {
+      REPR_ID rep;
+
+      /* insert due to redistribute partition data - set the correct
+       * representation id of the new class
+       */
+
+      rep = heap_get_class_repr_id (thread_p, &real_class_oid);
+      (void) or_replace_rep_id (context.recdes_p, rep);
+    }
 
   /* execute insert */
   if (heap_insert_logical (thread_p, &context) != NO_ERROR)
@@ -6190,7 +6210,8 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
 			      &new_obj_oid, recdes, has_index, op_type,
 			      insert_cache, force_count,
-			      context->pruning_type, NULL, NULL);
+			      context->pruning_type, NULL, NULL,
+			      UPDATE_INPLACE_NONE);
     }
   else
     {
@@ -6209,7 +6230,8 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
 			      &new_obj_oid, recdes, has_index,
 			      op_type, &insert_cache, force_count,
-			      DB_NOT_PARTITIONED_CLASS, NULL, NULL);
+			      DB_NOT_PARTITIONED_CLASS, NULL, NULL,
+			      UPDATE_INPLACE_NONE);
       heap_scancache_end (thread_p, &insert_cache);
     }
 
@@ -6220,11 +6242,10 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 
   /* delete this record from the class it currently resides in */
   error = locator_delete_force_for_moving (thread_p, old_hfid, obj_oid, btid,
-					   btid_dup_key_locked, true,
-					   op_type,
+					   btid_dup_key_locked, true, op_type,
 					   scan_cache, force_count,
-					   mvcc_reev_data, &new_obj_oid,
-					   new_class_oid);
+					   mvcc_reev_data,
+					   &new_obj_oid, new_class_oid);
   if (error != NO_ERROR)
     {
       return error;
@@ -8188,7 +8209,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 		locator_insert_force (thread_p, &obj->hfid, &obj->class_oid,
 				      &obj->oid, &recdes, has_index,
 				      SINGLE_ROW_INSERT, force_scancache,
-				      &force_count, pruning_type, NULL, NULL);
+				      &force_count, pruning_type, NULL, NULL,
+				      UPDATE_INPLACE_NONE);
 
 	      if (error_code == NO_ERROR)
 		{
@@ -8399,7 +8421,8 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid,
 				  &obj->oid, &recdes, has_index,
 				  SINGLE_ROW_INSERT, force_scancache,
-				  &force_count, pruning_type, NULL, NULL);
+				  &force_count, pruning_type, NULL, NULL,
+				  UPDATE_INPLACE_NONE);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -8831,7 +8854,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid,
 				  &new_recdes, true, op_type, scan_cache,
 				  force_count, pruning_type, pcontext,
-				  func_preds);
+				  func_preds, UPDATE_INPLACE_NONE);
 	}
       else
 	{
@@ -14678,4 +14701,242 @@ locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   /* Does nothing on recovery. */
   return NO_ERROR;
+}
+
+/*
+ * redistribute_partition_data () - redistribute partition data
+ *
+ * return : error code
+ *
+ * thread_p (in)      :
+ * class_oid (in)     : parent class OID
+ * no_oids (in)	      : number of OIDs in the list (promoted partitions)
+ * oid_list (in)      : partition OID list (promoted partitions)
+ * should_update (in) :
+ * should_insert (in) :
+ */
+static int
+redistribute_partition_data (THREAD_ENTRY * thread_p,
+			     OID * class_oid, int no_oids, OID * oid_list)
+{
+  int error = NO_ERROR;
+  int i = 0, j = 0;
+  RECDES recdes;
+  HFID hfid, class_hfid;
+  OID inst_oid;
+  SCAN_CODE scan = S_SUCCESS;
+  VPID vpid;
+  PGBUF_WATCHER old_page_watcher;
+  PGSLOTID slotid;
+  HEAP_SCANCACHE parent_scan_cache, scan_cache;
+  PRUNING_CONTEXT pcontext;
+  bool is_scan_end = false;
+  bool is_parent_scancache_started = false;
+  bool is_part_scancache_started = false;
+  bool is_pcontext_inited = false;
+  int force_count = -1;
+  OID oid;
+
+  PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_RANK_UNDEFINED,
+		      PGBUF_ORDERED_NULL_HFID);
+
+  error = heap_get_hfid_from_class_oid (thread_p, class_oid, &class_hfid);
+  if (error != NO_ERROR || HFID_IS_NULL (&class_hfid))
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  /* start scan cache for insert on parent class */
+  error = heap_scancache_start_modify (thread_p, &parent_scan_cache,
+				       &class_hfid, class_oid,
+				       SINGLE_ROW_INSERT, NULL);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  is_parent_scancache_started = true;
+
+  /* initialize pruning context for parent class */
+  (void) partition_init_pruning_context (&pcontext);
+  error = partition_load_pruning_context (thread_p, class_oid,
+					  DB_PARTITIONED_CLASS, &pcontext);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  is_pcontext_inited = true;
+
+  recdes.data = NULL;
+  recdes.area_size = -1;
+
+  for (i = 0; i < no_oids; i++)
+    {
+      if (OID_ISNULL (&oid_list[i]))
+	{
+	  goto exit;
+	}
+
+      error = heap_get_hfid_from_class_oid (thread_p, &oid_list[i], &hfid);
+      if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+	{
+	  error = ER_FAILED;
+	  goto exit;
+	}
+
+      PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+			  &hfid);
+
+      error =
+	heap_scancache_start (thread_p, &scan_cache, &hfid, &oid_list[i],
+			      true, false, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      is_part_scancache_started = true;
+
+      /* start with first OID of the first page */
+      vpid.volid = hfid.vfid.volid;
+      vpid.pageid = hfid.hpgid;
+      is_scan_end = false;
+      while (!is_scan_end)
+	{
+	  if (scan_cache.page_watcher.pgptr == NULL)
+	    {
+	      error = pgbuf_ordered_fix (thread_p, &vpid,
+					 OLD_PAGE_PREVENT_DEALLOC,
+					 PGBUF_LATCH_WRITE,
+					 &scan_cache.page_watcher);
+	      if (old_page_watcher.pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+		}
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+
+	  slotid = 0;
+	  while (true)
+	    {
+	      /* get next record */
+	      scan =
+		spage_next_record (scan_cache.page_watcher.pgptr, &slotid,
+				   &recdes, PEEK);
+	      if (scan == S_ERROR)
+		{
+		  error = ER_FAILED;
+		  goto exit;
+		}
+	      else if (scan == S_END)
+		{
+		  /* move to next page */
+		  error =
+		    heap_vpid_next (&hfid, scan_cache.page_watcher.pgptr,
+				    &vpid);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+
+		  /* keep latch on current page until the next page is fixed */
+		  pgbuf_replace_watcher (thread_p, &scan_cache.page_watcher,
+					 &old_page_watcher);
+
+		  if (VPID_ISNULL (&vpid))
+		    {
+		      /* no more pages in the current heap file */
+		      is_scan_end = true;
+		    }
+		  break;
+		}
+
+	      if (slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
+		{
+		  /* skip the header */
+		  continue;
+		}
+
+	      if (recdes.type != REC_HOME && recdes.type != REC_BIGONE
+		  && recdes.type != REC_RELOCATION)
+		{
+		  continue;
+		}
+
+	      inst_oid.pageid = vpid.pageid;
+	      inst_oid.volid = vpid.volid;
+	      inst_oid.slotid = slotid;
+	      if (heap_get (thread_p, &inst_oid, &recdes, &scan_cache,
+			    PEEK, NULL_CHN) != S_SUCCESS)
+		{
+		  error = ER_FAILED;
+		  goto exit;
+		}
+
+	      error = locator_insert_force (thread_p, &class_hfid, class_oid,
+					    &oid, &recdes, false,
+					    SINGLE_ROW_INSERT,
+					    &parent_scan_cache, &force_count,
+					    DB_PARTITIONED_CLASS, &pcontext,
+					    NULL, UPDATE_INPLACE_OLD_MVCCID);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+	}
+
+      if (old_page_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+	}
+      if (is_part_scancache_started == true)
+	{
+	  (void) heap_scancache_end (thread_p, &scan_cache);
+	  is_part_scancache_started = false;
+	}
+    }
+
+exit:
+  if (old_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+    }
+  if (is_parent_scancache_started == true)
+    {
+      (void) heap_scancache_end (thread_p, &parent_scan_cache);
+    }
+  if (is_part_scancache_started == true)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+    }
+  if (is_pcontext_inited == true)
+    {
+      partition_clear_pruning_context (&pcontext);
+    }
+
+  return error;
+}
+
+/*
+ * xlocator_redistribute_partition_data () - redistribute partition data
+ *
+ * return : error code
+ *
+ * thread_p (in)      :
+ * class_oid (in)     : parent class OID
+ * no_oids (in)	      : number of OIDs in the list (promoted partitions)
+ * oid_list (in)      : partition OID list (promoted partitions)
+ * should_update (in) :
+ * should_insert (in) :
+ * op_type       (in) :
+ */
+int
+xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p,
+				      OID * class_oid, int no_oids,
+				      OID * oid_list)
+{
+  return redistribute_partition_data (thread_p, class_oid, no_oids, oid_list);
 }

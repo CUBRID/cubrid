@@ -970,6 +970,13 @@ struct rvfun RV_fun[] = {
    NULL,
    heap_rv_dump_create,
    NULL},
+
+  {RVHF_MVCC_REDISTRIBUTE,
+   "RVHF_MVCC_REDISTRIBUTE",
+   heap_rv_undo_insert,
+   heap_rv_mvcc_redo_redistribute,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa}
 };
 
 /*

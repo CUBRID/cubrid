@@ -1008,6 +1008,12 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slogtb_does_active_user_exist;
   req_p->name = "NET_SERVER_AU_DOES_ACTIVE_USER_EXIST";
+
+  /* redistribute partition data */
+  req_p = &net_Requests[NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = slocator_redistribute_partition_data;
+  req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
 }
 
 #if defined(CUBRID_DEBUG)

@@ -11936,3 +11936,76 @@ log_does_active_user_exist (const char *user_name, bool * existed)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+
+/*
+ * locator_redistribute_partition_data () - redistribute partition data
+ *
+ * return : error code
+ *
+ * thread_p (in)      :
+ * class_oid (in)     : parent class OID
+ * no_oids (in)	      : number of OIDs in the list (promoted partitions)
+ * oid_list (in)      : partition OID list (promoted partitions)
+ */
+int
+locator_redistribute_partition_data (OID * class_oid, int no_oids,
+				     OID * oid_list)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED, req_error;
+  char *request, *reply, *ptr;
+  int request_size = 0;
+  int i;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (oid_list == NULL || no_oids < 1)
+    {
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  request_size = OR_OID_SIZE + OR_INT_SIZE + no_oids * OR_OID_SIZE;
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  ptr = request;
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, no_oids);
+
+  for (i = 0; i < no_oids; i++)
+    {
+      ptr = or_pack_oid (ptr, &oid_list[i]);
+    }
+
+  req_error = net_client_request (NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA,
+				  request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+				  0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &success);
+    }
+
+  free_and_init (request);
+
+  return success;
+
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  ENTER_SERVER ();
+
+  success = xlocator_redistribute_partition_data (NULL, class_oid, no_oids,
+						  oid_list);
+
+  EXIT_SERVER ();
+
+  return success;
+#endif /* !CS_MODE */
+}

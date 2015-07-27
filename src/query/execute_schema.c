@@ -491,6 +491,13 @@ static SM_PARTITION *pt_node_to_partition_info (PARSER_CONTEXT * parser,
 						char *class_name,
 						char *partition_name,
 						DB_VALUE * minval);
+static int do_save_all_indexes (MOP classmop,
+				SM_CONSTRAINT_INFO **
+				saved_index_info_listpp);
+static int do_drop_saved_indexes (MOP classmop,
+				  SM_CONSTRAINT_INFO * index_save_info);
+static int do_recreate_saved_indexes (MOP classmop,
+				      SM_CONSTRAINT_INFO * index_save_info);
 
 /*
  * Function Group :
@@ -4815,6 +4822,9 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
   char *query_buf;
   size_t query_size;
   int i = 0;
+  MOP subclass_mop, class_mop;
+  OID *partitions = NULL;
+  SM_CONSTRAINT_INFO *index_save_info = NULL;
 
   if (should_update)
     {
@@ -4849,55 +4859,67 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
 
   if (should_insert)
     {
-      query_size = 0;
-      query_size += 12;		/* 'INSERT INTO ' */
-      query_size += strlen (classname) + 2;	/* [classname] */
-      query_size += 1;		/* ' ' */
-      for (i = 0; i < promoted_count - 1; i++)
+      class_mop = sm_find_class (classname);
+      if (class_mop == NULL)
 	{
-	  /* add size for 'SELECT * FROM [table_name] UNION ALL ' */
-	  query_size += 14;	/* 'SELECT * FROM ' */
-	  query_size += strlen (promoted[i]) + 2;	/* [classname] */
-	  query_size += 11;	/* ' UNION ALL ' */
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  goto exit;
 	}
-      query_size += 14;		/* 'SELECT * FROM ' */
-      query_size += strlen (promoted[promoted_count - 1]) + 2;
-      query_size += 1;		/* ';' */
 
-      query_buf = (char *) malloc (query_size + 1);
-      if (query_buf == NULL)
+      error = do_save_all_indexes (class_mop, &index_save_info);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      error = do_drop_saved_indexes (class_mop, index_save_info);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      partitions = (OID *) malloc (promoted_count * sizeof (OID));
+      if (partitions == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, query_size + 1);
-	  return ER_FAILED;
+		  1, promoted_count * sizeof (OID));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
 	}
-      memset (query_buf, 0, query_size + 1);
-      sprintf (query_buf, "INSERT INTO [%s] ", classname);
-      for (i = 0; i < promoted_count - 1; i++)
+
+      for (i = 0; i < promoted_count; i++)
 	{
-	  strcat (query_buf, "SELECT * FROM [");
-	  strcat (query_buf, promoted[i]);
-	  strcat (query_buf, "] UNION ALL ");
+	  subclass_mop = sm_find_class (promoted[i]);
+	  if (subclass_mop == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	      goto exit;
+	    }
+	  COPY_OID (&partitions[i], &subclass_mop->oid_info.oid);
 	}
-      strcat (query_buf, "SELECT * FROM [");
-      strcat (query_buf, promoted[promoted_count - 1]);
-      strcat (query_buf, "];");
 
       error =
-	db_compile_and_execute_local (query_buf, &query_result, &query_error);
-      if (error >= 0)
+	locator_redistribute_partition_data (&class_mop->oid_info.oid,
+					     promoted_count, partitions);
+      if (error != NO_ERROR)
 	{
-	  error = NO_ERROR;
-	  db_query_end (query_result);
+	  goto exit;
 	}
-      free_and_init (query_buf);
-      if (error < 0)
-	{
-	  return error;
-	}
+      error = do_recreate_saved_indexes (class_mop, index_save_info);
     }
 
-  return NO_ERROR;
+exit:
+  if (partitions != NULL)
+    {
+      free_and_init (partitions);
+    }
+  if (index_save_info != NULL)
+    {
+      sm_free_constraint_info (&index_save_info);
+    }
+  return error;
 }
 
 
@@ -15666,4 +15688,162 @@ fail_return:
 
   assert (er_errid () != NO_ERROR);
   return NULL;
+}
+
+/*
+ * do_save_all_indexes () - Save all constraint info for a given class
+ *   return: error code
+ *   classmop(in):
+ *   saved_index_info_listpp(out):
+ *
+ */
+static int
+do_save_all_indexes (MOP classmop,
+		     SM_CONSTRAINT_INFO ** saved_index_info_listpp)
+{
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *c = NULL;
+  SM_CONSTRAINT_INFO *index_save_info = NULL, *saved = NULL;
+  SM_CLASS *class_ = NULL;
+
+  assert (classmop != NULL);
+  assert (saved_index_info_listpp != NULL);
+
+  *saved_index_info_listpp = NULL;
+
+  error = au_fetch_class (classmop, &class_, AU_FETCH_READ, DB_AUTH_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (class_->constraints == NULL)
+    {
+      /* no constraints, nothing to do */
+      return NO_ERROR;
+    }
+
+  if (class_->class_type != SM_CLASS_CT)
+    {
+      return NO_ERROR;
+    }
+
+  for (c = class_->constraints; c; c = c->next)
+    {
+      if (c->type == DB_CONSTRAINT_NOT_NULL)
+	{
+	  continue;
+	}
+
+      /* save constraints */
+      error = sm_save_constraint_info (&index_save_info, c);
+      if (error == NO_ERROR)
+	{
+	  assert (index_save_info != NULL);
+	  saved = index_save_info;
+	  while (saved->next)
+	    {
+	      saved = saved->next;
+	    }
+	}
+      else
+	{
+	  return error;
+	}
+    }
+
+  *saved_index_info_listpp = index_save_info;
+  return NO_ERROR;
+}
+
+/*
+ * do_drop_saved_indexes () - drop all indexes from a constraint info list
+ *   return: error
+ *   classmop (in)   :
+ *   index_save_info :
+ */
+static int
+do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
+{
+  int error = NO_ERROR;
+  SM_CONSTRAINT_INFO *saved = NULL;
+
+  for (saved = index_save_info; saved != NULL; saved = saved->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+	{
+	  error = sm_drop_constraint (classmop, saved->constraint_type,
+				      saved->name,
+				      (const char **) saved->att_names, false,
+				      false);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      else
+	{
+	  error = sm_drop_index (classmop, saved->name);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * do_recreate_saved_indexes () - recreate all indexes from a constraint
+ *				  info list
+ *   return: error
+ *   classmop (in)   :
+ *   index_save_info :
+ */
+static int
+do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
+{
+  int error = NO_ERROR;
+  SM_CONSTRAINT_INFO *saved = NULL;
+
+  for (saved = index_save_info; saved != NULL; saved = saved->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+	{
+	  error =
+	    sm_add_constraint (classmop, saved->constraint_type, saved->name,
+			       (const char **) saved->att_names,
+			       saved->asc_desc, saved->prefix_length, 0,
+			       saved->filter_predicate,
+			       saved->func_index_info, saved->comment);
+
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  error =
+	    sm_add_index (classmop, saved->constraint_type, saved->name,
+			  (const char **) saved->att_names, saved->asc_desc,
+			  saved->prefix_length, saved->filter_predicate,
+			  saved->func_index_info, saved->comment);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  if (index_save_info != NULL)
+    {
+      sm_free_constraint_info (&index_save_info);
+    }
+
+  return error;
 }

@@ -278,6 +278,7 @@ enum net_server_request
   NET_SERVER_CHKSUM_REPL,
 
   NET_SERVER_AU_DOES_ACTIVE_USER_EXIST,
+  NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA,
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
