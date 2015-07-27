@@ -2031,6 +2031,15 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       return ER_FAILED;
     }
 
+  if (helper->record_type != REC_HOME)
+    {
+      /* We try to keep the same amount of pgbuf_set_dirty and logged changes;
+       * Changes on REC_HOME records are logged in bulk and page is set dirty
+       * along with that log record
+       */
+      pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
+    }
+
   switch (helper->record_type)
     {
     case REC_RELOCATION:

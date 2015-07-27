@@ -419,7 +419,9 @@ struct pgbuf_bcb
   PGBUF_BCB *next_BCB;		/* next LRU or Invalid(Free) chain */
   int ain_tick;			/* age of AIN when this BCB was inserted into
 				 * AIN list */
-  int avoid_dealloc_cnt;
+  int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid
+				 * dellocation; decrement after latch is
+				 * obtained */
   unsigned dirty:1;		/* Is page dirty ? */
   unsigned avoid_victim:1;
   unsigned async_flush_request:1;
@@ -1864,6 +1866,12 @@ try_again:
     }
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+  if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
+    {
+      /* latch is obtained, no need for avoidance of dealloc */
+      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+    }
 
 #if !defined (NDEBUG)
   thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr,
