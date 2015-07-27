@@ -2251,15 +2251,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_SYS_DATETIME:
       {
-	DB_TIMESTAMP db_timestamp;
-	DB_TIME db_time;
-
-	db_time = vd->sys_datetime.time / 1000;
-
-	db_timestamp_encode_ses (&vd->sys_datetime.date, &db_time,
-				 &db_timestamp, NULL);
-
-	db_make_timestamp (arithptr->value, db_timestamp);
+	DB_MAKE_DATETIME (arithptr->value, &vd->sys_datetime);
       }
       break;
 
