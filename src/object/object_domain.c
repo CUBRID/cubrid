@@ -9469,6 +9469,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      status = DOMAIN_ERROR;
 	      break;
 	    }
+
+	  /* Convert region zone into offset zone for timetz type */
+	  tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
 	  db_make_timetz (target, &v_timetz);
 	  break;
 	case DB_TYPE_UTIME:
