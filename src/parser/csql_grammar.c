@@ -41217,7 +41217,3 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 
   return node;
 }
-
-
-
-
