@@ -15770,7 +15770,7 @@ do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (saved->constraint_type))
 	{
 	  error = sm_drop_constraint (classmop, saved->constraint_type,
 				      saved->name,
@@ -15809,7 +15809,7 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (saved->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (classmop, saved->constraint_type, saved->name,
