@@ -433,6 +433,12 @@ static void convert_locale_number (char *sz, const int size,
 				   const INTL_LANG src_locale,
 				   const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
+static int create_datetimetz_from_parts (const int m, const int d,
+					 const int y, const int h,
+					 const int mi, const int s,
+					 const int ms, const TZ_ID tz_id,
+					 const int is_timezone,
+					 DB_DATETIMETZ * dt_tz);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -21457,7 +21463,15 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
       assert (ts_p != NULL);
 
       y = m = d = h = mi = s = ms = 0;
-      (void) db_timestamp_decode_ses (ts_p, &db_date, &db_time);
+
+      if (is_timezone > 0 || is_local_timezone > 0)
+	{
+	  db_timestamp_decode_utc (ts_p, &db_date, &db_time);
+	}
+      else
+	{
+	  (void) db_timestamp_decode_ses (ts_p, &db_date, &db_time);
+	}
       db_date_decode (&db_date, &m, &d, &y);
       db_time_decode (&db_time, &h, &mi, &s);
 
@@ -21527,29 +21541,25 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	}
       else
 	{
-	  /* datetime, date + time units, timestamp => return datetime */
-	  if (is_local_timezone > 0)
+	  if (is_timezone > 0 || is_local_timezone > 0)
 	    {
-	      error_status = tz_create_datetimetz_from_ses (&db_datetime,
-							    &dt_tz);
-	      if (error_status != NO_ERROR)
-		{
-		  goto error;
-		}
-	      DB_MAKE_DATETIMELTZ (result, &dt_tz.datetime);
-	    }
-	  else if (is_timezone > 0)
-	    {
-	      TZ_REGION tz_region;
 
-	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
-						   &tz_region, &dt_tz, NULL);
+	      error_status =
+		create_datetimetz_from_parts (m, d, y, h, mi, s, ms,
+					      tz_id, is_timezone, &dt_tz);
 	      if (error_status != NO_ERROR)
 		{
 		  goto error;
 		}
-	      DB_MAKE_DATETIMETZ (result, &dt_tz);
+
+	      if (is_timezone > 0)
+		{
+		  DB_MAKE_DATETIMETZ (result, &dt_tz);
+		}
+	      else
+		{
+		  DB_MAKE_DATETIMELTZ (result, &dt_tz.datetime);
+		}
 	    }
 	  else
 	    {
@@ -22194,20 +22204,13 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
       break;
 
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       is_dt = 1;
       dt_p = DB_GET_DATETIME (date);
-      break;
-
-    case DB_TYPE_DATETIMELTZ:
-      error_status = tz_datetimeltz_to_local (DB_GET_DATETIME (date),
-					      &db_datetime);
-      if (error_status != NO_ERROR)
+      if (res_type == DB_TYPE_DATETIMELTZ)
 	{
-	  goto error;
+	  is_local_timezone = 1;
 	}
-      dt_p = &db_datetime;
-      is_dt = 1;
-      is_local_timezone = 1;
       break;
 
     case DB_TYPE_DATETIMETZ:
@@ -22438,57 +22441,26 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
       if (is_timezone > 0)
 	{
-	  TZ_REGION dest_tz_region;
-	  DB_DATETIME utc_datetime;
-	  DB_DATETIME local_datetime;
-
-	  tz_id_to_region (&tz_id, &dest_tz_region);
-	  error_status = db_date_encode (&db_date, m, d, y);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  error_status = db_time_encode (&db_time, h, mi, s);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  utc_datetime.date = db_date;
-	  utc_datetime.time = db_time * 1000;
-
-	  error_status =
-	    tz_conv_tz_datetime_w_region (&utc_datetime,
-					  tz_get_utc_tz_region (),
-					  &dest_tz_region, &local_datetime,
-					  NULL, NULL);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  local_datetime.time /= 1000;
-	  db_date_decode (&local_datetime.date, &m, &d, &y);
-	  db_time_decode (&local_datetime.time, &h, &mi, &s);
+	  error_status = create_datetimetz_from_parts (m, d, y, h,
+						       mi, s, ms,
+						       tz_id,
+						       is_timezone, &dt_tz);
+	}
+      else
+	{
+	  error_status = db_datetime_encode (&db_datetime, m, d, y, h, mi, s,
+					     ms);
 	}
 
-      db_datetime.date = db_datetime.time = 0;
-      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+      if (error_status != NO_ERROR)
+	{
+	  goto error;
+	}
 
       if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
 	{
 	  if (is_timezone > 0)
 	    {
-	      TZ_REGION tz_region;
-
-	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
-						   &tz_region, &dt_tz, NULL);
-	      if (error_status != NO_ERROR)
-		{
-		  goto error;
-		}
-
 	      db_datetimetz_to_string (res_s, 64, &dt_tz.datetime,
 				       &dt_tz.tz_id);
 	    }
@@ -22512,25 +22484,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  /* datetime, date + time units, timestamp => return datetime */
 	  if (is_local_timezone > 0)
 	    {
-	      error_status = tz_create_datetimetz_from_ses (&db_datetime,
-							    &dt_tz);
-	      if (error_status != NO_ERROR)
-		{
-		  goto error;
-		}
-	      DB_MAKE_DATETIMELTZ (result, &dt_tz.datetime);
+	      DB_MAKE_DATETIMELTZ (result, &db_datetime);
 	    }
 	  else if (is_timezone > 0)
 	    {
-	      TZ_REGION tz_region;
-
-	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
-						   &tz_region, &dt_tz, NULL);
-	      if (error_status != NO_ERROR)
-		{
-		  goto error;
-		}
 	      DB_MAKE_DATETIMETZ (result, &dt_tz);
 	    }
 	  else
@@ -22545,19 +22502,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
       y = m = d = h = mi = s = ms = 0;
 
-      if (is_timezone > 0 || is_local_timezone > 0)
-	{
-	  db_timestamp_decode_utc (ts_p, &db_date, &db_time);
-	}
-      else
-	{
-	  error_status = db_timestamp_decode_ses (ts_p, &db_date, &db_time);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-
+      db_timestamp_decode_utc (ts_p, &db_date, &db_time);
       db_date_decode (&db_date, &m, &d, &y);
       db_time_decode (&db_time, &h, &mi, &s);
 
@@ -22594,48 +22539,37 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  goto error;
 	}
 
-      if (is_timezone > 0 || is_local_timezone > 0)
+      if (is_local_timezone <= 0)
 	{
-	  DB_DATETIMETZ dt_tz_utc;
-	  DB_DATETIME dt_utc;
+	  error_status = create_datetimetz_from_parts (m, d, y, h,
+						       mi, s, ms,
+						       tz_id,
+						       is_timezone, &dt_tz);
+	}
+      else
+	{
+	  error_status = db_datetime_encode (&db_datetime, m, d, y, h, mi, s,
+					     ms);
 
-	  error_status = db_datetime_encode (&dt_utc, m, d, y, h, mi, s, ms);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  dt_tz_utc.datetime = dt_utc;
-	  if (is_timezone > 0)
-	    {
-	      dt_tz_utc.tz_id = tz_id;
-	      error_status = tz_datetimetz_fix_zone (&dt_tz_utc, &dt_tz);
-
-	    }
-	  else
-	    {
-	      TZ_REGION tz_session_region;
-
-	      tz_get_session_tz_region (&tz_session_region);
-	      error_status = tz_create_datetimetz_from_utc (&dt_utc,
-							    &tz_session_region,
-							    &dt_tz);
-	    }
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  db_date_decode (&dt_tz.datetime.date, &m, &d, &y);
-	  db_time_decode (&dt_tz.datetime.time, &h, &mi, &s);
 	}
 
-      db_datetime.date = db_datetime.time = 0;
-      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+      if (error_status != NO_ERROR)
+	{
+	  goto error;
+	}
 
       if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
 	{
-	  db_datetime_to_string (res_s, 64, &db_datetime);
+	  DB_DATETIME dt_local;
+
+	  error_status = tz_utc_datetimetz_to_local (&dt_tz.datetime,
+						     &dt_tz.tz_id, &dt_local);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  db_datetime_to_string (res_s, 64, &dt_local);
 
 	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (res_final == NULL)
@@ -22652,7 +22586,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	  /* datetime, date + time units, timestamp => return datetime */
 	  if (is_local_timezone > 0)
 	    {
-	      DB_MAKE_DATETIMELTZ (result, &dt_tz.datetime);
+	      DB_MAKE_DATETIMELTZ (result, &db_datetime);
 	    }
 	  else if (is_timezone > 0)
 	    {
@@ -22660,7 +22594,16 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	    }
 	  else
 	    {
-	      DB_MAKE_DATETIME (result, &db_datetime);
+	      DB_DATETIME dt_local;
+
+	      error_status = tz_utc_datetimetz_to_local (&dt_tz.datetime,
+							 &dt_tz.tz_id,
+							 &dt_local);
+	      if (error_status != NO_ERROR)
+		{
+		  goto error;
+		}
+	      DB_MAKE_DATETIME (result, &dt_local);
 	    }
 	}
     }
@@ -29612,4 +29555,56 @@ parse_tzd (const char *str, const int max_expect_len)
     }
 
   return p - str;
+}
+
+/*
+* create_datetimetz_from_parts() - 
+*	
+*  Returns error or no error
+*  m(in): month
+*  d(in): day
+*  y(in): year
+*  h(in): hour
+*  mi(in): minute
+*   s(in): second
+*  ms(in): millisecond
+*  tz_id(in): timezone id
+*  is_timezone(in): flag that tells if we should use the timezone id or the
+*                   session timezone
+*  dt_tz(out): result datetimetz
+*/
+static int
+create_datetimetz_from_parts (const int m, const int d, const int y,
+			      const int h, const int mi, const int s,
+			      const int ms, const TZ_ID tz_id,
+			      const int is_timezone, DB_DATETIMETZ * dt_tz)
+{
+  DB_DATETIME utc_datetime;
+  DB_DATETIMETZ dt_tz_utc;
+  int error_status = NO_ERROR;
+
+  error_status = db_datetime_encode (&utc_datetime, m, d, y, h, mi, s, ms);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
+  dt_tz_utc.datetime = utc_datetime;
+
+  if (is_timezone > 0)
+    {
+      dt_tz_utc.tz_id = tz_id;
+      error_status = tz_datetimetz_fix_zone (&dt_tz_utc, dt_tz);
+    }
+  else
+    {
+      TZ_REGION tz_session_region;
+
+      tz_get_session_tz_region (&tz_session_region);
+      error_status = tz_create_datetimetz_from_utc (&utc_datetime,
+						    &tz_session_region,
+						    dt_tz);
+    }
+
+  return error_status;
 }
