@@ -842,20 +842,17 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
     }
   else
     {
-      /* it may be a naked parameter or a path expression anchored by
-       * a naked parameter. Try and resolve it as such.
-       */
-      node = pt_bind_parameter_path (parser, in_node);
-    }
-
-  if (node == NULL)
-    {
       /* If pt_name in group by/ having, maybe it's alias. We will try
        * to resolve it later.
        */
       if (is_pt_name_in_group_having (in_node) == false)
 	{
-	  if (!pt_has_error (parser))
+	  /* it may be a naked parameter or a path expression anchored by
+	   * a naked parameter. Try and resolve it as such.
+	   */
+	  node = pt_bind_parameter_path (parser, in_node);
+
+	  if (node == NULL && !pt_has_error (parser))
 	    {
 	      if (er_errid () != NO_ERROR)
 		{
@@ -870,7 +867,8 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
 	    }
 	}
     }
-  else
+
+  if (node != NULL)
     {
       /* outer join restriction check */
       for (temp = node; temp->node_type == PT_DOT_;
