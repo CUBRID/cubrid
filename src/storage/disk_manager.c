@@ -193,9 +193,6 @@ struct disk_cache_volinfo
   INT16 nvols;			/* Total number of permanent volumes */
   struct
   {
-#if !defined(HAVE_ATOMIC_BUILTINS) && defined(SERVER_MODE)
-    pthread_mutex_t update_lock;	/* Protect below variables from concurrent updates */
-#endif
     INT16 nvols;		/* Number of volumes for this purpose */
     int total_pages;		/* Number of total pages for this purpose */
     int free_pages;		/* Number of free pages for this purpose */
@@ -208,19 +205,11 @@ struct disk_cache_volinfo
 static DISK_CACHE_VOLINFO disk_Cache_struct = {
   0, 0,
   {
-#if !defined(HAVE_ATOMIC_BUILTINS) && defined(SERVER_MODE)
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0}
-#else
    {0, 0, 0},
    {0, 0, 0},
    {0, 0, 0},
    {0, 0, 0},
    {0, 0, 0}
-#endif
    },
   NULL,
   NULL_VOLID
@@ -813,9 +802,6 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
   int total_free_pages = 0;
   bool need_to_check_auto_volume_ext = false;
 #endif
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  int rv;
-#endif
 
   if (log_is_in_crash_recovery ())
     {
@@ -855,27 +841,19 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
     {
       if (disk_Cache->vols[i].volid == volid)
 	{
-	  /*
-	   * At this point, the caller is holding a volume header.
-	   * So, we do not use atomic built-in or mutex variable.
-	   */
-	  disk_Cache->vols[i].hint_freepages += nfree_pages_toadd;
-
+	  ATOMIC_INC_32 (&disk_Cache->vols[i].hint_freepages,
+			 nfree_pages_toadd);
 	  if (disk_Cache->vols[i].hint_freepages < 0)
 	    {
 	      /* defense code */
 	      assert_release (disk_Cache->vols[i].hint_freepages >= 0);
 	      disk_Cache->vols[i].hint_freepages = 0;
 	    }
+	  break;
 	}
     }
 
-  /*
-   * Decrement the number of free pages for the particular purpose. If the
-   * total amount of free space for all volumes of that purpose has dropped
-   * below the warning level, send a warning
-   */
-#if defined(HAVE_ATOMIC_BUILTINS)
+  /* Decrement the number of free pages for the particular purpose. */
   if (do_update_total)
     {
       ATOMIC_INC_32 (&(disk_Cache->purpose[vol_purpose].total_pages),
@@ -890,23 +868,6 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
       assert (false);
       disk_Cache->purpose[vol_purpose].free_pages = 0;
     }
-#else /* HAVE_ATOMIC_BUILTINS */
-  rv = pthread_mutex_lock (&(disk_Cache->purpose[vol_purpose].update_lock));
-  if (do_update_total)
-    {
-      disk_Cache->purpose[vol_purpose].total_pages += nfree_pages_toadd;
-    }
-  disk_Cache->purpose[vol_purpose].free_pages += nfree_pages_toadd;
-
-  if (disk_Cache->purpose[vol_purpose].free_pages < 0)
-    {
-      /* safe guard */
-      assert (false);
-      disk_Cache->purpose[vol_purpose].free_pages = 0;
-    }
-
-  pthread_mutex_unlock (&(disk_Cache->purpose[vol_purpose].update_lock));
-#endif /* ! HAVE_ATOMIC_BUILTINS */
 
 #if defined (SERVER_MODE)
   if (need_to_check_auto_volume_ext == true)
@@ -1032,7 +993,7 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 					     int num_vols)
 {
   DISK_VOLFREEPGS *v;
-  int i, r;
+  int i, r, hint_freepages;
   INT16 contiguous_best_volid;
 
   /* Assume we have enter critical section */
@@ -1049,9 +1010,11 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	  continue;
 	}
 
-      if (exp_numpages <= v->hint_freepages
-	  && *best_numpages < v->hint_freepages
-	  && undesirable_volid != v->volid)
+      /* not to pass the cache entry to disk_get_hint_contiguous_free_numpages */
+      hint_freepages = v->hint_freepages;
+
+      if (exp_numpages <= hint_freepages
+	  && *best_numpages < hint_freepages && undesirable_volid != v->volid)
 	{
 	  /* This seems to be a good volume for the desired number of
 	     pages. Make sure that this is the case. */
@@ -1060,8 +1023,7 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	      || ((r =
 		   disk_get_hint_contiguous_free_numpages (thread_p, v->volid,
 							   exp_numpages,
-							   &v->
-							   hint_freepages))
+							   &hint_freepages))
 		  == DISK_VOL_HAS_ENOUGH_CONT_PAGES))
 	    {
 	      /*
@@ -1071,9 +1033,9 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	       * volume
 	       */
 	      if (contiguous_best_volid == NULL_VOLID
-		  || *best_numpages < v->hint_freepages)
+		  || *best_numpages < hint_freepages)
 		{
-		  *best_numpages = v->hint_freepages;
+		  *best_numpages = hint_freepages;
 		  *best_volid = v->volid;
 		  contiguous_best_volid = *best_volid;
 		}
@@ -1086,9 +1048,9 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	       * Reset only when we do not have a contiguous volume
 	       */
 	      if (contiguous_best_volid == NULL_VOLID
-		  && *best_numpages < v->hint_freepages)
+		  && *best_numpages < hint_freepages)
 		{
-		  *best_numpages = v->hint_freepages;
+		  *best_numpages = hint_freepages;
 		  *best_volid = v->volid;
 		}
 	    }
@@ -1105,9 +1067,9 @@ disk_probe_disk_cache_to_find_desirable_vol (THREAD_ENTRY * thread_p,
 	     the number of free pages is larger than the current cached value */
 	  if (contiguous_best_volid == NULL_VOLID
 	      && undesirable_volid != v->volid
-	      && *best_numpages < v->hint_freepages)
+	      && *best_numpages < hint_freepages)
 	    {
-	      *best_numpages = v->hint_freepages;
+	      *best_numpages = hint_freepages;
 	      *best_volid = v->volid;
 	    }
 	}
