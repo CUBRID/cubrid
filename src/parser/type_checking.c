@@ -22569,6 +22569,7 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_FROM_TZ:
     case PT_NEW_TIME:
     case PT_STR_TO_DATE:
+    case PT_HOURF:
       return true;
     default:
       return false;
