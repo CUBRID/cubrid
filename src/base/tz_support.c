@@ -165,7 +165,8 @@ static TZ_DATA timezone_data =
 #else
 static TZ_DATA timezone_data =
   { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL,
-{'0'} };
+  {'0'}
+};
 #endif
 
 static const int days_of_month[] =
@@ -3708,8 +3709,8 @@ tz_conv_tz_datetime_w_region (const DB_DATETIME * src_dt,
   int err_status = NO_ERROR;
   TZ_DECODE_INFO src_zone_info;
   TZ_DECODE_INFO dest_zone_info_in;
-  TZ_DECODE_INFO src_zone_info_out;
-  TZ_DECODE_INFO dest_zone_info_out;
+  TZ_DECODE_INFO src_zone_info_out = { TZ_REGION_OFFSET, {0} };
+  TZ_DECODE_INFO dest_zone_info_out = { TZ_REGION_OFFSET, {0} };
 
   assert (src_dt != NULL);
   assert (src_tz_region != NULL);
