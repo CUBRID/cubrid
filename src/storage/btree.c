@@ -38173,8 +38173,9 @@ btree_key_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p,
   /* new_version_prev_page no longer required. */
   if (*new_version_prev_page != NULL
       && *new_version_prev_page != leaf_page
-      && *new_version_prev_page != *old_version_page
-      && *new_version_prev_page != *old_version_prev_page)
+      && (unfix_old_version_pages
+	  || (*new_version_prev_page != *old_version_page
+	      && *new_version_prev_page != *old_version_prev_page)))
     {
       pgbuf_unfix_and_init (thread_p, *new_version_prev_page);
     }
