@@ -1209,7 +1209,8 @@ static int heap_insert_physical (THREAD_ENTRY * thread_p,
 static void heap_log_insert_physical (THREAD_ENTRY * thread_p,
 				      PAGE_PTR page_p, VFID * vfid_p,
 				      OID * oid_p, RECDES * recdes_p,
-				      bool is_mvcc_op);
+				      bool is_mvcc_op,
+				      bool is_redistribute_op);
 
 /* heap delete related functions */
 void heap_delete_adjust_header (MVCC_REC_HEADER * header_p,
@@ -26372,6 +26373,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   context->file_type = -1;
   OID_SET_NULL (&context->res_oid);
   context->is_logical_old = false;
+  context->is_redistribute_insert_with_delid = false;
 }
 
 /*
@@ -26663,6 +26665,12 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
   insert_from_reorganize =
     (context->type == HEAP_OPERATION_INSERT
      && context->update_in_place == UPDATE_INPLACE_OLD_MVCCID);
+
+  if (insert_from_reorganize == true
+      && MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID))
+    {
+      context->is_redistribute_insert_with_delid = true;
+    }
 
   if ((context->type != HEAP_OPERATION_UPDATE
        || context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
@@ -27030,7 +27038,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p,
    */
   heap_log_insert_physical (thread_p, ins_context.home_page_watcher_p->pgptr,
 			    &ins_context.hfid.vfid, &ins_context.res_oid,
-			    ins_context.recdes_p, false);
+			    ins_context.recdes_p, false, false);
 
   /* advertise insert location */
   if (out_oid_p != NULL)
@@ -27122,7 +27130,7 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
   /* log operation */
   heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr,
 			    &context->hfid.vfid, &context->res_oid,
-			    context->recdes_p, true);
+			    context->recdes_p, true, false);
 
   /* all ok */
   return NO_ERROR;
@@ -27200,11 +27208,13 @@ heap_insert_physical (THREAD_ENTRY * thread_p,
  *   oid_p(in): newly inserted object id
  *   recdes_p(in): record descriptor of inserted record
  *   is_mvcc_op(in): specifies type of operation (MVCC/non-MVCC)
+ *   is_redistribute_op(in): whether the insertion is due to partition
+ *			     redistribute operation and has a valid delid
  */
 static void
 heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 			  VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool is_mvcc_op)
+			  bool is_mvcc_op, bool is_redistribute_op)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -27215,10 +27225,7 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 
   if (is_mvcc_op)
     {
-      INT32 mvcc_flags;
-
-      mvcc_flags = OR_GET_MVCC_FLAG (recdes_p->data);
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+      if (is_redistribute_op)
 	{
 	  /* this is actually a deleted record, inserted due to a PARTITION
 	   * reorganize operation. Log this operation separately
@@ -29190,7 +29197,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
    */
   heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr,
 			    &context->hfid.vfid, &context->res_oid,
-			    context->recdes_p, is_mvcc_op);
+			    context->recdes_p, is_mvcc_op,
+			    context->is_redistribute_insert_with_delid);
 
   /* mark insert page as dirty */
   pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);

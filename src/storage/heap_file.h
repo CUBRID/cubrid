@@ -390,6 +390,10 @@ struct heap_operation_context
   /* logical operation output */
   OID res_oid;			/* object identifier (if operation generates one) */
   bool is_logical_old;		/* true if initial record was not REC_ASSIGN_ADDRESS */
+  bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition
+						 * redistribute data operation and
+						 * has a valid delid
+						 */
 };
 
 /* HEAP_OPERATION_CONTEXT flags */
