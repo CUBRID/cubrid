@@ -283,6 +283,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  sizeof (DISK_ATTR) * rep->n_fixed);
 	  goto error;
 	}
+      memset (rep->fixed, 0x0, sizeof (DISK_ATTR) * rep->n_fixed);
     }
 
   if (rep->n_variable)
@@ -295,6 +296,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  1, sizeof (DISK_ATTR) * rep->n_variable);
 	  goto error;
 	}
+      memset (rep->variable, 0x0, sizeof (DISK_ATTR) * rep->n_variable);
     }
 
   /* Copy the attribute information */
