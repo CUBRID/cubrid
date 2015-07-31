@@ -2780,7 +2780,11 @@ session_get_session_state (THREAD_ENTRY * thread_p)
     {
       /* any request for this object should find it cached in the connection
        * entry */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
+      if (thread_p->type == TT_WORKER)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED,
+		  0);
+	}
       return NULL;
     }
 #else

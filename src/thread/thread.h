@@ -145,7 +145,7 @@ enum
   THREAD_LOGWR_RESUMED = 24
 };
 
-enum
+typedef enum
 {
   TT_MASTER,
   TT_SERVER,
@@ -154,7 +154,7 @@ enum
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
   TT_NONE
-};
+} THREAD_TYPE;
 
 enum
 { THREAD_STOP_WORKERS_EXCEPT_LOGWR, THREAD_STOP_LOGWR };
@@ -278,7 +278,7 @@ struct thread_entry
   UINTPTR thread_handle;	/* thread handle */
 #endif				/* WINDOWS */
   int index;			/* thread entry index */
-  int type;			/* thread type */
+  THREAD_TYPE type;		/* thread type */
   pthread_t tid;		/* thread id */
   pthread_t emulate_tid;	/* emulated thread id; applies to non-worker
 				 * threads, when works on behalf of a worker
