@@ -1108,6 +1108,13 @@ init_user_locales (void)
   loclib_handle_size = num_user_loc;
   loclib_handle_count = 0;
 
+  if (num_user_loc == 0)
+    {
+      /* no extra locales : nothing to do */
+      return NO_ERROR;
+    }
+  assert (num_user_loc > 0);
+
   loclib_handle = (void *) malloc (loclib_handle_size * sizeof (void *));
   if (loclib_handle == NULL)
     {
