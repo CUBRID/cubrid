@@ -2831,6 +2831,20 @@ wrapup:
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
       QO_TERM_SELECTIVITY (term) = -1.0;
       QO_TERM_CAN_USE_INDEX (term) = 0;
+
+      /* For term_type is PT_PATH_OUTER_WEASEL, order dependency is needed.
+       * i.e. it's a path term.
+       */
+      if (term_type == PT_PATH_OUTER_WEASEL && head_node != NULL
+	  && tail_node != NULL)
+	{
+	  assert (QO_TERM_CLASS (term) == QO_TC_PATH);
+
+	  bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
+			&(QO_NODE_OUTER_DEP_SET (head_node)));
+	  bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)),
+		      QO_NODE_IDX (head_node));
+	}
       break;
 
     case PREDICATE_TERM:
