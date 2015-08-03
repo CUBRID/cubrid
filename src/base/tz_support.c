@@ -4694,12 +4694,21 @@ tz_get_server_tz_region_session (void)
   thread_p = thread_get_thread_entry_info ();
   session_tz_region = session_get_session_tz_region (thread_p);
 
-  if (session_tz_region == NULL && thread_p->emulate_tid != ((pthread_t) 0))
+  if (session_tz_region == NULL)
     {
-      worker_thread_p = thread_find_entry_by_tid (thread_p->emulate_tid);
-      if (worker_thread_p != NULL)
+      if (thread_p->emulate_tid != ((pthread_t) 0))
 	{
-	  session_tz_region = session_get_session_tz_region (worker_thread_p);
+	  worker_thread_p = thread_find_entry_by_tid (thread_p->emulate_tid);
+	  if (worker_thread_p != NULL)
+	    {
+	      session_tz_region =
+		session_get_session_tz_region (worker_thread_p);
+	    }
+	}
+      else if (thread_p->type == TT_VACUUM_WORKER)
+	{
+	  /* just use sytem region */
+	  session_tz_region = &tz_region_system;
 	}
     }
 
