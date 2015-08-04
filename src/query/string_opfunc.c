@@ -21211,21 +21211,14 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
       d_p = DB_GET_DATE (date);
       break;
 
+    case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIME:
       is_dt = 1;
       dt_p = DB_GET_DATETIME (date);
-      break;
-
-    case DB_TYPE_DATETIMELTZ:
-      error_status = tz_datetimeltz_to_local (DB_GET_DATETIME (date),
-					      &db_datetime);
-      if (error_status != NO_ERROR)
+      if(res_type == DB_TYPE_DATETIMELTZ)
 	{
-	  goto error;
-	}
-      dt_p = &db_datetime;
-      is_dt = 1;
-      is_local_timezone = 1;
+	  is_local_timezone = 1;
+	} 
       break;
 
     case DB_TYPE_DATETIMETZ:
@@ -21233,14 +21226,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	DB_DATETIMETZ *dt_tz_p;
 
 	dt_tz_p = DB_GET_DATETIMETZ (date);
-	error_status = tz_utc_datetimetz_to_local (&dt_tz_p->datetime,
-						   &dt_tz_p->tz_id,
-						   &db_datetime);
-	if (error_status != NO_ERROR)
-	  {
-	    goto error;
-	  }
-	dt_p = &db_datetime;
+	dt_p = &dt_tz_p->datetime;
 	tz_id = dt_tz_p->tz_id;
 	is_dt = 1;
 	is_timezone = 1;
@@ -21409,12 +21395,34 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	  goto error;
 	}
 
-      db_datetime.date = db_datetime.time = 0;
-      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+      if (is_timezone > 0)
+	{
+	  error_status = create_datetimetz_from_parts (m, d, y, h,
+						       mi, s, ms,
+						       tz_id,
+						       is_timezone, &dt_tz);
+	}
+      else
+	{
+	  error_status = db_datetime_encode (&db_datetime, m, d, y, h, mi, s,
+					     ms);
+	}
+
+      if (error_status != NO_ERROR)
+	{
+	  goto error;
+	}
 
       if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
 	{
-	  db_datetime_to_string (res_s, 64, &db_datetime);
+	  if(is_timezone > 0)
+	    {
+	      db_datetimetz_to_string (res_s, 64, &dt_tz.datetime, dt_tz.tz_id);
+	    }
+	  else
+	    {
+	      db_datetime_to_string (res_s, 64, &db_datetime);
+	    }
 
 	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (!res_final)
@@ -21428,33 +21436,17 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	}
       else
 	{
-	  /* datetime, date + time units, timestamp => return datetime */
-	  if (is_local_timezone > 0)
+	  if(is_timezone > 0)
 	    {
-	      error_status = tz_create_datetimetz_from_ses (&db_datetime,
-							    &dt_tz);
-	      if (error_status != NO_ERROR)
-		{
-		  goto error;
-		}
-	      DB_MAKE_DATETIMELTZ (result, &dt_tz.datetime);
+	      DB_MAKE_DATETIMETZ(result, &dt_tz.datetime);
 	    }
-	  else if (is_timezone > 0)
+	  else if(is_local_timezone > 0)
 	    {
-	      TZ_REGION tz_region;
-
-	      tz_id_to_region (&tz_id, &tz_region);
-	      error_status = tz_create_datetimetz (&db_datetime, NULL, 0,
-						   &tz_region, &dt_tz, NULL);
-	      if (error_status != NO_ERROR)
-		{
-		  goto error;
-		}
-	      DB_MAKE_DATETIMETZ (result, &dt_tz);
+	      DB_MAKE_DATETIMELTZ(result, &db_datetime);
 	    }
 	  else
 	    {
-	      DB_MAKE_DATETIME (result, &db_datetime);
+	      DB_MAKE_DATETIME(result, &db_datetime);
 	    }
 	}
     }
@@ -21464,14 +21456,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 
       y = m = d = h = mi = s = ms = 0;
 
-      if (is_timezone > 0 || is_local_timezone > 0)
-	{
-	  db_timestamp_decode_utc (ts_p, &db_date, &db_time);
-	}
-      else
-	{
-	  (void) db_timestamp_decode_ses (ts_p, &db_date, &db_time);
-	}
+      db_timestamp_decode_utc (ts_p, &db_date, &db_time);
       db_date_decode (&db_date, &m, &d, &y);
       db_time_decode (&db_time, &h, &mi, &s);
 
@@ -21522,12 +21507,37 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	  goto error;
 	}
 
-      db_datetime.date = db_datetime.time = 0;
-      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+      if (is_local_timezone <= 0)
+	{
+	  error_status = create_datetimetz_from_parts (m, d, y, h,
+						       mi, s, ms,
+						       tz_id,
+						       is_timezone, &dt_tz);
+	}
+      else
+	{
+	  error_status = db_datetime_encode (&db_datetime, m, d, y, h, mi, s,
+					     ms);
+	  dt_tz.datetime = db_datetime;
+	  dt_tz.tz_id = tz_id;
+	}
+      if (error_status != NO_ERROR)
+	{
+	  goto error;
+	}
 
       if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
 	{
-	  db_datetime_to_string (res_s, 64, &db_datetime);
+	  DB_DATETIME dt_local;
+
+	  error_status = tz_utc_datetimetz_to_local (&dt_tz.datetime,
+						     &dt_tz.tz_id, &dt_local);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  db_datetime_to_string (res_s, 64, &dt_local);
 
 	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (!res_final)
@@ -21541,29 +21551,26 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	}
       else
 	{
-	  if (is_timezone > 0 || is_local_timezone > 0)
+	  if (is_timezone > 0)
 	    {
+	      DB_MAKE_DATETIMETZ (result, &dt_tz);
+	    }
+	  else if(is_local_timezone > 0)
+	    {
+	      DB_MAKE_DATETIMELTZ (result, &db_datetime);
+	    }
+	  else
+	    {
+	      DB_DATETIME dt_local;
 
-	      error_status =
-		create_datetimetz_from_parts (m, d, y, h, mi, s, ms,
-					      tz_id, is_timezone, &dt_tz);
+	      error_status = tz_utc_datetimetz_to_local (&dt_tz.datetime,
+							 &dt_tz.tz_id,
+							 &dt_local);
 	      if (error_status != NO_ERROR)
 		{
 		  goto error;
 		}
-
-	      if (is_timezone > 0)
-		{
-		  DB_MAKE_DATETIMETZ (result, &dt_tz);
-		}
-	      else
-		{
-		  DB_MAKE_DATETIMELTZ (result, &dt_tz.datetime);
-		}
-	    }
-	  else
-	    {
-	      DB_MAKE_DATETIME (result, &db_datetime);
+	      DB_MAKE_DATETIME (result, &dt_local);
 	    }
 	}
     }
@@ -22550,7 +22557,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	{
 	  error_status = db_datetime_encode (&db_datetime, m, d, y, h, mi, s,
 					     ms);
-
+	  dt_tz.datetime = db_datetime;
+	  dt_tz.tz_id = tz_id;
 	}
 
       if (error_status != NO_ERROR)
