@@ -14712,8 +14712,6 @@ locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * class_oid (in)     : parent class OID
  * no_oids (in)	      : number of OIDs in the list (promoted partitions)
  * oid_list (in)      : partition OID list (promoted partitions)
- * should_update (in) :
- * should_insert (in) :
  */
 static int
 redistribute_partition_data (THREAD_ENTRY * thread_p,
@@ -14876,7 +14874,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p,
 		}
 
 	      error = locator_insert_force (thread_p, &class_hfid, class_oid,
-					    &oid, &recdes, false,
+					    &oid, &recdes, true,
 					    SINGLE_ROW_INSERT,
 					    &parent_scan_cache, &force_count,
 					    DB_PARTITIONED_CLASS, &pcontext,
@@ -14929,9 +14927,6 @@ exit:
  * class_oid (in)     : parent class OID
  * no_oids (in)	      : number of OIDs in the list (promoted partitions)
  * oid_list (in)      : partition OID list (promoted partitions)
- * should_update (in) :
- * should_insert (in) :
- * op_type       (in) :
  */
 int
 xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p,

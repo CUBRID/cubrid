@@ -435,6 +435,7 @@ static int do_redistribute_partitions_data (const char *class_name,
 					    const char *keyname,
 					    char **promoted,
 					    int promoted_count,
+					    PT_ALTER_CODE alter_op,
 					    bool should_update,
 					    bool should_insert);
 static SM_FUNCTION_INFO *compile_partition_expression (PARSER_CONTEXT *
@@ -4807,6 +4808,7 @@ end_rename:
  *   keyname(in):
  *   promoted(in):
  *   promoted_count(in):
+ *   alter_op(in):
  *   should_update(in):
  *   should_insert(in):
  * Note:
@@ -4814,6 +4816,7 @@ end_rename:
 static int
 do_redistribute_partitions_data (const char *classname, const char *keyname,
 				 char **promoted, int promoted_count,
+				 PT_ALTER_CODE alter_op,
 				 bool should_update, bool should_insert)
 {
   int error = NO_ERROR;
@@ -4867,16 +4870,19 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
 	  goto exit;
 	}
 
-      error = do_save_all_indexes (class_mop, &index_save_info);
-      if (error != NO_ERROR)
+      if (alter_op != PT_REORG_PARTITION)
 	{
-	  goto exit;
-	}
+	  error = do_save_all_indexes (class_mop, &index_save_info);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 
-      error = do_drop_saved_indexes (class_mop, index_save_info);
-      if (error != NO_ERROR)
-	{
-	  goto exit;
+	  error = do_drop_saved_indexes (class_mop, index_save_info);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	}
 
       partitions = (OID *) malloc (promoted_count * sizeof (OID));
@@ -4907,7 +4913,11 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
 	{
 	  goto exit;
 	}
-      error = do_recreate_saved_indexes (class_mop, index_save_info);
+
+      if (alter_op != PT_REORG_PARTITION)
+	{
+	  error = do_recreate_saved_indexes (class_mop, index_save_info);
+	}
     }
 
 exit:
@@ -6021,7 +6031,8 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter,
     case PT_ADD_HASHPARTITION:
       error =
 	do_redistribute_partitions_data (entity_name, pinfo->keycol, NULL,
-					 0, true, false);
+					 0, PT_ADD_HASHPARTITION, true,
+					 false);
       break;
     case PT_COALESCE_PARTITION:
       error = do_coalesce_partition_post (parser, alter, pinfo);
@@ -6227,7 +6238,8 @@ do_remove_partition_post (PARSER_CONTEXT * parser,
   error =
     do_redistribute_partitions_data (root_name, pinfo->keycol,
 				     pinfo->promoted_names,
-				     pinfo->promoted_count, false, true);
+				     pinfo->promoted_count,
+				     alter->info.alter.code, false, true);
   if (error != NO_ERROR)
     {
       return error;
@@ -6464,7 +6476,8 @@ do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
   error =
     do_redistribute_partitions_data (root_name, pinfo->keycol,
 				     pinfo->promoted_names,
-				     pinfo->promoted_count, true, true);
+				     pinfo->promoted_count,
+				     alter->info.alter.code, true, true);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -6708,7 +6721,8 @@ do_reorganize_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
   error =
     do_redistribute_partitions_data (root_name, pinfo->keycol,
 				     pinfo->promoted_names,
-				     pinfo->promoted_count, update, insert);
+				     pinfo->promoted_count,
+				     alter->info.alter.code, update, insert);
   if (error != NO_ERROR)
     {
       return error;
