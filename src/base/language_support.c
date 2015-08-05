@@ -1111,7 +1111,8 @@ init_user_locales (void)
   if (num_user_loc == 0)
     {
       /* no extra locales : nothing to do */
-      return NO_ERROR;
+      er_status = NO_ERROR;
+      goto exit;
     }
   assert (num_user_loc > 0);
 
@@ -1267,6 +1268,7 @@ init_user_locales (void)
       lld->is_initialized = true;
     }
 
+exit:
   /* free user defined locale files struct */
   for (i = 0; i < num_user_loc; i++)
     {
@@ -1283,24 +1285,11 @@ init_user_locales (void)
   return er_status;
 
 error:
-  /* free user defined locale files struct */
-  for (i = 0; i < num_user_loc; i++)
-    {
-      free_and_init (user_lf[i].locale_name);
-      free_and_init (user_lf[i].ldml_file);
-      free_and_init (user_lf[i].lib_file);
-    }
-
-  if (user_lf != NULL)
-    {
-      free (user_lf);
-    }
-
   destroy_user_locales ();
   lang_free_collations ();
   lang_unload_libraries ();
 
-  return er_status;
+  goto exit;
 }
 
 /*
