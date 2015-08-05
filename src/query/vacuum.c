@@ -8321,18 +8321,12 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   addr.pgptr = page_p;
   addr.vfid = NULL;
 
+  num_redo_crumbs = 0;
   if (reusable)
     {
       addr.offset |= VACUUM_LOG_VACUUM_HEAP_REUSABLE;
     }
-
-  undo_crumbs[0].length = sizeof (undo_recdes->type);
-  undo_crumbs[0].data = (char *) &undo_recdes->type;
-  undo_crumbs[1].length = undo_recdes->length;
-  undo_crumbs[1].data = undo_recdes->data;
-  num_undo_crumbs = 2;
-
-  if (next_version_oid != NULL && !OID_ISNULL (next_version_oid))
+  else if (next_version_oid != NULL && !OID_ISNULL (next_version_oid))
     {
       buffer_p = PTR_ALIGN (buffer, MAX_ALIGNMENT);
       ptr = buffer_p;
@@ -8354,10 +8348,12 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
       redo_crumbs[0].data = buffer_p;
       num_redo_crumbs = 1;
     }
-  else
-    {
-      num_redo_crumbs = 0;
-    }
+
+  undo_crumbs[0].length = sizeof (undo_recdes->type);
+  undo_crumbs[0].data = (char *) &undo_recdes->type;
+  undo_crumbs[1].length = undo_recdes->length;
+  undo_crumbs[1].data = undo_recdes->data;
+  num_undo_crumbs = 2;
 
   log_append_undoredo_crumbs (thread_p, RVVAC_HEAP_RECORD_VACUUM, &addr,
 			      num_undo_crumbs, num_redo_crumbs, undo_crumbs,
