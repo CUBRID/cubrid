@@ -67,42 +67,40 @@ static int rv;
 #define DISK_HINT_START_SECT     4
 
 /* do not use assert_release () for performance risk */
-#define DISK_VERIFY_VAR_HEADER(h) 					\
-  do { 									\
-    if (BO_IS_SERVER_RESTARTED ())					\
-      {									\
-	assert ((h)->total_pages > 0);					\
-	assert ((h)->free_pages >= 0);					\
-	assert ((h)->free_pages <= (h)->total_pages);			\
-									\
-	assert ((h)->total_sects > 0);					\
-	assert ((h)->free_sects >= 0);					\
-	assert ((h)->free_sects <= (h)->total_sects);			\
-									\
-	assert ((h)->sect_npgs == DISK_SECTOR_NPAGES);			\
-	assert ((h)->total_sects == 					\
-		CEIL_PTVDIV ((h)->total_pages, (h)->sect_npgs));	\
-	assert ((h)->sect_alloctb_page1 == DISK_VOLHEADER_PAGE + 1);	\
-									\
-	assert ((h)->page_alloctb_page1 == 				\
-		((h)->sect_alloctb_page1 + (h)->sect_alloctb_npages));	\
-	assert ((h)->sys_lastpage == 					\
-		((h)->page_alloctb_page1 + (h)->page_alloctb_npages - 1));\
-   									\
-        if ((h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)                  \
-          {                                                             \
-            assert ((h)->sect_alloctb_npages >= 			\
-                    CEIL_PTVDIV ((h)->total_sects, DISK_PAGE_BIT));	\
-            assert ((h)->page_alloctb_npages >= 			\
-                    CEIL_PTVDIV ((h)->total_pages, DISK_PAGE_BIT));	\
-          }								\
-        if ((h)->purpose != DISK_PERMVOL_GENERIC_PURPOSE                \
-            && (h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)               \
-          {                                                             \
-            assert ((h)->total_pages == (h)->max_npages);               \
-          }                                                             \
-      }									\
-  } while (0)
+#define DISK_VERIFY_VAR_HEADER(h) \
+  do \
+    { \
+      if (BO_IS_SERVER_RESTARTED ()) \
+	{ \
+	  assert ((h)->total_pages > 0); \
+	  assert ((h)->free_pages >= 0); \
+	  assert ((h)->free_pages <= (h)->total_pages); \
+	  assert ((h)->total_sects > 0); \
+	  assert ((h)->free_sects >= 0); \
+	  assert ((h)->free_sects <= (h)->total_sects); \
+	  assert ((h)->sect_npgs == DISK_SECTOR_NPAGES); \
+	  assert ((h)->total_sects == \
+		  CEIL_PTVDIV ((h)->total_pages, (h)->sect_npgs)); \
+	  assert ((h)->sect_alloctb_page1 == DISK_VOLHEADER_PAGE + 1); \
+	  assert ((h)->page_alloctb_page1 == \
+		  ((h)->sect_alloctb_page1 + (h)->sect_alloctb_npages)); \
+	  assert ((h)->sys_lastpage == \
+		  ((h)->page_alloctb_page1 + (h)->page_alloctb_npages - 1)); \
+	  if ((h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE) \
+	    { \
+	      assert ((h)->sect_alloctb_npages >= \
+		      CEIL_PTVDIV ((h)->total_sects, DISK_PAGE_BIT)); \
+	      assert ((h)->page_alloctb_npages >= \
+		      CEIL_PTVDIV ((h)->total_pages, DISK_PAGE_BIT)); \
+	    } \
+	  if ((h)->purpose != DISK_PERMVOL_GENERIC_PURPOSE \
+	      && (h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE) \
+	    { \
+	      assert ((h)->total_pages == (h)->max_npages); \
+	    } \
+	} \
+    } \
+  while (0) \
 
 #define DISK_PAGE   1
 #define DISK_SECTOR 0
@@ -122,6 +120,12 @@ typedef enum
   DISK_VOL_HAS_NOT_ENOUGH_CONT_PAGES = 0,
   DISK_VOL_HAS_ENOUGH_CONT_PAGES = 1
 } DISK_VOL_HAS_CONT_PAGES;
+
+typedef enum
+{
+  DISK_CACHE_UPDATE_BY_DELTA = 0,
+  DISK_CACHE_UPDATE_BY_ABSOLUTE = 1
+} DISK_CACHE_UPDATE_BY;
 
 typedef struct disk_recv_mtab_bits DISK_RECV_MTAB_BITS;
 struct disk_recv_mtab_bits
@@ -245,7 +249,9 @@ static int disk_cache_set_disable_new_files (THREAD_ENTRY * thread_p,
 					     VOLID volid, bool disable);
 static int disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
 				      DISK_VOLPURPOSE vol_purpose,
-				      INT32 num_pages, bool do_update_total,
+				      DISK_CACHE_UPDATE_BY delta_or_absolute,
+				      INT32 num_pages,
+				      bool do_update_total,
 				      bool * need_to_add_generic_volume);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static INT32 disk_vhdr_get_last_alloc_pageid (THREAD_ENTRY * thread_p,
@@ -446,7 +452,6 @@ disk_bit_is_cleared (unsigned char *c, unsigned int n)
 
 /* Caching of multivolume information */
 
-/* TODO: STL::list for disk_Cache->vols */
 /*
  * disk_goodvol_decache () - Decache information about volumes
  *   return: NO_ERROR
@@ -474,8 +479,6 @@ disk_goodvol_decache (THREAD_ENTRY * thread_p)
   return ret;
 }
 
-/* TODO: STL::vector for disk_Cache->purpose */
-/* TODO: STL::list for disk_Cache->vols */
 /*
  * disk_cache_goodvol_refresh_onevol () - Cache specific volume information
  *   return:
@@ -553,7 +556,6 @@ disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid,
   return true;
 }
 
-/* TODO: STL::list for disk_Cache->vols */
 /*
  * disk_goodvol_refresh_with_new () -
  *   return:
@@ -595,8 +597,6 @@ disk_goodvol_refresh_with_new (THREAD_ENTRY * thread_p, INT16 volid)
   return answer;
 }
 
-/* TODO: STL::vector for disk_Cache->purpose */
-/* TODO: STL::list for disk_Cache->vols */
 /*
  * disk_goodvol_refresh () - Refresh cached information about volumes
  *   return:
@@ -754,14 +754,13 @@ disk_cache_set_disable_new_files (THREAD_ENTRY * thread_p, VOLID volid,
   return ER_FAILED;
 }
 
-/* TODO: STL::vector for disk_Cache->purpose */
-/* TODO: STL::list for disk_Cache->vols */
 /*
  * disk_cache_goodvol_update () - Update the free pages cache of volume purpose
  *                              and give a space warning when appropiate
  *   return: NO_ERROR
  *   volid(in): Volume identifier
  *   vol_purpose(in): The main purpose of the volume
+ *   delta_or_absolute(in): is nfree_pages_toadd delta or absolute value
  *   nfree_pages_toadd(in): Number of allocated or deallocated pages Negative
  *                          for deallocated and positive for allocated
  *   do_update_total(in): Flag is true if total_pages should be updated
@@ -772,6 +771,7 @@ disk_cache_set_disable_new_files (THREAD_ENTRY * thread_p, VOLID volid,
 static int
 disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
 			   DISK_VOLPURPOSE vol_purpose,
+			   DISK_CACHE_UPDATE_BY delta_or_absolute,
 			   INT32 nfree_pages_toadd, bool do_update_total,
 			   bool * need_to_add_generic_volume)
 {
@@ -821,9 +821,16 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
     {
       if (disk_Cache->vols[i].volid == volid)
 	{
+	  if (delta_or_absolute == DISK_CACHE_UPDATE_BY_ABSOLUTE)
+	    {
+	      nfree_pages_toadd -= disk_Cache->vols[i].hint_freepages;
+	    }
+
 	  ATOMIC_INC_32 (&disk_Cache->vols[i].hint_freepages,
 			 nfree_pages_toadd);
-	  if (disk_Cache->vols[i].hint_freepages < 0)
+
+	  if (delta_or_absolute == DISK_CACHE_UPDATE_BY_ABSOLUTE
+	      && disk_Cache->vols[i].hint_freepages < 0)
 	    {
 	      /* defense code */
 	      assert_release (disk_Cache->vols[i].hint_freepages >= 0);
@@ -842,7 +849,8 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
   ATOMIC_INC_32 (&(disk_Cache->purpose[vol_purpose].free_pages),
 		 nfree_pages_toadd);
 
-  if (disk_Cache->purpose[vol_purpose].free_pages < 0)
+  if (delta_or_absolute == DISK_CACHE_UPDATE_BY_ABSOLUTE
+      && disk_Cache->purpose[vol_purpose].free_pages < 0)
     {
       /* safe guard */
       assert (false);
@@ -1606,7 +1614,6 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
   return best_volid;
 }
 
-/* TODO: STL::vector for disk_Cache->purpose */
 /*
  * disk_cache_get_purpose_info () - Find total and free pages of volumes with the
  *                            given purpose
@@ -1714,7 +1721,6 @@ disk_find_cache_entry_info_of_purpose (DISK_VOLPURPOSE vol_purpose,
   return NO_ERROR;
 }
 
-/* TODO: STL::vector for disk_Cache->purpose */
 /*
  * disk_get_max_numpages () - Find number of free pages for volumes,
  *                                including newly automatically created,
@@ -2525,6 +2531,7 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
 
   /* Update total_pages and free_pages on disk_Cache. */
   disk_cache_goodvol_update (thread_p, volid, DISK_TEMPVOL_TEMP_PURPOSE,
+			     DISK_CACHE_UPDATE_BY_DELTA,
 			     npages_toadd, true, NULL);
   return npages_toadd;
 
@@ -2668,7 +2675,8 @@ disk_expand_perm (THREAD_ENTRY * thread_p, INT16 volid, INT32 npages)
   pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
 
   /* Update total_pages and free_pages on disk_Cache. */
-  disk_cache_goodvol_update (thread_p, volid, purpose, npages, true, NULL);
+  disk_cache_goodvol_update (thread_p, volid, purpose,
+			     DISK_CACHE_UPDATE_BY_DELTA, npages, true, NULL);
 
   if (reached_max_size == true)
     {
@@ -3321,6 +3329,7 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
   DISK_VAR_HEADER *vhdr;
   VPID vpid;
   LOG_DATA_ADDR addr;
+  int err = NO_ERROR;
 
   addr.pgptr = NULL;
   addr.vfid = NULL;
@@ -3329,8 +3338,14 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
   vpid.volid = volid;
   vpid.pageid = DISK_VOLHEADER_PAGE;
 
-  /*
-   * Lock the volume header in exclusive mode and then fetch the page. The
+  /* To hold CSECT_DISK_REFRESH_GOODVOL first and then fix a volume header */
+  if (csect_enter (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) !=
+      NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* Lock the volume header in exclusive mode and then fetch the page. The
    * volume header page is locked to maintain a persistent view of volume
    * header and the map allocation tables until the operation is done. Note
    * that this is the only page among the volume system pages that is locked.
@@ -3339,7 +3354,8 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (addr.pgptr == NULL)
     {
-      return ER_FAILED;
+      err = ER_FAILED;
+      goto exit;
     }
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
@@ -3349,10 +3365,10 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
   vhdr->chkpt_lsa.pageid = log_chkpt_lsa->pageid;
   vhdr->chkpt_lsa.offset = log_chkpt_lsa->offset;
 
-  /* Set dirty and unlock the page */
-#if 0
-  (void) pgbuf_flush_all_unfixed (volid);
-#endif
+  /* Now synchronize disk volume cache with the actual stats */
+  disk_cache_goodvol_update (thread_p, volid, vhdr->purpose,
+			     DISK_CACHE_UPDATE_BY_ABSOLUTE, vhdr->free_pages,
+			     true, NULL);
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
@@ -3360,7 +3376,10 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
   pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
   addr.pgptr = NULL;
 
-  return NO_ERROR;
+exit:
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
+
+  return err;
 }
 
 /*
@@ -4189,7 +4208,8 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
       /* Update volume cache. */
       need_to_add_generic_volume = false;
-      disk_cache_goodvol_update (thread_p, volid, vol_purpose, delta, false,
+      disk_cache_goodvol_update (thread_p, volid, vol_purpose,
+				 DISK_CACHE_UPDATE_BY_DELTA, delta, false,
 				 &need_to_add_generic_volume);
 
       if (need_to_add_generic_volume)
@@ -5030,6 +5050,7 @@ disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr,
 	{
 	  /* Update volume cache. */
 	  disk_cache_goodvol_update (thread_p, vhdr_vpid.volid, vol_purpose,
+				     DISK_CACHE_UPDATE_BY_DELTA,
 				     updated_npages, false, NULL);
 	}
 
@@ -6766,7 +6787,8 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
     {
       /* Update volume cache. */
       disk_cache_goodvol_update (thread_p, volid, vol_purpose,
-				 updated_npages, false, NULL);
+				 DISK_CACHE_UPDATE_BY_DELTA, updated_npages,
+				 false, NULL);
     }
 
   return NO_ERROR;
