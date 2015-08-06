@@ -14787,7 +14787,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p,
 
       error =
 	heap_scancache_start (thread_p, &scan_cache, &hfid, &oid_list[i],
-			      true, false, NULL);
+			      false, false, NULL);
       if (error != NO_ERROR)
 	{
 	  goto exit;
