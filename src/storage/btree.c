@@ -30686,6 +30686,10 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  ASSERT_ERROR ();
 	  goto error;
 	}
+      if (*restart == true)
+	{
+	  goto exit;
+	}
     }
   else
     {
@@ -30764,24 +30768,18 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   (void) btree_verify_node (thread_p, btid_int, *leaf_page);
 #endif /* !NDEBUG */
 
+exit:
   if (insert_helper->rv_keyval_data != NULL
       && insert_helper->rv_keyval_data != rv_undo_data_bufalign)
     {
       db_private_free_and_init (thread_p, insert_helper->rv_keyval_data);
     }
 
-  /* Return result. */
-  return NO_ERROR;
+  return error_code;
 
 error:
-  if (insert_helper->rv_keyval_data != NULL
-      && insert_helper->rv_keyval_data != rv_undo_data_bufalign)
-    {
-      db_private_free_and_init (thread_p, insert_helper->rv_keyval_data);
-    }
-
   assert_release (error_code != NO_ERROR);
-  return error_code;
+  goto exit;
 }
 
 /*
@@ -33415,7 +33413,7 @@ btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
     }
 #if defined (SERVER_MODE)
   if (oid_is_serial (class_oid))
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   if (false)
 #endif /* SA_MODE */
     {
