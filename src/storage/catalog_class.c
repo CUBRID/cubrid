@@ -193,8 +193,8 @@ static int catcls_reorder_attributes_by_repr (THREAD_ENTRY * thread_p,
 					      OR_VALUE * value_p);
 static int catcls_expand_or_value_by_repr (OR_VALUE * value_p,
 					   OID * class_oid, DISK_REPR * rep);
-static void catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p,
-					      OR_VALUE * value_p);
+static int catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p,
+					     OR_VALUE * value_p);
 
 static int catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p,
 					    OR_BUF * buf_p,
@@ -3123,7 +3123,7 @@ catcls_expand_or_value_by_repr (OR_VALUE * value_p, OID * class_oid_p,
  *   return:
  *   value(in):
  */
-static void
+static int
 catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 {
   DB_SET *set_p;
@@ -3131,55 +3131,66 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
   DB_VALUE element;
   OID *oid_p, class_oid;
   OR_VALUE *subset_p;
+  SCAN_CODE scan_code;
+  int err = NO_ERROR;
 
-  if (pr_is_set_type (DB_VALUE_TYPE (&value_p->value)))
+  if (!pr_is_set_type (DB_VALUE_TYPE (&value_p->value)))
     {
-      set_p = DB_PULL_SET (&value_p->value);
-      size = set_size (set_p);
-      if (size > 0)
-	{
-	  set_get_element_nocopy (set_p, 0, &element);
-	  if (DB_VALUE_TYPE (&element) == DB_TYPE_OID)
-	    {
-	      oid_p = DB_PULL_OID (&element);
-	      /*
-	       * Need to get class OID using SNAPSHOT_TYPE_NONE, since
-	       * the OID may be referred from other catalog class and we
-	       * want the class OID of referred OID.
-	       */
-	      /* TODO: Do we need to check scan code here? */
-	      (void) heap_get_class_oid_with_lock (thread_p, &class_oid,
-						   oid_p, SNAPSHOT_TYPE_NONE,
-						   NULL_LOCK, NULL);
-	      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  /* Currently, we have reached here the situation where
-		   * an instance has already been removed by the same
-		   * transaction. One example is when dropping a partition.
-		   * The instances corresponding the partitions will first be
-		   * removed, which implies that the class OID can no longer be
-		   *  found and will be set to NULL.
-		   */
-		  er_clear ();
-		}
-	      if (!OID_EQ (&class_oid, &ct_Class.cc_classoid)
-		  && !OID_ISNULL (&class_oid))
-		{
-		  subset_p = catcls_allocate_or_value (size);
-		  if (subset_p != NULL)
-		    {
-		      value_p->sub.value = subset_p;
-		      value_p->sub.count = size;
+      return NO_ERROR;
+    }
 
-		      for (i = 0; i < size; i++)
-			{
-			  COPY_OID (&((subset_p[i]).id.classoid), &class_oid);
-			}
+  set_p = DB_PULL_SET (&value_p->value);
+  size = set_size (set_p);
+  if (size > 0)
+    {
+      set_get_element_nocopy (set_p, 0, &element);
+      if (DB_VALUE_TYPE (&element) == DB_TYPE_OID)
+	{
+	  oid_p = DB_PULL_OID (&element);
+	  /*
+	   * Need to get class OID using SNAPSHOT_TYPE_NONE, since
+	   * the OID may be referred from other catalog class and we
+	   * want the class OID of referred OID.
+	   */
+	  scan_code = heap_get_class_oid_with_lock (thread_p, &class_oid,
+						    oid_p,
+						    SNAPSHOT_TYPE_NONE,
+						    NULL_LOCK, NULL);
+	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* Currently, we have reached here the situation where
+	       * an instance has already been removed by the same
+	       * transaction. One example is when dropping a partition.
+	       * The instances corresponding the partitions will first be
+	       * removed, which implies that the class OID can no longer be
+	       *  found and will be set to NULL.
+	       */
+	      er_clear ();
+	    }
+	  else if (scan_code == S_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (err);
+	    }
+
+	  if (!OID_EQ (&class_oid, &ct_Class.cc_classoid)
+	      && !OID_ISNULL (&class_oid))
+	    {
+	      subset_p = catcls_allocate_or_value (size);
+	      if (subset_p != NULL)
+		{
+		  value_p->sub.value = subset_p;
+		  value_p->sub.count = size;
+
+		  for (i = 0; i < size; i++)
+		    {
+		      COPY_OID (&((subset_p[i]).id.classoid), &class_oid);
 		    }
 		}
 	    }
 	}
     }
+
+  return err;
 }
 
 /*
@@ -3468,7 +3479,11 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 						      &var_attrs[i].value,
 						      NULL, vars[i].length,
 						      true, NULL, 0);
-      catcls_expand_or_value_by_subset (thread_p, &var_attrs[i]);
+      error = catcls_expand_or_value_by_subset (thread_p, &var_attrs[i]);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   if (vars)
@@ -4675,7 +4690,7 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
       /* MVCC update */
       *need_mvcc_update = true;
     }
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   *need_mvcc_update = false;
 #endif /* SA_MODE */
 
