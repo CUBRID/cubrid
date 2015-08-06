@@ -444,26 +444,6 @@ disk_bit_is_cleared (unsigned char *c, unsigned int n)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-/* TODO: check not use */
-//#if 0
-//static int dk_get_first_free (unsigned char *ch);
-///*
-// * dk_get_first_free () - Returns the first free bit of ch byte
-// *   return: the first free bit
-// *   ch(in): byte
-// */
-//static int
-//dk_get_first_free (unsigned char *ch)
-//{
-//  register unsigned int bit, mask;
-//
-//  for (bit = 0, mask = 1; bit < CHAR_BIT; mask <<= 1, bit++)
-//    if (!(*ch & mask))
-//      return (int) bit;
-//  return -1;
-//}
-//#endif
-
 /* Caching of multivolume information */
 
 /* TODO: STL::list for disk_Cache->vols */
@@ -2822,60 +2802,6 @@ disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
   return true;
 }
 
-/* TODO: check not use */
-//#if 0
-//extern int dk_change_magic (INT16 volid, const char *magic, bool logchange);
-//
-///*
-// * dk_change_magic () - Change the magic string of the given volume to the
-// *                      given magic string
-// *   return:
-// *   volid(in): Volume identifier
-// *   magic(in): Magic string
-// *   logchange(in): Whether or not to log the change
-// *
-// * Note: This function should be used only by the log and recovery manager.
-// *       It is used when the volume is backed up.
-// */
-//int
-//dk_change_magic (INT16 volid, const char *magic, bool logchange)
-//{
-//  DISK_VAR_HEADER *vhdr;
-//  VPID vpid;
-//  LOG_DATA_ADDR addr;
-//
-//  vpid.volid = volid;
-//  vpid.pageid = DISK_VOLHEADER_PAGE;
-//
-//  addr.vfid = NULL;
-//  addr.offset = 0;
-//
-//  addr.pgptr = pb_lock_and_fetch (&vpid, OLD_PAGE, X_LOCK);
-//  if (addr.pgptr == NULL)
-//    {
-//      return ER_FAILED;
-//    }
-//  vhdr = (DISK_VAR_HEADER *) addr.pgptr;
-//
-//  if (logchange != false)
-//    {
-//      /* log the change */
-//      log_append_undoredo_data (RVDK_MAGIC, &addr, CUBRID_MAGIC_MAX_LENGTH,
-//                       CUBRID_MAGIC_MAX_LENGTH, vhdr->magic,
-//                       magic);
-//    }
-//  else
-//    {
-//      log_skip_logging (&addr);
-//    }
-//
-//  strncpy (vhdr->magic, magic, CUBRID_MAGIC_MAX_LENGTH);
-//  pb_setdirty_free_and_unlock (addr.pgptr);
-//  addr.pgptr = NULL;
-//  return NO_ERROR;
-//}
-//#endif
-
 /*
  * disk_set_creation () - Change database creation information of the
  *                            given volume
@@ -3769,85 +3695,6 @@ disk_get_total_numsectors (THREAD_ENTRY * thread_p, INT16 volid)
   return total_sects;
 }
 
-/* TODO: check not use */
-//#if 0
-//extern INT32 dk_free_sects (INT16 volid);
-///*
-// * dk_free_sects () - Return the number of free sectors for the given volume
-// *   return: Number of free sectors
-// *   volid(in): Permanent volume identifier
-// *
-// * Note: The free number of pages should be taken as an approximation by the
-// *       caller since we do not leave the page locked after the inquire.
-// *       That is, someone else can allocate pages.
-// */
-//INT32
-//dk_free_sects (INT16 volid)
-//{
-//  DISK_VAR_HEADER *vhdr;
-//  PAGE_PTR hdr_pgptr = NULL;
-//  INT32 free_sects;
-//  VPID vpid;
-//
-//  vpid.volid = volid;
-//  vpid.pageid = DISK_VOLHEADER_PAGE;
-//
-//  hdr_pgptr = pb_lock_and_fetch (&vpid, OLD_PAGE, S_LOCK);
-//  if (hdr_pgptr == NULL)
-//    {
-//      return -1;
-//    }
-//
-//  vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
-//  free_sects = vhdr->free_sects;
-//
-//  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
-//
-//  return free_sects;
-//}
-//
-//extern void dk_free_pgs_sects (INT16 volid, INT32 * free_pages,
-//                             INT32 * free_sects);
-//
-///*
-// * dk_free_pgs_sects () - Find the number of free pages and sectors of the
-// *                        given volume
-// *   return: void
-// *   volid(in): Permanent volume identifier
-// *   free_pages(out): Number of free pages
-// *   free_sects(out): Number of free sectors
-// *
-// * Note: The free number of pages should be taken as an approximation by the
-// *       caller since we do not leave the page locked after the inquire.
-// *       That is, someone else can allocate pages.
-// */
-//void
-//dk_free_pgs_sects (INT16 volid, INT32 * free_pages, INT32 * free_sects)
-//{
-//  DISK_VAR_HEADER *vhdr;
-//  PAGE_PTR hdr_pgptr = NULL;
-//  VPID vpid;
-//
-//  vpid.volid = volid;
-//  vpid.pageid = DISK_VOLHEADER_PAGE;
-//
-//  hdr_pgptr = pb_lock_and_fetch (&vpid, OLD_PAGE, S_LOCK);
-//  if (hdr_pgptr == NULL)
-//    {
-//      *free_pages = -1;
-//      *free_sects = -1;
-//    }
-//  else
-//    {
-//      vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
-//      *free_pages = vhdr->free_pages;
-//      *free_sects = vhdr->free_sects;
-//
-//      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
-//    }
-//}
-//#endif
-
 /*
  * xdisk_get_fullname () - Find the name of the volume and copy it into vol_fullname
  *   return: vol_fullname on success or NULL on failure
@@ -3986,55 +3833,6 @@ disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid,
 
   return db_charset;
 }
-
-/* TODO: check not use */
-//#if 0
-//extern void dk_warnspace (INT16 volid);
-//
-///*
-// * dk_warnspace () - Display a warning if volume is close to running out of
-// *                   space
-// *   return: void
-// *   volid(in): Permanent volume identifier. If NULL_VOLID is given, it means
-// *              combine all the space of all volumes...and try it as one big
-// *              volume.
-// *
-// * Note: If NULL_VOLID is given, it display warning only if the combined total
-// *       space for all volumes is running out of space. A lock is not acquired
-// *       on the volume header.
-// */
-//void
-//dk_warnspace (INT16 volid)
-//{
-//  DISK_VAR_HEADER *vhdr;
-//  PAGE_PTR hdr_pgptr = NULL;
-//  VPID vpid;
-//
-//
-//  if (volid != NULL_VOLID)
-//    {
-//      vpid.volid = volid;
-//      vpid.pageid = DISK_VOLHEADER_PAGE;
-//
-//      hdr_pgptr = pb_lock_and_fetch (&vpid, OLD_PAGE, S_LOCK);
-//      if (hdr_pgptr != NULL)
-//      {
-//        vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
-//        if (vhdr->free_pages < vhdr->total_pages * vhdr->warn_ratio)
-//          {
-//            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-//                    ER_DISK_ALMOST_OUT_OF_SPACE, 3,
-//                    fileio_get_volume_label (volid), vhdr->total_pages, vhdr->free_pages);
-//          }
-//        pgbuf_unfix_and_init (thread_p, hdr_pgptr);
-//      }
-//    }
-//  else
-//    {
-//      dk_warnspace_by_purpose (DISK_UNKNOWN_PURPOSE);
-//    }
-//}
-//#endif
 
 /*
  * disk_alloc_sector () - Allocates a new sector
