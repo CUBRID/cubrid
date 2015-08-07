@@ -4237,6 +4237,14 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
   int tran_index;
   int error_code = NO_ERROR;
 
+  {
+    int mod_factor = 5000;	/* 0.02% */
+
+    FI_TEST_ARG (thread_p,
+		 FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP,
+		 &mod_factor, 0);
+  }
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
@@ -4601,6 +4609,14 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
 	}
     }
+
+  {
+    int mod_factor = 5000;	/* 0.02% */
+
+    FI_TEST_ARG (thread_p,
+		 FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP,
+		 &mod_factor, 0);
+  }
 
   return state;
 }
@@ -7087,6 +7103,14 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   assert (tdes != NULL);
 
+  {
+    int mod_factor = 5000;	/* 0.02% */
+
+    FI_TEST_ARG (thread_p,
+		 FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP,
+		 &mod_factor, 0);
+  }
+
   if (result == LOG_RESULT_TOPOP_COMMIT)
     {
       rectype = LOG_COMMIT_TOPOPE;
@@ -7224,6 +7248,14 @@ log_complete_system_op (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			LOG_RESULT_TOPOP result, TRAN_STATE back_to_state)
 {
   TRAN_STATE state;
+
+  {
+    int mod_factor = 5000;	/* 0.02% */
+
+    FI_TEST_ARG (thread_p,
+		 FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP,
+		 &mod_factor, 0);
+  }
 
   state = tdes->state;
 
@@ -10905,7 +10937,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 		    case LOG_POSTPONE:
 		      {
-			int mod_factor = 1000;
+			int mod_factor = 5000;	/* 0.02% */
 
 			FI_TEST_ARG (thread_p,
 				     FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE,

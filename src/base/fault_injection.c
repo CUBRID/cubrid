@@ -34,11 +34,16 @@
 
 #if !defined(NDEBUG)
 
-static int fi_handler_exit (THREAD_ENTRY * thread_p, void *arg);
-static int fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg);
-static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg);
-static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg);
-
+static int fi_handler_exit (THREAD_ENTRY * thread_p, void *arg,
+			    const char *caller_file, const int caller_line);
+static int fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg,
+				   const char *caller_file,
+				   const int caller_line);
+static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg,
+				   const char *caller_file,
+				   const int caller_line);
+static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg,
+			    const char *caller_file, const int caller_line);
 
 static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p,
 				   FI_TEST_CODE code);
@@ -51,18 +56,15 @@ static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p,
  *
  *******************************************************************************/
 FI_TEST_ITEM fi_Test_array[] = {
-  {FI_TEST_HANG, fi_handler_hang, FI_INIT_STATE}
-  ,
-  {FI_TEST_DISK_MANAGER_UNDO_FORMAT, fi_handler_exit, FI_INIT_STATE}
-  ,
+  {FI_TEST_HANG, fi_handler_hang, FI_INIT_STATE},
+  {FI_TEST_DISK_MANAGER_UNDO_FORMAT, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER, fi_handler_exit,
-   FI_INIT_STATE}
-  ,
-  {FI_TEST_BTREE_MANAGER_RANDOM_EXIT, fi_handler_random_exit, FI_INIT_STATE}
-  ,
+   FI_INIT_STATE},
+  {FI_TEST_BTREE_MANAGER_RANDOM_EXIT, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE, fi_handler_random_exit,
-   FI_INIT_STATE}
-  ,
+   FI_INIT_STATE},
+  {FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, fi_handler_random_exit,
+   FI_INIT_STATE},
   {FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, fi_handler_random_fail,
    FI_INIT_STATE}
 };
@@ -73,6 +75,7 @@ FI_TEST_CODE fi_Group_none[] = {
 
 FI_TEST_CODE fi_Group_recovery[] = {
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE,
+  FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP,
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT,
   FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL,
   FI_TEST_NONE
@@ -306,7 +309,8 @@ fi_reset (THREAD_ENTRY * thread_p, FI_TEST_CODE code)
  *   state(in):
  */
 int
-fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg, int state)
+fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg, int state,
+	 const char *caller_file, const int caller_line)
 {
   FI_TEST_ITEM *item = NULL;
 
@@ -325,7 +329,7 @@ fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg, int state)
 
   if (item->state == state)
     {
-      return (*item->func) (thread_p, arg);
+      return (*item->func) (thread_p, arg, caller_file, caller_line);
     }
 
   return NO_ERROR;
@@ -370,7 +374,6 @@ fi_test_on (FI_TEST_CODE code)
 }
 
 
-
 /*
  * fi_handler_exit -
  *
@@ -379,7 +382,8 @@ fi_test_on (FI_TEST_CODE code)
  *   arg(in):
  */
 static int
-fi_handler_exit (THREAD_ENTRY * thread_p, void *arg)
+fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file,
+		 const int caller_line)
 {
   exit (0);
 
@@ -394,7 +398,8 @@ fi_handler_exit (THREAD_ENTRY * thread_p, void *arg)
  *   arg(in):
  */
 static int
-fi_handler_hang (THREAD_ENTRY * thread_p, void *arg)
+fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file,
+		 const int caller_line)
 {
   while (true)
     {
@@ -405,7 +410,8 @@ fi_handler_hang (THREAD_ENTRY * thread_p, void *arg)
 }
 
 static int
-fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg)
+fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg,
+			const char *caller_file, const int caller_line)
 {
   static bool init = false;
   int r;
@@ -437,7 +443,7 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg)
 #endif
   if ((r % mod_factor) == 0)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line,
 	      ER_FAILED_ASSERTION, 1, "fault injection: random exit");
 
       _exit (0);
@@ -447,7 +453,8 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg)
 }
 
 static int
-fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg)
+fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg,
+			const char *caller_file, const int caller_line)
 {
   static bool init = false;
   int r;
@@ -471,7 +478,7 @@ fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg)
 
   if ((r % mod_factor) == 0)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line,
 	      ER_FAILED_ASSERTION, 1, "fault injection: random fail");
 
       return ER_FAILED;

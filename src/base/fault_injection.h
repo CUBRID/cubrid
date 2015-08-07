@@ -36,8 +36,8 @@
 #define FI_INSERTED(code) 		fi_test_on(code)
 #define FI_SET(th, code, state)		fi_set(th, code, state)
 #define FI_RESET(th, code)		fi_reset(th, code)
-#define FI_TEST(th, code, state) 	fi_test(th, code, NULL, state)
-#define FI_TEST_ARG(th, code, arg, state) fi_test(th, code, arg, state)
+#define FI_TEST(th, code, state) 	fi_test(th, code, NULL, state, ARG_FILE_LINE)
+#define FI_TEST_ARG(th, code, arg, state) fi_test(th, code, arg, state, ARG_FILE_LINE)
 #else
 #define FI_INSERTED(code) 0
 #define FI_SET(th, code, state)
@@ -68,6 +68,7 @@ typedef enum
 
   /* LOG MANAGER */
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE = 500000,
+  FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP = 500001,
 
   /* etc .... */
 
@@ -83,7 +84,9 @@ typedef enum
 #define FI_INIT_STATE 0
 
 
-typedef int (*FI_HANDLER_FUNC) (THREAD_ENTRY * thread_p, void *arg);
+typedef int (*FI_HANDLER_FUNC) (THREAD_ENTRY * thread_p, void *arg,
+				const char *caller_file,
+				const int caller_line);
 
 typedef struct fi_test_item FI_TEST_ITEM;
 struct fi_test_item
@@ -100,7 +103,8 @@ extern int fi_set_force (THREAD_ENTRY * thread_p, FI_TEST_CODE code,
 			 int state);
 extern void fi_reset (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
 extern int fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg,
-		    int state);
+		    int state, const char *caller_file,
+		    const int caller_line);
 extern int fi_state (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
 extern bool fi_test_on (FI_TEST_CODE code);
 
