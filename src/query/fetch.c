@@ -1830,8 +1830,22 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_get_time_item (peek_right, PT_HOURF,
-				 arithptr->value) != NO_ERROR)
+      else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_DATE)
+	{
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true)
+	    {
+	      DB_MAKE_NULL (arithptr->value);
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+		      0);
+	      goto error;
+	    }
+	}
+      else if (db_get_time_item (peek_right, PT_HOURF, arithptr->value)
+	       != NO_ERROR)
 	{
 	  goto error;
 	}
