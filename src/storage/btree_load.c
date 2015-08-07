@@ -3683,7 +3683,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  value_has_null = 1;	/* found null columns */
 	}
 
-      if (sort_args->not_null_flag && value_has_null)
+      if (sort_args->not_null_flag && value_has_null
+	  && snapshot_dirty_satisfied)
 	{
 	  if (dbvalue_ptr == &dbvalue)
 	    {
