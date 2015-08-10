@@ -2829,7 +2829,7 @@ file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
     }
   return return_vfid;
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   return file_create (thread_p, vfid, exp_numpages, file_type, file_des,
 		      first_prealloc_vpid, prealloc_npages);
 #endif /* SA_MODE */
@@ -3969,10 +3969,22 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 int
 file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  VFID *vfid = (VFID *) rcv->data;
+  VFID *vfid;
+  BTID btid;
   int error_code = NO_ERROR;
+  bool is_btid = false;
 
-  assert (rcv->length == sizeof (*vfid));
+  if (rcv->length == sizeof (*vfid))
+    {
+      vfid = (VFID *) rcv->data;
+    }
+  else
+    {
+      assert (rcv->length == OR_BTID_ALIGNED_SIZE);
+      OR_GET_BTID (rcv->data, &btid);
+      vfid = &btid.vfid;
+      is_btid = true;
+    }
 
   /* Start postpone type system operation (overrides the normal system
    * operation).
@@ -3995,6 +4007,10 @@ file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
       return error_code;
+    }
+  if (is_btid)
+    {
+      (void) logtb_delete_global_unique_stats (thread_p, &btid);
     }
   /* Success. */
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);

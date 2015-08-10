@@ -6398,6 +6398,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
     *datap = NULL;
   char undo_rec_buf[(4 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
 		    BTREE_MAX_ALIGN];
+  char postpone_buf[OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
   int ret = NO_ERROR;
   int num_nulls, num_oids, num_keys, unique_pk;
   LOG_DATA_ADDR addr;
@@ -6452,11 +6453,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
 	{
 	  return ret;
 	}
-      ret = logtb_delete_global_unique_stats (thread_p, btid);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
+      /* do not remove stats entry yet : remove it at commit postpone */
     }
 
   /* This is used by unique indexes at recovery to remove the entry from global
@@ -6508,18 +6505,30 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
 			    undo_rec.length, redo_rec.length, undo_rec.data,
 			    redo_rec.data);
 
-  btid->root_pageid = NULL_PAGEID;
-
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL,
 			       VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
-  log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr,
-		       sizeof (btid->vfid), &btid->vfid);
+  if (unique_pk)
+    {
+      datap = PTR_ALIGN (postpone_buf, BTREE_MAX_ALIGN);
+      OR_PUT_BTID (datap, btid);
+
+      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr,
+			   OR_BTID_ALIGNED_SIZE, datap);
+    }
+  else
+    {
+      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr,
+			   sizeof (btid->vfid), &btid->vfid);
+    }
+
   if (!VFID_ISNULL (&ovfid))
     {
       log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr,
 			   sizeof (ovfid), &ovfid);
     }
+
+  btid->root_pageid = NULL_PAGEID;
 
   return NO_ERROR;
 }
