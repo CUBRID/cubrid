@@ -750,6 +750,7 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p,
   if (page_p == NULL)
     {
       (void) file_dealloc_page (thread_p, &catalog_Id.vfid, page_id_p);
+      return NULL;
     }
 
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
