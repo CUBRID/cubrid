@@ -5898,7 +5898,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
-  DB_DATETIME *tmp_datetime;
+  DB_DATETIME tmp_datetime;
   time_t tmp_log_record_time = 0;
   int log_record_time_att_id = -1;
   int error = NO_ERROR;
@@ -6005,12 +6005,15 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
 	{
 	  if (heap_value->attrid == log_record_time_att_id)
 	    {
-	      tmp_datetime = DB_GET_DATETIME (&heap_value->dbvalue);
-	      tmp_datetime->time /= 1000;
+	      tmp_log_record_time = 0;
+	      if (!DB_IS_NULL (&heap_value->dbvalue))
+		{
+		  tmp_datetime = *(DB_GET_DATETIME (&heap_value->dbvalue));
+		  tmp_datetime.time /= 1000;
 
-	      tmp_log_record_time =
-		db_mktime (&tmp_datetime->date, &tmp_datetime->time);
-
+		  tmp_log_record_time =
+		      db_mktime (&tmp_datetime.date, &tmp_datetime.time);
+		}
 	      break;
 	    }
 	}
