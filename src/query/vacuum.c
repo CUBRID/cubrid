@@ -8208,6 +8208,7 @@ vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid,
 	}
       print_not_vacuumed_to_log (oid, class_oid, rec_header, btree_node_type);
 
+      assert (false);
       return DISK_INVALID;
     }
 
