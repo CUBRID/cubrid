@@ -154,6 +154,7 @@ compactdb_start (bool verbose_flag)
   MOBJ object = NULL;
   HFID *hfid;
   int status = 0;
+  bool reclaim_mvcc_next_versions = false;
 
   /*
    * Build class name table
@@ -215,11 +216,17 @@ compactdb_start (bool verbose_flag)
        * error conditions.
        */
     }
-  else if (verbose_flag)
+  else
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMPACTDB,
-			      COMPACTDB_MSG_PROCESSED), total_objects);
+      if (verbose_flag)
+	{
+	  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
+				  MSGCAT_UTIL_SET_COMPACTDB,
+				  COMPACTDB_MSG_PROCESSED), total_objects);
+	}
+
+      /* We can also reclaim REC_MVCC_NEXT_VERSIONS now. */
+      reclaim_mvcc_next_versions = true;
     }
 
 phase2:
@@ -250,7 +257,7 @@ phase2:
 	{
 	  continue;
 	}
-      (void) heap_reclaim_addresses (hfid);
+      (void) heap_reclaim_addresses (hfid, reclaim_mvcc_next_versions);
 
     }
 
@@ -473,8 +480,9 @@ process_value (DB_VALUE * value)
     case DB_TYPE_OBJECT:
       {
 	OID *ref_oid;
-	OID ref_class_oid;
-	DB_OBJECT *classop;
+	OID updated_oid = OID_INITIALIZER;
+	SCAN_CODE scan_code;
+	HEAP_SCANCACHE scan_cache;
 
 	if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	  {
@@ -490,20 +498,12 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	if (heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid,
-					  SNAPSHOT_TYPE_MVCC,
-					  NULL_LOCK, NULL) != S_SUCCESS)
-	  {
-	    OID_SET_NULL (ref_oid);
-	    return_value = 1;
-	    break;
-	  }
-
-	classop = is_class (ref_oid, &ref_class_oid);
-	if (classop)
-	  {
-	    break;
-	  }
+	heap_scancache_quick_start (&scan_cache);
+	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
+	scan_code =
+	  heap_mvcc_get_visible (NULL, ref_oid, NULL, NULL, S_SELECT, PEEK,
+				 NULL_CHN, &updated_oid);
+	heap_scancache_end (NULL, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
 	printf (msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -514,12 +514,22 @@ process_value (DB_VALUE * value)
 		ref_class_oid.slotid);
 #endif
 
-	if (!heap_does_exist (NULL, &ref_class_oid, ref_oid))
+	if (scan_code != S_SUCCESS)
 	  {
+	    /* Set NULL link. */
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;
+	    break;
+	  }
+	if (!OID_ISNULL (&updated_oid))
+	  {
+	    /* Update link */
+	    COPY_OID (ref_oid, &updated_oid);
+	    return_value = 1;
+	    break;
 	  }
 
+	/* No updates */
 	break;
       }
 
@@ -597,7 +607,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
   HEAP_OPERATION_CONTEXT update_context;
   HFID *hfid;
   int save_newsize;
-  bool has_indexes, oldflag;
+  bool has_indexes;
 
   assert (oid != NULL);
 

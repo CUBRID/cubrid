@@ -294,7 +294,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list,
       ptr = strchr (buffer, '\n');
       if (ptr)
 	{
-	  len = ptr - buffer;
+	  len = CAST_BUFLEN (ptr - buffer);
 	}
       else
 	{
@@ -1583,7 +1583,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
     {
       assert (hfid != NULL && !HFID_IS_NULL (hfid));
 
-      skipped_error_code = heap_reclaim_addresses (hfid);
+      skipped_error_code = heap_reclaim_addresses (hfid, false);
       if (skipped_error_code != NO_ERROR)
 	{
 	  goto error_exit;

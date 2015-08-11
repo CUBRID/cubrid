@@ -2945,12 +2945,15 @@ spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *   return: true if anything was reclaimed and false if nothing was reclaimed
  *
  *   page_p(in): Pointer to slotted page
+ *   reclaim_mvcc_next_versions(in): True to also reclaim
+ *				     REC_MVCC_NEXT_VERSION records.
  *
  * Note: This function is intended to be run when there are no more references
  *       of the marked deleted slots, and thus they can be reused.
  */
 bool
-spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
+spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
+	       bool reclaim_mvcc_next_versions)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p, *first_slot_p;
@@ -2970,12 +2973,21 @@ spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       for (slot_id = page_header_p->num_slots - 1; slot_id >= 0; slot_id--)
 	{
 	  slot_p = first_slot_p - slot_id;
-	  if (slot_p->offset_to_record == SPAGE_EMPTY_OFFSET
-	      && (slot_p->record_type == REC_MARKDELETED
-		  || slot_p->record_type == REC_DELETED_WILL_REUSE))
+	  if ((slot_p->offset_to_record == SPAGE_EMPTY_OFFSET
+	       && (slot_p->record_type == REC_MARKDELETED
+		   || slot_p->record_type == REC_DELETED_WILL_REUSE))
+	      || (reclaim_mvcc_next_versions
+		  && slot_p->record_type == REC_MVCC_NEXT_VERSION))
 	    {
 	      assert (page_header_p->anchor_type ==
 		      ANCHORED_DONT_REUSE_SLOTS);
+	      if (slot_p->record_type == REC_MVCC_NEXT_VERSION)
+		{
+		  /* This is considered record (since it still has data).
+		   * Decrement record count.
+		   */
+		  page_header_p->num_records--;
+		}
 
 	      if ((slot_id + 1) == page_header_p->num_slots)
 		{

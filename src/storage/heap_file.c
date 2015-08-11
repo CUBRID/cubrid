@@ -6771,6 +6771,7 @@ end:
  * xheap_reclaim_addresses () - Reclaim addresses/OIDs and delete empty pages
  *   return: NO_ERROR
  *   hfid(in): Heap file identifier
+ *   reclaim_mvcc_next_versions(in): True to reclaim REC_MVCC_NEXT_VERSION.
  *
  * Note: Reclaim the addresses (OIDs) of deleted objects of the given heap and
  *       delete all the heap pages that are left empty.
@@ -6801,7 +6802,8 @@ end:
  *   b: online while holding an exclusive lock on the associated class.
  */
 int
-xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
+xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid,
+			 bool reclaim_mvcc_next_versions)
 {
   VPID vpid;
   VPID prv_vpid;
@@ -6931,7 +6933,8 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
       if (spage_number_of_records (curr_page_watcher.pgptr) > 1
 	  || (vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid))
 	{
-	  if (spage_reclaim (thread_p, curr_page_watcher.pgptr) == true)
+	  if (spage_reclaim (thread_p, curr_page_watcher.pgptr,
+			     reclaim_mvcc_next_versions) == true)
 	    {
 	      addr.pgptr = curr_page_watcher.pgptr;
 	      /*

@@ -1889,17 +1889,18 @@ heap_destroy_newly_created (const HFID * hfid, const OID * class_oid)
  * return:
  *
  *   hfid(in):
+ *   reclaim_mvcc_next_versions(in):
  *
  * NOTE:
  */
 int
-heap_reclaim_addresses (const HFID * hfid)
+heap_reclaim_addresses (const HFID * hfid, bool reclaim_mvcc_next_versions)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (OR_HFID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -1907,7 +1908,8 @@ heap_reclaim_addresses (const HFID * hfid)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_pack_hfid (request, hfid);
+  ptr = or_pack_hfid (request, hfid);
+  ptr = or_pack_int (ptr, reclaim_mvcc_next_versions ? 1 : 0);
 
   req_error = net_client_request (NET_SERVER_HEAP_RECLAIM_ADDRESSES,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
@@ -1925,7 +1927,7 @@ heap_reclaim_addresses (const HFID * hfid)
 
   ENTER_SERVER ();
 
-  success = xheap_reclaim_addresses (NULL, hfid);
+  success = xheap_reclaim_addresses (NULL, hfid, reclaim_mvcc_next_versions);
 
   EXIT_SERVER ();
 

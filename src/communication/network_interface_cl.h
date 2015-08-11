@@ -143,7 +143,8 @@ extern int heap_destroy (const HFID * hfid);
 #endif
 extern int heap_destroy_newly_created (const HFID * hfid,
 				       const OID * class_oid);
-extern int heap_reclaim_addresses (const HFID * hfid);
+extern int heap_reclaim_addresses (const HFID * hfid,
+				   bool reclaim_mvcc_next_versions);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
