@@ -99,7 +99,7 @@ static const int THREAD_RETRY_MAX_SLAM_TIMES = 10;
 #if defined(HPUX)
 static __thread THREAD_ENTRY *tsd_ptr;
 #else /* HPUX */
-static pthread_key_t css_Thread_key;
+static pthread_key_t thread_Thread_key;
 #endif /* HPUX */
 
 static THREAD_MANAGER thread_Manager;
@@ -244,7 +244,7 @@ static THREAD_DAEMON *thread_Daemons = NULL;
     } \
   while (0)
 
-static int css_initialize_sync_object (void);
+static int thread_initialize_sync_object (void);
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
 				   bool had_mutex);
 static void thread_reset_nrequestors_of_log_flush_thread (void);
@@ -325,7 +325,7 @@ thread_initialize_key (void)
 {
   int r;
 
-  r = pthread_key_create (&css_Thread_key, NULL);
+  r = pthread_key_create (&thread_Thread_key, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -345,7 +345,7 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
 {
   int r;
 
-  r = pthread_setspecific (css_Thread_key, (void *) entry_p);
+  r = pthread_setspecific (thread_Thread_key, (void *) entry_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -364,7 +364,7 @@ thread_get_thread_entry_info (void)
 {
   void *p;
 
-  p = pthread_getspecific (css_Thread_key);
+  p = pthread_getspecific (thread_Thread_key);
 #if defined (SERVER_MODE)
   assert (p != NULL);
 #endif
@@ -568,7 +568,7 @@ thread_initialize_manager (void)
 			       ER_CSS_PTHREAD_MUTEX_INIT, 0);
 	  return ER_CSS_PTHREAD_MUTEX_INIT;
 	}
-      css_initialize_sync_object ();
+      thread_initialize_sync_object ();
 #endif /* WINDOWS */
 
     }
@@ -1143,7 +1143,7 @@ thread_final_manager (void)
   lf_destroy_transaction_systems ();
 
 #ifndef HPUX
-  pthread_key_delete (css_Thread_key);
+  pthread_key_delete (thread_Thread_key);
 #endif /* not HPUX */
 }
 
@@ -2626,11 +2626,11 @@ thread_worker (void *arg_p)
 
 #if defined(WINDOWS)
 /*
- * css_initialize_sync_object() -
+ * thread_initialize_sync_object() -
  *   return:
  */
 static int
-css_initialize_sync_object (void)
+thread_initialize_sync_object (void)
 {
   int r, i;
 
@@ -3053,7 +3053,7 @@ thread_wakeup_session_control_thread (void)
 #endif
 
 /*
- * css_checkpoint_thread() -
+ * thread_checkpoint_thread() -
  *   return:
  *   arg_p(in):
  */
@@ -3130,7 +3130,7 @@ thread_wakeup_checkpoint_thread (void)
 }
 
 /*
- * css_purge_archive_logs_thread() -
+ * thread_purge_archive_logs_thread() -
  *   return:
  *   arg_p(in):
  */
