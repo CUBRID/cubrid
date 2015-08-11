@@ -420,8 +420,8 @@ struct vacuum_dropped_files_page
  */
 #define vacuum_fix_dropped_entries_page(thread_p, vpidp, latch) \
   ((VACUUM_DROPPED_FILES_PAGE *) pgbuf_fix (thread_p, vpidp, OLD_PAGE, \
-					      latch, \
-					      PGBUF_UNCONDITIONAL_LATCH))
+                                            latch, \
+                                            PGBUF_UNCONDITIONAL_LATCH))
 #define vacuum_unfix_dropped_entries_page(thread_p, dropped_page) \
   do \
     { \
@@ -7355,8 +7355,12 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 					      PGBUF_LATCH_READ);
       if (page == NULL)
 	{
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	      || er_errid () != ER_INTERRUPTED)
+	    {
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
 	  return false;
 	}
 
