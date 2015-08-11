@@ -7585,7 +7585,7 @@ sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid,
       return_error_to_client (thread_p, rid);
     }
 
-  assert (!OID_ISNULL (&rep_dir));
+  assert (success != NO_ERROR || !OID_ISNULL (&rep_dir));
 
   ptr = or_pack_int (reply, (int) success);
   ptr = or_pack_oid (ptr, &rep_dir);
