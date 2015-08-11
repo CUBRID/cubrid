@@ -613,7 +613,6 @@ boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
   VOLID volid;
   int vol_fd;
   RECDES recdes;		/* Record descriptor which describe the volume. */
-  bool ignore_old;
   bool in_system_op = false;
 
   if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
@@ -793,7 +792,6 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 				 */
   char *vlabel = NULL;
   int vol_fd;
-  bool ignore_old;
   int error_code = NO_ERROR;
 
   if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
@@ -1924,7 +1922,6 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p,
 			      REMOVE_TEMP_VOL_ACTION delete_action)
 {
   RECDES recdes;
-  bool old_object;
   int error_code = NO_ERROR;
   REMOVE_TEMP_VOL_ACTION delete_action_arg;
 
@@ -1996,7 +1993,6 @@ boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
   HEAP_OPERATION_CONTEXT update_context;
   int error = NO_ERROR;
   int vol_fd;
-  bool ignore_old;
   char *vlabel;
   RECDES recdes;
   VOLID prev_volid = NULL_VOLID;
@@ -3359,7 +3355,7 @@ boot_make_session_server_key (void)
   UINT32 t;
   unsigned char ip[4];
 
-  t = time (NULL);
+  t = (UINT32) time (NULL);
   memcpy (boot_Server_session_key, &t, sizeof (UINT32));
   css_hostname_to_ip (boot_Host_name, ip);
   boot_Server_session_key[4] = ip[0];
@@ -3393,7 +3389,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   const char *log_prefix;
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
-  bool old_object;
 #if defined (NDEBUG)
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
@@ -3883,6 +3878,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = check_timezone_compat (tzd->checksum,
 				      timezone_checksum,
 				      "server", "database");
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* Cache serial index BTID. */
+  error_code = serial_cache_index_btid (thread_p);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -6145,7 +6147,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   int error_code;
   DBDEF_VOL_EXT_INFO ext_info;
   HEAP_OPERATION_CONTEXT heapop_context, update_context;
-  bool ignore_old;
 
   assert (client_credential != NULL);
 

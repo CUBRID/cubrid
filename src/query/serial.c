@@ -121,6 +121,8 @@ SERIAL_CACHE_POOL serial_Cache_pool = { NULL, NULL, NULL,
   {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, PTHREAD_MUTEX_INITIALIZER
 };
 
+BTID serial_Cached_btid = BTID_INITIALIZER;
+
 ATTR_ID serial_Attrs_id[SERIAL_ATTR_MAX_INDEX];
 int serial_Num_attrs = -1;
 
@@ -1479,4 +1481,51 @@ serial_alloc_cache_area (int num)
   tmp_area->obj_area[i].next = NULL;
 
   return tmp_area;
+}
+
+/*
+ * serial_cache_index_btid () - Cache serial index BTID.
+ *
+ * return	 : Error Code.
+ * thread_p (in) : Thread entry.
+ */
+int
+serial_cache_index_btid (THREAD_ENTRY * thread_p)
+{
+  int error_code = NO_ERROR;
+  OID serial_oid = OID_INITIALIZER;
+
+  /* Get serial class OID. */
+  oid_get_serial_oid (&serial_oid);
+  assert (!OID_ISNULL (&serial_oid));
+
+  /* Now try to get index BTID. Serial index name is "pk_db_serial_name". */
+  error_code =
+    heap_get_btid_from_index_name (thread_p, &serial_oid, "pk_db_serial_name",
+				   &serial_Cached_btid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  /* Safe guard: successfully read a non-NULL BTID. */
+  assert (!BTID_IS_NULL (&serial_Cached_btid));
+  return NO_ERROR;
+}
+
+/*
+ * serial_get_index_btid () - Get serial index BTID.
+ *
+ * return      : Void.
+ * output (in) : Serial index btid.
+ */
+void
+serial_get_index_btid (BTID * output)
+{
+  /* Safe guard: a non-NULL serial index BTID is cached. */
+  assert (!BTID_IS_NULL (&serial_Cached_btid));
+  /* Safe guard: output parameter for index BTID is not NULL. */
+  assert (output != NULL);
+
+  BTID_COPY (output, &serial_Cached_btid);
 }
