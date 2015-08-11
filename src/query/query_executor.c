@@ -3803,10 +3803,6 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int track_id;
 #endif
 
-#if !defined(NDEBUG)
-  track_id = thread_rc_track_enter (thread_p);
-#endif
-
   xasl->orderby_stats.orderby_filesort = true;
 
   if (xasl->type == BUILDLIST_PROC)
@@ -3840,6 +3836,11 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       return NO_ERROR;
     }
+
+#if !defined(NDEBUG)
+  /* start resource track */
+  track_id = thread_rc_track_enter (thread_p);
+#endif
 
   memset (&ordby_info, 0, sizeof (ORDBYNUM_INFO));
 
