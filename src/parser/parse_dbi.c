@@ -207,7 +207,8 @@ void
 pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 		    PT_NODE ** set)
 {
-  PT_TYPE_ENUM typ;
+  PT_TYPE_ENUM typ, expected_typ;
+  PT_NODE *next_typs, *expected_typs = NULL;
   PT_NODE *s, *ent;
   DB_OBJECT *cls = NULL;
   bool found = false;
@@ -224,6 +225,24 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
        * the resultant object's type is PT_TYPE_NONE.  We ignore this
        * situation, although its not clear why it works.
        */
+      next_typs = typs->next;
+
+      /* if the hostvar node with expected domain */
+      if (typs->node_type == PT_HOST_VAR && typs->expected_domain != NULL)
+	{
+	  expected_typ = pt_db_to_type_enum (typs->expected_domain->type->id);
+
+	  assert (typs->type_enum == PT_TYPE_MAYBE
+		  && PT_IS_CHAR_STRING_TYPE (expected_typ));
+
+	  expected_typs = parser_new_node (parser, PT_DATA_TYPE);
+	  expected_typs->type_enum = expected_typ;
+	  expected_typs->data_type =
+	    pt_domain_to_data_type (parser, typs->expected_domain);
+
+	  typs = expected_typs;
+	}
+
       typ = typs->type_enum;
       if (typ != PT_TYPE_NONE && typ != PT_TYPE_MAYBE)
 	{
@@ -233,7 +252,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 	      if (typs->data_type == NULL)
 		{
 		  PT_INTERNAL_ERROR (parser, "interface");
-		  return;
+		  goto exit_on_error;
 		}
 
 	      if (typs->data_type->info.data_type.entity == NULL)
@@ -252,7 +271,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 		  if (cls == NULL || cls_nam == NULL)
 		    {
 		      PT_INTERNAL_ERROR (parser, "interface");
-		      return;
+		      goto exit_on_error;
 		    }
 		}
 	    }
@@ -375,7 +394,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 							    PT_CLASS);
 		      if (entity == NULL)
 			{
-			  return;
+			  goto exit_on_error;
 			}
 		      new_typ->info.data_type.virt_type_enum = typ;
 		      if (new_typ->info.data_type.entity != NULL)
@@ -400,8 +419,21 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 	    }
 	}
 
-      typs = typs->next;
+      if (expected_typs != NULL)
+	{
+	  parser_free_node (parser, expected_typs);
+	  expected_typs = NULL;
+	}
+
+      typs = next_typs;
     }				/* while (typs) */
+
+exit_on_error:
+  if (expected_typs != NULL)
+    {
+      parser_free_node (parser, expected_typs);
+      expected_typs = NULL;
+    }
 }
 
 /*

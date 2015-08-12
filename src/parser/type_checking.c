@@ -26185,6 +26185,7 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_COLL_INFER common_coll_infer, res_coll_infer;
   bool need_arg_coerc = false;
   TP_DOMAIN_COLL_ACTION res_collation_flag = TP_DOMAIN_COLL_LEAVE;
+  FUNC_TYPE fcode;
 
   assert (node != NULL);
 
@@ -26196,10 +26197,11 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
+  fcode = node->info.function.function_type;
   arg_list = node->info.function.arg_list;
   prev_arg = NULL;
 
-  if (node->info.function.function_type == F_ELT)
+  if (fcode == F_ELT)
     {
       if (arg_list->next == NULL)
 	{
@@ -26329,6 +26331,21 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
 
       prev_arg = arg;
       arg = arg->next;
+    }
+
+  if (need_arg_coerc)
+    {
+      switch (fcode)
+	{
+	case F_SET:
+	case F_MULTISET:
+	case F_SEQUENCE:
+	  /* add the new data_type to the set of data_types */
+	  pt_add_type_to_set (parser, arg_list, &node->data_type);
+	  break;
+	default:
+	  break;
+	}
     }
 
   if (PT_HAS_COLLATION (node->type_enum)
