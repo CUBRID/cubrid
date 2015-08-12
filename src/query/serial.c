@@ -121,7 +121,9 @@ SERIAL_CACHE_POOL serial_Cache_pool = { NULL, NULL, NULL,
   {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, PTHREAD_MUTEX_INITIALIZER
 };
 
+#if defined (SERVER_MODE)
 BTID serial_Cached_btid = BTID_INITIALIZER;
+#endif /* SERVER_MODE */
 
 ATTR_ID serial_Attrs_id[SERIAL_ATTR_MAX_INDEX];
 int serial_Num_attrs = -1;
@@ -1483,11 +1485,16 @@ serial_alloc_cache_area (int num)
   return tmp_area;
 }
 
+#if defined (SERVER_MODE)
 /*
  * serial_cache_index_btid () - Cache serial index BTID.
  *
  * return	 : Error Code.
  * thread_p (in) : Thread entry.
+ *
+ * NOTE that workspace manager is unavailable when restarting from backup. 
+ * It is possible to allow SA_MODE executables except restoredb to use the function, 
+ * however, it is better not to use it in SA_MODE for clarity.
  */
 int
 serial_cache_index_btid (THREAD_ENTRY * thread_p)
@@ -1518,6 +1525,10 @@ serial_cache_index_btid (THREAD_ENTRY * thread_p)
  *
  * return      : Void.
  * output (in) : Serial index btid.
+ *
+ * NOTE that workspace manager is unavailable when restarting from backup. 
+ * It is possible to allow SA_MODE executables except restoredb to use the function, 
+ * however, it is better not to use it in SA_MODE for clarity.
  */
 void
 serial_get_index_btid (BTID * output)
@@ -1529,3 +1540,4 @@ serial_get_index_btid (BTID * output)
 
   BTID_COPY (output, &serial_Cached_btid);
 }
+#endif /* SERVER_MODE */

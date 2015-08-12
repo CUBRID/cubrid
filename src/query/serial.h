@@ -55,7 +55,9 @@ extern void serial_finalize_cache_pool (void);
 extern int serial_initialize_cache_pool (THREAD_ENTRY * thread_p);
 extern void xserial_decache (THREAD_ENTRY * thread_p, OID * oidp);
 
+#if defined (SERVER_MODE)
 extern int serial_cache_index_btid (THREAD_ENTRY * thread_p);
 extern void serial_get_index_btid (BTID * output);
+#endif /* SERVER_MODE */
 
 #endif /* _SERIAL_H_ */

@@ -3883,12 +3883,18 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       goto error;
     }
 
+#if defined (SERVER_MODE)
   /* Cache serial index BTID. */
+  /* Note that workspace manager is unavailable when restarting from backup. 
+   * It is possible to allow SA_MODE executables except restoredb to use the function, 
+   * however, it is better not to use it in SA_MODE for clarity.
+   */
   error_code = serial_cache_index_btid (thread_p);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+#endif /* SERVER_MODE */
 
   /*
    * Allocate a temporary transaction index to finish further system related
