@@ -9290,6 +9290,10 @@ start_current_version:
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_HEAP_UNKNOWN_OBJECT, 3, current_oid.volid,
 			  current_oid.pageid, current_oid.slotid);
+
+		  /* FIXME - debugging support */
+		  abort ();
+
 		  scan_code = S_DOESNT_EXIST;
 		  goto end;
 		}
