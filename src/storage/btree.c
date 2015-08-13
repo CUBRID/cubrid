@@ -28325,9 +28325,18 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
       if (!BTS_IS_INDEX_MRO (bts) && !BTS_NEED_COUNT_ONLY (bts))
 	{
 	  /* Can we save all objects? */
-	  oid_count =
-	    btree_record_get_num_oids (thread_p, &bts->btid_int, &ovf_record,
-				       0, BTREE_OVERFLOW_NODE);
+	  if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
+	    {
+	      /* There can be only one visible object. */
+	      oid_count = 1;
+	    }
+	  else
+	    {
+	      oid_count =
+		btree_record_get_num_oids (thread_p, &bts->btid_int,
+					   &ovf_record, 0,
+					   BTREE_OVERFLOW_NODE);
+	    }
 	  if (!BTS_IS_HARD_CAPACITY_ENOUGH (bts,
 					    bts->n_oids_read_last_iteration
 					    + oid_count))
