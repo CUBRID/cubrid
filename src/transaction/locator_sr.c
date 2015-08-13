@@ -14902,6 +14902,10 @@ exit:
     {
       pgbuf_ordered_unfix (thread_p, &old_page_watcher);
     }
+  if (scan_cache.page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache.page_watcher);
+    }
   if (is_parent_scancache_started == true)
     {
       (void) heap_scancache_end (thread_p, &parent_scan_cache);
