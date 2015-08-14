@@ -2298,11 +2298,6 @@ add_class_object (MOP class_mop, MOP obj)
 	  class_mop->class_link = Null_object;
 	}
 
-      if (obj->class_link == NULL)
-	{
-	  obj->class_link = class_mop->class_link;
-	  class_mop->class_link = obj;
-	}
       if (class_mop->object == NULL)
 	{
 	  error = ER_WS_CLASS_NOT_CACHED;
@@ -2320,6 +2315,11 @@ add_class_object (MOP class_mop, MOP obj)
 	  else
 	    {
 	      obj->class_mop = class_mop;
+	      if (obj->class_link == NULL)
+		{
+		  obj->class_link = class_mop->class_link;
+		  class_mop->class_link = obj;
+		}
 	    }
 	}
     }
