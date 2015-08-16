@@ -28078,6 +28078,15 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 		}
 	    }
 
+	  /* Fetch home record again in case home page was unfixed. */
+	  if (spage_get_record (context->home_page_watcher_p->pgptr,
+				context->oid.slotid, &context->home_recdes,
+				PEEK) != S_SUCCESS)
+	    {
+	      assert (false);
+	      return ER_FAILED;
+	    }
+
 	  /* build forwarding rebuild_record */
 	  heap_build_forwarding_recdes (&forwarding_recdes,
 					forwarding_recdes.type, forward_oid,
