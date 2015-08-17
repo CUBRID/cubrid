@@ -5544,7 +5544,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 
 	  if (is_peeking == PEEK
-	      && hsidp->scan_cache.page_watcher.page_was_unfixed
 	      && hsidp->scan_cache.page_watcher.pgptr != NULL
 	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr,
 					 &ref_lsa))
@@ -5569,7 +5568,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 
 	  if (is_peeking == PEEK
-	      && hsidp->scan_cache.page_watcher.page_was_unfixed
 	      && hsidp->scan_cache.page_watcher.pgptr != NULL
 	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr,
 					 &ref_lsa))
@@ -5665,8 +5663,14 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	      if (lock != NULL_LOCK)
 		{
+		  VPID curr_vpid;
+
+		  VPID_SET_NULL (&curr_vpid);
+
 		  if (hsidp->scan_cache.page_watcher.pgptr != NULL)
 		    {
+		      pgbuf_get_vpid (hsidp->scan_cache.page_watcher.pgptr,
+				      &curr_vpid);
 		      pgbuf_ordered_unfix (thread_p,
 					   &hsidp->scan_cache.page_watcher);
 		    }
@@ -5698,6 +5702,26 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 							       &hsidp->
 							       cls_oid, lock);
 		    }
+
+		  assert (hsidp->scan_cache.page_watcher.pgptr == NULL);
+
+		  if (pgbuf_ordered_fix (thread_p, &curr_vpid, OLD_PAGE,
+					 PGBUF_LATCH_READ,
+					 &hsidp->scan_cache.page_watcher)
+		      != NO_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+
+		  if (hsidp->scan_cache.page_watcher.pgptr != NULL
+		      && pgbuf_page_has_changed (hsidp->scan_cache.
+						 page_watcher.pgptr,
+						 &ref_lsa))
+		    {
+		      is_peeking = COPY;
+		      COPY_OID (&hsidp->curr_oid, &retry_oid);
+		      goto restart_scan_oid;
+		    }
 		}
 	    }
 	}
@@ -5717,7 +5741,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 
 	  if (is_peeking == PEEK
-	      && hsidp->scan_cache.page_watcher.page_was_unfixed
 	      && hsidp->scan_cache.page_watcher.pgptr != NULL
 	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr,
 					 &ref_lsa))
@@ -5738,7 +5761,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 
 	      if (is_peeking == PEEK
-		  && hsidp->scan_cache.page_watcher.page_was_unfixed
 		  && hsidp->scan_cache.page_watcher.pgptr != NULL
 		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.
 					     pgptr, &ref_lsa))
@@ -5763,7 +5785,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 
 	      if (is_peeking == PEEK
-		  && hsidp->scan_cache.page_watcher.page_was_unfixed
 		  && hsidp->scan_cache.page_watcher.pgptr != NULL
 		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.
 					     pgptr, &ref_lsa))
