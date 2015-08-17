@@ -6431,6 +6431,12 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p,
   if (current_lock != NULL_LOCK)
     {
       assert (false);
+
+      if (lock_mode == X_LOCK)
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
+
       error_code = ER_FAILED;
       return error_code;
     }
@@ -6453,6 +6459,16 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p,
 	      catalog_access_info->need_free_class_name = true;
 	    }
 	}
+
+      if (lock_mode == X_LOCK)
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
+
+#if !defined (NDEBUG)
+      catalog_access_info->is_systemop_started = false;
+#endif
+
       error_code = ER_UPDATE_STAT_CANNOT_GET_LOCK;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
 	      catalog_access_info->class_name ?
