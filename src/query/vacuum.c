@@ -8376,8 +8376,24 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 int
 vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  INT16 recdes_type;
+
   rcv->offset = (rcv->offset & (~VACUUM_LOG_VACUUM_HEAP_MASK));
-  return heap_rv_redo_insert (thread_p, rcv);
+
+  if (spage_is_slot_exist (rcv->pgptr, rcv->offset))
+    {
+      recdes_type = *(INT16 *) (rcv->data);
+
+      assert ((recdes_type == REC_RELOCATION || recdes_type == REC_BIGONE)
+	      && (spage_get_record_type (rcv->pgptr, rcv->offset)
+		  == REC_MVCC_NEXT_VERSION));
+
+      return heap_rv_undoredo_update (thread_p, rcv);
+    }
+  else
+    {
+      return heap_rv_redo_insert (thread_p, rcv);
+    }
 }
 
 /*
