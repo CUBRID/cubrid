@@ -28078,15 +28078,6 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 		}
 	    }
 
-	  /* Fetch home record again in case home page was unfixed. */
-	  if (spage_get_record (context->home_page_watcher_p->pgptr,
-				context->oid.slotid, &context->home_recdes,
-				PEEK) != S_SUCCESS)
-	    {
-	      assert (false);
-	      return ER_FAILED;
-	    }
-
 	  /* build forwarding rebuild_record */
 	  heap_build_forwarding_recdes (&forwarding_recdes,
 					forwarding_recdes.type, forward_oid,
@@ -28284,15 +28275,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       assert (!OID_ISNULL (&insert_context.res_oid));
       COPY_OID (&context->res_oid, &insert_context.res_oid);
 
-      /* an insert in the home page could trigger a spage_compact, so we'll
-         re-fetch the home record in case it was moved */
-      if (spage_get_record
-	  (context->home_page_watcher_p->pgptr, context->oid.slotid,
-	   &context->home_recdes, PEEK) != S_SUCCESS)
-	{
-	  return ER_FAILED;
-	}
-
       /*
        * Delete old version and link it to new version
        * NOTE: new version OID is kept in insert_context.oid
@@ -28427,6 +28409,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 			HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
   RECDES forward_recdes;
+  char forward_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   OID forward_oid;
   int rc;
 
@@ -28447,10 +28430,13 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
     }
 
   /* get forward record */
+  forward_recdes.area_size = DB_PAGESIZE;
+  forward_recdes.data = PTR_ALIGN (forward_recdes_buffer, MAX_ALIGNMENT);
   if (spage_get_record (context->forward_page_watcher_p->pgptr,
 			forward_oid.slotid, &forward_recdes,
-			PEEK) != S_SUCCESS)
+			COPY) != S_SUCCESS)
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -28487,15 +28473,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
       /* keep new location */
       assert (!OID_ISNULL (&insert_context.res_oid));
       COPY_OID (&context->res_oid, &insert_context.res_oid);
-
-      /* an insert in the home page could trigger a spage_compact, so we'll
-         re-fetch the home record in case it was moved */
-      if (spage_get_record
-	  (context->home_page_watcher_p->pgptr, context->oid.slotid,
-	   &context->home_recdes, PEEK) != S_SUCCESS)
-	{
-	  return ER_FAILED;
-	}
 
       /*
        * Delete old version
@@ -28749,15 +28726,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       /* keep new location */
       assert (!OID_ISNULL (&insert_context.res_oid));
       COPY_OID (&context->res_oid, &insert_context.res_oid);
-
-      /* an insert in the home page could trigger a spage_compact, so we'll
-         re-fetch the home record in case it was moved */
-      if (spage_get_record
-	  (context->home_page_watcher_p->pgptr, context->oid.slotid,
-	   &context->home_recdes, PEEK) != S_SUCCESS)
-	{
-	  return ER_FAILED;
-	}
 
       /*
        * Delete old version and link it to new version
@@ -29362,9 +29330,12 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
     }
 
   /* fetch record to be deleted */
+  context->home_recdes.area_size = DB_PAGESIZE;
+  context->home_recdes.data =
+    PTR_ALIGN (context->home_recdes_buffer, MAX_ALIGNMENT);
   if (spage_get_record (context->home_page_watcher_p->pgptr,
 			context->oid.slotid,
-			&context->home_recdes, PEEK) != S_SUCCESS)
+			&context->home_recdes, COPY) != S_SUCCESS)
     {
       rc = ER_FAILED;
       goto error;
@@ -30024,9 +29995,12 @@ heap_update_logical (THREAD_ENTRY * thread_p,
       goto error;
     }
 
+  context->home_recdes.area_size = DB_PAGESIZE;
+  context->home_recdes.data =
+    PTR_ALIGN (context->home_recdes_buffer, MAX_ALIGNMENT);
   if (spage_get_record
       (context->home_page_watcher_p->pgptr, context->oid.slotid,
-       &context->home_recdes, PEEK) != S_SUCCESS)
+       &context->home_recdes, COPY) != S_SUCCESS)
     {
       rc = ER_FAILED;
       goto error;

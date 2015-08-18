@@ -372,6 +372,7 @@ struct heap_operation_context
 
   /* transient data */
   RECDES home_recdes;
+  char home_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   INT16 record_type;		/* record type of original record */
   FILE_TYPE file_type;		/* the file type of hfid */
 
