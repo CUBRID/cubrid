@@ -12083,6 +12083,7 @@ mq_rewrite_order_dependent_nodes (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *attr = NULL, *as_attr = NULL;
   PT_NODE *spec = NULL, *dt_query = NULL;
   char *name = NULL;
+  PT_NODE *pt_cur = NULL;
 
   if (node == NULL || select == NULL)
     {
@@ -12192,6 +12193,31 @@ mq_rewrite_order_dependent_nodes (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       /* ignore values, no need to move them around */
       return node;
+    }
+
+  /* check if the node is in the subquey's select_list. */
+  if (node->node_type == PT_NAME)
+    {
+      for (pt_cur = dt_query->info.query.q.select.list; pt_cur != NULL;
+	   pt_cur = pt_cur->next)
+	{
+	  if (pt_cur->node_type == PT_NAME &&
+	      pt_name_equal (parser, pt_cur, node) == true)
+	    {
+	      /* the node is in subquery's select_list! Just use it. */
+	      node->info.name.meta_class = 0;
+	      node->info.name.resolved =
+		spec->info.spec.range_var->info.name.original;
+	      node->info.name.spec_id = spec->info.spec.id;
+	      node->type_enum = pt_cur->type_enum;
+	      node->data_type = parser_copy_tree (parser, pt_cur->data_type);
+	      node->etc = pt_cur->etc;
+
+	      /* Whatever it was, now it is visible. */
+	      pt_cur->is_hidden_column = 0;
+	      return node;
+	    }
+	}
     }
 
   /* add node to select list of derived table */
@@ -12333,19 +12359,6 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select,
   list_pos = 1;			/* ORDER BY clause indexes position from 1 */
   while (list != NULL)
     {
-      if (list->is_hidden_column)
-	{
-	  /* skip hidden columns */
-	  list_prev = list;
-	  list = list->next;
-	  if (list)
-	    {
-	      list_next = list->next;
-	    }
-
-	  continue;
-	}
-
       if (!PT_IS_ORDER_DEPENDENT (list))
 	{
 	  char *name = NULL;
@@ -12382,23 +12395,26 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select,
 	  dt->info.spec.as_attr_list =
 	    parser_append_node (as_attr, dt->info.spec.as_attr_list);
 
-	  /* add entry in new select list */
-	  attr = pt_name (parser, name);
-	  if (attr == NULL)
+	  if (list->is_hidden_column == 0)
 	    {
-	      PT_ERRORm (parser, select, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return NULL;
+	      /* add entry in new select list */
+	      attr = pt_name (parser, name);
+	      if (attr == NULL)
+		{
+		  PT_ERRORm (parser, select, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return NULL;
+		}
+
+	      attr->info.name.resolved = dt_range_var->info.name.original;
+	      attr->info.name.spec_id = dt->info.spec.id;
+	      attr->type_enum = list->type_enum;
+	      attr->data_type = parser_copy_tree (parser, list->data_type);
+	      attr->etc = list->etc;
+
+	      parent->info.query.q.select.list =
+		parser_append_node (attr, parent->info.query.q.select.list);
 	    }
-
-	  attr->info.name.resolved = dt_range_var->info.name.original;
-	  attr->info.name.spec_id = dt->info.spec.id;
-	  attr->type_enum = list->type_enum;
-	  attr->data_type = parser_copy_tree (parser, list->data_type);
-	  attr->etc = list->etc;
-
-	  parent->info.query.q.select.list =
-	    parser_append_node (attr, parent->info.query.q.select.list);
 
 	  /* advance in list */
 	  list_prev = list;
