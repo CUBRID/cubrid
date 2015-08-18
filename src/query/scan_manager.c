@@ -6319,6 +6319,11 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	  else if (lookup_status == S_DOESNT_EXIST)
 	    {
+	      if (scan_id->mvcc_select_lock_needed
+		  && isidp->key_limit_upper != -1)
+		{
+		  isidp->key_limit_upper++;
+		}
 	      /* not qualified, continue to the next tuple */
 	      continue;
 	    }
