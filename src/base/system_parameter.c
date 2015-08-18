@@ -603,6 +603,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FAULT_INJECTION_IDS "fault_injection_ids"
 #define PRM_NAME_FAULT_INJECTION_TEST "fault_injection_test"
+#define PRM_NAME_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT "fault_injection_action_prefer_abort_to_exit"
 
 #define PRM_NAME_HA_REPL_FILTER_TYPE "ha_repl_filter_type"
 #define PRM_NAME_HA_REPL_FILTER_FILE "ha_repl_filter_file"
@@ -2022,6 +2023,10 @@ static int prm_fault_injection_test_flag = 0;
 static int prm_fault_injection_test_default = FI_GROUP_NONE;
 static int prm_fault_injection_test_lower = FI_GROUP_NONE;
 static int prm_fault_injection_test_upper = FI_GROUP_MAX;
+
+bool PRM_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT = true;
+static unsigned int prm_fault_injection_action_prefer_abort_to_exit_flag = 0;
+static bool prm_fault_injection_action_prefer_abort_to_exit_default = true;
 
 int PRM_HA_REPL_FILTER_TYPE = REPL_FILTER_NONE;
 static int prm_ha_repl_filter_type_default = REPL_FILTER_NONE;
@@ -4875,6 +4880,16 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_fault_injection_test_upper,
    (void *) &prm_fault_injection_test_lower,
    (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_fault_injection_action_prefer_abort_to_exit_flag,
+   (void *) &prm_fault_injection_action_prefer_abort_to_exit_default,
+   (void *) &PRM_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_HA_REPL_FILTER_TYPE,

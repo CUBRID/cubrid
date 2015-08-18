@@ -446,7 +446,15 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg,
       er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line,
 	      ER_FAILED_ASSERTION, 1, "fault injection: random exit");
 
-      _exit (0);
+      if (prm_get_bool_value
+	  (PRM_ID_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT))
+	{
+	  abort ();
+	}
+      else
+	{
+	  _exit (0);
+	}
     }
 
   return NO_ERROR;
