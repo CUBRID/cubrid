@@ -3951,50 +3951,58 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
 		      DIAG_VAL_SETTYPE_INC, NULL);
 #endif
       return_error_to_client (thread_p, rid);
-    }
-
-  area_size = OR_INT_SIZE	/* tran_index */
-    + OR_INT_SIZE		/* tran_state */
-    + or_packed_string_length (server_credential.db_full_name, &strlen1)	/* db_full_name */
-    + or_packed_string_length (server_credential.host_name, &strlen2)	/* host_name */
-    + or_packed_string_length (server_credential.lob_path, &strlen3)	/* lob_path */
-    + OR_INT_SIZE		/* process_id */
-    + OR_OID_SIZE		/* root_class_oid */
-    + OR_HFID_SIZE		/* root_class_hfid */
-    + OR_INT_SIZE		/* page_size */
-    + OR_INT_SIZE		/* log_page_size */
-    + OR_FLOAT_SIZE		/* disk_compatibility */
-    + OR_INT_SIZE;		/* ha_server_state */
-
-  area_size += OR_INT_SIZE;	/* db_charset */
-  area_size += or_packed_string_length (server_credential.db_lang, &strlen4);
-
-  area = db_private_alloc (thread_p, area_size);
-  if (area == NULL)
-    {
-      return_error_to_client (thread_p, rid);
+      area = NULL;
       area_size = 0;
     }
   else
     {
-      ptr = or_pack_int (area, tran_index);
-      ptr = or_pack_int (ptr, (int) tran_state);
-      ptr = or_pack_string_with_length (ptr, server_credential.db_full_name,
+      area_size = OR_INT_SIZE	/* tran_index */
+	+ OR_INT_SIZE		/* tran_state */
+	+ or_packed_string_length (server_credential.db_full_name, &strlen1)	/* db_full_name */
+	+ or_packed_string_length (server_credential.host_name, &strlen2)	/* host_name */
+	+ or_packed_string_length (server_credential.lob_path, &strlen3)	/* lob_path */
+	+ OR_INT_SIZE		/* process_id */
+	+ OR_OID_SIZE		/* root_class_oid */
+	+ OR_HFID_SIZE		/* root_class_hfid */
+	+ OR_INT_SIZE		/* page_size */
+	+ OR_INT_SIZE		/* log_page_size */
+	+ OR_FLOAT_SIZE		/* disk_compatibility */
+	+ OR_INT_SIZE;		/* ha_server_state */
+
+      area_size += OR_INT_SIZE;	/* db_charset */
+      area_size +=
+	or_packed_string_length (server_credential.db_lang, &strlen4);
+
+      area = db_private_alloc (thread_p, area_size);
+      if (area == NULL)
+	{
+	  return_error_to_client (thread_p, rid);
+	  area_size = 0;
+	}
+      else
+	{
+	  ptr = or_pack_int (area, tran_index);
+	  ptr = or_pack_int (ptr, (int) tran_state);
+	  ptr =
+	    or_pack_string_with_length (ptr, server_credential.db_full_name,
 					strlen1);
-      ptr = or_pack_string_with_length (ptr, server_credential.host_name,
+	  ptr =
+	    or_pack_string_with_length (ptr, server_credential.host_name,
 					strlen2);
-      ptr = or_pack_string_with_length (ptr, server_credential.lob_path,
+	  ptr =
+	    or_pack_string_with_length (ptr, server_credential.lob_path,
 					strlen3);
-      ptr = or_pack_int (ptr, server_credential.process_id);
-      ptr = or_pack_oid (ptr, &server_credential.root_class_oid);
-      ptr = or_pack_hfid (ptr, &server_credential.root_class_hfid);
-      ptr = or_pack_int (ptr, (int) server_credential.page_size);
-      ptr = or_pack_int (ptr, (int) server_credential.log_page_size);
-      ptr = or_pack_float (ptr, server_credential.disk_compatibility);
-      ptr = or_pack_int (ptr, (int) server_credential.ha_server_state);
-      ptr = or_pack_int (ptr, server_credential.db_charset);
-      ptr = or_pack_string_with_length (ptr, server_credential.db_lang,
-					strlen4);
+	  ptr = or_pack_int (ptr, server_credential.process_id);
+	  ptr = or_pack_oid (ptr, &server_credential.root_class_oid);
+	  ptr = or_pack_hfid (ptr, &server_credential.root_class_hfid);
+	  ptr = or_pack_int (ptr, (int) server_credential.page_size);
+	  ptr = or_pack_int (ptr, (int) server_credential.log_page_size);
+	  ptr = or_pack_float (ptr, server_credential.disk_compatibility);
+	  ptr = or_pack_int (ptr, (int) server_credential.ha_server_state);
+	  ptr = or_pack_int (ptr, server_credential.db_charset);
+	  ptr = or_pack_string_with_length (ptr, server_credential.db_lang,
+					    strlen4);
+	}
     }
 
   ptr = or_pack_int (reply, area_size);
