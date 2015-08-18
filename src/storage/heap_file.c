@@ -13649,18 +13649,29 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid,
 	  if (DB_VALUE_DOMAIN_TYPE (&(value->dbvalue)) == DB_TYPE_OID
 	      && !DB_IS_NULL (&(value->dbvalue)))
 	    {
-	      /* Since we care only about to cache the last fetched page
-	       * in heap_get_last_internal, we can reuse the same scan_cache
-	       * even if was initialized on other class.
-	       * In case that heap_get_last_internal need scan_cache->hfid
-	       * for instance, then, another scan_cache must be used.
+	      HEAP_SCANCACHE local_scancache;
+
+	      if (heap_scancache_quick_start (&local_scancache) != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      if (scan_cache != NULL)
+		{
+		  local_scancache.mvcc_snapshot = scan_cache->mvcc_snapshot;
+		}
+
+	      /* scan_cache is initialized with a class and heap unrelated to
+	       * referenced OIDs retrieved here;
+	       * Different scan_cache is needed here : it is likely that these
+	       * OIDs do not belong to the same heap, less to same page.
 	       */
 	      if (heap_mvcc_lock_and_get_object_version (thread_p,
 							 DB_GET_OID (&
 								     (value->
 								      dbvalue)),
 							 NULL, NULL,
-							 scan_cache,
+							 &local_scancache,
 							 S_SELECT, COPY,
 							 NULL_CHN, NULL,
 							 &mvcc_updated_oid)
@@ -13670,8 +13681,10 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid,
 		      || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 		    {
 		      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
+		      heap_scancache_end (thread_p, &local_scancache);
 		      continue;
 		    }
+		  heap_scancache_end (thread_p, &local_scancache);
 		  goto exit_on_error;
 		}
 
@@ -13681,6 +13694,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid,
 		{
 		  DB_MAKE_OID (&(value->dbvalue), &mvcc_updated_oid);
 		}
+	      heap_scancache_end (thread_p, &local_scancache);
 	    }
 	}
     }
