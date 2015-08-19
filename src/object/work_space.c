@@ -1126,7 +1126,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
        */
       if (mop->class_mop == NULL)
 	{
-	  mop->class_mop = class_mop;
+	  mop->class_mop = mq_fetch_one_real_class (class_mop);
 	}
 
       db_make_object (keys, mop);
