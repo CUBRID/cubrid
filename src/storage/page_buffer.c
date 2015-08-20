@@ -57,7 +57,8 @@
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+#include "transaction_cl.h"
 #endif /* SERVER_MODE */
 
 #if defined(PAGE_STATISTICS)
@@ -950,6 +951,9 @@ static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
 					      PGBUF_BCB * bufptr,
 					      int *flushed_pages);
 static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
+static int pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p,
+				      PGBUF_BCB * bufptr,
+				      VPID * expected_vpid, bool * flushed);
 
 static int pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p,
 					const VPID * req_vpid,
@@ -3856,7 +3860,9 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p,
   VPID vpid;
   PAGE_PTR pgptr;
   double sleep_msecs = 0;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
   int avail_time_msec = 0, time_rem_msec = 0;
@@ -5726,9 +5732,6 @@ pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   int thrd_index;
   PGBUF_HOLDER *holder;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   assert (bufptr != NULL);
 
@@ -5766,9 +5769,6 @@ pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
   int err = NO_ERROR;
   PGBUF_HOLDER *holder;
   PAGE_PTR pgptr;
-#if defined(SERVER_MODE)
-  int rv;
-#endif
 
   assert (bufptr != NULL);
 
@@ -5834,9 +5834,6 @@ pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
   PGBUF_HOLDER_ANCHOR *thrd_holder_info;
   PGBUF_HOLDER *prev;
   int found;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   assert (holder != NULL);
   assert (holder->fix_count == 0);
@@ -6005,9 +6002,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #endif /* SERVER_MODE */
   PGBUF_HOLDER *holder = NULL;
   int request_fcnt = 1;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   bool is_page_idle;
   bool buf_is_dirty;
 
@@ -6824,7 +6818,6 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p,
 {
   THREAD_ENTRY *prev_thrd_entry;
   THREAD_ENTRY *curr_thrd_entry;
-  PGBUF_HOLDER *holder;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -6947,7 +6940,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
     }
 
 try_again:
-  to.tv_sec = time (NULL) + wait_secs;
+  to.tv_sec = (int) time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
   if (thrd_entry->event_stats.trace_slow_query == true)
@@ -7918,9 +7911,6 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 {
   PGBUF_HOLDER *holder;
   PGBUF_LATCH_MODE saved_latch_mode;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
@@ -9156,6 +9146,28 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	  || bufptr->latch_mode == PGBUF_LATCH_FLUSH
 	  || bufptr->latch_mode == PGBUF_LATCH_READ
 	  || bufptr->latch_mode == PGBUF_LATCH_WRITE);
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+  if (bufptr->latch_mode == PGBUF_LATCH_WRITE)
+    {
+      /* I must be the owner, or else we'll be in trouble. */
+      int thread_index = thread_get_thread_entry_info ()->index;
+      PGBUF_HOLDER_ANCHOR *thrd_holder_info =
+	&pgbuf_Pool.thrd_holder_info[thread_index];
+      PGBUF_HOLDER *holder = NULL;
+
+      /* Search for bufptr in current thread holder list. */
+      for (holder = thrd_holder_info->thrd_hold_list; holder != NULL;
+	   holder = holder->next_holder)
+	{
+	  if (holder->bufptr == bufptr)
+	    {
+	      break;
+	    }
+	}
+      /* Safe guard: I must be the bufptr holder. */
+      assert (holder != NULL);
+    }
+#endif /* !NDEBUG */
 
   if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
     {
@@ -10514,6 +10526,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
 {
 #define PGBUF_PAGES_COUNT_THRESHOLD 4
   int error = NO_ERROR, i;
+  int save_first_error = NO_ERROR;
   LOG_LSA log_newest_oldest_unflush_lsa;
   VPID first_vpid, vpid;
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -10525,9 +10538,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
   bool search_nondirty;
   int written_pages;
   int abort_reason;
-#if defined (SERVER_MODE)
-  int rv;
-#endif
+  bool was_page_flushed = false;
 #if defined(ENABLE_SYSTEMTAP)
   int tran_index;
   QMGR_TRAN_ENTRY *tran_entry;
@@ -10641,9 +10652,8 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
 
       /* Abandon batch for:
        * fixed pages, latched pages or with 'avoid_victim' */
-      if (bufptr->fcnt > 0
-	  || bufptr->latch_mode != PGBUF_NO_LATCH
-	  || bufptr->avoid_victim == true)
+      if (bufptr->avoid_victim == true
+	  || bufptr->latch_mode > PGBUF_LATCH_READ)
 	{
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	  if (search_nondirty == true)
@@ -10758,16 +10768,22 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
   if (helper->npages <= 1)
     {
       /* flush only first page */
-      bufptr = helper->pages_bufptr[PGBUF_NEIGHBOR_POS (0)];
+      pos = PGBUF_NEIGHBOR_POS (0);
+      bufptr = helper->pages_bufptr[pos];
 
-      MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
-      error = pgbuf_flush_page_with_wal (thread_p, bufptr);
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
-      if (error == NO_ERROR)
+      error =
+	pgbuf_flush_neighbor_safe (thread_p, bufptr, &helper->vpids[pos],
+				   &was_page_flushed);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+      if (was_page_flushed)
 	{
 	  *flushed_pages = 1;
 	}
-      return error;
+      return NO_ERROR;
     }
 
   /* WAL protocol: force log record to disk */
@@ -10779,62 +10795,21 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
     {
       bufptr = helper->pages_bufptr[pos];
 
-      MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
-      if (!VPID_EQ (&bufptr->vpid, &helper->vpids[pos]))
+      error =
+	pgbuf_flush_neighbor_safe (thread_p, bufptr, &helper->vpids[pos],
+				   &was_page_flushed);
+      if (error != NO_ERROR)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  ASSERT_ERROR ();
+	  if (save_first_error == NO_ERROR)
+	    {
+	      save_first_error = error;
+	    }
 	  continue;
 	}
-
-      if (bufptr->dirty)
+      if (was_page_flushed)
 	{
-	  error = pgbuf_flush_page_with_wal (thread_p, bufptr);
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
-	  if (error == NO_ERROR)
-	    {
-	      written_pages++;
-	    }
-	}
-      else
-	{
-	  /* write a non-dirty page */
-	  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-	  FILEIO_PAGE *iopage;
-
-	  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
-
-	  memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage),
-		  IO_PAGESIZE);
-	  bufptr->avoid_victim = true;
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
-
-	  /* flush buffer page */
-	  if (fileio_write (thread_p,
-			    fileio_get_volume_descriptor (bufptr->vpid.volid),
-			    iopage, bufptr->vpid.pageid, IO_PAGESIZE) != NULL)
-	    {
-	      written_pages++;
-	      mnt_pb_iowrites (thread_p, 1);
-	      /* ignore error */
-
-#if defined(ENABLE_SYSTEMTAP)
-	      if (monitored == true)
-		{
-		  CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 1);
-		}
-#endif /* ENABLE_SYSTEMTAP */
-	    }
-
-	  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
-	  bufptr->avoid_victim = false;
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
-
-#if defined(ENABLE_SYSTEMTAP)
-	  if (monitored == true)
-	    {
-	      CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 0);
-	    }
-#endif /* ENABLE_SYSTEMTAP */
+	  written_pages++;
 	}
     }
 
@@ -10846,7 +10821,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p,
   *flushed_pages = written_pages;
   helper->npages = 0;
 
-  return error;
+  return save_first_error;
 #undef PGBUF_PAGES_COUNT_THRESHOLD
 }
 
@@ -10886,6 +10861,122 @@ pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx)
     }
 }
 
+/*
+ * pgbuf_flush_neighbor_safe () - Flush collected page for neighbor flush if
+ *				  it's safe:
+ *				  1. VPID of bufptr has not changed.
+ *				  2. Page has no latch or is only latched for
+ *				     read.
+ *
+ * return	      : Error code.
+ * thread_p (in)      : Thread entry.
+ * bufptr (in)	      : Buffered page collected for neighbor flush.
+ * expected_vpid (in) : Expected VPID for bufptr.
+ * flushed (out)      : Output true if page was flushed.
+ */
+static int
+pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
+			   VPID * expected_vpid, bool * flushed)
+{
+  int error = NO_ERROR;
+#if defined (SERVER_MODE)
+  int rv = 0;
+#endif /* SERVER_MODE */
+
+#if defined(ENABLE_SYSTEMTAP)
+  int tran_index;
+  QMGR_TRAN_ENTRY *tran_entry;
+  QUERY_ID query_id = -1;
+  bool monitored = false;
+#endif /* ENABLE_SYSTEMTAP */
+
+#if defined(ENABLE_SYSTEMTAP)
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tran_entry = qmgr_get_tran_entry (tran_index);
+  if (tran_entry->query_entry_list_p)
+    {
+      query_id = tran_entry->query_entry_list_p->query_id;
+      monitored = true;
+      CUBRID_IO_WRITE_START (query_id);
+    }
+#endif /* ENABLE_SYSTEMTAP */
+
+  assert (bufptr != NULL);
+  assert (expected_vpid != NULL && !VPID_ISNULL (expected_vpid));
+  assert (flushed != NULL);
+
+  *flushed = false;
+
+  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
+  if (!VPID_EQ (&bufptr->vpid, expected_vpid))
+    {
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      return NO_ERROR;
+    }
+
+  if (bufptr->avoid_victim == true || bufptr->latch_mode > PGBUF_LATCH_READ)
+    {
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      return NO_ERROR;
+    }
+
+  if (bufptr->dirty)
+    {
+      error = pgbuf_flush_page_with_wal (thread_p, bufptr);
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      if (error == NO_ERROR)
+	{
+	  *flushed = true;
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+      return error;
+    }
+  else
+    {
+      /* write a non-dirty page */
+      char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+      FILEIO_PAGE *iopage;
+
+      iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+
+      memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage),
+	      IO_PAGESIZE);
+      bufptr->avoid_victim = true;
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+      /* flush buffer page */
+      if (fileio_write (thread_p,
+			fileio_get_volume_descriptor (bufptr->vpid.volid),
+			iopage, bufptr->vpid.pageid, IO_PAGESIZE) != NULL)
+	{
+	  *flushed = true;
+	  mnt_pb_iowrites (thread_p, 1);
+	  /* ignore error */
+
+#if defined(ENABLE_SYSTEMTAP)
+	  if (monitored == true)
+	    {
+	      CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 1);
+	    }
+#endif /* ENABLE_SYSTEMTAP */
+	}
+
+      MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
+      bufptr->avoid_victim = false;
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+#if defined(ENABLE_SYSTEMTAP)
+      {
+	CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 0);
+      }
+#endif /* ENABLE_SYSTEMTAP */
+
+      return NO_ERROR;
+    }
+}
 
 /*
  * pgbuf_compare_hold_vpid_for_sort () - Compare the vpid for sort
