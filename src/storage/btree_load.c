@@ -1137,7 +1137,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
       file_created = 1;
     }
 
-
   if (!VFID_ISNULL (&load_args->btid->ovfid))
     {
       /* notification */
@@ -2015,6 +2014,12 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
   root_header->ovfid = load_args->btid->ovfid;	/* structure copy */
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
+
+#if defined (SERVER_MODE)
+  root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+  root_header->creator_mvccid = MVCCID_NULL;
+#endif /* SA_MODE */
 
   /* change node header as root header */
   if (btree_pack_root_header

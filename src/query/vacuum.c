@@ -2768,6 +2768,12 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   bool save_check_interrupt;
 #endif /* SA_MODE */
 
+#if defined (SA_MODE)
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  ER_STAND_ALONE_VACUUM_START, 0);
+  er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum start.\n");
+#endif
+
   vacuum_Global_oldest_active_mvccid =
     logtb_get_oldest_active_mvccid (thread_p);
 
@@ -2921,6 +2927,11 @@ restart:
       error_code =
 	vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
       assert (error_code == NO_ERROR);
+
+      er_log_debug (ARG_FILE_LINE,
+		    "Stand-alone vacuum finished block %lld.\n",
+		    (long long int)
+		    VACUUM_DATA_ENTRY_BLOCKID (&vacuum_data_entry));
 #endif
     }
 
@@ -3003,6 +3014,10 @@ finish_sa_mode:
   LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
   log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
   log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  ER_STAND_ALONE_VACUUM_END, 0);
+  er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
 #endif
 }
 

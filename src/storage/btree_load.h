@@ -213,6 +213,9 @@ struct btree_root_header
   int reverse_reserved;		/* reverse or normal *//* not used */
   int rev_level;		/* Btree revision level */
   VFID ovfid;			/* Overflow file */
+  MVCCID creator_mvccid;	/* MVCCID of creator transaction. */
+
+  /* Always leave this field last. */
   char packed_key_domain[1];	/* The key type for the index */
 };
 

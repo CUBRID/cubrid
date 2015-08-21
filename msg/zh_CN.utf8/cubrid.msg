@@ -1256,7 +1256,9 @@ $ LOADDB
 1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
 1188 Dropping an active user '%1$s' is not allowed.
 1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Last Error
+1190 Stand-alone vacuum execution is started.
+1191 Stand-alone vacuum execution is ended.
+1192 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

@@ -2271,6 +2271,9 @@ static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid,
 				   MVCCID tran_mvccid,
 				   LOG_LSA * reference_lsa);
 
+static MVCCID btree_get_creator_mvccid (THREAD_ENTRY * thread_p,
+					PAGE_PTR * root_page);
+
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID,
  *				 header and b-tree info if requested.
@@ -6314,6 +6317,12 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
 
   root_header->reverse_reserved = 0;	/* unused */
+
+#if defined (SERVER_MODE)
+  root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+  root_header->creator_mvccid = MVCCID_NULL;
+#endif /* SA_MODE */
 
   if (btree_init_root_header (thread_p, &btid->vfid, page_ptr, root_header,
 			      key_type) != NO_ERROR)
@@ -17666,6 +17675,24 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid,
 	  return error_code;
 	}
       /* B-tree info successfully obtained. */
+
+      if (index_scan_id_p != NULL && index_scan_id_p->check_not_vacuumed)
+	{
+	  /* Not vacuumed check can work properly only after creator MVCCID
+	   * was vacuumed. Otherwise, checker may find older MVCCID's that
+	   * have been logged with creator MVCCID and it will complain (even
+	   * crash in debug mode).
+	   */
+	  MVCCID creator_mvccid =
+	    btree_get_creator_mvccid (thread_p, root_page);
+	  if (MVCCID_IS_VALID (creator_mvccid)
+	      && !vacuum_is_mvccid_vacuumed (creator_mvccid))
+	    {
+	      /* Do not allow check for not vacuumed records. */
+	      index_scan_id_p->check_not_vacuumed = false;
+	    }
+	}
+
       /* Root page is no longer needed. */
       pgbuf_unfix_and_init (thread_p, root_page);
 
@@ -38960,4 +38987,24 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 					      rv_undo_data, rv_redo_data);
 	}
     }
+}
+
+/*
+ * btree_get_creator_mvccid () - Get MVCCID of creator from root header.
+ *
+ * return	  : MVCCID of creator.
+ * thread_p (in)  : Thread entry.
+ * root_page (in) : Root page.
+ */
+static MVCCID
+btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR * root_page)
+{
+  BTREE_ROOT_HEADER *root_header = NULL;
+
+  assert (root_page != NULL);
+
+  root_header = btree_get_root_header (root_page);
+  assert (root_header != NULL);
+
+  return root_header->creator_mvccid;
 }

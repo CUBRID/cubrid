@@ -1531,7 +1531,10 @@
 
 #define ER_TZ_DURING_OFFSET_RULE_LEAP		    -1189
 
-#define ER_LAST_ERROR                               -1190
+#define ER_STAND_ALONE_VACUUM_START		    -1190
+#define ER_STAND_ALONE_VACUUM_END		    -1191
+
+#define ER_LAST_ERROR                               -1192
 
 #define DB_TRUE 1
 #define DB_FALSE 0
