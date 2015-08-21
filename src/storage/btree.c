@@ -29389,6 +29389,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE
 	  || insert_helper->purpose == BTREE_OP_UPDATE_SAME_KEY_DIFF_OID);
 
+  /* Fixing root page. */
+  insert_helper->is_root = true;
   if (insert_helper->is_first_try)
     {
       /* Fix root and get header/b-tree info to do some additional operations
@@ -29424,8 +29426,6 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
   assert (insert_helper->is_null
 	  || TP_ARE_COMPARABLE_KEY_TYPES (DB_VALUE_DOMAIN_TYPE (key),
 					  btid_int->key_type->type->id));
-
-  insert_helper->is_root = true;
 
   /* Do additional operations. */
   /* Next time this function is called, it must be just a restart of b-tree
