@@ -14305,7 +14305,13 @@ severe_error:
   assert (er_errid () != NO_ERROR);
   error = er_errid ();
 
-  classobj_decache_class_constraints (class_);
+  /* Some errors will led ws_abort_mops() be called. mops maybe be decached.
+   * In this case, its class_ is invalid and we cannot access it any more.
+   */
+  if (!classop->decached)
+    {
+      classobj_decache_class_constraints (class_);
+    }
 
   (void) tran_unilaterally_abort ();
 
