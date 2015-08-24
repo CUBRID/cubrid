@@ -751,6 +751,9 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
       return ER_FAILED;
     }
 
+  /* Destroy the session related resources like session parameters */
+  lf_tran_destroy_entry (t_entry);
+
   return error;
 }
 
