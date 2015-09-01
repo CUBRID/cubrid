@@ -2014,7 +2014,7 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
 
   if (is_numeric_gmt_off)
     {
-      temp_rule->gmt_off = gmt_off_num * 60;
+      temp_rule->gmt_off = gmt_off_num * 3600;
     }
   else
     {
