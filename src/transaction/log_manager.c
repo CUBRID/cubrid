@@ -449,6 +449,13 @@ static LOG_LSA *log_start_system_op_internal (THREAD_ENTRY * thread_p,
 					      LOG_TOPOPS_TYPE type,
 					      LOG_LSA *
 					      compensate_undo_nxlsa);
+static void log_append_compensate_internal (THREAD_ENTRY * thread_p,
+					    LOG_RCVINDEX rcvindex,
+					    const VPID * vpid,
+					    PGLENGTH offset, PAGE_PTR pgptr,
+					    int length, const void *data,
+					    LOG_TDES * tdes,
+					    LOG_LSA * undo_nxlsa);
 
 /*
  * log_rectype_string - RETURN TYPE OF LOG RECORD IN STRING FORMAT
@@ -3197,10 +3204,79 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
  *              records are redo log records and thus, they are never undone.
  */
 void
-log_append_compensate (THREAD_ENTRY * thread_p,
-		       LOG_RCVINDEX rcvindex, const VPID * vpid,
-		       PGLENGTH offset, PAGE_PTR pgptr, int length,
-		       const void *data, LOG_TDES * tdes)
+log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
+		       const VPID * vpid, PGLENGTH offset, PAGE_PTR pgptr,
+		       int length, const void *data, LOG_TDES * tdes)
+{
+  log_append_compensate_internal (thread_p, rcvindex, vpid, offset, pgptr,
+				  length, data, tdes, NULL);
+}
+
+/*
+ * log_append_compensate_with_undo_nxlsa () - Append compensate log record
+ *					      and overwrite its undo_nxlsa.
+ *
+ * return	   : Void.
+ * thread_p (in)   : Thread entry.
+ * rcvindex (in)   : Index to recovery function.
+ * vpid (in)	   : Volume-page address of compensate data
+ * offset(in)	   : Offset of compensate data
+ * pgptr(in)	   : Page pointer where compensating data resides. It may be
+ *		     NULL when the page is not available during recovery.
+ * length (in)	   : Length of compensating data (kind of redo(after) data)
+ * data (in)	   : Compensating data (kind of redo(after) data)
+ * tdes (in/out)   : State structure of transaction of the log record
+ * undo_nxlsa (in) : Use a different undo_nxlsa than tdes->undo_nxlsa.
+ *		     Necessary for cases when log records may be added before
+ *		     compensation (one example being index merge/split before
+ *		     undoing b-tree operation).
+ */
+void
+log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p,
+				       LOG_RCVINDEX rcvindex,
+				       const VPID * vpid, PGLENGTH offset,
+				       PAGE_PTR pgptr, int length,
+				       const void *data, LOG_TDES * tdes,
+				       LOG_LSA * undo_nxlsa)
+{
+  assert (undo_nxlsa != NULL);
+
+  log_append_compensate_internal (thread_p, rcvindex, vpid, offset, pgptr,
+				  length, data, tdes, undo_nxlsa);
+}
+
+/*
+ * log_append_compensate - LOG COMPENSATE DATA
+ *
+ * return: nothing
+ *
+ *   rcvindex(in): Index to recovery function
+ *   vpid(in): Volume-page address of compensate data
+ *   offset(in): Offset of compensate data
+ *   pgptr(in): Page pointer where compensating data resides. It may be
+ *                     NULL when the page is not available during recovery.
+ *   length(in): Length of compensating data (kind of redo(after) data)
+ *   data(in): Compensating data (kind of redo(after) data)
+ *   tdes(in/out): State structure of transaction of the log record
+ *   undo_nxlsa(in): Use a different undo_nxlsa than tdes->undo_nxlsa.
+ *		     Necessary for cases when log records may be added before
+ *		     compensation (one example being index merge/split before
+ *		     undoing b-tree operation).
+ *
+ * NOTE: Log a compensating log record. An undo performed during a
+ *              rollback or recovery is logged using what is called a
+ *              compensation log record. A compensation log record undoes the
+ *              redo of an aborted transaction during the redo phase of the
+ *              recovery process. Compensating log records are quite useful to
+ *              make system and media crash recovery faster. Compensating log
+ *              records are redo log records and thus, they are never undone.
+ */
+static void
+log_append_compensate_internal (THREAD_ENTRY * thread_p,
+				LOG_RCVINDEX rcvindex, const VPID * vpid,
+				PGLENGTH offset, PAGE_PTR pgptr, int length,
+				const void *data, LOG_TDES * tdes,
+				LOG_LSA * undo_nxlsa)
 {
   struct log_compensate *compensate;	/* Compensate log record      */
   LOG_LSA prev_lsa;		/* LSA of next record to undo */
@@ -3240,7 +3316,14 @@ log_append_compensate (THREAD_ENTRY * thread_p,
   compensate->data.pageid = vpid->pageid;
   compensate->data.offset = offset;
   compensate->data.volid = vpid->volid;
-  LSA_COPY (&compensate->undo_nxlsa, &prev_lsa);
+  if (undo_nxlsa != NULL)
+    {
+      LSA_COPY (&compensate->undo_nxlsa, undo_nxlsa);
+    }
+  else
+    {
+      LSA_COPY (&compensate->undo_nxlsa, &prev_lsa);
+    }
   compensate->length = length;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);

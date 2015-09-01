@@ -2272,7 +2272,7 @@ static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid,
 				   LOG_LSA * reference_lsa);
 
 static MVCCID btree_get_creator_mvccid (THREAD_ENTRY * thread_p,
-					PAGE_PTR * root_page);
+					PAGE_PTR root_page);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID,
@@ -10665,10 +10665,13 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
   else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (leaf_pg),
-			     delete_helper->leaf_addr.offset, leaf_pg,
-			     0, NULL, LOG_FIND_CURRENT_TDES (thread_p));
+      log_append_compensate_with_undo_nxlsa (thread_p,
+					     RVBT_RECORD_MODIFY_COMPENSATE,
+					     pgbuf_get_vpid_ptr (leaf_pg),
+					     delete_helper->leaf_addr.offset,
+					     leaf_pg, 0, NULL,
+					     LOG_FIND_CURRENT_TDES (thread_p),
+					     &delete_helper->reference_lsa);
     }
   else if (delete_helper->purpose
 	   == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
@@ -12917,10 +12920,15 @@ btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p,
     }
   else if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (ovfl_page), addr.offset,
-			     ovfl_page, rv_redo_data_length, rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      log_append_compensate_with_undo_nxlsa (thread_p,
+					     RVBT_RECORD_MODIFY_COMPENSATE,
+					     pgbuf_get_vpid_ptr (ovfl_page),
+					     addr.offset, ovfl_page,
+					     rv_redo_data_length,
+					     rv_redo_data,
+					     LOG_FIND_CURRENT_TDES (thread_p),
+					     &insert_helper->
+					     compensate_undo_nxlsa);
     }
   else				/* BTREE_OP_INSERT_NEW_OBJECT */
     {
@@ -31111,11 +31119,15 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
   else				/* BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE */
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (leaf_page),
-			     insert_helper->leaf_addr.offset, leaf_page,
-			     rv_redo_data_length, rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      log_append_compensate_with_undo_nxlsa (thread_p,
+					     RVBT_RECORD_MODIFY_COMPENSATE,
+					     pgbuf_get_vpid_ptr (leaf_page),
+					     insert_helper->leaf_addr.offset,
+					     leaf_page, rv_redo_data_length,
+					     rv_redo_data,
+					     LOG_FIND_CURRENT_TDES (thread_p),
+					     &insert_helper->
+					     compensate_undo_nxlsa);
     }
 
   if (insert_helper->log_operations)
@@ -31815,12 +31827,12 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p,
 				rv_redo_data_length);
       if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
 	{
-	  log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-				 pgbuf_get_vpid_ptr (leaf),
-				 insert_helper->leaf_addr.offset, leaf,
-				 rv_redo_data_length,
-				 insert_helper->rv_redo_data,
-				 LOG_FIND_CURRENT_TDES (thread_p));
+	  log_append_compensate_with_undo_nxlsa
+	    (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
+	     pgbuf_get_vpid_ptr (leaf), insert_helper->leaf_addr.offset, leaf,
+	     rv_redo_data_length, insert_helper->rv_redo_data,
+	     LOG_FIND_CURRENT_TDES (thread_p),
+	     &insert_helper->compensate_undo_nxlsa);
 	}
       else			/* BTREE_OP_INSERT_NEW_OBJECT */
 	{
@@ -35631,12 +35643,14 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p,
     }
   else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (leaf_page),
-			     delete_helper->leaf_addr.offset,
-			     leaf_page, rv_redo_data_length,
-			     delete_helper->rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      log_append_compensate_with_undo_nxlsa (thread_p,
+					     RVBT_RECORD_MODIFY_COMPENSATE,
+					     pgbuf_get_vpid_ptr (leaf_page),
+					     delete_helper->leaf_addr.offset,
+					     leaf_page, rv_redo_data_length,
+					     delete_helper->rv_redo_data,
+					     LOG_FIND_CURRENT_TDES (thread_p),
+					     &delete_helper->reference_lsa);
     }
   else if (delete_helper->purpose
 	   == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
@@ -35816,11 +35830,14 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
   else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (page), addr->offset,
-			     page, rv_redo_data_length,
-			     delete_helper->rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      log_append_compensate_with_undo_nxlsa (thread_p,
+					     RVBT_RECORD_MODIFY_COMPENSATE,
+					     pgbuf_get_vpid_ptr (page),
+					     addr->offset, page,
+					     rv_redo_data_length,
+					     delete_helper->rv_redo_data,
+					     LOG_FIND_CURRENT_TDES (thread_p),
+					     &delete_helper->reference_lsa);
     }
   else if (delete_helper->purpose
 	   == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
@@ -37093,11 +37110,14 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p,
     }
   else
     {
-      log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			     pgbuf_get_vpid_ptr (leaf_page), leaf_addr.offset,
-			     leaf_page, rv_redo_data_length,
-			     delete_helper->rv_redo_data,
-			     LOG_FIND_CURRENT_TDES (thread_p));
+      log_append_compensate_with_undo_nxlsa (thread_p,
+					     RVBT_RECORD_MODIFY_COMPENSATE,
+					     pgbuf_get_vpid_ptr (leaf_page),
+					     leaf_addr.offset, leaf_page,
+					     rv_redo_data_length,
+					     delete_helper->rv_redo_data,
+					     LOG_FIND_CURRENT_TDES (thread_p),
+					     &delete_helper->reference_lsa);
     }
   pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
 
@@ -37223,11 +37243,14 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p,
   /* Add logging. */
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr,
 			    delete_helper->rv_redo_data, rv_redo_data_length);
-  log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-			 pgbuf_get_vpid_ptr (page), addr.offset,
-			 page, rv_redo_data_length,
-			 delete_helper->rv_redo_data,
-			 LOG_FIND_CURRENT_TDES (thread_p));
+  log_append_compensate_with_undo_nxlsa (thread_p,
+					 RVBT_RECORD_MODIFY_COMPENSATE,
+					 pgbuf_get_vpid_ptr (page),
+					 addr.offset, page,
+					 rv_redo_data_length,
+					 delete_helper->rv_redo_data,
+					 LOG_FIND_CURRENT_TDES (thread_p),
+					 &delete_helper->reference_lsa);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -38364,11 +38387,11 @@ btree_key_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  log_append_compensate (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-				 pgbuf_get_vpid_ptr (*new_version_page),
-				 new_version_addr.offset, *new_version_page,
-				 rv_redo_data_length, rv_redo_data,
-				 LOG_FIND_CURRENT_TDES (thread_p));
+	  log_append_compensate_with_undo_nxlsa
+	    (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
+	     pgbuf_get_vpid_ptr (*new_version_page), new_version_addr.offset,
+	     *new_version_page, rv_redo_data_length, rv_redo_data,
+	     LOG_FIND_CURRENT_TDES (thread_p), &helper->reference_lsa);
 	}
       pgbuf_set_dirty (thread_p, *new_version_page, DONT_FREE);
 
@@ -39080,7 +39103,7 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
  * root_page (in) : Root page.
  */
 static MVCCID
-btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR * root_page)
+btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page)
 {
   BTREE_ROOT_HEADER *root_header = NULL;
 
