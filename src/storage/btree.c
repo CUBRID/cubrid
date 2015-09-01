@@ -6320,7 +6320,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   root_header->creator_mvccid = MVCCID_NULL;
 #endif /* SA_MODE */
 
@@ -28722,6 +28722,10 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p,
 				     BTREE_SCAN * bts)
 {
   int error_code = NO_ERROR;	/* Error code. */
+  bool stop = false;
+  PAGE_PTR prev_ovf_page = NULL;
+  RECDES peeked_ovf_recdes;
+  VPID ovf_vpid = VPID_INITIALIZER;
 
   /* Assert expected arguments. */
   assert (bts != NULL);
@@ -28729,13 +28733,88 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p,
 
   /* Search and lock one object in key. */
   error_code =
-    btree_key_process_objects (thread_p, &bts->btid_int, &bts->key_record,
-			       bts->offset, &bts->leaf_rec_info,
-			       btree_fk_object_does_exist, bts);
+    btree_record_process_objects (thread_p, &bts->btid_int, BTREE_LEAF_NODE,
+				  &bts->key_record, bts->offset, &stop,
+				  btree_fk_object_does_exist, bts);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
+    }
+  if (stop == true)
+    {
+      return NO_ERROR;
+    }
+
+  /* Process overflow OID's. */
+  VPID_COPY (&ovf_vpid, &bts->leaf_rec_info.ovfl);
+  while (!VPID_ISNULL (&ovf_vpid))
+    {
+      /* Fix overflow page. */
+      bts->O_page =
+	pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+		   PGBUF_UNCONDITIONAL_LATCH);
+      if (bts->O_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  if (prev_ovf_page != NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, prev_ovf_page);
+	    }
+	  return error_code;
+	}
+      if (prev_ovf_page != NULL)
+	{
+	  /* Now unfix previous overflow page. */
+	  pgbuf_unfix_and_init (thread_p, prev_ovf_page);
+	}
+      /* Get overflow OID's record. */
+      if (spage_get_record (bts->O_page, 1, &peeked_ovf_recdes, PEEK)
+	  != S_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  return ER_FAILED;
+	}
+      /* Call internal function on overflow record. */
+      error_code =
+	btree_record_process_objects (thread_p, &bts->btid_int,
+				      BTREE_OVERFLOW_NODE,
+				      &peeked_ovf_recdes, 0, &stop,
+				      btree_fk_object_does_exist, bts);
+      if (error_code != NO_ERROR)
+	{
+	  /* Error . */
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  return error_code;
+	}
+      else if (stop)
+	{
+	  /* Stop. */
+	  break;
+	}
+      /* Get VPID of next overflow page */
+      error_code = btree_get_next_overflow_vpid (bts->O_page, &ovf_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  return error_code;
+	}
+      /* Save overflow page until next one is fixed to protect the link
+       * between them.
+       */
+      prev_ovf_page = bts->O_page;
+    }
+
+  /* Object processing stopped or ended. */
+  assert (error_code == NO_ERROR);
+
+  /* If overflow page is fixed, unfix it. */
+  if (bts->O_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, bts->O_page);
     }
   if (bts->end_scan)
     {
@@ -28892,6 +28971,10 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   /* Must release fixed pages first. */
   bts->is_interrupted = true;
   pgbuf_unfix_and_init (thread_p, bts->C_page);
+  if (bts->O_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, bts->O_page);
+    }
 
   /* Make sure another object was not already fixed. */
   if (!OID_ISNULL (&find_fk_obj->locked_object))
