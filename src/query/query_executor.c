@@ -954,7 +954,8 @@ static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p,
 					XASL_STATE * xasl_state);
 static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p,
 				    XASL_NODE * xasl,
-				    XASL_STATE * xasl_state);
+				    XASL_STATE * xasl_state,
+				    SCAN_OPERATION_TYPE scan_operation_type);
 static int qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid,
 				    OID * class_oid, HFID * class_hfid,
 				    ATTR_ID attrid, int n_increment,
@@ -8199,6 +8200,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   SCAN_CODE xs_scan;
   DB_LOGICAL ev_res;
   int qualified;
+  SCAN_OPERATION_TYPE scan_operation_type;
 
   /* check if further scan procedure are still active */
   if (xasl->scan_ptr && xasl->next_scan_on)
@@ -8230,13 +8232,21 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  if (xasl->bptr_list)
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->bptr_list);
+	      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
+		{
+		  scan_operation_type = S_UPDATE;
+		}
+	      else
+		{
+		  scan_operation_type = S_SELECT;
+		}
 	    }
 	  /* evaluate bptr list */
 	  for (xptr = xasl->bptr_list; qualified && xptr != NULL;
 	       xptr = xptr->next)
 	    {
-	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state) !=
-		  NO_ERROR)
+	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state,
+					   scan_operation_type) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -8305,13 +8315,21 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  if (xasl->fptr_list)
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->fptr_list);
+	      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
+		{
+		  scan_operation_type = S_UPDATE;
+		}
+	      else
+		{
+		  scan_operation_type = S_SELECT;
+		}
 	    }
 	  /* evaluate fptr list */
 	  for (xptr = xasl->fptr_list; qualified && xptr != NULL;
 	       xptr = xptr->next)
 	    {
-	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state) !=
-		  NO_ERROR)
+	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state,
+					   scan_operation_type) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -8805,6 +8823,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int qualified;
   AGGREGATE_TYPE *agg_ptr;
   bool count_star_with_iscan_opt = false;
+  SCAN_OPERATION_TYPE scan_operation_type;
 
   if (xasl->type == BUILDVALUE_PROC)
     {
@@ -8892,14 +8911,25 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* set scan item as qualified */
 	  qualified = true;
 
+	  if (xasl->bptr_list)
+	    {
+	      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
+		{
+		  scan_operation_type = S_UPDATE;
+		}
+	      else
+		{
+		  scan_operation_type = S_SELECT;
+		}
+	    }
 
 	  /* evaluate bptr list */
 	  /* if path expression fetch fails, this instance disqualifies */
 	  for (xptr = xasl->bptr_list;
 	       qualified && xptr != NULL; xptr = xptr->next)
 	    {
-	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state) !=
-		  NO_ERROR)
+	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state,
+					   scan_operation_type) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -8960,11 +8990,25 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      if (qualified)
 		{
 		  /* evaluate fptr list */
+		  if (xasl->fptr_list)
+		    {
+		      if (xasl->curr_spec->
+			  flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
+			{
+			  scan_operation_type = S_UPDATE;
+			}
+		      else
+			{
+			  scan_operation_type = S_SELECT;
+			}
+		    }
+
 		  for (xptr = xasl->fptr_list;
 		       qualified && xptr != NULL; xptr = xptr->next)
 		    {
-		      if (qexec_execute_obj_fetch (thread_p, xptr,
-						   xasl_state) != NO_ERROR)
+		      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state,
+						   scan_operation_type)
+			  != NO_ERROR)
 			{
 			  return S_ERROR;
 			}
@@ -9239,8 +9283,8 @@ qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  for (xptr = xasl->bptr_list; qualified && xptr != NULL;
 	       xptr = xptr->next)
 	    {
-	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state) !=
-		  NO_ERROR)
+	      if (qexec_execute_obj_fetch
+		  (thread_p, xptr, xasl_state, S_SELECT) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -9289,7 +9333,8 @@ qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		       qualified && xptr != NULL; xptr = xptr->next)
 		    {
 		      if (qexec_execute_obj_fetch (thread_p, xptr,
-						   xasl_state) != NO_ERROR)
+						   xasl_state, S_SELECT)
+			  != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
@@ -13029,6 +13074,7 @@ exit_on_error:
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree pointer
  *   xasl_state(in)     : XASL tree state information
+ *   scan_operation_type(in) : scan operation type
  *
  * Note: This routines interpretes an XASL procedure block that denotes
  * an object fetch operation, one of the basic operations
@@ -13052,7 +13098,8 @@ exit_on_error:
  */
 static int
 qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-			 XASL_STATE * xasl_state)
+			 XASL_STATE * xasl_state,
+			 SCAN_OPERATION_TYPE scan_operation_type)
 {
   XASL_NODE *xptr;
   DB_LOGICAL ev_res;
@@ -13168,7 +13215,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
       /* fetch the object and the class oid */
       if (heap_get_with_class_oid (thread_p, &cls_oid, dbvaloid,
-				   &oRec, &scan_cache, S_SELECT,
+				   &oRec, &scan_cache, scan_operation_type,
 				   PEEK, NULL) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -13403,8 +13450,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       for (xptr = xasl->bptr_list; fetch->fetch_res == true && xptr != NULL;
 	   xptr = xptr->next)
 	{
-	  if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state) !=
-	      NO_ERROR)
+	  if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state,
+				       scan_operation_type) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -13456,8 +13503,9 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		   fetch->fetch_res == true && xptr != NULL;
 		   xptr = xptr->next)
 		{
-		  if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state)
-		      != NO_ERROR)
+		  if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state,
+					       scan_operation_type) !=
+		      NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
