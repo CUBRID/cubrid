@@ -1154,7 +1154,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_ADDTIME:
       num = 0;
 
-      /* 11 overloads */
+      /* 14 overloads */
 
       /* arg1 */
       sig.arg1_type.is_generic = true;
@@ -1273,6 +1273,39 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_TIMETZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMETZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMELTZ;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
