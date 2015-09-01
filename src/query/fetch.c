@@ -71,6 +71,9 @@ static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY *
 							  DB_VALUE ** max);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
+static int get_hour_minute_or_second (const DB_VALUE * datetime,
+				      const PT_OP_TYPE op_type,
+				      DB_VALUE * db_value);
 
 /*
  * fetch_peek_arith () -
@@ -1826,53 +1829,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_HOUR:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_DATE)
-	{
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true)
-	    {
-	      DB_MAKE_NULL (arithptr->value);
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
-		      0);
-	      goto error;
-	    }
-	}
-      else if (db_get_time_item (peek_right, PT_HOURF, arithptr->value)
-	       != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_MINUTE:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_get_time_item (peek_right, PT_MINUTEF,
-				 arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_SECOND:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_get_time_item (peek_right, PT_SECONDF,
-				 arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
+      {
+	PT_OP_TYPE v[] = { PT_HOURF, PT_MINUTEF, PT_SECONDF };
+	OPERATOR_TYPE base = T_HOUR;
+
+	/* T_HOUR, T_MINUTE and T_SECOND must be kept consecutive
+	   in OPERATOR_TYPE enum */
+	if (get_hour_minute_or_second (peek_right, v[arithptr->opcode - base],
+				       arithptr->value) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
       break;
 
     case T_QUARTER:
@@ -5199,4 +5169,43 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
     }
 
   return false;
+}
+
+/*
+ * get_hour_minute_or_second () - extract hour, minute or second
+ *				  information from datetime depending on
+ *				  the value of the op_type variable	
+ *   return: error or no error
+ *   datetime(in): datetime value
+ *   op_type(in): operation type
+ *   db_value(out): output of the operation
+ */
+static int
+get_hour_minute_or_second (const DB_VALUE * datetime,
+			   const PT_OP_TYPE op_type, DB_VALUE * db_value)
+{
+  int error = NO_ERROR;
+
+  if (DB_IS_NULL (datetime))
+    {
+      PRIM_SET_NULL (db_value);
+    }
+  else if (DB_VALUE_DOMAIN_TYPE (datetime) == DB_TYPE_DATE)
+    {
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
+	{
+	  DB_MAKE_NULL (db_value);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	  error = ER_TIME_CONVERSION;
+	}
+    }
+  else if (db_get_time_item (datetime, op_type, db_value) != NO_ERROR)
+    {
+      error = ER_TIME_CONVERSION;
+    }
+
+  return error;
 }
