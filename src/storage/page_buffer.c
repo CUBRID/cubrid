@@ -57,7 +57,7 @@
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
 #include "transaction_cl.h"
 #endif /* SERVER_MODE */
 
@@ -965,6 +965,7 @@ static void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 					       PGBUF_WATCHER * watcher,
 					       const PGBUF_LATCH_MODE
 					       latch_mode,
+					       const bool clear_unfix_flag,
 					       const char *caller_file,
 					       const int caller_line);
 #else
@@ -972,7 +973,8 @@ static void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 					       PAGE_PTR pgptr,
 					       PGBUF_WATCHER * watcher,
 					       const PGBUF_LATCH_MODE
-					       latch_mode);
+					       latch_mode,
+					       const bool clear_unfix_flag);
 #endif
 static PGBUF_HOLDER *pgbuf_get_holder (THREAD_ENTRY * thread_p,
 				       PAGE_PTR pgptr);
@@ -11189,10 +11191,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 #if !defined(NDEBUG)
 	      pgbuf_add_watch_instance_internal (holder, ret_pgptr,
 						 req_watcher, request_mode,
+						 true,
 						 caller_file, caller_line);
 #else
 	      pgbuf_add_watch_instance_internal (holder, ret_pgptr,
-						 req_watcher, request_mode);
+						 req_watcher, request_mode,
+						 true);
 #endif
 	      req_page_has_watcher = true;
 	      goto exit;
@@ -11811,13 +11815,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 	  if (req_watcher != NULL)
 	    {
 #if !defined(NDEBUG)
-	      pgbuf_add_watch_instance_internal (holder, pgptr,
-						 req_watcher,
-						 request_mode,
+	      pgbuf_add_watch_instance_internal (holder, pgptr, req_watcher,
+						 request_mode, true,
 						 caller_file, caller_line);
 #else
-	      pgbuf_add_watch_instance_internal (holder, pgptr,
-						 req_watcher, request_mode);
+	      pgbuf_add_watch_instance_internal (holder, pgptr, req_watcher,
+						 request_mode, true);
 #endif
 	      req_page_has_watcher = true;
 
@@ -11893,13 +11896,15 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid,
 						 watcher[j],
 						 ordered_holders_info[i].
 						 watcher[j]->latch_mode,
+						 false,
 						 caller_file, caller_line);
 #else
 	      pgbuf_add_watch_instance_internal (holder, pgptr,
 						 ordered_holders_info[i].
 						 watcher[j],
 						 ordered_holders_info[i].
-						 watcher[j]->latch_mode);
+						 watcher[j]->latch_mode,
+						 false);
 #endif
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
@@ -12092,6 +12097,8 @@ pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
  *   pgptr(in): holder object
  *   watcher(in/out): page watcher
  *   latch_mode(in): latch mode used for fixing the page
+ *   clear_unfix_flag(in): True to reset page_was_unfixed flag,
+ *			   false otherwise.
  *
  */
 #if !defined(NDEBUG)
@@ -12100,6 +12107,7 @@ pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 				   PAGE_PTR pgptr,
 				   PGBUF_WATCHER * watcher,
 				   const PGBUF_LATCH_MODE latch_mode,
+				   const bool clear_unfix_flag,
 				   const char *caller_file,
 				   const int caller_line)
 #else
@@ -12107,7 +12115,8 @@ static void
 pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 				   PAGE_PTR pgptr,
 				   PGBUF_WATCHER * watcher,
-				   const PGBUF_LATCH_MODE latch_mode)
+				   const PGBUF_LATCH_MODE latch_mode,
+				   const bool clear_unfix_flag)
 #endif
 {
 #if !defined(NDEBUG)
@@ -12138,7 +12147,10 @@ pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder,
 
   watcher->pgptr = pgptr;
   watcher->latch_mode = latch_mode;
-  watcher->page_was_unfixed = false;
+  if (clear_unfix_flag)
+    {
+      watcher->page_was_unfixed = false;
+    }
 
   holder->watch_count += 1;
 
@@ -12216,10 +12228,11 @@ pgbuf_attach_watcher (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
   assert (holder != NULL);
 
 #if !defined (NDEBUG)
-  pgbuf_add_watch_instance_internal (holder, pgptr, watcher, latch_mode,
+  pgbuf_add_watch_instance_internal (holder, pgptr, watcher, latch_mode, true,
 				     caller_file, caller_line);
 #else
-  pgbuf_add_watch_instance_internal (holder, pgptr, watcher, latch_mode);
+  pgbuf_add_watch_instance_internal (holder, pgptr, watcher, latch_mode,
+				     true);
 #endif
 }
 
@@ -12346,10 +12359,11 @@ pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_watcher,
 #if !defined(NDEBUG)
   pgbuf_watcher_init_debug (old_watcher, caller_file, caller_line, false);
   pgbuf_add_watch_instance_internal (holder, page_ptr, new_watcher,
-				     latch_mode, caller_file, caller_line);
+				     latch_mode, true,
+				     caller_file, caller_line);
 #else
   pgbuf_add_watch_instance_internal (holder, page_ptr, new_watcher,
-				     latch_mode);
+				     latch_mode, true);
 #endif
 }
 
