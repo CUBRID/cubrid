@@ -29236,7 +29236,14 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
 error:
 
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_OBJ_INSERT_END (&context->class_oid, 0);
+  if (rc < 0)
+    {
+      CUBRID_OBJ_INSERT_END (&context->class_oid, 1);
+    }
+  else
+    {
+      CUBRID_OBJ_INSERT_END (&context->class_oid, 0);
+    }
 #endif /* ENABLE_SYSTEMTAP */
 
   /* all ok */
