@@ -2984,10 +2984,10 @@ spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 	      if (slot_p->record_type == REC_MVCC_NEXT_VERSION)
 		{
 		  /* This is considered record (since it still has data).
-		   * Decrement record count.
 		   */
-		  page_header_p->num_records--;
+		  spage_delete (thread_p, page_p, slot_id);
 		}
+	      assert (slot_p->offset_to_record == SPAGE_EMPTY_OFFSET);
 
 	      if ((slot_id + 1) == page_header_p->num_slots)
 		{
