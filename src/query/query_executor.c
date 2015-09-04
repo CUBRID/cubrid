@@ -16371,14 +16371,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #endif /* CUBRID_DEBUG */
 
 #if defined(ENABLE_SYSTEMTAP)
-  /*if (qmgr_get_query_error_with_id (thread_p, query_id) < 0)
-     {
-     CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 1);
-     }
-     else
-     { */
   CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 0);
-  // }
 #endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }

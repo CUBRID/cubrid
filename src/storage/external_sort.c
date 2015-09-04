@@ -2321,6 +2321,7 @@ exit_on_error:
  *   get_fn(in): user-supplied function: provides the temporary record for
  *               the given input record
  *   get_arg(in): arguments for get_fn
+ *   total_numrecs(out): records sorted
  *
  */
 static int
@@ -2471,12 +2472,14 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
 		  index_area = px_node->px_result;
 		  numrecs = px_node->px_result_size;
+		  *total_numrecs += numrecs;
 		}
 	      else
 		{
 		  index_area =
 		    sort_run_sort (thread_p, sort_param, index_area, numrecs,
 				   sort_numrecs, index_buff, &numrecs);
+		  *total_numrecs += numrecs;
 		}
 
 	      if (index_area == NULL || numrecs < 0)
@@ -2554,7 +2557,6 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
 	      /* save sorted record number at this stage */
 	      sort_numrecs = numrecs;
-	      *total_numrecs = *total_numrecs + sort_numrecs;
 	    }
 
 	  /* Check if the record would fit into a single slotted page.
@@ -2740,12 +2742,14 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
 	  index_area = px_node->px_result;
 	  numrecs = px_node->px_result_size;
+	  *total_numrecs += numrecs;
 	}
       else
 	{
 	  index_area =
 	    sort_run_sort (thread_p, sort_param, index_area, numrecs,
 			   sort_numrecs, index_buff, &numrecs);
+	  *total_numrecs += numrecs;
 	}
 
       if (index_area == NULL || numrecs < 0)
