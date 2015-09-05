@@ -3329,7 +3329,6 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
   DISK_VAR_HEADER *vhdr;
   VPID vpid;
   LOG_DATA_ADDR addr;
-  int err = NO_ERROR;
 
   addr.pgptr = NULL;
   addr.vfid = NULL;
@@ -3337,13 +3336,6 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
 
   vpid.volid = volid;
   vpid.pageid = DISK_VOLHEADER_PAGE;
-
-  /* To hold CSECT_DISK_REFRESH_GOODVOL first and then fix a volume header */
-  if (csect_enter (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) !=
-      NO_ERROR)
-    {
-      return ER_FAILED;
-    }
 
   /* Lock the volume header in exclusive mode and then fetch the page. The
    * volume header page is locked to maintain a persistent view of volume
@@ -3354,8 +3346,7 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (addr.pgptr == NULL)
     {
-      err = ER_FAILED;
-      goto exit;
+      return ER_FAILED;
     }
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
@@ -3365,21 +3356,13 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
   vhdr->chkpt_lsa.pageid = log_chkpt_lsa->pageid;
   vhdr->chkpt_lsa.offset = log_chkpt_lsa->offset;
 
-  /* Now synchronize disk volume cache with the actual stats */
-  disk_cache_goodvol_update (thread_p, volid, vhdr->purpose,
-			     DISK_CACHE_UPDATE_BY_ABSOLUTE, vhdr->free_pages,
-			     true, NULL);
-
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
   log_skip_logging (thread_p, &addr);
   pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
   addr.pgptr = NULL;
 
-exit:
-  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
-
-  return err;
+  return NO_ERROR;
 }
 
 /*
