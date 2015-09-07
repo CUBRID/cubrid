@@ -334,10 +334,8 @@ typedef enum
 typedef enum
 {
   BTREE_MERGE_NO = 0,
-  BTREE_MERGE_L_EMPTY,
-  BTREE_MERGE_R_EMPTY,
-  BTREE_MERGE_SIZE,
-  BTREE_MERGE_SIZE_FORCE,
+  BTREE_MERGE_TRY,
+  BTREE_MERGE_FORCE,
 } BTREE_MERGE_STATUS;
 
 /* Redo recovery of insert structure and flags */
@@ -1746,8 +1744,10 @@ static bool btree_node_is_compressed (THREAD_ENTRY * thread_p,
 				      BTID_INT * btid, PAGE_PTR page_ptr);
 static int btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				     PAGE_PTR page_ptr);
-static int btree_compress_records (THREAD_ENTRY * thread_p, BTID_INT * btid,
-				   RECDES * rec, int key_cnt);
+static int btree_recompress_record (THREAD_ENTRY * thread_p,
+				    BTID_INT * btid_int, RECDES * record,
+				    DB_VALUE * fence_key, int old_prefix,
+				    int new_prefix);
 static int btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				PAGE_PTR page_ptr);
 static const char *node_type_to_string (short node_type);
@@ -11906,45 +11906,55 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 {
   int left_cnt, right_cnt;
   int i, ret = NO_ERROR;
-  int key_len;
   VPID *left_vpid = pgbuf_get_vpid_ptr (left_pg);
 
   /* record decoding */
   RECDES peek_rec;
   NON_LEAF_REC nleaf_pnt;
   LEAF_REC leaf_pnt;
-  DB_VALUE key, lf_key;
-  bool clear_key = false, lf_clear_key = false;
   int offset;
-
-  OID instance_oid, class_oid;
 
   /* recovery */
   LOG_DATA_ADDR addr;
   char *recset_data;		/* for recovery purposes */
   int recset_length;		/* for recovery purposes */
   char recset_data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  BTREE_NODE_HEADER *qheader = NULL, *rheader = NULL;
 
   /* merge & recompress buff */
-  DB_VALUE uncomp_key;
-  int L_prefix, R_prefix;
-  int L_used, R_used, total_size;
+  int left_prefix, right_prefix;
+  int left_used, right_used, total_size;
   RECDES rec[MAX_LEAF_REC_NUM];
   int rec_idx;
   char merge_buf[(IO_MAX_PAGE_SIZE * 4) + MAX_ALIGNMENT];
   char *merge_buf_ptr = merge_buf;
   int merge_buf_size = sizeof (merge_buf);
   int merge_idx = 0;
-  bool fence_record;
-  bool left_upper_fence = false;
 
   PGSLOTID sp_id;
-  int sp_ret;
-
-  BTREE_MVCC_INFO mvcc_info;
 
   PAGE_PTR next_page_after_merged = NULL;
+
+  BTREE_NODE_HEADER *left_header = NULL;
+  BTREE_NODE_HEADER *right_header = NULL;
+
+  /* Remember first and last slot id's for non-fence records in both left and
+   * right nodes.
+   */
+  int left_first_non_fence_slotid = NULL_SLOTID;
+  int left_last_non_fence_slotid = NULL_SLOTID;
+  int right_first_non_fence_slotid = NULL_SLOTID;
+  int right_last_non_fence_slotid = NULL_SLOTID;
+
+  DB_VALUE left_fence_key;
+  DB_VALUE right_fence_key;
+  bool left_fence_key_clear = false;
+  bool right_fence_key_clear = false;
+
+  bool merged_has_lower_fence = false;
+  bool merged_has_upper_fence = false;
+  RECDES merged_upper_fence_record;
+  char merged_upper_fence_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  int merged_prefix = 0;
 
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
@@ -11966,6 +11976,15 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 #endif
 
   /***********************************************************
+   ***  Merging two b-tree nodes (leaf or non-leaf).
+   ***  All records from right page must be moved to the left page.
+   ***  Next link in merged page and previous link in next page must be
+   ***  updated.
+   ***  If leaf nodes are merged and if they have fences, records may need
+   ***  to be decompressed and compressed again.
+   ***********************************************************/
+
+  /***********************************************************
    ***  STEP 0: initializations, save undo image of left
    *** 		calculate uncompress size & memory alloc
    ***********************************************************/
@@ -11976,303 +11995,239 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   left_cnt = btree_node_number_of_keys (left_pg);
   right_cnt = btree_node_number_of_keys (right_pg);
 
-  L_used = btree_node_size_uncompressed (thread_p, btid, left_pg);
-  if (L_used < 0)
+  left_header = btree_get_node_header (left_pg);
+  right_header = btree_get_node_header (right_pg);
+  assert (left_header != NULL && right_header != NULL);
+
+  DB_MAKE_NULL (&left_fence_key);
+  DB_MAKE_NULL (&right_fence_key);
+
+  left_used = btree_node_size_uncompressed (thread_p, btid, left_pg);
+  if (left_used < 0)
     {
       ASSERT_ERROR ();
-      return L_used;
+      return left_used;
     }
-  L_prefix = btree_node_common_prefix (thread_p, btid, left_pg);
-  if (L_prefix < 0)
+  left_prefix = btree_node_common_prefix (thread_p, btid, left_pg);
+  if (left_prefix < 0)
     {
       ASSERT_ERROR ();
-      return L_prefix;
+      return left_prefix;
     }
 
-  R_used = btree_node_size_uncompressed (thread_p, btid, right_pg);
-  if (R_used < 0)
+  right_used = btree_node_size_uncompressed (thread_p, btid, right_pg);
+  if (right_used < 0)
     {
       ASSERT_ERROR ();
-      return R_used;
+      return right_used;
     }
-  R_prefix = btree_node_common_prefix (thread_p, btid, right_pg);
-  if (R_prefix < 0)
+  right_prefix = btree_node_common_prefix (thread_p, btid, right_pg);
+  if (right_prefix < 0)
     {
       ASSERT_ERROR ();
-      return R_prefix;
+      return right_prefix;
     }
 
-  total_size = L_used + R_used + MAX_MERGE_ALIGN_WASTE;
+  total_size = left_used + right_used + MAX_MERGE_ALIGN_WASTE;
   if (total_size > (int) sizeof (merge_buf))
     {
       merge_buf_size = total_size;
       merge_buf_ptr = (char *) db_private_alloc (thread_p, merge_buf_size);
     }
 
-  /* this means left (or right) empty or only one fence key remain */
-  if (status == BTREE_MERGE_L_EMPTY)
-    {
-      left_cnt = 0;
-    }
-
-  if (status == BTREE_MERGE_R_EMPTY)
-    {
-      right_cnt = 0;
-    }
-
   /***********************************************************
-   ***  STEP 1: uncompress left
+   ***  STEP 1: check current fences and new fences
    ***********************************************************/
-
-  for (i = 1, rec_idx = 0; i <= left_cnt; i++, rec_idx++)
+  /* Handle left page fences.
+   * NOTE: If left page has only one record and that is fence, it is
+   *       considered upper fence.
+   */
+  /* Left lower fence. */
+  if (left_cnt >= 2 && btree_is_fence_key (left_pg, 1))
     {
-      rec[rec_idx].data =
-	PTR_ALIGN (&merge_buf_ptr[merge_idx], BTREE_MAX_ALIGN);
-      merge_idx = CAST_BUFLEN (rec[rec_idx].data - merge_buf_ptr);	/* advance align */
-      rec[rec_idx].area_size = merge_buf_size - merge_idx;
-      rec[rec_idx].type = REC_HOME;
+      assert (left_header->node_level == 1);
+      assert (!VPID_ISNULL (&left_header->prev_vpid));
 
-      /* peek original record */
-      spage_get_record (left_pg, i, &peek_rec, PEEK);
-      fence_record =
-	btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE);
+      /* Non-fence records start from index 2. */
+      left_first_non_fence_slotid = 2;
 
-      if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_KEY) ||
-	  (fence_record == false && L_prefix == 0) ||
-	  status == BTREE_MERGE_R_EMPTY)
+      /* This is used as lower fence for merged page. */
+      merged_has_lower_fence = true;
+
+      /* Lower fence will just be kept in left page. */
+      /* Read lower fence value. */
+      if (spage_get_record (left_pg, 1, &peek_rec, PEEK) != S_SUCCESS)
 	{
-	  /* use peeked data for overflow key */
-	  memcpy (rec[rec_idx].data, peek_rec.data, peek_rec.length);
-	  rec[rec_idx].length = peek_rec.length;
-	  merge_idx += rec[rec_idx].length;
-	  continue;
-	}
-
-      if (fence_record == true && i == left_cnt)
-	{
-	  if (i == 1)
-	    {
-	      RECDES tmp_rec;
-	      spage_get_record (right_pg, 1, &tmp_rec, PEEK);
-	      if (btree_leaf_is_flaged (&tmp_rec, BTREE_LEAF_RECORD_FENCE))
-		{
-		  /* skip upper fence key */
-		  left_upper_fence = true;
-		  break;
-		}
-	      else
-		{
-		  /* lower fence key */
-		}
-	    }
-	  else
-	    {
-	      /* skip upper fence key */
-	      left_upper_fence = true;
-	      break;
-	    }
-	}
-
-      /* read original key */
-      ret = btree_read_record_without_decompression (thread_p, btid,
-						     &peek_rec, &key,
-						     &leaf_pnt,
-						     BTREE_LEAF_NODE,
-						     &clear_key, &offset,
-						     PEEK_KEY_VALUE);
-      if (ret != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-
-      ret =
-	btree_leaf_get_first_object (btid, &peek_rec, &instance_oid,
-				     &class_oid, &mvcc_info);
-      if (ret != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-
-      if (fence_record == true)
-	{
-	  assert (i == 1);	/* lower fence key */
-
-	  lf_key = key;
-
-	  /* use current fence record */
-	  memcpy (rec[rec_idx].data, peek_rec.data, peek_rec.length);
-	  rec[rec_idx].length = peek_rec.length;
-	  merge_idx += rec[rec_idx].length;
-	  continue;
-	}
-
-      /* uncompress key */
-      assert (L_prefix > 0);
-
-      pr_midxkey_add_prefix (&uncomp_key, &lf_key, &key, L_prefix);
-      btree_clear_key_value (&clear_key, &key);
-
-      key_len = btree_get_disk_size_of_key (&uncomp_key);
-      clear_key = true;
-
-      /* make record */
-      btree_write_record (thread_p, btid, NULL, &uncomp_key, BTREE_LEAF_NODE,
-			  BTREE_NORMAL_KEY, key_len, false, &class_oid,
-			  &instance_oid, &mvcc_info, &rec[rec_idx]);
-      btree_clear_key_value (&clear_key, &uncomp_key);
-
-      /* save oid lists (& overflow vpid if exists) */
-      memcpy (rec[rec_idx].data + rec[rec_idx].length, peek_rec.data + offset,
-	      peek_rec.length - offset);
-      rec[rec_idx].length += peek_rec.length - offset;
-
-      if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
-	{
-	  btree_leaf_record_handle_first_overflow (&rec[rec_idx], btid, NULL,
-						   NULL);
-	}
-
-#if !defined (NDEBUG)
-      btree_check_valid_record (thread_p, btid, &rec[rec_idx],
-				BTREE_LEAF_NODE, NULL);
-#endif
-
-      merge_idx += rec[rec_idx].length;
-
-      assert (merge_idx < merge_buf_size);
-      assert (rec_idx < (int) (sizeof (rec) / sizeof (rec[0])));
-    }
-
-  btree_clear_key_value (&lf_clear_key, &lf_key);
-
-  /***********************************************************
-   ***  STEP 2: uncompress right
-   ***********************************************************/
-
-  for (i = 1; i <= right_cnt; i++, rec_idx++)
-    {
-      rec[rec_idx].data = PTR_ALIGN (&merge_buf[merge_idx], BTREE_MAX_ALIGN);
-      merge_idx = CAST_BUFLEN (rec[rec_idx].data - merge_buf);	/* advance align */
-      rec[rec_idx].area_size = sizeof (merge_buf) - merge_idx;
-      rec[rec_idx].type = REC_HOME;
-
-      /* peek original record */
-      spage_get_record (right_pg, i, &peek_rec, PEEK);
-      fence_record =
-	btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE);
-
-      if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_KEY) ||
-	  (fence_record == false && R_prefix == 0) ||
-	  status == BTREE_MERGE_L_EMPTY)
-	{
-	  /* use peeked data for overflow key */
-	  memcpy (rec[rec_idx].data, peek_rec.data, peek_rec.length);
-	  rec[rec_idx].length = peek_rec.length;
-	  merge_idx += rec[rec_idx].length;
-	  continue;
-	}
-
-      if (fence_record && i == right_cnt)
-	{
-	  if (i == 1 && left_upper_fence == true)
-	    {
-	      /* lower fence key */
-	    }
-	  else
-	    {
-	      /* upper fence key, use current fence record */
-	      memcpy (rec[rec_idx].data, peek_rec.data, peek_rec.length);
-	      rec[rec_idx].length = peek_rec.length;
-	      merge_idx += rec[rec_idx].length;
-	      continue;
-	    }
-	}
-
-      /* read original key */
-      ret = btree_read_record_without_decompression (thread_p, btid,
-						     &peek_rec, &key,
-						     &leaf_pnt,
-						     BTREE_LEAF_NODE,
-						     &clear_key, &offset,
-						     PEEK_KEY_VALUE);
-      if (ret != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
+	  assert_release (false);
+	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
       ret =
-	btree_leaf_get_first_object (btid, &peek_rec, &instance_oid,
-				     &class_oid, &mvcc_info);
+	btree_read_record_without_decompression (thread_p, btid, &peek_rec,
+						 &left_fence_key, &leaf_pnt,
+						 BTREE_LEAF_NODE,
+						 &left_fence_key_clear,
+						 &offset, PEEK_KEY_VALUE);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-
-      if (fence_record)
-	{
-	  assert (i == 1);	/* lower fence key */
-
-	  lf_key = key;
-
-	  /* skip lower fence key */
-	  rec_idx--;
-	  continue;
-	}
-
-      /* uncompress key */
-      assert (R_prefix > 0);
-
-      pr_midxkey_add_prefix (&uncomp_key, &lf_key, &key, R_prefix);
-      btree_clear_key_value (&clear_key, &key);
-
-      key_len = btree_get_disk_size_of_key (&key);
-      clear_key = true;
-
-      /* make record */
-      btree_write_record (thread_p, btid, NULL, &uncomp_key, BTREE_LEAF_NODE,
-			  BTREE_NORMAL_KEY, key_len, false, &class_oid,
-			  &instance_oid, &mvcc_info, &rec[rec_idx]);
-      btree_clear_key_value (&clear_key, &uncomp_key);
-
-      /* save oid lists (& overflow vpid if exists) */
-      memcpy (rec[rec_idx].data + rec[rec_idx].length, peek_rec.data + offset,
-	      peek_rec.length - offset);
-      rec[rec_idx].length += peek_rec.length - offset;
-
-      if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
-	{
-	  btree_leaf_record_handle_first_overflow (&rec[rec_idx], btid, NULL,
-						   NULL);
-	}
-
-#if !defined (NDEBUG)
-      btree_check_valid_record (thread_p, btid, &rec[rec_idx],
-				BTREE_LEAF_NODE, NULL);
-#endif
-
-      merge_idx += rec[rec_idx].length;
-
-      assert (merge_idx < merge_buf_size);
-      assert (rec_idx < (int) (sizeof (rec) / sizeof (rec[0])));
+    }
+  else
+    {
+      /* No left lower fence. */
+      left_first_non_fence_slotid = 1;
     }
 
-  btree_clear_key_value (&lf_clear_key, &lf_key);
+  /* Left upper fence - it must be discarded */
+  left_last_non_fence_slotid =
+    (left_cnt >= 1 && btree_is_fence_key (left_pg, left_cnt)) ?
+    (left_cnt - 1) : left_cnt;
 
-  /***********************************************************
-   ***  STEP 3: recompress all
-   ***
-   ***    recompress records with changed prefix
-   ***********************************************************/
+  /* Handle right page fences.
+   * NOTE: If right page has only one record and that is fence, it is
+   *       considered lower fence.
+   */
+  /* Right lower fence - it must be discarded */
+  right_first_non_fence_slotid =
+    (right_cnt >= 1 && btree_is_fence_key (right_pg, 1)) ? 2 : 1;
 
+  /* Right upper fence. */
+  if (right_cnt >= 2 && btree_is_fence_key (right_pg, right_cnt))
+    {
+      assert (right_header->node_level == 1);
+      assert (!VPID_ISNULL (&right_header->next_vpid));
+
+      /* Non-fence records stop before this. */
+      right_last_non_fence_slotid = right_cnt - 1;
+
+      /* This will be upper fence for merged page too. */
+      merged_has_upper_fence = true;
+
+      /* Copy fence record from right page (to be later moved to left page).
+       */
+      merged_upper_fence_record.area_size = DB_PAGESIZE;
+      merged_upper_fence_record.data =
+	PTR_ALIGN (merged_upper_fence_record_buffer, BTREE_MAX_ALIGN);
+      if (spage_get_record (right_pg, right_cnt, &merged_upper_fence_record,
+			    COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+      ret =
+	btree_read_record_without_decompression (thread_p, btid,
+						 &merged_upper_fence_record,
+						 &right_fence_key, &leaf_pnt,
+						 BTREE_LEAF_NODE,
+						 &right_fence_key_clear,
+						 &offset, PEEK_KEY_VALUE);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      right_last_non_fence_slotid = right_cnt;
+    }
+
+  /* Merged page prefix. */
+  /* Prefix after merge cannot be better than left or right page prefix. */
   if (TP_DOMAIN_TYPE (btid->key_type) == DB_TYPE_MIDXKEY
-      && btree_leaf_is_flaged (&rec[0], BTREE_LEAF_RECORD_FENCE)
-      && btree_leaf_is_flaged (&rec[rec_idx - 1], BTREE_LEAF_RECORD_FENCE))
+      && merged_has_lower_fence && merged_has_upper_fence)
     {
-      /* recompress */
-      ret = btree_compress_records (thread_p, btid, rec, rec_idx);
+      /* Get common prefix of left_fence_key and right_fence_key. */
+      assert (!DB_IS_NULL (&left_fence_key));
+      assert (!DB_IS_NULL (&right_fence_key));
+      merged_prefix =
+	pr_midxkey_common_prefix (&left_fence_key, &right_fence_key);
+    }
+
+  /***********************************************************
+   ***  STEP 2: copy (or keep) left.
+   ***  Copy if common prefix has changed (to compress records
+   ***  again).
+   ***  Keep records as they are if common prefix didn't change.
+   ***********************************************************/
+  rec_idx = -1;
+  merge_idx = 0;
+
+/* NEXT_MERGE_RECORD - advance in rec array and prepare new record descriptor
+ */
+#define NEXT_MERGE_RECORD() \
+  do \
+    { \
+      /* If not first record, add last record length to merge_idx. */ \
+      merge_idx += (rec_idx >= 0) ? rec[rec_idx].length : 0; \
+      /* Increment record index. */ \
+      rec_idx++; \
+      /* Set aligned record data pointer. */ \
+      rec[rec_idx].data = \
+	PTR_ALIGN (&merge_buf_ptr[merge_idx], BTREE_MAX_ALIGN); \
+      /* Update merge_idx. */ \
+      merge_idx = CAST_BUFLEN (rec[rec_idx].data - merge_buf_ptr); \
+      /* Set area size. */ \
+      rec[rec_idx].area_size = merge_buf_size - merge_idx; \
+      rec[rec_idx].type = REC_HOME; \
+    } \
+  while (false)
+
+  if (merged_prefix != left_prefix)
+    {
+      /* Left page records must be recompressed. */
+      /* Copy current records in rec array, update them considering new
+       * fences and we will later add them back in page.
+       */
+      for (i = left_first_non_fence_slotid; i <= left_last_non_fence_slotid;
+	   i++)
+	{
+	  NEXT_MERGE_RECORD ();
+
+	  assert (!btree_is_fence_key (left_pg, i));
+	  if (spage_get_record (left_pg, i, &rec[rec_idx], COPY) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+	  ret =
+	    btree_recompress_record (thread_p, btid, &rec[rec_idx],
+				     &left_fence_key, left_prefix,
+				     merged_prefix);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
+	}
+    }
+
+  /* Left fence key no longer required. */
+  btree_clear_key_value (&left_fence_key_clear, &left_fence_key);
+
+  /***********************************************************
+   ***  STEP 3: copy right page.
+   ***********************************************************/
+  for (i = right_first_non_fence_slotid; i <= right_last_non_fence_slotid;
+       i++)
+    {
+      NEXT_MERGE_RECORD ();
+
+      assert (!btree_is_fence_key (right_pg, i));
+      if (spage_get_record (right_pg, i, &rec[rec_idx], COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+      ret =
+	btree_recompress_record (thread_p, btid, &rec[rec_idx],
+				 &right_fence_key, right_prefix,
+				 merged_prefix);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -12280,41 +12235,72 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 	}
     }
 
-  /***********************************************************
-   ***  STEP 4: replace left slots
-   ***
-   ***    remove all records
-   ***    insert recompressed records
-   ***********************************************************/
+  /* Right fence key no longer required. */
+  btree_clear_key_value (&right_fence_key_clear, &right_fence_key);
 
+  /* Increment rec_idx one last time. */
+  rec_idx++;
+
+/* NEXT_MERGE_RECORD definition no longer required. */
+#undef NEXT_MERGE_RECORD
+
+
+  /***********************************************************
+   ***  STEP 4: Save left page (undo logging) before changing it.
+   ***********************************************************/
   /* add undo logging for left_pg */
   log_append_undo_data2 (thread_p, RVBT_COPYPAGE,
 			 &btid->sys_btid->vfid, left_pg, -1,
 			 DB_PAGESIZE, left_pg);
 
-  for (i = left_cnt; i >= 1; i--)
+  /***********************************************************
+   ***  STEP 5: remove records from left page.
+   ***********************************************************/
+  /* Remove upper fence (if there is one). */
+  if (left_cnt > left_last_non_fence_slotid)
     {
-      assert (i > 0);
-      if (spage_delete (thread_p, left_pg, i) != i)
+      assert (left_cnt == left_last_non_fence_slotid + 1);
+      assert (btree_is_fence_key (left_pg, left_cnt));
+      if (spage_delete (thread_p, left_pg, left_cnt) != left_cnt)
 	{
 	  assert_release (false);
 	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
     }
+  /* Remove non-fence records. */
+  if (merged_prefix != left_prefix)
+    {
+      /* All records from left have changed. Remove existing records.
+       * Keep lower fence key.
+       */
+      for (i = left_last_non_fence_slotid; i >= left_first_non_fence_slotid;
+	   i--)
+	{
+	  assert (i > 0);
+	  assert (!btree_is_fence_key (left_pg, i));
+	  if (spage_delete (thread_p, left_pg, i) != i)
+	    {
+	      assert_release (false);
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+	}
+    }
+  else
+    {
+      /* Records need no changes. They have not been saved in rec array.
+       * They are kept as they are.
+       */
+    }
 
-  assert (spage_number_of_records (left_pg) == 1);
-
-  /* Log the right page records for undo purposes on the left page. */
+  /***********************************************************
+   ***  STEP 6: append rec array.
+   ***********************************************************/
   for (i = 0; i < rec_idx; i++)
     {
-      sp_ret = spage_insert (thread_p, left_pg, &rec[i], &sp_id);
-      if (sp_ret != SP_SUCCESS)
+      if (spage_insert (thread_p, left_pg, &rec[i], &sp_id) != SP_SUCCESS)
 	{
-#if !defined(NDEBUG)
-	  btree_dump_page (thread_p, stdout, NULL, btid,
-			   NULL, left_pg, left_vpid, 2, 2);
-#endif
 	  assert_release (false);
 	  ret = ER_FAILED;
 	  goto exit_on_error;
@@ -12324,9 +12310,22 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
     }
 
   /***********************************************************
-   ***  STEP 5: update child link of page P
+   ***  STEP 7: append upper fence.
    ***********************************************************/
+  if (merged_has_upper_fence)
+    {
+      if (spage_insert (thread_p, left_pg, &merged_upper_fence_record, &sp_id)
+	  != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+    }
 
+  /***********************************************************
+   ***  STEP 8: update child link of page P
+   ***********************************************************/
   /* get and log the old node record to be deleted for undo purposes */
   assert (p_slot_id > 0);
   if (spage_get_record (P, p_slot_id, &peek_rec, PEEK) != S_SUCCESS)
@@ -12371,44 +12370,27 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   *child_vpid = *left_vpid;
 
   /***********************************************************
-   ***  STEP 6: update left page header info
+   ***  STEP 9: update left page header info
    ***          write redo log for left
    ***********************************************************/
+  VPID_COPY (&left_header->next_vpid, &right_header->next_vpid);
+  left_header->max_key_len =
+    MAX (left_header->max_key_len, right_header->max_key_len);
+  btree_write_default_split_info (&(left_header->split_info));
 
-  /* get right page header information */
-  rheader = btree_get_node_header (right_pg);
-  if (rheader == NULL)
-    {
-      assert_release (false);
-      ret = ER_FAILED;
-      goto exit_on_error;
-    }
-
-  /* update left page header information */
-  qheader = btree_get_node_header (left_pg);
-  if (qheader == NULL)
-    {
-      assert_release (false);
-      ret = ER_FAILED;
-      goto exit_on_error;
-    }
-
-  qheader->next_vpid = rheader->next_vpid;
-  qheader->max_key_len = MAX (qheader->max_key_len, rheader->max_key_len);
-  btree_write_default_split_info (&(qheader->split_info));
-
+  /***********************************************************
+   ***  STEP 10: log (redo) changes of left page.
+   ***********************************************************/
   /* add redo logging for left_pg */
   log_append_redo_data2 (thread_p, RVBT_COPYPAGE,
 			 &btid->sys_btid->vfid, left_pg, -1,
 			 DB_PAGESIZE, left_pg);
-
   pgbuf_set_dirty (thread_p, left_pg, DONT_FREE);
 
   /***********************************************************
-   ***  STEP 7: increment lsa of right page to be deallocated
-   ***          verify P, left, right
+   ***  STEP 11: increment lsa of right page to be deallocated
+   ***           verify P, left, right
    ***********************************************************/
-
   addr.vfid = NULL;
   addr.pgptr = right_pg;
   addr.offset = 0;
@@ -12424,8 +12406,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 #endif
 
   /***********************************************************
-   ***  STEP 8: update link for next leaf node after the
-   ***		merged nodes to point to the left page.
+   ***  STEP 12: update link for next leaf node after the
+   ***		 merged nodes to point to the left page.
    ***********************************************************/
   next_page_after_merged = btree_get_next_page (thread_p, left_pg);
   if (next_page_after_merged != NULL)
@@ -12462,6 +12444,9 @@ exit_on_error:
     {
       db_private_free_and_init (thread_p, merge_buf_ptr);
     }
+
+  btree_clear_key_value (&left_fence_key_clear, &left_fence_key);
+  btree_clear_key_value (&right_fence_key_clear, &right_fence_key);
 
   return ret;
 }
@@ -12559,33 +12544,99 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid,
   BTREE_NODE_HEADER *l_header = NULL, *r_header = NULL;
   BTREE_NODE_TYPE l_node_type, r_node_type;
   int L_used, R_used, L_cnt, R_cnt;
+  int L_non_fence_cnt = 0, R_non_fence_cnt = 0;
 
-  /* case 1 : one of page is empty */
+  /* case 1 : one of page is empty. a page is considered empty if it has no
+   *          keys or only fence keys. merge will be forced.
+   */
 
   L_cnt = btree_node_number_of_keys (L_page);
   R_cnt = btree_node_number_of_keys (R_page);
 
   if (L_cnt == 0)
     {
-      return BTREE_MERGE_L_EMPTY;
+      /* Left page is completely empty. */
+      return BTREE_MERGE_FORCE;
+    }
+  L_non_fence_cnt = L_cnt;
+  if (btree_is_fence_key (L_page, 1))
+    {
+      L_non_fence_cnt--;
+    }
+  if (L_cnt > 1 && btree_is_fence_key (L_page, L_cnt))
+    {
+      L_non_fence_cnt--;
+    }
+  if (L_non_fence_cnt == 0)
+    {
+      /* Left page has only fence keys. If uncompressed right page fits a
+       * page, we should merge pages.
+       */
+      R_used = btree_node_size_uncompressed (thread_p, btid, R_page);
+      if (R_used + FORCE_MERGE_WHEN_EMPTY < DB_PAGESIZE)
+	{
+	  return BTREE_MERGE_FORCE;
+	}
+      else if (R_used < DB_PAGESIZE)
+	{
+	  return BTREE_MERGE_TRY;
+	}
+      /* Uncompressed right page is too big. */
+      return BTREE_MERGE_NO;
     }
 
   if (R_cnt == 0)
     {
-      return BTREE_MERGE_R_EMPTY;
+      /* Right page is completely empty. */
+      return BTREE_MERGE_FORCE;
+    }
+  R_non_fence_cnt = R_cnt;
+  if (btree_is_fence_key (R_page, 1))
+    {
+      R_non_fence_cnt--;
+    }
+  if (R_cnt > 1 && btree_is_fence_key (R_page, R_cnt))
+    {
+      R_non_fence_cnt--;
+    }
+  if (R_non_fence_cnt == 0)
+    {
+      /* Right page has only fence keys. If uncompressed left page fits a
+       * page, we should merge pages.
+       */
+      L_used = btree_node_size_uncompressed (thread_p, btid, L_page);
+      if (L_used + FORCE_MERGE_WHEN_EMPTY < DB_PAGESIZE)
+	{
+	  return BTREE_MERGE_FORCE;
+	}
+      else if (L_used < DB_PAGESIZE)
+	{
+	  return BTREE_MERGE_TRY;
+	}
+      /* Uncompressed right page is too big. */
+      return BTREE_MERGE_NO;
     }
 
-  /* case 2 : size */
+  /* case 2: each page has only one key. merge will be forced. */
+
+  if (L_non_fence_cnt == 1 && R_non_fence_cnt == 1)
+    {
+      return BTREE_MERGE_FORCE;
+    }
+
+  /* case 3 : size */
 
   l_header = btree_get_node_header (L_page);
   if (l_header == NULL)
     {
+      assert_release (false);
       return BTREE_MERGE_NO;
     }
 
   r_header = btree_get_node_header (R_page);
   if (r_header == NULL)
     {
+      assert_release (false);
       return BTREE_MERGE_NO;
     }
 
@@ -12633,11 +12684,11 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid,
       if (L_used + R_used + FORCE_MERGE_WHEN_EMPTY < DB_PAGESIZE)
 	{
 	  /* Merge must be executed. */
-	  return BTREE_MERGE_SIZE_FORCE;
+	  return BTREE_MERGE_FORCE;
 	}
 
       /* Merge can be executed. If promotions fail, it will be skipped. */
-      return BTREE_MERGE_SIZE;
+      return BTREE_MERGE_TRY;
     }
 
   return BTREE_MERGE_NO;
@@ -14734,101 +14785,100 @@ cleanup:
     }
 }
 
+/*
+ * btree_recompress_record () - Re-compress record for new prefix.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid_int (in)   : B-tree info.
+ * record (in)	   : B-tree leaf record.
+ * fence_key (in)  : Lower or upper fence key value.
+ * old_prefix (in) : Old prefix.
+ * new_prefix (in) : New prefix.
+ */
 static int
-btree_compress_records (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			RECDES * rec, int key_cnt)
+btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+			 RECDES * record, DB_VALUE * fence_key,
+			 int old_prefix, int new_prefix)
 {
-  int key_len, new_key_len;
-  int i, diff_column;
-  DB_VALUE key, lf_key, uf_key;
-  bool clear_key = false, lf_clear_key = false, uf_clear_key = false;
-  int offset, new_offset;
-  int key_type = BTREE_NORMAL_KEY;
-  LEAF_REC leaf_pnt;
-  int error = NO_ERROR;
+  int error_code = NO_ERROR;
+  LEAF_REC dummy_leaf_record_info;
+  int offset_after_key = 0;
+  int new_offset_after_key = 0;
+  int old_key_len = 0;
+  int new_key_len = 0;
+  int offset_before_key = 0;
+  bool clear_key = false;
+  DB_VALUE key;
+  DB_VALUE recompress_key;
+  OR_BUF write_key_buffer;
 
-  assert (rec != NULL);
-  assert (key_cnt >= 2);
-  assert (!btree_leaf_is_flaged (&rec[0], BTREE_LEAF_RECORD_OVERFLOW_KEY));
-  assert (btree_leaf_is_flaged (&rec[0], BTREE_LEAF_RECORD_FENCE));
-  assert (!btree_leaf_is_flaged
-	  (&rec[key_cnt - 1], BTREE_LEAF_RECORD_OVERFLOW_KEY));
-  assert (btree_leaf_is_flaged (&rec[key_cnt - 1], BTREE_LEAF_RECORD_FENCE));
+  assert (btid_int != NULL);
+  assert (record != NULL);
 
-  error = btree_read_record_without_decompression (thread_p, btid, &rec[0],
-						   &lf_key, &leaf_pnt,
-						   BTREE_LEAF_NODE,
-						   &lf_clear_key, &offset,
-						   PEEK_KEY_VALUE);
-  if (error != NO_ERROR)
+  if (old_prefix == new_prefix)
     {
-      return error;
-    }
-  assert (lf_clear_key == false);
-
-  error = btree_read_record_without_decompression (thread_p, btid,
-						   &rec[key_cnt - 1], &uf_key,
-						   &leaf_pnt, BTREE_LEAF_NODE,
-						   &uf_clear_key, &offset,
-						   PEEK_KEY_VALUE);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  assert (uf_clear_key == false);
-
-  diff_column = pr_midxkey_common_prefix (&lf_key, &uf_key);
-
-  if (diff_column > 0)
-    {
-      /* compress prefix */
-      for (i = 1; i < key_cnt - 1; i++)
-	{
-	  assert (!btree_leaf_is_flaged (&rec[i], BTREE_LEAF_RECORD_FENCE));
-
-	  if (btree_leaf_is_flaged (&rec[i], BTREE_LEAF_RECORD_OVERFLOW_KEY))
-	    {
-	      /* do not compress overflow key */
-	      continue;
-	    }
-
-	  error = btree_read_record_without_decompression (thread_p, btid,
-							   &rec[i], &key,
-							   &leaf_pnt,
-							   BTREE_LEAF_NODE,
-							   &clear_key,
-							   &offset,
-							   PEEK_KEY_VALUE);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	  assert (clear_key == false);
-
-	  key_len = btree_get_disk_size_of_key (&key);
-	  pr_midxkey_remove_prefix (&key, diff_column);
-	  new_key_len = btree_get_disk_size_of_key (&key);
-
-	  new_key_len = DB_ALIGN (new_key_len, INT_ALIGNMENT);
-	  key_len = DB_ALIGN (key_len, INT_ALIGNMENT);
-
-	  new_offset = offset + (new_key_len - key_len);
-
-	  /* move remaining part of oids */
-	  memmove (rec[i].data + new_offset, rec[i].data + offset,
-		   rec[i].length - offset);
-	  rec[i].length = new_offset + (rec[i].length - offset);
-
-#if !defined (NDEBUG)
-	  btree_check_valid_record (thread_p, btid, &rec[i], BTREE_LEAF_NODE,
-				    NULL);
-#endif
-
-	  btree_clear_key_value (&clear_key, &key);
-	}
+      /* Recompression is not needed. */
+      return NO_ERROR;
     }
 
-  return error;
+  /* Fence key must have a value if uncompress is needed. */
+  assert (old_prefix == 0 || (fence_key != NULL && !DB_IS_NULL (fence_key)));
+
+  error_code =
+    btree_read_record_without_decompression (thread_p, btid_int, record,
+					     &key, &dummy_leaf_record_info,
+					     BTREE_LEAF_NODE, &clear_key,
+					     &offset_after_key,
+					     PEEK_KEY_VALUE);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* Save aligned size of old key. */
+  old_key_len = btree_get_disk_size_of_key (&key);
+  old_key_len = DB_ALIGN (old_key_len, INT_ALIGNMENT);
+
+  /* Uncompress. */
+  DB_MAKE_NULL (&recompress_key);
+  if (old_prefix > 0)
+    {
+      pr_midxkey_add_prefix (&recompress_key, fence_key, &key, old_prefix);
+    }
+  else
+    {
+      pr_clone_value (&key, &recompress_key);
+    }
+
+  /* Compress. */
+  if (new_prefix > 0)
+    {
+      pr_midxkey_remove_prefix (&recompress_key, new_prefix);
+    }
+
+  /* Save aligned size of new key. */
+  new_key_len = btree_get_disk_size_of_key (&recompress_key);
+  new_key_len = DB_ALIGN (new_key_len, INT_ALIGNMENT);
+
+  offset_before_key = offset_after_key - old_key_len;
+
+  /* Move the rest of the record first. */
+  new_offset_after_key = offset_after_key + new_key_len - old_key_len;
+  RECORD_MOVE_DATA (record, new_offset_after_key, offset_after_key);
+
+  /* Pack new key. */
+  or_init (&write_key_buffer, record->data + offset_before_key, new_key_len);
+  (*btid_int->key_type->type->index_writeval) (&write_key_buffer,
+					       &recompress_key);
+  or_align (&write_key_buffer, INT_ALIGNMENT);
+  assert (write_key_buffer.ptr == write_key_buffer.endptr);
+
+  btree_clear_key_value (&clear_key, &key);
+  pr_clear_value (&recompress_key);
+
+  return NO_ERROR;
 }
 
 static int
@@ -22549,6 +22599,10 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   short mvcc_flags;
   int error = NO_ERROR;
   BTREE_MVCC_INFO mvcc_info;
+  int common_prefix = 0;
+  DB_VALUE lower_fence_key;
+  bool clear_lower_fence_key = false;
+  DB_VALUE uncompressed_value;
 
   assert_release (btid_int != NULL);
   assert_release (page_ptr != NULL);
@@ -22578,6 +22632,41 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   prev_vpid = header->prev_vpid;
   next_vpid = header->next_vpid;
 
+  DB_MAKE_NULL (&curr_key);
+  DB_MAKE_NULL (&prev_key);
+  DB_MAKE_NULL (&lower_fence_key);
+  DB_MAKE_NULL (&uncompressed_value);
+
+  common_prefix = btree_node_common_prefix (thread_p, btid_int, page_ptr);
+  if (common_prefix > 0)
+    {
+      assert (btree_is_fence_key (page_ptr, 1));
+      if (spage_get_record (page_ptr, 1, &rec, PEEK) != S_SUCCESS)
+	{
+	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr,
+			   NULL, 2, 2);
+	  assert (false);
+	  return ER_FAILED;
+	}
+      error =
+	btree_read_record_without_decompression (thread_p, btid_int, &rec,
+						 &lower_fence_key, &leaf_pnt,
+						 BTREE_LEAF_NODE,
+						 &clear_lower_fence_key,
+						 &offset, PEEK_KEY_VALUE);
+      if (error != NO_ERROR)
+	{
+	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr,
+			   NULL, 2, 2);
+	  assert (false);
+	  return ER_FAILED;
+	}
+    }
+  /* There must be two fences to have common prefix. */
+  assert (common_prefix == 0
+	  || (btree_is_fence_key (page_ptr, 1)
+	      && btree_is_fence_key (page_ptr, key_cnt)));
+
   /* check key order */
   for (i = 1; i < key_cnt; i++)
     {
@@ -22586,7 +22675,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr,
 			   NULL, 2, 2);
 	  assert (false);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
 
       error = btree_read_record_without_decompression (thread_p, btid_int,
@@ -22601,8 +22690,9 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr,
 			   NULL, 2, 2);
 	  assert (false);
-	  return error;
+	  goto exit_on_error;
 	}
+
       /*
        * record oid check
        */
@@ -22667,6 +22757,20 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		  assert (false);
 		}
 	    }
+
+	  if (common_prefix > 0)
+	    {
+	      /* Check uncompress works. */
+	      error =
+		pr_midxkey_add_prefix (&uncompressed_value, &lower_fence_key,
+				       &prev_key, common_prefix);
+	      pr_clear_value (&uncompressed_value);
+	      if (error != NO_ERROR)
+		{
+		  assert (false);
+		  goto exit_on_error;
+		}
+	    }
 	}
 
       or_init (&buf, rec.data + offset, rec.length - offset);
@@ -22719,7 +22823,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 			   NULL, 2, 2);
 	  assert (false);
 	  btree_clear_key_value (&clear_prev_key, &prev_key);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
 
       if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
@@ -22741,7 +22845,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 			   NULL, 2, 2);
 	  assert (false);
 	  btree_clear_key_value (&clear_prev_key, &prev_key);
-	  return error;
+	  goto exit_on_error;
 	}
 
       c = btree_compare_key (&prev_key, &curr_key, btid_int->key_type,
@@ -22755,11 +22859,18 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr,
 			   NULL, 2, 2);
 	  assert (false);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
     }
 
   return NO_ERROR;
+
+exit_on_error:
+  btree_clear_key_value (&clear_curr_key, &curr_key);
+  btree_clear_key_value (&clear_prev_key, &prev_key);
+  btree_clear_key_value (&clear_lower_fence_key, &lower_fence_key);
+
+  return error == NO_ERROR ? ER_FAILED : error;
 }
 #endif
 
@@ -34870,7 +34981,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
 	      /* Failed to promote all latches to exclusive. */
-	      if (merge_status != BTREE_MERGE_SIZE)
+	      if (merge_status != BTREE_MERGE_TRY)
 		{
 		  /* Merge must be executed. Restart using exclusive access.
 		   */
@@ -34927,6 +35038,16 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		  ASSERT_ERROR ();
 		  goto error;
 		}
+
+	      if (delete_helper->log_operations)
+		{
+		  _er_log_debug (ARG_FILE_LINE,
+				 "BTREE_DELETE: Merged nodes %d|%d and %d|%d "
+				 "into left node.\n",
+				 child_vpid.volid, child_vpid.pageid,
+				 right_vpid.volid, right_vpid.pageid);
+		}
+
 	      /* Children are merged to the "left" node which is our case
 	       * is the child page.
 	       */
@@ -35046,7 +35167,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  /* Check write latches were successfully obtained. */
 	  if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
 	    {
-	      if (merge_status != BTREE_MERGE_SIZE)
+	      if (merge_status != BTREE_MERGE_TRY)
 		{
 		  /* Merge has to be done. Restart using exclusive access. */
 		  delete_helper->nonleaf_latch_mode = PGBUF_LATCH_WRITE;
@@ -35101,6 +35222,15 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		{
 		  ASSERT_ERROR ();
 		  goto error;
+		}
+
+	      if (delete_helper->log_operations)
+		{
+		  _er_log_debug (ARG_FILE_LINE,
+				 "BTREE_DELETE: Merged nodes %d|%d and %d|%d "
+				 "into left node.\n",
+				 left_vpid.volid, left_vpid.pageid,
+				 child_vpid.volid, child_vpid.pageid);
 		}
 
 #if !defined(NDEBUG)
