@@ -4290,20 +4290,15 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 {
   CATALOG_REPR_ITEM repr_item;
   CATALOG_RECORD catalog_record;
-  DISK_REPR *disk_repr_p;
-  DISK_ATTR *disk_attr_p;
+  DISK_REPR *disk_repr_p = NULL;
+  DISK_ATTR *disk_attr_p = NULL;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
   OID dir_oid;
   int i, n_attrs;
-#if 0
-  int retry_count = 0;
-#endif
   int error = NO_ERROR;
   bool do_end_access = false;
 
-#if 0
-start:
-#endif
+  catalog_record.page_p = NULL;
 
   if (catalog_access_info_p == NULL)
     {
@@ -4323,8 +4318,6 @@ start:
       do_end_access = true;
       catalog_access_info_p = &catalog_access_info;
     }
-
-  disk_repr_p = NULL;
 
   if (repr_id == NULL_REPRID)
     {
@@ -4391,19 +4384,6 @@ start:
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
 	{
 	  assert (false);
-#if 0
-	  if (catalog_fixup_missing_disk_representation (thread_p,
-							 class_id_p,
-							 repr_id) == NO_ERROR
-	      && retry_count++ == 0)
-	    {
-	      goto start;
-	    }
-	  else
-	    {
-	      assert (0);
-	    }
-#endif
 	}
       if (do_end_access)
 	{
