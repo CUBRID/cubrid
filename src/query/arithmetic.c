@@ -3526,8 +3526,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   if (type2 == DB_TYPE_CHAR
       && strcasecmp (DB_PULL_STRING (value2), "default") == 0)
     {
-      if (type1 == DB_TYPE_DATE || type1 == DB_TYPE_DATETIME
-	  || type1 == DB_TYPE_TIMESTAMP)
+      if (TP_IS_DATE_TYPE (type1))
 	{
 	  DB_MAKE_STRING (&cast_format, "dd");
 	}
