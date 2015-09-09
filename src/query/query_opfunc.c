@@ -4572,10 +4572,15 @@ qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_TIMETZ:
       {
 	DB_TIMETZ *time_tz_2_p;
+	int day1, day2;
 
 	time_tz_2_p = DB_GET_TIMETZ (dbval_p);
+	day1 = get_day_from_timetz (time_tz_p);
+	day2 = get_day_from_timetz (time_tz_2_p);
+
 	DB_MAKE_INT (result_p,
-		     ((int) time_tz_p->time - (int) time_tz_2_p->time));
+		     ((int) time_tz_p->time + day1 * SECONDS_OF_ONE_DAY
+		      - (int) time_tz_2_p->time - day2 * SECONDS_OF_ONE_DAY));
 	break;
       }
 
@@ -4618,7 +4623,6 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p,
       }
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMETZ:
       {
 	DB_VALUE timetz_val;
@@ -4635,6 +4639,39 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p,
 	DB_MAKE_TIMETZ (&timetz_val, &timetz);
 
 	err = qdata_subtract_timetz_to_dbval (&timetz_val, dbval_p, result_p);
+	break;
+      }
+    case DB_TYPE_TIMELTZ:
+      {
+	TZ_ID ses_tz_id1, ses_tz_id2;
+	DB_TIME *t2_utc, t1_local, t2_local;
+
+	t2_utc = DB_GET_TIME (dbval_p);
+	err = tz_create_session_tzid_for_time (time_p, true, &ses_tz_id1);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	err = tz_create_session_tzid_for_time (t2_utc, true, &ses_tz_id2);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	err = tz_utc_timetz_to_local (time_p, &ses_tz_id1, &t1_local);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	err = tz_utc_timetz_to_local (t2_utc, &ses_tz_id2, &t2_local);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	DB_MAKE_INT (result_p, t1_local - t2_local);
 	break;
       }
 

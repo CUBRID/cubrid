@@ -10524,7 +10524,6 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
   time_t ts = 0;
   int month = 0, day = 0, year = 0;
   int second = 0, minute = 0, hour = 0, ms = 0;
-  struct tm time_argument;
 
   if (DB_IS_NULL (src_date))
     {
@@ -21402,7 +21401,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	  if (is_timezone > 0)
 	    {
 	      db_datetimetz_to_string (res_s, 64, &dt_tz.datetime,
-				       dt_tz.tz_id);
+				       &dt_tz.tz_id);
 	    }
 	  else
 	    {
@@ -21423,7 +21422,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	{
 	  if (is_timezone > 0)
 	    {
-	      DB_MAKE_DATETIMETZ (result, &dt_tz.datetime);
+	      DB_MAKE_DATETIMETZ (result, &dt_tz);
 	    }
 	  else if (is_local_timezone > 0)
 	    {

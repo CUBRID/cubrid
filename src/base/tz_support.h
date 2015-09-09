@@ -319,6 +319,7 @@ extern "C"
 					      const int ms,
 					      const TZ_ID * tz_id,
 					      DB_DATETIMETZ * dt_tz);
+  extern int get_day_from_timetz (const DB_TIMETZ * timetz);
 #ifdef __cplusplus
 }
 #endif

@@ -83,6 +83,8 @@ struct tz_decode_info
 #define MILLIS_IN_A_DAY (long)(86400000)	/* 24L * 60L * 60L * 1000 */
 #define TZ_MASK_TZ_ID_FLAG 0xc0000000
 #define TZ_BIT_SHIFT_TZ_ID_FLAG 30
+#define TZ_OFFSET_MASK 0x3fffffff
+#define SECONDS_IN_A_DAY 24 * 3600
 
 static int tz_initialized = 0;
 
@@ -2203,7 +2205,7 @@ tz_encode_tz_id (const TZ_DECODE_INFO * tz_info, TZ_ID * tz_id)
       int offset = (tz_info->offset < 0)
 	? (-tz_info->offset) : tz_info->offset;
 
-      offset = offset & 0x3fffffff;
+      offset = offset & TZ_OFFSET_MASK;
 
       if (tz_info->offset < 0)
 	{
@@ -2347,13 +2349,13 @@ tz_decode_tz_id (const TZ_ID * tz_id, const bool is_full_decode,
       if (flag == 0x2)
 	{
 	  /* negative offset */
-	  tz_info->offset = -(int) (val & 0x3fffffff);
+	  tz_info->offset = -(int) (val & TZ_OFFSET_MASK);
 	}
       else
 	{
 	  /* positive offset  */
 	  assert (flag == 0x1);
-	  tz_info->offset = val & 0x3fffffff;
+	  tz_info->offset = val & TZ_OFFSET_MASK;
 	}
     }
 }
@@ -5147,6 +5149,51 @@ tz_create_datetimetz_from_utc (const DB_DATETIME * src_dt,
   tz_encode_tz_id (&tz_info, &(dest_dt_tz->tz_id));
 
   return er_status;
+}
+
+/*
+ * get_day_from_timetz () - returns an int that tells if
+ *			    the day corresponding to the UTC time
+ *			    of the timetz is equal, less or greater
+ *			    than the day corresponding to the local time
+ *			    of the timetz
+ *			       
+ * Return: -1 if UTC day is before local time day
+ *         0 if UTC day is equal to the local time day
+ *	   1 if UTC day is after the local time day
+ * timetz(in): input timetz type
+ *
+ */
+int
+get_day_from_timetz (const DB_TIMETZ * timetz)
+{
+  unsigned int flag;
+  int offset, local_time;
+  int day = 0;
+
+  flag = ((timetz->tz_id) & TZ_MASK_TZ_ID_FLAG) >> TZ_BIT_SHIFT_TZ_ID_FLAG;
+
+  if (flag == 0x2)
+    {
+      offset = -(int) (timetz->tz_id & TZ_OFFSET_MASK);
+    }
+  else
+    {
+      offset = timetz->tz_id & TZ_OFFSET_MASK;
+    }
+
+  local_time = timetz->time + offset;
+
+  if (local_time < 0)
+    {
+      day = 1;
+    }
+  else if (local_time >= SECONDS_IN_A_DAY)
+    {
+      day = -1;
+    }
+
+  return day;
 }
 
 /*

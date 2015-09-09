@@ -16986,18 +16986,63 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    t1 = DB_GET_TIME (arg1);
 		    t2 = DB_GET_TIME (arg2);
 
-		    bi1 = (DB_BIGINT) (*t1);
-		    bi2 = (DB_BIGINT) (*t2);
+		    if (typ1 == DB_TYPE_TIMELTZ)
+		      {
+			TZ_ID ses_tz_id1, ses_tz_id2;
+			DB_TIME t1_local, t2_local;
+
+			error = tz_create_session_tzid_for_time (t1, true,
+								 &ses_tz_id1);
+			if (error != NO_ERROR)
+			  {
+			    return 0;
+			  }
+
+			error = tz_create_session_tzid_for_time (t2, true,
+								 &ses_tz_id2);
+			if (error != NO_ERROR)
+			  {
+			    return 0;
+			  }
+
+			error = tz_utc_timetz_to_local (t1, &ses_tz_id1,
+							&t1_local);
+			if (error != NO_ERROR)
+			  {
+			    return 0;
+			  }
+
+			error = tz_utc_timetz_to_local (t2, &ses_tz_id2,
+							&t2_local);
+			if (error != NO_ERROR)
+			  {
+			    return 0;
+			  }
+
+			bi1 = (DB_BIGINT) (t1_local);
+			bi2 = (DB_BIGINT) (t2_local);
+		      }
+		    else
+		      {
+			bi1 = (DB_BIGINT) (*t1);
+			bi2 = (DB_BIGINT) (*t2);
+		      }
 		  }
 		else if (typ1 == DB_TYPE_TIMETZ)
 		  {
 		    DB_TIMETZ *t_tz1, *t_tz2;
+		    int day1, day2;
 
 		    t_tz1 = DB_GET_TIMETZ (arg1);
 		    t_tz2 = DB_GET_TIMETZ (arg2);
 
-		    bi1 = (DB_BIGINT) (t_tz1->time);
-		    bi2 = (DB_BIGINT) (t_tz2->time);
+		    day1 = get_day_from_timetz (t_tz1);
+		    day2 = get_day_from_timetz (t_tz2);
+
+		    bi1 =
+		      (DB_BIGINT) (t_tz1->time) + day1 * SECONDS_OF_ONE_DAY;
+		    bi2 =
+		      (DB_BIGINT) (t_tz2->time) + day2 * SECONDS_OF_ONE_DAY;
 		  }
 		else if (typ1 == DB_TYPE_TIMESTAMP
 			 || typ1 == DB_TYPE_TIMESTAMPLTZ)
