@@ -9189,6 +9189,7 @@ start_current_version:
       if (type == REC_MVCC_NEXT_VERSION)
 	{
 	  /* Unexpected since this class should not be vacuumed. */
+	  assert_release (false);
 	  goto error;
 	}
       /* Get record directly. */
@@ -9223,6 +9224,7 @@ start_current_version:
 	      (thread_p, &partition_class_oid, scan_cache, &home_page_watcher,
 	       &fwd_page_watcher, &unfixed_watchers) != LK_GRANTED)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      goto error;
 	    }
 	  else if (unfixed_watchers)
@@ -9310,6 +9312,7 @@ start_current_version:
 			   &home_page_watcher, &fwd_page_watcher,
 			   &unfixed_watchers) != LK_GRANTED)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  goto error;
 			}
 		      else if (unfixed_watchers)
@@ -9353,6 +9356,13 @@ start_current_version:
 						 fwd_page_watcher.pgptr, type,
 						 &temp_recdes,
 						 scan_cache, ispeeking);
+
+	  if (scan_code != S_SUCCESS)
+	    {
+	      assert (scan_code != S_ERROR || er_errid () != NO_ERROR);
+	      goto error;
+	    }
+
 	  ev_res =
 	    eval_data_filter (thread_p, &current_oid, &temp_recdes,
 			      scan_cache, scan_reev_data->data_filter);
@@ -9366,6 +9376,7 @@ start_current_version:
 	    {
 	    case V_ERROR:
 	      /* Evaluation error. */
+	      assert (er_errid () != NO_ERROR);
 	      goto error;
 	    case V_FALSE:
 	      /* Record failed evaluation test and doesn't have to be update.
@@ -9390,6 +9401,7 @@ start_current_version:
 					       &mvcc_delete_info) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
+	  assert (er_errid () != NO_ERROR);
 	  goto error;
 	}
       assert (HEAP_IS_PAGE_OF_OID (home_page_watcher.pgptr, &current_oid));
@@ -9460,6 +9472,7 @@ start_current_version:
 		       &home_page_watcher, &fwd_page_watcher,
 		       &unfixed_watchers) != LK_GRANTED)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      goto error;
 		    }
 		  else if (unfixed_watchers)
@@ -9537,6 +9550,7 @@ start_current_version:
 		       &home_page_watcher, &fwd_page_watcher,
 		       &unfixed_watchers) != LK_GRANTED)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      goto error;
 		    }
 		  else if (unfixed_watchers)
@@ -9625,6 +9639,7 @@ start_current_version:
 					       &forward_oid, &type,
 					       &mvcc_delete_info) != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  goto error;
 	}
 
@@ -9670,6 +9685,7 @@ start_current_version:
 						     scan_cache, ispeeking);
 	      if (scan_code != S_SUCCESS)
 		{
+		  assert (scan_code != S_ERROR || er_errid () != NO_ERROR);
 		  goto end;
 		}
 
@@ -9688,6 +9704,7 @@ start_current_version:
 		  goto get_record;
 		case V_ERROR:
 		  /* Error. */
+		  assert (er_errid () != NO_ERROR);
 		  goto error;
 		case V_FALSE:
 		case V_UNKNOWN:
@@ -9734,6 +9751,7 @@ start_current_version:
 		       &home_page_watcher, &fwd_page_watcher,
 		       &unfixed_watchers) != LK_GRANTED)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      goto error;
 		    }
 		  else if (unfixed_watchers)
@@ -9812,6 +9830,7 @@ get_record:
 					     recdes, scan_cache, ispeeking);
       if (scan_code != S_SUCCESS)
 	{
+	  assert (scan_code != S_ERROR || er_errid () != NO_ERROR);
 	  goto end;
 	}
     }
@@ -10225,6 +10244,8 @@ try_again:
   /* Impossible */
   assert_release (false);
 error:
+  assert (er_errid () != NO_ERROR);
+
   if (fwd_page_watcher->pgptr != NULL)
     {
       pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
