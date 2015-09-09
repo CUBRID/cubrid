@@ -6720,7 +6720,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	      if (MVCC_IS_FLAG_SET (&old_rec_header,
 				    OR_MVCC_FLAG_VALID_INSID))
 		{
-		  MVCC_SET_FLAG (&new_rec_header, OR_MVCC_FLAG_VALID_INSID);
+		  MVCC_SET_FLAG_BITS (&new_rec_header,
+				      OR_MVCC_FLAG_VALID_INSID);
 		  MVCC_SET_INSID (&new_rec_header,
 				  MVCC_GET_INSID (&old_rec_header));
 		}
@@ -6733,7 +6734,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	      if (MVCC_IS_FLAG_SET (&old_rec_header,
 				    OR_MVCC_FLAG_VALID_DELID))
 		{
-		  MVCC_SET_FLAG (&new_rec_header, OR_MVCC_FLAG_VALID_DELID);
+		  MVCC_SET_FLAG_BITS (&new_rec_header,
+				      OR_MVCC_FLAG_VALID_DELID);
 		  MVCC_SET_DELID (&new_rec_header,
 				  MVCC_GET_DELID (&old_rec_header));
 		}
@@ -6741,6 +6743,36 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		{
 		  MVCC_CLEAR_FLAG_BITS (&new_rec_header,
 					OR_MVCC_FLAG_VALID_DELID);
+		}
+
+	      if (MVCC_IS_FLAG_SET (&old_rec_header,
+				    OR_MVCC_FLAG_VALID_NEXT_VERSION))
+		{
+		  MVCC_SET_FLAG_BITS (&new_rec_header,
+				      OR_MVCC_FLAG_VALID_NEXT_VERSION);
+		  MVCC_SET_NEXT_VERSION (&new_rec_header,
+					 &MVCC_GET_NEXT_VERSION
+					 (&old_rec_header));
+		}
+	      else
+		{
+		  MVCC_CLEAR_FLAG_BITS (&new_rec_header,
+					OR_MVCC_FLAG_VALID_NEXT_VERSION);
+		}
+
+	      if (MVCC_IS_FLAG_SET (&old_rec_header,
+				    OR_MVCC_FLAG_VALID_PARTITION_OID))
+		{
+		  MVCC_SET_FLAG_BITS (&new_rec_header,
+				      OR_MVCC_FLAG_VALID_PARTITION_OID);
+		  MVCC_SET_PARTITION_OID (&new_rec_header,
+					  &MVCC_GET_PARTITION_OID
+					  (&old_rec_header));
+		}
+	      else
+		{
+		  MVCC_CLEAR_FLAG_BITS (&new_rec_header,
+					OR_MVCC_FLAG_VALID_PARTITION_OID);
 		}
 
 	      if (or_mvcc_set_header (recdes, &new_rec_header) != NO_ERROR)
