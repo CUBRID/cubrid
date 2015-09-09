@@ -313,6 +313,12 @@ extern "C"
   extern int tz_create_datetimetz_from_utc (const DB_DATETIME * src_dt,
 					    const TZ_REGION * dest_region,
 					    DB_DATETIMETZ * dest_dt_tz);
+  extern int tz_create_datetimetz_from_parts (const int m, const int d,
+					      const int y, const int h,
+					      const int mi, const int s,
+					      const int ms,
+					      const TZ_ID * tz_id,
+					      DB_DATETIMETZ * dt_tz);
 #ifdef __cplusplus
 }
 #endif

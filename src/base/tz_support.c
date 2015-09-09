@@ -1563,9 +1563,8 @@ exit:
  */
 int
 tz_create_timetz (const DB_TIME * time, const char *tz_str,
-		  const int tz_size,
-		  const TZ_REGION * default_tz_region, DB_TIMETZ * time_tz,
-		  const char **end_tz_str)
+		  const int tz_size, const TZ_REGION * default_tz_region,
+		  DB_TIMETZ * time_tz, const char **end_tz_str)
 {
   int err_status = NO_ERROR;
   DB_DATETIME dt;
@@ -5148,4 +5147,56 @@ tz_create_datetimetz_from_utc (const DB_DATETIME * src_dt,
   tz_encode_tz_id (&tz_info, &(dest_dt_tz->tz_id));
 
   return er_status;
+}
+
+/*
+* tz_create_datetimetz_from_parts() - creates a datetimetz from month, day,
+*				      year, hour, minutes, seconds and
+*				      milliseconds
+*	
+*  Returns error or no error
+*  m(in): month
+*  d(in): day
+*  y(in): year
+*  h(in): hour
+*  mi(in): minute
+*  s(in): second
+*  ms(in): millisecond
+*  tz_id(in): timezone id
+*  dt_tz(out): result datetimetz
+*/
+int
+tz_create_datetimetz_from_parts (const int m, const int d, const int y,
+				 const int h, const int mi, const int s,
+				 const int ms, const TZ_ID * tz_id,
+				 DB_DATETIMETZ * dt_tz)
+{
+  DB_DATETIME utc_datetime;
+  DB_DATETIMETZ dt_tz_utc;
+  int error_status = NO_ERROR;
+
+  error_status = db_datetime_encode (&utc_datetime, m, d, y, h, mi, s, ms);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
+  dt_tz_utc.datetime = utc_datetime;
+
+  if (tz_id != NULL)
+    {
+      dt_tz_utc.tz_id = *tz_id;
+      error_status = tz_datetimetz_fix_zone (&dt_tz_utc, dt_tz);
+    }
+  else
+    {
+      TZ_REGION tz_session_region;
+
+      tz_get_session_tz_region (&tz_session_region);
+      error_status = tz_create_datetimetz_from_utc (&utc_datetime,
+						    &tz_session_region,
+						    dt_tz);
+    }
+
+  return error_status;
 }

@@ -433,12 +433,6 @@ static void convert_locale_number (char *sz, const int size,
 				   const INTL_LANG src_locale,
 				   const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
-static int create_datetimetz_from_parts (const int m, const int d,
-					 const int y, const int h,
-					 const int mi, const int s,
-					 const int ms, const TZ_ID tz_id,
-					 const int is_timezone,
-					 DB_DATETIMETZ * dt_tz);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -6691,19 +6685,18 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
       }
 
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       ldatetime = *(DB_GET_DATETIME (left));
       left_is_datetime = true;
-      result_type = DB_TYPE_DATETIME;
-      break;
 
-    case DB_TYPE_DATETIMELTZ:
-      error = tz_datetimeltz_to_local (DB_GET_DATETIME (left), &ldatetime);
-      if (error != NO_ERROR)
+      if (DB_VALUE_TYPE (left) == DB_TYPE_DATETIME)
 	{
-	  goto error_return;
+	  result_type = DB_TYPE_DATETIME;
 	}
-      left_is_datetime = true;
-      result_type = DB_TYPE_DATETIMELTZ;
+      else
+	{
+	  result_type = DB_TYPE_DATETIMELTZ;
+	}
       break;
 
     case DB_TYPE_DATETIMETZ:
@@ -6711,12 +6704,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	DB_DATETIMETZ *dt_tz_p;
 
 	dt_tz_p = DB_GET_DATETIMETZ (left);
-	error = tz_utc_datetimetz_to_local (&dt_tz_p->datetime,
-					    &dt_tz_p->tz_id, &ldatetime);
-	if (error != NO_ERROR)
-	  {
-	    goto error_return;
-	  }
+	ldatetime = dt_tz_p->datetime;
 	tz_id = dt_tz_p->tz_id;
 	left_is_datetime = true;
 	result_type = DB_TYPE_DATETIMETZ;
@@ -6724,23 +6712,11 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
       }
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
-      error = db_timestamp_decode_ses (DB_GET_TIMESTAMP (left),
-				       &ldatetime.date, &ltime);
-      if (error != NO_ERROR)
-	{
-	  goto error_return;
-	}
-
+      db_timestamp_decode_utc (DB_GET_TIMESTAMP (left), &ldatetime.date,
+			       &ltime);
       ldatetime.time = ltime * 1000;
       left_is_datetime = true;
-      if (DB_VALUE_TYPE (left) == DB_TYPE_TIMESTAMPLTZ)
-	{
-	  result_type = DB_TYPE_DATETIMELTZ;
-	}
-      else
-	{
-	  result_type = DB_TYPE_DATETIME;
-	}
+      result_type = DB_TYPE_DATETIMELTZ;
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
@@ -6748,14 +6724,8 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	DB_TIMESTAMPTZ *ts_tz_p;
 
 	ts_tz_p = DB_GET_TIMESTAMPTZ (left);
-
-	error = db_timestamp_decode_w_tz_id (&ts_tz_p->timestamp,
-					     &ts_tz_p->tz_id, &ldatetime.date,
-					     &ltime);
-	if (error != NO_ERROR)
-	  {
-	    goto error_return;
-	  }
+	db_timestamp_decode_utc (&ts_tz_p->timestamp, &ldatetime.date,
+				 &ltime);
 
 	ldatetime.time = ltime * 1000;
 	left_is_datetime = true;
@@ -6844,8 +6814,12 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	  error = ER_DATE_CONVERSION;
 	  goto error_return;
 	}
-      db_datetime_encode (&result_datetime, month, day, year, lhour, lminute,
-			  lsecond, lms);
+
+      if (result_type != DB_TYPE_DATETIMETZ)
+	{
+	  db_datetime_encode (&result_datetime, month, day, year, lhour,
+			      lminute, lsecond, lms);
+	}
     }
   else
     {
@@ -6900,12 +6874,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	    DB_MAKE_NULL (result);
 	  }
 
-	error = tz_create_datetimetz_from_ses (&result_datetime, &dt_tz);
-	if (error != NO_ERROR)
-	  {
-	    goto error_return;
-	  }
-	DB_MAKE_DATETIMELTZ (result, &dt_tz.datetime);
+	DB_MAKE_DATETIMELTZ (result, &result_datetime);
 	break;
       }
 
@@ -6922,9 +6891,9 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	    DB_MAKE_NULL (result);
 	  }
 
-	tz_id_to_region (&tz_id, &tz_region);
-	error = tz_create_datetimetz (&result_datetime, NULL, 0, &tz_region,
-				      &dt_tz, NULL);
+	error = tz_create_datetimetz_from_parts (month, day, year, lhour,
+						 lminute, lsecond, lms,
+						 &tz_id, &dt_tz);
 	if (error != NO_ERROR)
 	  {
 	    goto error_return;
@@ -21215,10 +21184,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
     case DB_TYPE_DATETIME:
       is_dt = 1;
       dt_p = DB_GET_DATETIME (date);
-      if(res_type == DB_TYPE_DATETIMELTZ)
+      if (res_type == DB_TYPE_DATETIMELTZ)
 	{
 	  is_local_timezone = 1;
-	} 
+	}
       break;
 
     case DB_TYPE_DATETIMETZ:
@@ -21397,10 +21366,9 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 
       if (is_timezone > 0)
 	{
-	  error_status = create_datetimetz_from_parts (m, d, y, h,
-						       mi, s, ms,
-						       tz_id,
-						       is_timezone, &dt_tz);
+	  error_status = tz_create_datetimetz_from_parts (m, d, y, h,
+							  mi, s, ms,
+							  &tz_id, &dt_tz);
 	}
       else
 	{
@@ -21415,9 +21383,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 
       if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
 	{
-	  if(is_timezone > 0)
+	  if (is_timezone > 0)
 	    {
-	      db_datetimetz_to_string (res_s, 64, &dt_tz.datetime, dt_tz.tz_id);
+	      db_datetimetz_to_string (res_s, 64, &dt_tz.datetime,
+				       dt_tz.tz_id);
 	    }
 	  else
 	    {
@@ -21436,17 +21405,17 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	}
       else
 	{
-	  if(is_timezone > 0)
+	  if (is_timezone > 0)
 	    {
-	      DB_MAKE_DATETIMETZ(result, &dt_tz.datetime);
+	      DB_MAKE_DATETIMETZ (result, &dt_tz.datetime);
 	    }
-	  else if(is_local_timezone > 0)
+	  else if (is_local_timezone > 0)
 	    {
-	      DB_MAKE_DATETIMELTZ(result, &db_datetime);
+	      DB_MAKE_DATETIMELTZ (result, &db_datetime);
 	    }
 	  else
 	    {
-	      DB_MAKE_DATETIME(result, &db_datetime);
+	      DB_MAKE_DATETIME (result, &db_datetime);
 	    }
 	}
     }
@@ -21509,10 +21478,18 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 
       if (is_local_timezone <= 0)
 	{
-	  error_status = create_datetimetz_from_parts (m, d, y, h,
-						       mi, s, ms,
-						       tz_id,
-						       is_timezone, &dt_tz);
+	  if (is_timezone > 0)
+	    {
+	      error_status = tz_create_datetimetz_from_parts (m, d, y, h,
+							      mi, s, ms,
+							      &tz_id, &dt_tz);
+	    }
+	  else
+	    {
+	      error_status = tz_create_datetimetz_from_parts (m, d, y, h,
+							      mi, s, ms,
+							      NULL, &dt_tz);
+	    }
 	}
       else
 	{
@@ -21555,7 +21532,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 	    {
 	      DB_MAKE_DATETIMETZ (result, &dt_tz);
 	    }
-	  else if(is_local_timezone > 0)
+	  else if (is_local_timezone > 0)
 	    {
 	      DB_MAKE_DATETIMELTZ (result, &db_datetime);
 	    }
@@ -22448,10 +22425,9 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
       if (is_timezone > 0)
 	{
-	  error_status = create_datetimetz_from_parts (m, d, y, h,
-						       mi, s, ms,
-						       tz_id,
-						       is_timezone, &dt_tz);
+	  error_status = tz_create_datetimetz_from_parts (m, d, y, h,
+							  mi, s, ms,
+							  &tz_id, &dt_tz);
 	}
       else
 	{
@@ -22548,10 +22524,18 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 
       if (is_local_timezone <= 0)
 	{
-	  error_status = create_datetimetz_from_parts (m, d, y, h,
-						       mi, s, ms,
-						       tz_id,
-						       is_timezone, &dt_tz);
+	  if (is_timezone > 0)
+	    {
+	      error_status = tz_create_datetimetz_from_parts (m, d, y, h,
+							      mi, s, ms,
+							      &tz_id, &dt_tz);
+	    }
+	  else
+	    {
+	      error_status = tz_create_datetimetz_from_parts (m, d, y, h,
+							      mi, s, ms,
+							      NULL, &dt_tz);
+	    }
 	}
       else
 	{
@@ -29563,56 +29547,4 @@ parse_tzd (const char *str, const int max_expect_len)
     }
 
   return p - str;
-}
-
-/*
-* create_datetimetz_from_parts() - 
-*	
-*  Returns error or no error
-*  m(in): month
-*  d(in): day
-*  y(in): year
-*  h(in): hour
-*  mi(in): minute
-*   s(in): second
-*  ms(in): millisecond
-*  tz_id(in): timezone id
-*  is_timezone(in): flag that tells if we should use the timezone id or the
-*                   session timezone
-*  dt_tz(out): result datetimetz
-*/
-static int
-create_datetimetz_from_parts (const int m, const int d, const int y,
-			      const int h, const int mi, const int s,
-			      const int ms, const TZ_ID tz_id,
-			      const int is_timezone, DB_DATETIMETZ * dt_tz)
-{
-  DB_DATETIME utc_datetime;
-  DB_DATETIMETZ dt_tz_utc;
-  int error_status = NO_ERROR;
-
-  error_status = db_datetime_encode (&utc_datetime, m, d, y, h, mi, s, ms);
-  if (error_status != NO_ERROR)
-    {
-      return error_status;
-    }
-
-  dt_tz_utc.datetime = utc_datetime;
-
-  if (is_timezone > 0)
-    {
-      dt_tz_utc.tz_id = tz_id;
-      error_status = tz_datetimetz_fix_zone (&dt_tz_utc, dt_tz);
-    }
-  else
-    {
-      TZ_REGION tz_session_region;
-
-      tz_get_session_tz_region (&tz_session_region);
-      error_status = tz_create_datetimetz_from_utc (&utc_datetime,
-						    &tz_session_region,
-						    dt_tz);
-    }
-
-  return error_status;
 }
