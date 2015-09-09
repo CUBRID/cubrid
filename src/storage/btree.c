@@ -27324,6 +27324,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts->force_restart_from_root || !VPID_ISNULL (&bts->C_vpid));
   assert (bts->C_page == NULL);
   assert (!DB_IS_NULL (&bts->cur_key));
+  assert (!BTS_IS_INDEX_ILS (bts));
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the
    * key again from root.
@@ -27837,6 +27838,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p,
       && DB_IS_NULL (&bts->cur_key))
     {
       pr_clone_value (bts->key_range.lower_key, &bts->cur_key);
+      bts->clear_cur_key = true;
       /* Next steps will go before bts->key_range.lower_key. */
     }
   /* We must have a non-null current key. */
@@ -28023,6 +28025,11 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	  if (bts->C_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, bts->C_page);
+	    }
+	  if (BTS_IS_INDEX_ILS (bts))
+	    {
+	      /* Reset scan to avoid using btree_range_scan_resume () */
+	      BTS_RESET_SCAN (bts);
 	    }
 	  continue;
 	}
@@ -28801,18 +28808,30 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p,
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  /* Fall through to dump key. */
+
+	  /* Covering index. */
+	  error_code =
+	    btree_dump_curr_key (thread_p, bts, bts->key_filter, oid,
+				 bts->index_scan_idp);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  DB_MAKE_NULL (&bts->cur_key);
+	}
+      else
+	{
+	  error_code =
+	    btree_dump_curr_key (thread_p, bts, bts->key_filter, oid,
+				 bts->index_scan_idp);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
 	}
 
-      /* Covering index. */
-      error_code =
-	btree_dump_curr_key (thread_p, bts, bts->key_filter, oid,
-			     bts->index_scan_idp);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
       BTS_INCREMENT_READ_OIDS (bts);
       return NO_ERROR;
     }
