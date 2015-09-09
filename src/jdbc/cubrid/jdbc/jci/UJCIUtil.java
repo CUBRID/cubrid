@@ -177,25 +177,26 @@ abstract public class UJCIUtil {
 	}
 
 	public static class TimeInfo{
-	    public String	time; 
-	    public String	timezone;  
-	    public boolean	isDatetime; 
+	    public String	time;
+	    public String	timezone;
+	    public boolean	isDatetime;
+	    public boolean	isPM;
 	};	
 	 
 	public static class TimePattern{
 		/* YYYY-MM-DD HH:MI:SS[.msec] [AM|PM] */
-		final static String format_1 = "\\d\\d\\d\\d\\-\\d\\d\\-\\d\\d \\d\\d\\:\\d\\d\\:\\d\\d(\\.\\d*)? ([aApP][mM])?";
+		final static String format_1 = "\\d\\d\\d\\d\\-\\d\\d\\-\\d\\d \\d\\d\\:\\d\\d\\:\\d\\d(\\.\\d*)?\\s++([aApP][mM])?";
 		/* HH:MI:SS[.msec] [AM|PM] YYYY-MM-DD */
-		final static String format_2 = "\\d\\d\\:\\d\\d\\:\\d\\d(\\.\\d*)? ([aApP][mM])? \\d\\d\\d\\d\\-\\d\\d\\-\\d\\d";
+		final static String format_2 = "\\d\\d\\:\\d\\d\\:\\d\\d(\\.\\d*)?\\s++([aApP][mM])? \\d\\d\\d\\d\\-\\d\\d\\-\\d\\d";
 		/* MM/DD/YYYY HH:MI:SS[.msec] [AM|PM] */
-		final static String format_3 = "\\d\\d\\/\\d\\d\\/\\d\\d\\d\\d \\d\\d\\:\\d\\d\\:\\d\\d(\\.\\d*)? ([aApP][mM])?";
+		final static String format_3 = "\\d\\d\\/\\d\\d\\/\\d\\d\\d\\d \\d\\d\\:\\d\\d\\:\\d\\d(\\.\\d*)?\\s++([aApP][mM])?";
 		/* HH:MI:SS[.msec] [AM|PM] MM/DD/YYYY */
-		final static String format_4 = "\\d\\d\\:\\d\\d\\:\\d\\d(\\.\\d*)? ([aApP][mM])? \\d\\d\\/\\d\\d\\/\\d\\d\\d\\d";
+		final static String format_4 = "\\d\\d\\:\\d\\d\\:\\d\\d(\\.\\d*)?\\s++([aApP][mM])? \\d\\d\\/\\d\\d\\/\\d\\d\\d\\d";
 		/* HH:MI:SS [AM|PM]  - time format */
-		final static String format_5 = "\\d\\d\\:\\d\\d\\:\\d\\d ([aApP][mM])?";
+		final static String format_5 = "\\d\\d\\:\\d\\d\\:\\d\\d\\s++([aApP][mM])?";
 
 		public final static Pattern pattern_time = Pattern.compile((format_1+"|"+format_2+"|"+format_3+"|"+format_4+"|"+format_5).toString());
-		public final static Pattern pattern_ampm = Pattern.compile(" [aApP][mM]");
+		public final static Pattern pattern_ampm = Pattern.compile("[aApP][mM]");
 		public final static Pattern pattern_millis = Pattern.compile(".");
 	} 
 	
@@ -203,7 +204,7 @@ abstract public class UJCIUtil {
 			TimeInfo timeinfo = new TimeInfo();
 			String str_timestamp = "", str_timezone = "";
 			int timestamp_count = 0;
-			boolean isDateTime = false;
+			boolean isDateTime = false, isPM = false;
 
 			Matcher matcher = TimePattern.pattern_time.matcher(str_time);
 			while (matcher.find()) {
@@ -223,6 +224,10 @@ abstract public class UJCIUtil {
 			if (matcher.find()) {
 				String found = matcher.group();
 				str_timestamp = str_timestamp.replace(found, "");
+				str_timestamp = str_timestamp.trim();
+				if ((found.charAt(0) == 'p') || (found.charAt(0) == 'P')){
+					isPM = true;
+				}
 			}
 
 			matcher = TimePattern.pattern_millis.matcher(str_timestamp);
@@ -233,6 +238,7 @@ abstract public class UJCIUtil {
 			timeinfo.time = str_timestamp;
 			timeinfo.timezone = str_timezone;
 			timeinfo.isDatetime = isDateTime;
+			timeinfo.isPM = isPM;
 			return timeinfo;
 	};
 }

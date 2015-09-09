@@ -58,6 +58,9 @@ public class CUBRIDTimestamptz extends CUBRIDTimestamp {
 		timeinfo = UJCIUtil.parseStringTime(str_CUBRIDTimestamptz);
 		Timestamp tmptime = Timestamp.valueOf(timeinfo.time);
 		time = tmptime.getTime();
+		if (timeinfo.isPM){
+			time += 43200000; // 12 hours in milliseconds
+		}
 
 		setTime(time);
 		this.timezone = timeinfo.timezone;		

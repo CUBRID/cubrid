@@ -55,6 +55,9 @@ public class CUBRIDTimetz extends Time {
 		timeinfo = UJCIUtil.parseStringTime(str_CUBRIDTimetz);
 		Time tmptime = Time.valueOf(timeinfo.time);
 		time = tmptime.getTime();
+		if (timeinfo.isPM){
+			time += 43200000; // 12 hours in milliseconds
+		}
 
 		setTime(time);
 		this.timezone = timeinfo.timezone;
