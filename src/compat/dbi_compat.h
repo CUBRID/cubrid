@@ -1534,7 +1534,8 @@
 #define ER_STAND_ALONE_VACUUM_START		    -1190
 #define ER_STAND_ALONE_VACUUM_END		    -1191
 
-#define ER_LAST_ERROR                               -1192
+#define ER_PRECISION_OVERFLOW			    -1192
+#define ER_LAST_ERROR                               -1193
 
 #define DB_TRUE 1
 #define DB_FALSE 0

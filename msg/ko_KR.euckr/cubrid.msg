@@ -1258,7 +1258,8 @@ $ LOADDB
 1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
 1190 Stand-alone vacuum execution is started.
 1191 Stand-alone vacuum execution is ended.
-1192 마지막 에러
+1192 Value's precision of %1$zu exceeds maximum allowed %2$d
+1193 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

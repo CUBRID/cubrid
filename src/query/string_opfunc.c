@@ -2300,15 +2300,23 @@ db_string_repeat (const DB_VALUE * src_string,
     {
       DB_VALUE dummy;
       unsigned char *res_ptr, *src_ptr;
-      int expected_size;
+      DB_BIGINT new_length, expected_size;
 
       /* init dummy */
       DB_MAKE_NULL (&dummy);
       /* create an empy string for result */
 
+      new_length = (DB_BIGINT) src_length *count_i;
+      if (OR_CHECK_INT_OVERFLOW (new_length))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PRECISION_OVERFLOW, 2, new_length, DB_INT32_MAX);
+	  return ER_PRECISION_OVERFLOW;
+	}
+
       error_status =
 	db_string_make_empty_typed_string (NULL, &dummy, result_type,
-					   src_length * count_i,
+					   new_length,
 					   DB_GET_STRING_CODESET (src_string),
 					   DB_GET_STRING_COLLATION
 					   (src_string));
@@ -2326,6 +2334,14 @@ db_string_repeat (const DB_VALUE * src_string,
 	}
 
       expected_size = src_size * count_i;
+      if (OR_CHECK_INT_OVERFLOW (expected_size))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_STRING_SIZE_TOO_BIG, 2, expected_size,
+		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
+	  return ER_QPROC_STRING_SIZE_TOO_BIG;
+	}
+
       error_status = qstr_grow_string (&dummy, result, expected_size);
       if (error_status < 0)
 	{
