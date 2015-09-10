@@ -6732,7 +6732,14 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 			       &ltime);
       ldatetime.time = ltime * 1000;
       left_is_datetime = true;
-      result_type = DB_TYPE_DATETIMELTZ;
+      if (DB_VALUE_TYPE (left) == DB_TYPE_TIMESTAMP)
+	{
+	  result_type = DB_TYPE_DATETIME;
+	}
+      else
+	{
+	  result_type = DB_TYPE_DATETIMELTZ;
+	}
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
@@ -6876,6 +6883,19 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	  assert (false);
 	  DB_MAKE_NULL (result);
 	}
+
+      if (DB_VALUE_TYPE (left) == DB_TYPE_TIMESTAMP)
+	{
+	  DB_DATETIME dt_local;
+
+	  error = tz_datetimeltz_to_local (&result_datetime, &dt_local);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
+	  result_datetime = dt_local;
+	}
+
       DB_MAKE_DATETIME (result, &result_datetime);
       break;
 
