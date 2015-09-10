@@ -3135,7 +3135,7 @@ detect_dst:
 		   && try_offset_rule_overlap == true)
 	    {
 	      if (leap_offset_rule_interval > 0
-		  || (ABS (offset_rule_diff) >=
+		  || (ABS (offset_rule_diff) >
 		      ABS (leap_offset_rule_interval)))
 		{
 		  err_status = ER_TZ_DST_NOT_SUPPORTED;
@@ -3471,7 +3471,7 @@ detect_dst:
 	  else if (try_offset_rule_overlap == true)
 	    {
 	      if (leap_offset_rule_interval > 0
-		  || (ABS (offset_rule_diff) >=
+		  || (ABS (offset_rule_diff) >
 		      ABS (leap_offset_rule_interval)))
 		{
 		  /* invalid time, abort */
@@ -3536,7 +3536,7 @@ detect_dst:
 		   == true && try_offset_rule_overlap == true)
 	    {
 	      if (leap_offset_rule_interval > 0
-		  || (ABS (offset_rule_diff) >=
+		  || (ABS (offset_rule_diff) >
 		      ABS (leap_offset_rule_interval)))
 		{
 		  err_status = ER_TZ_INVALID_DST;
