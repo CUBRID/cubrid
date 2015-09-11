@@ -13373,7 +13373,7 @@ pt_coerce_3args (PARSER_CONTEXT * parser,
 static int
 pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
 {
-  int precision = TP_FLOATING_PRECISION_VALUE;
+  int precision = DB_DEFAULT_PRECISION;
 
   switch (node->type_enum)
     {
@@ -13420,6 +13420,12 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
       precision = TP_DATETIMETZ_AS_CHAR_LENGTH;
       break;
     case PT_TYPE_NUMERIC:
+      if (node->data_type == NULL)
+	{
+	  precision = DB_DEFAULT_NUMERIC_PRECISION + 1;	/* sign */
+	  break;
+	}
+
       precision = node->data_type->info.data_type.precision;
       if (precision == 0 || precision == DB_DEFAULT_PRECISION)
 	{
@@ -13437,28 +13443,44 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
 	}
       break;
     case PT_TYPE_CHAR:
-      precision = node->data_type->info.data_type.precision;
+      if (node->data_type != NULL)
+	{
+	  precision = node->data_type->info.data_type.precision;
+	}
+
       if (precision == DB_DEFAULT_PRECISION)
 	{
 	  precision = DB_MAX_CHAR_PRECISION;
 	}
       break;
     case PT_TYPE_VARCHAR:
-      precision = node->data_type->info.data_type.precision;
+      if (node->data_type != NULL)
+	{
+	  precision = node->data_type->info.data_type.precision;
+	}
+
       if (precision == DB_DEFAULT_PRECISION)
 	{
 	  precision = DB_MAX_VARCHAR_PRECISION;
 	}
       break;
     case PT_TYPE_NCHAR:
-      precision = node->data_type->info.data_type.precision;
+      if (node->data_type != NULL)
+	{
+	  precision = node->data_type->info.data_type.precision;
+	}
+
       if (precision == DB_DEFAULT_PRECISION)
 	{
 	  precision = DB_MAX_NCHAR_PRECISION;
 	}
       break;
     case PT_TYPE_VARNCHAR:
-      precision = node->data_type->info.data_type.precision;
+      if (node->data_type != NULL)
+	{
+	  precision = node->data_type->info.data_type.precision;
+	}
+
       if (precision == DB_DEFAULT_PRECISION)
 	{
 	  precision = DB_MAX_VARNCHAR_PRECISION;
