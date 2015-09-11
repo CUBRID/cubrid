@@ -105,7 +105,7 @@ static int shard_cas_main (void);
 static void cas_sig_handler (int signo);
 static int cas_init (void);
 static void cas_final (void);
-static void cas_free (bool free_srv_handle);
+static void cas_free (bool from_sighandler);
 static void query_cancel (int signo);
 
 static int cas_init_shm (void);
@@ -1584,8 +1584,10 @@ static void
 cas_sig_handler (int signo)
 {
   signal (signo, SIG_IGN);
-  cas_free (false);
-  exit (0);
+  cas_free (true);
+  as_info->pid = 0;
+  as_info->uts_status = UTS_STATUS_RESTART;
+  _exit (0);
 }
 
 static void
@@ -1593,23 +1595,37 @@ cas_final (void)
 {
   signal (SIGTERM, SIG_IGN);
   signal (SIGINT, SIG_IGN);
-  cas_free (true);
+  cas_free (false);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
   exit (0);
 }
 
 static void
-cas_free (bool free_srv_handle)
+cas_free (bool from_sighandler)
 {
 #ifdef MEM_DEBUG
   int fd;
 #endif
   int max_process_size;
 
-  ux_database_shutdown ();
+  if (from_sighandler)
+    {
+      cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
+#ifndef LIBCAS_FOR_JSP
+      as_info->database_name[0] = '\0';
+      as_info->database_host[0] = '\0';
+      as_info->database_user[0] = '\0';
+      as_info->database_passwd[0] = '\0';
+      as_info->last_connect_time = 0;
+#endif /* !LIBCAS_FOR_JSP */
+    }
+  else
+    {
+      ux_database_shutdown ();
+    }
 
-  if (as_info->cur_statement_pooling && free_srv_handle == true)
+  if (as_info->cur_statement_pooling && !from_sighandler)
     {
       hm_srv_handle_free_all (true);
     }
