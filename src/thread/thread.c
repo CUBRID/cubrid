@@ -855,8 +855,18 @@ loop:
 	    {
 	      if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
 		{
-		  thread_p->interrupted = true;
-		  thread_wakeup (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT);
+		  thread_lock_entry (thread_p);
+
+		  /* The worker thread may have been waked up by others. Check it again. */
+		  if (thread_p->tran_index != -1
+		      && thread_p->status == TS_WAIT)
+		    {
+		      thread_p->interrupted = true;
+		      thread_wakeup_already_had_mutex (thread_p,
+						       THREAD_RESUME_DUE_TO_INTERRUPT);
+		    }
+
+		  thread_unlock_entry (thread_p);
 		}
 	      else if (stop_phase == THREAD_STOP_LOGWR)
 		{
