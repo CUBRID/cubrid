@@ -3023,7 +3023,8 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
 	  rule_time_sec = 0;
 	}
 
-      if (src_julian_date < rule_julian_date)
+      /* add a safety buffer of 1 julian day */
+      if (src_julian_date <= rule_julian_date + 1)
 	{
 	  /* this is a candidate, we still have to check the exact time when
 	   * rule ends */
