@@ -912,7 +912,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
     }
 
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  (void) disk_goodvol_refresh (thread_p, boot_Db_parm->nvols);
+  (void) disk_goodvol_refresh (thread_p);
 
 end:
   if (vlabel)
@@ -974,10 +974,12 @@ xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
       return ER_BO_UNKNOWN_VOLUME;
     }
 
+#if 0
   if (disk_cache_disable_new_files (thread_p, volid) != NO_ERROR)
     {
       return ER_FAILED;
     }
+#endif
 
   if (clear_cached
       && xdisk_get_purpose (thread_p, volid) == DISK_TEMPVOL_TEMP_PURPOSE)
@@ -994,10 +996,12 @@ xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
     }
 
   r = disk_del_volume_extension (thread_p, volid);
+#if 0
   if (r != NO_ERROR)
     {
       (void) disk_cache_enable_new_files (thread_p, volid);
     }
+#endif
 
   return r;
 }
@@ -2063,7 +2067,7 @@ boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
     }
 
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  (void) disk_goodvol_refresh (thread_p, boot_Db_parm->nvols);
+  (void) disk_goodvol_refresh (thread_p);
 
   /* recreate volume info file for removed volume */
   (void) logpb_recreate_volume_info (thread_p);
@@ -3918,7 +3922,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   (void) boot_remove_all_temp_volumes (thread_p,
 				       REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
-  (void) disk_goodvol_refresh (thread_p, boot_Db_parm->nvols);
+  (void) disk_goodvol_refresh (thread_p);
 
   /* Set any warnings about space by purpose
    * dk_warnspace_by_purpose(DISK_UNKNOWN_PURPOSE);
@@ -3931,7 +3935,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       goto error;
     }
-  (void) disk_goodvol_refresh (thread_p, boot_Db_parm->nvols);
+  (void) disk_goodvol_refresh (thread_p);
 
   /* If there is an existing query area, delete it. */
   if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
@@ -7240,11 +7244,13 @@ boot_rv_del_volume_extension (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       error = boot_xremove_perm_volume (thread_p, volid);
     }
 
+#if 0
   if (error != NO_ERROR)
     {
       /* we didn't unformat, so we recover the status to enable creating new files */
       (void) disk_cache_enable_new_files (thread_p, volid);
     }
+#endif
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 

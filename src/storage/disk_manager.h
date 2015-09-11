@@ -188,8 +188,7 @@ struct vol_space_info
 };
 
 extern int disk_goodvol_decache (THREAD_ENTRY * thread_p);
-extern bool disk_goodvol_refresh (THREAD_ENTRY * thread_p,
-				  int hint_max_nvols);
+extern bool disk_goodvol_refresh (THREAD_ENTRY * thread_p);
 extern VOLID disk_add_auto_volume_extension (THREAD_ENTRY * thread_p,
 					     DKNPAGES min_npages,
 					     DISK_SETPAGE_TYPE setpage_type,
@@ -212,9 +211,6 @@ extern int disk_expand_perm (THREAD_ENTRY * thread_p, INT16 volid,
 extern VOLID disk_cache_get_auto_extend_volid (THREAD_ENTRY * thread_p);
 extern int disk_cache_set_auto_extend_volid (THREAD_ENTRY * thread_p,
 					     VOLID volid);
-extern int disk_cache_disable_new_files (THREAD_ENTRY * thread_p,
-					 VOLID volid);
-extern int disk_cache_enable_new_files (THREAD_ENTRY * thread_p, VOLID volid);
 extern int disk_reinit_all_tmp (THREAD_ENTRY * thread_p);
 
 extern INT32 disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
