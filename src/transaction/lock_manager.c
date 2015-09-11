@@ -2457,13 +2457,14 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   if (entry_ptr->thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
     {
       /* a shutdown thread wakes me up */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return LOCK_RESUMED_INTERRUPT;
     }
   else if (entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED)
     {
       /* wake up with other reason */
       assert (0);
-
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return LOCK_RESUMED_INTERRUPT;
     }
   else
