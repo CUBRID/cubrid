@@ -18133,6 +18133,13 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
   DISK_ISVALID valid_reloc = DISK_VALID;
   int i;
 
+  if (chk->not_vacuumed_res != DISK_VALID)
+    {
+      valid_reloc = chk->not_vacuumed_res;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HEAP_FOUND_NOT_VACUUMED, 0);
+    }
+
   /*
    * Check for any postponed unfound relocated OIDs that have not been
    * checked or found. If they are not in the hash table, it would be an
@@ -18175,18 +18182,13 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 			    (int) chk->unfound_reloc_oids[i].volid,
 			    chk->unfound_reloc_oids[i].pageid,
 			    (int) chk->unfound_reloc_oids[i].slotid);
+#if defined (SA_MODE)
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_GENERIC_ERROR, 0);
 	      valid_reloc = DISK_INVALID;
+#endif /* SA_MODE */
 	    }
 	}
-    }
-
-  if (chk->not_vacuumed_res != DISK_VALID)
-    {
-      valid_reloc = chk->not_vacuumed_res;
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HEAP_FOUND_NOT_VACUUMED, 0);
     }
 
   /*
@@ -18199,7 +18201,9 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
   if (mht_count (chk->ht) > 0)
     {
       (void) mht_map (chk->ht, heap_chkreloc_print_notfound, chk);
+#if defined (SA_MODE)
       valid_reloc = DISK_INVALID;
+#endif /* !SA_MODE */
     }
 
   mht_destroy (chk->ht);
@@ -18234,7 +18238,9 @@ heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent,
 		    (int) forward->reloc_oid.slotid,
 		    (int) forward->real_oid.volid,
 		    forward->real_oid.pageid, (int) forward->real_oid.slotid);
+#if defined (SA_MODE)
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+#endif /* SA_MODE */
     }
   /* mht_rem() has been updated to take a function and an arg pointer
    * that can be called on the entry before it is removed.  We may
