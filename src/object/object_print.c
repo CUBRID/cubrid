@@ -2093,6 +2093,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      /* kludge for const vs. non-const warnings */
 	      kludge = sm_get_ch_name (super->op);
+	      if (kludge == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  goto error_exit;
+		}
+
 	      if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 		{
 		  strs[i] = obj_print_copy_string ((char *) kludge);
@@ -2125,6 +2131,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      /* kludge for const vs. non-const warnings */
 	      kludge = sm_get_ch_name (user->op);
+	      if (kludge == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  goto error_exit;
+		}
+
 	      if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 		{
 		  strs[i] = obj_print_copy_string ((char *) kludge);

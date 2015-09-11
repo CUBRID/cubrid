@@ -6512,6 +6512,7 @@ ldr_update_statistics (void)
 {
   int err = NO_ERROR;
   CLASS_TABLE *table;
+  const char *class_name = NULL;
 
   for (table = Classes; table != NULL && !err; table = table->next)
     {
@@ -6519,10 +6520,18 @@ ldr_update_statistics (void)
 	{
 	  if (ldr_Current_context->verbose)
 	    {
+	      class_name = sm_get_ch_name (table->class_);
+	      if (class_name == NULL)
+		{
+		  err = er_errid ();
+		  assert (err != NO_ERROR);
+		  break;
+		}
+
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					       MSGCAT_UTIL_SET_LOADDB,
 					       LOADDB_MSG_CLASS_TITLE),
-		       sm_get_ch_name (table->class_));
+		       class_name);
 	      fflush (stdout);
 	    }
 	  err = sm_update_statistics (table->class_, STATS_WITH_SAMPLING);

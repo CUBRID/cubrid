@@ -13899,6 +13899,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
   SM_ATTRIBUTE **attrs = NULL;
   size_t attrs_size;
   const char *class_name;
+  const char *partition_name;
   int use_prefix_length;
   SM_CONSTRAINT_TYPE constraint_type;
   int reverse_index;
@@ -14015,14 +14016,28 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 
 	  if (function_index)
 	    {
+	      class_name = sm_get_ch_name (classop);
+	      if (class_name == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  break;
+		}
+
+	      partition_name = sm_get_ch_name (sub_partitions[i]);
+	      if (partition_name == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  break;
+		}
+
 	      /* make sure the expression is compiled using the appropriate
 	       * name, the partition name */
 	      error =
 		do_recreate_func_index_constr (NULL, NULL,
 					       new_func_index_info, NULL,
-					       sm_get_ch_name (classop),
-					       sm_get_ch_name (sub_partitions
-							       [i]));
+					       class_name, partition_name);
 	      if (error != NO_ERROR)
 		{
 		  goto fail_end;
@@ -14039,13 +14054,28 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	       * name, the partition name */
 	      if (new_filter_index_info->num_attrs > 0)
 		{
+		  class_name = sm_get_ch_name (classop);
+		  if (class_name == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		      break;
+		    }
+
+		  partition_name = sm_get_ch_name (sub_partitions[i]);
+		  if (partition_name == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		      break;
+		    }
+
 		  error =
 		    do_recreate_filter_index_constr (NULL,
 						     new_filter_index_info,
 						     NULL,
-						     sm_get_ch_name (classop),
-						     sm_get_ch_name
-						     (sub_partitions[i]));
+						     class_name,
+						     partition_name);
 		  if (error != NO_ERROR)
 		    {
 		      goto fail_end;

@@ -471,16 +471,25 @@ db_get_superclass_names (MOP obj)
   DB_NAMELIST *names = NULL;
   DB_OBJLIST *el;
   SM_CLASS *class_;
+  const char *class_name = NULL;
 
   CHECK_CONNECT_NULL ();
 
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
       for (el = class_->inheritance; el != NULL; el = el->next)
-	if (nlist_append (&names, sm_get_ch_name (el->op), NULL, NULL))
-	  {
-	    goto memory_error;
-	  }
+	{
+	  class_name = sm_get_ch_name (el->op);
+	  if (class_name == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      goto memory_error;
+	    }
+	  if (nlist_append (&names, class_name, NULL, NULL))
+	    {
+	      goto memory_error;
+	    }
+	}
     }
   names = db_namelist_sort (names);
 
@@ -504,16 +513,25 @@ db_get_subclass_names (MOP obj)
   DB_NAMELIST *names = NULL;
   DB_OBJLIST *el;
   SM_CLASS *class_;
+  const char *class_name = NULL;
 
   CHECK_CONNECT_NULL ();
 
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
       for (el = class_->users; el != NULL; el = el->next)
-	if (nlist_append (&names, sm_get_ch_name (el->op), NULL, NULL))
-	  {
-	    goto memory_error;
-	  }
+	{
+	  class_name = sm_get_ch_name (el->op);
+	  if (class_name == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      goto memory_error;
+	    }
+	  if (nlist_append (&names, class_name, NULL, NULL))
+	    {
+	      goto memory_error;
+	    }
+	}
     }
   names = db_namelist_sort (names);
 

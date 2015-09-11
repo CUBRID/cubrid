@@ -9753,6 +9753,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
   SM_CONSTRAINT_INFO *index_save_info = NULL;
   DB_CONSTRAINT_TYPE constraint_type;
   int free_constraint = 0;
+  const char *class_name = NULL;
 
   assert (src_class != NULL);
 
@@ -9784,52 +9785,67 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	{
 	  /* we need to recompile the expression need for function index */
 	  error = sm_save_constraint_info (&index_save_info, c);
-	  if (error == NO_ERROR)
+	  if (error != NO_ERROR)
 	    {
-	      free_constraint = 1;
-	      if (c->func_index_info)
-		{
-		  error =
-		    do_recreate_func_index_constr (parser, index_save_info,
-						   NULL, NULL,
-						   sm_ch_name ((MOBJ)
-							       src_class),
-						   sm_get_ch_name (classmop));
-		}
-	      else
-		{
-		  /* filter index predicate available */
-		  error =
-		    do_recreate_filter_index_constr (parser, index_save_info->
-						     filter_predicate,
-						     NULL,
-						     sm_ch_name ((MOBJ)
-								 src_class),
-						     sm_get_ch_name
-						     (classmop));
-		}
+	      goto exit_on_error;
 	    }
-	}
 
-      if (error == NO_ERROR)
-	{
-	  if (c->func_index_info || c->filter_predicate)
+	  free_constraint = 1;
+	  class_name = sm_get_ch_name (classmop);
+	  if (class_name == NULL)
 	    {
-	      error = sm_add_index (classmop, constraint_type, new_cons_name,
-				    att_names, index_save_info->asc_desc,
-				    index_save_info->prefix_length,
-				    index_save_info->filter_predicate,
-				    index_save_info->func_index_info,
-				    index_save_info->comment);
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	      goto exit_on_error;
+	    }
+
+	  if (c->func_index_info)
+	    {
+	      error =
+		do_recreate_func_index_constr (parser, index_save_info,
+					       NULL, NULL,
+					       sm_ch_name ((MOBJ)
+							   src_class),
+					       class_name);
 	    }
 	  else
 	    {
-	      error = sm_add_index (classmop, constraint_type, new_cons_name,
-				    att_names, c->asc_desc,
-				    c->attrs_prefix_length,
-				    c->filter_predicate, c->func_index_info,
-				    c->comment);
+	      /* filter index predicate available */
+	      error =
+		do_recreate_filter_index_constr (parser, index_save_info->
+						 filter_predicate,
+						 NULL,
+						 sm_ch_name ((MOBJ)
+							     src_class),
+						 class_name);
 	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+
+      if (c->func_index_info || c->filter_predicate)
+	{
+	  error = sm_add_index (classmop, constraint_type, new_cons_name,
+				att_names, index_save_info->asc_desc,
+				index_save_info->prefix_length,
+				index_save_info->filter_predicate,
+				index_save_info->func_index_info,
+				index_save_info->comment);
+	}
+      else
+	{
+	  error = sm_add_index (classmop, constraint_type, new_cons_name,
+				att_names, c->asc_desc,
+				c->attrs_prefix_length,
+				c->filter_predicate, c->func_index_info,
+				c->comment);
+	}
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
 
       free_and_init (att_names);
@@ -9843,11 +9859,23 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	{
 	  sm_free_constraint_info (&index_save_info);
 	}
+      free_constraint = 0;
+    }
 
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+  return error;
+
+exit_on_error:
+
+  free_and_init (att_names);
+
+  if (new_cons_name != NULL && new_cons_name != c->name)
+    {
+      free_and_init (new_cons_name);
+    }
+
+  if (free_constraint)
+    {
+      sm_free_constraint_info (&index_save_info);
     }
 
   return error;

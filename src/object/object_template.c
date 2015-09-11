@@ -1235,6 +1235,11 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	    }
 
 	  class_name = sm_get_ch_name (att->class_mop);
+	  if (class_name == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      goto auto_increment_error;
+	    }
 
 	  /* get original class's serial object */
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, class_name,
