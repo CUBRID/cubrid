@@ -650,11 +650,12 @@ struct btree_rec_satisfies_snapshot_helper
 				 * objects.
 				 */
   int oid_cnt;			/* Visible OID counter. */
+  int oid_capacity;		/* OID buffer capacity. */
 };
 /* BTREE_REC_SATISFIES_SNAPSHOT_HELPER static initializer. */
 #define BTREE_REC_SATISFIES_SNAPSHOT_HELPER_INITIALIZER \
   { NULL /* snapshot */, OID_INITIALIZER /* match_class_oid */, \
-    NULL /* oid_ptr */, 0 /* oid_cnt */}
+    NULL /* oid_ptr */, 0 /* oid_cnt */, 0 /* oid_capacity */ }
 
 /*
  * btree_search_key_and_apply_functions () argument functions.
@@ -25696,6 +25697,7 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p,
   /* Initialize the helper for btree_record_satisfies_snapshot. */
   /* OID buffer. Only one OID will be copied. */
   rec_process_helper.oid_ptr = &unique_oid;
+  rec_process_helper.oid_capacity = 1;
   /* MVCC snapshot. */
   rec_process_helper.snapshot = find_unique_helper->snapshot;
 
@@ -26939,10 +26941,20 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
        */
       assert (!BTREE_IS_UNIQUE (btid_int->unique_pk) || helper->oid_cnt == 0);
 
+      if (helper->oid_cnt >= helper->oid_capacity)
+	{
+	  /* OID buffer is not big enough. There was a mistake estimating the
+	   * number of objects.
+	   */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+
       /* Save OID in buffer. */
       memcpy (helper->oid_ptr, oid, sizeof (*oid));
       /* Increment buffer pointer and OID counter. */
-      helper->oid_ptr += sizeof (*oid);
+      helper->oid_ptr++;
       helper->oid_cnt++;
 
 #if defined (NDEBUG)

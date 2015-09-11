@@ -12758,7 +12758,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 	  if (req_domain->class_mop != curr_domain->class_mop)
 	    {
 	      if (db_is_subclass
-		  (curr_domain->class_mop, req_domain->class_mop) == 0)
+		  (curr_domain->class_mop, req_domain->class_mop) <= 0)
 		{
 		  attr_chg_properties->p[P_TYPE] |=
 		    ATT_CHG_TYPE_NOT_SUPPORTED;

@@ -2118,8 +2118,9 @@ pt_objects_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt,
 	{
 	  return ((s_class_type->info.name.db_object ==
 		   d_class_dt_type->info.name.db_object)
-		  || db_is_subclass (s_class_type->info.name.db_object,
-				     d_class_dt_type->info.name.db_object));
+		  || (db_is_subclass (s_class_type->info.name.db_object,
+				      d_class_dt_type->info.name.db_object)
+		      > 0));
 	}
     }
 }
@@ -2318,8 +2319,8 @@ pt_type_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_type,
     }
 
   return (src_type->info.name.db_object == dest_type->info.name.db_object
-	  || db_is_subclass (src_type->info.name.db_object,
-			     dest_type->info.name.db_object)
+	  || (db_is_subclass (src_type->info.name.db_object,
+			      dest_type->info.name.db_object) > 0)
 	  || mq_is_real_class_of_vclass (parser, src_type, dest_type));
 }
 
@@ -5614,7 +5615,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  pt_check_user_owns_class (parser, sup);
 	  if (code == PT_DROP_SUPCLASS)
 	    {
-	      if (!db_is_superclass (super, db))
+	      if (db_is_superclass (super, db) <= 0)
 		{
 		  PT_ERRORmf2 (parser, sup,
 			       MSGCAT_SET_PARSER_SEMANTIC,
@@ -7811,7 +7812,7 @@ pt_attr_refers_to_self (PARSER_CONTEXT *
        * is also considered a self-referencing attribute */
       self_obj = db_find_class (self);
       attr_obj = type->info.name.db_object;
-      if (self_obj && attr_obj && db_is_subclass (attr_obj, self_obj))
+      if (self_obj && attr_obj && db_is_subclass (attr_obj, self_obj) > 0)
 	{
 	  return true;
 	}

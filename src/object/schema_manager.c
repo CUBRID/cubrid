@@ -4757,7 +4757,8 @@ sm_get_class_name_not_null (MOP op)
 
 /*
  * sm_is_subclass() - Checks to see if one class is a subclass of another.
- *   return: non-zero if classmop is subclass of supermop
+ *   return: 1 if classmop is subclass of supermop, 0 if classmop is not
+ *	     subclass if supermop, negative for errors.
  *   classmop(in): possible sub class
  *   supermop(in): possible super class
  */
@@ -4769,28 +4770,38 @@ sm_is_subclass (MOP classmop, MOP supermop)
   SM_CLASS *class_;
   int found;
 
-  found = 0;
-  if (au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT) ==
-      NO_ERROR)
+  found = au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (found < 0)
     {
-      for (s = class_->inheritance; !found && s != NULL; s = s->next)
-	{
-	  if (s->op == supermop)
-	    {
-	      found = 1;
-	    }
-	}
+      /* Error. */
+      ASSERT_ERROR ();
+      return found;
+    }
 
-      if (!found)
+  for (s = class_->inheritance; s != NULL; s = s->next)
+    {
+      if (s->op == supermop)
 	{
-	  for (s = class_->inheritance; !found && s != NULL; s = s->next)
-	    {
-	      found = sm_is_subclass (s->op, supermop);
-	    }
+	  /* Found super class. */
+	  return 1;
 	}
     }
 
-  return found;
+  /* Recursive check on super classes. */
+  for (s = class_->inheritance; s != NULL; s = s->next)
+    {
+      found = sm_is_subclass (s->op, supermop);
+      if (found != 0)
+	{
+	  /* Found or error was returned. */
+	  assert (found > 0 || er_errid () != NO_ERROR);
+	  return found;
+	}
+      /* Not found, continue searching. */
+    }
+
+  /* Not found. */
+  return 0;
 }
 
 /*
@@ -12463,35 +12474,85 @@ lock_supers (SM_TEMPLATE * def, DB_OBJLIST * current,
   SM_CLASS *class_;
 
   /* first check for removals */
-  for (super = current;
-       ((super != NULL) && (error == NO_ERROR)); super = super->next)
+  for (super = current; super != NULL; super = super->next)
     {
-      if (!ml_find (def->inheritance, super->op))
+      if (def != NULL && !ml_find (def->inheritance, super->op))
 	{
+	  /* Lock for write */
 	  error = au_fetch_class (super->op, &class_, AU_FETCH_WRITE,
 				  AU_SELECT);
-	  if (error == NO_ERROR)
+	  if (error != NO_ERROR)
 	    {
-	      error = ml_append (oldlist, super->op, NULL);
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+	  error = ml_append (oldlist, super->op, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+	}
+      else
+	{
+	  /* Lock for read. We want to prevent other from writing the super.
+	   */
+	  error = au_fetch_class (super->op, &class_, AU_FETCH_READ,
+				  AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+	}
+      /* Recursive super locking. */
+      if (class_->inheritance != NULL)
+	{
+	  error = lock_supers (NULL, class_->inheritance, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
 	    }
 	}
     }
 
-  /* now check for new supers */
-  for (super = def->inheritance;
-       ((super != NULL) && (error == NO_ERROR)); super = super->next)
+  if (def != NULL)
     {
-      if (!ml_find (current, super->op))
+      /* now check for new supers */
+      for (super = def->inheritance; super != NULL; super = super->next)
 	{
-	  error = au_fetch_class (super->op, &class_, AU_FETCH_WRITE,
-				  AU_SELECT);
-	  if (error == NO_ERROR)
+	  if (!ml_find (current, super->op))
 	    {
+	      error = au_fetch_class (super->op, &class_, AU_FETCH_WRITE,
+				      AU_SELECT);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error;
+		}
 	      error = ml_append (newlist, super->op, NULL);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error;
+		}
+	      /* Recursive super locking. */
+	      if (class_->inheritance != NULL)
+		{
+		  error = lock_supers (NULL, class_->inheritance, NULL, NULL);
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error;
+		    }
+		}
 	    }
 	}
     }
-  return (error);
+
+  /* Success on locking all supers. */
+  return NO_ERROR;
 }
 
 /*
@@ -12550,13 +12611,27 @@ lock_supers_drop (DB_OBJLIST * supers)
   DB_OBJLIST *super;
   SM_CLASS *class_;
 
-  for (super = supers;
-       ((super != NULL) && (error == NO_ERROR)); super = super->next)
+  for (super = supers; super != NULL; super = super->next)
     {
       error = au_fetch_class (super->op, &class_, AU_FETCH_WRITE, AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+      /* Recursive super lock. */
+      if (class_->inheritance != NULL)
+	{
+	  error = lock_supers (NULL, class_->inheritance, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+	}
     }
 
-  return error;
+  return NO_ERROR;
 }
 
 /*

@@ -420,7 +420,8 @@ db_is_instance_of (MOP obj, MOP class_)
 /*
  * db_is_subclass() - This function is used to test if the classmop is a
  *    subclass of the supermop.
- * return : non-zero if one class is a subclass of another
+ * return : 1 if classmop is subclass of supermop, 0 if classmop is not
+ *	    subclass if supermop, negative for errors.
  * classmop(in): pointer to the class that might be a subclass
  * supermop(in): pointer to the super class
  */
@@ -440,7 +441,8 @@ db_is_subclass (MOP classmop, MOP supermop)
 /*
  * db_is_superclass() - This function is used to test if the supermop is a
  *    superclass of the classmop.
- * return : non-zero if one class is a superclass of another
+ * return : 1 if classmop is subclass of supermop, 0 if classmop is not
+ *	    subclass if supermop, negative for errors.
  * supermop(in): class pointer
  * classmop(in): class pointer
  */

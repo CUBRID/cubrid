@@ -9677,7 +9677,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		    /* everything is fine */
 		  }
 		else if (db_is_subclass (obj_class,
-					 desired_domain->class_mop))
+					 desired_domain->class_mop) > 0)
 		  {
 		    /* everything is also ok */
 		  }

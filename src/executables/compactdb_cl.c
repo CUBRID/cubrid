@@ -1829,8 +1829,8 @@ class_referenced_by_domain (MOP referenced_class,
 	    {
 	      *any_class_can_be_referenced = true;
 	    }
-	  else if (referenced_class == class_ ||
-		   db_is_subclass (referenced_class, class_))
+	  else if (referenced_class == class_
+		   || db_is_subclass (referenced_class, class_) > 0)
 	    {
 	      *class_can_be_referenced = true;
 	    }
