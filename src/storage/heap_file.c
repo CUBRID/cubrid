@@ -20545,7 +20545,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 			      HEAP_SCANCACHE * scan_cache, int *is_set)
 {
   int i, idx_in_cache;
-  char *classname;
+  char *classname = NULL;
   const char *attr_name;
   RECDES recdes;		/* Used to obtain attribute name */
   char serial_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
@@ -20557,6 +20557,9 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
   OR_CLASSREP *classrep;
   BTID serial_btid;
   DB_DATA_STATUS data_stat;
+  HEAP_SCANCACHE local_scan_cache;
+  bool use_local_scan_cache = false;
+  int ret = NO_ERROR;
 
   if (!attr_info || !scan_cache)
     {
@@ -20581,23 +20584,34 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	      memset (serial_name, '\0', sizeof (serial_name));
 	      recdes.data = NULL;
 	      recdes.area_size = 0;
+
+	      if (scan_cache->cache_last_fix_page == false)
+		{
+		  scan_cache = &local_scan_cache;
+		  (void) heap_scancache_quick_start_root_hfid (thread_p,
+							       scan_cache);
+		  use_local_scan_cache = true;
+		}
+
 	      if (heap_get (thread_p, &(attr_info->class_oid), &recdes,
 			    scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
 		{
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 
 	      classname = heap_get_class_name (thread_p, &(att->classoid));
 	      if (classname == NULL)
 		{
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 
 	      attr_name = or_get_attrname (&recdes, att->id);
 	      if (attr_name == NULL)
 		{
-		  free_and_init (classname);
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 
 	      SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, classname,
@@ -20611,7 +20625,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 				   LANG_SYS_CODESET, LANG_SYS_COLLATION)
 		  != NO_ERROR)
 		{
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 
 	      status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME,
@@ -20619,7 +20634,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	      if (status == LC_CLASSNAME_ERROR
 		  || status == LC_CLASSNAME_DELETED)
 		{
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 
 	      classrep = heap_classrepr_get (thread_p, &serial_class_oid,
@@ -20627,7 +20643,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 					     &idx_in_cache);
 	      if (classrep == NULL)
 		{
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 
 	      if (classrep->indexes)
@@ -20643,11 +20660,13 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 		  if (heap_classrepr_free (classrep, &idx_in_cache) !=
 		      NO_ERROR)
 		    {
-		      return ER_FAILED;
+		      ret = ER_FAILED;
+		      goto exit_on_error;
 		    }
 		  if (ret != BTREE_KEY_FOUND)
 		    {
-		      return ER_FAILED;
+		      ret = ER_FAILED;
+		      goto exit_on_error;
 		    }
 
 		  assert (!OID_ISNULL (&serial_oid));
@@ -20658,7 +20677,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	      else
 		{
 		  (void) heap_classrepr_free (classrep, &idx_in_cache);
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 	    }
 
@@ -20670,14 +20690,16 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 					  GENERATE_AUTO_INCREMENT,
 					  false) != NO_ERROR)
 		{
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 
 	      if (numeric_db_value_coerce_from_num (&dbvalue_numeric,
 						    dbvalue,
 						    &data_stat) != NO_ERROR)
 		{
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 	    }
 	  else if (att->type == DB_TYPE_NUMERIC)
@@ -20687,17 +20709,35 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 					  GENERATE_AUTO_INCREMENT,
 					  false) != NO_ERROR)
 		{
-		  return ER_FAILED;
+		  ret = ER_FAILED;
+		  goto exit_on_error;
 		}
 	    }
 
-	  *is_set = 1;
-	  value->state = HEAP_READ_ATTRVALUE;
 	}
     }
 
-  return NO_ERROR;
+  if (use_local_scan_cache)
+    {
+      heap_scancache_end (thread_p, scan_cache);
+    }
+
+  return ret;
+
+exit_on_error:
+  if (classname != NULL)
+    {
+      free_and_init (classname);
+    }
+
+  if (use_local_scan_cache)
+    {
+      heap_scancache_end (thread_p, scan_cache);
+    }
+  return ret;
 }
+
+/*
 
 /*
  * heap_attrinfo_set_uninitialized_global () -
