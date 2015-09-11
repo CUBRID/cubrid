@@ -65,6 +65,7 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
+#include "tz_support.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -622,6 +623,15 @@ static int mr_data_readval_time (OR_BUF * buf, DB_VALUE * value,
 static int mr_data_readval_timeltz (OR_BUF * buf, DB_VALUE * value,
 				    TP_DOMAIN * domain, int size, bool copy,
 				    char *copy_buf, int copy_buf_len);
+static int mr_data_cmpdisk_timeltz (void *mem1, void *mem2,
+				    TP_DOMAIN * domain, int do_coercion,
+				    int total_order, int *start_colp);
+static int mr_index_cmpdisk_timeltz (void *mem1, void *mem2,
+				     TP_DOMAIN * domain, int do_coercion,
+				     int total_order, int *start_colp);
+static int mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2,
+			      int do_coercion, int total_order,
+			      int *start_colp, int collation);
 static int mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_time (OR_BUF * buf, DB_VALUE * value,
 				  TP_DOMAIN * domain, int size, bool copy,
@@ -1503,10 +1513,10 @@ PR_TYPE tp_Timeltz = {
   NULL,				/* index_lenghval */
   mr_index_writeval_time,
   mr_index_readval_timeltz,
-  mr_index_cmpdisk_time,
+  mr_index_cmpdisk_timeltz,
   NULL,				/* freemem */
-  mr_data_cmpdisk_time,
-  mr_cmpval_time
+  mr_data_cmpdisk_timeltz,
+  mr_cmpval_timeltz
 };
 
 PR_TYPE *tp_Type_timeltz = &tp_Timeltz;
@@ -3986,6 +3996,129 @@ mr_index_readval_timeltz (OR_BUF * buf, DB_VALUE * value,
 }
 
 static int
+mr_data_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain,
+			 int do_coercion, int total_order, int *start_colp)
+{
+  DB_TIME t1, t2;
+  TZ_ID ses_tz_id1, ses_tz_id2;
+  DB_TIME t1_local, t2_local;
+  int error = NO_ERROR;
+
+  assert (domain != NULL);
+
+  /* TIME with LTZ compares the same as TIME */
+  OR_GET_TIME (mem1, &t1);
+  OR_GET_TIME (mem2, &t2);
+
+  error = tz_create_session_tzid_for_time (&t1, true, &ses_tz_id1);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_create_session_tzid_for_time (&t2, true, &ses_tz_id2);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_utc_timetz_to_local (&t1, &ses_tz_id1, &t1_local);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_utc_timetz_to_local (&t2, &ses_tz_id2, &t2_local);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  return MR_CMP (t1_local, t2_local);
+}
+
+static int
+mr_index_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain,
+			  int do_coercion, int total_order, int *start_colp)
+{
+  DB_TIME t1, t2;
+  TZ_ID ses_tz_id1, ses_tz_id2;
+  DB_TIME t1_local, t2_local;
+  int error = NO_ERROR;
+
+  assert (domain != NULL);
+
+  COPYMEM (DB_TIME, &t1, mem1);
+  COPYMEM (DB_TIME, &t2, mem2);
+
+  error = tz_create_session_tzid_for_time (&t1, true, &ses_tz_id1);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_create_session_tzid_for_time (&t2, true, &ses_tz_id2);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_utc_timetz_to_local (&t1, &ses_tz_id1, &t1_local);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_utc_timetz_to_local (&t2, &ses_tz_id2, &t2_local);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  return MR_CMP (t1_local, t2_local);
+}
+
+static int
+mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2,
+		   int do_coercion, int total_order, int *start_colp,
+		   int collation)
+{
+  const DB_TIME *t1, *t2;
+  TZ_ID ses_tz_id1, ses_tz_id2;
+  DB_TIME t1_local, t2_local;
+  int error = NO_ERROR;
+
+  t1 = DB_GET_TIME (value1);
+  t2 = DB_GET_TIME (value2);
+
+  error = tz_create_session_tzid_for_time (t1, true, &ses_tz_id1);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_create_session_tzid_for_time (t2, true, &ses_tz_id2);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_utc_timetz_to_local (t1, &ses_tz_id1, &t1_local);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  error = tz_utc_timetz_to_local (t2, &ses_tz_id2, &t2_local);
+  if (error != NO_ERROR)
+    {
+      return DB_UNK;
+    }
+
+  return MR_CMP (t1_local, t2_local);
+}
+
+static int
 mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain,
 		       int do_coercion, int total_order, int *start_colp)
 {
@@ -4175,30 +4308,70 @@ static int
 mr_index_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain,
 			 int do_coercion, int total_order, int *start_colp)
 {
-  DB_TIME t1, t2;
+  DB_TIMETZ t1, t2;
+  int ret_cmp;
+  int day1, day2;
 
   assert (domain != NULL);
 
-  /* TIME with TZ compares the same as TIME - zone is ignored */
-  COPYMEM (DB_TIME, &t1, mem1);
-  COPYMEM (DB_TIME, &t2, mem2);
+  COPYMEM (DB_TIMETZ, &t1, mem1);
+  COPYMEM (DB_TIMETZ, &t2, mem2);
 
-  return MR_CMP (t1, t2);
+  /* TIME with TZ compares as what point in time comes first
+   * relative to the current day 
+   */
+
+  day1 = get_day_from_timetz (&t1);
+  day2 = get_day_from_timetz (&t2);
+
+  /* If we are in the same UTC day we compare UTC times
+   *  else we compare the days
+   */
+  if (day1 == day2)
+    {
+      ret_cmp = MR_CMP (t1.time, t2.time);
+    }
+  else
+    {
+      ret_cmp = MR_CMP (day1, day2);
+    }
+
+  return ret_cmp;
 }
 
 static int
 mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain,
 			int do_coercion, int total_order, int *start_colp)
 {
-  DB_TIME t1, t2;
+  DB_TIMETZ t1, t2;
+  int ret_cmp;
+  int day1, day2;
 
   assert (domain != NULL);
 
-  /* TIME with TZ compares the same as TIME - zone is ignored */
-  OR_GET_TIME (mem1, &t1);
-  OR_GET_TIME (mem2, &t2);
+  OR_GET_TIMETZ (mem1, &t1);
+  OR_GET_TIMETZ (mem2, &t2);
 
-  return MR_CMP (t1, t2);
+  /* TIME with TZ compares as what point in time comes first
+   * relative to the current day 
+   */
+
+  day1 = get_day_from_timetz (&t1);
+  day2 = get_day_from_timetz (&t2);
+
+  /* If we are in the same UTC day we compare UTC times
+   *  else we compare the days
+   */
+  if (day1 == day2)
+    {
+      ret_cmp = MR_CMP (t1.time, t2.time);
+    }
+  else
+    {
+      ret_cmp = MR_CMP (day1, day2);
+    }
+
+  return ret_cmp;
 }
 
 static int
@@ -4207,12 +4380,32 @@ mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2,
 		  int collation)
 {
   const DB_TIMETZ *t1, *t2;
+  int ret_cmp;
+  int day1, day2;
 
-  /* TIME with TZ compares the same as TIME - zone is ignored */
   t1 = DB_GET_TIMETZ (value1);
   t2 = DB_GET_TIMETZ (value2);
 
-  return MR_CMP (t1->time, t2->time);
+  /* TIME with TZ compares as what point in time comes first
+   * relative to the current day 
+   */
+
+  day1 = get_day_from_timetz (t1);
+  day2 = get_day_from_timetz (t2);
+
+  /* If we are in the same UTC day we compare UTC times
+   *  else we compare the days
+   */
+  if (day1 == day2)
+    {
+      ret_cmp = MR_CMP (t1->time, t2->time);
+    }
+  else
+    {
+      ret_cmp = MR_CMP (day1, day2);
+    }
+
+  return ret_cmp;
 }
 
 /*
