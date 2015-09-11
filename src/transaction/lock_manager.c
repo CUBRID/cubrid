@@ -3807,6 +3807,8 @@ start:
 				       LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		      1, "history");
 	      return LK_NOTGRANTED_DUE_ERROR;
 	    }
 
@@ -3918,6 +3920,8 @@ start:
 					   LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_LK_ALLOC_RESOURCE, 1, "history");
 		  return LK_NOTGRANTED_DUE_ERROR;
 		}
 
@@ -3973,6 +3977,7 @@ start:
 				    entry_ptr);
 	      if (rv != NO_ERROR)
 		{
+		  assert (false);
 		  return LK_NOTGRANTED_DUE_ERROR;
 		}
 	    }
@@ -4035,6 +4040,9 @@ start:
 					   LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED,
+			  0);
+
 		  return LK_NOTGRANTED_DUE_ERROR;
 		}
 	      else if (entry_ptr->thrd_entry->resume_status !=
@@ -4047,6 +4055,11 @@ start:
 					   LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
+		  if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_INTERRUPTED, 0);
+		    }
 		  return LK_NOTGRANTED_DUE_ERROR;
 		}
 	      else
@@ -4155,6 +4168,8 @@ lock_tran_lk_entry:
 				       LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		      1, "history");
 	      return LK_NOTGRANTED_DUE_ERROR;
 	    }
 
@@ -4213,6 +4228,8 @@ lock_tran_lk_entry:
 				       LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		      1, "history");
 	      return LK_NOTGRANTED_DUE_ERROR;
 	    }
 
@@ -4299,6 +4316,7 @@ lock_tran_lk_entry:
 				   LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
       else if (thrd_entry->resume_status != THREAD_LOCK_RESUMED)
@@ -4310,6 +4328,10 @@ lock_tran_lk_entry:
 				   LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    }
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
       else
@@ -4422,6 +4444,9 @@ blocked:
 	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
 				   LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1,
+		  "history");
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
 
