@@ -4439,6 +4439,8 @@ compile_partition_expression (PARSER_CONTEXT * parser, PT_NODE * entity_name,
   mq_clear_ids (parser, expr, NULL);
   if (pt_semantic_quick_check_node (parser, &spec, &expr) == NULL)
     {
+      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_INVALID_PARTITION_DEFINITION);
       return NULL;
     }
 
@@ -15496,11 +15498,9 @@ get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique,
  * Note:
  */
 static SM_PARTITION *
-pt_node_to_partition_info (PARSER_CONTEXT * parser,
-			   PT_NODE * node,
-			   PT_NODE * entity_name,
-			   char *class_name, char *partition_name,
-			   DB_VALUE * minval)
+pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node,
+			   PT_NODE * entity_name, char *class_name,
+			   char *partition_name, DB_VALUE * minval)
 {
   DB_VALUE val, *ptval, *hashsize;
   PT_NODE *parts;
@@ -15618,6 +15618,11 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser,
       part_expr = compile_partition_expression (parser, entity_name, node);
       if (part_expr == NULL)
 	{
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, node);
+	    }
+
 	  goto fail_return;
 	}
       db_make_char (&expr, part_expr->expr_stream_size,
