@@ -158,7 +158,6 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     copydb\n\
     createdb\n\
     deletedb\n\
-    delvoldb\n\
     diagdb\n\
     installdb\n\
     tranlist\n\

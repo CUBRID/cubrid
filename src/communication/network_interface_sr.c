@@ -4150,6 +4150,7 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+#if 0
 /*
  * sboot_del_volume_extension -
  *
@@ -4191,6 +4192,7 @@ sboot_del_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
+#endif
 
 
 /*

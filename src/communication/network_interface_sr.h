@@ -212,9 +212,11 @@ extern void sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void sboot_add_volume_extension (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
+#if 0
 extern void sboot_del_volume_extension (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
+#endif
 extern void sboot_check_db_consistency (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);

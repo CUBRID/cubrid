@@ -227,7 +227,9 @@ static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p,
 static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 				     const char *ignore_vlabel,
 				     void *delete_action_arg);
+#if 0
 static int boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid);
+#endif
 static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
 					     const char
@@ -955,6 +957,7 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p,
   return boot_xadd_volume_extension (thread_p, &temp_ext_info);
 }
 
+#if 0
 /*
  * xboot_del_volume_extension () - delete a volume extension of the database
  *
@@ -1005,6 +1008,7 @@ xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
 
   return r;
 }
+#endif
 
 /*
  * boot_remove_useless_path_separator () - Remove useless PATH_SEPARATOR in path string
@@ -1986,6 +1990,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p,
   return error_code;
 }
 
+#if 0
 /*
  * boot_xremove_prem_volume () - remove the permanent volume from the database
  *
@@ -2079,6 +2084,7 @@ end:
 
   return error;
 }
+#endif
 
 /*
  * boot_xremove_temp_volume () - remove a temporary volume from the database
@@ -7199,6 +7205,7 @@ boot_set_skip_check_ct_classes (bool val)
   return old_val;
 }
 
+#if 0
 /*
  * boot_rv_del_volume_extension () - Redo update of removal volume
  *
@@ -7213,13 +7220,20 @@ boot_rv_del_volume_extension (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VOLID volid;
 
   volid = *((VOLID *) rcv->data);
+
+  /* Start postpone type system operation (overrides the normal system
+   * operation).
+   */
+  log_start_system_op (thread_p);
+
   if (xdisk_is_volume_exist (thread_p, volid) == false)
     {
       /* 
        * Maybe the volume was removed by other transaction.
        * just return and continue left.
        */
-      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
       return NO_ERROR;
     }
 
@@ -7227,7 +7241,7 @@ boot_rv_del_volume_extension (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (purpose == DISK_UNKNOWN_PURPOSE)
     {
       assert (false);		/* should check volume's purpose before append log */
-      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_UNKNOWN_VOLUME, 1, volid);
@@ -7244,18 +7258,20 @@ boot_rv_del_volume_extension (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       error = boot_xremove_perm_volume (thread_p, volid);
     }
 
-#if 0
   if (error != NO_ERROR)
     {
       /* we didn't unformat, so we recover the status to enable creating new files */
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+#if 0
       (void) disk_cache_enable_new_files (thread_p, volid);
-    }
 #endif
 
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+      return error;
+    }
 
   return error;
 }
+#endif
 
 /*
  * boot_rv_dump_del_volume () - Dump removal volume information

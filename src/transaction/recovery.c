@@ -828,12 +828,21 @@ struct rvfun RV_fun[] = {
    es_rv_nop,
    NULL, NULL},
 
+#if 0
   {RVBO_DELVOL,
    "RVBO_DELVOL",
    NULL,
    boot_rv_del_volume_extension,
    NULL,
    boot_rv_dump_del_volume},
+#else
+  {RVBO_DELVOL,
+   "RVBO_DELVOL",
+   NULL,
+   NULL,
+   NULL,
+   NULL},
+#endif
 
   {RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT,
    "RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT",

@@ -930,6 +930,7 @@ disk_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
   return volid;
 }
 
+#if 0
 /*
  * disk_del_volume_extenstion: 
  *    return: NO_ERROR
@@ -975,6 +976,7 @@ disk_del_volume_extension (THREAD_ENTRY * thread_p, INT16 volid)
 
   return NO_ERROR;
 }
+#endif
 
 /*
  * disk_find_goodvol () - Find a good volume to allocate

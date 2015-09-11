@@ -141,10 +141,12 @@ net_server_init (void)
   req_p->processing_function = sboot_add_volume_extension;
   req_p->name = "NET_SERVER_BO_ADD_VOLEXT";
 
+#if 0
   req_p = &net_Requests[NET_SERVER_BO_DEL_VOLEXT];
   req_p->action_attribute = (CHECK_AUTHORIZATION);
   req_p->processing_function = sboot_del_volume_extension;
   req_p->name = "NET_SERVER_BO_DEL_VOLEXT";
+#endif
 
   req_p = &net_Requests[NET_SERVER_BO_CHECK_DBCONSISTENCY];
   req_p->action_attribute = (CHECK_AUTHORIZATION | IN_TRANSACTION);

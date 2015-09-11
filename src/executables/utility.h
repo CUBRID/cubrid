@@ -701,7 +701,9 @@ typedef enum
   BACKUPDB,
   RESTOREDB,
   ADDVOLDB,
+#if 0
   DELVOLDB,
+#endif
   SPACEDB,
   LOCKDB,
   KILLTRAN,
@@ -903,7 +905,9 @@ typedef struct _ha_config
 #define UTIL_OPTION_BACKUPDB                    "backupdb"
 #define UTIL_OPTION_RESTOREDB                   "restoredb"
 #define UTIL_OPTION_ADDVOLDB                    "addvoldb"
+#if 0
 #define UTIL_OPTION_DELVOLDB                    "delvoldb"
+#endif
 #define UTIL_OPTION_SPACEDB                     "spacedb"
 #define UTIL_OPTION_LOCKDB                      "lockdb"
 #define UTIL_OPTION_TRANLIST                    "tranlist"
@@ -1070,6 +1074,7 @@ typedef struct _ha_config
 #define ADDVOL_MAX_WRITESIZE_IN_SEC_S           10707
 #define ADDVOL_MAX_WRITESIZE_IN_SEC_L           "max-writesize-in-sec"
 
+#if 0
 /* delvoldb option list */
 #define DELVOL_VOLUME_ID_S                      'i'
 #define DELVOL_VOLUME_ID_L                      "volume-id"
@@ -1083,6 +1088,7 @@ typedef struct _ha_config
 #define DELVOL_SA_MODE_L                        "SA-mode"
 #define DELVOL_CS_MODE_S                        'C'
 #define DELVOL_CS_MODE_L                        "CS-mode"
+#endif
 
 /* spacedb option list */
 #define SPACE_OUTPUT_FILE_S                     'o'
@@ -1639,7 +1645,9 @@ extern int loaddb_user (UTIL_FUNCTION_ARG * arg_map);
 extern int unloaddb (UTIL_FUNCTION_ARG * arg_map);
 extern int backupdb (UTIL_FUNCTION_ARG * arg_map);
 extern int addvoldb (UTIL_FUNCTION_ARG * arg_map);
+#if 0
 extern int delvoldb (UTIL_FUNCTION_ARG * arg_map);
+#endif
 extern int checkdb (UTIL_FUNCTION_ARG * arg_map);
 extern int spacedb (UTIL_FUNCTION_ARG * arg_map);
 extern int lockdb (UTIL_FUNCTION_ARG * arg_map);

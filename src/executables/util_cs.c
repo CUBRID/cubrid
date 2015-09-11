@@ -531,6 +531,7 @@ error_exit:
   return EXIT_FAILURE;
 }
 
+#if 0
 /*
  * delvoldb() - delvoldb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -733,6 +734,7 @@ error_exit:
 
   return EXIT_FAILURE;
 }
+#endif
 
 
 /*

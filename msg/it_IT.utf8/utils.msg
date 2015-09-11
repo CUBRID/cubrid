@@ -158,7 +158,6 @@ Utilità amministrazione disponibili:\n\
     copydb\n\
     createdb\n\
     deletedb\n\
-    delvoldb\n\
     diagdb\n\
     installdb\n\
     tranlist\n\

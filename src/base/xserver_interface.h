@@ -79,8 +79,10 @@ extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,
 				       int num_oids, BTID * index_btid);
 extern VOLID xboot_add_volume_extension (THREAD_ENTRY * thread_p,
 					 DBDEF_VOL_EXT_INFO * ext_info);
+#if 0
 extern int xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid,
 				       bool clear_cached);
+#endif
 extern int xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p);
 extern int xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p);
 extern VOLID xboot_find_last_permanent (THREAD_ENTRY * thread_p);

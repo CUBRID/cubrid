@@ -193,7 +193,9 @@ extern VOLID disk_add_auto_volume_extension (THREAD_ENTRY * thread_p,
 					     DKNPAGES min_npages,
 					     DISK_SETPAGE_TYPE setpage_type,
 					     DISK_VOLPURPOSE vol_purpose);
+#if 0
 extern int disk_del_volume_extension (THREAD_ENTRY * thread_p, INT16 volid);
+#endif
 extern VOLID disk_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
 				INT16 undesirable_volid, INT32 exp_numpages,
 				DISK_SETPAGE_TYPE setpage_type,

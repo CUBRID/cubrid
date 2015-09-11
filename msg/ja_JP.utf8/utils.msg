@@ -158,7 +158,6 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     copydb\n\
     createdb\n\
     deletedb\n\
-    delvoldb\n\
     diagdb\n\
     installdb\n\
     tranlist\n\

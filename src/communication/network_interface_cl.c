@@ -4666,6 +4666,7 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
 #endif /* !CS_MODE */
 }
 
+#if 0
 /*
  * boot_del_volume_extension -
  *
@@ -4724,6 +4725,7 @@ boot_del_volume_extension (VOLID volid, bool clear_cached)
   return success;
 #endif /* !CS_MODE */
 }
+#endif
 
 
 /*

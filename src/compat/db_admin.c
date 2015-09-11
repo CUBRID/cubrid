@@ -364,6 +364,7 @@ db_add_volume_ex (DBDEF_VOL_EXT_INFO * ext_info)
   return error;
 }
 
+#if 0
 /*
  * db_del_volume_ex() - Delete a volume extension from the database.
  *
@@ -389,6 +390,7 @@ db_del_volume_ex (VOLID volid, bool clear_cached_files)
 
   return error;
 }
+#endif
 
 /*
  * db_num_volumes() - Find the number of permanent volumes in the database.

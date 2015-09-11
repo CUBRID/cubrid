@@ -161,8 +161,10 @@ extern int boot_compact_start (THREAD_ENTRY * thread_p);
 extern int boot_compact_stop (THREAD_ENTRY * thread_p);
 extern bool boot_can_compact (THREAD_ENTRY * thread_p);
 extern bool boot_set_skip_check_ct_classes (bool val);
+#if 0
 extern int boot_rv_del_volume_extension (THREAD_ENTRY * thread_p,
 					 LOG_RCV * rcv);
+#endif
 extern void boot_rv_dump_del_volume (FILE * fp, int length_ignore,
 				     void *data);
 
