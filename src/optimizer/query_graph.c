@@ -1174,8 +1174,15 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 							       func_index_info->
 							       expr_str))
 				{
-				  /* segment already exists */
-				  break;
+				  /* Also need to check whether the class alias
+				   * names are matched.*/
+				  if (!intl_identifier_casecmp
+				      (node->class_name,
+				       QO_SEG_HEAD (seg_fi)->class_name))
+				    {
+				      /* segment already exists */
+				      break;
+				    }
 				}
 			    }
 			  if (i == env->nsegs)
@@ -1736,8 +1743,19 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
 	      if (!intl_identifier_casecmp (QO_SEG_NAME (QO_ENV_SEG (env, i)),
 					    expr_str))
 		{
-		  found = true;
-		  k = i;
+		  /* Also need to check whether the class alias names
+		   * are matched.*/
+		  if (head != NULL
+		      &&
+		      !intl_identifier_casecmp (head->class_name,
+						QO_SEG_HEAD (QO_ENV_SEG
+							     (env,
+							      i))->
+						class_name))
+		    {
+		      found = true;
+		      k = i;
+		    }
 		}
 	    }
 	}

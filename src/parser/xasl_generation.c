@@ -3417,10 +3417,13 @@ pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info,
 						   table_info->class_spec,
 						   false);
 
+	      assert (ref_node != NULL);
+
 	      /* need to check zero-length empty string */
-	      if (ref_node->type_enum == PT_TYPE_VARCHAR
-		  || ref_node->type_enum == PT_TYPE_VARNCHAR
-		  || ref_node->type_enum == PT_TYPE_VARBIT)
+	      if (ref_node != NULL
+		  && (ref_node->type_enum == PT_TYPE_VARCHAR
+		      || ref_node->type_enum == PT_TYPE_VARNCHAR
+		      || ref_node->type_enum == PT_TYPE_VARBIT))
 		{
 		  pred_nodes = parser_append_node (ref_node, pred_nodes);
 		}
