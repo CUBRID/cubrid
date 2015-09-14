@@ -38967,6 +38967,15 @@ btree_undo_update_same_key_unique (THREAD_ENTRY * thread_p,
       assert (helper->is_system_op_started);
 
       /* Remove new version separate from swap operation. */
+      if (*undo_upd_sk->old_version_prev_page
+	  == *undo_upd_sk->new_version_page)
+	{
+	  /* New version page may be removed. We don't want to keep another
+	   * pointer to it. Old version page cannot be removed, so keeping
+	   * link to its previous page is not necessary.
+	   */
+	  *undo_upd_sk->old_version_prev_page = NULL;
+	}
       node_type =
 	UNDO_UPDATE_SAME_KEY_IS_NEW_IN_LEAF (undo_upd_sk) ?
 	BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -39317,6 +39326,15 @@ btree_undo_update_same_key_non_unique (THREAD_ENTRY * thread_p,
       assert (helper->is_system_op_started);
 
       /* Remove new version. */
+      if (*undo_upd_sk->old_version_prev_page
+	  == *undo_upd_sk->new_version_page)
+	{
+	  /* New version page may be removed. We don't want to keep another
+	   * pointer to it. Old version page cannot be removed, so keeping
+	   * link to its previous page is not necessary.
+	   */
+	  *undo_upd_sk->old_version_prev_page = NULL;
+	}
       node_type =
 	UNDO_UPDATE_SAME_KEY_IS_NEW_IN_LEAF (undo_upd_sk) ?
 	BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
