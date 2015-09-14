@@ -8612,13 +8612,22 @@ static PT_NODE *
 pt_copy_data_type_entity (PARSER_CONTEXT * parser, PT_NODE * data_type)
 {
   PT_NODE *entity = NULL;
+  const char *class_name = NULL;
   if (data_type->node_type == PT_DATA_TYPE)
     {
       if (data_type->info.data_type.virt_object)
 	{
-	  entity = pt_name (parser, db_get_class_name
-			    (data_type->info.data_type.virt_object));
-	  entity->info.name.db_object = data_type->info.data_type.virt_object;
+	  class_name =
+	    db_get_class_name (data_type->info.data_type.virt_object);
+	  if (class_name != NULL)
+	    {
+	      entity = pt_name (parser, class_name);
+	      if (entity != NULL)
+		{
+		  entity->info.name.db_object =
+		    data_type->info.data_type.virt_object;
+		}
+	    }
 	}
       else
 	{
