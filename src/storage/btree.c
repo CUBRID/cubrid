@@ -14977,10 +14977,6 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
-#if !defined(NDEBUG)
-  btree_verify_node (thread_p, btid, page_ptr);
-#endif
-
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
 
