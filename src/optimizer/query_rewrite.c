@@ -3720,9 +3720,9 @@ error_exit:
  *       details on what rewrites can be performed. This function will always
  *       rewrite to form 3.1.
  */
-static void
+static PT_NODE *
 qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser,
-				PT_NODE * const like,
+				PT_NODE * like,
 				PT_NODE * const pattern,
 				PT_NODE * const escape)
 {
@@ -3732,6 +3732,7 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser,
   PT_NODE *lower = NULL;
   PT_NODE *upper = NULL;
   PT_NODE *match_col = NULL;
+  PT_NODE *like_save = NULL;
 
   between = pt_expression_1 (parser, PT_BETWEEN, NULL);
   if (between == NULL)
@@ -3788,14 +3789,36 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser,
   like->next = between;
 
   /* fold range bounds : this will allow auto-parametrization */
-  if (pt_semantic_type (parser, like, NULL) == NULL)
+  like_save = parser_copy_tree_list (parser, like);
+  if (like_save == NULL)
     {
-      like->next = between->next;
-      between->next = NULL;
+      PT_INTERNAL_ERROR (parser, "allocate new node");
       goto error_exit;
     }
 
-  return;
+  /* if success, use like_save. Otherwise, keep like. */
+  like_save = pt_semantic_type (parser, like_save, NULL);
+
+  if (like_save == NULL || er_errid () != NO_ERROR || pt_has_error (parser))
+    {
+      like->next = between->next;
+      between->next = NULL;
+
+      /* clear error */
+      if (er_errid () != NO_ERROR)
+	{
+	  er_clear ();
+	}
+
+      if (pt_has_error (parser))
+	{
+	  pt_reset_error (parser);
+	}
+      goto error_exit;
+    }
+
+  /* success: use like_save. */
+  return like_save;
 
 error_exit:
   if (between != NULL)
@@ -3803,7 +3826,13 @@ error_exit:
       parser_free_tree (parser, between);
       between = NULL;
     }
-  return;
+
+  if (like_save != NULL)
+    {
+      parser_free_tree (parser, like_save);
+    }
+
+  return like;
 }
 
 /*
@@ -3856,11 +3885,16 @@ static void
 qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 {
   PT_NODE *cnf_node = NULL;
+  /* prev node in list which linked by next pointer. */
+  PT_NODE *prev = NULL;
+  /* prev node in list which linked by or_next pointer. */
+  PT_NODE *or_prev = NULL;
 
   for (cnf_node = *cnf_list; cnf_node != NULL; cnf_node = cnf_node->next)
     {
       PT_NODE *crt_expr = NULL;
 
+      or_prev = NULL;
       for (crt_expr = cnf_node; crt_expr != NULL;
 	   crt_expr = crt_expr->or_next)
 	{
@@ -3982,11 +4016,33 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 		    {
 		      continue;
 		    }
-		  qo_rewrite_like_for_index_scan (parser, crt_expr, pattern,
-						  escape);
+		  crt_expr = qo_rewrite_like_for_index_scan (parser,
+							     crt_expr,
+							     pattern, escape);
+		  /* rebuild link list. */
+		  if (or_prev != NULL)
+		    {
+		      or_prev->or_next = crt_expr;
+		    }
+		  else if (prev != NULL)
+		    {
+		      /* The first node in cnf_node */
+		      prev->next = crt_expr;
+		      cnf_node = crt_expr;
+		    }
+		  else
+		    {
+		      /* The first node in cnf_list */
+		      *cnf_list = crt_expr;
+		      cnf_node = crt_expr;
+		    }
+
+
 		}
 	    }
+	  or_prev = crt_expr;
 	}
+      prev = cnf_node;
     }
 }
 
