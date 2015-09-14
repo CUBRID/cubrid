@@ -4416,7 +4416,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_WIDTH_BUCKET:
       num = 0;
 
-      /* 11 overloads */
+      /* 12 overloads */
 
       /* generic number */
       sig.arg1_type.is_generic = true;
@@ -4508,6 +4508,21 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads[num++] = sig;
 
+      /* datetime with local timezone */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMELTZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_DATETIMELTZ;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
       /* datetime with timezone */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_DATETIMETZ;
@@ -4523,7 +4538,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads[num++] = sig;
 
-      /* timestamp with local tz */
+      /* timestamp with local timezone */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_TIMESTAMPLTZ;
 
@@ -4538,7 +4553,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads[num++] = sig;
 
-      /* timestamp with tz */
+      /* timestamp with timezone */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_TIMESTAMPTZ;
 
@@ -4553,7 +4568,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads[num++] = sig;
 
-      /* time with local tz */
+      /* time with local timezone */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
 
@@ -4568,7 +4583,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads[num++] = sig;
 
-      /* time with tz */
+      /* time with timezone */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_TIMETZ;
 

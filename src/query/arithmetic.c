@@ -4814,6 +4814,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
   bool is_deal_with_numeric = false;
   int er_status = NO_ERROR;
   char buf[MAX_DOMAIN_NAME_SIZE];
+  DB_TIME time_local;
 
   assert (result != NULL && value1 != NULL
 	  && value2 != NULL && value3 != NULL && value4 != NULL);
@@ -4965,16 +4966,63 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       d1 = (double) *DB_GET_TIME (value1);
       d2 = (double) *DB_GET_TIME (value2);
       d3 = (double) *DB_GET_TIME (value3);
       break;
 
+    case DB_TYPE_TIMELTZ:
+      er_status = tz_timeltz_to_local (DB_GET_TIME (value1), &time_local);
+      if (er_status == NO_ERROR)
+	{
+	  d1 = (double) time_local;
+	  er_status = tz_timeltz_to_local (DB_GET_TIME (value2), &time_local);
+	}
+
+      if (er_status == NO_ERROR)
+	{
+	  d2 = (double) time_local;
+	  er_status = tz_timeltz_to_local (DB_GET_TIME (value3), &time_local);
+	}
+
+      if (er_status == NO_ERROR)
+	{
+	  d3 = (double) time_local;
+	}
+      else
+	{
+	  RETURN_ERROR (er_status);
+	}
+      break;
+
     case DB_TYPE_TIMETZ:
-      d1 = (double) (DB_GET_TIMETZ (value1)->time);
-      d2 = (double) (DB_GET_TIMETZ (value2)->time);
-      d3 = (double) (DB_GET_TIMETZ (value3)->time);
+      er_status = tz_utc_timetz_to_local (&DB_GET_TIMETZ (value1)->time,
+					  &DB_GET_TIMETZ (value1)->tz_id,
+					  &time_local);
+      if (er_status == NO_ERROR)
+	{
+	  d1 = (double) time_local;
+	  er_status = tz_utc_timetz_to_local (&DB_GET_TIMETZ (value2)->time,
+					      &DB_GET_TIMETZ (value2)->tz_id,
+					      &time_local);
+	}
+
+      if (er_status == NO_ERROR)
+	{
+	  d2 = (double) time_local;
+	  er_status = tz_utc_timetz_to_local (&DB_GET_TIMETZ (value3)->time,
+					      &DB_GET_TIMETZ (value3)->tz_id,
+					      &time_local);
+	}
+
+      if (er_status == NO_ERROR)
+	{
+	  d3 = (double) time_local;
+	}
+      else
+	{
+	  RETURN_ERROR (er_status);
+	}
       break;
 
     case DB_TYPE_SHORT:
