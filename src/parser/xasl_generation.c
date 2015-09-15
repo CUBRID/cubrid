@@ -20960,6 +20960,18 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 	}
     }
 
+  if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
+    {
+      for (spec = statement->info.query.q.select.from; spec;
+	   spec = spec->next)
+	{
+	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	    {
+	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	    }
+	}
+    }
+
   return statement;
 }
 
