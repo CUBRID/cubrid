@@ -7021,6 +7021,15 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		     (int) pgbuf_get_lsa (rcv->pgptr)->offset);
     }
 
+  /* Make sure the mvcc_next_id is also updated, since this is the marker used
+   * by dropped files.
+   */
+  if (!MVCC_ID_PRECEDES (rcv_data->mvccid, log_Gl.hdr.mvcc_next_id))
+    {
+      log_Gl.hdr.mvcc_next_id = rcv_data->mvccid;
+      MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+    }
+
   /* Page was modified, so set it dirty */
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
