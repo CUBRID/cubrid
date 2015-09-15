@@ -12006,6 +12006,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
   const int *asc_desc = NULL;
 
   midxkey.buf = NULL;
+  midxkey.min_max_val.position = -1;
   asc_desc = db_constraint_asc_desc (constraint);
 
   /* compute key size */

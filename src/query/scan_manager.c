@@ -1642,6 +1642,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 
   buf_size = 0;
   midxkey.buf = NULL;
+  midxkey.min_max_val.position = -1;
 
   /* bitmap is always fully sized */
   nullmap_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);

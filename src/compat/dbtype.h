@@ -649,6 +649,22 @@ typedef DB_COLLECTION DB_MULTISET;
 typedef DB_COLLECTION DB_SEQ;
 typedef DB_COLLECTION DB_SET;
 
+typedef enum special_column_type MIN_MAX_COLUMN_TYPE;
+enum special_column_type
+{
+  MIN_COLUMN = 0,
+  MAX_COLUMN = 1
+};
+
+/* Used in btree_coerce_key and btree_ils_adjust_range to represent
+ * min or max values, necessary in index search comparisons
+ */
+typedef struct special_column MIN_MAX_COLUMN_INFO;
+struct special_column
+{
+  int position;			/* position in the list of columns */
+  MIN_MAX_COLUMN_TYPE type;	/* MIN or MAX column */
+};
 
 typedef struct db_midxkey DB_MIDXKEY;
 struct db_midxkey
@@ -657,6 +673,7 @@ struct db_midxkey
   int ncolumns;			/* # of elements */
   DB_DOMAIN *domain;		/* MIDXKEY domain */
   char *buf;			/* key structure */
+  MIN_MAX_COLUMN_INFO min_max_val;	/* info about coerced column */
 };
 
 

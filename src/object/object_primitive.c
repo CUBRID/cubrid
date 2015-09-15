@@ -8739,6 +8739,9 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
   dst_idx.domain = src_idx->domain;
 
+  dst_idx.min_max_val.position = src_idx->min_max_val.position;
+  dst_idx.min_max_val.type = src_idx->min_max_val.type;
+
   /* should we be paying attention to this? it is extremely dangerous */
   if (!copy)
     {
@@ -8827,6 +8830,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value,
   midxkey.size = size;
   midxkey.ncolumns = 0;
   midxkey.domain = domain;
+  midxkey.min_max_val.position = -1;
 
   for (dom = domain->setdomain; dom; dom = dom->next)
     {
@@ -9089,17 +9093,67 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
 	  if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
 	    {
 	      /* val 1 bound, val 2 unbound */
-	      c = DB_GT;
+	      if (mul2->min_max_val.position == i)
+		{
+		  c =
+		    mul2->min_max_val.type ==
+		    MIN_COLUMN ? DB_GT : DB_LT;
+		}
+	      else
+		{
+		  c = DB_GT;
+		}
 	    }
 	  else if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
 	    {
 	      /* val 1 unbound, val 2 bound */
-	      c = DB_LT;
+	      if (mul1->min_max_val.position == i)
+		{
+		  c =
+		    mul1->min_max_val.type ==
+		    MIN_COLUMN ? DB_LT : DB_GT;
+		}
+	      else
+		{
+		  c = DB_LT;
+		}
 	    }
 	  else
 	    {
 	      /* val 1 unbound, val 2 unbound */
-	      c = DB_EQ;
+	      /* SPECIAL_COLUMN_MIN > NULL */
+	      if (mul1->min_max_val.position == i)
+		{
+		  if (mul2->min_max_val.position == i)
+		    {
+		      MIN_MAX_COLUMN_TYPE type1 = mul1->min_max_val.type;
+		      MIN_MAX_COLUMN_TYPE type2 = mul2->min_max_val.type;
+		      if (type1 == type2)
+			{
+			  c = DB_EQ;
+			}
+		      else if (type1 == MIN_COLUMN)
+			{
+			  c = DB_LT;
+			}
+		      else
+			{
+			  c = DB_GT;
+			}
+		    }
+		  else
+		    {
+		      c = DB_GT;
+		    }
+		}
+	      else if (mul2->min_max_val.position == i)
+		{
+		  c = DB_LT;
+		}
+	      else
+		{
+		  c = DB_EQ;
+		}
 	    }
 	}
 
@@ -10401,6 +10455,7 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix,
 	  midx_postfix->buf + offset_postfix,
 	  midx_postfix->size - offset_postfix);
 
+  midx_result.min_max_val.position = -1;
   DB_MAKE_MIDXKEY (result, &midx_result);
   result->need_clear = true;
 
@@ -10719,6 +10774,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
 	  OR_MULTI_CLEAR_BOUND_BIT (result_midxkey.buf, i);
 	}
 
+      result_midxkey.min_max_val.position = -1;
       DB_MAKE_MIDXKEY (db_result, &result_midxkey);
 
       db_result->need_clear = true;

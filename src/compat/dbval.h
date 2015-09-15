@@ -619,13 +619,16 @@
         (v)->data.midxkey.ncolumns       = -1, \
         (v)->data.midxkey.domain         = NULL, \
         (v)->data.midxkey.size           = 0, \
-        (v)->data.midxkey.buf            = NULL) \
+        (v)->data.midxkey.buf            = NULL, \
+	(v)->data.midxkey.min_max_val.position = -1) \
       : \
        ((v)->domain.general_info.is_null = 0, \
         (v)->data.midxkey.ncolumns       = (m)->ncolumns, \
         (v)->data.midxkey.domain         = (m)->domain, \
         (v)->data.midxkey.size           = (m)->size, \
-        (v)->data.midxkey.buf            = (m)->buf)), \
+        (v)->data.midxkey.buf            = (m)->buf, \
+	(v)->data.midxkey.min_max_val.position = (m)->min_max_val.position, \
+	(v)->data.midxkey.min_max_val.type = (m)->min_max_val.type)), \
      (v)->need_clear = false, \
      NO_ERROR)
 

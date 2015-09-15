@@ -16003,6 +16003,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes,
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
   midxkey->ncolumns = num_vals;
   midxkey->domain = NULL;
+  midxkey->min_max_val.position = -1;
 
   return midxkey;
 }
@@ -16261,6 +16262,8 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 	{
 	  midxkey.buf = buf;
 	}
+
+      midxkey.min_max_val.position = -1;
 
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo,
 				fi_res, fi_domain, key_domain) == NULL)

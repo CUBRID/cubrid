@@ -17453,7 +17453,6 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
   DB_TYPE stype, dtype;
   int ssize, dsize;
   TP_DOMAIN *dp;
-  DB_VALUE value;
   DB_MIDXKEY *midxkey;
   TP_DOMAIN *partial_dom;
   int minmax;
@@ -17506,30 +17505,15 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 	     type to the partial search key value */
 	  DB_VALUE *dbvals = NULL;
 	  int num_dbvals;
+	  DB_TYPE type;
 
 	  num_dbvals = dsize - ssize;
-
-	  if (num_dbvals == 1)
+	  dbvals = (DB_VALUE *) db_private_alloc (NULL,
+						  num_dbvals *
+						  sizeof (DB_VALUE));
+	  if (dbvals == NULL)
 	    {
-	      dbvals = &value;
-	    }
-	  else if (num_dbvals > 1)
-	    {
-	      dbvals = (DB_VALUE *) db_private_alloc (NULL,
-						      num_dbvals *
-						      sizeof (DB_VALUE));
-	      if (dbvals == NULL)
-		{
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
-		}
-	    }
-	  else
-	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_GENERIC_ERROR, 0);
-	      fprintf (stderr, "Error: btree_coerce_key(num_dbval %d)\n",
-		       num_dbvals);
-	      return ER_GENERIC_ERROR;
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
 	  /* get the last domain element of partial-key */
@@ -17541,10 +17525,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 
 	  if (dsize < keysize || dp == NULL)
 	    {
-	      if (dbvals != &value)
-		{
-		  db_private_free_and_init (NULL, dbvals);
-		}
+	      db_private_free_and_init (NULL, dbvals);
 	      return ER_FAILED;
 	    }
 
@@ -17556,98 +17537,81 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 	      ;
 	    }
 
-	  num_dbvals = 0;
-	  partial_dom = dp;
-
-	  for (err = NO_ERROR; dp && err == NO_ERROR; dp = dp->next, dsize++)
+	  minmax = key_minmax;	/* init */
+	  if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
 	    {
-	      /* server doesn't treat DB_TYPE_OBJECT, so that convert it to
-	         DB_TYPE_OID */
-	      DB_TYPE type;
-
-	      type = (TP_DOMAIN_TYPE (dp) == DB_TYPE_OBJECT) ? DB_TYPE_OID
-		: TP_DOMAIN_TYPE (dp);
-
-	      minmax = key_minmax;	/* init */
-	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
-		{
-		  if (!part_key_desc)
-		    {		/* CASE 1, 2 */
-		      if (dp->is_desc != true)
-			{	/* CASE 1 */
-			  ;	/* nop */
-			}
-		      else
-			{	/* CASE 2 */
-			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
-			}
+	      if (!part_key_desc)
+		{		/* CASE 1, 2 */
+		  if (dp->is_desc != true)
+		    {		/* CASE 1 */
+		      ;		/* nop */
 		    }
 		  else
-		    {		/* CASE 3, 4 */
-		      if (dp->is_desc != true)
-			{	/* CASE 3 */
-			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
-			}
-		      else
-			{	/* CASE 4 */
-			  ;	/* nop */
-			}
+		    {		/* CASE 2 */
+		      minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
 		    }
-		}
-	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
-		{
-		  if (!part_key_desc)
-		    {		/* CASE 1, 2 */
-		      if (dp->is_desc != true)
-			{	/* CASE 1 */
-			  ;	/* nop */
-			}
-		      else
-			{	/* CASE 2 */
-			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
-			}
-		    }
-		  else
-		    {		/* CASE 3, 4 */
-		      if (dp->is_desc != true)
-			{	/* CASE 3 */
-			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
-			}
-		      else
-			{	/* CASE 4 */
-			  ;	/* nop */
-			}
-		    }
-		}
-
-	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
-		{
-		  if (dsize < keysize)
-		    {
-		      err = db_value_domain_min (&dbvals[num_dbvals], type,
-						 dp->precision, dp->scale,
-						 dp->codeset,
-						 dp->collation_id,
-						 &dp->enumeration);
-		    }
-		  else
-		    {
-		      err = db_value_domain_init (&dbvals[num_dbvals], type,
-						  dp->precision, dp->scale);
-		    }
-		}
-	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
-		{
-		  err = db_value_domain_max (&dbvals[num_dbvals], type,
-					     dp->precision, dp->scale,
-					     dp->codeset, dp->collation_id,
-					     &dp->enumeration);
 		}
 	      else
-		{
-		  err = ER_FAILED;
+		{		/* CASE 3, 4 */
+		  if (dp->is_desc != true)
+		    {		/* CASE 3 */
+		      minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+		    }
+		  else
+		    {		/* CASE 4 */
+		      ;		/* nop */
+		    }
 		}
+	    }
+	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
+	    {
+	      if (!part_key_desc)
+		{		/* CASE 1, 2 */
+		  if (dp->is_desc != true)
+		    {		/* CASE 1 */
+		      ;		/* nop */
+		    }
+		  else
+		    {		/* CASE 2 */
+		      minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
+		    }
+		}
+	      else
+		{		/* CASE 3, 4 */
+		  if (dp->is_desc != true)
+		    {		/* CASE 3 */
+		      minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
+		    }
+		  else
+		    {		/* CASE 4 */
+		      ;		/* nop */
+		    }
+		}
+	    }
 
+	  if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
+	    {
+	      if (dsize < keysize)
+		{
+		  midxkey->min_max_val.position = dsize;
+		  midxkey->min_max_val.type = MIN_COLUMN;
+		}
+	    }
+	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
+	    {
+	      midxkey->min_max_val.position = dsize;
+	      midxkey->min_max_val.type = MAX_COLUMN;
+	    }
+	  else
+	    {
+	      err = ER_FAILED;
+	    }
+
+	  num_dbvals = 0;
+	  partial_dom = dp;
+	  for (err = NO_ERROR; dp && err == NO_ERROR; dp = dp->next, dsize++)
+	    {
+	      DB_MAKE_NULL (&dbvals[num_dbvals]);
 	      num_dbvals++;
 	    }
 
@@ -17657,10 +17621,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 					     partial_dom);
 	    }
 
-	  if (dbvals != &value)
-	    {
-	      db_private_free_and_init (NULL, dbvals);
-	    }
+	  db_private_free_and_init (NULL, dbvals);
 	}
 
     }
@@ -21023,6 +20984,10 @@ btree_multicol_key_is_null (DB_VALUE * key)
 
 	  status = true;
 	}
+      if (midxkey->min_max_val.position != -1)
+	{
+	  return false;
+	}
     }
 
   return status;
@@ -23148,21 +23113,22 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       dom = dom->next;
     }
 
-  /* minimum or maximum suffix */
+  /* set maximum suffix (min_max_val), the minimum is NULL */
+  if ((prefix_len < curr_key->data.midxkey.ncolumns)
+      && ((dom->is_desc && use_desc_index)
+	  || (!dom->is_desc && !use_desc_index)))
+    {
+      midxkey.min_max_val.position = prefix_len;
+      midxkey.min_max_val.type = MAX_COLUMN;
+    }
+  else
+    {
+      midxkey.min_max_val.position = -1;
+    }
+
   for (i = prefix_len; i < curr_key->data.midxkey.ncolumns; i++)
     {
-      if ((dom->is_desc && !use_desc_index)
-	  || (!dom->is_desc && use_desc_index))
-	{
-	  DB_MAKE_NULL (&new_key_dbvals[i]);
-	}
-      else
-	{
-	  db_value_domain_max (&new_key_dbvals[i], dom->type->id,
-			       dom->precision, dom->scale, dom->codeset,
-			       dom->collation_id, &dom->enumeration);
-	}
-      dom = dom->next;
+      DB_MAKE_NULL (&new_key_dbvals[i]);
     }
 
   /* build midxkey */
