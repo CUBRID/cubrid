@@ -8604,14 +8604,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       return NULL_PAGEID;
     }
 
-  prior_lsa_next_record (thread_p, node, tdes);
+  newchkpt_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  assert (!LSA_ISNULL (&newchkpt_lsa));
 
   /*
    * Modify log header to record present checkpoint. The header is flushed
    * later
    */
-
-  LSA_COPY (&newchkpt_lsa, &tdes->tail_lsa);
 
   LOG_CS_EXIT (thread_p);
 
