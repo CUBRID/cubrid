@@ -859,7 +859,8 @@ loop:
 
 		  /* The worker thread may have been waked up by others. Check it again. */
 		  if (thread_p->tran_index != -1
-		      && thread_p->status == TS_WAIT)
+		      && thread_p->status == TS_WAIT
+		      && thread_p->lockwait == NULL)
 		    {
 		      thread_p->interrupted = true;
 		      thread_wakeup_already_had_mutex (thread_p,
