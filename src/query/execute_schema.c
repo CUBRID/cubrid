@@ -14995,11 +14995,11 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
       goto error;
     }
 
+  saved_func_index_pos = fi_info->col_id;
+  saved_attr_index_start = fi_info->attr_index_start;
   if (constr)
     {
       /* free previous function index info */
-      saved_func_index_pos = fi_info->col_id;
-      saved_attr_index_start = fi_info->attr_index_start;
       sm_free_function_index_info (fi_info);
       free_and_init (fi_info);
     }
@@ -15038,11 +15038,11 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
   memcpy (fi_info, fi_info_ws, sizeof (SM_FUNCTION_INFO));
   db_ws_free (fi_info_ws);
 
+  fi_info->col_id = saved_func_index_pos;
+  fi_info->attr_index_start = saved_attr_index_start;
   if (constr)
     {
       /* restore original values */
-      fi_info->col_id = saved_func_index_pos;
-      fi_info->attr_index_start = saved_attr_index_start;
       constr->func_index_info = fi_info;
     }
 
