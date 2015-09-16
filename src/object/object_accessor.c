@@ -4753,10 +4753,11 @@ obj_isinstance (MOP obj)
 		    }
 		  else if (status != LC_ERROR)
 		    {
-		      /* TODO:
-		       * Unsafe function. Error is lost here.
-		       */
 		      is_instance = 1;
+		    }
+		  else
+		    {
+		      ASSERT_ERROR_AND_SET (is_instance);
 		    }
 		}
 	    }
