@@ -1363,8 +1363,6 @@ int g_original_buffer_len;
 %token TEMPORARY
 %token THEN
 %token Time
-%token TIMETZ
-%token TIMELTZ
 %token TIMESTAMP
 %token TIMESTAMPTZ
 %token TIMESTAMPLTZ
@@ -18427,38 +18425,6 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
-	| Time WITH Time ZONE
-		{{
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMETZ), NULL);
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| TIMETZ
-		{{
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMETZ), NULL);
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| Time WITH LOCAL Time ZONE
-		{{
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMELTZ), NULL);
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| TIMELTZ
-		{{
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMELTZ), NULL);
-			$$ = ctn;
-
-		DBG_PRINT}}
 	| Utime
 		{{
 
@@ -22050,42 +22016,6 @@ date_or_time_literal
 
 			PT_NODE *val;
 			val = pt_create_date_value (this_parser, PT_TYPE_TIME, $2);
-			$$ = val;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| Time WITH Time ZONE CHAR_STRING
-		{{
-
-			PT_NODE *val;
-			val = pt_create_date_value (this_parser, PT_TYPE_TIMETZ, $5);
-			$$ = val;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| TIMETZ CHAR_STRING
-		{{
-
-			PT_NODE *val;
-			val = pt_create_date_value (this_parser, PT_TYPE_TIMETZ, $2);
-			$$ = val;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| TIMELTZ CHAR_STRING
-		{{
-
-			PT_NODE *val;
-			val = pt_create_date_value (this_parser, PT_TYPE_TIMELTZ, $2);
-			$$ = val;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| Time WITH LOCAL Time ZONE CHAR_STRING
-		{{
-
-			PT_NODE *val;
-			val = pt_create_date_value (this_parser, PT_TYPE_TIMELTZ, $6);
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 

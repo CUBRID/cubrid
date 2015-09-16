@@ -92,8 +92,6 @@ int loader_yyline = 1;
 %token DEFAULT
 %token DATE_
 %token TIME
-%token TIMELTZ
-%token TIMETZ
 %token UTIME
 %token TIMESTAMP
 %token TIMESTAMPLTZ
@@ -178,8 +176,6 @@ int loader_yyline = 1;
 %type <constant> bit_string
 %type <constant> sql2_date
 %type <constant> sql2_time
-%type <constant> sql2_timeltz
-%type <constant> sql2_timetz
 %type <constant> sql2_timestamp
 %type <constant> sql2_timestampltz
 %type <constant> sql2_timestamptz
@@ -532,8 +528,6 @@ constant :
   | bit_string 		{ $$ = $1; }
   | sql2_date 		{ $$ = $1; }
   | sql2_time 		{ $$ = $1; }
-  | sql2_timeltz 	{ $$ = $1; }    
-  | sql2_timetz 	{ $$ = $1; }  
   | sql2_timestamp 	{ $$ = $1; }
   | sql2_timestampltz 	{ $$ = $1; }  
   | sql2_timestamptz 	{ $$ = $1; }
@@ -603,20 +597,6 @@ sql2_time :
   TIME Quote SQS_String_Body
   {
     $$ = loader_make_constant (LDR_TIME, $3);
-  }
-  ;
-
-sql2_timeltz :
-  TIMELTZ Quote SQS_String_Body
-  {
-    $$ = loader_make_constant (LDR_TIMELTZ, $3);
-  }
-  ;
-
-sql2_timetz :
-  TIMETZ Quote SQS_String_Body
-  {
-    $$ = loader_make_constant (LDR_TIMETZ, $3);
   }
   ;
 

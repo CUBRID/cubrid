@@ -132,16 +132,6 @@ extern int loader_yyline;
     return TIME;
 }
 
-[Tt][Ii][Mm][Ee][tT][zZ] {
-    PRINT ("TIMETZ %s\n", yytext);
-    return TIMETZ;
-}
-
-[Tt][Ii][Mm][Ee][lL][tT][zZ] {
-    PRINT ("TIMELTZ %s\n", yytext);
-    return TIMELTZ;
-}
-
 [Uu][Tt][Ii][Mm][Ee] {
     PRINT ("UTIME %s\n", yytext);
     return UTIME;

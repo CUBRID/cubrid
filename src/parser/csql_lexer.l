@@ -779,8 +779,6 @@ int yybuffer_pos;
 [tT][iI][mM][eE][oO][uU][tT]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return TIMEOUT; }
-[tT][iI][mM][eE][tT][zZ]						{ begin_token(yytext);   return TIMETZ; }
-[tT][iI][mM][eE][lL][tT][zZ]						{ begin_token(yytext);   return TIMELTZ; }
 [tT][iI][mM][eE][sS][tT][aA][mM][pP]					{ begin_token(yytext);   return TIMESTAMP; }
 [tT][iI][mM][eE][sS][tT][aA][mM][pP][tT][zZ]				{ begin_token(yytext);   return TIMESTAMPTZ; }
 [tT][iI][mM][eE][sS][tT][aA][mM][pP][lL][tT][zZ]			{ begin_token(yytext);   return TIMESTAMPLTZ; }

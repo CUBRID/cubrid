@@ -457,8 +457,6 @@ static KEYWORD_RECORD keywords[] = {
   {THAN, "THAN", 1},
   {THEN, "THEN", 0},
   {Time, "TIME", 0},
-  {TIMETZ, "TIMETZ", 1},
-  {TIMELTZ, "TIMELTZ", 1},
   {TIMEOUT, "TIMEOUT", 1},
   {TIMESTAMP, "TIMESTAMP", 0},
   {TIMESTAMPTZ, "TIMESTAMPTZ", 0},
