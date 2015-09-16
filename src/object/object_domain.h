@@ -339,18 +339,18 @@ typedef enum tp_match
 
 #define TP_TIME_PRECISION	      6
 #define TP_TIME_AS_CHAR_LENGTH	      11
-#define TP_TIMETZ_AS_CHAR_LENGTH      14
+#define TP_TIMETZ_AS_CHAR_LENGTH      64
 
 #define TP_DATE_PRECISION	      8
 #define TP_DATE_AS_CHAR_LENGTH	      10
 
 #define TP_TIMESTAMP_PRECISION	      14
 #define TP_TIMESTAMP_AS_CHAR_LENGTH   22
-#define TP_TIMESTAMPTZ_AS_CHAR_LENGTH   25
+#define TP_TIMESTAMPTZ_AS_CHAR_LENGTH   64
 
 #define TP_DATETIME_PRECISION	      17
 #define TP_DATETIME_AS_CHAR_LENGTH    26
-#define TP_DATETIMETZ_AS_CHAR_LENGTH    29
+#define TP_DATETIMETZ_AS_CHAR_LENGTH    64
 
 /* CHAR type and VARCHAR type are compatible with each other */
 /* NCHAR type and VARNCHAR type are compatible with each other */
