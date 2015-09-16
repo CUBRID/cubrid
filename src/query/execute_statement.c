@@ -16205,13 +16205,16 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  AU_DISABLE (parser->au_save);
 	  if (upd_select_stmt == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
-		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-		  err = er_errid ();
+		  if (pt_has_error (parser))
+		    {
+		      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC,
+							 upd_select_stmt);
+		      err = er_errid ();
+		    }
+		  ASSERT_ERROR_AND_SET (err);
 		}
 	      goto exit;
 	    }
