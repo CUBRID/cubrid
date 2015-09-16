@@ -172,7 +172,9 @@ orc_class_is_system_class (RECDES * record)
   int flags;
   assert (record != NULL && record->data != NULL);
 
-  ptr = record->data + ORC_CLASS_FLAGS;
+  ptr = record->data +
+    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) +
+    ORC_CLASS_FLAGS;
   flags = OR_GET_INT (ptr);
 
   return ((flags & SM_CLASSFLAG_SYSTEM) != 0);

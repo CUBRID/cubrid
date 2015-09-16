@@ -5753,7 +5753,9 @@ error3:
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
  *   hfid(in): Heap where the object is going to be inserted
- *   class_oid(in):
+ *   class_oid(in/out): the class OID in which it was inserted
+ *		(in case of a partitioned class: it will hold the class OID of
+ *		 the actual partition in which the record was inserted)
  *   oid(in/out): The new object identifier
  *   recdes(in): The object in disk format
  *   has_index(in): false if we now for sure that there is not any index on the
@@ -14766,6 +14768,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p,
   bool is_pcontext_inited = false;
   int force_count = -1;
   OID oid;
+  OID cls_oid;
 
   PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_RANK_UNDEFINED,
 		      PGBUF_ORDERED_NULL_HFID);
@@ -14905,7 +14908,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p,
 		  goto exit;
 		}
 
-	      error = locator_insert_force (thread_p, &class_hfid, class_oid,
+	      /* make sure that pruning does not change the given class OID */
+	      COPY_OID (&cls_oid, class_oid);
+	      error = locator_insert_force (thread_p, &class_hfid, &cls_oid,
 					    &oid, &recdes, true,
 					    SINGLE_ROW_INSERT,
 					    &parent_scan_cache, &force_count,
