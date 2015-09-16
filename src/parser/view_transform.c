@@ -218,7 +218,7 @@ static PT_NODE *mq_substitute_subquery_list_in_statement (PARSER_CONTEXT *
 							  PT_NODE * order_by,
 							  int what_for);
 static int mq_translatable_class (PARSER_CONTEXT * parser, PT_NODE * class_);
-static bool mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec);
+static int mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec);
 static int mq_check_authorization_path_entities (PARSER_CONTEXT * parser,
 						 PT_NODE * class_spec,
 						 int what_for);
@@ -2494,7 +2494,7 @@ mq_translatable_class (PARSER_CONTEXT * parser, PT_NODE * class_)
  *   parser(in):
  *   spec(in):
  */
-static bool
+static int
 mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   PT_NODE *entity;
@@ -2526,6 +2526,12 @@ mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec)
 	    {
 	      had_some_virtual_classes++;
 	      subquery = mq_fetch_subqueries (parser, entity);
+
+	      if (subquery == NULL && er_has_error ())
+		{
+		  return er_errid ();
+		}
+
 	      if (subquery && subquery->node_type != PT_SELECT)
 		{
 		  return true;
@@ -4958,6 +4964,7 @@ static PT_NODE *
 mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 {
   PT_NODE *from;
+  int is_union_translation = 0;
 
   /* Convert to cnf and tag taggable terms */
   select_statement->info.query.q.select.where =
@@ -4977,7 +4984,13 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
        * of derived tables.
        */
 
-      if (mq_is_union_translation (parser, from))
+      is_union_translation = mq_is_union_translation (parser, from);
+      if (is_union_translation < NO_ERROR)
+	{
+	  return NULL;
+	}
+
+      if (is_union_translation == true)
 	{
 	  select_statement->info.query.q.select.from = from =
 	    mq_rewrite_vclass_spec_as_derived (parser, select_statement,
@@ -4994,7 +5007,13 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 
       while (from->next)
 	{
-	  if (mq_is_union_translation (parser, from->next))
+	  is_union_translation = mq_is_union_translation (parser, from->next);
+	  if (is_union_translation < NO_ERROR)
+	    {
+	      return NULL;
+	    }
+
+	  if (is_union_translation == true)
 	    {
 	      from->next =
 		mq_rewrite_vclass_spec_as_derived (parser, select_statement,
@@ -5010,17 +5029,29 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
     }
   else
     {
+      is_union_translation = false;
+
       /* see 'xtests/10010_vclass_set.sql' and 'err_xtests/check21.sql' */
       if (select_statement->info.query.is_subquery == 0
 	  && select_statement->info.query.is_view_spec == 0
-	  && select_statement->info.query.oids_included == 0
-	  && mq_is_union_translation (parser, from))
+	  && select_statement->info.query.oids_included == 0)
 	{
-	  select_statement->info.query.q.select.from =
-	    mq_rewrite_vclass_spec_as_derived (parser, select_statement, from,
-					       NULL);
+	  is_union_translation = mq_is_union_translation (parser, from);
+	  if (is_union_translation < NO_ERROR)
+	    {
+	      return NULL;
+	    }
+
+	  if (is_union_translation == true)
+	    {
+	      select_statement->info.query.q.select.from =
+		mq_rewrite_vclass_spec_as_derived (parser, select_statement,
+						   from, NULL);
+	    }
 	}
-      else if (from && from->info.spec.derived_table_type == PT_IS_SUBQUERY)
+
+      if (is_union_translation == false
+	  && from && from->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
 	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}

@@ -473,6 +473,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   PT_NODE *node = NULL;
   LOCK lock_rr_tran = NULL_LOCK;
+  LC_FIND_CLASSNAME find_result;
 
   lcks.classes = NULL;
   lcks.only_all = NULL;
@@ -592,11 +593,25 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 			   NULL, NULL);
 
   if (!pt_has_error (parser)
-      && locator_lockhint_classes (lcks.num_classes,
-				   (const char **) lcks.classes, lcks.locks,
-				   lcks.only_all, lcks.flags,
-				   true, lock_rr_tran) != LC_CLASSNAME_EXIST)
+      && (find_result =
+	  locator_lockhint_classes (lcks.num_classes,
+				    (const char **) lcks.classes, lcks.locks,
+				    lcks.only_all, lcks.flags, true,
+				    lock_rr_tran)) != LC_CLASSNAME_EXIST)
     {
+      if (find_result == LC_CLASSNAME_ERROR
+	  && er_errid () == ER_LK_UNILATERALLY_ABORTED)
+	{
+	  /*
+	   * Transaction has been aborted, the dirty objects and cached
+	   * locks has been cleared in current client during the above
+	   * locator_lockhint_classes () process. Therefore, must return from
+	   * this function immediately, otherwise the released 'statement'
+	   * (or other resources) will cause the unexpected problems.
+	   */
+	  goto cleanup;
+	}
+
       PT_ERRORc (parser, statement, db_error_string (3));
     }
 
