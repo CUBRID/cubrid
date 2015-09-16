@@ -371,6 +371,8 @@ static VFID *file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid,
 			   INT32 prealloc_npages);
 static int file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
 			  bool pb_invalid_temp_called);
+static int file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
+				  bool put_cache);
 static int file_calculate_offset (INT16 start_offset, int size, int nelements,
 				  INT16 * address_offset, VPID * address_vpid,
 				  VPID * ftb_vpids, int num_ftb_pages,
@@ -3107,7 +3109,8 @@ exit_on_error:
 
   if (tmpfile_vfid != NULL)
     {
-      (void) file_destroy (thread_p, tmpfile_vfid);
+      /* Don't keep an immature temp file in the temp file cache */
+      (void) file_destroy_internal (thread_p, tmpfile_vfid, false);
     }
 
   return NULL;
@@ -3740,6 +3743,13 @@ exit_on_error:
 int
 file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
+  return file_destroy_internal (thread_p, vfid, true);
+}
+
+static int
+file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
+		       bool put_cache)
+{
   VPID allocset_vpid;		/* Page-volume identifier of allocation set */
   VPID nxftb_vpid;		/* Page-volume identifier of file tables
 				   pages. Part of allocation sets. */
@@ -3944,10 +3954,14 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
       assert (file_type == FILE_TMP_TMP || file_type == FILE_QUERY_AREA);
 
       pb_invalid_temp_called = true;
-      if (file_tmpfile_cache_put (thread_p, vfid, file_type))
+
+      if (put_cache)
 	{
-	  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-	  return NO_ERROR;
+	  if (file_tmpfile_cache_put (thread_p, vfid, file_type))
+	    {
+	      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
+	      return NO_ERROR;
+	    }
 	}
     }
 
