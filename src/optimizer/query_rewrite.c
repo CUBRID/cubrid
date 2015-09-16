@@ -4480,6 +4480,38 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1,
   return CompResultError;
 }
 
+/*
+ * qo_range_optype_rank () -
+ *   return: 
+ *   op(in):
+ * description:
+ *   a, x = 1
+ *   b, x < 1
+ *   c, x <= 1
+ *  apparently, the rank: a < b < c
+ */
+static int
+qo_range_optype_rank (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_EQ:
+      return 1;
+    case PT_GT:
+    case PT_LT:
+      return 2;
+    case PT_GE:
+    case PT_LE:
+      return 3;
+    case PT_GT_INF:
+    case PT_LT_INF:
+      return 4;
+    default:
+      assert (false);
+      return 1;
+    }
+  return 1;
+}
 
 /*
  * qo_merge_range_helper () -
@@ -4496,6 +4528,9 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
   bool r_lv_copied = false, r_uv_copied = false;
   COMP_DBVALUE_WITH_OPTYPE_RESULT cmp1, cmp2, cmp3, cmp4;
   bool need_to_determine_upper_bound;
+
+  int r_rank;
+  int s_rank;
 
   if (node->info.expr.arg2->or_next == NULL)
     {
@@ -4732,6 +4767,22 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 		  r_lop = PT_GE;
 		}
 	    }
+	  else if (cmp1 == CompResultEqual)
+	    {
+	      /* There are two groups to reach here.
+	       * 1. Both operators are identical(EQ, GE, LE, GT_INF, LT_INF)
+	       * 2. non-identical operators combination among (EQ, GE, LE).
+	       *    GE for (EQ-GE), GE of (GE-EQ), LE for (EQ-LE), LE for (LE-EQ)
+	       */
+	      r_rank = qo_range_optype_rank (r_lop);
+	      s_rank = qo_range_optype_rank (s_lop);
+
+	      if (r_rank < s_rank)
+		{
+		  r_lop = s_lop;
+		}
+	    }
+
 	  /* determine the upper bound of the merged range spec */
 	  if (cmp4 == CompResultLess || cmp4 == CompResultLessAdj)
 	    {
@@ -4770,6 +4821,21 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	      if (r_uop == PT_EQ)
 		{		/* PT_BETWEEN_EQ_NA */
 		  r_uop = PT_LE;
+		}
+	    }
+	  else if (cmp4 == CompResultEqual)
+	    {
+	      /* There are two groups to reach here.
+	       * 1. Both operators are identical(EQ, GE, LE, GT_INF, LT_INF)
+	       * 2. non-identical operators combination among (EQ, GE, LE).
+	       *    GE for (EQ-GE), GE of (GE-EQ), LE for (EQ-LE), LE for (LE-EQ)
+	       */
+	      r_rank = qo_range_optype_rank (r_uop);
+	      s_rank = qo_range_optype_rank (s_uop);
+
+	      if (r_rank < s_rank)
+		{
+		  r_uop = s_uop;
 		}
 	    }
 
