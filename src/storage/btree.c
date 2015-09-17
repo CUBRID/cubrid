@@ -28979,7 +28979,10 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p,
 	{
 	  /* Error . */
 	  ASSERT_ERROR ();
-	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  if (bts->O_page != NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, bts->O_page);
+	    }
 	  return error_code;
 	}
       else if (stop)
@@ -28987,6 +28990,8 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p,
 	  /* Stop. */
 	  break;
 	}
+      assert (bts->O_page != NULL);
+
       /* Get VPID of next overflow page */
       error_code = btree_get_next_overflow_vpid (bts->O_page, &ovf_vpid);
       if (error_code != NO_ERROR)
