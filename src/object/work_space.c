@@ -3810,10 +3810,34 @@ ws_clear_all_hints (bool retain_lock)
 
   au_reset_authorization_caches ();
 
+  /*
+   * When there are two or more MVCC version of the same mop in ws_Commit_mops 
+   * link, the permanent_mvcc_link can't be changed in the meanwhile doing 
+   * clearing hints (ws_mvcc_latest_temporary_version depend on it), 
+   * it means that the clearing hints and changing permanent_mvcc_link should 
+   * be separated in two traversals. 
+   */
+
+  /* clear hints */
   mop = ws_Commit_mops;
   while (mop)
     {
       ws_clear_hints (mop, false);
+      next = mop->commit_link;
+      if (next == mop)
+	{
+	  mop = NULL;
+	}
+      else
+	{
+	  mop = next;
+	}
+    }
+
+  /* make mvcc links permanent and break the link */
+  mop = ws_Commit_mops;
+  while (mop)
+    {
       next = mop->commit_link;
       mop->commit_link = NULL;	/* remove mop from commit link (it's done) */
 
@@ -3832,6 +3856,7 @@ ws_clear_all_hints (bool retain_lock)
 	  mop = next;
 	}
     }
+
   ws_Commit_mops = NULL;
   ws_Num_dirty_mop = 0;
 
