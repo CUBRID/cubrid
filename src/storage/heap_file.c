@@ -25487,6 +25487,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
   PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   OID_SET_NULL (&partition_oid);
 
+retry:
   /* Prepare to get record. It will obtain class_oid, record type, required
    * pages, and forward_oid.
    */
@@ -25500,7 +25501,17 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
       goto end;
     }
 
-  assert (type == REC_HOME || type == REC_BIGONE || type == REC_RELOCATION);
+  /* forget the flags previously set */
+  home_page_watcher->page_was_unfixed = false;
+  fwd_page_watcher.page_was_unfixed = false;
+
+  /* we need to check if the record is valid. Althought the caller has done that,
+   * pages might have been unfixed, we need to recheck
+   */
+  if (type != REC_HOME && type != REC_BIGONE && type != REC_RELOCATION)
+    {
+      goto end;
+    }
 
   /* We should have required pages fixed. */
   assert (HEAP_IS_PAGE_OF_OID (home_page_watcher->pgptr, oid));
@@ -25563,6 +25574,14 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p,
     {
       scan_code = S_ERROR;
       goto error;
+    }
+
+  if (home_page_watcher->page_was_unfixed
+      || fwd_page_watcher.page_was_unfixed)
+    {
+      home_page_watcher->page_was_unfixed = false;
+      fwd_page_watcher.page_was_unfixed = false;
+      goto retry;
     }
 
   /* If the next valid version is in the same class as the current OID, we

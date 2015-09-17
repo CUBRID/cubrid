@@ -14801,7 +14801,6 @@ redistribute_partition_data (THREAD_ENTRY * thread_p,
   is_pcontext_inited = true;
 
   recdes.data = NULL;
-  recdes.area_size = -1;
 
   for (i = 0; i < no_oids; i++)
     {
@@ -14901,8 +14900,11 @@ redistribute_partition_data (THREAD_ENTRY * thread_p,
 	      inst_oid.pageid = vpid.pageid;
 	      inst_oid.volid = vpid.volid;
 	      inst_oid.slotid = slotid;
+
+	      recdes.data = NULL;
+
 	      if (heap_get (thread_p, &inst_oid, &recdes, &scan_cache,
-			    PEEK, NULL_CHN) != S_SUCCESS)
+			    COPY, NULL_CHN) != S_SUCCESS)
 		{
 		  error = ER_FAILED;
 		  goto exit;
