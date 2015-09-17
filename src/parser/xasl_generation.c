@@ -10651,7 +10651,19 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		    }
 		  else
 		    {
-		      regu = NULL;
+		      if (PT_IS_OID_NAME (attr))
+			{
+			  if (regu)
+			    {
+			      regu->type = TYPE_OID;
+			      regu->domain = pt_xasl_node_to_domain (parser,
+								     attr);
+			    }
+			}
+		      else
+			{
+			  regu = NULL;
+			}
 		    }
 		}
 	      else
