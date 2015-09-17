@@ -5047,10 +5047,19 @@ db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result,
 
   /* Adjust size to a full character.
    */
-  intl_char_count ((unsigned char *) DB_PULL_STRING (src_string), result_size,
-		   DB_GET_STRING_CODESET (src_string), &char_count);
-  intl_char_size ((unsigned char *) DB_PULL_STRING (src_string), char_count,
-		  DB_GET_STRING_CODESET (src_string), &adj_char_size);
+  if (DB_VALUE_DOMAIN_TYPE(src_string) == DB_TYPE_VARBIT
+      || DB_VALUE_DOMAIN_TYPE(src_string) == DB_TYPE_BIT)
+    {
+      char_count = result_size;
+      adj_char_size = result_size;
+    }
+  else
+    {
+      intl_char_count ((unsigned char *) DB_PULL_STRING (src_string),
+          result_size, DB_GET_STRING_CODESET (src_string), &char_count);
+      intl_char_size ((unsigned char *) DB_PULL_STRING (src_string),
+          char_count, DB_GET_STRING_CODESET (src_string), &adj_char_size);
+    }
 
   assert (adj_char_size <= result_size);
 
