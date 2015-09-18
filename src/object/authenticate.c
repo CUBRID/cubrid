@@ -1459,9 +1459,13 @@ au_make_user (const char *name)
 	      free_and_init (lname);
 	      if (error != NO_ERROR)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_AU_ACCESS_ERROR, 2, AU_USER_CLASS_NAME, "name");
-		  obj_delete (user);
+		  if (!ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_AU_ACCESS_ERROR, 2, AU_USER_CLASS_NAME,
+			      "name");
+		      obj_delete (user);
+		    }
 		  user = NULL;
 		}
 	      else
