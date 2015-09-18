@@ -1713,12 +1713,6 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
       /* its name is class_name.attribute_name */
       i_attr->info.attr_def.attr_name = name =
 	pt_name (parser, db_attribute_name (attributes));
-      if (name == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  return NULL;
-	}
-
       name->info.name.resolved = pt_append_string (parser, NULL, class_name);
       name->info.name.meta_class = (db_attribute_is_shared (attributes)
 				    ? PT_SHARED : PT_NORMAL);
@@ -1732,22 +1726,15 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
 	  cls = db_domain_class (db_attribute_domain (attributes));
 	  if (cls)
 	    {
-	      class_name = db_get_class_name (cls);
-	      if (class_name != NULL)
+	      name = pt_name (parser, db_get_class_name (cls));
+	      name->info.name.meta_class = PT_CLASS;
+	      name->info.name.db_object = cls;
+	      name->info.name.spec_id = (UINTPTR) name;
+	      i_attr->data_type = typ =
+		parser_new_node (parser, PT_DATA_TYPE);
+	      if (typ)
 		{
-		  name = pt_name (parser, class_name);
-		  if (name != NULL)
-		    {
-		      name->info.name.meta_class = PT_CLASS;
-		      name->info.name.db_object = cls;
-		      name->info.name.spec_id = (UINTPTR) name;
-		      i_attr->data_type = typ =
-			parser_new_node (parser, PT_DATA_TYPE);
-		      if (typ)
-			{
-			  typ->info.data_type.entity = name;
-			}
-		    }
+		  typ->info.data_type.entity = name;
 		}
 	    }
 	  break;
@@ -15066,20 +15053,12 @@ pt_find_class_of_index (PARSER_CONTEXT * parser, const char *const index_name,
 {
   PT_NODE *node = NULL;
   DB_OBJECT *const class_ = db_find_class_of_index (index_name, index_type);
-  const char *class_name = NULL;
 
   if (class_ == NULL)
     {
       return NULL;
     }
-
-  class_name = db_get_class_name (class_);
-  if (class_name == NULL)
-    {
-      return NULL;
-    }
-
-  node = pt_name (parser, class_name);
+  node = pt_name (parser, db_get_class_name (class_));
   if (node == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");

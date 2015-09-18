@@ -454,7 +454,6 @@ pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
 {
   DB_OBJECT *cls;
   PT_NODE *name, *dt;
-  const char *class_name = NULL;
 
   assert (parser != NULL && val != NULL);
 
@@ -467,12 +466,7 @@ pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
     {
       return NULL;
     }
-  class_name = db_get_class_name (cls);
-  if (class_name == NULL)
-    {
-      return NULL;
-    }
-  name = pt_name (parser, class_name);
+  name = pt_name (parser, db_get_class_name (cls));
   if (name == NULL)
     {
       return NULL;
