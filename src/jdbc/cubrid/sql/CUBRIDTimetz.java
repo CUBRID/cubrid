@@ -41,17 +41,22 @@ public class CUBRIDTimetz extends Time {
 
 	private String timezone;
 
-	public CUBRIDTimetz (long time,  String str_timezone) {
+	public CUBRIDTimetz (long time,  String str_timezone) throws CUBRIDException {
 		super (time);
+		throw new CUBRIDException (CUBRIDJDBCErrorCode.not_supported);
+		/*
 		this.timezone = str_timezone;
+		*/
 	}
 
 	public CUBRIDTimetz(String str_CUBRIDTimetz) throws CUBRIDException{
 		super(0);
 
+		throw new CUBRIDException (CUBRIDJDBCErrorCode.not_supported);
+		/*
 		TimeInfo timeinfo = new TimeInfo();
 		long time = 0;
-		
+
 		timeinfo = UJCIUtil.parseStringTime(str_CUBRIDTimetz);
 		Time tmptime = Time.valueOf(timeinfo.time);
 		time = tmptime.getTime();
@@ -61,20 +66,28 @@ public class CUBRIDTimetz extends Time {
 
 		setTime(time);
 		this.timezone = timeinfo.timezone;
+		*/
 	}
 
-	public static CUBRIDTimetz valueOf (Time t, String str_timezone) {
+	public static CUBRIDTimetz valueOf (Time t, String str_timezone) throws CUBRIDException {
+		throw new CUBRIDException (CUBRIDJDBCErrorCode.not_supported);
+	
+		/*
 		long tmp_time = t.getTime();
 
 		CUBRIDTimetz cubrid_time_tz = new CUBRIDTimetz (tmp_time, str_timezone);
 
 		return cubrid_time_tz;
+		*/
 	}
 
-	public static CUBRIDTimetz valueOf(String str_time, String str_timezone) {
+	public static CUBRIDTimetz valueOf(String str_time, String str_timezone) throws CUBRIDException{
+		throw new CUBRIDException (CUBRIDJDBCErrorCode.not_supported);
+		/*
 		Time tmptime = Time.valueOf(str_time);
 		CUBRIDTimetz cubrid_time_tz = new CUBRIDTimetz(tmptime.getTime(), str_timezone);
 		return cubrid_time_tz;
+		*/
 	}
 
 	public String toString() {

@@ -169,8 +169,6 @@ abstract public class UUType {
 			return UUType.U_TYPE_NUMERIC;
 		else if (value instanceof Date)
 			return UUType.U_TYPE_DATE;
-		else if (value instanceof CUBRIDTimetz)
-			return UUType.U_TYPE_TIMETZ;
 		else if (value instanceof Time)
 			return UUType.U_TYPE_TIME;
 		else if (value instanceof CUBRIDTimestamptz) {

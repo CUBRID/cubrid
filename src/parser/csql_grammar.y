@@ -299,7 +299,6 @@ static FUNCTION_MAP functions[] = {
   {"sleep", PT_SLEEP},
   {"to_datetime_tz", PT_TO_DATETIME_TZ},
   {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
-  {"to_time_tz", PT_TO_TIME_TZ},
   {"utc_timestamp", PT_UTC_TIMESTAMP},
   {"crc32", PT_CRC32},
   {"schema_def", PT_SCHEMA_DEF}

@@ -45,6 +45,7 @@ import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDXid;
+import cubrid.jdbc.driver.CUBRIDException;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
@@ -296,7 +297,13 @@ class UInputBuffer {
 			position++;
 		}
 
-		return CUBRIDTimetz.valueOf(time, timezone);
+		try{
+			return CUBRIDTimetz.valueOf(time, timezone);
+		}
+		catch (CUBRIDException e)
+		{
+			throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		}
 	}
 	
 	CUBRIDTimestamp readTimestamp() throws UJciException {

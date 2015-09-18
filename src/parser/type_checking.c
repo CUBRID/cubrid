@@ -4769,7 +4769,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_FROM_TZ:
       num = 0;
-      /* three overloads */
+      /* two overloads */
 
       /* arg1 */
       sig.arg1_type.is_generic = true;
@@ -4795,19 +4795,6 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_DATETIMETZ;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIME;
-
-      /* arg2 */
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_VARCHAR;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIMETZ;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -10255,11 +10242,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 
 	case PT_FROM_TZ:
-	  if (arg1_type == PT_TYPE_TIME)
-	    {
-	      node->type_enum = PT_TYPE_TIMETZ;
-	    }
-	  else if (arg1_type == PT_TYPE_DATETIME)
+	  if (arg1_type == PT_TYPE_DATETIME)
 	    {
 	      node->type_enum = PT_TYPE_DATETIMETZ;
 	    }
@@ -10878,10 +10861,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	else if (type_specifier == DATETIME_SPECIFIER)
 	  {
 	    node->type_enum = PT_TYPE_DATETIME;
-	  }
-	else if (type_specifier == TIMETZ_SPECIFIER)
-	  {
-	    node->type_enum = PT_TYPE_TIMETZ;
 	  }
 	else if (type_specifier == DATETIMETZ_SPECIFIER)
 	  {

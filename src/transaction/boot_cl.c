@@ -3087,8 +3087,7 @@ boot_add_data_type (MOP class_mop)
     NULL /* TABLE */ ,
     "BIGINT", "DATETIME",
     "BLOB", "CLOB", "ENUM",
-    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
-    "TIMETZ", "TIMELTZ"
+    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ"
   };
 
   for (i = 0; i < DB_TYPE_LAST; i++)

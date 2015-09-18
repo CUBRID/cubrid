@@ -5353,11 +5353,7 @@ db_check_time_date_format (const char *format_s)
 
   if (has_timezone)
     {
-      if (res == TIME_SPECIFIER)
-	{
-	  res = TIMETZ_SPECIFIER;
-	}
-      else if (res == DATE_SPECIFIER || res == DATETIME_SPECIFIER)
+      if (res == DATE_SPECIFIER || res == DATETIME_SPECIFIER)
 	{
 	  res = DATETIMETZ_SPECIFIER;
 	}

@@ -47,6 +47,7 @@ import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
 import cubrid.sql.CUBRIDTimetz;
+import cubrid.jdbc.driver.CUBRIDException;
 
 abstract public class UGetTypeConvertedValue {
 
@@ -276,24 +277,31 @@ abstract public class UGetTypeConvertedValue {
 	}
 	
 	static public CUBRIDTimetz getTimetz(Object data) throws UJciException {
-		if (data == null)
-			return null;
-		else if (data instanceof CUBRIDTimetz)
-			return new CUBRIDTimetz(((Time) data).getTime(), ((CUBRIDTimetz) data).getTimezone());
-		else if (data instanceof CUBRIDTimestamptz)
-			return new CUBRIDTimetz(((CUBRIDTimestamptz) data).getTime(), ((CUBRIDTimestamptz) data).getTimezone());
-		else if (data instanceof String) {
-			try {
-				/* don't know how to parse a string with time and timezone */
-				return CUBRIDTimetz.valueOf((String) data, "");
-			} catch (IllegalArgumentException e) {
-				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+		try
+		{
+			if (data == null)
+				return null;
+			else if (data instanceof CUBRIDTimetz)
+				return new CUBRIDTimetz(((Time) data).getTime(), ((CUBRIDTimetz) data).getTimezone());
+			else if (data instanceof CUBRIDTimestamptz)
+				return new CUBRIDTimetz(((CUBRIDTimestamptz) data).getTime(), ((CUBRIDTimestamptz) data).getTimezone());
+			else if (data instanceof String) {
+				try {
+					/* don't know how to parse a string with time and timezone */
+					return CUBRIDTimetz.valueOf((String) data, "");
+				} catch (IllegalArgumentException e) {
+					throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+				}
 			}
+			else if (data instanceof Time)
+				return new CUBRIDTimetz(((Time) data).getTime(), "");
+			else if (data instanceof Timestamp)
+				return new CUBRIDTimetz(((Timestamp) data).getTime(), "");
 		}
-		else if (data instanceof Time)
-			return new CUBRIDTimetz(((Time) data).getTime(), "");
-		else if (data instanceof Timestamp)
-			return new CUBRIDTimetz(((Timestamp) data).getTime(), "");
+		catch (CUBRIDException e)
+		{
+			throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+		}
 		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 	}
 

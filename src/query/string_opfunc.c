@@ -5047,8 +5047,8 @@ db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result,
 
   /* Adjust size to a full character.
    */
-  if (DB_VALUE_DOMAIN_TYPE(src_string) == DB_TYPE_VARBIT
-      || DB_VALUE_DOMAIN_TYPE(src_string) == DB_TYPE_BIT)
+  if (DB_VALUE_DOMAIN_TYPE (src_string) == DB_TYPE_VARBIT
+      || DB_VALUE_DOMAIN_TYPE (src_string) == DB_TYPE_BIT)
     {
       char_count = result_size;
       adj_char_size = result_size;
@@ -5056,9 +5056,11 @@ db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result,
   else
     {
       intl_char_count ((unsigned char *) DB_PULL_STRING (src_string),
-          result_size, DB_GET_STRING_CODESET (src_string), &char_count);
+		       result_size, DB_GET_STRING_CODESET (src_string),
+		       &char_count);
       intl_char_size ((unsigned char *) DB_PULL_STRING (src_string),
-          char_count, DB_GET_STRING_CODESET (src_string), &adj_char_size);
+		      char_count, DB_GET_STRING_CODESET (src_string),
+		      &adj_char_size);
     }
 
   assert (adj_char_size <= result_size);
@@ -29542,20 +29544,6 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
 	    return error;
 	  }
 	DB_MAKE_DATETIMETZ (time_val_with_tz, &result);
-      }
-      break;
-
-    case DB_TYPE_TIME:
-      {
-	DB_TIMETZ result;
-
-	time = DB_GET_TIME (time_val);
-	error = tz_create_timetz_ext (time, timezone, len_timezone, &result);
-	if (error != NO_ERROR)
-	  {
-	    return error;
-	  }
-	DB_MAKE_TIMETZ (time_val_with_tz, &result);
       }
       break;
 

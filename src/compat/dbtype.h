@@ -510,14 +510,16 @@ typedef enum
   DB_TYPE_TIMESTAMPLTZ = 37,
   DB_TYPE_DATETIMETZ = 38,
   DB_TYPE_DATETIMELTZ = 39,
-  DB_TYPE_TIMETZ = 40,
-  DB_TYPE_TIMELTZ = 41,
+  /* Disabled types */
+  DB_TYPE_TIMETZ = 40,		/* internal use only - RESERVED */
+  DB_TYPE_TIMELTZ = 41,		/* internal use only - RESERVED */
+  /* end of disabled types */
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
 
-  DB_TYPE_LAST = DB_TYPE_TIMELTZ
+  DB_TYPE_LAST = DB_TYPE_DATETIMELTZ
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */

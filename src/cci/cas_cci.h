@@ -343,8 +343,10 @@ extern "C"
     CCI_U_TYPE_UBIGINT = 28,
     CCI_U_TYPE_TIMESTAMPTZ = 29,
     CCI_U_TYPE_DATETIMETZ = 30,
-    CCI_U_TYPE_TIMETZ = 31,
-    CCI_U_TYPE_LAST = CCI_U_TYPE_TIMETZ
+    /* Disabled type */
+    CCI_U_TYPE_TIMETZ = 31,	/* internal use only - RESERVED */
+    /* end of disabled types */
+    CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIMETZ
   } T_CCI_U_TYPE;
 
   typedef void *T_CCI_SET;
