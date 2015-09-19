@@ -6186,12 +6186,12 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 
   /* if the request contains parameter values for the query,
      allocate space for them */
-  if (dbval_cnt)
+  if (0 < dbval_cnt)
     {
       /* receive parameter values (DB_VALUE) from the client */
       csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
 					       &data, &data_size);
-      if (csserror)
+      if (csserror || data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_NET_SERVER_DATA_RECEIVE, 0);
