@@ -4795,6 +4795,13 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  return ER_GENERIC_ERROR;
 		}
 
+	      if (DB_VALUE_TYPE (&val) != DB_TYPE_INTEGER)
+		{
+		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_MVCC_RUNTIME_XACT_ISO_LVL_MSG);
+		  return ER_GENERIC_ERROR;
+		}
+
 	      error = set_iso_level (parser, &tran_isolation, &async_ws,
 				     statement, &val);
 	    }
