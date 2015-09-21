@@ -4526,7 +4526,7 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_OP_TYPE r_op, r_lop, r_uop, s_op, s_lop, s_uop;
   DB_VALUE *r_lv, *r_uv, *s_lv, *s_uv;
   bool r_lv_copied = false, r_uv_copied = false;
-  COMP_DBVALUE_WITH_OPTYPE_RESULT cmp1, cmp2, cmp3, cmp4;
+  COMP_DBVALUE_WITH_OPTYPE_RESULT cmp1, cmp2, cmp3, cmp4, cmp5, cmp6;
   bool need_to_determine_upper_bound;
 
   int r_rank;
@@ -4683,6 +4683,11 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  cmp2 = qo_compare_dbvalue_with_optype (r_lv, r_lop, s_uv, s_uop);
 	  cmp3 = qo_compare_dbvalue_with_optype (r_uv, r_uop, s_lv, s_lop);
 	  cmp4 = qo_compare_dbvalue_with_optype (r_uv, r_uop, s_uv, s_uop);
+
+	  /* make more compare to detect something like "a>1 or a between 1 and 0" */
+	  cmp5 = qo_compare_dbvalue_with_optype (r_lv, r_lop, r_uv, r_uop);
+	  cmp6 = qo_compare_dbvalue_with_optype (s_lv, s_lop, s_uv, s_uop);
+
 	  if (cmp1 == CompResultError || cmp2 == CompResultError ||
 	      cmp3 == CompResultError || cmp4 == CompResultError)
 	    {
@@ -4690,8 +4695,9 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	      current = current->or_next;
 	      continue;
 	    }
-	  if ((cmp1 == CompResultLess || cmp1 == CompResultGreater)
-	      && cmp1 == cmp2 && cmp1 == cmp3 && cmp1 == cmp4)
+	  if (((cmp1 == CompResultLess || cmp1 == CompResultGreater)
+	       && cmp1 == cmp2 && cmp1 == cmp3 && cmp1 == cmp4)
+	      || cmp5 == CompResultGreater || cmp6 == CompResultGreater)
 	    {
 	      /* they are disjoint; continue to next range spec */
 	      current = current->or_next;
