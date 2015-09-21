@@ -754,31 +754,33 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 		parser_append_node (parser_copy_tree (parser, lhs),
 				    common_list);
 
-	      if (lhs_count > 1 || (lhs_count == 1 && rhs_count == 1))
+	      /* delete from lhs list */
+	      if (lhs_prev == NULL)
 		{
-		  /* delete from lhs list */
-		  if (lhs_prev == NULL)
-		    node->info.expr.arg1 = lhs_next;
-		  else
-		    lhs_prev->next = lhs_next;
-
-		  /* free compacted node */
-		  lhs->next = NULL;
-		  parser_free_tree (parser, lhs);
+		  node->info.expr.arg1 = lhs_next;
+		}
+	      else
+		{
+		  lhs_prev->next = lhs_next;
 		}
 
-	      if (rhs_count > 1 || (lhs_count == 1 && rhs_count == 1))
-		{
-		  /* delete from rhs list */
-		  if (rhs_prev == NULL)
-		    node->info.expr.arg2 = rhs_next;
-		  else
-		    rhs_prev->next = rhs_next;
+	      /* free compacted node */
+	      lhs->next = NULL;
+	      parser_free_tree (parser, lhs);
 
-		  /* free compacted node */
-		  rhs->next = NULL;
-		  parser_free_tree (parser, rhs);
+	      /* delete from rhs list */
+	      if (rhs_prev == NULL)
+		{
+		  node->info.expr.arg2 = rhs_next;
 		}
+	      else
+		{
+		  rhs_prev->next = rhs_next;
+		}
+
+	      /* free compacted node */
+	      rhs->next = NULL;
+	      parser_free_tree (parser, rhs);
 
 	      continue;
 	    }
@@ -801,8 +803,8 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	     node->next = node->or_next = NULL */
 	  parser_free_tree (parser, node);
 
-	  list = (lhs == NULL) ? rhs : lhs;
-	  list = parser_append_node (list, common_list);
+	  /* A and B or B ==> B and (A or true) ==> B */
+	  list = common_list;
 	  break;
 	}
 
@@ -859,7 +861,8 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	  else
 	    {
-	      list = (arg1) ? arg1 : arg2;
+	      /* A and B or B ==> B and (A or true) ==> B */
+	      list = NULL;
 	    }
 
 	  if (list != NULL && list->info.expr.op == PT_OR)
