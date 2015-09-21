@@ -4544,17 +4544,22 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	{
 	  assert_release (p->pos_descr.pos_no >= 0);
 	  assert_release (p->pos_descr.dom != NULL);
-#if 0
-	  /* Temporarily disable assert until we fix the regression cases. */
-	  assert_release (p->pos_descr.dom->type->id != DB_TYPE_VARIABLE);
-#endif
 
 	  subkey = &key_info_p->key[i];
 	  subkey->col = p->pos_descr.pos_no;
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->sort_f = p->pos_descr.dom->type->data_cmpdisk;
+
+	  if (p->pos_descr.dom->type->id == DB_TYPE_VARIABLE)
+	    {
+	      subkey->sort_f = types->domp[i]->type->data_cmpdisk;
+	    }
+	  else
+	    {
+	      subkey->sort_f = p->pos_descr.dom->type->data_cmpdisk;
+	    }
+
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
 	  subkey->is_nulls_first = (p->s_nulls == S_NULLS_LAST) ? 0 : 1;
 
