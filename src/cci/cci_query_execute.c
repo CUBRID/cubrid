@@ -3040,6 +3040,17 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
+		case CCI_A_TYPE_DATE_TZ:
+		  {
+		    T_CCI_DATE_TZ *value;
+		    value =
+		      (T_CCI_DATE_TZ *) req_handle->bind_value[idx].value;
+		    err_code =
+		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
+					     CCI_BIND_PTR, &(value[row]),
+					     UNMEASURED_LENGTH, &cur_cell);
+		  }
+		  break;
 		case CCI_A_TYPE_SET:
 		  {
 		    T_SET **value;
