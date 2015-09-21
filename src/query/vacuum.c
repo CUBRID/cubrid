@@ -4427,7 +4427,7 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
     }
 
   if (prev_chkpt_lsa != NULL
-      && LSA_LE (&vacuum_Data_oldest_not_flushed_lsa, prev_chkpt_lsa))
+      && LSA_LT (&vacuum_Data_oldest_not_flushed_lsa, prev_chkpt_lsa))
     {
       /* Conservative safety check */
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
