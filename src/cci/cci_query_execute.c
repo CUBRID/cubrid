@@ -6901,7 +6901,6 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
 	  ADD_ARG_DATETIME (net_buf, value);
 	}
       break;
-      break;
     case CCI_U_TYPE_TIMETZ:
     case CCI_U_TYPE_TIMESTAMPTZ:
     case CCI_U_TYPE_DATETIMETZ:
@@ -6921,6 +6920,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
 	{
 	  ADD_ARG_DATETIMETZ (net_buf, value);
 	}
+      break;
     case CCI_U_TYPE_OBJECT:
       if (value == NULL)
 	{
