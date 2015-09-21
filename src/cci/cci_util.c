@@ -639,7 +639,7 @@ ut_str_to_datetimetz (char *str, T_CCI_DATE_TZ * value)
     }
 
   p = p + 1;
-  p = strchr (str, ' ');
+  p = strchr (p, ' ');
   if (p != NULL)
     {
       strncpy (value->tz, p + 1, sizeof (value->tz) - 1);
