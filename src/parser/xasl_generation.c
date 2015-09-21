@@ -10033,6 +10033,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	    case PT_DIFFERENCE:
 	    case PT_INTERSECTION:
 	      xasl = (XASL_NODE *) node->info.query.xasl;
+
+	      if (xasl == NULL && !pt_has_error (parser))
+		{
+		  xasl = parser_generate_xasl (parser, node);
+		}
+
 	      if (xasl)
 		{
 		  PT_NODE *select_list = pt_get_select_list (parser, node);
