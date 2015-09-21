@@ -6038,17 +6038,25 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
     }
   else
     {
-      int is_class =
-	locator_is_class (op,
-			  ((fetchmode ==
-			    AU_FETCH_READ) ? DB_FETCH_READ : DB_FETCH_WRITE));
+      int is_class;
+      DB_FETCH_MODE purpose;
+
+      if (fetchmode == AU_FETCH_READ)
+	{
+	  purpose = DB_FETCH_READ;
+	}
+      else
+	{
+	  purpose = DB_FETCH_WRITE;
+	}
+
+      is_class = locator_is_class (op, purpose);
 
       if (is_class < 0)
 	{
 	  return is_class;
 	}
-
-      if (is_class > 0)
+      else if (is_class > 0)
 	{
 	  classmop = op;
 	}
