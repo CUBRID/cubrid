@@ -22772,8 +22772,14 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 		case DB_TYPE_NUMERIC:
 		case DB_TYPE_DATE:
 		case DB_TYPE_DATETIME:
+		case DB_TYPE_DATETIMETZ:
+		case DB_TYPE_DATETIMELTZ:
 		case DB_TYPE_TIMESTAMP:
+		case DB_TYPE_TIMESTAMPTZ:
+		case DB_TYPE_TIMESTAMPLTZ:
 		case DB_TYPE_TIME:
+		case DB_TYPE_TIMETZ:
+		case DB_TYPE_TIMELTZ:
 		  break;
 
 		default:

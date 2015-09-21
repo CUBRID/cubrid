@@ -12170,11 +12170,50 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 		  break;
 
 		case DB_TYPE_DATETIME:
-		case DB_TYPE_TIMESTAMP:
 		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
 		    {
 		      func_p->domain =
 			tp_domain_resolve_default (DB_TYPE_DATETIME);
+		    }
+		  break;
+
+		case DB_TYPE_DATETIMETZ:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_DATETIMETZ);
+		    }
+		  break;
+
+		case DB_TYPE_DATETIMELTZ:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_DATETIMELTZ);
+		    }
+		  break;
+
+		case DB_TYPE_TIMESTAMP:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_TIMESTAMP);
+		    }
+		  break;
+
+		case DB_TYPE_TIMESTAMPTZ:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
+		    }
+		  break;
+
+		case DB_TYPE_TIMESTAMPLTZ:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_TIMESTAMPLTZ);
 		    }
 		  break;
 
@@ -12183,6 +12222,22 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 		    {
 		      func_p->domain =
 			tp_domain_resolve_default (DB_TYPE_TIME);
+		    }
+		  break;
+
+		case DB_TYPE_TIMETZ:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_TIMETZ);
+		    }
+		  break;
+
+		case DB_TYPE_TIMELTZ:
+		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_TIMELTZ);
 		    }
 		  break;
 
@@ -13050,10 +13105,28 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
       break;
 
     case DB_TYPE_DATETIME:
-      datetime = *(DB_GET_DATETIME (f_value));
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
+      if (type == DB_TYPE_DATETIMETZ)
+	{
+	  datetime = DB_GET_DATETIMETZ (f_value)->datetime;
+	}
+      else
+	{
+	  datetime = *(DB_GET_DATETIME (f_value));
+	}
+
       d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
 
-      datetime = *(DB_GET_DATETIME (c_value));
+      if (type == DB_TYPE_DATETIMETZ)
+	{
+	  datetime = DB_GET_DATETIMETZ (c_value)->datetime;
+	}
+      else
+	{
+	  datetime = *(DB_GET_DATETIME (c_value));
+	}
+
       d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
 
       *d_result = floor ((c_row_num_d - row_num_d) * d1
@@ -13063,15 +13136,59 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
       datetime.time = (unsigned int) (((DB_BIGINT) * d_result)
 				      % MILLISECONDS_OF_ONE_DAY);
 
-      DB_MAKE_DATETIME (result, &datetime);
+      if (type == DB_TYPE_DATETIME)
+	{
+	  DB_MAKE_DATETIME (result, &datetime);
+	}
+      else if (type == DB_TYPE_DATETIMELTZ)
+	{
+	  DB_MAKE_DATETIMELTZ (result, &datetime);
+	}
+      else
+	{
+	  DB_DATETIMETZ dttz1, dttz2;
+
+	  /* if the two timezones are different, we use the first timezone */
+	  dttz1.datetime = datetime;
+	  dttz1.tz_id = DB_GET_DATETIMETZ (f_value)->tz_id;
+
+	  error = tz_datetimetz_fix_zone (&dttz1, &dttz2);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+
+	  DB_MAKE_DATETIMETZ (result, &dttz2);
+	}
 
       break;
 
     case DB_TYPE_TIMESTAMP:
-      db_timestamp_decode_utc (DB_GET_TIMESTAMP (f_value), &date, &time);
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+      if (type == DB_TYPE_TIMESTAMPTZ)
+	{
+	  db_timestamp_decode_utc (&DB_GET_TIMESTAMPTZ (f_value)->timestamp,
+				   &date, &time);
+	}
+      else
+	{
+	  db_timestamp_decode_utc (DB_GET_TIMESTAMP (f_value), &date, &time);
+	}
+
       d1 = ((double) date) * MILLISECONDS_OF_ONE_DAY + time * 1000;
 
-      db_timestamp_decode_utc (DB_GET_TIMESTAMP (c_value), &date, &time);
+      if (type == DB_TYPE_TIMESTAMPTZ)
+	{
+	  db_timestamp_decode_utc (&DB_GET_TIMESTAMPTZ (c_value)->timestamp,
+				   &date, &time);
+	}
+      else
+	{
+	  db_timestamp_decode_utc (DB_GET_TIMESTAMP (c_value), &date, &time);
+	}
+
       d2 = ((double) date) * MILLISECONDS_OF_ONE_DAY + time * 1000;
 
       *d_result = floor ((c_row_num_d - row_num_d) * d1
@@ -13089,20 +13206,78 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
 	  goto end;
 	}
 
-      DB_MAKE_TIMESTAMP (result, utime);
+      if (type == DB_TYPE_TIMESTAMP)
+	{
+	  DB_MAKE_TIMESTAMP (result, utime);
+	}
+      else if (type == DB_TYPE_TIMESTAMPLTZ)
+	{
+	  DB_MAKE_TIMESTAMPLTZ (result, utime);
+	}
+      else
+	{
+	  DB_TIMESTAMPTZ tstz1, tstz2;
+
+	  /* if the two timezones are different, we use the first timezone */
+	  tstz1.timestamp = utime;
+	  tstz1.tz_id = DB_GET_TIMESTAMPTZ (f_value)->tz_id;
+
+	  error = tz_timestamptz_fix_zone (&tstz1, &tstz2);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+
+	  DB_MAKE_TIMESTAMPTZ (result, &tstz2);
+	}
 
       break;
 
     case DB_TYPE_TIME:
-      d1 = (double) (*DB_GET_TIME (f_value));
-      d2 = (double) (*DB_GET_TIME (c_value));
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
+      if (type == DB_TYPE_TIMETZ)
+	{
+	  d1 = (double) (DB_GET_TIMETZ (f_value)->time);
+	  d2 = (double) (DB_GET_TIMETZ (c_value)->time);
+	}
+      else
+	{
+	  d1 = (double) (*DB_GET_TIME (f_value));
+	  d2 = (double) (*DB_GET_TIME (c_value));
+	}
 
       *d_result = floor ((c_row_num_d - row_num_d) * d1
 			 + (row_num_d - f_row_num_d) * d2);
 
       time = (DB_TIME) * d_result;
 
-      db_value_put_encoded_time (result, &time);
+      if (type == DB_TYPE_TIME)
+	{
+	  db_value_put_encoded_time (result, &time);
+	}
+      else if (type == DB_TYPE_TIMELTZ)
+	{
+	  DB_MAKE_TIMELTZ (result, &time);
+	}
+      else
+	{
+	  DB_TIMETZ ttz1, ttz2;
+
+	  /* if the two timezones are different, we use the first timezone */
+	  ttz1.time = time;
+	  ttz1.tz_id = DB_GET_TIMETZ (f_value)->tz_id;
+
+	  error = tz_timetz_fix_zone (&ttz1, &ttz2);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+
+	  DB_MAKE_TIMETZ (result, &ttz2);
+	}
 
       break;
 
