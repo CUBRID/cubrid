@@ -12208,6 +12208,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   ODKU_INFO *odku_assignments = insert->odku;
   DB_VALUE oid_val;
   int is_autoincrement_set = 0;
+  int month, day, year, hour, minute, second, millisecond;
 
   aptr = xasl->aptr_list;
   val_no = insert->no_vals;
@@ -12336,12 +12337,18 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       switch (attr->current_default_value.default_expr)
 	{
 	case DB_DEFAULT_SYSTIME:
-	  DB_MAKE_TIME (insert->vals[k], 1, 1, 1);
-	  insert->vals[k]->data.time = xasl_state->vd.sys_datetime.time;
+	case DB_DEFAULT_CURRENTTIME:
+	  db_datetime_decode (&xasl_state->vd.sys_datetime,
+			      &month, &day, &year, &hour, &minute, &second,
+			      &millisecond);
+	  db_make_time (insert->vals[k], hour, minute, second);
 	  break;
 	case DB_DEFAULT_SYSDATE:
-	  DB_MAKE_DATE (insert->vals[k], 1, 1, 1);
-	  insert->vals[k]->data.date = xasl_state->vd.sys_datetime.date;
+	case DB_DEFAULT_CURRENTDATE:
+	  db_datetime_decode (&xasl_state->vd.sys_datetime,
+			      &month, &day, &year, &hour, &minute, &second,
+			      &millisecond);
+	  db_make_date (insert->vals[k], month, day, year);
 	  break;
 	case DB_DEFAULT_SYSDATETIME:
 	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
@@ -12349,14 +12356,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	case DB_DEFAULT_SYSTIMESTAMP:
 	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
 	  error = db_datetime_to_timestamp (insert->vals[k], insert->vals[k]);
-	  break;
-	case DB_DEFAULT_CURRENTTIME:
-	  DB_MAKE_TIME (insert->vals[k], 1, 1, 1);
-	  insert->vals[k]->data.time = xasl_state->vd.sys_datetime.time;
-	  break;
-	case DB_DEFAULT_CURRENTDATE:
-	  DB_MAKE_DATE (insert->vals[k], 1, 1, 1);
-	  insert->vals[k]->data.date = xasl_state->vd.sys_datetime.date;
 	  break;
 	case DB_DEFAULT_CURRENTDATETIME:
 	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);

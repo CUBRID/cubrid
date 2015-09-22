@@ -427,6 +427,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   TP_DOMAIN_STATUS dom_status;
   char *user_name;
   DB_DATETIME *datetime;
+  int month, day, year, hour, minute, second, millisecond;
 
   assert (class_name->node_type == PT_NAME);
 
@@ -445,8 +446,20 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	  switch (att->default_value.default_expr)
 	    {
 	    case DB_DEFAULT_SYSTIME:
-	      error = pr_clone_value (&parser->sys_datetime,
-				      &att->default_value.value);
+	    case DB_DEFAULT_CURRENTTIME:
+	      if (DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&att->default_value.value);
+		}
+	      else
+		{
+		  db_datetime_decode ((DB_DATETIME *)
+				      DB_GET_DATETIME (&parser->sys_datetime),
+				      &month, &day, &year, &hour, &minute,
+				      &second, &millisecond);
+		  db_make_time (&att->default_value.value, hour, minute,
+				second);
+		}
 	      break;
 	    case DB_DEFAULT_SYSDATE:
 	      if (DB_IS_NULL (&parser->sys_datetime))
@@ -482,10 +495,6 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	      user_name = db_get_user_name ();
 	      error = DB_MAKE_STRING (&att->default_value.value, user_name);
 	      att->default_value.value.need_clear = true;
-	      break;
-	    case DB_DEFAULT_CURRENTTIME:
-	      error = pr_clone_value (&parser->sys_datetime,
-				      &att->default_value.value);
 	      break;
 	    case DB_DEFAULT_CURRENTDATE:
 	      error = pr_clone_value (&parser->sys_datetime,
