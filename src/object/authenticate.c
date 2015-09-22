@@ -1624,81 +1624,164 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop,
 static MOP
 au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
 {
-  MOP au_class, au_obj, db_class_inst;
-  MOP ret_obj = NULL;
-  DB_OBJLIST *list, *mop;
+  int error = NO_ERROR, save, i;
   DB_AUTH type;
-  DB_VALUE value, inst_value;
-  int i;
+  MOP ret_obj = NULL;
+  const char *class_name;
+  const char *sql_query =
+    "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
+    " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
+    " AND [au].[class_of].[class_name] = ? AND [au].[auth_type] = ?";
+  enum
+  {
+    INDEX_FOR_GRANTEE_NAME = 0,
+    INDEX_FOR_GRANTOR_NAME = 1,
+    INDEX_FOR_CLASS_NAME = 2,
+    INDEX_FOR_AUTH_TYPE = 3,
+    /* Total count for the above */
+    COUNT_FOR_VARIABLES
+  };
+  DB_VALUE val[COUNT_FOR_VARIABLES];
+  DB_VALUE grant_value;
+  DB_QUERY_RESULT *result = NULL;
+  DB_SESSION *session = NULL;
+  STATEMENT_ID stmt_id;
   const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE",
     "ALTER", "INDEX", "EXECUTE"
   };
-  char *tmp;
 
-  au_class = sm_find_class (CT_CLASSAUTH_NAME);
-  if (au_class == NULL)
+  for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_NO_AUTHORIZATION, 0);
-      return (ret_obj);
+      db_make_null (&val[i]);
     }
 
-  /* In RR, any serializable conflicts was already detected when accessing
-   * db_user, db_authorizations classes. So, we can use dirty version without
-   * lock in _db_auth.
-   */
-  list = sm_fetch_all_objects_of_dirty_version (au_class,
-						DB_FETCH_CLREAD_INSTWRITE);
-  if (list == NULL)
+  db_make_null (&grant_value);
+
+  /* Disable the checking for internal authorization object access */
+  AU_DISABLE (save);
+
+  /* Prepare DB_VALUEs for host variables */
+  error = obj_get (user, "name", &val[INDEX_FOR_GRANTEE_NAME]);
+  if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_NO_AUTHORIZATION, 0);
-      return (ret_obj);
+      goto exit;
     }
+  else if (!IS_STRING (&val[INDEX_FOR_GRANTEE_NAME])
+	   || DB_IS_NULL (&val[INDEX_FOR_GRANTEE_NAME])
+	   || db_get_string (&val[INDEX_FOR_GRANTEE_NAME]) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_AU_MISSING_OR_INVALID_USER, 0);
+      goto exit;
+    }
+
+  error = obj_get (grantor, "name", &val[INDEX_FOR_GRANTOR_NAME]);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  else if (!IS_STRING (&val[INDEX_FOR_GRANTOR_NAME])
+	   || DB_IS_NULL (&val[INDEX_FOR_GRANTOR_NAME])
+	   || db_get_string (&val[INDEX_FOR_GRANTOR_NAME]) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_AU_MISSING_OR_INVALID_USER, 0);
+      goto exit;
+    }
+
+  class_name = db_get_class_name (class_mop);
+  if (class_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
+      goto exit;
+    }
+  db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type;
        type = (DB_AUTH) (type << 1), i++)
     {
       ;
     }
+  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
 
-  for (mop = list; mop != NULL; mop = mop->next)
+  session = db_open_buffer (sql_query);
+  if (session == NULL)
     {
-      au_obj = mop->op;
-      if ((obj_get (au_obj, "grantor", &value) != NO_ERROR)
-	  || !ws_is_same_object (db_get_object (&value), grantor))
-	{
-	  continue;
-	}
-
-      if ((obj_get (au_obj, "grantee", &value) != NO_ERROR)
-	  || !ws_is_same_object (db_get_object (&value), user))
-	{
-	  continue;
-	}
-
-      if ((obj_get (au_obj, "class_of", &inst_value) != NO_ERROR)
-	  || ((db_class_inst = db_get_object (&inst_value)) == NULL)
-	  || (obj_get (db_class_inst, "class_of", &value) != NO_ERROR)
-	  || (ws_mop_compare (db_get_object (&value), class_mop) != 0))
-	{
-	  continue;
-	}
-
-      if (obj_get (au_obj, "auth_type", &value) != NO_ERROR)
-	{
-	  continue;
-	}
-
-      tmp = db_get_string (&value);
-      if (tmp && strcmp (tmp, type_set[i]) == 0)
-	{
-	  ret_obj = au_obj;
-	  pr_clear_value (&value);
-	  break;
-	}
-      pr_clear_value (&value);
+      assert (er_errid () != NO_ERROR);
+      goto release;
     }
 
-  ml_ext_free (list);
+  error = db_push_values (session, COUNT_FOR_VARIABLES, val);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id != 1)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &result);
+
+  /* The error value is row count if it's not negative value. */
+  if (error == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto release;
+    }
+  else if (error < 0)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  error = NO_ERROR;
+
+  if (db_query_first_tuple (result) == DB_CURSOR_SUCCESS)
+    {
+      if (db_query_get_tuple_value (result, 0, &grant_value) == NO_ERROR)
+	{
+	  ret_obj = NULL;
+	  if (!DB_IS_NULL (&grant_value))
+	    {
+	      ret_obj = db_get_object (&grant_value);
+	    }
+	}
+
+      assert (db_query_next_tuple (result) == DB_CURSOR_END);
+    }
+
+  assert (ret_obj != NULL);
+
+release:
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  AU_ENABLE (save);
+
+  db_value_clear (&grant_value);
+
+  for (i = 0; i < COUNT_FOR_VARIABLES; i++)
+    {
+      db_value_clear (&val[i]);
+    }
+
+  if (ret_obj == NULL && er_errid () == NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
+
   return (ret_obj);
 }
 
@@ -4438,7 +4521,6 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      gindex = find_grant_entry (grants, class_mop, Au_user);
 	      if (gindex == -1)
 		{
-		  gindex = add_grant_entry (grants, class_mop, Au_user);
 		  current = AU_NO_AUTHORIZATION;
 		}
 	      else
@@ -4486,6 +4568,13 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		    }
 		}
 
+	      /* Fail to insert/update, never change the grant entry set. */
+	      if (error != NO_ERROR)
+		{
+		  set_free (grants);
+		  goto fail_end;
+		}
+
 	      current |= (int) type;
 	      if (grant_option)
 		{
@@ -4493,6 +4582,11 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		}
 
 	      db_make_int (&value, current);
+	      if (gindex == -1)
+		{
+		  /* There is no grant entry, add a new one. */
+		  gindex = add_grant_entry (grants, class_mop, Au_user);
+		}
 	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
 	      set_free (grants);
 
