@@ -12413,10 +12413,20 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 
       list_id_p =
 	qfile_sort_list (thread_p, func_p->list_id, NULL, Q_DISTINCT, false);
+
+      /* release the resource to prevent resource leak */
+      if (func_p->list_id != list_id_p)
+	{
+	  qfile_close_list (thread_p, func_p->list_id);
+	  qfile_destroy_list (thread_p, func_p->list_id);
+	  func_p->list_id = NULL;
+	}
+
       if (!list_id_p)
 	{
 	  return ER_FAILED;
 	}
+
       func_p->list_id = list_id_p;
 
       if (func_p->function == PT_COUNT)

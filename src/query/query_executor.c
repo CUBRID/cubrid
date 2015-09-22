@@ -3838,11 +3838,6 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       return NO_ERROR;
     }
 
-#if !defined(NDEBUG)
-  /* start resource track */
-  track_id = thread_rc_track_enter (thread_p);
-#endif
-
   memset (&ordby_info, 0, sizeof (ORDBYNUM_INFO));
 
   /* sort the result list file */
@@ -4014,13 +4009,6 @@ exit_on_error:
     {
       qfile_free_sort_list (thread_p, orderby_list);
     }
-
-#if !defined(NDEBUG)
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
 
   return error;
 }
@@ -23393,6 +23381,9 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   OUTPTR_LIST *a_outptr_list;
   int ls_flag = 0;
   int estimated_pages;
+  bool finalized = false;
+  int i = 0;
+  ANALYTIC_TYPE *func_p = NULL;
 
   /* fetch regulist and outlist */
   a_outptr_list =
@@ -23566,8 +23557,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    */
   if (analytic_state.input_recs != 0)
     {
-      int i;
-
       for (i = 0; i < analytic_state.func_count; i++)
 	{
 	  if (qexec_analytic_finalize_group
@@ -23577,6 +23566,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
+
+      finalized = true;
 
       /* reiterate intermediate file and write output using function result
          files */
@@ -23627,6 +23618,23 @@ exit_on_error:
     {
       analytic_state.state = ER_FAILED;
     }
+
+  if (!finalized)
+    {
+      /* make sure all the list_files are destroyed correctly */
+      for (i = 0; i < analytic_state.func_count; i++)
+	{
+	  func_p = analytic_state.func_state_list[i].func_p;
+	  if (func_p != NULL && func_p->option == Q_DISTINCT
+	      && func_p->list_id != NULL)
+	    {
+	      qfile_close_list (thread_p, func_p->list_id);
+	      qfile_destroy_list (thread_p, func_p->list_id);
+	      func_p->list_id = NULL;
+	    }
+	}
+    }
+
   goto wrapup;
 }
 
