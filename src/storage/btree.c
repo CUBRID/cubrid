@@ -792,7 +792,8 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p,
 /* Index loose scan. */
 #define BTS_IS_INDEX_ILS(bts) \
   ((bts) != NULL && (bts)->index_scan_idp != NULL \
-   && SCAN_IS_INDEX_ILS((bts)->index_scan_idp))
+   && SCAN_IS_INDEX_ILS((bts)->index_scan_idp)    \
+   && BTS_IS_INDEX_COVERED(bts))
 #define BTS_NEED_COUNT_ONLY(bts) \
   ((bts) != NULL && (bts)->index_scan_idp != NULL \
    && (bts)->index_scan_idp->need_count_only)
@@ -28666,9 +28667,6 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p,
   assert (class_oid != NULL);
   assert (mvcc_info != NULL);
   assert (stop != NULL);
-
-  /* Index loose scan must also be covered index. */
-  assert (!BTS_IS_INDEX_ILS (bts) || BTS_IS_INDEX_COVERED (bts));
 
   /* args is the b-tree scan structure. */
   bts = (BTREE_SCAN *) args;
