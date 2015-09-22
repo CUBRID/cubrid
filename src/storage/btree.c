@@ -17979,7 +17979,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid,
       /* TODO: A comment explaining this would be great. */
       int j, ids_size;
 
-      if (filter)
+      if (filter && (*(filter->num_vstr_ptr) > 0) && filter->vstr_ids != NULL)
 	{
 	  ids_size = 0;		/* init */
 	  for (i = 0; i < key_val_range->num_index_term; i++)
