@@ -9896,6 +9896,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 /* #endif */
 #if defined(ENABLE_SYSTEMTAP)
   char *classname = NULL;
+  bool is_started = false;
 #endif /* ENABLE_SYSTEMTAP */
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
@@ -10208,6 +10209,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
 #if defined(ENABLE_SYSTEMTAP)
       CUBRID_IDX_UPDATE_START (classname, index->btname);
+      is_started = true;
 #endif /* ENABLE_SYSTEMTAP */
 
       if (!same_key || !same_oid || do_delete_only || do_insert_only)
@@ -10237,10 +10239,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		      if (error_code != NO_ERROR)
 			{
 			  assert (er_errid () != NO_ERROR);
-#if defined(ENABLE_SYSTEMTAP)
-			  CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
-#endif /* ENABLE_SYSTEMTAP */
-
 			  goto error;
 			}
 		    }
@@ -10253,11 +10251,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		      if (error_code != NO_ERROR)
 			{
 			  ASSERT_ERROR ();
-
-#if defined(ENABLE_SYSTEMTAP)
-			  CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
-#endif /* ENABLE_SYSTEMTAP */
-
 			  goto error;
 			}
 		    }
@@ -10283,10 +10276,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 				      &unique, p_mvcc_rec_header);
 		      if (error_code != NO_ERROR)
 			{
-#if defined(ENABLE_SYSTEMTAP)
-			  CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
-#endif /* ENABLE_SYSTEMTAP */
-
 			  ASSERT_ERROR ();
 			  goto error;
 			}
@@ -10301,10 +10290,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
 		      if (error_code != NO_ERROR)
 			{
-#if defined(ENABLE_SYSTEMTAP)
-			  CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
-#endif /* ENABLE_SYSTEMTAP */
-
 			  goto error;
 			}
 		    }
@@ -10542,6 +10527,10 @@ error:
     }
 
 #if defined(ENABLE_SYSTEMTAP)
+  if (is_started == true)
+    {
+      CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
+    }
   if (classname != NULL)
     {
       free_and_init (classname);
