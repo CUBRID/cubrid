@@ -25899,6 +25899,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 			  PT_MERGE_INFO * info)
 {
   PT_NODE *statement, *where, *group_by, *oid, *save_next;
+  PT_NODE *spec;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -26041,6 +26042,18 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
     {
       statement->info.query.q.select.using_index =
 	parser_copy_tree_list (parser, info->update.index_hint);
+    }
+
+  if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
+    {
+      for (spec = statement->info.query.q.select.from; spec;
+	   spec = spec->next)
+	{
+	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	    {
+	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	    }
+	}
     }
 
   return statement;
