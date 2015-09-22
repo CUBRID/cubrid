@@ -3932,11 +3932,9 @@ ws_abort_mops (bool only_unpinned)
 	  mop = next;
 	}
     }
-  if (!only_unpinned)
-    {
-      ws_Commit_mops = NULL;
-      ws_Num_dirty_mop = 0;
-    }
+
+  ws_Commit_mops = NULL;
+  ws_Num_dirty_mop = 0;
 
 #if !defined (NDEBUG)
   if (prm_get_bool_value (PRM_ID_EXAMINE_CLIENT_CACHED_LOCKS) == true)
