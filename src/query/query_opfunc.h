@@ -338,7 +338,6 @@ extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
 extern int qdata_apply_interpolation_function_coercion (DB_VALUE * f_value,
 							TP_DOMAIN **
 							result_dom,
-							double *d_result,
 							DB_VALUE * result,
 							FUNC_TYPE function);
 extern int qdata_interpolation_function_values (DB_VALUE * f_value,
@@ -347,7 +346,6 @@ extern int qdata_interpolation_function_values (DB_VALUE * f_value,
 						double f_row_num_d,
 						double c_row_num_d,
 						TP_DOMAIN ** result_dom,
-						double *d_result,
 						DB_VALUE * result,
 						FUNC_TYPE function);
 extern int qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p,

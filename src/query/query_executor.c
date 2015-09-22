@@ -24950,7 +24950,6 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
 {
   ANALYTIC_TYPE *func_p = NULL;
   double f_row_num_d, c_row_num_d, row_num_d, percentile_d;
-  double d_result;		/* decoy, don't need it here */
   int error = NO_ERROR;
   DB_VALUE *peek_value_p = NULL;
 
@@ -25034,7 +25033,6 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
       /* coerce accordingly */
       error = qdata_apply_interpolation_function_coercion (func_p->value,
 							   &func_p->domain,
-							   &d_result,
 							   func_p->value,
 							   func_p->function);
       if (error != NO_ERROR)
@@ -25073,8 +25071,7 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
 	qdata_interpolation_function_values (&f_value, &c_value,
 					     row_num_d, f_row_num_d,
 					     c_row_num_d, &func_p->domain,
-					     &d_result, func_p->value,
-					     func_p->function);
+					     func_p->value, func_p->function);
       if (error != NO_ERROR)
 	{
 	  return error;

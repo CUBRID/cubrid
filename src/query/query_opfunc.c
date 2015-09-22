@@ -12148,10 +12148,21 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 		case DB_TYPE_NUMERIC:
 		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
 		    {
-		      if (func_p->is_const_operand)
+		      if (func_p->is_const_operand
+			  || func_p->function == PT_PERCENTILE_DISC)
 			{
+			  /* percentile_disc returns the same type as operand
+			   * while median and percentile_cont return double
+			   */
 			  func_p->domain =
-			    tp_domain_resolve_default (func_p->opr_dbtype);
+			    tp_domain_resolve_value (&dbval, NULL);
+			  if (func_p->domain == NULL)
+			    {
+			      error = er_errid ();
+			      assert (error != NO_ERROR);
+
+			      return error;
+			    }
 			}
 		      else
 			{
@@ -12816,60 +12827,68 @@ error_return:
 int
 qdata_apply_interpolation_function_coercion (DB_VALUE * f_value,
 					     TP_DOMAIN ** result_dom,
-					     double *d_result,
 					     DB_VALUE * result,
 					     FUNC_TYPE function)
 {
   DB_TYPE type;
+  double d_result;
   int error = NO_ERROR;
 
-  assert (f_value != NULL && result_dom != NULL && d_result != NULL
-	  && result != NULL);
+  assert (f_value != NULL && result_dom != NULL && result != NULL);
 
   /* update result */
   type = db_value_type (f_value);
   switch (type)
     {
     case DB_TYPE_SHORT:
-      *d_result = (double) DB_GET_SHORT (f_value);
-      DB_MAKE_DOUBLE (result, *d_result);
-
-      break;
-
     case DB_TYPE_INTEGER:
-      *d_result = (double) DB_GET_INT (f_value);
-      DB_MAKE_DOUBLE (result, *d_result);
-
-      break;
-
     case DB_TYPE_BIGINT:
-      *d_result = (double) DB_GET_BIGINT (f_value);
-      DB_MAKE_DOUBLE (result, *d_result);
-
-      break;
-
     case DB_TYPE_FLOAT:
-      *d_result = (double) DB_GET_FLOAT (f_value);
-      DB_MAKE_DOUBLE (result, *d_result);
-
-      break;
-
     case DB_TYPE_DOUBLE:
-      *d_result = (double) DB_GET_DOUBLE (f_value);
-      DB_MAKE_DOUBLE (result, *d_result);
-
-      break;
-
     case DB_TYPE_MONETARY:
-      *d_result = (DB_GET_MONETARY (f_value))->amount;
-      DB_MAKE_DOUBLE (result, *d_result);
-
-      break;
-
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (f_value),
-				    DB_VALUE_SCALE (f_value), d_result);
-      DB_MAKE_DOUBLE (result, *d_result);
+      /* percentile_disc returns the same type as operand
+       * while median and percentile_cont return double
+       */
+      if (function != PT_PERCENTILE_DISC)
+	{
+	  if (type == DB_TYPE_SHORT)
+	    {
+	      d_result = (double) DB_GET_SHORT (f_value);
+	    }
+	  else if (type == DB_TYPE_INTEGER)
+	    {
+	      d_result = (double) DB_GET_INT (f_value);
+	    }
+	  else if (type == DB_TYPE_BIGINT)
+	    {
+	      d_result = (double) DB_GET_BIGINT (f_value);
+	    }
+	  else if (type == DB_TYPE_FLOAT)
+	    {
+	      d_result = (double) DB_GET_FLOAT (f_value);
+	    }
+	  else if (type == DB_TYPE_DOUBLE)
+	    {
+	      d_result = (double) DB_GET_DOUBLE (f_value);
+	    }
+	  else if (type == DB_TYPE_MONETARY)
+	    {
+	      d_result = (DB_GET_MONETARY (f_value))->amount;
+	    }
+	  else if (type == DB_TYPE_NUMERIC)
+	    {
+	      numeric_coerce_num_to_double (db_locate_numeric (f_value),
+					    DB_VALUE_SCALE (f_value),
+					    &d_result);
+	    }
+
+	  DB_MAKE_DOUBLE (result, d_result);
+	}
+      else
+	{
+	  pr_clone_value (f_value, result);
+	}
 
       break;
 
@@ -12941,7 +12960,6 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
 				     double f_row_num_d,
 				     double c_row_num_d,
 				     TP_DOMAIN ** result_dom,
-				     double *d_result,
 				     DB_VALUE * result, FUNC_TYPE function)
 {
   DB_DATE date;
@@ -12950,10 +12968,11 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
   DB_TIME time;
   DB_TYPE type;
   double d1, d2;
+  double d_result;
   int error = NO_ERROR;
 
   assert (f_value != NULL && c_value != NULL && result_dom != NULL
-	  && d_result != NULL && result != NULL);
+	  && result != NULL);
 
   /* calculate according to type
    * The formular bellow is from Oracle's MEDIAN manual
@@ -13011,10 +13030,10 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
       d2 = (double) DB_GET_SHORT (c_value);
 
       /* calculate */
-      *d_result = (c_row_num_d - row_num_d) * d1
+      d_result = (c_row_num_d - row_num_d) * d1
 	+ (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, *d_result);
+      DB_MAKE_DOUBLE (result, d_result);
 
       break;
 
@@ -13023,10 +13042,10 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
       d2 = (double) DB_GET_INT (c_value);
 
       /* calculate */
-      *d_result = (c_row_num_d - row_num_d) * d1
+      d_result = (c_row_num_d - row_num_d) * d1
 	+ (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, *d_result);
+      DB_MAKE_DOUBLE (result, d_result);
 
       break;
 
@@ -13035,10 +13054,10 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
       d2 = (double) DB_GET_BIGINT (c_value);
 
       /* calculate */
-      *d_result = (c_row_num_d - row_num_d) * d1
+      d_result = (c_row_num_d - row_num_d) * d1
 	+ (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, *d_result);
+      DB_MAKE_DOUBLE (result, d_result);
 
       break;
 
@@ -13047,10 +13066,10 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
       d2 = (double) DB_GET_FLOAT (c_value);
 
       /* calculate */
-      *d_result = (c_row_num_d - row_num_d) * d1
+      d_result = (c_row_num_d - row_num_d) * d1
 	+ (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, *d_result);
+      DB_MAKE_DOUBLE (result, d_result);
 
       break;
 
@@ -13059,10 +13078,10 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
       d2 = DB_GET_DOUBLE (c_value);
 
       /* calculate */
-      *d_result = (c_row_num_d - row_num_d) * d1
+      d_result = (c_row_num_d - row_num_d) * d1
 	+ (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, *d_result);
+      DB_MAKE_DOUBLE (result, d_result);
 
       break;
 
@@ -13071,10 +13090,10 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
       d2 = (DB_GET_MONETARY (c_value))->amount;
 
       /* calculate */
-      *d_result = (c_row_num_d - row_num_d) * d1
+      d_result = (c_row_num_d - row_num_d) * d1
 	+ (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, *d_result);
+      DB_MAKE_DOUBLE (result, d_result);
 
       break;
 
@@ -13085,20 +13104,20 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
 				    DB_VALUE_SCALE (c_value), &d2);
 
       /* calculate */
-      *d_result = (c_row_num_d - row_num_d) * d1
+      d_result = (c_row_num_d - row_num_d) * d1
 	+ (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, *d_result);
+      DB_MAKE_DOUBLE (result, d_result);
 
       break;
 
     case DB_TYPE_DATE:
       d1 = (double) *(DB_GET_DATE (f_value));
       d2 = (double) *(DB_GET_DATE (c_value));
-      *d_result = (c_row_num_d - row_num_d) * d1
+      d_result = (c_row_num_d - row_num_d) * d1
 	+ (row_num_d - f_row_num_d) * d2;
 
-      date = (DB_DATE) floor (*d_result);
+      date = (DB_DATE) floor (d_result);
 
       db_value_put_encoded_date (result, &date);
 
@@ -13129,11 +13148,11 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
 
       d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
 
-      *d_result = floor ((c_row_num_d - row_num_d) * d1
-			 + (row_num_d - f_row_num_d) * d2);
+      d_result = floor ((c_row_num_d - row_num_d) * d1
+			+ (row_num_d - f_row_num_d) * d2);
 
-      datetime.date = (unsigned int) (*d_result / MILLISECONDS_OF_ONE_DAY);
-      datetime.time = (unsigned int) (((DB_BIGINT) * d_result)
+      datetime.date = (unsigned int) (d_result / MILLISECONDS_OF_ONE_DAY);
+      datetime.time = (unsigned int) (((DB_BIGINT) d_result)
 				      % MILLISECONDS_OF_ONE_DAY);
 
       if (type == DB_TYPE_DATETIME)
@@ -13191,11 +13210,11 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
 
       d2 = ((double) date) * MILLISECONDS_OF_ONE_DAY + time * 1000;
 
-      *d_result = floor ((c_row_num_d - row_num_d) * d1
-			 + (row_num_d - f_row_num_d) * d2);
+      d_result = floor ((c_row_num_d - row_num_d) * d1
+			+ (row_num_d - f_row_num_d) * d2);
 
-      date = (unsigned int) (*d_result / MILLISECONDS_OF_ONE_DAY);
-      time = (unsigned int) (((DB_BIGINT) * d_result)
+      date = (unsigned int) (d_result / MILLISECONDS_OF_ONE_DAY);
+      time = (unsigned int) (((DB_BIGINT) d_result)
 			     % MILLISECONDS_OF_ONE_DAY);
       time /= 1000;
 
@@ -13248,10 +13267,10 @@ qdata_interpolation_function_values (DB_VALUE * f_value,
 	  d2 = (double) (*DB_GET_TIME (c_value));
 	}
 
-      *d_result = floor ((c_row_num_d - row_num_d) * d1
-			 + (row_num_d - f_row_num_d) * d2);
+      d_result = floor ((c_row_num_d - row_num_d) * d1
+			+ (row_num_d - f_row_num_d) * d2);
 
-      time = (DB_TIME) * d_result;
+      time = (DB_TIME) d_result;
 
       if (type == DB_TYPE_TIME)
 	{
@@ -13372,8 +13391,7 @@ qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p,
     {
       error =
 	qdata_apply_interpolation_function_coercion (f_value, result_dom,
-						     &d_result, result,
-						     function);
+						     result, function);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -13404,8 +13422,7 @@ qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p,
       error =
 	qdata_interpolation_function_values (f_value, c_value, row_num_d,
 					     f_row_num_d, c_row_num_d,
-					     result_dom, &d_result, result,
-					     function);
+					     result_dom, result, function);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -14431,7 +14448,11 @@ qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p,
       agg_p->domain = tp_domain_resolve_default (dbval_type);
     }
 
-  if (dbval_type != DB_TYPE_DOUBLE && !TP_IS_DATE_OR_TIME_TYPE (dbval_type))
+  if (!TP_IS_DATE_OR_TIME_TYPE (dbval_type)
+      && ((agg_p->function == PT_PERCENTILE_DISC
+	   && !TP_IS_NUMERIC_TYPE (dbval_type))
+	  || (agg_p->function != PT_PERCENTILE_DISC
+	      && dbval_type != DB_TYPE_DOUBLE)))
     {
       error =
 	qdata_update_interpolation_func_value_and_domain (dbval,
