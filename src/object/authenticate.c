@@ -4634,11 +4634,17 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth,
 	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
 	    {
 	      /* If this is the "deleted object" error, ignore it */
-	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      if (error == ER_HEAP_UNKNOWN_OBJECT)
 		{
 		  error = NO_ERROR;
+		}
+	      else
+		{
+		  error = ER_AU_ACCESS_ERROR;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			  AU_USER_CLASS_NAME, "authorization");
+		  break;
 		}
 	    }
 	  else if ((error = get_grants (auth, &grants, 1)) == NO_ERROR)
