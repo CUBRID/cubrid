@@ -13193,6 +13193,12 @@ cleanup:
       parser_free_tree (parser, update);
     }
 
+  if (statement->info.insert.odku_non_null_attrs != NULL)
+    {
+      parser_free_tree (parser, statement->info.insert.odku_non_null_attrs);
+      statement->info.insert.odku_non_null_attrs = NULL;
+    }
+
   do_clear_insert_values (parser, statement);
 
   /* set NULL on labeled value */

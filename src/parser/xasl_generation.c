@@ -649,6 +649,8 @@ static PT_NODE *pt_flush_class_and_null_xasl (PARSER_CONTEXT *
 					      void *void_arg,
 					      int *continue_walk);
 
+static PT_NODE *pt_null_xasl (PARSER_CONTEXT * parser, PT_NODE * tree,
+			      void *void_arg, int *continue_walk);
 
 static VAL_LIST *pt_clone_val_list (PARSER_CONTEXT * parser,
 				    PT_NODE * attribute_list);
@@ -3724,6 +3726,26 @@ pt_flush_class_and_null_xasl (PARSER_CONTEXT * parser,
 	      tree->info.data_type.virt_object = entity->info.name.db_object;
 	    }
 	}
+    }
+
+  return tree;
+}
+
+/*
+ * pt_null_xasl () - Set all the query node's xasl to NULL
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   void_arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_null_xasl (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg,
+	      int *continue_walk)
+{
+  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      tree->info.query.xasl = NULL;
     }
 
   return tree;
@@ -19269,6 +19291,13 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   assert (parser != NULL && statement != NULL);
 
+  if (statement->info.insert.odku_assignments != NULL
+      || statement->info.insert.do_replace)
+    {
+      statement =
+	parser_walk_tree (parser, statement, pt_null_xasl, NULL, NULL, NULL);
+    }
+
   has_uniques = statement->info.insert.has_uniques;
   non_null_attrs = statement->info.insert.non_null_attrs;
 
@@ -19741,7 +19770,7 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
   PT_NODE *select_specs = NULL;
   PT_NODE *select_list = NULL;
   PT_NODE *assignments = NULL;
-  PT_NODE *prev = NULL, *node = NULL, *next = NULL;
+  PT_NODE *prev = NULL, *node = NULL, *next = NULL, *tmp = NULL;
   PT_NODE *spec = NULL, *constraint = NULL, *save = NULL, *pt_pred = NULL;
   int insert_subquery;
   PT_ASSIGNMENTS_HELPER assignments_helper;
@@ -20000,11 +20029,21 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 	      goto exit_on_error;
 	    }
 
+	  tmp = parser_copy_tree (parser, node);
+	  if (tmp == NULL)
+	    {
+	      parser_free_tree (parser, constraint);
+	      PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	      error = MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+	      goto exit_on_error;
+	    }
+
 	  constraint->next = pt_pred;
 	  constraint->line_number = node->line_number;
 	  constraint->column_number = node->column_number;
 	  constraint->info.expr.op = PT_IS_NOT_NULL;
-	  constraint->info.expr.arg1 = node;
+	  constraint->info.expr.arg1 = tmp;
 	  pt_pred = constraint;
 
 	  node = save;
