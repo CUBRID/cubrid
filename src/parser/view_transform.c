@@ -2292,10 +2292,11 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 		     MSGCAT_RUNTIME_REL_RESTRICTS_AGG_2);
 	  result = NULL;
 	}
-      else
+      else if (statement->node_type == PT_SELECT)
 	{
 	  PT_NODE *inside_order_by = NULL;
-	  assert (statement->node_type == PT_SELECT && order_by == NULL);
+
+	  assert (order_by == NULL);
 
 	  arg1 = query_spec->info.query.q.union_.arg1;
 	  arg2 = query_spec->info.query.q.union_.arg2;
@@ -2383,7 +2384,64 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 		}
 
 	    }
-	}			/* else */
+	}
+      else if (statement->node_type == PT_UPDATE
+	       || statement->node_type == PT_DELETE)
+	{
+	  /* create table t1(a int);
+	   * create view v1 as select * from t1 t1 union select * from t1 t2;
+	   * update t1,v1 set t1.a=v1.a;
+	   * rewrite to
+	   * update t1,(select * from t1 t1 union select * from t1 t2) v1 set t1.a=v1.a;
+	   *
+	   * delete a from t1 a,v1 b where a.a=b.a;
+	   * rewrite to
+	   * delete a from t1 a,(select * from t1 t1 union select * from t1 t2) b where a.a=b.a
+	   */
+	  tmp_result = parser_copy_tree (parser, statement);
+	  if (tmp_result == NULL)
+	    {
+	      if (!pt_has_error (parser))
+		{
+		  PT_INTERNAL_ERROR (parser, "failed to copy node tree");
+		}
+
+	      goto exit_on_error;
+	    }
+
+	  if (statement->node_type == PT_UPDATE)
+	    {
+	      statement_spec = tmp_result->info.update.spec;
+	    }
+	  else			/* PT_DELETE */
+	    {
+	      statement_spec = tmp_result->info.delete_.spec;
+	    }
+
+	  class_spec = pt_find_spec (parser, statement_spec, class_);
+	  if (class_spec == NULL)
+	    {
+	      /* class_'s spec was not found in spec list */
+	      PT_INTERNAL_ERROR (parser, "class spec not found");
+	      goto exit_on_error;
+	    }
+
+	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result,
+							  class_spec,
+							  query_spec);
+	  if (class_spec == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  result = tmp_result;
+	}
+      else
+	{
+	  /* cannot be here */
+	  assert (0);
+	}
+
       break;
 
     default:
