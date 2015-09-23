@@ -2078,8 +2078,21 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
   assert_release (holder != NULL);
   if (holder->fix_count == bufptr->fcnt)
     {
-      /* check for waiters for promotion */
+      if (bufptr->latch_mode == PGBUF_LATCH_FLUSH)
+	{
+	  /* if page is being flushed just abandon promotion; case is very rare */
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  rv = ER_PAGE_LATCH_PROMOTE_FAIL;
+#if !defined(NDEBUG)
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
+#endif
+	  goto end;
+	}
+
       assert (bufptr->latch_mode == PGBUF_LATCH_READ);
+
+      /* check for waiters for promotion */
       if (bufptr->next_wait_thrd != NULL
 	  && bufptr->next_wait_thrd->wait_for_latch_promote)
 	{
