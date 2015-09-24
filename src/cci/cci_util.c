@@ -77,6 +77,8 @@ static char is_float_str (char *str);
 static void *cci_reg_malloc (void *dummy, size_t s);
 static void *cci_reg_realloc (void *dummy, void *p, size_t s);
 static void cci_reg_free (void *dummy, void *p);
+static int skip_ampm_chars (char *str);
+static int get_pm_offset (char *str, int hh);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -330,7 +332,7 @@ ut_str_to_date (char *str, T_CCI_DATE * value)
 int
 ut_str_to_time (char *str, T_CCI_DATE * value)
 {
-  int error = 0;
+  int error = 0, offset = 0;
   int hh = 0, mm = 0, ss = 0;
   char *p = NULL;
   char *end_p = NULL;
@@ -376,9 +378,16 @@ ut_str_to_time (char *str, T_CCI_DATE * value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  if (*end_p != 0 && !isspace ((int) *end_p))
+  if (*end_p != '\0' && !isspace ((int) *end_p))
     {
       return CCI_ER_TYPE_CONVERSION;
+    }
+
+  if (*end_p != '\0')
+    {
+      p = end_p + 1;
+      offset = get_pm_offset (p, hh);
+      hh += offset;
     }
 
   memset (value, 0, sizeof (T_CCI_DATE));
@@ -440,7 +449,7 @@ ut_str_to_timetz (char *str, T_CCI_DATE_TZ * value)
 int
 ut_str_to_mtime (char *str, T_CCI_DATE * value)
 {
-  int error = 0;
+  int error = 0, offset = 0;
   int hh = 0, mm = 0, ss = 0, ms = 0;
   char *p = NULL;
   char *end_p = NULL;
@@ -509,6 +518,13 @@ ut_str_to_mtime (char *str, T_CCI_DATE * value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
+  if (*end_p != '\0')
+    {
+      p = end_p + 1;
+      offset = get_pm_offset (p, hh);
+      hh += offset;
+    }
+
   memset (value, 0, sizeof (T_CCI_DATE));
   value->hh = hh;
   value->mm = mm;
@@ -554,7 +570,7 @@ ut_str_to_timestamptz (char *str, T_CCI_DATE_TZ * value)
   T_CCI_DATE date;
   T_CCI_DATE time;
   char *p;
-  int err_code;
+  int err_code, ampm_skipped_chars = 0;
 
   p = strchr (str, ' ');
 
@@ -569,9 +585,16 @@ ut_str_to_timestamptz (char *str, T_CCI_DATE_TZ * value)
 
   p = p + 1;
   p = strchr (p, ' ');
+
   if (p != NULL)
     {
-      strncpy (value->tz, p + 1, sizeof (value->tz) - 1);
+      ampm_skipped_chars = skip_ampm_chars (p);
+      p += ampm_skipped_chars;
+    }
+
+  if (p != NULL)
+    {
+      strncpy (value->tz, p, sizeof (value->tz) - 1 - ampm_skipped_chars);
     }
   else
     {
@@ -625,7 +648,7 @@ ut_str_to_datetimetz (char *str, T_CCI_DATE_TZ * value)
   T_CCI_DATE date;
   T_CCI_DATE mtime;
   char *p;
-  int err_code;
+  int err_code, ampm_skipped_chars = 0;
 
   p = strchr (str, ' ');
 
@@ -640,9 +663,16 @@ ut_str_to_datetimetz (char *str, T_CCI_DATE_TZ * value)
 
   p = p + 1;
   p = strchr (p, ' ');
+
   if (p != NULL)
     {
-      strncpy (value->tz, p + 1, sizeof (value->tz) - 1);
+      ampm_skipped_chars = skip_ampm_chars (p);
+      p += ampm_skipped_chars;
+    }
+
+  if (p != NULL)
+    {
+      strncpy (value->tz, p, sizeof (value->tz) - 1 - ampm_skipped_chars);
     }
   else
     {
@@ -1056,4 +1086,52 @@ ut_timeval_diff_msec (struct timeval *start, struct timeval *end)
   diff_msec += ((end->tv_usec - start->tv_usec) / 1000);
 
   return diff_msec;
+}
+
+static int
+get_pm_offset (char *str, int hh)
+{
+  int len;
+
+  while ((*str) == ' ')
+    {
+      str++;
+    }
+
+  len = strlen (str);
+
+  if ((((len > 2) && (*(str + 2) == ' ')) || (len == 2))
+      && ((((*str) == 'p') || ((*str) == 'P'))
+	  && ((*(str + 1) == 'm') || (*(str + 1) == 'M'))) && (hh < 12))
+    {
+      return 12;
+    }
+
+  return 0;
+}
+
+static int
+skip_ampm_chars (char *str)
+{
+  int ampm_skipped_chars = 0, len = 0;
+
+  while ((*str) == ' ')
+    {
+      str++;
+      ampm_skipped_chars++;
+    }
+
+  len = strlen (str);
+  if ((len > 2 && (*(str + 2) == ' ')) || (len == 2))
+    {
+      if (((*str == 'a') || (*str == 'A') || (*str == 'p') || (*str == 'P'))
+	  && (((*(str + 1) == 'm') || (*(str + 1) == 'M'))
+	      && (*(str + 2) == ' ')))
+	{
+	  str += 2;
+	  ampm_skipped_chars += 2;
+	}
+    }
+
+  return ampm_skipped_chars;
 }
