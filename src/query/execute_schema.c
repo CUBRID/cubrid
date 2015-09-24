@@ -12394,15 +12394,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMP)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	    }
-	  break;
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMP)
@@ -12441,18 +12432,9 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMPTZ)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	    }
-	  break;
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMP)
+	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMPTZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	    }
@@ -12488,18 +12470,9 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMPTZ)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	    }
-	  break;
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMP)
+	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMPTZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	    }
