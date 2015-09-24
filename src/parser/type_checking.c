@@ -16600,10 +16600,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  }
 
 		utime = ts_tz_p->timestamp;
+
 		if (utime == 0)
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
+		      }
 		    break;
 		  }
 
@@ -16780,6 +16788,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
+		      }
 		    break;
 		  }
 

@@ -4112,13 +4112,6 @@ db_string_to_timestamptz_ex (const char *str, int str_len,
       goto error_exit;
     }
 
-  /* 0000-00-00 00:00:00 treated as time_t 0 */
-  if (date == IGREG_SPECIAL)
-    {
-      ts_tz->timestamp = IGREG_SPECIAL;
-      return err;
-    }
-
   assert (p != NULL);
   while (p < p_end && char_isspace (p[0]))
     {

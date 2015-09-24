@@ -1815,13 +1815,17 @@ tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc,
 	}
     }
 
-  err_status = db_add_int_to_datetime ((DB_DATETIME *) dt_utc,
-				       total_offset * 1000, dt_local);
-  if (err_status != NO_ERROR)
+  if (dt_utc->date == 0)
     {
-      goto exit;
+      assert (dt_utc->time == 0);
+      *dt_local = *dt_utc;
     }
-exit:
+  else
+    {
+      err_status = db_add_int_to_datetime ((DB_DATETIME *) dt_utc,
+					   total_offset * 1000, dt_local);
+    }
+
   return err_status;
 }
 
@@ -2767,7 +2771,8 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	   */
 	  er_status = tz_get_ds_change_julian_date_diff (0,
 							 curr_ds_rule,
-							 curr_ds_rule->to_year,
+							 curr_ds_rule->
+							 to_year,
 							 &ds_rule_julian_date,
 							 NULL);
 	  if (er_status != NO_ERROR)
@@ -3267,7 +3272,8 @@ detect_dst:
 	   */
 	  err_status = tz_get_ds_change_julian_date_diff (0,
 							  curr_ds_rule,
-							  curr_ds_rule->to_year,
+							  curr_ds_rule->
+							  to_year,
 							  &ds_rule_julian_date,
 							  NULL);
 	  if (err_status != NO_ERROR)
@@ -3672,14 +3678,18 @@ exit:
 	}
       else
 	{
-	  err_status =
-	    db_add_int_to_datetime ((DB_DATETIME *) src_dt,
-				    -1000 * TIME_OFFSET (src_is_utc,
-							 total_offset_sec),
-				    dest_dt);
-	  if (err_status != NO_ERROR)
+	  if (src_dt->date == 0)
 	    {
-	      goto exit;
+	      assert (src_dt->time == 0);
+	      *dest_dt = *src_dt;
+	    }
+	  else
+	    {
+	      err_status =
+		db_add_int_to_datetime ((DB_DATETIME *) src_dt,
+					-1000 * TIME_OFFSET (src_is_utc,
+							     total_offset_sec),
+					dest_dt);
 	    }
 	}
     }
