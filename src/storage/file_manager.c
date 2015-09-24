@@ -9057,14 +9057,7 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
 
-  if (logtb_is_current_active (thread_p) == true)
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-    }
-  else
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-    }
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 
   if (restore_check_interrupt == true)
     {
