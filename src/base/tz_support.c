@@ -70,6 +70,14 @@ struct tz_decode_info
   };
 };
 
+typedef enum ds_search_direction DS_SEARCH_DIRECTION;
+
+enum ds_search_direction
+{
+  FORWARD = 0,
+  BACKWARD = 1
+};
+
 
 #define FULL_DATE(jul_date, time_sec) ((full_date_t) jul_date * 86400ll \
 				       + (full_date_t) time_sec)
@@ -140,6 +148,16 @@ tz_timestamp_decode_leap_sec_adj (int timestamp, int *yearp, int *monthsp,
 static int tz_offset (const bool src_is_utc,
 		      const TZ_TIME_TYPE until_time_type,
 		      const int gmt_offset_sec, const int ds_save_time);
+static int get_date_diff_from_ds_rule (const int src_julian_date,
+				       const int src_time_sec,
+				       const TZ_DS_RULE * ds_rule,
+				       const DS_SEARCH_DIRECTION direction,
+				       full_date_t * date_diff);
+static int get_closest_ds_rule (const int src_julian_date,
+				const int src_time_sec,
+				const TZ_DS_RULESET * ds_ruleset,
+				const TZ_DATA * tzd,
+				const DS_SEARCH_DIRECTION direction);
 #if defined (LINUX)
 static int find_timezone_from_clock (char *timezone_name, int buf_len);
 static int find_timezone_from_localtime (char *timezone_name, int buf_len);
@@ -2969,6 +2987,111 @@ tz_offset (const bool src_is_utc,
 }
 
 /*
+ * get_date_diff_from_ds_rule  () - Returns the date difference between a source
+ *				    date and the date when applying a daylight 
+ *				    saving rule using from_year or to_year
+ *				    
+ * Returns: error or no error
+ * src_julian_date(in): input source date
+ * src_time_sec(in): input source time
+ * ds_rule(in): input daylight saving rule 
+ * direction(in): flag that tells in which direction to search
+ * date_diff(out): date difference
+ */
+static int
+get_date_diff_from_ds_rule (const int src_julian_date,
+			    const int src_time_sec,
+			    const TZ_DS_RULE * ds_rule,
+			    const DS_SEARCH_DIRECTION direction,
+			    full_date_t * date_diff)
+{
+  int ds_rule_julian_date;
+  int year, err_status = NO_ERROR;
+  full_date_t ds_rule_date;
+
+  if (direction == FORWARD)
+    {
+      year = ds_rule->from_year;
+    }
+  else
+    {
+      year = ds_rule->to_year;
+    }
+
+  /* We don't need here the date difference so
+   * we use only rule date
+   */
+  err_status = tz_get_ds_change_julian_date_diff (0, ds_rule, year,
+						  &ds_rule_julian_date, NULL);
+  if (err_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  ds_rule_date = FULL_DATE (ds_rule_julian_date, ds_rule->at_time);
+  *date_diff = FULL_DATE (src_julian_date, src_time_sec) - ds_rule_date;
+
+  if (direction == FORWARD)
+    {
+      *date_diff = -(*date_diff);
+    }
+
+exit:
+  return err_status;
+}
+
+/*
+ * get_closest_ds_rule() - Returns the id of the closest 
+ *			   daylight saving rule in the 
+ *			   ds_ruleset relative to to_year
+ *			   or from_year
+ *				  
+ * Returns: the id of the rule or -1 in case of error
+ * src_julian_date(in): input source date
+ * src_time_sec(in): input source time
+ * ds_ruleset(in): input ds_ruleset 
+ * tzd(in): pointer to the tzdata
+ * direction(in): input flag that tells us in which direction to search
+ */
+static int
+get_closest_ds_rule (const int src_julian_date,
+		     const int src_time_sec,
+		     const TZ_DS_RULESET * ds_ruleset,
+		     const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction)
+{
+  int curr_ds_id = 0;
+  int closest_ds_rule_id = 0;
+  TZ_DS_RULE *ds_rule;
+  full_date_t best_diff = -1;
+  full_date_t date_diff;
+  int err_status = NO_ERROR;
+
+  for (; curr_ds_id < ds_ruleset->count; curr_ds_id++)
+    {
+      ds_rule = &(tzd->ds_rules[curr_ds_id + ds_ruleset->index_start]);
+
+      err_status = get_date_diff_from_ds_rule (src_julian_date, src_time_sec,
+					       ds_rule, direction,
+					       &date_diff);
+      if (err_status != NO_ERROR)
+	{
+	  return -1;
+	}
+      if (direction == FORWARD && ds_rule->save_time != 0)
+	{
+	  continue;
+	}
+      if (best_diff == -1 || date_diff < best_diff)
+	{
+	  best_diff = date_diff;
+	  closest_ds_rule_id = curr_ds_id;
+	}
+    }
+
+  return closest_ds_rule_id;
+}
+
+/*
  * tz_datetime_utc_conv () - 
  *
  * Return: error code
@@ -3645,7 +3768,25 @@ detect_dst:
 		}
 	    }
 
-	  applying_ds_id = TZ_DS_ID_MAX;
+	  if (curr_ds_id == ds_ruleset->count)
+	    {
+	      applying_ds_id =
+		get_closest_ds_rule (src_julian_date, src_time_sec,
+				     ds_ruleset, tzd, BACKWARD);
+	    }
+	  else
+	    {
+	      applying_ds_id =
+		get_closest_ds_rule (src_julian_date, src_time_sec,
+				     ds_ruleset, tzd, FORWARD);
+	    }
+
+	  if (applying_ds_id == -1)
+	    {
+	      goto exit;
+	    }
+	  applying_ds_rule =
+	    &(tzd->ds_rules[applying_ds_id + ds_ruleset->index_start]);
 	  goto exit;
 	}
       APPLY_NEXT_OFF_RULE ();
