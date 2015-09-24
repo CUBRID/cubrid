@@ -435,8 +435,8 @@ static int str_month_to_int (const char *month, int *month_num,
 			     const char **str_next);
 static int str_day_to_int (const char *str_in, int *day_num,
 			   const char **str_next);
-static int str_read_day_var (const char *str, int *type, int *day, int *bound,
-			     const char **str_next);
+static int str_read_day_var (const char *str, const int month, int *type,
+			     int *day, int *bound, const char **str_next);
 
 static int comp_func_raw_countries (const void *arg1, const void *arg2);
 static int comp_func_raw_zones (const void *arg1, const void *arg2);
@@ -2346,7 +2346,8 @@ tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str)
 
   str_cursor = str;
 
-  err_status = str_read_day_var (str, &type, &day_num, &bound, &str_cursor);
+  err_status = str_read_day_var (str, dest->in_month, &type, &day_num, &bound,
+				 &str_cursor);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -3713,7 +3714,8 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
   /* Some offset rules have the column UNTIL='1992 Sep lastSat 23:00' or
    * '2012 Apr Sun>=1 4:00', instead of a fixed date/time value. This is a
    * special case, and needs to be transformed into a fixed date. */
-  err_status = str_read_day_var (str_cursor, &type, &day, &bound, &str_next);
+  err_status = str_read_day_var (str_cursor, offset_rule->until_mon, &type,
+				 &day, &bound, &str_next);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -3964,19 +3966,22 @@ exit:
 *
  * Returns: 0(NO_ERROR) if success, error code otherwise
  * str(in): input string to parse
+ * month(in): month in which this day is
  * type(out): type of bound (see enum TZ_DS_TYPE)
  * day(out): day value as numeric (0 based index value)
  * bound(out): numeric bound for day (0 based index value)
- * str_next(out): pointer to the ramaining string after parsing the day rule
+ * str_next(out): pointer to the remaining string after parsing the day rule
  */
 static int
-str_read_day_var (const char *str, int *type, int *day, int *bound,
-		  const char **str_next)
+str_read_day_var (const char *str, const int month, int *type, int *day,
+		  int *bound, const char **str_next)
 {
   int err_status = NO_ERROR;
   int day_num;
   char str_last[5] = "last";
   const char *str_cursor;
+  const int days_of_month[] =
+    { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 
   assert (str != NULL);
 
@@ -4026,7 +4031,7 @@ str_read_day_var (const char *str, int *type, int *day, int *bound,
       *type = TZ_DS_TYPE_VAR_SMALLER;
       *day = day_num;
       /* last valid month day from 0 - 30 */
-      *bound = 30;
+      *bound = days_of_month[month] - 1;
 
       goto exit;
     }

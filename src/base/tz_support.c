@@ -2671,9 +2671,15 @@ tz_get_ds_change_julian_date_diff (const int src_julian_date,
       int ds_rule_weekday, day_month_bound;
       bool before = (ds_rule->change_on.type
 		     == TZ_DS_TYPE_VAR_SMALLER) ? true : false;
-
       ds_rule_weekday = ds_rule->change_on.day_of_week;
       day_month_bound = ds_rule->change_on.day_of_month;
+
+      if (ds_rule->change_on.type == TZ_DS_TYPE_VAR_SMALLER
+	  && ds_rule_month == TZ_MON_FEB && IS_LEAP_YEAR (year)
+	  && day_month_bound == 27)
+	{
+	  day_month_bound++;
+	}
 
       ds_rule_day = tz_get_first_weekday_around_date (year,
 						      ds_rule_month,
@@ -2754,7 +2760,7 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	      && curr_ds_rule->in_month < TZ_MON_DEC))
 	{
 	  full_date_t diff;
-  	  full_date_t ds_rule_date = 0;
+	  full_date_t ds_rule_date = 0;
 
 	  /* We don't need here the date difference so
 	   * we use only rule date
@@ -2769,11 +2775,11 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	      goto exit;
 	    }
 
-	  ds_rule_date = FULL_DATE (ds_rule_julian_date, curr_ds_rule->at_time);
+	  ds_rule_date =
+	    FULL_DATE (ds_rule_julian_date, curr_ds_rule->at_time);
 	  diff = FULL_DATE (src_julian_date, 0) - ds_rule_date;
 
-	  if(second_best_date_diff == -1 
-	     || diff < second_best_date_diff)
+	  if (second_best_date_diff == -1 || diff < second_best_date_diff)
 	    {
 	      second_best_date_diff = diff;
 	      second_best_ds_id = curr_ds_id;
@@ -2782,8 +2788,8 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	  /* this rule cannot apply */
 	  continue;
 	}
-      else if(src_year < curr_ds_rule->from_year
-	      && curr_ds_rule->in_month > TZ_MON_JAN)
+      else if (src_year < curr_ds_rule->from_year
+	       && curr_ds_rule->in_month > TZ_MON_JAN)
 	{
 	  continue;
 	}
@@ -2837,10 +2843,10 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	  smallest_date_diff = date_diff;
 	}
     }
-    if(*ds_rule_id == -1)
-      {
-	*ds_rule_id = second_best_ds_id;
-      }
+  if (*ds_rule_id == -1)
+    {
+      *ds_rule_id = second_best_ds_id;
+    }
 
 exit:
   return er_status;
@@ -3006,7 +3012,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
   bool try_offset_rule_overlap = false;
   int second_best_applying_ds_id = -1;
   full_date_t second_best_applying_date_diff = -1;
-  TZ_DS_RULE * second_best_applying_ds_rule = NULL;
+  TZ_DS_RULE *second_best_applying_ds_rule = NULL;
 
   if (tz_info->type == TZ_REGION_OFFSET)
     {
@@ -3269,11 +3275,12 @@ detect_dst:
 	      goto exit;
 	    }
 
-	  ds_rule_date = FULL_DATE (ds_rule_julian_date, curr_ds_rule->at_time);
+	  ds_rule_date =
+	    FULL_DATE (ds_rule_julian_date, curr_ds_rule->at_time);
 	  diff = FULL_DATE (src_julian_date, src_time_sec) - ds_rule_date;
 
-	  if(second_best_applying_date_diff == -1 
-	    || diff < second_best_applying_date_diff)
+	  if (second_best_applying_date_diff == -1
+	      || diff < second_best_applying_date_diff)
 	    {
 	      second_best_applying_date_diff = diff;
 	      second_best_applying_ds_id = curr_ds_id;
@@ -3283,8 +3290,8 @@ detect_dst:
 	  /* this rule cannot apply */
 	  continue;
 	}
-      else if(src_year < curr_ds_rule->from_year
-	      && curr_ds_rule->in_month > TZ_MON_JAN)
+      else if (src_year < curr_ds_rule->from_year
+	       && curr_ds_rule->in_month > TZ_MON_JAN)
 	{
 	  continue;
 	}
@@ -3396,18 +3403,18 @@ detect_dst:
 	    FULL_DATE (src_julian_date,
 		       src_time_sec + utc_src_offset) - ds_rule_date;
 
-	  if(date_diff >= 0)
+	  if (date_diff >= 0)
 	    {
 	      rule_matched = true;
 
-	      if(leap_interval > 0 && date_diff < leap_interval)
+	      if (leap_interval > 0 && date_diff < leap_interval)
 		{
 		  is_in_leap_interval = true;
 		}
 	    }
 	  else
 	    {
-	      if(leap_interval < 0 && ABS(date_diff) <= ABS(leap_interval))
+	      if (leap_interval < 0 && ABS (date_diff) <= ABS (leap_interval))
 		{
 		  /* invalid time, abort */
 		  err_status = ER_TZ_DURING_DS_LEAP;
@@ -3487,8 +3494,8 @@ detect_dst:
 	  goto match_ds_rule;
 	}
     }
-  
-  if(applying_ds_id == -1)
+
+  if (applying_ds_id == -1)
     {
       applying_ds_id = second_best_applying_ds_id;
       applying_ds_rule = second_best_applying_ds_rule;
