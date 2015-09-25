@@ -344,6 +344,9 @@ static REGU_VARIABLE *pt_to_regu_reserved_name (PARSER_CONTEXT * parser,
 static int pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser,
 					      PT_RESERVED_NAME_ID
 					      reserved_id);
+static void pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser,
+						 PT_NODE * statement,
+						 PT_SPEC_FLAG spec_flag);
 
 static void update_value_list_out_list_regu_list (AGGREGATE_INFO * info,
 						  VAL_LIST * value_list,
@@ -20666,6 +20669,41 @@ pt_mvcc_prepare_upd_del_select (PARSER_CONTEXT * parser,
 }
 
 /*
+ * pt_mark_spec_list_for_update_clause -- mark the spec which need be
+ *                  updated/deleted with PT_SPEC_FLAG_FOR_UPDATE_CLAUSE flag
+ *   return:
+ *   parser(in): context
+ *   statement(in): select parse tree
+ *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
+ */
+
+void
+pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser,
+				     PT_NODE * statement,
+				     PT_SPEC_FLAG spec_flag)
+{
+  PT_NODE *spec;
+
+  assert (statement->node_type == PT_SELECT);
+
+  for (spec = statement->info.query.q.select.from; spec; spec = spec->next)
+    {
+      if (spec->info.spec.flag & spec_flag)
+	{
+	  spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	}
+
+      if (spec->info.spec.derived_table != NULL
+	  && spec->info.spec.derived_table->node_type == PT_SELECT)
+	{
+	  pt_mark_spec_list_for_update_clause (parser,
+					       spec->info.spec.derived_table,
+					       spec_flag);
+	}
+    }
+}
+
+/*
  * pt_to_upd_del_query () - Creates a query based on the given select list,
  * 	from list, and where clause
  *   return: PT_NODE *, query statement or NULL if error
@@ -21019,14 +21057,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
-      for (spec = statement->info.query.q.select.from; spec;
-	   spec = spec->next)
-	{
-	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
-	    {
-	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
-	    }
-	}
+      pt_mark_spec_list_for_update_clause (parser, statement,
+					   PT_SPEC_FLAG_UPDATE);
     }
 
   return statement;
@@ -21232,15 +21264,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (PT_SELECT_INFO_IS_FLAGED
 	  (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
 	{
-	  for (cl_name_node = aptr_statement->info.query.q.select.from;
-	       cl_name_node != NULL; cl_name_node = cl_name_node->next)
-	    {
-	      if (cl_name_node->info.spec.flag & PT_SPEC_FLAG_DELETE)
-		{
-		  cl_name_node->info.spec.flag |=
-		    PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
-		}
-	    }
+	  pt_mark_spec_list_for_update_clause (parser, aptr_statement,
+					       PT_SPEC_FLAG_DELETE);
 	}
 
       /* Prepare generated SELECT statement for mvcc reevaluation */
@@ -21921,14 +21946,8 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (PT_SELECT_INFO_IS_FLAGED
       (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
-      for (p = aptr_statement->info.query.q.select.from; p != NULL;
-	   p = p->next)
-	{
-	  if (p->info.spec.flag & PT_SPEC_FLAG_UPDATE)
-	    {
-	      p->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
-	    }
-	}
+      pt_mark_spec_list_for_update_clause (parser, aptr_statement,
+					   PT_SPEC_FLAG_UPDATE);
     }
 
   /* Prepare generated SELECT statement for mvcc reevaluation */
@@ -26085,14 +26104,8 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
-      for (spec = statement->info.query.q.select.from; spec;
-	   spec = spec->next)
-	{
-	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
-	    {
-	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
-	    }
-	}
+      pt_mark_spec_list_for_update_clause (parser, statement,
+					   PT_SPEC_FLAG_UPDATE);
     }
 
   return statement;
