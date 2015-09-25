@@ -11506,7 +11506,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   DB_VALUE *key = NULL;
   DB_VALUE dbvalue;
   int num_btree_oids = 0, num_heap_oids = 0, num_nulls = 0;
-  int oid_cnt, btree_oid_cnt, btree_null_cnt, btree_key_cnt;
+  int oid_cnt;
   OID *oid_area = NULL;
   int num_classes, scancache_inited = 0, attrinfo_inited = 0;
   int i, j, index_id;
@@ -11523,6 +11523,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 #if defined(SERVER_MODE)
   int tran_index;
+#else
+  int btree_oid_cnt, btree_null_cnt, btree_key_cnt;
 #endif /* SERVER_MODE */
   bool bt_checkscan_inited = false;
 
@@ -11932,12 +11934,14 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   /* check to see that the btree root statistics are correct. */
+#if defined(SA_MODE)
   if (logtb_get_global_unique_stats (thread_p, btid, &btree_oid_cnt,
 				     &btree_null_cnt,
 				     &btree_key_cnt) != NO_ERROR)
     {
       goto error;
     }
+#endif
 
   /* Do the numbers add up? */
   if (num_heap_oids != num_btree_oids + num_nulls)
@@ -11965,6 +11969,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       isallvalid = DISK_INVALID;
     }
 
+#if defined(SA_MODE)
   if (num_heap_oids != btree_oid_cnt)
     {
       if (!OID_ISNULL (class_oid))
@@ -12039,6 +12044,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
       isallvalid = DISK_INVALID;
     }
+#endif
 
   if (isid.check_not_vacuumed && isid.not_vacuumed_res != DISK_VALID)
     {
