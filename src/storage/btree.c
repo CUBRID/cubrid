@@ -8941,10 +8941,19 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
   int cache_idx = -1;
   DISK_ISVALID rv = DISK_VALID;
 
+  if (lock_object (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK,
+		   LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      return DISK_ERROR;
+    }
+
   cls_repr = heap_classrepr_get (thread_p, cls_oid, NULL,
 				 NULL_REPRID, &cache_idx);
   if (cls_repr == NULL)
     {
+      lock_unlock_object (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK,
+			  true);
+
       ASSERT_ERROR ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_errid (), 0);
       return DISK_ERROR;
@@ -8972,6 +8981,8 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
 	  break;
 	}
     }
+
+  lock_unlock_object (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK, true);
 
   if (cls_repr)
     {
@@ -9206,11 +9217,18 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid,
   DISK_ISVALID valid = DISK_VALID;
   char *index_name;
 
+  if (lock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, LK_UNCOND_LOCK)
+      != LK_GRANTED)
+    {
+      return DISK_ERROR;
+    }
+
   cls_repr = heap_classrepr_get (thread_p, oid, NULL,
 				 NULL_REPRID, &cache_idx);
 
   if (cls_repr == NULL)
     {
+      lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);
       return DISK_ERROR;
     }
 
@@ -9233,6 +9251,7 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid,
 	}
     }
 
+  lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);
   if (cls_repr)
     {
       heap_classrepr_free (cls_repr, &cache_idx);
@@ -9327,8 +9346,20 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid,
 	  return DISK_ERROR;
 	}
 
+      if (lock_object (thread_p, &btree_des->class_oid, oid_Root_class_oid,
+		       IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  if (fd != area)
+	    {
+	      free_and_init (fd);
+	    }
+	  return DISK_ERROR;
+	}
+
       if (btree_get_root_page (thread_p, &btid, &vpid) == NULL)
 	{
+	  lock_unlock_object (thread_p, &btree_des->class_oid,
+			      oid_Root_class_oid, IS_LOCK, true);
 	  if (fd != area)
 	    {
 	      free_and_init (fd);
@@ -9343,6 +9374,9 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid,
       btid.root_pageid = vpid.pageid;
       valid = btree_repair_prev_link_by_btid (thread_p, &btid, repair,
 					      index_name);
+
+      lock_unlock_object (thread_p, &btree_des->class_oid, oid_Root_class_oid,
+			  IS_LOCK, true);
 
       if (fd != area)
 	{
@@ -9402,6 +9436,10 @@ btree_check_all (THREAD_ENTRY * thread_p)
   /* Go to each file, check only the btree files */
   for (i = 0; i < num_files && allvalid != DISK_ERROR; i++)
     {
+      OR_CLASSREP *or_rep = NULL;
+      OR_INDEX *or_index = NULL;
+      bool btid_found = false;
+
       /* check # of file, check file type, get file descriptor */
       trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE,
 				  PGBUF_LATCH_READ,
@@ -9468,6 +9506,38 @@ btree_check_all (THREAD_ENTRY * thread_p)
 			      IS_LOCK, true);
 	  continue;
 	}
+
+      or_rep = or_get_classrep (&peek_recdes, NULL_REPRID);
+      if (or_rep == NULL)
+	{
+	  heap_scancache_end (thread_p, &scan_cache);
+	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid,
+			      IS_LOCK, true);
+	  continue;
+	}
+
+      /* search if BTID is still in class repr */
+      for (or_index = or_rep->indexes; or_index != NULL;
+	   or_index = or_index->next)
+	{
+	  if (BTID_IS_EQUAL (&btid, &or_index->btid))
+	    {
+	      btid_found = true;
+	      break;
+	    }
+	}
+
+      or_free_classrep (or_rep);
+      or_rep = NULL;
+
+      if (btid_found == false)
+	{
+	  heap_scancache_end (thread_p, &scan_cache);
+	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid,
+			      IS_LOCK, true);
+	  continue;
+	}
+
       heap_scancache_end (thread_p, &scan_cache);
 
       /* Check BTree file */
@@ -17506,7 +17576,6 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
 	     type to the partial search key value */
 	  DB_VALUE *dbvals = NULL;
 	  int num_dbvals;
-	  DB_TYPE type;
 
 	  num_dbvals = dsize - ssize;
 	  dbvals = (DB_VALUE *) db_private_alloc (NULL,
