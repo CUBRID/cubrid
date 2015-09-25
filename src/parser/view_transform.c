@@ -2587,6 +2587,13 @@ mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec)
 
 	      if (subquery == NULL && er_has_error ())
 		{
+		  if (!pt_has_error (parser))
+		    {
+		      /* Some unexpected errors (like ER_INTERRUPTED
+		       * due to timeout) should be handled.
+		       */
+		      PT_ERROR (parser, entity, er_msg ());
+		    }
 		  return er_errid ();
 		}
 
@@ -5158,6 +5165,8 @@ static PT_NODE *
 mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	       void *void_arg, int *continue_walk)
 {
+  PT_NODE *tmp_node = NULL;
+
   if (statement == NULL)
     {
       return NULL;
@@ -5176,11 +5185,23 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
       else
 	{
-	  statement = mq_check_rewrite_select (parser, statement);
-	  if (statement == NULL)
+	  tmp_node = mq_check_rewrite_select (parser, statement);
+	  if (tmp_node == NULL)
 	    {
+	      if (!pt_has_error (parser) && er_has_error ())
+		{
+		  /* Some unexpected errors (like ER_INTERRUPTED
+		   * due to timeout) should be handled.
+		   */
+		  PT_ERROR (parser, statement, er_msg ());
+		}
+
+	      statement = tmp_node;
+
 	      break;
 	    }
+
+	  statement = tmp_node;
 	}
 
       if (!PT_SELECT_INFO_IS_FLAGED (statement,
