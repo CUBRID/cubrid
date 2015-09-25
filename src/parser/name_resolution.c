@@ -4628,6 +4628,10 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser,
 
       /* set its type */
       pt_get_attr_data_type (parser, att, result);
+      if (pt_has_error (parser))
+	{
+	  goto on_error;
+	}
 
       result->info.name.spec_id = from->info.spec.id;
       if (class_atts_only)
@@ -4654,6 +4658,10 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser,
 
 	  /* set its type */
 	  pt_get_attr_data_type (parser, att, node);
+	  if (pt_has_error (parser))
+	    {
+	      goto on_error;
+	    }
 
 	  node->info.name.spec_id = from->info.spec.id;
 	  if (class_atts_only)
@@ -6765,6 +6773,11 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 			  ? class_att
 			  : pt_common_attribute (parser, spec_att,
 						 class_att));
+
+	      if (pt_has_error (parser))
+		{
+		  return NULL;
+		}
 	    }
 	}
 
@@ -8532,10 +8545,19 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
       statement =
 	parser_walk_tree (parser, statement, pt_mark_group_having_pt_name,
 			  NULL, NULL, NULL);
+      if (pt_has_error (parser))
+	{
+	  return NULL;
+	}
 
       statement =
 	parser_walk_tree (parser, statement, pt_bind_names, &bind_arg,
 			  pt_bind_names_post, &bind_arg);
+      if (pt_has_error (parser))
+	{
+	  return NULL;
+	}
+
       if (statement && (statement->node_type == PT_CREATE_INDEX
 			|| statement->node_type == PT_ALTER_INDEX
 			|| statement->node_type == PT_DROP_INDEX))
@@ -8547,6 +8569,10 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
       statement =
 	parser_walk_tree (parser, statement, pt_resolve_group_having_alias,
 			  NULL, NULL, NULL);
+      if (pt_has_error (parser))
+	{
+	  return NULL;
+	}
 
       /*
        * The process converts natural join to inner/outer join.
@@ -8555,6 +8581,10 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
       statement =
 	parser_walk_tree (parser, statement, NULL,
 			  NULL, pt_resolve_natural_join, NULL);
+      if (pt_has_error (parser))
+	{
+	  return NULL;
+	}
     }
 
   /* Flag specs from FOR UPDATE clause with PT_SPEC_FLAG_FOR_UPDATE_CLAUSE and
