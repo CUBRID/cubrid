@@ -13849,11 +13849,27 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			}
 		    }
 		}
-	      if (!specp)
-		{		/* not found hfid */
-		  er_log_debug (ARG_FILE_LINE,
-				"qexec_execute_selupd_list: class hfid to access is null\n");
-		  goto exit_on_error;
+	      if (specp == NULL)
+		{
+		  specp = xasl->spec_list;
+		  if (specp != NULL
+		      && specp->pruning_type == DB_PARTITION_CLASS
+		      && specp->next == NULL
+		      && specp->s_id.mvcc_select_lock_needed == true)
+		    {
+		      /* the object may be updated to other partition */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_INVALID_DATA_FOR_PARTITION, 0);
+		      goto exit_on_error;
+		    }
+		  else
+		    {
+		      /* not found hfid */
+		      er_log_debug (ARG_FILE_LINE,
+				    "qexec_execute_selupd_list: class hfid to access is null\n");
+		      assert (false);
+		      goto exit_on_error;
+		    }
 		}
 	    }
 
