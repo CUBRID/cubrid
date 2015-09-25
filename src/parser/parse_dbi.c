@@ -454,28 +454,44 @@ pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
 {
   DB_OBJECT *cls;
   PT_NODE *name, *dt;
+  const char *class_name = NULL;
 
   assert (parser != NULL && val != NULL);
 
   if (db_value_type (val) != DB_TYPE_OBJECT)
     {
+      PT_INTERNAL_ERROR (parser, "not object type");
       return NULL;
     }
+
   cls = (DB_OBJECT *) db_get_class (db_get_object (val));
   if (cls == NULL)
     {
+      PT_INTERNAL_ERROR (parser, "unknown class object");
       return NULL;
     }
-  name = pt_name (parser, db_get_class_name (cls));
+
+  class_name = db_get_class_name (cls);
+  if (class_name == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "unknown class name");
+      return NULL;
+    }
+
+  name = pt_name (parser, class_name);
   if (name == NULL)
     {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
       return NULL;
     }
+
   dt = parser_new_node (parser, PT_DATA_TYPE);
   if (dt == NULL)
     {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
       return NULL;
     }
+
   name->info.name.db_object = cls;
   name->info.name.spec_id = (UINTPTR) name;
   dt->type_enum = PT_TYPE_OBJECT;
@@ -485,6 +501,7 @@ pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
     {
       dt->info.data_type.virt_object = cls;
     }
+
   return dt;
 }
 
