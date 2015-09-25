@@ -2826,6 +2826,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
   OID updated_oid, *p_oid = oid;
   bool object_locked = false;
   int is_mvcc_disabled_class = -1;
+  LOCK class_lock;
 
   /* We assume that the object have to be locked;
    * after it is locked or we determine that this is not necessary,
@@ -2950,7 +2951,6 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
    * only if the transaction already has a lock. This means that is not
    * necessary to request the lock again. 
    */
-#if 0				/* TEMPORARILY DISABLE THE ASSERTION! */
   assert ((OID_EQ (class_oid, oid_Root_class_oid))
 	  || (LC_FETCH_IS_MVCC_VERSION_NEEDED (fetch_version_type))
 	  || ((lock != NULL_LOCK)
@@ -2961,7 +2961,6 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 		   (class_oid, oid_Root_class_oid,
 		    LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
 		  || class_lock >= SIX_LOCK)));
-#endif
 
   if (!OID_IS_ROOTOID (class_oid) && lock > NULL_LOCK && !object_locked)
     {
