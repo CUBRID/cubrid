@@ -11997,7 +11997,10 @@ mq_evaluate_check_option (PARSER_CONTEXT * parser, PT_NODE * check_where,
 			  db_get_class_name (view_class->info.name.
 					     virt_object) : ""
 			  /* an internal error */ );
-	      return ER_GENERIC_ERROR;
+
+	      /* Report check option error to sys error. */
+	      pt_report_to_ersys (parser, PT_EXECUTION);
+	      return er_errid ();
 	    }
 	}
     }

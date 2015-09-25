@@ -16973,7 +16973,7 @@ cleanup:
 int
 do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err = NO_ERROR, result = 0;
+  int err = NO_ERROR, result = 0, error = NO_ERROR;
   PT_NODE *flat, *spec = NULL, *values_list = NULL;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
@@ -17311,7 +17311,11 @@ exit:
       regu_free_listid (list_id);
     }
 
-  if ((err < NO_ERROR) && er_errid () != NO_ERROR)
+  /* If err == er_errid () and parser has error, we already record the
+   * parser error to sys error, no need to call pt_record_error (..)
+   */
+  if ((err < NO_ERROR) && (error = er_errid ()) != NO_ERROR
+      && (err != error || !pt_has_error (parser)))
     {
       pt_record_error (parser, parser->statement_number,
 		       statement->line_number, statement->column_number,
