@@ -3866,24 +3866,24 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
     {
       new_query->is_value_query = 1;
 
-      attrs = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
-      if (attrs == NULL && (pt_has_error (parser) || er_has_error ()))
-	{
-	  return NULL;
-	}
+      /* copy node_list
+       * value query list has nothing to do with table attributes
+       */
+      new_query->info.query.q.select.list =
+	parser_copy_tree_list (parser, query_spec->info.query.q.select.list);
 
-      attrs = parser_copy_tree_list (parser, attrs);
-
+      attrs = parser_copy_tree_list (parser,
+				     mq_fetch_attributes (parser,
+							  spec->info.spec.
+							  flat_entity_list));
       if (attrs != NULL && attrs->type_enum == PT_TYPE_OBJECT)
 	{
 	  attrs = attrs->next;	/* skip oid */
-
-	  /* copy node_list
-	   * value query list has nothing to do with table attributes
-	   */
-	  new_query->info.query.q.select.list =
-	    parser_copy_tree_list (parser,
-				   query_spec->info.query.q.select.list);
+	}
+      else
+	{
+	  parser_free_tree (parser, new_query->info.query.q.select.list);
+	  new_query->info.query.q.select.list = NULL;
 	}
     }
   else
@@ -3900,13 +3900,10 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
 	}
 
       v_attr_list =
-	mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
-      if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
-	{
-	  return NULL;
-	}
-
-      v_attr_list = parser_copy_tree_list (parser, v_attr_list);
+	parser_copy_tree_list (parser,
+			       mq_fetch_attributes (parser,
+						    spec->info.spec.
+						    flat_entity_list));
 
       /* exclude the first oid attr, append non-exist attrs to select list */
       if (v_attr_list && v_attr_list->type_enum == PT_TYPE_OBJECT)
@@ -3984,12 +3981,6 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
       info.in.spec = spec;
       info.in.others_spec_list = statement->info.query.q.select.from;
       info.in.attr_list = mq_fetch_attributes (parser, entity_name);
-      if (info.in.attr_list == NULL
-	  && (pt_has_error (parser) || er_has_error ()))
-	{
-	  return NULL;
-	}
-
       if (query_spec)
 	{
 	  /* check only specified query spec of the vclass */
@@ -4206,7 +4197,6 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   PT_NODE *from;
   PT_NODE *order_by = NULL;
   PT_NODE *into = NULL;
-  PT_NODE *tree = NULL;
   PT_MISC_TYPE all_distinct = PT_ALL;
   int unique = 0;
 
@@ -4222,26 +4212,9 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 
       /* for each table/class in select_statements from part,
          do leaf expansion or vclass/view expansion. */
-      tree =
-	mq_translate_tree (parser, select_statement, from, order_by,
-			   DB_AUTH_SELECT);
-      if (tree == NULL)
-	{
-	  if (pt_has_error (parser))
-	    {
-	      return NULL;
-	    }
-	  else if (er_has_error ())
-	    {
-	      /* Some unexpected errors (like ER_INTERRUPTED due to timeout)
-	       * should be handled.
-	       */
-	      PT_ERROR (parser, select_statement, er_msg ());
-	      return NULL;
-	    }
-	}
 
-      select_statement = tree;
+      select_statement = mq_translate_tree (parser, select_statement,
+					    from, order_by, DB_AUTH_SELECT);
     }
 
   /* restore the into part. and order by, if they are not already set. */
