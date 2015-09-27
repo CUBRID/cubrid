@@ -929,6 +929,8 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *packed_desc = NULL;
   int packed_desc_size;
   LC_COPYAREA_MANYOBJS *mobjs, *reply_mobjs;
+  char *desc_ptr = NULL;
+  int desc_size;
 
   ptr = or_unpack_int (request, &num_objs);
   ptr = or_unpack_int (ptr, &packed_desc_size);
@@ -998,11 +1000,10 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 	  num_objs =
 	    locator_send_copy_area (reply_copy_area, &reply_content_ptr,
-				    &content_size, &packed_desc,
-				    &packed_desc_size);
+				    &content_size, &desc_ptr, &desc_size);
 
 	  ptr = or_pack_int (reply, num_objs);
-	  ptr = or_pack_int (ptr, packed_desc_size);
+	  ptr = or_pack_int (ptr, desc_size);
 	  ptr = or_pack_int (ptr, content_size);
 	  ptr = or_pack_int (ptr, success);
 
@@ -1015,7 +1016,7 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid,
 					       reply,
 					       OR_ALIGNED_BUF_SIZE (a_reply),
-					       packed_desc, packed_desc_size,
+					       desc_ptr, desc_size,
 					       reply_content_ptr,
 					       content_size);
 	}
@@ -1033,6 +1034,10 @@ end:
   if (reply_copy_area != NULL)
     {
       locator_free_copy_area (reply_copy_area);
+    }
+  if (desc_ptr)
+    {
+      free_and_init (desc_ptr);
     }
 
   return;
