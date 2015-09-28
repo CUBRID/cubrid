@@ -5045,15 +5045,19 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	}
     }
 
-  while (!LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer))
+  if (vacuum_Data->n_table_entries == VACUUM_DATA_TABLE_MAX_SIZE)
     {
-      /* Couldn't fit entire buffer into vacuum data. Save blocks to log to
-       * recover later.
-       */
-      /* Blocks are saved in chunks and the buffer may not be consumed
-       * entirely in one iteration. Loop until the entire buffer is consumed.
-       */
-      vacuum_log_blocks_to_recover (thread_p);
+      while (!LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer))
+	{
+	  /* Couldn't fit entire buffer into vacuum data. Save blocks to log
+	   * to recover later.
+	   */
+	  /* Blocks are saved in chunks and the buffer may not be consumed
+	   * entirely in one iteration. Loop until the entire buffer is
+	   * consumed.
+	   */
+	  vacuum_log_blocks_to_recover (thread_p);
+	}
     }
 
   VACUUM_VERIFY_VACUUM_DATA ();
