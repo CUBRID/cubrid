@@ -8626,9 +8626,11 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   INT32 undo_data, redo_data;
   FILE_RECV_DELETE_PAGES postpone_data;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  bool use_postpone =
+    !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+    && tdes->topops.type != LOG_TOPOPS_POSTPONE;
   const PAGEID delete_pageid_value =
-    tdes->topops.type == LOG_TOPOPS_POSTPONE ?
-    NULL_PAGEID : NULL_PAGEID_MARKED_DELETED;
+    use_postpone ? NULL_PAGEID_MARKED_DELETED : NULL_PAGEID;
   INT32 prealloc_mem[FILE_PREALLOC_MEMSIZE] = {
     delete_pageid_value, delete_pageid_value,
     delete_pageid_value, delete_pageid_value,
@@ -8708,7 +8710,7 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
 
   memcpy (aid_ptr, mem, sizeof (*aid_ptr) * num_contpages);
 
-  if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
+  if (use_postpone)
     {
       for (i = 0; i < num_contpages; i++)
 	{
@@ -8744,7 +8746,7 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   undo_data = num_contpages;
   redo_data = -num_contpages;
 
-  if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
+  if (use_postpone)
     {
       fhdr->num_user_pages_mrkdelete += num_contpages;
 
@@ -8767,6 +8769,23 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
       log_append_undoredo_data (thread_p, RVFL_FHDR_UPDATE_NUM_USER_PAGES,
 				&addr, sizeof (undo_data), sizeof (redo_data),
 				&undo_data, &redo_data);
+
+      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  && allocset->num_holes >= (int) NUM_HOLES_NEED_COMPACTION
+	  && fhdr->num_user_pages_mrkdelete == 0)
+	{
+	  /* Compress file. */
+	  VFID vfid;
+	  VPID *fhdr_vpidp = pgbuf_get_vpid_ptr (fhdr_pgptr);
+
+	  vfid.volid = fhdr_vpidp->volid;
+	  vfid.fileid = fhdr_vpidp->pageid;
+	  ret = file_compress (thread_p, &vfid, false);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
     }
   pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
 
@@ -14600,11 +14619,14 @@ file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       rv_pages = (FILE_RECV_DELETE_PAGES *) rcv->data;
       fhdr->num_user_pages_mrkdelete -= rv_pages->deleted_npages;
       if (rv_pages->need_compaction == 1
 	  && fhdr->num_user_pages_mrkdelete == 0
-	  && log_is_in_crash_recovery () == false)
+	  && log_is_in_crash_recovery () == false
+	  && (tdes != NULL
+	      && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
 	{
 	  vpid = pgbuf_get_vpid_ptr (rcv->pgptr);
 	  vfid.volid = vpid->volid;

@@ -4675,7 +4675,8 @@ disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr,
       return;
     }
 
-  if (tdes->topops.type == LOG_TOPOPS_POSTPONE)
+  if (tdes->topops.type == LOG_TOPOPS_POSTPONE
+      || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       /* Do not add postpones. Add undoredo and deallocate pages. */
       LOG_DATA_ADDR vol_header_addr;
