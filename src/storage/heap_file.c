@@ -27552,8 +27552,12 @@ heap_get_record_location (THREAD_ENTRY * thread_p,
 					    context->home_page_watcher_p->
 					    pgptr,
 					    &heap_class_oid) == NO_ERROR);
-      assert (OID_EQ
-	      (&heap_class_oid, &context->scan_cache_p->node.class_oid));
+      assert ((OID_EQ
+	       (&heap_class_oid, &context->scan_cache_p->node.class_oid))
+	      || (OID_ISNULL (&context->scan_cache_p->node.class_oid)
+		  && spage_get_record_type (context->home_page_watcher_p->
+					    pgptr, context->oid.slotid) ==
+		  REC_ASSIGN_ADDRESS));
     }
 #endif
 
