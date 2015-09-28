@@ -6912,7 +6912,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 
     case DB_TYPE_DATETIMELTZ:
       {
-	DB_DATETIMETZ dt_tz;
 	if (!left_is_datetime)
 	  {
 	    /* the result type can be DATETIME only if the first argument
@@ -6928,7 +6927,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
     case DB_TYPE_DATETIMETZ:
       {
 	DB_DATETIMETZ dt_tz;
-	TZ_REGION tz_region;
 
 	if (!left_is_datetime)
 	  {
@@ -10669,22 +10667,22 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
     case DB_TYPE_DATETIMELTZ:
       {
 	DB_DATETIMETZ *datetimetz;
-	DB_DATETIME *datetime;
+	DB_DATETIME datetime;
 	DB_TIMESTAMP timestamp;
 
 	if (type == DB_TYPE_DATETIMETZ)
 	  {
 	    datetimetz = DB_GET_DATETIMETZ (src_date);
-	    datetime = &(datetimetz->datetime);
+	    datetime = datetimetz->datetime;
 	  }
 	else
 	  {
-	    datetime = DB_GET_DATETIME (src_date);
+	    datetime = *DB_GET_DATETIME (src_date);
 	  }
 
-	datetime->time /= 1000;
-	error_status = db_timestamp_encode_utc (&datetime->date,
-						&datetime->time, &timestamp);
+	datetime.time /= 1000;
+	error_status = db_timestamp_encode_utc (&datetime.date,
+						&datetime.time, &timestamp);
 	if (error_status != NO_ERROR)
 	  {
 	    return error_status;

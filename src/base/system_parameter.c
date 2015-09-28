@@ -9502,6 +9502,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
   SYSPRM_PARAM *fault_injection_ids_prm;
   SYSPRM_PARAM *fault_injection_test_prm;
+  SYSPRM_PARAM *test_mode_prm;
+  SYSPRM_PARAM *tz_leap_second_support_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
@@ -9521,6 +9523,9 @@ prm_tune_parameters (void)
     prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_ENTRIES, NULL);
   query_cache_size_in_pages_prm =
     prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
+  test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
+  tz_leap_second_support_prm =
+    prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
 
   /* temporarily modifies the query result cache feature to be disabled
    * in RB-8.2.2. because it is not verified on 64 bit environment.
@@ -9797,6 +9802,11 @@ prm_tune_parameters (void)
     }
 #endif
 
+  if (PRM_GET_BOOL (test_mode_prm->value) == true)
+    {
+      tz_leap_second_support_prm->static_flag |= PRM_FOR_QRY_STRING;
+    }
+
   return;
 }
 #else /* SA_MODE || SERVER_MODE */
@@ -9812,6 +9822,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_copy_log_timeout_prm;
   SYSPRM_PARAM *ha_check_disk_failure_interval_prm;
   SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
+  SYSPRM_PARAM *test_mode_prm;
+  SYSPRM_PARAM *tz_leap_second_support_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
@@ -9833,6 +9845,9 @@ prm_tune_parameters (void)
     prm_find (PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS, NULL);
   ha_prefetchlogdb_enable_prm =
     prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
+  test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
+  tz_leap_second_support_prm =
+    prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
 
   assert (max_plan_cache_entries_prm != NULL);
   if (max_plan_cache_entries_prm == NULL)
@@ -9893,6 +9908,11 @@ prm_tune_parameters (void)
     }
 
   assert (ha_mode_prm != NULL);
+
+  if (PRM_GET_BOOL (test_mode_prm->value) == true)
+    {
+      tz_leap_second_support_prm->static_flag |= PRM_FOR_QRY_STRING;
+    }
 
   return;
 }
