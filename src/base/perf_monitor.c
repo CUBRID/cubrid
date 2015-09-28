@@ -266,6 +266,16 @@ static int rv;
 			 PERF_MVCC_SNAPSHOT_COUNTERS);			\
     DIFF_METHOD##_ARRAY (RES, NEW, OLD, obj_lock_time_counters,		\
 			 PERF_OBJ_LOCK_STAT_COUNTERS);			\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, log_snapshot_time_counters,     \
+			 PERF_MODULE_CNT);				\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, log_snapshot_retry_counters,    \
+			 PERF_MODULE_CNT);				\
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, log_tran_complete_time_counters,    \
+			 PERF_MODULE_CNT);				    \
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, log_oldest_mvcc_time_counters,	    \
+			 PERF_MODULE_CNT);				    \
+    DIFF_METHOD##_ARRAY (RES, NEW, OLD, log_oldest_mvcc_retry_counters,	    \
+			 PERF_MODULE_CNT);				    \
 } while (0)
 
 
@@ -323,6 +333,10 @@ static void perf_stat_dump_page_fix_time_array_stat (const UINT64 * stats_ptr,
 						     FILE * stream,
 						     bool
 						     print_zero_counters);
+static void perf_stat_dump_snapshot_array_stat (const UINT64 * stats_ptr,
+						char *s, int *remaining_size,
+						FILE * stream,
+						bool print_zero_counters);
 static INLINE MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY *
 							   thread_p)
   __attribute__ ((ALWAYS_INLINE));
@@ -1799,7 +1813,12 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Time_data_page_hold_acquire_time",
   "Time_data_page_fix_acquire_time",
   "Num_mvcc_snapshot_ext",
-  "Time_obj_lock_acquire_time"
+  "Time_obj_lock_acquire_time",
+  "Time_get_snapshot_acquire_time",
+  "Count_get_snapshot_retry",
+  "Time_tran_complete_time",
+  "Time_get_oldest_mvcc_acquire_time",
+  "Count_get_oldest_mvcc_retry"
 };
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -3954,8 +3973,141 @@ mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type,
     }
 }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-#endif /* SERVER_MODE || SA_MODE */
 
+/*
+ *   mnt_x_snapshot_acquire_time - 
+ *   return: none
+ */
+void
+mnt_x_snapshot_acquire_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+
+      assert (amount > 0);
+
+      offset = module;
+
+      ADD_STATS_IN_ARRAY (stats, log_snapshot_time_counters, offset, amount);
+    }
+}
+
+/*
+ *   mnt_x_snapshot_retry_counters - 
+ *   return: none
+ */
+void
+mnt_x_snapshot_retry_counters (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+
+      assert (amount > 0);
+
+      offset = module;
+
+      ADD_STATS_IN_ARRAY (stats, log_snapshot_retry_counters, offset, amount);
+    }
+}
+
+/*
+ *   mnt_x_tran_complete_time - 
+ *   return: none
+ */
+void
+mnt_x_tran_complete_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+
+      assert (amount > 0);
+
+      offset = module;
+
+      ADD_STATS_IN_ARRAY (stats, log_tran_complete_time_counters, offset,
+			  amount);
+    }
+}
+
+/*
+ *   mnt_x_oldest_mvcc_acquire_time - 
+ *   return: none
+ */
+void
+mnt_x_oldest_mvcc_acquire_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+
+      assert (amount > 0);
+
+      offset = module;
+
+      ADD_STATS_IN_ARRAY (stats, log_oldest_mvcc_time_counters, offset,
+			  amount);
+    }
+}
+
+/*
+ *   mnt_x_oldest_mvcc_retry_counters - 
+ *   return: none
+ */
+void
+mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  int module;
+  int offset;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      module = perf_get_module_type (thread_p);
+
+      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+
+      assert (amount > 0);
+
+      offset = module;
+
+      ADD_STATS_IN_ARRAY (stats, log_oldest_mvcc_retry_counters, offset,
+			  amount);
+    }
+}
+
+#endif /* SERVER_MODE || SA_MODE */
 
 /*
  *   mnt_calc_diff_stats -
@@ -4140,6 +4292,31 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
 	    (stats->obj_lock_time_counters, p, &remained_size, NULL, false);
 	  break;
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+	case MNT_SERVER_SNAPSHOT_TIME_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_snapshot_time_counters, p, &remained_size, NULL,
+	     false);
+	  break;
+	case MNT_SERVER_SNAPSHOT_RETRY_CNT_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_snapshot_retry_counters, p, &remained_size, NULL,
+	     false);
+	  break;
+	case MNT_SERVER_TRAN_COMPLETE_TIME_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_tran_complete_time_counters, p, &remained_size, NULL,
+	     false);
+	  break;
+	case MNT_SERVER_OLDEST_MVCC_TIME_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_oldest_mvcc_time_counters, p, &remained_size, NULL,
+	     false);
+	  break;
+	case MNT_SERVER_OLDEST_MVCC_RETRY_CNT_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_oldest_mvcc_retry_counters, p, &remained_size, NULL,
+	     false);
+	  break;
 	default:
 	  break;
 	}
@@ -4267,6 +4444,28 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream,
 	    (stats->obj_lock_time_counters, NULL, NULL, stream, false);
 	  break;
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+	case MNT_SERVER_SNAPSHOT_TIME_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_snapshot_time_counters, NULL, NULL, stream, false);
+	  break;
+	case MNT_SERVER_SNAPSHOT_RETRY_CNT_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_snapshot_retry_counters, NULL, NULL, stream, false);
+	  break;
+	case MNT_SERVER_TRAN_COMPLETE_TIME_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_tran_complete_time_counters, NULL, NULL, stream,
+	     false);
+	  break;
+	case MNT_SERVER_OLDEST_MVCC_TIME_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_oldest_mvcc_time_counters, NULL, NULL, stream, false);
+	  break;
+	case MNT_SERVER_OLDEST_MVCC_RETRY_CNT_STAT_POSITION:
+	  perf_stat_dump_snapshot_array_stat
+	    (stats->log_oldest_mvcc_retry_counters, NULL, NULL, stream,
+	     false);
+	  break;
 	default:
 	  break;
 	}
@@ -5428,3 +5627,57 @@ perf_stat_dump_obj_lock_array_stat (const UINT64 * stats_ptr, char *s,
     }
 }
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+
+/*
+ * perf_stat_dump_snapshot_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaing size in string s (NULL if not used)
+ * stream(in): output file
+ * print_zero_counters(in): true if counters with zero values should be printed
+ * 
+ */
+static void
+perf_stat_dump_snapshot_array_stat (const UINT64 * stats_ptr,
+				    char *s, int *remaining_size,
+				    FILE * stream, bool print_zero_counters)
+{
+  int module;
+  int offset;
+  const UINT64 *counter;
+  int ret;
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      offset = module;
+
+      assert (offset < PERF_MODULE_CNT);
+      counter = stats_ptr + offset;
+      if (*counter == 0 && print_zero_counters == false)
+	{
+	  continue;
+	}
+
+      if (s != NULL)
+	{
+	  assert (remaining_size != NULL);
+	  ret = snprintf (s, *remaining_size,
+			  "%-6s = %16llu\n",
+			  perf_stat_module_name (module),
+			  (long long unsigned int) *counter);
+	  *remaining_size -= ret;
+	  if (*remaining_size <= 0)
+	    {
+	      return;
+	    }
+	}
+      else
+	{
+	  assert (stream != NULL);
+	  fprintf (stream, "%-6s = %16llu\n",
+		   perf_stat_module_name (module),
+		   (long long unsigned int) *counter);
+	}
+    }
+}

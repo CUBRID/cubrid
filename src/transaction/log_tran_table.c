@@ -74,6 +74,7 @@
 #include "partition.h"
 #include "btree_load.h"
 #include "serial.h"
+#include "tsc_timer.h"
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #include "replication.h"
@@ -4519,6 +4520,18 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
 #else
   int r;
 #endif
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 snapshot_wait_time;
+  bool is_perf_tracking = false;
+  UINT64 snapshot_retry_cnt = 0;
+
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -4549,6 +4562,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 start_get_mvcc_table:
+  snapshot_retry_cnt++;
   index = ATOMIC_INC_32 (&mvcc_table->trans_status_history_position, 0);
   assert (index < TRANS_STATUS_HISTORY_MAX_SIZE && index >= 0);
   trans_status = &mvcc_table->trans_status_history[index];
@@ -4662,6 +4676,21 @@ start_get_mvcc_table:
   snapshot->long_tran_mvccids_length = long_tran_mvccids_length;
   snapshot->valid = true;
 
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      snapshot_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (snapshot_wait_time > 0)
+	{
+	  mnt_snapshot_acquire_time (thread_p, snapshot_wait_time);
+	}
+      if (snapshot_retry_cnt > 1)
+	{
+	  mnt_snapshot_retry_counters (thread_p, snapshot_retry_cnt - 1);
+	}
+    }
+
   return error_code;
 }
 
@@ -4750,6 +4779,16 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 #if !defined(HAVE_ATOMIC_BUILTINS)
   int r;
 #endif
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 oldest_time, retry_cnt = 0;
+  bool is_perf_tracking = false;
+
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
 
   mvcc_table = &log_Gl.mvcc_table;
 
@@ -4772,6 +4811,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 start_get_oldest_active:
+  retry_cnt++;
 
   /* read transactions status from current history position,
    * prevent code rearrangement
@@ -4848,6 +4888,22 @@ start_get_oldest_active:
       free (transaction_lowest_active_mvccids);
     }
   assert (MVCCID_IS_NORMAL (lowest_active_mvccid));
+
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (oldest_time > 0)
+	{
+	  mnt_oldest_mvcc_acquire_time (thread_p, oldest_time);
+	}
+      if (retry_cnt > 1)
+	{
+	  mnt_oldest_mvcc_retry_counters (thread_p, retry_cnt - 1);
+	}
+    }
+
   return lowest_active_mvccid;
 }
 
@@ -5078,8 +5134,18 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
   UINT64 *p_area = NULL;
   int r;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 tran_complete_time;
+  bool is_perf_tracking = false;
 
   assert (tdes != NULL);
+
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
 
   curr_mvcc_info = &tdes->mvccinfo;
   mvccid = curr_mvcc_info->id;
@@ -5458,6 +5524,17 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   MVCC_CLEAR_MVCC_INFO (curr_mvcc_info);
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
+
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (tran_complete_time > 0)
+	{
+	  mnt_tran_complete_time (thread_p, tran_complete_time);
+	}
+    }
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

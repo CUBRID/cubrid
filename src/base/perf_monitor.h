@@ -62,7 +62,7 @@
  *    partitioned information per type of lock
  */
 
-#if 0
+#if 1
 #define PERF_ENABLE_DETAILED_BTREE_PAGE_STAT
 #define PERF_ENABLE_MVCC_SNAPSHOT_STAT
 #define PERF_ENABLE_LOCK_OBJECT_STAT
@@ -512,6 +512,11 @@ struct mnt_server_exec_stats
   UINT64 pbx_fix_time_counters[PERF_PAGE_FIX_TIME_COUNTERS];
   UINT64 mvcc_snapshot_counters[PERF_MVCC_SNAPSHOT_COUNTERS];
   UINT64 obj_lock_time_counters[PERF_OBJ_LOCK_STAT_COUNTERS];
+  UINT64 log_snapshot_time_counters[PERF_MODULE_CNT];
+  UINT64 log_snapshot_retry_counters[PERF_MODULE_CNT];
+  UINT64 log_tran_complete_time_counters[PERF_MODULE_CNT];
+  UINT64 log_oldest_mvcc_time_counters[PERF_MODULE_CNT];
+  UINT64 log_oldest_mvcc_retry_counters[PERF_MODULE_CNT];
 
   /* This must be kept as last member. Otherwise the
    * MNT_SERVER_EXEC_STATS_SIZEOF macro must be modified */
@@ -522,7 +527,7 @@ struct mnt_server_exec_stats
 #define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 100
 
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 9
+#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 14
 
 /* number of computed stats of MNT_SERVER_EXEC_STATS structure */
 #define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 12
@@ -539,7 +544,8 @@ struct mnt_server_exec_stats
  + PERF_PAGE_PROMOTE_COUNTERS + PERF_PAGE_UNFIX_COUNTERS \
  + PERF_PAGE_LOCK_TIME_COUNTERS + PERF_PAGE_HOLD_TIME_COUNTERS \
  + PERF_PAGE_FIX_TIME_COUNTERS + PERF_MVCC_SNAPSHOT_COUNTERS \
- + PERF_OBJ_LOCK_STAT_COUNTERS)
+ + PERF_OBJ_LOCK_STAT_COUNTERS + PERF_MODULE_CNT + PERF_MODULE_CNT \
+ + PERF_MODULE_CNT + PERF_MODULE_CNT + PERF_MODULE_CNT)
 
 #define MNT_SIZE_OF_SERVER_EXEC_STATS \
   (MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
@@ -567,7 +573,16 @@ struct mnt_server_exec_stats
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 7)
 #define MNT_SERVER_OBJ_LOCK_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 8)
-
+#define MNT_SERVER_SNAPSHOT_TIME_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 9)
+#define MNT_SERVER_SNAPSHOT_RETRY_CNT_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 10)
+#define MNT_SERVER_TRAN_COMPLETE_TIME_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 11)
+#define MNT_SERVER_OLDEST_MVCC_TIME_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 12)
+#define MNT_SERVER_OLDEST_MVCC_RETRY_CNT_STAT_POSITION \
+  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 13)
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
@@ -1002,6 +1017,20 @@ extern int mnt_Num_tran_exec_stats;
 						       rec_type, \
 						       visibility)
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+#define mnt_snapshot_acquire_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_snapshot_acquire_time(thread_p, \
+							       amount)
+#define mnt_snapshot_retry_counters(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_snapshot_retry_counters(thread_p, \
+								 amount)
+#define mnt_tran_complete_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_complete_time(thread_p, amount)
+#define mnt_oldest_mvcc_acquire_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_oldest_mvcc_acquire_time(thread_p, \
+								  amount)
+#define mnt_oldest_mvcc_retry_counters(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_oldest_mvcc_retry_counters(thread_p, \
+								    amount)
 
 extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
@@ -1143,6 +1172,17 @@ extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p,
 extern void mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot,
 				 int rec_type, int visibility);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+extern void mnt_x_snapshot_acquire_time (THREAD_ENTRY * thread_p,
+					 UINT64 amount);
+extern void mnt_x_snapshot_retry_counters (THREAD_ENTRY * thread_p,
+					   UINT64 amount);
+extern void mnt_x_tran_complete_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_oldest_mvcc_acquire_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p,
+					      UINT64 amount);
+
+
 
 #else /* SERVER_MODE || SA_MODE */
 
@@ -1252,7 +1292,11 @@ extern void mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot,
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 #define mnt_mvcc_snapshot(thread_p,snapshot,rec_type,visibility)
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-
+#define mnt_snapshot_acquire_time(thread_p,amount)
+#define mnt_snapshot_retry_counters(thread_p,amount)
+#define mnt_tran_complete_time(thread_p,amount)
+#define mnt_oldest_mvcc_acquire_time(thread_p,amount)
+#define mnt_oldest_mvcc_retry_counters(thread_p,amount)
 
 #endif /* CS_MODE */
 

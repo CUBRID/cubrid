@@ -309,6 +309,36 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
       ptr += OR_INT64_SIZE;
     }
 
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->log_snapshot_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->log_snapshot_retry_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->log_tran_complete_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->log_oldest_mvcc_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats->log_oldest_mvcc_retry_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
   return (ptr);
 }
 
@@ -587,6 +617,36 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   for (i = 0; i < PERF_OBJ_LOCK_STAT_COUNTERS; i++)
     {
       OR_GET_INT64 (ptr, &(stats->obj_lock_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->log_snapshot_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->log_snapshot_retry_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->log_tran_complete_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->log_oldest_mvcc_time_counters[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  for (i = 0; i < PERF_MODULE_CNT; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats->log_oldest_mvcc_retry_counters[i]));
       ptr += OR_INT64_SIZE;
     }
 
