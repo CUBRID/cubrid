@@ -409,6 +409,11 @@ class UInputBuffer {
 		tmp_position = position;
 		cubrid_ts = readDatetime ();
 		
+		if (cubrid_ts == null){
+			/* zero datetime NULL behavior */
+			return null;
+		}
+
 		ts_size = position - tmp_position;
 				
 		if (ts_size > 0){
