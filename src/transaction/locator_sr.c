@@ -2912,6 +2912,11 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 	  /* need to fetch updated oid */
 	  chn = NULL_CHN;
 	  p_oid = &updated_oid;
+	  if (!OID_EQ (&updated_oid, oid) && original_oid == NULL)
+	    {
+	      /* oid changed, should set oid into original_oid */
+	      original_oid = oid;
+	    }
 	}
     }
   else
