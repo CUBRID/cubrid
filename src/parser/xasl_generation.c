@@ -368,6 +368,12 @@ static PT_NODE *pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT *
 static PT_NODE
   * pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser,
 						      PT_NODE * node);
+static int
+pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser,
+						   PT_NODE * node,
+						   AGGREGATE_INFO * info,
+						   REGU_VARIABLE * regu);
+
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
     if (xasl_head) {                                                    \
@@ -4335,6 +4341,15 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      regu = pt_to_regu_variable (parser,
 					  tree->info.function.arg_list,
 					  UNBOX_AS_VALUE);
+
+	      scan_regu =
+		pt_to_regu_variable (parser, tree->info.function.arg_list,
+				     UNBOX_AS_VALUE);
+
+	      if (!regu || !scan_regu)
+		{
+		  return NULL;
+		}
 	    }
 	  else
 	    {
@@ -4344,15 +4359,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      regu = pt_to_cume_dist_percent_rank_regu_variable (parser,
 								 tree,
 								 UNBOX_AS_VALUE);
-	    }
-
-	  scan_regu =
-	    pt_to_regu_variable (parser, tree->info.function.arg_list,
-				 UNBOX_AS_VALUE);
-
-	  if (!regu || !scan_regu)
-	    {
-	      return NULL;
+	      if (!regu)
+		{
+		  return NULL;
+		}
 	    }
 
 	  aggregate_list->domain = pt_xasl_node_to_domain (parser, tree);
@@ -4428,79 +4438,92 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  aggregate_list->opr_dbtype =
 	    pt_node_to_db_type (tree->info.function.arg_list);
 
-	  if (info->out_list && info->value_list && info->regu_list
-	      && aggregate_list->function != PT_CUME_DIST
-	      && aggregate_list->function != PT_PERCENT_RANK)
+	  if (info->out_list && info->value_list && info->regu_list)
 	    {
 	      /* handle the buildlist case.
 	       * append regu to the out_list, and create a new value
 	       * to append to the value_list  
-	       * Note: cume_dist() and percent_rank() need not these operations
-	       * since they have particular regu type.
+	       * Note: cume_dist() and percent_rank() also need special operations.
 	       */
-
-	      pt_val = parser_new_node (parser, PT_VALUE);
-	      if (pt_val == NULL)
+	      if (aggregate_list->function != PT_CUME_DIST
+		  && aggregate_list->function != PT_PERCENT_RANK)
 		{
-		  PT_INTERNAL_ERROR (parser, "allocate new node");
-		  return NULL;
+		  pt_val = parser_new_node (parser, PT_VALUE);
+		  if (pt_val == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
+
+		  pt_val->type_enum = PT_TYPE_INTEGER;
+		  pt_val->info.value.data_value.i = 0;
+		  parser_append_node (pt_val, info->out_names);
+
+		  pointer = pt_alloc_value_list_out_list_regu_list (parser,
+								    tree->
+								    info.
+								    function.
+								    arg_list,
+								    &value_list,
+								    &out_list,
+								    &regu_list);
+		  if (pointer == NULL)
+		    {
+		      PT_ERROR (parser, tree,
+				msgcat_message (MSGCAT_CATALOG_CUBRID,
+						MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
+		    }
+
+		  aggregate_list->operand.type = TYPE_CONSTANT;
+		  aggregate_list->operand.domain = pt_xasl_node_to_domain
+		    (parser, tree->info.function.arg_list);
+		  aggregate_list->operand.value.dbvalptr =
+		    value_list->valp->val;
+
+		  regu_list->value.value.pos_descr.pos_no =
+		    info->out_list->valptr_cnt;
+
+		  update_value_list_out_list_regu_list (info, value_list,
+							out_list, regu_list,
+							regu);
+
+		  /* append regu to info->scan_regu_list */
+		  scan_regu_list = regu_varlist_alloc ();
+		  if (!scan_regu_list)
+		    {
+		      PT_ERROR (parser, tree,
+				msgcat_message (MSGCAT_CATALOG_CUBRID,
+						MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
+		    }
+
+		  scan_regu->vfetch_to =
+		    pt_index_value (info->value_list,
+				    info->out_list->valptr_cnt - 1);
+		  scan_regu_list->next = NULL;
+		  scan_regu_list->value = *scan_regu;
+
+		  regu_temp = info->scan_regu_list;
+		  while (regu_temp->next)
+		    {
+		      regu_temp = regu_temp->next;
+		    }
+		  regu_temp->next = scan_regu_list;
 		}
-
-	      pt_val->type_enum = PT_TYPE_INTEGER;
-	      pt_val->info.value.data_value.i = 0;
-	      parser_append_node (pt_val, info->out_names);
-
-	      pointer = pt_alloc_value_list_out_list_regu_list (parser,
-								tree->info.
-								function.
-								arg_list,
-								&value_list,
-								&out_list,
-								&regu_list);
-	      if (pointer == NULL)
+	      else
 		{
-		  PT_ERROR (parser, tree,
-			    msgcat_message (MSGCAT_CATALOG_CUBRID,
-					    MSGCAT_SET_PARSER_SEMANTIC,
-					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		  return NULL;
+		  /* for buildlist CUME_DIST/PERCENT_RANK, we have special treatment */
+		  if (pt_fix_buildlist_aggregate_cume_dist_percent_rank
+		      (parser, tree->info.function.order_by, info,
+		       regu) != NO_ERROR)
+		    {
+		      return NULL;
+		    }
+		  aggregate_list->operand = *regu;
 		}
-
-	      aggregate_list->operand.type = TYPE_CONSTANT;
-	      aggregate_list->operand.domain = pt_xasl_node_to_domain
-		(parser, tree->info.function.arg_list);
-	      aggregate_list->operand.value.dbvalptr = value_list->valp->val;
-
-	      regu_list->value.value.pos_descr.pos_no =
-		info->out_list->valptr_cnt;
-
-	      update_value_list_out_list_regu_list (info, value_list,
-						    out_list, regu_list,
-						    regu);
-
-	      /* append regu to info->scan_regu_list */
-	      scan_regu_list = regu_varlist_alloc ();
-	      if (!scan_regu_list)
-		{
-		  PT_ERROR (parser, tree,
-			    msgcat_message (MSGCAT_CATALOG_CUBRID,
-					    MSGCAT_SET_PARSER_SEMANTIC,
-					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		  return NULL;
-		}
-
-	      scan_regu->vfetch_to =
-		pt_index_value (info->value_list,
-				info->out_list->valptr_cnt - 1);
-	      scan_regu_list->next = NULL;
-	      scan_regu_list->value = *scan_regu;
-
-	      regu_temp = info->scan_regu_list;
-	      while (regu_temp->next)
-		{
-		  regu_temp = regu_temp->next;
-		}
-	      regu_temp->next = scan_regu_list;
 	    }
 	  else
 	    {
@@ -28030,4 +28053,217 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser,
     }
 
   return node;
+}
+
+
+/*
+ * pt_fix_buildlist_aggregate_cume_dist_percent_rank () - This function generates
+ *                       aggregate info for aggregate CUME_DIST/PERCENT_RANK in buildlist.
+ *                       This is neccesary because for evaluation in buildlist, two functions
+ *                       need re-scan order-by values therefore we must add function order-by elements
+ *                       into regu_list, scan_regu_list, value_list and out_list.
+ *
+ * return : ERROR CODE
+ * parser (in)  :
+ * node (in) : order by node of CUME_DIST/PERCENT_RANK
+ * info (in) :
+ * regu (in) :
+ */
+static int
+pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser,
+						   PT_NODE * node,
+						   AGGREGATE_INFO * info,
+						   REGU_VARIABLE * regu)
+{
+  REGU_VARIABLE_LIST regu_list, regu_var, regu_const, new_regu, tail,
+    scan_regu_list, out_list;
+  REGU_VARIABLE *scan_regu;
+  QPROC_DB_VALUE_LIST value_tmp;
+  VAL_LIST *value_list;
+  TP_DOMAIN *domain;
+  PT_NODE *pnode, *order, *pname;
+  int i, len;
+
+  assert (parser != NULL && node != NULL && info != NULL &&
+	  regu != NULL && regu->type == TYPE_REGU_VAR_LIST);
+
+  /* initialize variables */
+  order = node;
+  regu_list = regu->value.regu_var_list;
+  regu_var = regu_const = regu_list;
+  tail = info->regu_list;
+
+  /* find length and tail of regu_list */
+  if (tail == NULL)
+    {
+      i = 0;
+    }
+  else
+    {
+      for (tail = info->regu_list, i = 1; tail->next != NULL;
+	   i++, tail = tail->next);
+    }
+
+  /* for order by regu, we need to link the value pointer */
+  while (regu_const != NULL)
+    {
+      /* create a new regu for function order by clause */
+      new_regu = regu_varlist_alloc ();
+      if (new_regu == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
+	}
+
+      domain = pt_xasl_node_to_domain (parser, order->info.sort_spec.expr);
+      if (domain == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      /* regu list must be a position, and set the scan value to the regu_var which is used
+       * in the CUME_DIST/PERCENT_RANK evaluation.
+       */
+      new_regu->value.type = TYPE_POSITION;
+      new_regu->value.domain = domain;
+      new_regu->value.value.pos_descr.pos_no = i++;
+      new_regu->value.value.pos_descr.dom = domain;
+      new_regu->value.vfetch_to = regu_var->value.value.dbvalptr;
+
+      if (tail == NULL)
+	{
+	  tail = new_regu;
+	}
+      else
+	{
+	  tail->next = new_regu;
+	  tail = new_regu;
+	}
+
+      /* since the first half of regu_list are order by regu */
+      order = order->next;
+      regu_var = regu_var->next;
+      regu_const = regu_const->next->next;
+    }
+
+  /* append scan_regu_list, out_list and value_list */
+  scan_regu_list = info->scan_regu_list;
+  out_list = info->out_list;
+  value_tmp = info->value_list->valp;
+
+  for (pnode = node; pnode != NULL; pnode = pnode->next)
+    {
+      /* append scan_list */
+      scan_regu = pt_to_regu_variable (parser,
+				       pnode->info.sort_spec.expr,
+				       UNBOX_AS_VALUE);
+      if (scan_regu == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      if (scan_regu_list == NULL)
+	{
+	  scan_regu_list = regu_varlist_alloc ();
+	  if (scan_regu_list == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  while (scan_regu_list->next != NULL)
+	    {
+	      scan_regu_list = scan_regu_list->next;
+	    }
+	  scan_regu_list->next = regu_varlist_alloc ();
+	  if (scan_regu_list->next == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+
+	  scan_regu_list = scan_regu_list->next;
+	}
+
+      scan_regu_list->next = NULL;
+      scan_regu_list->value = *scan_regu;
+
+      /* appende out_list */
+      pname = parser_new_node (parser, PT_VALUE);
+
+      if (pname == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
+	}
+
+      pname->type_enum = PT_TYPE_INTEGER;
+      pname->info.value.data_value.i = 0;
+      parser_append_node (pname, info->out_names);
+
+      if (out_list == NULL)
+	{
+	  out_list = regu_varlist_alloc ();
+	  if (out_list == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  while (out_list->next != NULL)
+	    {
+	      out_list = out_list->next;
+	    }
+
+	  out_list->next = regu_varlist_alloc ();
+	  if (out_list->next == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+
+	  out_list = out_list->next;
+	}
+
+      out_list->next = NULL;
+      out_list->value = *scan_regu;
+      info->out_list->valptr_cnt++;
+
+      /* append value list, although this value in the value_list are 
+       * useless for further evaluation, it is needed to reserve the corresponding 
+       * positions, otherwise out_list will be messed up.
+       */
+      value_list = pt_make_val_list (parser, pnode->info.sort_spec.expr);
+      if (value_list == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      if (value_tmp == NULL)
+	{
+	  value_tmp = value_list->valp;
+	}
+      else
+	{
+	  while (value_tmp->next != NULL)
+	    {
+	      value_tmp = value_tmp->next;
+	    }
+	  value_tmp->next = value_list->valp;
+	}
+
+      info->value_list->val_cnt++;
+    }				/* for(pnode...) ends */
+
+  return NO_ERROR;
 }
