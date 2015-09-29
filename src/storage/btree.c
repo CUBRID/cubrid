@@ -9439,6 +9439,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
       OR_CLASSREP *or_rep = NULL;
       OR_INDEX *or_index = NULL;
       bool btid_found = false;
+      int j;
 
       /* check # of file, check file type, get file descriptor */
       trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE,
@@ -9517,8 +9518,8 @@ btree_check_all (THREAD_ENTRY * thread_p)
 	}
 
       /* search if BTID is still in class repr */
-      for (or_index = or_rep->indexes; or_index != NULL;
-	   or_index = or_index->next)
+      for (or_index = or_rep->indexes, j = 0; j < or_rep->n_indexes;
+	   or_index++, j++)
 	{
 	  if (BTID_IS_EQUAL (&btid, &or_index->btid))
 	    {

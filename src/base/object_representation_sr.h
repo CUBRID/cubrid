@@ -54,7 +54,7 @@ struct or_default_value
 typedef struct or_attribute OR_ATTRIBUTE;
 struct or_attribute
 {
-  OR_ATTRIBUTE *next;
+  OR_ATTRIBUTE *next;		/* obsolete : use array for accessing elements */
 
   int id;			/* unique id */
   DB_TYPE type;			/* basic type */
@@ -132,7 +132,7 @@ struct or_function_index
 typedef struct or_index OR_INDEX;
 struct or_index
 {
-  OR_INDEX *next;
+  OR_INDEX *next;		/* obsolete : use array for accessing elements */
   OR_ATTRIBUTE **atts;		/* Array of associated attributes */
   int *asc_desc;		/* array of ascending / descending */
   int *attrs_prefix_length;	/* prefix length */
@@ -158,7 +158,7 @@ struct or_partition
 typedef struct or_classrep OR_CLASSREP;
 struct or_classrep
 {
-  OR_CLASSREP *next;
+  OR_CLASSREP *next;		/* obsolete : use array for accessing elements */
 
   OR_ATTRIBUTE *attributes;	/* list of attributes */
   OR_ATTRIBUTE *shared_attrs;	/* list of shared attributes */
