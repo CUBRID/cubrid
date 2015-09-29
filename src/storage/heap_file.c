@@ -626,6 +626,81 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
 /* Recovery. */
 #define HEAP_RV_FLAG_VACUUM_STATUS_CHANGE 0x8000
 
+#define HEAP_PERF_START(thread_p, context) \
+  PERF_UTIME_TRACKER_START (thread_p, &((context)->time_track))
+#define HEAP_PERF_TRACK_PREPARE(thread_p, context) \
+  do \
+    { \
+      switch ((context)->type) { \
+      case HEAP_OPERATION_INSERT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_insert_prepare_time); \
+	break; \
+      case HEAP_OPERATION_DELETE: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_delete_prepare_time); \
+	break; \
+      case HEAP_OPERATION_UPDATE: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_update_prepare_time); \
+	break; \
+      default: \
+	assert (false); \
+      } \
+    } \
+  while (false)
+#define HEAP_PERF_TRACK_EXECUTE(thread_p, context) \
+  do \
+    { \
+      switch ((context)->type) { \
+      case HEAP_OPERATION_INSERT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_insert_execute_time); \
+	break; \
+      case HEAP_OPERATION_DELETE: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_delete_execute_time); \
+	break; \
+      case HEAP_OPERATION_UPDATE: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_update_execute_time); \
+	break; \
+      default: \
+	assert (false); \
+      } \
+    } \
+  while (false)
+#define HEAP_PERF_TRACK_LOGGING(thread_p, context) \
+  do \
+    { \
+      switch ((context)->type) { \
+      case HEAP_OPERATION_INSERT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_insert_log_time); \
+	break; \
+      case HEAP_OPERATION_DELETE: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_delete_log_time); \
+	break; \
+      case HEAP_OPERATION_UPDATE: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+					     &((context)->time_track),\
+					     mnt_heap_update_log_time); \
+	break; \
+      default: \
+	assert (false); \
+      } \
+    } \
+  while (false)
+
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p,
 					     const VPID * vpid_ptr,
@@ -27137,6 +27212,8 @@ heap_insert_newhome (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
+  HEAP_PERF_TRACK_EXECUTE (thread_p, parent_context);
+
   /* log operation */
 
   /* This is a relocation of existing record, be it deleted or updated.
@@ -27147,6 +27224,8 @@ heap_insert_newhome (THREAD_ENTRY * thread_p,
   heap_log_insert_physical (thread_p, ins_context.home_page_watcher_p->pgptr,
 			    &ins_context.hfid.vfid, &ins_context.res_oid,
 			    ins_context.recdes_p, false, false);
+
+  HEAP_PERF_TRACK_LOGGING (thread_p, parent_context);
 
   /* advertise insert location */
   if (out_oid_p != NULL)
@@ -27235,10 +27314,14 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       return ER_FAILED;
     }
 
+  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
   /* log operation */
   heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr,
 			    &context->hfid.vfid, &context->res_oid,
 			    context->recdes_p, true, false);
+
+  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
   /* all ok */
   return NO_ERROR;
@@ -27629,6 +27712,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
       assert (or_mvcc_header_size_from_flags (overflow_header.mvcc_flag) ==
 	      OR_MVCC_MAX_HEADER_SIZE);
 
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
       /* log operation */
       log_addr.pgptr = context->overflow_page_watcher_p->pgptr;
       log_addr.vfid = &context->hfid.vfid;
@@ -27636,6 +27721,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
       heap_mvcc_log_delete (thread_p, MVCC_GET_CHN (&overflow_header),
 			    &context->next_version, &context->partition_link,
 			    &log_addr, RVHF_MVCC_DELETE_OVERFLOW);
+
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* adjust header; provide zero length, we don't care to make header max
          size since it's already done */
@@ -27657,6 +27744,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
       pgbuf_set_dirty (thread_p, context->overflow_page_watcher_p->pgptr,
 		       DONT_FREE);
 
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
       /* Home record is not changed, but page max MVCCID and vacuum status
        * have to change. Also vacuum needs to be vacuum with the location
        * of home record (REC_RELOCATION).
@@ -27668,6 +27757,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
 
       pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr,
 		       DONT_FREE);
+
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
     }
   else
     {
@@ -27680,10 +27771,14 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
 	  return rc;
 	}
 
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr,
 				&context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable);
+
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical deletion of home record */
       rc = heap_delete_physical (thread_p, &context->hfid,
@@ -27700,6 +27795,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
 	{
 	  return ER_FAILED;
 	}
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
   /* all ok */
@@ -27745,6 +27842,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
     {
       return ER_FAILED;
     }
+
+  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   if (is_mvcc_op)
     {
@@ -27922,6 +28021,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	  update_old_home = true;
 	}
 
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
       /*
        * Update old home record (if necessary)
        */
@@ -27938,6 +28039,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 					       &context->home_recdes,
 					       &new_home_recdes, &home_addr);
 
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
 	  /* update home record */
 	  rc = heap_update_physical (thread_p,
 				     context->home_page_watcher_p->pgptr,
@@ -27946,6 +28049,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	    {
 	      return rc;
 	    }
+
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
       else
 	{
@@ -27962,6 +28067,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	  heap_mvcc_log_home_no_change_on_delete (thread_p, &home_addr);
 	  pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr,
 			   DONT_FREE);
+
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 	}
 
       /*
@@ -27981,6 +28088,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 				&context->partition_link, &forward_addr,
 				RVHF_MVCC_DELETE_REC_NEWHOME);
 
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
 	  /* physical update of forward record */
 	  rc = heap_update_physical (thread_p,
 				     context->forward_page_watcher_p->pgptr,
@@ -27989,6 +28098,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	    {
 	      return rc;
 	    }
+
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
 
       /*
@@ -28011,6 +28122,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 				   &forward_addr, 0, NULL);
 	    }
 
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
 	  /* physical removal of forward record */
 	  rc =
 	    heap_delete_physical (thread_p, &context->hfid,
@@ -28020,11 +28133,15 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	    {
 	      return rc;
 	    }
+
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
     }
   else
     {
       bool is_reusable = heap_is_reusable_oid (context->file_type);
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /*
        * Delete home record
@@ -28035,6 +28152,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 				&context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable);
 
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
       /* physical deletion of home record */
       rc = heap_delete_physical (thread_p, &context->hfid,
 				 context->home_page_watcher_p->pgptr,
@@ -28043,6 +28162,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	{
 	  return rc;
 	}
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /*
        * Delete forward record
@@ -28057,10 +28178,19 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 				&context->hfid.vfid, &forward_oid,
 				&forward_recdes, true);
 
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
       /* physical deletion of forward record */
-      return heap_delete_physical (thread_p, &context->hfid,
-				   context->forward_page_watcher_p->pgptr,
-				   &forward_oid);
+      rc =
+	heap_delete_physical (thread_p, &context->hfid,
+			      context->forward_page_watcher_p->pgptr,
+			      &forward_oid);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
   /* all ok */
@@ -28146,6 +28276,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 	  built_recdes.type = REC_HOME;
 	}
 
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
       /* check whether relocation is necessary */
       if (built_recdes.type == REC_BIGONE || built_recdes.type == REC_NEWHOME)
 	{
@@ -28193,6 +28325,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 					!OID_ISNULL (&context->
 						     partition_link));
 
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
 	  /* log relocation */
 	  rec_address.pgptr = context->home_page_watcher_p->pgptr;
 	  rec_address.vfid = &context->hfid.vfid;
@@ -28201,6 +28335,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 					       &context->home_recdes,
 					       &forwarding_recdes,
 					       &rec_address);
+
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
 	  /* we'll update the home page with the forwarding record */
 	  home_page_updated_recdes = &forwarding_recdes;
@@ -28220,6 +28356,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 				&context->partition_link, &rec_address,
 				RVHF_MVCC_DELETE_REC_HOME);
 
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
 	  /* we'll update the home page with the built record, since it fits
 	     in home page */
 	  home_page_updated_recdes = &built_recdes;
@@ -28233,10 +28371,14 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 	{
 	  return rc;
 	}
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
   else
     {
       bool is_reusable = heap_is_reusable_oid (context->file_type);
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /* log operation */
       heap_log_delete_physical (thread_p,
@@ -28244,10 +28386,14 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 				&context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable);
 
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
       /* physical deletion */
       return heap_delete_physical (thread_p, &context->hfid,
 				   context->home_page_watcher_p->pgptr,
 				   &context->oid);
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
   /* all ok */
@@ -28444,12 +28590,16 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					context->home_page_watcher_p->pgptr,
 					context->oid.slotid, REC_HOME);
 
+	      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
 	      /* log operation */
 	      heap_log_update_physical (thread_p,
 					context->home_page_watcher_p->pgptr,
 					&context->hfid.vfid, &context->oid,
 					&old_home_recdes, context->recdes_p,
 					is_mvcc_op);
+
+	      HEAP_PERF_TRACK_LOGGING (thread_p, context);
 	    }
 	  else
 	    {
@@ -28479,12 +28629,16 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 		  return ER_FAILED;
 		}
 
+	      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
 	      /* log operation */
 	      heap_log_update_physical (thread_p,
 					context->home_page_watcher_p->pgptr,
 					&context->hfid.vfid, &context->oid,
 					&old_home_recdes, &forwarding_recdes,
 					is_mvcc_op);
+
+	      HEAP_PERF_TRACK_LOGGING (thread_p, context);
 	    }
 
 	  /* remove old overflow record */
@@ -28493,6 +28647,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	    {
 	      return ER_FAILED;
 	    }
+
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
 	  /* dirty home page */
 	  pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr,
@@ -28548,6 +28704,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
       assert (false);
       return ER_FAILED;
     }
+
+  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   if (is_mvcc_op && !HEAP_IS_UPDATE_INPLACE (context->update_in_place))
     {
@@ -28699,6 +28857,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	  return ER_FAILED;
 	}
 
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
       /*
        * Update old home record (if necessary)
        */
@@ -28711,6 +28871,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 				    &context->home_recdes, &new_home_recdes,
 				    is_mvcc_op);
 
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
 	  /* update home record */
 	  rc = heap_update_physical (thread_p,
 				     context->home_page_watcher_p->pgptr,
@@ -28719,6 +28881,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	    {
 	      return rc;
 	    }
+
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
 
       /*
@@ -28733,6 +28897,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 				    &forward_recdes, context->recdes_p,
 				    is_mvcc_op);
 
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
 	  /* physical update of forward record */
 	  rc = heap_update_physical (thread_p,
 				     context->forward_page_watcher_p->pgptr,
@@ -28741,6 +28907,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	    {
 	      return rc;
 	    }
+
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
 
       /*
@@ -28756,6 +28924,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 				    &context->hfid.vfid, &forward_oid,
 				    &forward_recdes, mark_reusable);
 
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
 	  /* physical removal of forward record */
 	  rc =
 	    heap_delete_physical (thread_p, &context->hfid,
@@ -28765,6 +28935,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	    {
 	      return rc;
 	    }
+
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
 
       /* location did not change */
@@ -28922,11 +29094,15 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	  home_page_updated_recdes_p = context->recdes_p;
 	}
 
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
       /* log operation */
       heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr,
 				&context->hfid.vfid, &context->oid,
 				&context->home_recdes,
 				home_page_updated_recdes_p, is_mvcc_op);
+
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical update of home record */
       if (heap_update_physical (thread_p, context->home_page_watcher_p->pgptr,
@@ -28935,6 +29111,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	{
 	  return ER_FAILED;
 	}
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /* location did not change */
       COPY_OID (&context->res_oid, &context->oid);
@@ -29198,6 +29376,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
   assert (context->recdes_p != NULL);
   assert (!HFID_IS_NULL (&context->hfid));
 
+  HEAP_PERF_START (thread_p, context);
+
   /* check scancache */
   if (heap_scancache_check_with_hfid (thread_p, &context->hfid,
 				      &context->class_oid,
@@ -29272,6 +29452,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
+  HEAP_PERF_TRACK_PREPARE (thread_p, context);
+
   /*
    * Physical insertion
    */
@@ -29281,6 +29463,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
       goto error;
     }
 
+  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
   /*
    * Operation logging
    */
@@ -29288,6 +29472,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
 			    &context->hfid.vfid, &context->res_oid,
 			    context->recdes_p, is_mvcc_op,
 			    context->is_redistribute_insert_with_delid);
+
+  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
   /* mark insert page as dirty */
   pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
@@ -29369,6 +29555,8 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
   assert (context->type == HEAP_OPERATION_DELETE);
   assert (!HFID_IS_NULL (&context->hfid));
   assert (!OID_ISNULL (&context->oid));
+
+  HEAP_PERF_START (thread_p, context);
 
   /* check input OID validity */
   if (heap_is_valid_oid (&context->oid) != NO_ERROR)
@@ -29456,6 +29644,8 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
       rc = ER_FAILED;
       goto error;
     }
+
+  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   /*
    * Physical deletion and logging
@@ -30004,6 +30194,8 @@ heap_update_logical (THREAD_ENTRY * thread_p,
   assert (!OID_ISNULL (&context->oid));
   assert (!OID_ISNULL (&context->class_oid));
 
+  HEAP_PERF_START (thread_p, context);
+
   /* check scancache */
   if (heap_scancache_check_with_hfid (thread_p, &context->hfid,
 				      &context->class_oid,
@@ -30121,6 +30313,8 @@ heap_update_logical (THREAD_ENTRY * thread_p,
       rc = ER_FAILED;
       goto error;
     }
+
+  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   /*
    * Update record

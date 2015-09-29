@@ -44,6 +44,8 @@
 #include <sys/time.h>
 #endif /* WINDOWS */
 
+#include "tsc_timer.h"
+
 /* EXPORTED GLOBAL DEFINITIONS */
 #define MAX_DIAG_DATA_VALUE     0xfffffffffffffLL
 
@@ -468,6 +470,55 @@ struct mnt_server_exec_stats
   UINT64 vac_num_prefetch_requests_log_pages;
   UINT64 vac_num_prefetch_hits_log_pages;
 
+  /* Track heap modify. */
+  UINT64 heap_insert_prepare;
+  UINT64 heap_insert_execute;
+  UINT64 heap_insert_log;
+  UINT64 heap_delete_prepare;
+  UINT64 heap_delete_execute;
+  UINT64 heap_delete_log;
+  UINT64 heap_update_prepare;
+  UINT64 heap_update_execute;
+  UINT64 heap_update_log;
+  UINT64 heap_vacuum_prepare;
+  UINT64 heap_vacuum_execute;
+  UINT64 heap_vacuum_log;
+
+  UINT64 bt_find_unique;
+  UINT64 bt_range_search;
+  UINT64 bt_insert;
+  UINT64 bt_delete;
+  UINT64 bt_mvcc_delete;
+  UINT64 bt_mark_delete;
+  UINT64 bt_update_sk;
+  UINT64 bt_undo_insert;
+  UINT64 bt_undo_delete;
+  UINT64 bt_undo_mvcc_delete;
+  UINT64 bt_undo_update_sk;
+  UINT64 bt_vacuum;
+  UINT64 bt_vacuum_insid;
+  UINT64 bt_vacuum_update_sk;
+
+  UINT64 bt_traverse;
+  UINT64 bt_find_unique_traverse;
+  UINT64 bt_range_search_traverse;
+  UINT64 bt_insert_traverse;
+  UINT64 bt_delete_traverse;
+  UINT64 bt_mvcc_delete_traverse;
+  UINT64 bt_mark_delete_traverse;
+  UINT64 bt_update_sk_traverse;
+  UINT64 bt_undo_insert_traverse;
+  UINT64 bt_undo_delete_traverse;
+  UINT64 bt_undo_mvcc_delete_traverse;
+  UINT64 bt_undo_update_sk_traverse;
+  UINT64 bt_vacuum_traverse;
+  UINT64 bt_vacuum_insid_traverse;
+  UINT64 bt_vacuum_update_sk_traverse;
+
+  UINT64 vac_master;
+  UINT64 vac_worker_process_log;
+  UINT64 vac_worker_execute;
+
   /* Other statistics (change MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) */
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
   UINT64 pb_hit_ratio;
@@ -524,7 +575,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 100
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 144
 
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
 #define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 14
@@ -752,6 +803,41 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value,
      && ((elpased).tv_sec * 1000 + (elpased).tv_usec / 1000) \
          > prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
 #endif
+
+typedef struct perf_utime_tracker PERF_UTIME_TRACKER;
+struct perf_utime_tracker
+{
+  bool is_perf_tracking;
+  TSC_TICKS start_tick;
+  TSC_TICKS end_tick;
+};
+#define PERF_UTIME_TRACKER_INITIALIZER { false, 0, 0 }
+#define PERF_UTIME_TRACKER_START(thread_p, track) \
+  do \
+    { \
+      (track)->is_perf_tracking = mnt_is_perf_tracking (thread_p); \
+      if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
+    } \
+  while (false)
+#define PERF_UTIME_TRACKER_TIME(thread_p, track, callback) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      callback (thread_p, \
+		tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
+    } \
+  while (false)
+#define PERF_UTIME_TRACKER_TIME_AND_RESTART(thread_p, track, callback) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      callback (thread_p, \
+		tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
+      (track)->start_tick = (track)->end_tick; \
+    } \
+  while (false)
 
 #if defined(SERVER_MODE) || defined (SA_MODE)
 extern int mnt_Num_tran_exec_stats;
@@ -1032,6 +1118,143 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_oldest_mvcc_retry_counters(thread_p, \
 								    amount)
 
+#define mnt_heap_insert_prepare_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_insert_prepare_time (thread_p, amount)
+#define mnt_heap_insert_execute_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_insert_execute_time (thread_p, amount)
+#define mnt_heap_insert_log_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_insert_log_time (thread_p, amount)
+#define mnt_heap_delete_prepare_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_delete_prepare_time (thread_p, amount)
+#define mnt_heap_delete_execute_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_delete_execute_time (thread_p, amount)
+#define mnt_heap_delete_log_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_delete_log_time (thread_p, amount)
+#define mnt_heap_update_prepare_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_update_prepare_time (thread_p, amount)
+#define mnt_heap_update_execute_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_update_execute_time (thread_p, amount)
+#define mnt_heap_update_log_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_update_log_time (thread_p, amount)
+#define mnt_heap_vacuum_prepare_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_vacuum_prepare_time (thread_p, amount)
+#define mnt_heap_vacuum_execute_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_vacuum_execute_time (thread_p, amount)
+#define mnt_heap_vacuum_log_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_heap_vacuum_log_time (thread_p, amount)
+
+#define mnt_bt_find_unique_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_find_unique_time (thread_p, amount)
+#define mnt_bt_range_search_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_range_search_time (thread_p, amount)
+#define mnt_bt_insert_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_insert_time (thread_p, amount)
+#define mnt_bt_delete_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_delete_time (thread_p, amount)
+#define mnt_bt_mvcc_delete_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_mvcc_delete_time (thread_p, amount)
+#define mnt_bt_mark_delete_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_mark_delete_time (thread_p, amount)
+#define mnt_bt_update_sk_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_update_sk_time (thread_p, amount)
+#define mnt_bt_undo_insert_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_undo_insert_time (thread_p, amount)
+#define mnt_bt_undo_delete_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_undo_delete_time (thread_p, amount)
+#define mnt_bt_undo_mvcc_delete_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_undo_mvcc_delete_time (thread_p, amount)
+#define mnt_bt_undo_update_sk_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_undo_update_sk_time (thread_p, amount)
+#define mnt_bt_vacuum_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_vacuum_time (thread_p, amount)
+#define mnt_bt_vacuum_insid_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_vacuum_insid_time (thread_p, amount)
+#define mnt_bt_vacuum_update_sk_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_vacuum_update_sk_time (thread_p, amount)
+
+#define mnt_bt_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_traverse_time (thread_p, amount)
+#define mnt_bt_find_unique_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_find_unique_traverse_time (thread_p, amount)
+#define mnt_bt_range_search_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_range_search_traverse_time (thread_p, amount)
+#define mnt_bt_insert_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_insert_traverse_time (thread_p, amount)
+#define mnt_bt_delete_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_delete_traverse_time (thread_p, amount)
+#define mnt_bt_mvcc_delete_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_mvcc_delete_traverse_time (thread_p, amount)
+#define mnt_bt_mark_delete_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_mark_delete_traverse_time (thread_p, amount)
+#define mnt_bt_update_sk_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_update_sk_traverse_time (thread_p, amount)
+#define mnt_bt_undo_insert_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_undo_insert_traverse_time (thread_p, amount)
+#define mnt_bt_undo_delete_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_undo_delete_traverse_time (thread_p, amount)
+#define mnt_bt_undo_mvcc_delete_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_undo_mvcc_delete_traverse_time (thread_p, amount)
+#define mnt_bt_undo_update_sk_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_undo_update_sk_traverse_time (thread_p, amount)
+#define mnt_bt_vacuum_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_vacuum_traverse_time (thread_p, amount)
+#define mnt_bt_vacuum_insid_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_vacuum_insid_traverse_time (thread_p, amount)
+#define mnt_bt_vacuum_update_sk_traverse_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_vacuum_update_sk_traverse_time (thread_p, amount)
+
+#define mnt_vac_master_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_vac_master_time (thread_p, amount)
+#define mnt_vac_worker_process_log_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_vac_worker_process_log_time (thread_p, amount)
+#define mnt_vac_worker_execute_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_vac_worker_execute_time (thread_p, amount)
+
+
 extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
 extern int mnt_server_init (int num_tran_indices);
@@ -1184,6 +1407,92 @@ extern void mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p,
 
 
 
+extern void mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_heap_insert_execute_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_heap_insert_log_time (THREAD_ENTRY * thread_p,
+					UINT64 amount);
+extern void mnt_x_heap_delete_prepare_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_heap_delete_execute_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_heap_delete_log_time (THREAD_ENTRY * thread_p,
+					UINT64 amount);
+extern void mnt_x_heap_update_prepare_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_heap_update_execute_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_heap_update_log_time (THREAD_ENTRY * thread_p,
+					UINT64 amount);
+extern void mnt_x_heap_vacuum_prepare_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_heap_vacuum_execute_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_heap_vacuum_log_time (THREAD_ENTRY * thread_p,
+					UINT64 amount);
+
+extern void mnt_x_bt_find_unique_time (THREAD_ENTRY * thread_p,
+				       UINT64 amount);
+extern void mnt_x_bt_range_search_time (THREAD_ENTRY * thread_p,
+					UINT64 amount);
+extern void mnt_x_bt_insert_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_mvcc_delete_time (THREAD_ENTRY * thread_p,
+				       UINT64 amount);
+extern void mnt_x_bt_mark_delete_time (THREAD_ENTRY * thread_p,
+				       UINT64 amount);
+extern void mnt_x_bt_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_undo_insert_time (THREAD_ENTRY * thread_p,
+				       UINT64 amount);
+extern void mnt_x_bt_undo_delete_time (THREAD_ENTRY * thread_p,
+				       UINT64 amount);
+extern void mnt_x_bt_undo_mvcc_delete_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+extern void mnt_x_bt_undo_update_sk_time (THREAD_ENTRY * thread_p,
+					  UINT64 amount);
+extern void mnt_x_bt_vacuum_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_vacuum_insid_time (THREAD_ENTRY * thread_p,
+					UINT64 amount);
+extern void mnt_x_bt_vacuum_update_sk_time (THREAD_ENTRY * thread_p,
+					    UINT64 amount);
+
+extern void mnt_x_bt_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_find_unique_traverse_time (THREAD_ENTRY * thread_p,
+						UINT64 amount);
+extern void mnt_x_bt_range_search_traverse_time (THREAD_ENTRY * thread_p,
+						 UINT64 amount);
+extern void mnt_x_bt_insert_traverse_time (THREAD_ENTRY * thread_p,
+					   UINT64 amount);
+extern void mnt_x_bt_delete_traverse_time (THREAD_ENTRY * thread_p,
+					   UINT64 amount);
+extern void mnt_x_bt_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p,
+						UINT64 amount);
+extern void mnt_x_bt_mark_delete_traverse_time (THREAD_ENTRY * thread_p,
+						UINT64 amount);
+extern void mnt_x_bt_update_sk_traverse_time (THREAD_ENTRY * thread_p,
+					      UINT64 amount);
+extern void mnt_x_bt_undo_insert_traverse_time (THREAD_ENTRY * thread_p,
+						UINT64 amount);
+extern void mnt_x_bt_undo_delete_traverse_time (THREAD_ENTRY * thread_p,
+						UINT64 amount);
+extern void mnt_x_bt_undo_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p,
+						     UINT64 amount);
+extern void mnt_x_bt_undo_update_sk_traverse_time (THREAD_ENTRY * thread_p,
+						   UINT64 amount);
+extern void mnt_x_bt_vacuum_traverse_time (THREAD_ENTRY * thread_p,
+					   UINT64 amount);
+extern void mnt_x_bt_vacuum_insid_traverse_time (THREAD_ENTRY * thread_p,
+						 UINT64 amount);
+extern void mnt_x_bt_vacuum_update_sk_traverse_time (THREAD_ENTRY * thread_p,
+						     UINT64 amount);
+
+extern void mnt_x_vac_master_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_vac_worker_process_log_time (THREAD_ENTRY * thread_p,
+					       UINT64 amount);
+extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p,
+					   UINT64 amount);
+
 #else /* SERVER_MODE || SA_MODE */
 
 #define mnt_file_creates(thread_p)
@@ -1297,6 +1606,54 @@ extern void mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p,
 #define mnt_tran_complete_time(thread_p,amount)
 #define mnt_oldest_mvcc_acquire_time(thread_p,amount)
 #define mnt_oldest_mvcc_retry_counters(thread_p,amount)
+
+#define mnt_heap_insert_prepare_time(thread_p,amount)
+#define mnt_heap_insert_execute_time(thread_p,amount)
+#define mnt_heap_insert_log_time(thread_p,amount)
+#define mnt_heap_delete_prepare_time(thread_p,amount)
+#define mnt_heap_delete_execute_time(thread_p,amount)
+#define mnt_heap_delete_log_time(thread_p,amount)
+#define mnt_heap_update_prepare_time(thread_p,amount)
+#define mnt_heap_update_execute_time(thread_p,amount)
+#define mnt_heap_update_log_time(thread_p,amount)
+#define mnt_heap_vacuum_prepare_time(thread_p,amount)
+#define mnt_heap_vacuum_execute_time(thread_p,amount)
+#define mnt_heap_vacuum_log_time(thread_p,amount)
+
+#define mnt_bt_find_unique_time(thread_p,amount)
+#define mnt_bt_range_search_time(thread_p,amount)
+#define mnt_bt_insert_time(thread_p,amount)
+#define mnt_bt_delete_time(thread_p,amount)
+#define mnt_bt_mvcc_delete_time(thread_p,amount)
+#define mnt_bt_mark_delete_time(thread_p,amount)
+#define mnt_bt_update_sk_time(thread_p,amount)
+#define mnt_bt_undo_insert_time(thread_p,amount)
+#define mnt_bt_undo_delete_time(thread_p,amount)
+#define mnt_bt_undo_mvcc_delete_time(thread_p,amount)
+#define mnt_bt_undo_update_sk_time(thread_p,amount)
+#define mnt_bt_vacuum_time(thread_p,amount)
+#define mnt_bt_vacuum_insid_time(thread_p,amount)
+#define mnt_bt_vacuum_update_sk_time(thread_p,amount)
+
+#define mnt_bt_traverse_time(thread_p,amount)
+#define mnt_bt_find_unique_traverse_time(thread_p,amount)
+#define mnt_bt_range_search_traverse_time(thread_p,amount)
+#define mnt_bt_insert_traverse_time(thread_p,amount)
+#define mnt_bt_delete_traverse_time(thread_p,amount)
+#define mnt_bt_mvcc_delete_traverse_time(thread_p,amount)
+#define mnt_bt_mark_delete_traverse_time(thread_p,amount)
+#define mnt_bt_update_sk_traverse_time(thread_p,amount)
+#define mnt_bt_undo_insert_traverse_time(thread_p,amount)
+#define mnt_bt_undo_delete_traverse_time(thread_p,amount)
+#define mnt_bt_undo_mvcc_delete_traverse_time(thread_p,amount)
+#define mnt_bt_undo_update_sk_traverse_time(thread_p,amount)
+#define mnt_bt_vacuum_traverse_time(thread_p,amount)
+#define mnt_bt_vacuum_insid_traverse_time(thread_p,amount)
+#define mnt_bt_vacuum_update_sk_traverse_time(thread_p,amount)
+
+#define mnt_vac_master_time(thread_p,amount)
+#define mnt_vac_worker_process_log_time(thread_p,amount)
+#define mnt_vac_worker_execute_time(thread_p,amount)
 
 #endif /* CS_MODE */
 

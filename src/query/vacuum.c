@@ -560,7 +560,22 @@ struct vacuum_heap_helper
   int n_vacuumed;		/* Number of vacuumed objects.
 				 */
   int initial_home_free_space;	/* Free space in home page before vacuum */
+
+  /* Performance tracking. */
+  PERF_UTIME_TRACKER time_track;
 };
+
+#define VACUUM_PERF_HEAP_START(thread_p, helper) \
+  PERF_UTIME_TRACKER_START (thread_p, &(helper)->time_track);
+#define VACUUM_PERF_HEAP_TRACK_PREPARE(thread_p, helper) \
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+				       mnt_heap_vacuum_prepare_time)
+#define VACUUM_PERF_HEAP_TRACK_EXECUTE(thread_p, helper) \
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+				       mnt_heap_vacuum_execute_time)
+#define VACUUM_PERF_HEAP_TRACK_LOGGING(thread_p, helper) \
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+				       mnt_heap_vacuum_log_time)
 
 /* Flags used to mark rcv->offset with hints about recovery process. */
 /* Flas for reusable heap files. */
@@ -1160,6 +1175,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
   assert (n_heap_objects > 0);
   assert (MVCCID_IS_NORMAL (threshold_mvccid));
 
+  VACUUM_PERF_HEAP_START (thread_p, &helper);
+
   /* Get page from first object. */
   VPID_GET_FROM_OID (&helper.home_vpid, &heap_objects->oid);
   if (was_interrupted)
@@ -1346,12 +1363,17 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 			     (long long int)
 			     pgbuf_get_lsa (helper.home_page)->pageid,
 			     (int) pgbuf_get_lsa (helper.home_page)->offset);
+
+	      VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, &helper);
+
 	      vacuum_log_vacuum_heap_page (thread_p, helper.home_page,
 					   helper.n_bulk_vacuumed,
 					   helper.slots, helper.results,
 					   helper.next_versions,
 					   helper.partition_links,
 					   helper.reusable, true);
+
+	      VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, &helper);
 	    }
 
 	  /* Reset n_vacuumed since they have been logged already. */
@@ -1375,6 +1397,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 		  goto end;
 		}
 	      assert (!HFID_IS_NULL (&helper.hfid));
+	      VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, &helper);
+
 	      if (pgbuf_has_prevent_dealloc (helper.home_page) == false
 		  && heap_remove_page_on_vacuum (thread_p, &helper.home_page,
 						 &helper.hfid))
@@ -1390,6 +1414,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 				 helper.hfid.hpgid,
 				 helper.hfid.vfid.volid,
 				 helper.hfid.vfid.fileid);
+
+		  VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, &helper);
 		  goto end;
 		}
 	      else if (helper.home_page != NULL)
@@ -1564,6 +1590,8 @@ retry_prepare:
 	    }
 	  /* Conditional latch. Unfix home, and fix in reversed order. */
 
+	  VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
+
 	  /* Make sure all current changes on home are logged. */
 	  vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
 	  assert (helper->home_page == NULL);
@@ -1654,7 +1682,10 @@ retry_prepare:
 	      /* Failed conditional latch. Unfix heap page and try again using
 	       * unconditional latch.
 	       */
+	      VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
+
 	      vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
+
 	      if (heap_ovf_find_vfid (thread_p, &helper->hfid,
 				      &helper->overflow_vfid, false,
 				      PGBUF_UNCONDITIONAL_LATCH) == NULL
@@ -1773,6 +1804,8 @@ retry_prepare:
   assert ((helper->record_type == REC_RELOCATION
 	   || helper->record_type == REC_BIGONE)
 	  == (helper->forward_page != NULL));
+
+  VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
 
   /* Success. */
   return NO_ERROR;
@@ -2049,6 +2082,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert (!HFID_IS_NULL (&helper->hfid));
       assert (!OID_ISNULL (&helper->forward_oid));
 
+      VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
+
       vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page,
 					 helper->crt_slotid,
 					 &helper->forward_recdes,
@@ -2058,6 +2093,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 								  mvcc_header),
 					 helper->reusable);
 
+      VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
+
       if (spage_vacuum_slot (thread_p, helper->forward_page,
 			     helper->forward_oid.slotid, NULL, NULL, true)
 	  != NO_ERROR)
@@ -2065,6 +2102,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  return ER_FAILED;
 	}
+
+      VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
       /* Log changes in forward page immediately. */
       vacuum_log_redoundo_vacuum_record (thread_p, helper->forward_page,
@@ -2076,12 +2115,16 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
+      VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
+
       break;
 
     case REC_BIGONE:
       assert (helper->forward_page != NULL);
       /* Overflow first page is required. */
       assert (!VFID_ISNULL (&helper->overflow_vfid));
+
+      VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
       vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page,
 					 helper->crt_slotid,
@@ -2091,6 +2134,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 					 &MVCC_GET_PARTITION_OID (&helper->
 								  mvcc_header),
 					 helper->reusable);
+
+      VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
       /* Unfix first overflow page. */
       pgbuf_unfix_and_init (thread_p, helper->forward_page);
@@ -2103,7 +2148,12 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  return ER_FAILED;
 	}
+
+      VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
+
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
+      VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
       break;
 
     case REC_HOME:
@@ -2119,6 +2169,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   helper->n_vacuumed++;
 
   assert (helper->forward_page == NULL);
+
+  VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
   return NO_ERROR;
 }
@@ -2242,6 +2294,8 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
 	}
     }
 
+  VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
+
   /* Log vacuumed slots */
   vacuum_log_vacuum_heap_page (thread_p, helper->home_page,
 			       helper->n_bulk_vacuumed, helper->slots,
@@ -2258,6 +2312,8 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
 
   /* Reset the number of vacuumed slots */
   helper->n_bulk_vacuumed = 0;
+
+  VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 }
 
 
@@ -2768,11 +2824,15 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   bool save_check_interrupt;
 #endif /* SA_MODE */
 
+  PERF_UTIME_TRACKER perf_tracker;
+
 #if defined (SA_MODE)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	  ER_STAND_ALONE_VACUUM_START, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum start.\n");
 #endif
+
+  PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
   vacuum_Global_oldest_active_mvccid =
     logtb_get_oldest_active_mvccid (thread_p);
@@ -2788,6 +2848,8 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 #if defined (SA_MODE)
       goto finish_sa_mode;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
+
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
       return;
 #endif /* SERVER_MODE */
     }
@@ -2885,6 +2947,9 @@ restart:
 	  /* Queue is full, abort creating new jobs. */
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_MASTER,
 			 "VACUUM ERROR: Could not push new job.");
+
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker,
+				   mnt_vac_master_time);
 	  return;
 	}
 
@@ -2920,9 +2985,14 @@ restart:
 			 "vacuum_Block_data_buffer size:%lld/%lld",
 			 vacuum_block_data_buffer_aprox_size,
 			 vacuum_Block_data_buffer->capacity);
+
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker,
+				   mnt_vac_master_time);
 	  return;
 	}
 #else
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+
       vacuum_data_entry = *entry;
       error_code =
 	vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
@@ -2932,6 +3002,8 @@ restart:
 		    "Stand-alone vacuum finished block %lld.\n",
 		    (long long int)
 		    VACUUM_DATA_ENTRY_BLOCKID (&vacuum_data_entry));
+
+      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 #endif
     }
 
@@ -2988,9 +3060,13 @@ finish_sa_mode:
        * bug.
        */
 
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+
       /* Execute vacuum. */
       (void) vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL,
 				       true);
+
+      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
     }
 
   (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
@@ -3018,6 +3094,8 @@ finish_sa_mode:
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	  ER_STAND_ALONE_VACUUM_END, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
+
+  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
 #endif
 }
 
@@ -3096,12 +3174,16 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   bool is_file_dropped = false;
   bool page_found = false;
 
+  PERF_UTIME_TRACKER perf_tracker;
+
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       return NO_ERROR;
     }
 
   assert (worker != NULL);
+
+  PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
   /* Initialize log_vacuum */
   LSA_SET_NULL (&log_vacuum.prev_mvcc_op_log_lsa);
@@ -3166,6 +3248,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 		     (long long int) log_lsa.pageid, (int) log_lsa.offset);
 
       worker->state = VACUUM_WORKER_STATE_PROCESS_LOG;
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker,
+					   mnt_vac_worker_execute_time);
+
       LSA_COPY (&rcv_lsa, &log_lsa);
 
       if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
@@ -3208,6 +3293,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	}
 
       worker->state = VACUUM_WORKER_STATE_EXECUTE;
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker,
+					   mnt_vac_worker_process_log_time);
 
 #if !defined (NDEBUG)
       if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid)
@@ -3472,6 +3559,9 @@ end:
 
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker,
+				       mnt_vac_worker_execute_time);
 
   return error_code;
 }

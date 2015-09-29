@@ -374,6 +374,55 @@ extern "C"
     unsigned int vac_num_prefetch_requests_log_pages;
     unsigned int vac_num_prefetch_hits_log_pages;
 
+    /* Track heap modify. */
+    unsigned int heap_insert_prepare;
+    unsigned int heap_insert_execute;
+    unsigned int heap_insert_log;
+    unsigned int heap_delete_prepare;
+    unsigned int heap_delete_execute;
+    unsigned int heap_delete_log;
+    unsigned int heap_update_prepare;
+    unsigned int heap_update_execute;
+    unsigned int heap_update_log;
+    unsigned int heap_vacuum_prepare;
+    unsigned int heap_vacuum_execute;
+    unsigned int heap_vacuum_log;
+
+    unsigned int bt_find_unique;
+    unsigned int bt_range_search;
+    unsigned int bt_insert;
+    unsigned int bt_delete;
+    unsigned int bt_mvcc_delete;
+    unsigned int bt_mark_delete;
+    unsigned int bt_update_sk;
+    unsigned int bt_undo_insert;
+    unsigned int bt_undo_delete;
+    unsigned int bt_undo_mvcc_delete;
+    unsigned int bt_undo_update_sk;
+    unsigned int bt_vacuum;
+    unsigned int bt_vacuum_insid;
+    unsigned int bt_vacuum_update_sk;
+
+    unsigned int bt_traverse;
+    unsigned int bt_find_unique_traverse;
+    unsigned int bt_range_search_traverse;
+    unsigned int bt_insert_traverse;
+    unsigned int bt_delete_traverse;
+    unsigned int bt_mvcc_delete_traverse;
+    unsigned int bt_mark_delete_traverse;
+    unsigned int bt_update_sk_traverse;
+    unsigned int bt_undo_insert_traverse;
+    unsigned int bt_undo_delete_traverse;
+    unsigned int bt_undo_mvcc_delete_traverse;
+    unsigned int bt_undo_update_sk_traverse;
+    unsigned int bt_vacuum_traverse;
+    unsigned int bt_vacuum_insid_traverse;
+    unsigned int bt_vacuum_update_sk_traverse;
+
+    unsigned int vac_master;
+    unsigned int vac_worker_process_log;
+    unsigned int vac_worker_execute;
+
     /* Other statistics */
     unsigned int pb_hit_ratio;
     /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */

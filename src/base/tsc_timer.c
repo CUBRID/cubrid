@@ -125,6 +125,22 @@ tsc_elapsed_time_usec (TSCTIMEVAL * tv, TSC_TICKS end_tick,
 }
 
 /*
+ * tsc_elapsed_utime () - measure the elapsed time in microseconds (not
+ *			  seconds, microseconds like tsc_elapsed_time_usec).
+ *
+ * return	   : Elapsed time (microseconds).
+ * end_tick (in)   : End time.
+ * start_tick (in) : Start time.
+ */
+UINT64
+tsc_elapsed_utime (TSC_TICKS end_tick, TSC_TICKS start_tick)
+{
+  TSCTIMEVAL tv;
+  tsc_elapsed_time_usec (&tv, end_tick, start_tick);
+  return tv.tv_sec * 1000000LL + tv.tv_usec;
+}
+
+/*
  * tsc_start_time_usec() - get the current Time Stamp Counter
  *   tck(out): current CPU ticks or timeval
  *

@@ -245,6 +245,8 @@ struct btree_scan
   bool is_scan_started;
   bool force_restart_from_root;
 
+  PERF_UTIME_TRACKER time_track;
+
   void *bts_other;
 };
 
@@ -292,6 +294,7 @@ struct btree_scan
     (bts)->is_scan_started = false;			\
     (bts)->force_restart_from_root = false;		\
     OID_SET_NULL (&(bts)->match_class_oid);		\
+    (bts)->time_track.is_perf_tracking = false;		\
     (bts)->bts_other = NULL;				\
   } while (0)
 

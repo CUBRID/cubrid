@@ -40,6 +40,7 @@
 #include "thread.h"
 #include "system_catalog.h"
 #include "page_buffer.h"
+#include "perf_monitor.h"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) || \
@@ -395,6 +396,9 @@ struct heap_operation_context
 						 * redistribute data operation and
 						 * has a valid delid
 						 */
+
+  /* Performance stat dump. */
+  PERF_UTIME_TRACKER time_track;
 };
 
 /* HEAP_OPERATION_CONTEXT flags */

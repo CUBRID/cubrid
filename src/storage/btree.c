@@ -62,6 +62,7 @@
 #endif
 
 #include "fault_injection.h"
+#include "perf_monitor.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -587,6 +588,8 @@ struct btree_find_unique_helper
 				 */
   bool found_object;		/* Set to true if object was found. */
 
+  PERF_UTIME_TRACKER time_track;
+
 #if defined (SERVER_MODE)
   OID locked_oid;		/* Locked object. */
   OID locked_class_oid;		/* Locked object class OID. */
@@ -600,6 +603,7 @@ struct btree_find_unique_helper
     NULL_LOCK, /* lock_mode */ \
     NULL, /* snapshot */ \
     false, /* found_object */ \
+    PERF_UTIME_TRACKER_INITIALIZER, /* time_track */ \
     OID_INITIALIZER, /* locked_oid */ \
     OID_INITIALIZER /* locked_class_oid */ \
   }
@@ -609,7 +613,8 @@ struct btree_find_unique_helper
     OID_INITIALIZER, /* match_class_oid */ \
     NULL_LOCK, /* lock_mode */ \
     NULL, /* snapshot */ \
-    false /* found_object */ \
+    false, /* found_object */ \
+    PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
   }
 #endif /* !SA_MODE */
 
@@ -971,6 +976,9 @@ struct btree_insert_helper
   char *rv_redo_data_ptr;
   LOG_LSA compensate_undo_nxlsa;
 
+  /* Performance tracker. */
+  PERF_UTIME_TRACKER time_track;
+
 #if defined (SERVER_MODE)
   OID saved_locked_oid;		/* Save locked object from unique index key.
 				 */
@@ -1008,6 +1016,7 @@ struct btree_insert_helper
     NULL /* rv_redo_data */, \
     NULL /* rv_redo_data_ptr */, \
     LSA_INITIALIZER /* compensate_undo_nxlsa */, \
+    PERF_UTIME_TRACKER_INITIALIZER /* time_track */, \
     OID_INITIALIZER /* saved_locked_oid */, \
     OID_INITIALIZER /* saved_locked_class_oid */ \
   }
@@ -1038,7 +1047,8 @@ struct btree_insert_helper
     0 /* rv_keyval_data_length */, \
     NULL /* rv_redo_data */, \
     NULL /* rv_redo_data_ptr */, \
-    LSA_INITIALIZER /* compensate_undo_nxlsa */ \
+    LSA_INITIALIZER /* compensate_undo_nxlsa */, \
+    PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
   }
 #endif /* SA_MODE */
 
@@ -1095,6 +1105,9 @@ struct btree_delete_helper
   char *rv_redo_data_ptr;
   LOG_LSA reference_lsa;
   bool is_system_op_started;
+
+  /* Performance tracker. */
+  PERF_UTIME_TRACKER time_track;
 };
 #define BTREE_DELETE_HELPER_INITIALIZER \
   { \
@@ -1118,7 +1131,8 @@ struct btree_delete_helper
     NULL /* rv_redo_data */, \
     NULL /* rv_redo_data_ptr */, \
     LSA_INITIALIZER, /* reference_lsa */ \
-    false /* is_system_op_started */ \
+    false /* is_system_op_started */, \
+    PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
   }
 
 #define BTREE_DELETE_OID(helper) \
@@ -1127,6 +1141,124 @@ struct btree_delete_helper
   (&((helper)->object_info.class_oid))
 #define BTREE_DELETE_MVCC_INFO(helper) \
   (&((helper)->object_info.mvcc_info))
+
+/* Performance tracking macro's. */
+#define BTREE_PERF_TRACK_TIME(thread_p, helper) \
+  do \
+    { \
+      switch ((helper)->purpose) { \
+      case BTREE_OP_INSERT_NEW_OBJECT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_insert_time); \
+	break; \
+      case BTREE_OP_INSERT_MVCC_DELID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_mvcc_delete_time); \
+	break; \
+      case BTREE_OP_INSERT_MARK_DELETED: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_mark_delete_time); \
+	break; \
+      case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_undo_delete_time); \
+	break; \
+      case BTREE_OP_DELETE_OBJECT_PHYSICAL: \
+      case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_delete_time); \
+	break; \
+      case BTREE_OP_DELETE_UNDO_INSERT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_undo_insert_time); \
+	break; \
+      case BTREE_OP_DELETE_UNDO_INSERT_DELID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_undo_mvcc_delete_time); \
+	break; \
+      case BTREE_OP_DELETE_VACUUM_OBJECT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_vacuum_time); \
+	break; \
+      case BTREE_OP_DELETE_VACUUM_INSID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_vacuum_insid_time); \
+	break; \
+      case BTREE_OP_UPDATE_SAME_KEY_DIFF_OID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_update_sk_time); \
+	break; \
+      case BTREE_OP_UNDO_SAME_KEY_DIFF_OID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_undo_update_sk_time); \
+	break; \
+      case BTREE_OP_VACUUM_SAME_KEY_DIFF_OID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_vacuum_update_sk_time); \
+	break; \
+      default: \
+	assert (false); \
+      } \
+    } \
+  while (false)
+#define BTREE_PERF_TRACK_TRAVERSE_TIME(thread_p, helper) \
+  do \
+    { \
+      switch ((helper)->purpose) { \
+      case BTREE_OP_INSERT_NEW_OBJECT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_insert_traverse_time); \
+	break; \
+      case BTREE_OP_INSERT_MVCC_DELID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_mvcc_delete_traverse_time); \
+	break; \
+      case BTREE_OP_INSERT_MARK_DELETED: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_mark_delete_traverse_time); \
+	break; \
+      case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_undo_delete_traverse_time); \
+	break; \
+      case BTREE_OP_DELETE_OBJECT_PHYSICAL: \
+      case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_delete_traverse_time); \
+	break; \
+      case BTREE_OP_DELETE_UNDO_INSERT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_undo_insert_traverse_time); \
+	break; \
+      case BTREE_OP_DELETE_UNDO_INSERT_DELID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_undo_mvcc_delete_traverse_time); \
+	break; \
+      case BTREE_OP_DELETE_VACUUM_OBJECT: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_vacuum_traverse_time); \
+	break; \
+      case BTREE_OP_DELETE_VACUUM_INSID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_vacuum_insid_traverse_time); \
+	break; \
+      case BTREE_OP_UPDATE_SAME_KEY_DIFF_OID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_update_sk_traverse_time); \
+	break; \
+      case BTREE_OP_UNDO_SAME_KEY_DIFF_OID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_undo_update_sk_traverse_time); \
+	break; \
+      case BTREE_OP_VACUUM_SAME_KEY_DIFF_OID: \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
+					     mnt_bt_vacuum_update_sk_traverse_time); \
+	break; \
+      default: \
+	assert (false); \
+      } \
+    } \
+  while (false)
 
 /* B-tree redo recovery flags. They are additional to
  * LOG_RV_RECORD_MODIFY_MASK.
@@ -25762,6 +25894,10 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p,
   assert (leaf_page != NULL && *leaf_page != NULL);
   assert (find_unique_helper != NULL);
 
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p,
+				       &find_unique_helper->time_track,
+				       mnt_bt_find_unique_traverse_time);
+
   /* Initialize find unique helper. */
   find_unique_helper->found_object = false;
 
@@ -25838,6 +25974,10 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p,
       find_unique_helper->found_object = true;
       COPY_OID (&find_unique_helper->oid, &unique_oid);
     }
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p,
+				       &find_unique_helper->time_track,
+				       mnt_bt_find_unique_time);
   return NO_ERROR;
 }
 
@@ -25935,6 +26075,10 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p,
 
   /* other_args is find unique helper. */
   find_unique_helper = (BTREE_FIND_UNIQUE_HELPER *) other_args;
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p,
+				       &find_unique_helper->time_track,
+				       mnt_bt_find_unique_traverse_time);
 
   /* Locking is required. */
   assert (find_unique_helper->lock_mode >= S_LOCK);
@@ -26153,6 +26297,10 @@ error_or_not_found:
       OID_SET_NULL (&find_unique_helper->locked_oid);
     }
 #endif
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p,
+				       &find_unique_helper->time_track,
+				       mnt_bt_find_unique_time);
   return error_code;
 }
 
@@ -26234,6 +26382,10 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p,
 
   /* other_args is find unique helper. */
   find_unique_helper = (BTREE_FIND_UNIQUE_HELPER *) other_args;
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p,
+				       &find_unique_helper->time_track,
+				       mnt_bt_find_unique_traverse_time);
 
   /* Locking is required. */
   assert (find_unique_helper->lock_mode >= S_LOCK);
@@ -26556,6 +26708,11 @@ error_or_not_found:
       OID_SET_NULL (&find_unique_helper->locked_oid);
     }
 #endif
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p,
+				       &find_unique_helper->time_track,
+				       mnt_bt_find_unique_traverse_time);
+
   return error_code;
 }
 
@@ -27128,6 +27285,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 	  || scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
   assert (oid != NULL);
+
+  PERF_UTIME_TRACKER_START (thread_p, &find_unique_helper.time_track);
 
   /* Initialize oid as NULL. */
   OID_SET_NULL (oid);
@@ -28098,6 +28257,8 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   assert (bts != NULL);
   assert (key_func != NULL);
 
+  PERF_UTIME_TRACKER_START (thread_p, &bts->time_track);
+
   /* Reset end_scan and end_one_iteration flags. */
   bts->end_scan = false;
   bts->end_one_iteration = false;
@@ -28126,6 +28287,10 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	  /* Resume from current key. */
 	  error_code = btree_range_scan_resume (thread_p, bts);
 	}
+
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track,
+					   mnt_bt_range_search_traverse_time);
+
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -28221,6 +28386,9 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	      break;
 	    }
 	}
+
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track,
+					   mnt_bt_range_search_time);
     }
 
 end:
@@ -28268,6 +28436,9 @@ end:
       (*bts->key_limit_upper) -= bts->n_oids_read_last_iteration;
       assert ((*bts->key_limit_upper) >= 0);
     }
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track,
+				       mnt_bt_range_search_time);
 
   return error_code;
 
@@ -29553,6 +29724,8 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	   && purpose != BTREE_OP_INSERT_MVCC_DELID
 	   && purpose != BTREE_OP_INSERT_MARK_DELETED)
 	  || (class_oid != NULL && !OID_ISNULL (class_oid)));
+
+  PERF_UTIME_TRACKER_START (thread_p, &insert_helper.time_track);
 
   /* Save OID, class OID and MVCC info in insert helper. */
   COPY_OID (BTREE_INSERT_OID (&insert_helper), oid);
@@ -30999,6 +31172,8 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (!BTREE_MVCC_INFO_IS_DELID_VALID
 	  (BTREE_INSERT_MVCC_INFO (insert_helper)));
 
+  BTREE_PERF_TRACK_TRAVERSE_TIME (thread_p, insert_helper);
+
   /* Prepare log data */
   insert_helper->leaf_addr.offset = search_key->slotid;
   insert_helper->leaf_addr.pgptr = *leaf_page;
@@ -31058,6 +31233,7 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	{
 	  db_private_free_and_init (thread_p, insert_helper->rv_keyval_data);
 	}
+      BTREE_PERF_TRACK_TIME (thread_p, insert_helper);
       return NO_ERROR;
     }
   /* Key was found. Append new object to existing key. */
@@ -31169,6 +31345,7 @@ exit:
       db_private_free_and_init (thread_p, insert_helper->rv_keyval_data);
     }
 
+  BTREE_PERF_TRACK_TIME (thread_p, insert_helper);
   return error_code;
 
 error:
@@ -32300,6 +32477,8 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
 	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED);
 
+  BTREE_PERF_TRACK_TRAVERSE_TIME (thread_p, insert_helper);
+
   if (search_key->result != BTREE_KEY_FOUND)
     {
       /* Impossible. Object and key should exist in b-tree. */
@@ -32334,7 +32513,7 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error_code;
+      goto exit;
     }
 
   if (insert_helper->is_unique_multi_update && !insert_helper->is_ha_enabled
@@ -32371,7 +32550,8 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       /* Error. */
       ASSERT_ERROR ();
       assert (found_page == NULL);
-      return error_code;
+
+      goto exit;
     }
   if (offset_to_found_object == NOT_FOUND)
     {
@@ -32379,7 +32559,8 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       assert (false);
       btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
 				   "btree_key_insert_delete_mvccid");
-      return ER_BTREE_UNKNOWN_OID;
+
+      goto exit;
     }
   /* Object was found. */
   if (found_page == *leaf_page)
@@ -32405,7 +32586,7 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto exit;
 	}
 
 #if !defined (NDEBUG)
@@ -32420,7 +32601,7 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	}
 #endif /* !NDEBUG */
 
-      return error_code;
+      goto exit;
     }
   /* Found in overflow page. */
 
@@ -32429,7 +32610,7 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     {
       assert_release (false);
       pgbuf_unfix_and_init (thread_p, found_page);
-      return ER_FAILED;
+      goto exit;
     }
   /* Insert delete MVCCID. */
   error_code =
@@ -32441,7 +32622,7 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     {
       ASSERT_ERROR ();
       pgbuf_unfix_and_init (thread_p, found_page);
-      return error_code;
+      goto exit;
     }
   pgbuf_unfix_and_init (thread_p, found_page);
 
@@ -32457,7 +32638,10 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
 #endif /* !NDEBUG */
 
-  return NO_ERROR;
+exit:
+
+  BTREE_PERF_TRACK_TIME (thread_p, insert_helper);
+  return error_code;
 }
 
 /*
@@ -32516,6 +32700,8 @@ btree_key_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (search_key != NULL);
   assert (helper->purpose == BTREE_OP_UPDATE_SAME_KEY_DIFF_OID);
 
+  BTREE_PERF_TRACK_TRAVERSE_TIME (thread_p, helper);
+
   if (search_key->result != BTREE_KEY_FOUND)
     {
       /* Impossible. Object and key should exist in b-tree. */
@@ -32550,7 +32736,7 @@ btree_key_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error_code;
+      goto end;
     }
 
   error_code =
@@ -32565,7 +32751,7 @@ btree_key_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       /* Error. */
       ASSERT_ERROR ();
       assert (old_version_page == NULL);
-      return error_code;
+      goto end;
     }
   if (offset_to_old_version == NOT_FOUND)
     {
@@ -32955,6 +33141,8 @@ end:
     {
       db_private_free (thread_p, helper->rv_keyval_data);
     }
+
+  BTREE_PERF_TRACK_TIME (thread_p, helper);
   return error_code;
 }
 
@@ -35516,6 +35704,8 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  || delete_helper->purpose
 	  == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
 
+  BTREE_PERF_TRACK_TRAVERSE_TIME (thread_p, delete_helper);
+
   if (search_key->result == BTREE_KEY_FOUND)
     {
       /* Key was found. We need to find OID. */
@@ -35536,7 +35726,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto exit;
 	}
       /* Find OID and output its location/MVCC info. */
       error_code =
@@ -35551,7 +35741,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto error;
+	  goto exit;
 	}
     }
   else
@@ -35596,7 +35786,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 			     delete_helper->printed_key != NULL ?
 			     delete_helper->printed_key : "(unknown)");
 	    }
-	  return NO_ERROR;
+	  goto exit;
 	}
       else
 	{
@@ -35605,7 +35795,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
 				       "btree_key_delete_remove_object: "
 				       "key was not found.");
-	  return ER_BTREE_UNKNOWN_KEY;
+	  goto exit;
 	}
     }
   /* Object was found. */
@@ -35673,7 +35863,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto error;
+	  goto exit;
 	}
     }
   else
@@ -35699,7 +35889,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      goto error;
+      goto exit;
     }
   if (found_page != NULL && found_page != *leaf_page)
     {
@@ -35727,7 +35917,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto error;
+	  goto exit;
 	}
       error_code =
 	btree_read_record (thread_p, btid_int, *leaf_page, &leaf_record, NULL,
@@ -35737,7 +35927,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto error;
+	  goto exit;
 	}
       num_visible_oids =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int,
@@ -35749,7 +35939,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (num_visible_oids < 0)
 	{
 	  ASSERT_ERROR ();
-	  goto error;
+	  goto exit;
 	}
       else if (num_visible_oids > 0)
 	{
@@ -35763,14 +35953,9 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	}
     }
   /* Success. */
-  if (delete_helper->rv_keyval_data != NULL
-      && delete_helper->rv_keyval_data != rv_undo_data_bufalign)
-    {
-      db_private_free_and_init (thread_p, delete_helper->rv_keyval_data);
-    }
-  return NO_ERROR;
 
-error:
+exit:
+
   if (found_page != NULL && found_page != *leaf_page)
     {
       pgbuf_unfix_and_init (thread_p, found_page);
@@ -35784,7 +35969,8 @@ error:
     {
       db_private_free_and_init (thread_p, delete_helper->rv_keyval_data);
     }
-  assert_release (error_code != NO_ERROR);
+
+  BTREE_PERF_TRACK_TIME (thread_p, delete_helper);
   return error_code;
 }
 
@@ -36741,6 +36927,8 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_INSID);
   assert (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
 
+  BTREE_PERF_TRACK_TRAVERSE_TIME (thread_p, delete_helper);
+
   if (search_key->result == BTREE_KEY_FOUND)
     {
       /* Key was found. Find the object. */
@@ -36767,7 +36955,7 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto exit;
 	}
 
       /* Search object with insert MVCCID. */
@@ -36783,7 +36971,7 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto error;
+	  goto exit;
 	}
     }
   if (offset_to_object == NOT_FOUND)
@@ -36824,7 +37012,7 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto error;
+	  goto exit;
 	}
 #if !defined (NDEBUG)
       (void) btree_check_valid_record (thread_p, btid_int, &record,
@@ -36865,7 +37053,7 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       /* Unexpected. */
       assert_release (false);
       error_code = ER_FAILED;
-      goto error;
+      goto exit;
     }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -36916,18 +37104,13 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		     btid_int->sys_btid->vfid.fileid, record.length);
     }
 
+exit:
   if (found_page != NULL && found_page != *leaf_page)
     {
       pgbuf_unfix_and_init (thread_p, found_page);
     }
-  return NO_ERROR;
 
-error:
-  if (found_page != NULL && found_page != *leaf_page)
-    {
-      pgbuf_unfix_and_init (thread_p, found_page);
-    }
-  assert_release (error_code != NO_ERROR);
+  BTREE_PERF_TRACK_TIME (thread_p, delete_helper);
   return error_code;
 }
 
@@ -36985,6 +37168,8 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (delete_helper != NULL);
   assert (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_DELID);
 
+  BTREE_PERF_TRACK_TRAVERSE_TIME (thread_p, delete_helper);
+
   if (search_key->result == BTREE_KEY_FOUND)
     {
       /* Key was found. Try to find object. */
@@ -37011,7 +37196,7 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto exit;
 	}
 
       /* Find object. */
@@ -37027,7 +37212,7 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto error;
+	  goto exit;
 	}
     }
   if (offset_to_object == NOT_FOUND)
@@ -37038,7 +37223,7 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 				   "btree_key_remove_delete_mvccid: "
 				   "key was not found.");
       error_code = ER_BTREE_UNKNOWN_KEY;
-      goto error;
+      goto exit;
     }
   /* Object was found. */
 
@@ -37063,7 +37248,7 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto error;
+	  goto exit;
 	}
 #if !defined (NDEBUG)
       (void) btree_check_valid_record (thread_p, btid_int, &overflow_record,
@@ -37092,7 +37277,7 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto error;
+	  goto exit;
 	}
     }
   else
@@ -37109,22 +37294,17 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto error;
+	  goto exit;
 	}
     }
 
+exit:
   if (found_page != NULL && found_page != *leaf_page)
     {
       pgbuf_unfix_and_init (thread_p, found_page);
     }
-  return NO_ERROR;
 
-error:
-  if (found_page != NULL && found_page != *leaf_page)
-    {
-      pgbuf_unfix_and_init (thread_p, found_page);
-    }
-  assert_release (error_code != NO_ERROR);
+  BTREE_PERF_TRACK_TIME (thread_p, delete_helper);
   return error_code;
 }
 
@@ -37826,6 +38006,8 @@ btree_key_remove_mvcc_update_same_key (THREAD_ENTRY * thread_p,
   assert (helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
 	  || helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID);
 
+  BTREE_PERF_TRACK_TRAVERSE_TIME (thread_p, helper);
+
   if (search_key->result != BTREE_KEY_FOUND)
     {
       if (helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID)
@@ -37867,7 +38049,7 @@ btree_key_remove_mvcc_update_same_key (THREAD_ENTRY * thread_p,
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error_code;
+      goto exit;
     }
 
   error_code =
@@ -37887,7 +38069,7 @@ btree_key_remove_mvcc_update_same_key (THREAD_ENTRY * thread_p,
 	      && old_version_prev_page == NULL
 	      && new_version_page == NULL && new_version_prev_page == NULL);
       ASSERT_ERROR ();
-      return error_code;
+      goto exit;
     }
 
   /* Initialize redo recovery data: required for btree_key_remove_object
@@ -37952,6 +38134,8 @@ btree_key_remove_mvcc_update_same_key (THREAD_ENTRY * thread_p,
 	}
     }
 
+exit:
+
   /* Unfix all non-leaf pages. */
   /* Make sure pages are not unfixed twice. */
   if (old_version_page != NULL
@@ -37976,6 +38160,8 @@ btree_key_remove_mvcc_update_same_key (THREAD_ENTRY * thread_p,
     {
       pgbuf_unfix_and_init (thread_p, new_version_prev_page);
     }
+
+  BTREE_PERF_TRACK_TIME (thread_p, helper);
   return error_code;
 }
 

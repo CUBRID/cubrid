@@ -247,6 +247,54 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, vac_num_to_vacuum_log_pages);           \
     DIFF_METHOD (RES, NEW, OLD, vac_num_prefetch_requests_log_pages);   \
     DIFF_METHOD (RES, NEW, OLD, vac_num_prefetch_hits_log_pages);       \
+    									\
+    DIFF_METHOD (RES, NEW, OLD, heap_insert_prepare);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_insert_execute);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_insert_log);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_delete_prepare);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_delete_execute);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_delete_log);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_update_prepare);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_update_execute);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_update_log);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_vacuum_prepare);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_vacuum_execute);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_vacuum_log);			\
+									\
+    DIFF_METHOD (RES, NEW, OLD, bt_find_unique);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_range_search);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_insert);				\
+    DIFF_METHOD (RES, NEW, OLD, bt_delete);				\
+    DIFF_METHOD (RES, NEW, OLD, bt_mvcc_delete);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_mark_delete);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_update_sk);				\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_insert);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_delete);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_mvcc_delete);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_update_sk);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum);				\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum_insid);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum_update_sk);			\
+									\
+    DIFF_METHOD (RES, NEW, OLD, bt_traverse);				\
+    DIFF_METHOD (RES, NEW, OLD, bt_find_unique_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_range_search_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_insert_traverse);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_delete_traverse);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_mvcc_delete_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_mark_delete_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_update_sk_traverse);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_insert_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_delete_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_mvcc_delete_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_update_sk_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum_traverse);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum_insid_traverse);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum_update_sk_traverse);		\
+									\
+    DIFF_METHOD (RES, NEW, OLD, vac_master);				\
+    DIFF_METHOD (RES, NEW, OLD, vac_worker_process_log);		\
+    DIFF_METHOD (RES, NEW, OLD, vac_worker_execute);			\
 									\
     DIFF_METHOD##_ARRAY (RES, NEW, OLD, pbx_fix_counters,		\
 			 PERF_PAGE_FIX_COUNTERS);			\
@@ -1789,6 +1837,50 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_vacuum_log_pages_to_vacuum",
   "Num_vacuum_prefetch_requests_log_pages",
   "Num_vacuum_prefetch_hits_log_pages",
+  "Time_heap_insert_prepare",
+  "Time_heap_insert_execute",
+  "Time_heap_insert_log",
+  "Time_heap_delete_prepare",
+  "Time_heap_delete_execute",
+  "Time_heap_delete_log",
+  "Time_heap_update_prepare",
+  "Time_heap_update_execute",
+  "Time_heap_update_log",
+  "Time_heap_vacuum_prepare",
+  "Time_heap_vacuum_execute",
+  "Time_heap_vacuum_log",
+  "Time_bt_find_unique",
+  "Time_bt_range_search",
+  "Time_bt_insert",
+  "Time_bt_delete",
+  "Time_bt_mvcc_delete",
+  "Time_bt_mark_delete",
+  "Time_bt_update_sk",
+  "Time_bt_undo_insert",
+  "Time_bt_undo_delete",
+  "Time_bt_undo_mvcc_delete",
+  "Time_bt_undo_update_sk",
+  "Time_bt_vacuum",
+  "Time_bt_vacuum_insid",
+  "Time_bt_vacuum_update_sk",
+  "Time_bt_traverse",
+  "Time_bt_find_unique_traverse",
+  "Time_bt_range_search_traverse",
+  "Time_bt_insert_traverse",
+  "Time_bt_delete_traverse",
+  "Time_bt_mvcc_delete_traverse",
+  "Time_bt_mark_delete_traverse",
+  "Time_bt_update_sk_traverse",
+  "Time_bt_undo_insert_traverse",
+  "Time_bt_undo_delete_traverse",
+  "Time_bt_undo_mvcc_delete_traverse",
+  "Time_bt_undo_update_sk_traverse",
+  "Time_bt_vacuum_traverse",
+  "Time_bt_vacuum_insid_traverse",
+  "Time_bt_vacuum_update_sk_traverse",
+  "Time_vacuum_master",
+  "Time_vacuum_worker_process_log",
+  "Time_vacuum_worker_execute",
 
   /* computed statistics */
   "Data_page_buffer_hit_ratio",
@@ -4104,6 +4196,462 @@ mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p, UINT64 amount)
 
       ADD_STATS_IN_ARRAY (stats, log_oldest_mvcc_retry_counters, offset,
 			  amount);
+    }
+}
+
+void
+mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_insert_prepare, amount);
+    }
+}
+
+void
+mnt_x_heap_insert_execute_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_insert_execute, amount);
+    }
+}
+
+void
+mnt_x_heap_insert_log_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_insert_log, amount);
+    }
+}
+
+void
+mnt_x_heap_delete_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_delete_prepare, amount);
+    }
+}
+
+void
+mnt_x_heap_delete_execute_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_delete_execute, amount);
+    }
+}
+
+void
+mnt_x_heap_delete_log_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_delete_log, amount);
+    }
+}
+
+void
+mnt_x_heap_update_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_update_prepare, amount);
+    }
+}
+
+void
+mnt_x_heap_update_execute_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_update_execute, amount);
+    }
+}
+
+void
+mnt_x_heap_update_log_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_update_log, amount);
+    }
+}
+
+void
+mnt_x_heap_vacuum_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_vacuum_prepare, amount);
+    }
+}
+
+void
+mnt_x_heap_vacuum_execute_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_vacuum_execute, amount);
+    }
+}
+
+void
+mnt_x_heap_vacuum_log_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_vacuum_log, amount);
+    }
+}
+
+void
+mnt_x_bt_find_unique_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_find_unique, amount);
+    }
+}
+
+void
+mnt_x_bt_range_search_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_range_search, amount);
+    }
+}
+
+void
+mnt_x_bt_insert_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_insert, amount);
+    }
+}
+
+void
+mnt_x_bt_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_delete, amount);
+    }
+}
+
+void
+mnt_x_bt_mvcc_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_mvcc_delete, amount);
+    }
+}
+
+void
+mnt_x_bt_mark_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_mark_delete, amount);
+    }
+}
+
+void
+mnt_x_bt_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_update_sk, amount);
+    }
+}
+
+void
+mnt_x_bt_undo_insert_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_undo_insert, amount);
+    }
+}
+
+void
+mnt_x_bt_undo_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_undo_delete, amount);
+    }
+}
+
+void
+mnt_x_bt_undo_mvcc_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_undo_mvcc_delete, amount);
+    }
+}
+
+void
+mnt_x_bt_undo_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_undo_update_sk, amount);
+    }
+}
+
+void
+mnt_x_bt_vacuum_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_vacuum, amount);
+    }
+}
+
+void
+mnt_x_bt_vacuum_insid_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_vacuum_insid, amount);
+    }
+}
+
+void
+mnt_x_bt_vacuum_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_vacuum_update_sk, amount);
+    }
+}
+
+void
+mnt_x_bt_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_find_unique_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_find_unique_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_range_search_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_range_search_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_insert_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_insert_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_delete_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_mvcc_delete_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_mark_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_mark_delete_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_update_sk_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_update_sk_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_undo_insert_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_undo_insert_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_undo_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_undo_delete_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_undo_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p,
+					 UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_undo_mvcc_delete_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_undo_update_sk_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_undo_update_sk_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_vacuum_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_vacuum_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_vacuum_insid_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_vacuum_insid_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_vacuum_update_sk_traverse_time (THREAD_ENTRY * thread_p,
+					 UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_traverse, amount);
+      ADD_STATS (stats, bt_vacuum_update_sk_traverse, amount);
+    }
+}
+
+void
+mnt_x_vac_master_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, vac_master, amount);
+    }
+}
+
+void
+mnt_x_vac_worker_process_log_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, vac_worker_process_log, amount);
+    }
+}
+
+void
+mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, vac_worker_execute, amount);
     }
 }
 
