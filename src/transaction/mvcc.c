@@ -411,7 +411,8 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 	   * Cannot vacuum insert MVCCID.
 	   */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  if (MVCC_IS_REC_DELETED_SINCE_MVCCID (rec_header, oldest_mvccid))
+	  if (MVCC_IS_HEADER_DELID_VALID (rec_header)
+	      && MVCC_IS_REC_DELETED_SINCE_MVCCID (rec_header, oldest_mvccid))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM,
 				 PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
