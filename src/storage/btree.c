@@ -32752,7 +32752,7 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       assert (false);
       btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
 				   "btree_key_insert_delete_mvccid");
-
+      error_code = ER_BTREE_UNKNOWN_KEY;
       goto exit;
     }
   /* Object was found. */
@@ -32803,6 +32803,7 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     {
       assert_release (false);
       pgbuf_unfix_and_init (thread_p, found_page);
+      error_code = ER_FAILED;
       goto exit;
     }
   /* Insert delete MVCCID. */
@@ -34576,6 +34577,8 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
 	  || op_type == SINGLE_ROW_UPDATE || op_type == MULTI_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY);
 
+  PERF_UTIME_TRACKER_START (thread_p, &delete_helper.time_track);
+
   /* Choose internal function based on purpose. */
   switch (purpose)
     {
@@ -35988,6 +35991,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
 				       "btree_key_delete_remove_object: "
 				       "key was not found.");
+	  error_code = ER_BTREE_UNKNOWN_KEY;
 	  goto exit;
 	}
     }
@@ -36132,6 +36136,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (num_visible_oids < 0)
 	{
 	  ASSERT_ERROR ();
+	  error_code = num_visible_oids;
 	  goto exit;
 	}
       else if (num_visible_oids > 0)
