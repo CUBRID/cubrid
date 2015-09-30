@@ -28152,7 +28152,8 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser,
   out_list = info->out_list;
   value_tmp = info->value_list->valp;
 
-  for (pnode = node; pnode != NULL; pnode = pnode->next)
+  for (pnode = node, regu_var = regu_list; pnode != NULL;
+       pnode = pnode->next, regu_var = regu_var->next)
     {
       /* append scan_list */
       scan_regu = pt_to_regu_variable (parser,
@@ -28162,6 +28163,9 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser,
 	{
 	  return ER_FAILED;
 	}
+
+      /* scan_regu->vfetch_to is also needed for domain checking */
+      scan_regu->vfetch_to = regu_var->value.value.dbvalptr;
 
       if (scan_regu_list == NULL)
 	{
