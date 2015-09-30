@@ -8588,6 +8588,13 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 				      PGBUF_LATCH_READ, &fwd_page_watcher);
       if (error_code != NO_ERROR)
 	{
+	  if (error_code == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
+		      forward_vpid.pageid);
+	    }
+
 	  scan = S_ERROR;
 	  goto end;
 	}
@@ -10065,6 +10072,13 @@ try_again:
 		      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
 		      oid->slotid);
 	    }
+
+	  if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PAGE_LATCH_ABORTED, 2, home_vpid.volid,
+		      home_vpid.pageid);
+	    }
 	  goto error;
 	}
     }
@@ -10181,6 +10195,12 @@ try_again:
 		  ER_HEAP_UNKNOWN_OBJECT, 3, forward_oid->volid,
 		  forward_oid->pageid, forward_oid->slotid);
 	}
+      else if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
+		  forward_vpid.pageid);
+	}
 
       goto error;
 
@@ -10246,6 +10266,12 @@ try_again:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
 		  oid->slotid);
+	}
+      else if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
+		  forward_vpid.pageid);
 	}
 
       goto error;
@@ -23005,6 +23031,11 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
 		      ER_HEAP_BAD_RELOCATION_RECORD, 3, forward_oid.volid,
 		      forward_oid.pageid, forward_oid.slotid);
 	    }
+	  else if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PAGE_LATCH_ABORTED, 2, vpid.volid, vpid.pageid);
+	    }
 	  return S_ERROR;
 	}
 
@@ -25944,6 +25975,12 @@ heap_remove_partition_links (THREAD_ENTRY * thread_p, OID * class_oid,
 		}
 	      if (error != NO_ERROR)
 		{
+		  if (error == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_PAGE_LATCH_ABORTED, 2, vpid.volid,
+			      vpid.pageid);
+		    }
 		  goto exit;
 		}
 	    }
@@ -26698,6 +26735,12 @@ heap_fix_header_page (THREAD_ENTRY * thread_p,
 			  context->header_page_watcher_p);
   if (rc != NO_ERROR)
     {
+      if (rc == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PAGE_LATCH_ABORTED, 2, header_vpid.volid,
+		  header_vpid.pageid);
+	}
       return rc;
     }
 
@@ -26764,6 +26807,12 @@ heap_fix_forward_page (THREAD_ENTRY * thread_p,
 		       context->forward_page_watcher_p);
   if (rc != NO_ERROR)
     {
+      if (rc == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
+		  forward_vpid.pageid);
+	}
       return ER_FAILED;
     }
   (void) pgbuf_check_page_ptype (thread_p,
@@ -27694,6 +27743,12 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
 			      context->overflow_page_watcher_p);
       if (rc != NO_ERROR)
 	{
+	  if (rc == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PAGE_LATCH_ABORTED, 2, overflow_vpid.volid,
+		      overflow_vpid.pageid);
+	    }
 	  return rc;
 	}
 
