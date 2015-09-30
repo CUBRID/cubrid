@@ -153,6 +153,8 @@ struct locator_return_nxobj
 				 */
 };
 
+extern int vacuum_Global_oldest_active_blockers_counter;
+
 bool locator_Dont_check_foreign_key = false;
 
 static MHT_TABLE *locator_Mht_classnames = NULL;
@@ -14175,6 +14177,9 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid,
   OID last_oid;
   bool scancache_inited = false;
   bool attrinfo_inited = false;
+  int tran_index;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  MVCCID threshold_mvccid;
 
   HFID_SET_NULL (&hfid);
   OID_SET_NULL (&last_oid);
@@ -14187,6 +14192,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid,
       goto error_exit;
     }
 
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   nobjects = 0;
   nfetched = -1;
 
@@ -14204,6 +14210,35 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid,
       goto error_exit;
     }
   scancache_inited = true;
+
+  if (tdes->has_upgrade_domain == false)
+    {
+      /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
+      ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
+      tdes->has_upgrade_domain = true;
+    }
+  else
+    {
+      assert (ATOMIC_INC_32
+	      (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+    }
+
+  /* Can't use vacuum_Global_oldest_active_mvccid here. That's because
+   * we want to avoid scenarios where VACUUM compute oldest active mvccid,
+   * but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction
+   * uses the old value of vacuum_Global_oldest_active_mvccid, then VACUUM uses
+   * updated value of vacuum_Global_oldest_active_mvccid. In such scenario,
+   * VACUUM can remove heap records that can't be removed by the current thread.
+   */
+  threshold_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+
+  /* VACUUM all cleanable heap objects before upgrading the domain */
+  error =
+    heap_vacuum_all_objects (thread_p, &upd_scancache, threshold_mvccid);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
   if (error != NO_ERROR)

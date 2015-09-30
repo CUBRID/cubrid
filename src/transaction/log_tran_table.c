@@ -119,6 +119,7 @@
 #define pthread_mutex_unlock(a)
 #endif /* not SERVER_MODE */
 
+extern int vacuum_Global_oldest_active_blockers_counter;
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested
@@ -671,6 +672,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
 			    -1);
   tdes->query_timeout = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
+  tdes->has_upgrade_domain = false;
 
   return NO_ERROR;
 }
@@ -2268,6 +2270,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL,
 			    NULL, NULL, NULL, -1);
+  tdes->has_upgrade_domain = false;
 }
 
 /*
@@ -4840,6 +4843,11 @@ start_get_oldest_active:
   current_trans_status = &mvcc_table->current_trans_status;
   /* need atomic read for lowest active mvccid */
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+    {
+      transaction_lowest_active_mvccids[i] =
+	mvcc_table->transaction_lowest_active_mvccids[i];
+    }
   local_bit_start_mvccid = current_trans_status->bit_area_start_mvccid;
   local_bit_area_length = current_trans_status->bit_area_length;
 #endif
@@ -5524,6 +5532,14 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     }
 
   MVCC_CLEAR_MVCC_INFO (curr_mvcc_info);
+  /* global counter */
+  if (tdes->has_upgrade_domain)
+    {
+      ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
+      tdes->has_upgrade_domain = false;
+      assert (ATOMIC_INC_32
+	      (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+    }
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 

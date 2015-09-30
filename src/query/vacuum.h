@@ -384,4 +384,9 @@ extern int vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv);
 extern int vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv);
+extern int vacuum_heap_page (THREAD_ENTRY * thread_p,
+			     VACUUM_HEAP_OBJECT * heap_objects,
+			     int n_heap_objects, MVCCID threshold_mvccid,
+			     bool reusable, bool was_interrupted);
+
 #endif /* _VACUUM_H_ */

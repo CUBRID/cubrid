@@ -1045,6 +1045,7 @@ struct log_tdes
 					 * deleted records during last
 					 * command/transaction
 					 */
+  bool has_upgrade_domain;
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

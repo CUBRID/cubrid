@@ -213,6 +213,7 @@ bool vacuum_Master_is_process_log_phase = false;
  * Considered as threshold by vacuum workers.
  */
 MVCCID vacuum_Global_oldest_active_mvccid;
+int vacuum_Global_oldest_active_blockers_counter;
 
 /* Size of vacuum data header (all data that precedes log block data table) */
 #define VACUUM_DATA_HEADER_SIZE \
@@ -599,10 +600,6 @@ static int vacuum_init_master_prefetch (THREAD_ENTRY * thread_p);
 
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker,
 			MVCCID threshold_mvccid, bool was_interrupted);
-static int vacuum_heap_page (THREAD_ENTRY * thread_p,
-			     VACUUM_HEAP_OBJECT * heap_objects,
-			     int n_heap_objects, MVCCID threshold_mvccid,
-			     bool reusable, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p,
 				       VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
@@ -907,6 +904,8 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
 					   VACUUM_WORKER_INDEX_TO_TRANID (i));
     }
 
+  vacuum_Global_oldest_active_blockers_counter = 0;
+
   return NO_ERROR;
 
 error:
@@ -1157,7 +1156,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker,
  * reusable (in)	 : True if object slots are reusable.
  * was_interrutped (in)  : True if same job was executed and interrupted.
  */
-static int
+int
 vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 		  int n_heap_objects, MVCCID threshold_mvccid, bool reusable,
 		  bool was_interrupted)
@@ -1331,6 +1330,11 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	   */
 	  assert (helper.forward_page == NULL);
 	  break;
+	}
+
+      if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	{
+	  goto end;
 	}
 
       /* Check page vacuum status. */
@@ -2812,6 +2816,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   int i;
   VACUUM_DATA_ENTRY *entry = NULL;
   int vacuum_entries;
+  MVCCID local_oldest_active_mvccid;
 #if defined (SERVER_MODE)
   VACUUM_JOB_ENTRY vacuum_job_entry;
   int n_wakeup_workers;
@@ -2834,8 +2839,19 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-  vacuum_Global_oldest_active_mvccid =
-    logtb_get_oldest_active_mvccid (thread_p);
+  if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) ==
+      0)
+    {
+      local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+
+      /* check again, maybe concurrent thread has modified the counter value */
+      if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0)
+	  == 0)
+	{
+	  ATOMIC_TAS_64 (&vacuum_Global_oldest_active_mvccid,
+			 local_oldest_active_mvccid);
+	}
+    }
 
   if (vacuum_Data == NULL
       || (vacuum_Data->n_table_entries <= 0

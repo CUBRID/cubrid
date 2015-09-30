@@ -992,4 +992,8 @@ extern bool heap_should_try_update_stat (const int current_freespace,
 					 const int prev_freespace);
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p,
 					   LOG_RCV * rcv);
+extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p,
+				    HEAP_SCANCACHE * upd_scancache,
+				    MVCCID threshold_mvccid);
+
 #endif /* _HEAP_FILE_H_ */

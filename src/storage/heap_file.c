@@ -30716,6 +30716,123 @@ heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
 }
 
 /*
+ * heap_vacuum_all_objects () - Vacuum all objects in heap.
+ *
+ * return		 : Error code.
+ * thread_p (in)	 : Thread entry.
+ * upd_scancache(in)	 : Update scan cache
+ * threshold_mvccid(in)  : Threshold MVCCID
+ */
+int
+heap_vacuum_all_objects (THREAD_ENTRY * thread_p,
+			 HEAP_SCANCACHE * upd_scancache,
+			 MVCCID threshold_mvccid)
+{
+  PGBUF_WATCHER pg_watcher;
+  PGBUF_WATCHER old_pg_watcher;
+  VPID next_vpid, vpid;
+  VACUUM_WORKER worker;
+  int max_num_slots, i;
+  OID temp_oid;
+  bool reusable;
+  int error_code = NO_ERROR;
+
+  assert (upd_scancache != NULL);
+  PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      &upd_scancache->node.hfid);
+  PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL,
+		      &upd_scancache->node.hfid);
+  memset (&worker, 0, sizeof (worker));
+  max_num_slots = IO_MAX_PAGE_SIZE / sizeof (SPAGE_SLOT);
+  worker.heap_objects =
+    (VACUUM_HEAP_OBJECT *) malloc (max_num_slots *
+				   sizeof (VACUUM_HEAP_OBJECT));
+  if (worker.heap_objects == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      max_num_slots * sizeof (VACUUM_HEAP_OBJECT));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+  worker.heap_objects_capacity = max_num_slots;
+  worker.n_heap_objects = 0;
+
+  next_vpid.volid = upd_scancache->node.hfid.vfid.volid;
+  next_vpid.pageid = upd_scancache->node.hfid.hpgid;
+  for (i = 0; i < max_num_slots; i++)
+    {
+      VFID_COPY (&worker.heap_objects[i].vfid,
+		 &upd_scancache->node.hfid.vfid);
+    }
+
+  reusable = heap_is_reusable_oid (upd_scancache->file_type);
+  while (!VPID_ISNULL (&next_vpid))
+    {
+      vpid = next_vpid;
+      error_code =
+	pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   &pg_watcher);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pg_watcher.pgptr, PAGE_HEAP);
+
+      if (old_pg_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
+	}
+
+      error_code =
+	heap_vpid_next (&upd_scancache->node.hfid, pg_watcher.pgptr,
+			&next_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  assert (false);
+	  goto exit;
+	}
+
+      temp_oid.volid = vpid.volid;
+      temp_oid.pageid = vpid.pageid;
+      worker.n_heap_objects = spage_number_of_slots (pg_watcher.pgptr) - 1;
+      for (i = 1; i <= worker.n_heap_objects; i++)
+	{
+	  temp_oid.slotid = i;
+	  COPY_OID (&worker.heap_objects[i - 1].oid, &temp_oid);
+	}
+
+      error_code =
+	vacuum_heap_page (thread_p, worker.heap_objects,
+			  worker.n_heap_objects, threshold_mvccid, reusable,
+			  false);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      pgbuf_replace_watcher (thread_p, &pg_watcher, &old_pg_watcher);
+    }
+
+exit:
+  if (pg_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &pg_watcher);
+    }
+  if (old_pg_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
+    }
+
+  if (worker.heap_objects != NULL)
+    {
+      free_and_init (worker.heap_objects);
+    }
+  return error_code;
+}
+
+/*
  * heap_insert_hfid_for_class_oid () - Cache HFID for class object.
  *
  * return	  : Error code.
