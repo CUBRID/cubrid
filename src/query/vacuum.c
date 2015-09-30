@@ -1901,6 +1901,8 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
 				   helper->reusable, false);
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
+
+      mnt_heap_rel_vacuums (thread_p);
       break;
 
     case REC_BIGONE:
@@ -1940,6 +1942,8 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
       vacuum_log_remove_ovf_insid (thread_p, helper->forward_page);
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
+
+      mnt_heap_big_vacuums (thread_p);
       break;
 
     case REC_HOME:
@@ -1990,6 +1994,8 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
       OID_SET_NULL (&helper->next_versions[helper->n_bulk_vacuumed]);
       OID_SET_NULL (&helper->partition_links[helper->n_bulk_vacuumed]);
       helper->n_bulk_vacuumed++;
+
+      mnt_heap_home_vacuums (thread_p);
       break;
 
     default:
@@ -1999,6 +2005,8 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
     }
 
   helper->n_vacuumed++;
+
+  mnt_heap_insid_vacuums (thread_p);
 
   /* Success. */
   return NO_ERROR;
@@ -2068,6 +2076,16 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       return ER_FAILED;
     }
 
+  if (helper->reusable
+      || OID_ISNULL (&MVCC_GET_NEXT_VERSION (&helper->mvcc_header)))
+    {
+      mnt_heap_remove_vacuums (thread_p);
+    }
+  else
+    {
+      mnt_heap_next_ver_vacuums (thread_p);
+    }
+
   if (helper->record_type != REC_HOME)
     {
       /* We try to keep the same amount of pgbuf_set_dirty and logged changes;
@@ -2121,6 +2139,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
+      mnt_heap_rel_vacuums (thread_p);
       break;
 
     case REC_BIGONE:
@@ -2158,10 +2177,14 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
+
+      mnt_heap_big_vacuums (thread_p);
       break;
 
     case REC_HOME:
       helper->n_bulk_vacuumed++;
+
+      mnt_heap_home_vacuums (thread_p);
       break;
 
     default:

@@ -1260,6 +1260,21 @@ struct btree_delete_helper
     } \
   while (false)
 
+#define BTREE_PERF_OVF_OIDS_FIX_TIME(thread_p, track) \
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, \
+				       mnt_bt_fix_ovf_oids_time)
+#define BTREE_PERF_UNIQUE_LOCK_TIME(thread_p, track, lock) \
+  do \
+    { \
+      if ((lock) == S_LOCK) \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, \
+					     mnt_bt_unique_rlocks_time); \
+      else \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, \
+					     mnt_bt_unique_wlocks_time); \
+    } \
+  while (false)
+
 /* B-tree redo recovery flags. They are additional to
  * LOG_RV_RECORD_MODIFY_MASK.
  */
@@ -13363,6 +13378,7 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   VPID ovfl_vpid;
   int space_needed = BTREE_OBJECT_FIXED_SIZE (btid);
   int error_code = NO_ERROR;
+  PERF_UTIME_TRACKER ovf_fix_time_track;
 
   /* Assert expected arguments. */
   assert (btid != NULL);
@@ -13370,6 +13386,8 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   assert (overflow_page != NULL && *overflow_page == NULL);
 
   ovfl_vpid = *first_ovfl_vpid;
+
+  PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
 
   while (!VPID_ISNULL (&ovfl_vpid))
     {
@@ -13389,6 +13407,7 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
       if (spage_max_space_for_new_record (thread_p, *overflow_page)
 	  > space_needed)
 	{
+	  BTREE_PERF_OVF_OIDS_FIX_TIME (thread_p, &ovf_fix_time_track);
 	  return NO_ERROR;
 	}
 
@@ -13397,6 +13416,7 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
       pgbuf_unfix_and_init (thread_p, *overflow_page);
     }
 
+  BTREE_PERF_OVF_OIDS_FIX_TIME (thread_p, &ovf_fix_time_track);
   return NO_ERROR;
 }
 
@@ -13437,6 +13457,7 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   VPID overflow_vpid;
   PAGE_PTR overflow_page = NULL;
   PAGE_PTR prev_overflow_page = NULL;
+  PERF_UTIME_TRACKER ovf_fix_time_track;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -13474,9 +13495,11 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   VPID_COPY (&overflow_vpid, &leaf_rec_info->ovfl);
   do
     {
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
       overflow_page =
 	pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		   PGBUF_UNCONDITIONAL_LATCH);
+      BTREE_PERF_OVF_OIDS_FIX_TIME (thread_p, &ovf_fix_time_track);
       if (overflow_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -13599,6 +13622,7 @@ btree_find_old_and_new_version (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   PAGE_PTR prev_page = NULL;
   BTREE_OP_PURPOSE old_version_purpose;
   BTREE_OP_PURPOSE new_version_purpose;
+  PERF_UTIME_TRACKER ovf_fix_time_track;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -13678,9 +13702,11 @@ btree_find_old_and_new_version (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     {
       assert (*old_version_offset == NOT_FOUND
 	      || *new_version_offset == NOT_FOUND);
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
       overflow_page =
 	pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		   PGBUF_UNCONDITIONAL_LATCH);
+      BTREE_PERF_OVF_OIDS_FIX_TIME (thread_p, &ovf_fix_time_track);
       if (overflow_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -26564,6 +26590,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p,
 					 * failed and page had to be re-fixed.
 					 */
 #endif /* SERVER_MODE */
+  PERF_UTIME_TRACKER ovf_fix_time_track;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -26681,10 +26708,12 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p,
 		  /* Save this overflow page. */
 		  prev_overflow_page = overflow_page;
 		}
+	      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
 	      /* Fix next overflow page. */
 	      overflow_page =
 		pgbuf_fix (thread_p, &next_overflow_vpid, OLD_PAGE,
 			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      BTREE_PERF_OVF_OIDS_FIX_TIME (thread_p, &ovf_fix_time_track);
 	      if (overflow_page == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
@@ -26947,6 +26976,7 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   int error_code = NO_ERROR;	/* Error code. */
   PGBUF_LATCH_MODE latch_mode;	/* Leaf page latch mode. */
   LOG_LSA page_lsa;		/* Leaf page LSA before is unfixed. */
+  PERF_UTIME_TRACKER lock_time_track;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -26998,8 +27028,10 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
 
   /* Lock object. */
+  PERF_UTIME_TRACKER_START (thread_p, &lock_time_track);
   lock_result =
     lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK);
+  BTREE_PERF_UNIQUE_LOCK_TIME (thread_p, &lock_time_track, lock_mode);
   if (lock_result != LK_GRANTED)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -27189,6 +27221,7 @@ btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   RECDES peeked_ovf_recdes;
   VPID ovf_vpid;
   PAGE_PTR ovf_page = NULL, prev_ovf_page = NULL;
+  PERF_UTIME_TRACKER ovf_fix_time_track;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -27213,9 +27246,11 @@ btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   while (!VPID_ISNULL (&ovf_vpid))
     {
       /* Fix overflow page. */
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
       ovf_page =
 	pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		   PGBUF_UNCONDITIONAL_LATCH);
+      BTREE_PERF_OVF_OIDS_FIX_TIME (thread_p, &ovf_fix_time_track);
       if (ovf_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -28700,6 +28735,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
 				 * it will be resumed after this
 				 * overflow page.
 				 */
+  PERF_UTIME_TRACKER ovf_fix_time_track;
 
   /* Assert b-tree scan is valid. */
   assert (bts != NULL);
@@ -28935,9 +28971,11 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
   while (!VPID_ISNULL (&overflow_vpid))
     {
       /* Fix next overflow page. */
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
       overflow_page =
 	pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		   PGBUF_UNCONDITIONAL_LATCH);
+      BTREE_PERF_OVF_OIDS_FIX_TIME (thread_p, &ovf_fix_time_track);
       if (overflow_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -34692,6 +34730,8 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
 	}
       return error_code;
     }
+
+  mnt_bt_deletes (thread_p);
 
   if (unique != NULL)
     {

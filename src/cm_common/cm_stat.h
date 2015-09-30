@@ -385,6 +385,36 @@ extern "C"
     unsigned int vac_num_prefetch_requests_log_pages;
     unsigned int vac_num_prefetch_hits_log_pages;
 
+    unsigned int heap_home_inserts;
+    unsigned int heap_big_inserts;
+    unsigned int heap_assign_inserts;
+    unsigned int heap_home_deletes;
+    unsigned int heap_home_mvcc_deletes;
+    unsigned int heap_home_to_rel_deletes;
+    unsigned int heap_home_to_big_deletes;
+    unsigned int heap_rel_deletes;
+    unsigned int heap_rel_mvcc_deletes;
+    unsigned int heap_rel_to_home_deletes;
+    unsigned int heap_rel_to_big_deletes;
+    unsigned int heap_rel_to_rel_deletes;
+    unsigned int heap_big_deletes;
+    unsigned int heap_big_mvcc_deletes;
+    unsigned int heap_new_ver_inserts;
+    unsigned int heap_home_updates;
+    unsigned int heap_home_to_rel_updates;
+    unsigned int heap_home_to_big_updates;
+    unsigned int heap_rel_updates;
+    unsigned int heap_rel_to_home_updates;
+    unsigned int heap_rel_to_rel_updates;
+    unsigned int heap_rel_to_big_updates;
+    unsigned int heap_big_updates;
+    unsigned int heap_home_vacuums;
+    unsigned int heap_big_vacuums;
+    unsigned int heap_rel_vacuums;
+    unsigned int heap_insid_vacuums;
+    unsigned int heap_remove_vacuums;
+    unsigned int heap_next_ver_vacuums;
+
     /* Track heap modify. */
     unsigned int heap_insert_prepare;
     unsigned int heap_insert_execute;
@@ -398,6 +428,24 @@ extern "C"
     unsigned int heap_vacuum_prepare;
     unsigned int heap_vacuum_execute;
     unsigned int heap_vacuum_log;
+
+    unsigned int bt_find_unique_cnt;
+    unsigned int bt_range_search_cnt;
+    unsigned int bt_insert_cnt;
+    unsigned int bt_delete_cnt;
+    unsigned int bt_mvcc_delete_cnt;
+    unsigned int bt_mark_delete_cnt;
+    unsigned int bt_update_sk_cnt;
+    unsigned int bt_undo_insert_cnt;
+    unsigned int bt_undo_delete_cnt;
+    unsigned int bt_undo_mvcc_delete_cnt;
+    unsigned int bt_undo_update_sk_cnt;
+    unsigned int bt_vacuum_cnt;
+    unsigned int bt_vacuum_insid_cnt;
+    unsigned int bt_vacuum_update_sk_cnt;
+    unsigned int bt_fix_ovf_oids_cnt;
+    unsigned int bt_unique_rlocks_cnt;
+    unsigned int bt_unique_wlocks_cnt;
 
     unsigned int bt_find_unique;
     unsigned int bt_range_search;
@@ -429,6 +477,10 @@ extern "C"
     unsigned int bt_vacuum_traverse;
     unsigned int bt_vacuum_insid_traverse;
     unsigned int bt_vacuum_update_sk_traverse;
+
+    unsigned int bt_fix_ovf_oids;
+    unsigned int bt_unique_rlocks;
+    unsigned int bt_unique_wlocks;
 
     unsigned int vac_master;
     unsigned int vac_worker_process_log;

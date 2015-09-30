@@ -259,6 +259,36 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, vac_num_prefetch_requests_log_pages);   \
     DIFF_METHOD (RES, NEW, OLD, vac_num_prefetch_hits_log_pages);       \
     									\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_inserts);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_big_inserts);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_assign_inserts);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_deletes);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_mvcc_deletes);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_to_rel_deletes);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_to_big_deletes);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_deletes);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_mvcc_deletes);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_to_home_deletes);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_to_big_deletes);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_to_rel_deletes);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_big_deletes);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_big_mvcc_deletes);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_new_ver_inserts);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_updates);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_to_rel_updates);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_to_big_updates);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_updates);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_to_home_updates);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_to_rel_updates);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_to_big_updates);		\
+    DIFF_METHOD (RES, NEW, OLD, heap_big_updates);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_home_vacuums);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_big_vacuums);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_rel_vacuums);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_insid_vacuums);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_remove_vacuums);			\
+    DIFF_METHOD (RES, NEW, OLD, heap_next_ver_vacuums);			\
+    									\
     DIFF_METHOD (RES, NEW, OLD, heap_insert_prepare);			\
     DIFF_METHOD (RES, NEW, OLD, heap_insert_execute);			\
     DIFF_METHOD (RES, NEW, OLD, heap_insert_log);			\
@@ -271,6 +301,24 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, heap_vacuum_prepare);			\
     DIFF_METHOD (RES, NEW, OLD, heap_vacuum_execute);			\
     DIFF_METHOD (RES, NEW, OLD, heap_vacuum_log);			\
+									\
+    DIFF_METHOD (RES, NEW, OLD, bt_find_unique_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_range_search_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_insert_cnt);				\
+    DIFF_METHOD (RES, NEW, OLD, bt_delete_cnt);				\
+    DIFF_METHOD (RES, NEW, OLD, bt_mvcc_delete_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_mark_delete_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_update_sk_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_insert_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_delete_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_mvcc_delete_cnt);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_undo_update_sk_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum_cnt);				\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum_insid_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_vacuum_update_sk_cnt);		\
+    DIFF_METHOD (RES, NEW, OLD, bt_fix_ovf_oids_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_unique_rlocks_cnt);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_unique_wlocks_cnt);			\
 									\
     DIFF_METHOD (RES, NEW, OLD, bt_find_unique);			\
     DIFF_METHOD (RES, NEW, OLD, bt_range_search);			\
@@ -302,6 +350,10 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, bt_vacuum_traverse);			\
     DIFF_METHOD (RES, NEW, OLD, bt_vacuum_insid_traverse);		\
     DIFF_METHOD (RES, NEW, OLD, bt_vacuum_update_sk_traverse);		\
+									\
+    DIFF_METHOD (RES, NEW, OLD, bt_fix_ovf_oids);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_unique_rlocks);			\
+    DIFF_METHOD (RES, NEW, OLD, bt_unique_wlocks);			\
 									\
     DIFF_METHOD (RES, NEW, OLD, vac_master);				\
     DIFF_METHOD (RES, NEW, OLD, vac_worker_process_log);		\
@@ -336,7 +388,6 @@ static int rv;
     DIFF_METHOD##_ARRAY (RES, NEW, OLD, log_oldest_mvcc_retry_counters,	    \
 			 PERF_MODULE_CNT);				    \
 } while (0)
-
 
 static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
 static void mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats);
@@ -1858,6 +1909,35 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_vacuum_log_pages_to_vacuum",
   "Num_vacuum_prefetch_requests_log_pages",
   "Num_vacuum_prefetch_hits_log_pages",
+  "Num_heap_home_inserts",
+  "Num_heap_big_inserts",
+  "Num_heap_assign_inserts",
+  "Num_heap_home_deletes",
+  "Num_heap_home_mvcc_deletes",
+  "Num_heap_home_to_rel_deletes",
+  "Num_heap_home_to_big_deletes",
+  "Num_heap_rel_deletes",
+  "Num_heap_rel_mvcc_deletes",
+  "Num_heap_rel_to_home_deletes",
+  "Num_heap_rel_to_big_deletes",
+  "Num_heap_rel_to_rel_deletes",
+  "Num_heap_big_deletes",
+  "Num_heap_big_mvcc_deletes",
+  "Num_heap_new_ver_inserts",
+  "Num_heap_home_updates",
+  "Num_heap_home_to_rel_updates",
+  "Num_heap_home_to_big_updates",
+  "Num_heap_rel_updates",
+  "Num_heap_rel_to_home_updates",
+  "Num_heap_rel_to_rel_updates",
+  "Num_heap_rel_to_big_updates",
+  "Num_heap_big_updates",
+  "Num_heap_home_vacuums",
+  "Num_heap_big_vacuums",
+  "Num_heap_rel_vacuums",
+  "Num_heap_insid_vacuums",
+  "Num_heap_remove_vacuums",
+  "Num_heap_next_ver_vacuums",
   "Time_heap_insert_prepare",
   "Time_heap_insert_execute",
   "Time_heap_insert_log",
@@ -1870,6 +1950,23 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Time_heap_vacuum_prepare",
   "Time_heap_vacuum_execute",
   "Time_heap_vacuum_log",
+  "Num_bt_find_unique",
+  "Num_btrange_search",
+  "Num_bt_insert_obj",
+  "Num_bt_delete_obj",
+  "Num_bt_mvcc_delete",
+  "Num_bt_mark_delete",
+  "Num_bt_update_sk_cnt",
+  "Num_bt_undo_insert",
+  "Num_bt_undo_delete",
+  "Num_bt_undo_mvcc_delete",
+  "Num_bt_undo_update_sk",
+  "Num_bt_vacuum",
+  "Num_bt_vacuum_insid",
+  "Num_bt_vacuum_update_sk",
+  "Num_bt_fix_ovf_oids_cnt",
+  "Num_bt_unique_rlocks_cnt",
+  "Num_bt_unique_wlocks_cnt",
   "Time_bt_find_unique",
   "Time_bt_range_search",
   "Time_bt_insert",
@@ -1899,6 +1996,9 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Time_bt_vacuum_traverse",
   "Time_bt_vacuum_insid_traverse",
   "Time_bt_vacuum_update_sk_traverse",
+  "Time_bt_fix_ovf_oids",
+  "Time_bt_unique_rlocks",
+  "Time_bt_unique_wlocks",
   "Time_vacuum_master",
   "Time_vacuum_worker_process_log",
   "Time_vacuum_worker_execute",
@@ -4238,6 +4338,296 @@ mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p, UINT64 amount)
 }
 
 void
+mnt_x_heap_home_inserts (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_inserts, 1);
+    }
+}
+
+void
+mnt_x_heap_big_inserts (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_big_inserts, 1);
+    }
+}
+
+void
+mnt_x_heap_assign_inserts (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_assign_inserts, 1);
+    }
+}
+
+void
+mnt_x_heap_home_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_home_mvcc_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_mvcc_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_home_to_rel_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_to_rel_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_home_to_big_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_to_big_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_mvcc_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_mvcc_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_to_home_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_to_home_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_to_big_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_to_big_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_to_rel_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_to_rel_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_big_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_big_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_big_mvcc_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_big_mvcc_deletes, 1);
+    }
+}
+
+void
+mnt_x_heap_new_ver_inserts (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_new_ver_inserts, 1);
+    }
+}
+
+void
+mnt_x_heap_home_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_updates, 1);
+    }
+}
+
+void
+mnt_x_heap_home_to_rel_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_to_rel_updates, 1);
+    }
+}
+
+void
+mnt_x_heap_home_to_big_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_to_big_updates, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_updates, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_to_home_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_to_home_updates, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_to_rel_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_to_rel_updates, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_to_big_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_to_big_updates, 1);
+    }
+}
+
+void
+mnt_x_heap_big_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_big_updates, 1);
+    }
+}
+
+void
+mnt_x_heap_home_vacuums (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_home_vacuums, 1);
+    }
+}
+
+void
+mnt_x_heap_big_vacuums (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_big_vacuums, 1);
+    }
+}
+
+void
+mnt_x_heap_rel_vacuums (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_rel_vacuums, 1);
+    }
+}
+
+void
+mnt_x_heap_insid_vacuums (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_insid_vacuums, 1);
+    }
+}
+
+void
+mnt_x_heap_remove_vacuums (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_remove_vacuums, 1);
+    }
+}
+
+void
+mnt_x_heap_next_ver_vacuums (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_next_ver_vacuums, 1);
+    }
+}
+
+void
 mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount)
 {
   MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
@@ -4364,6 +4754,7 @@ mnt_x_bt_find_unique_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_find_unique, amount);
+      ADD_STATS (stats, bt_find_unique_cnt, 1);
     }
 }
 
@@ -4374,6 +4765,7 @@ mnt_x_bt_range_search_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_range_search, amount);
+      ADD_STATS (stats, bt_range_search_cnt, 1);
     }
 }
 
@@ -4384,6 +4776,7 @@ mnt_x_bt_insert_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_insert, amount);
+      ADD_STATS (stats, bt_insert_cnt, 1);
     }
 }
 
@@ -4394,6 +4787,7 @@ mnt_x_bt_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_delete, amount);
+      ADD_STATS (stats, bt_delete_cnt, 1);
     }
 }
 
@@ -4404,6 +4798,7 @@ mnt_x_bt_mvcc_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_mvcc_delete, amount);
+      ADD_STATS (stats, bt_mvcc_delete_cnt, 1);
     }
 }
 
@@ -4414,6 +4809,7 @@ mnt_x_bt_mark_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_mark_delete, amount);
+      ADD_STATS (stats, bt_mark_delete_cnt, 1);
     }
 }
 
@@ -4424,6 +4820,7 @@ mnt_x_bt_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_update_sk, amount);
+      ADD_STATS (stats, bt_update_sk_cnt, 1);
     }
 }
 
@@ -4434,6 +4831,7 @@ mnt_x_bt_undo_insert_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_undo_insert, amount);
+      ADD_STATS (stats, bt_undo_insert_cnt, 1);
     }
 }
 
@@ -4444,6 +4842,7 @@ mnt_x_bt_undo_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_undo_delete, amount);
+      ADD_STATS (stats, bt_undo_delete_cnt, 1);
     }
 }
 
@@ -4454,6 +4853,7 @@ mnt_x_bt_undo_mvcc_delete_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_undo_mvcc_delete, amount);
+      ADD_STATS (stats, bt_undo_mvcc_delete_cnt, 1);
     }
 }
 
@@ -4464,6 +4864,7 @@ mnt_x_bt_undo_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_undo_update_sk, amount);
+      ADD_STATS (stats, bt_undo_update_sk_cnt, 1);
     }
 }
 
@@ -4474,6 +4875,7 @@ mnt_x_bt_vacuum_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_vacuum, amount);
+      ADD_STATS (stats, bt_vacuum_cnt, 1);
     }
 }
 
@@ -4484,6 +4886,7 @@ mnt_x_bt_vacuum_insid_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_vacuum_insid, amount);
+      ADD_STATS (stats, bt_vacuum_insid_cnt, 1);
     }
 }
 
@@ -4494,6 +4897,7 @@ mnt_x_bt_vacuum_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount)
   if (stats != NULL)
     {
       ADD_STATS (stats, bt_vacuum_update_sk, amount);
+      ADD_STATS (stats, bt_vacuum_update_sk_cnt, 1);
     }
 }
 
@@ -4660,6 +5064,39 @@ mnt_x_bt_vacuum_update_sk_traverse_time (THREAD_ENTRY * thread_p,
     {
       ADD_STATS (stats, bt_traverse, amount);
       ADD_STATS (stats, bt_vacuum_update_sk_traverse, amount);
+    }
+}
+
+void
+mnt_x_bt_fix_ovf_oids_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_fix_ovf_oids, amount);
+      ADD_STATS (stats, bt_fix_ovf_oids_cnt, 1);
+    }
+}
+
+void
+mnt_x_bt_unique_rlocks_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_unique_rlocks, amount);
+      ADD_STATS (stats, bt_unique_rlocks_cnt, 1);
+    }
+}
+
+void
+mnt_x_bt_unique_wlocks_time (THREAD_ENTRY * thread_p, UINT64 amount)
+{
+  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_unique_wlocks, amount);
+      ADD_STATS (stats, bt_unique_wlocks_cnt, 1);
     }
 }
 

@@ -627,24 +627,25 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
 #define HEAP_RV_FLAG_VACUUM_STATUS_CHANGE 0x8000
 
 #define HEAP_PERF_START(thread_p, context) \
-  PERF_UTIME_TRACKER_START (thread_p, &((context)->time_track))
+  PERF_UTIME_TRACKER_START (thread_p, (context)->time_track)
 #define HEAP_PERF_TRACK_PREPARE(thread_p, context) \
   do \
     { \
+      if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_insert_prepare_time); \
 	break; \
       case HEAP_OPERATION_DELETE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_delete_prepare_time); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_update_prepare_time); \
 	break; \
       default: \
@@ -655,20 +656,21 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
 #define HEAP_PERF_TRACK_EXECUTE(thread_p, context) \
   do \
     { \
+      if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_insert_execute_time); \
 	break; \
       case HEAP_OPERATION_DELETE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_delete_execute_time); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_update_execute_time); \
 	break; \
       default: \
@@ -679,20 +681,21 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
 #define HEAP_PERF_TRACK_LOGGING(thread_p, context) \
   do \
     { \
+      if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_insert_log_time); \
 	break; \
       case HEAP_OPERATION_DELETE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_delete_log_time); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     &((context)->time_track),\
+					     (context)->time_track,\
 					     mnt_heap_update_log_time); \
 	break; \
       default: \
@@ -26595,6 +26598,8 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   OID_SET_NULL (&context->res_oid);
   context->is_logical_old = false;
   context->is_redistribute_insert_with_delid = false;
+
+  context->time_track = NULL;
 }
 
 /*
@@ -27373,6 +27378,8 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
+  mnt_heap_new_ver_inserts (thread_p);
+
   /* all ok */
   return NO_ERROR;
 }
@@ -27815,6 +27822,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
 		       DONT_FREE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
+      mnt_heap_big_mvcc_deletes (thread_p);
     }
   else
     {
@@ -27853,6 +27862,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+      mnt_heap_big_deletes (thread_p);
     }
 
   /* all ok */
@@ -28028,6 +28039,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	  /* remove old forward record */
 	  remove_old_forward = true;
 	  update_old_home = true;
+
+	  mnt_heap_rel_to_big_deletes (thread_p);
 	}
       else if (fits_in_home)
 	{
@@ -28044,6 +28057,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	  /* remove old forward record */
 	  remove_old_forward = true;
 	  update_old_home = true;
+
+	  mnt_heap_rel_to_home_deletes (thread_p);
 	}
       else if (fits_in_forward)
 	{
@@ -28052,6 +28067,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 
 	  /* home record will not be touched */
 	  update_old_forward = true;
+
+	  mnt_heap_rel_mvcc_deletes (thread_p);
 	}
       else
 	{
@@ -28075,6 +28092,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	  /* remove old forward record */
 	  remove_old_forward = true;
 	  update_old_home = true;
+
+	  mnt_heap_rel_to_rel_deletes (thread_p);
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -28247,6 +28266,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+      mnt_heap_rel_deletes (thread_p);
     }
 
   /* all ok */
@@ -28358,6 +28379,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 		{
 		  return ER_FAILED;
 		}
+
+	      mnt_heap_home_to_big_deletes (thread_p);
 	    }
 	  else
 	    {
@@ -28373,6 +28396,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 		{
 		  return rc;
 		}
+
+	      mnt_heap_home_to_rel_deletes (thread_p);
 	    }
 
 	  /* build forwarding rebuild_record */
@@ -28417,6 +28442,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 	  /* we'll update the home page with the built record, since it fits
 	     in home page */
 	  home_page_updated_recdes = &built_recdes;
+
+	  mnt_heap_home_mvcc_deletes (thread_p);
 	}
 
       /* update home page and check operation result */
@@ -28450,6 +28477,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 				   &context->oid);
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+      mnt_heap_home_deletes (thread_p);
     }
 
   /* all ok */
@@ -28570,6 +28599,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.flags = context->flags;
       insert_context.header_page_watcher_p = &context->header_page_watcher;
+      insert_context.time_track = context->time_track;
 
       /* insert new version */
       context->recdes_p->type = REC_HOME;
@@ -28599,6 +28629,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       COPY_OID (&delete_context.next_version, &insert_context.res_oid);
       COPY_OID (&delete_context.partition_link, &context->partition_link);
       heap_link_watchers (&delete_context, context);
+      delete_context.time_track = context->time_track;
 
       /* delete old record */
       if (heap_delete_bigone (thread_p, &delete_context, true) != NO_ERROR)
@@ -28713,6 +28744,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	  /* location did not change */
 	  COPY_OID (&context->res_oid, &context->oid);
 	}
+
+      mnt_heap_big_updates (thread_p);
     }
 
   /* all ok */
@@ -28782,6 +28815,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.flags = context->flags;
       insert_context.header_page_watcher_p = &context->header_page_watcher;
+      insert_context.time_track = context->time_track;
 
       /* insert new version */
       if (heap_insert_newver (thread_p, &insert_context,
@@ -28809,6 +28843,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
       COPY_OID (&delete_context.next_version, &insert_context.res_oid);
       COPY_OID (&delete_context.partition_link, &context->partition_link);
       heap_link_watchers (&delete_context, context);
+      delete_context.time_track = context->time_track;
 
       /* delete old record */
       if (heap_delete_relocation (thread_p, &delete_context, true) !=
@@ -28865,6 +28900,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	  /* remove old forward record */
 	  remove_old_forward = true;
 	  update_old_home = true;
+
+	  mnt_heap_rel_to_big_updates (thread_p);
 	}
       else if (!fits_in_forward && !fits_in_home)
 	{
@@ -28887,6 +28924,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	  /* remove old forward record */
 	  remove_old_forward = true;
 	  update_old_home = true;
+
+	  mnt_heap_rel_to_rel_updates (thread_p);
 	}
       else if (fits_in_home)
 	{
@@ -28897,6 +28936,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	  /* remove old forward record */
 	  remove_old_forward = true;
 	  update_old_home = true;
+
+	  mnt_heap_rel_to_home_updates (thread_p);
 	}
       else if (fits_in_forward)
 	{
@@ -28905,6 +28946,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 
 	  /* home record will not be touched */
 	  update_old_forward = true;
+
+	  mnt_heap_rel_updates (thread_p);
 	}
       else
 	{
@@ -29049,6 +29092,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       COPY_OID (&insert_context.partition_link, &context->partition_link);
       insert_context.flags = context->flags;
       insert_context.header_page_watcher_p = &context->header_page_watcher;
+      insert_context.time_track = context->time_track;
 
       /* insert new version */
       if (heap_insert_newver (thread_p, &insert_context,
@@ -29077,6 +29121,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
       COPY_OID (&delete_context.next_version, &insert_context.res_oid);
       COPY_OID (&delete_context.partition_link, &context->partition_link);
       heap_link_watchers (&delete_context, context);
+      delete_context.time_track = context->time_track;
 
       /* delete old record */
       if (heap_delete_home (thread_p, &delete_context, true) != NO_ERROR)
@@ -29113,6 +29158,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 
 	  /* we'll be updating home with forwarding record */
 	  home_page_updated_recdes_p = &forwarding_recdes;
+
+	  mnt_heap_home_to_big_updates (thread_p);
 	}
       else
 	if (!spage_is_updatable
@@ -29141,6 +29188,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 
 	  /* we'll be updating home with forwarding record */
 	  home_page_updated_recdes_p = &forwarding_recdes;
+
+	  mnt_heap_home_to_rel_updates (thread_p);
 	}
       else
 	{
@@ -29148,6 +29197,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 
 	  /* updated record fits in home page */
 	  home_page_updated_recdes_p = context->recdes_p;
+
+	  mnt_heap_home_updates (thread_p);
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -29425,6 +29476,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
+  PERF_UTIME_TRACKER time_track;
 
   /* check required input */
   assert (context != NULL);
@@ -29432,6 +29484,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
   assert (context->recdes_p != NULL);
   assert (!HFID_IS_NULL (&context->hfid));
 
+  context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
 
   /* check scancache */
@@ -29570,6 +29623,19 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
 	}
     }
 
+  if (context->recdes_p->type == REC_HOME)
+    {
+      mnt_heap_home_inserts (thread_p);
+    }
+  else if (context->recdes_p->type == REC_BIGONE)
+    {
+      mnt_heap_big_inserts (thread_p);
+    }
+  else
+    {
+      mnt_heap_assign_inserts (thread_p);
+    }
+
 error:
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -29603,6 +29669,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
+  PERF_UTIME_TRACKER time_track;
 
   /*
    * Check input
@@ -29612,6 +29679,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p,
   assert (!HFID_IS_NULL (&context->hfid));
   assert (!OID_ISNULL (&context->oid));
 
+  context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
 
   /* check input OID validity */
@@ -30241,6 +30309,7 @@ heap_update_logical (THREAD_ENTRY * thread_p,
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
+  PERF_UTIME_TRACKER time_track;
 
   /*
    * Check input
@@ -30250,6 +30319,7 @@ heap_update_logical (THREAD_ENTRY * thread_p,
   assert (!OID_ISNULL (&context->oid));
   assert (!OID_ISNULL (&context->class_oid));
 
+  context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
 
   /* check scancache */

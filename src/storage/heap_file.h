@@ -398,7 +398,7 @@ struct heap_operation_context
 						 */
 
   /* Performance stat dump. */
-  PERF_UTIME_TRACKER time_track;
+  PERF_UTIME_TRACKER *time_track;
 };
 
 /* HEAP_OPERATION_CONTEXT flags */

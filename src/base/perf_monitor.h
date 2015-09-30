@@ -484,7 +484,38 @@ struct mnt_server_exec_stats
   UINT64 vac_num_prefetch_requests_log_pages;
   UINT64 vac_num_prefetch_hits_log_pages;
 
-  /* Track heap modify. */
+  /* Track heap modify counters. */
+  UINT64 heap_home_inserts;
+  UINT64 heap_big_inserts;
+  UINT64 heap_assign_inserts;
+  UINT64 heap_home_deletes;
+  UINT64 heap_home_mvcc_deletes;
+  UINT64 heap_home_to_rel_deletes;
+  UINT64 heap_home_to_big_deletes;
+  UINT64 heap_rel_deletes;
+  UINT64 heap_rel_mvcc_deletes;
+  UINT64 heap_rel_to_home_deletes;
+  UINT64 heap_rel_to_big_deletes;
+  UINT64 heap_rel_to_rel_deletes;
+  UINT64 heap_big_deletes;
+  UINT64 heap_big_mvcc_deletes;
+  UINT64 heap_new_ver_inserts;
+  UINT64 heap_home_updates;
+  UINT64 heap_home_to_rel_updates;
+  UINT64 heap_home_to_big_updates;
+  UINT64 heap_rel_updates;
+  UINT64 heap_rel_to_home_updates;
+  UINT64 heap_rel_to_rel_updates;
+  UINT64 heap_rel_to_big_updates;
+  UINT64 heap_big_updates;
+  UINT64 heap_home_vacuums;
+  UINT64 heap_big_vacuums;
+  UINT64 heap_rel_vacuums;
+  UINT64 heap_insid_vacuums;
+  UINT64 heap_remove_vacuums;
+  UINT64 heap_next_ver_vacuums;
+
+  /* Track heap modify timers. */
   UINT64 heap_insert_prepare;
   UINT64 heap_insert_execute;
   UINT64 heap_insert_log;
@@ -498,6 +529,26 @@ struct mnt_server_exec_stats
   UINT64 heap_vacuum_execute;
   UINT64 heap_vacuum_log;
 
+  /* B-tree op counters. */
+  UINT64 bt_find_unique_cnt;
+  UINT64 bt_range_search_cnt;
+  UINT64 bt_insert_cnt;
+  UINT64 bt_delete_cnt;
+  UINT64 bt_mvcc_delete_cnt;
+  UINT64 bt_mark_delete_cnt;
+  UINT64 bt_update_sk_cnt;
+  UINT64 bt_undo_insert_cnt;
+  UINT64 bt_undo_delete_cnt;
+  UINT64 bt_undo_mvcc_delete_cnt;
+  UINT64 bt_undo_update_sk_cnt;
+  UINT64 bt_vacuum_cnt;
+  UINT64 bt_vacuum_insid_cnt;
+  UINT64 bt_vacuum_update_sk_cnt;
+  UINT64 bt_fix_ovf_oids_cnt;
+  UINT64 bt_unique_rlocks_cnt;
+  UINT64 bt_unique_wlocks_cnt;
+
+  /* B-tree op timers. */
   UINT64 bt_find_unique;
   UINT64 bt_range_search;
   UINT64 bt_insert;
@@ -513,6 +564,7 @@ struct mnt_server_exec_stats
   UINT64 bt_vacuum_insid;
   UINT64 bt_vacuum_update_sk;
 
+  /* B-tree traversal timers. */
   UINT64 bt_traverse;
   UINT64 bt_find_unique_traverse;
   UINT64 bt_range_search_traverse;
@@ -529,6 +581,12 @@ struct mnt_server_exec_stats
   UINT64 bt_vacuum_insid_traverse;
   UINT64 bt_vacuum_update_sk_traverse;
 
+  /* B-tree timers to fix overflow OID's and to lock for unique. */
+  UINT64 bt_fix_ovf_oids;
+  UINT64 bt_unique_rlocks;
+  UINT64 bt_unique_wlocks;
+
+  /* Vacuum master/worker timers. */
   UINT64 vac_master;
   UINT64 vac_worker_process_log;
   UINT64 vac_worker_execute;
@@ -589,7 +647,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 154
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 203
 
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
 #define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 14
@@ -1135,6 +1193,65 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_oldest_mvcc_retry_counters(thread_p, \
 								    amount)
 
+#define mnt_heap_home_inserts(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_inserts (thread_p)
+#define mnt_heap_big_inserts(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_inserts (thread_p)
+#define mnt_heap_assign_inserts(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_assign_inserts (thread_p)
+#define mnt_heap_home_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_deletes (thread_p)
+#define mnt_heap_home_mvcc_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_mvcc_deletes (thread_p)
+#define mnt_heap_home_to_rel_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_to_rel_deletes (thread_p)
+#define mnt_heap_home_to_big_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_to_big_deletes (thread_p)
+#define mnt_heap_rel_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_deletes (thread_p)
+#define mnt_heap_rel_mvcc_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_mvcc_deletes (thread_p)
+#define mnt_heap_rel_to_home_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_home_deletes (thread_p)
+#define mnt_heap_rel_to_big_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_big_deletes (thread_p)
+#define mnt_heap_rel_to_rel_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_rel_deletes (thread_p)
+#define mnt_heap_big_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_deletes (thread_p)
+#define mnt_heap_big_mvcc_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_mvcc_deletes (thread_p)
+#define mnt_heap_new_ver_inserts(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_new_ver_inserts (thread_p)
+#define mnt_heap_home_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_updates (thread_p)
+#define mnt_heap_home_to_rel_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_to_rel_updates (thread_p)
+#define mnt_heap_home_to_big_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_to_big_updates (thread_p)
+#define mnt_heap_rel_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_updates (thread_p)
+#define mnt_heap_rel_to_home_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_home_updates (thread_p)
+#define mnt_heap_rel_to_rel_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_rel_updates (thread_p)
+#define mnt_heap_rel_to_big_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_big_updates (thread_p)
+#define mnt_heap_big_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_updates (thread_p)
+#define mnt_heap_home_vacuums(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_vacuums (thread_p)
+#define mnt_heap_big_vacuums(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_vacuums (thread_p)
+#define mnt_heap_rel_vacuums(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_vacuums (thread_p)
+#define mnt_heap_insid_vacuums(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_insid_vacuums (thread_p)
+#define mnt_heap_remove_vacuums(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_remove_vacuums (thread_p)
+#define mnt_heap_next_ver_vacuums(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_next_ver_vacuums (thread_p)
+
 #define mnt_heap_insert_prepare_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_heap_insert_prepare_time (thread_p, amount)
@@ -1260,6 +1377,16 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_bt_vacuum_update_sk_traverse_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_vacuum_update_sk_traverse_time (thread_p, amount)
+
+#define mnt_bt_fix_ovf_oids_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_fix_ovf_oids_time (thread_p, amount)
+#define mnt_bt_unique_rlocks_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_unique_rlocks_time (thread_p, amount)
+#define mnt_bt_unique_wlocks_time(thread_p,amount) \
+  if (mnt_Num_tran_exec_stats > 0) \
+    mnt_x_bt_unique_wlocks_time (thread_p, amount)
 
 #define mnt_vac_master_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
@@ -1426,6 +1553,36 @@ extern void mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p,
 
 
 
+extern void mnt_x_heap_home_inserts (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_big_inserts (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_assign_inserts (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_home_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_home_mvcc_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_home_to_rel_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_home_to_big_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_mvcc_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_to_home_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_to_big_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_to_rel_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_big_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_big_mvcc_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_new_ver_inserts (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_home_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_home_to_rel_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_home_to_big_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_to_home_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_to_rel_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_to_big_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_big_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_home_vacuums (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_big_vacuums (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_rel_vacuums (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_insid_vacuums (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_remove_vacuums (THREAD_ENTRY * thread_p);
+extern void mnt_x_heap_next_ver_vacuums (THREAD_ENTRY * thread_p);
+
 extern void mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p,
 					    UINT64 amount);
 extern void mnt_x_heap_insert_execute_time (THREAD_ENTRY * thread_p,
@@ -1505,6 +1662,13 @@ extern void mnt_x_bt_vacuum_insid_traverse_time (THREAD_ENTRY * thread_p,
 						 UINT64 amount);
 extern void mnt_x_bt_vacuum_update_sk_traverse_time (THREAD_ENTRY * thread_p,
 						     UINT64 amount);
+
+extern void mnt_x_bt_fix_ovf_oids_time (THREAD_ENTRY * thread_p,
+					UINT64 amount);
+extern void mnt_x_bt_unique_rlocks_time (THREAD_ENTRY * thread_p,
+					 UINT64 amount);
+extern void mnt_x_bt_unique_wlocks_time (THREAD_ENTRY * thread_p,
+					 UINT64 amount);
 
 extern void mnt_x_vac_master_time (THREAD_ENTRY * thread_p, UINT64 amount);
 extern void mnt_x_vac_worker_process_log_time (THREAD_ENTRY * thread_p,
@@ -1627,6 +1791,36 @@ extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p,
 #define mnt_oldest_mvcc_acquire_time(thread_p,amount)
 #define mnt_oldest_mvcc_retry_counters(thread_p,amount)
 
+#define mnt_heap_home_inserts(thread_p)
+#define mnt_heap_big_inserts(thread_p)
+#define mnt_heap_assign_inserts(thread_p)
+#define mnt_heap_home_deletes(thread_p)
+#define mnt_heap_home_mvcc_deletes(thread_p)
+#define mnt_heap_home_to_rel_deletes(thread_p)
+#define mnt_heap_home_to_big_deletes(thread_p)
+#define mnt_heap_rel_deletes(thread_p)
+#define mnt_heap_rel_mvcc_deletes(thread_p)
+#define mnt_heap_rel_to_home_deletes(thread_p)
+#define mnt_heap_rel_to_big_deletes(thread_p)
+#define mnt_heap_rel_to_rel_deletes(thread_p)
+#define mnt_heap_big_deletes(thread_p)
+#define mnt_heap_big_mvcc_deletes(thread_p)
+#define mnt_heap_new_ver_inserts(thread_p)
+#define mnt_heap_home_updates(thread_p)
+#define mnt_heap_home_to_rel_updates(thread_p)
+#define mnt_heap_home_to_big_updates(thread_p)
+#define mnt_heap_rel_updates(thread_p)
+#define mnt_heap_rel_to_home_updates(thread_p)
+#define mnt_heap_rel_to_rel_updates(thread_p)
+#define mnt_heap_rel_to_big_updates(thread_p)
+#define mnt_heap_big_updates(thread_p)
+#define mnt_heap_home_vacuums(thread_p)
+#define mnt_heap_big_vacuums(thread_p)
+#define mnt_heap_rel_vacuums(thread_p)
+#define mnt_heap_insid_vacuums(thread_p)
+#define mnt_heap_remove_vacuums(thread_p)
+#define mnt_heap_next_ver_vacuums(thread_p)
+
 #define mnt_heap_insert_prepare_time(thread_p,amount)
 #define mnt_heap_insert_execute_time(thread_p,amount)
 #define mnt_heap_insert_log_time(thread_p,amount)
@@ -1670,6 +1864,10 @@ extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p,
 #define mnt_bt_vacuum_traverse_time(thread_p,amount)
 #define mnt_bt_vacuum_insid_traverse_time(thread_p,amount)
 #define mnt_bt_vacuum_update_sk_traverse_time(thread_p,amount)
+
+#define mnt_bt_fix_ovf_oids_time(thread_p,amount)
+#define mnt_bt_unique_slocks_time(thread_p,amount)
+#define mnt_bt_unique_wlocks_time(thread_p,amount)
 
 #define mnt_vac_master_time(thread_p,amount)
 #define mnt_vac_worker_process_log_time(thread_p,amount)
