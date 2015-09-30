@@ -776,6 +776,9 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return TEXT; }
 [tT][hH][eE][nN]							{ begin_token(yytext);   return THEN; }
+[tT][hH][rR][eE][aA][dD][sS]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return THREADS; }
 [tT][iI][mM][eE][oO][uU][tT]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return TIMEOUT; }

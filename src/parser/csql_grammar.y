@@ -1567,6 +1567,7 @@ int g_original_buffer_len;
 %token <cptr> TABLES
 %token <cptr> TEXT
 %token <cptr> THAN
+%token <cptr> THREADS
 %token <cptr> TIMEOUT
 %token <cptr> TRACE
 %token <cptr> TRAN
@@ -6772,6 +6773,10 @@ show_type
 		{{
 			$$ = SHOWSTMT_TRAN_TABLES;
 		}}
+	| THREADS
+		{{
+			$$ = SHOWSTMT_THREADS;
+		}}
 	;
 
 show_type_of_like
@@ -6809,6 +6814,10 @@ show_type_of_where
 	| TRAN TABLES
 		{{
 			$$ = SHOWSTMT_TRAN_TABLES;
+		}}
+	| THREADS
+		{{
+			$$ = SHOWSTMT_THREADS;
 		}}
 	;
 
@@ -20798,6 +20807,16 @@ identifier
 
 		DBG_PRINT}}
 	| THAN
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| THREADS
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

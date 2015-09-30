@@ -125,6 +125,7 @@ typedef enum
   SHOWSTMT_TIMEZONES,
   SHOWSTMT_FULL_TIMEZONES,
   SHOWSTMT_TRAN_TABLES,
+  SHOWSTMT_THREADS,
 
   /* append the new show statement types in here */
 

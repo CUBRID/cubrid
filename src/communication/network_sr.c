@@ -1303,7 +1303,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   tran_index = conn_p->transaction_id;
   client_id = conn_p->client_id;
 
-  thread_set_info (thread_p, client_id, 0, tran_index);
+  thread_set_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
   pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   css_end_server_request (conn_p);
@@ -1430,7 +1430,7 @@ loop:
     }
   css_free_conn (conn_p);
 
-  thread_set_info (thread_p, -1, 0, local_tran_index);
+  thread_set_info (thread_p, -1, 0, local_tran_index, -1);
   thread_p->status = TS_RUN;
 
   return NO_ERROR;
@@ -1572,4 +1572,27 @@ void
 net_cleanup_server_queues (unsigned int rid)
 {
   css_cleanup_server_queues (rid);
+}
+
+/*
+ * net_server_request_name () - get the request name in net_Requests array
+ *   return:
+ *   request(in): the request index in net_Requests array.
+ */
+const char *
+net_server_request_name (int request)
+{
+  if (NET_SERVER_REQUEST_START < request || request < NET_SERVER_REQUEST_END)
+    {
+      /* skip NET_SERVER_ */
+      return (net_Requests[request].name + sizeof ("NET_SERVER_") - 1);
+    }
+  else if (request == NET_SERVER_PING_WITH_HANDSHAKE)
+    {
+      return "PING_WITH_HANDSHAKE";
+    }
+  else
+    {
+      return "UNKNOWN";
+    }
 }

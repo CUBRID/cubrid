@@ -76,7 +76,6 @@
 #include "dbval.h"		/* this must be the last header file included */
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
-#define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
 #if defined(WINDOWS)
@@ -1869,14 +1868,15 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
       eid = css_return_eid_from_conn (conn, rid);
       /* 2. change thread's client, rid, tran_index for this request */
-      thread_set_info (thread_p, conn->client_id, eid, conn->transaction_id);
+      thread_set_info (thread_p, conn->client_id, eid, conn->transaction_id,
+		       request);
 
       /* 3. Call server_request() function */
       status = (*css_Server_request_handler) (thread_p, eid, request,
 					      size, buffer);
 
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
-      thread_set_info (thread_p, -1, 0, local_tran_index);
+      thread_set_info (thread_p, -1, 0, local_tran_index, -1);
     }
   else
     {

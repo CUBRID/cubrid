@@ -11530,6 +11530,37 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * lock_wait_state_to_string () - Translate lock wait state into string 
+ *                                representation
+ *   return:
+ *   state(in): lock wait state
+ */
+const char *
+lock_wait_state_to_string (int state)
+{
+  switch (state)
+    {
+    case LOCK_SUSPENDED:
+      return "SUSPENDED";
+    case LOCK_RESUMED:
+      return "RESUMED";
+    case LOCK_RESUMED_TIMEOUT:
+      return "RESUMED_TIMEOUT";
+    case LOCK_RESUMED_DEADLOCK_TIMEOUT:
+      return "RESUMED_DEADLOCK_TIMEOUT";
+    case LOCK_RESUMED_ABORTED:
+      return "RESUMED_ABORTED";
+    case LOCK_RESUMED_ABORTED_FIRST:
+      return "RESUMED_ABORTED_FIRST";
+    case LOCK_RESUMED_ABORTED_OTHER:
+      return "RESUMED_ABORTED_OTHER";
+    case LOCK_RESUMED_INTERRUPT:
+      return "RESUMED_INTERRUPT";
+    }
+  return "UNKNOWN";
+}
+
+/*
  * lock dump to event log file (lock timeout, deadlock)
  */
 

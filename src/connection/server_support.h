@@ -31,6 +31,8 @@
 #include "connection_sr.h"
 #include "thread.h"
 
+#define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
+
 extern void css_block_all_active_conn (unsigned short stop_phase);
 extern void css_broadcast_shutdown_thread (void);
 

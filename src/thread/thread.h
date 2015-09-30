@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #include "adjustable_array.h"
 #include "system_parameter.h"
+#include "dbtype.h"
 #endif /* SERVER_MODE */
 
 #include "lock_free.h"
@@ -103,6 +104,8 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
 
 #define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
+
+#define thread_start_scan (NULL)
 
 #else /* !SERVER_MODE */
 
@@ -340,6 +343,8 @@ struct thread_entry
   char *log_data_ptr;
   int log_data_length;
 
+  int net_request_index;	/* request index of net server functions */
+
   struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 
   /* resource track info */
@@ -513,7 +518,7 @@ extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p,
 				       HL_HEAPID heap_id);
 
 extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
-			     int tran_index);
+			     int tran_index, int net_request_index);
 
 extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
@@ -544,6 +549,10 @@ extern void thread_dec_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern INT64 thread_get_log_clock_msec (void);
+
+extern int thread_start_scan (THREAD_ENTRY * thread_p, int type,
+			      DB_VALUE ** arg_values, int arg_cnt,
+			      void **ctx);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

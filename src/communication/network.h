@@ -306,5 +306,6 @@ extern char *net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
 
 /* Server startup */
 extern int net_server_start (const char *name);
+extern const char *net_server_request_name (int request);
 
 #endif /* _NETWORK_H_ */

@@ -64,6 +64,8 @@
 #include "perf_monitor.h"
 #include "session.h"
 #include "vacuum.h"
+#include "show_scan.h"
+#include "network.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -272,6 +274,9 @@ static int thread_check_kill_tran_auth (THREAD_ENTRY * thread_p,
 					int tran_id, bool * has_authoriation);
 static INT32 thread_rc_track_threshold_amount (int rc_idx);
 static bool thread_rc_track_is_enabled (THREAD_ENTRY * thread_p);
+static const char *thread_type_to_string (int type);
+static const char *thread_status_to_string (int status);
+static const char *thread_resume_status_to_string (int resume_status);
 
 #if !defined(NDEBUG)
 static void
@@ -1187,6 +1192,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->emulate_tid = ((pthread_t) 0);
   entry_p->client_id = -1;
   entry_p->tran_index = -1;
+  entry_p->net_request_index = -1;
   r = pthread_mutex_init (&entry_p->tran_index_lock, NULL);
   if (r != 0)
     {
@@ -1307,6 +1313,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   entry_p->emulate_tid = ((pthread_t) 0);
   entry_p->client_id = -1;
   entry_p->tran_index = -1;
+  entry_p->net_request_index = -1;
   entry_p->rid = 0;
   entry_p->status = TS_DEAD;
   entry_p->interrupted = false;
@@ -4464,11 +4471,12 @@ thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
  */
 void
 thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
-		 int tran_index)
+		 int tran_index, int net_request_index)
 {
   thread_p->client_id = client_id;
   thread_p->rid = rid;
   thread_p->tran_index = tran_index;
+  thread_p->net_request_index = net_request_index;
   thread_p->victim_request_fail = false;
   thread_p->next_wait_thrd = NULL;
   thread_p->wait_for_latch_promote = false;
@@ -5809,6 +5817,125 @@ thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id,
 }
 
 /*
+ * thread_type_to_string () - Translate thread type into string 
+ *                            representation
+ *   return:
+ *   type(in): thread type
+ */
+static const char *
+thread_type_to_string (int type)
+{
+  switch (type)
+    {
+    case TT_MASTER:
+      return "MASTER";
+    case TT_SERVER:
+      return "SERVER";
+    case TT_WORKER:
+      return "WORKER";
+    case TT_DAEMON:
+      return "DAEMON";
+    case TT_VACUUM_MASTER:
+      return "VACUUM_MASTER";
+    case TT_VACUUM_WORKER:
+      return "VACUUM_WORKER";
+    case TT_NONE:
+      return "NONE";
+    }
+  return "UNKNOWN";
+}
+
+/*
+ * thread_status_to_string () - Translate thread status into string
+ *                              representation
+ *   return:
+ *   type(in): thread type
+ */
+static const char *
+thread_status_to_string (int status)
+{
+  switch (status)
+    {
+    case TS_DEAD:
+      return "DEAD";
+    case TS_FREE:
+      return "FREE";
+    case TS_RUN:
+      return "RUN";
+    case TS_WAIT:
+      return "WAIT";
+    case TS_CHECK:
+      return "CHECK";
+    }
+  return "UNKNOWN";
+}
+
+/*
+ * thread_resume_status_to_string () - Translate thread resume status into
+ *                                     string representation
+ *   return:
+ *   type(in): thread type
+ */
+static const char *
+thread_resume_status_to_string (int resume_status)
+{
+  switch (resume_status)
+    {
+    case THREAD_RESUME_NONE:
+      return "RESUME_NONE";
+    case THREAD_RESUME_DUE_TO_INTERRUPT:
+      return "RESUME_DUE_TO_INTERRUPT";
+    case THREAD_RESUME_DUE_TO_SHUTDOWN:
+      return "RESUME_DUE_TO_SHUTDOWN";
+    case THREAD_PGBUF_SUSPENDED:
+      return "PGBUF_SUSPENDED";
+    case THREAD_PGBUF_RESUMED:
+      return "PGBUF_RESUMED";
+    case THREAD_JOB_QUEUE_SUSPENDED:
+      return "JOB_QUEUE_SUSPENDED";
+    case THREAD_JOB_QUEUE_RESUMED:
+      return "JOB_QUEUE_RESUMED";
+    case THREAD_CSECT_READER_SUSPENDED:
+      return "CSECT_READER_SUSPENDED";
+    case THREAD_CSECT_READER_RESUMED:
+      return "CSECT_READER_RESUMED";
+    case THREAD_CSECT_WRITER_SUSPENDED:
+      return "CSECT_WRITER_SUSPENDED";
+    case THREAD_CSECT_WRITER_RESUMED:
+      return "CSECT_WRITER_RESUMED";
+    case THREAD_CSECT_PROMOTER_SUSPENDED:
+      return "CSECT_PROMOTER_SUSPENDED";
+    case THREAD_CSECT_PROMOTER_RESUMED:
+      return "CSECT_PROMOTER_RESUMED";
+    case THREAD_CSS_QUEUE_SUSPENDED:
+      return "CSS_QUEUE_SUSPENDED";
+    case THREAD_CSS_QUEUE_RESUMED:
+      return "CSS_QUEUE_RESUMED";
+    case THREAD_QMGR_ACTIVE_QRY_SUSPENDED:
+      return "QMGR_ACTIVE_QRY_SUSPENDED";
+    case THREAD_QMGR_ACTIVE_QRY_RESUMED:
+      return "QMGR_ACTIVE_QRY_RESUMED";
+    case THREAD_QMGR_MEMBUF_PAGE_SUSPENDED:
+      return "QMGR_MEMBUF_PAGE_SUSPENDED";
+    case THREAD_QMGR_MEMBUF_PAGE_RESUMED:
+      return "QMGR_MEMBUF_PAGE_RESUMED";
+    case THREAD_HEAP_CLSREPR_SUSPENDED:
+      return "HEAP_CLSREPR_SUSPENDED";
+    case THREAD_HEAP_CLSREPR_RESUMED:
+      return "HEAP_CLSREPR_RESUMED";
+    case THREAD_LOCK_SUSPENDED:
+      return "LOCK_SUSPENDED";
+    case THREAD_LOCK_RESUMED:
+      return "LOCK_RESUMED";
+    case THREAD_LOGWR_SUSPENDED:
+      return "LOGWR_SUSPENDED";
+    case THREAD_LOGWR_RESUMED:
+      return "LOGWR_RESUMED";
+    }
+  return "UNKNOWN";
+}
+
+/*
  * thread_rc_track_dump_all () -
  *   return:
  *   thread_p(in):
@@ -6115,6 +6242,338 @@ thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
     }
 
   thread_p->xasl_recursion_depth = 0;
+}
+
+/*
+ * thread_start_scan () -  start scan function for show threads
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   type (in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(in/out):
+ */
+extern int
+thread_start_scan (THREAD_ENTRY * thread_p, int type,
+		   DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
+  const int num_cols = 27;
+  THREAD_ENTRY *thrd, *next_thrd;
+  int i, idx, error = NO_ERROR;
+  DB_VALUE *vals = NULL;
+  int ival;
+  INT64 i64val;
+  CSS_CONN_ENTRY *conn_entry = NULL;
+  char buf[1024];
+  int buf_len;
+  void *area;
+  HL_HEAPID private_heap_id;
+  void *query_entry;
+  LK_ENTRY *lockwait;
+  time_t stime;
+  int msecs;
+  DB_DATETIME time_val;
+
+  *ptr = NULL;
+
+  ctx =
+    showstmt_alloc_array_context (thread_p, thread_Manager.num_total,
+				  num_cols);
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+
+  for (i = 0; i < thread_Manager.num_total; i++)
+    {
+      thrd = &thread_Manager.thread_array[i];
+
+      vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+      if (vals == NULL)
+	{
+	  error = er_errid ();
+	  goto exit_on_error;
+	}
+
+      idx = 0;
+      /* Index */
+      db_make_int (&vals[idx], thrd->index);
+      idx++;
+
+      /* Jobq_index */
+      if (0 < thrd->index && thrd->index <= thread_Manager.num_workers)
+	{
+	  db_make_int (&vals[idx], thrd->index % CSS_NUM_JOB_QUEUE);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Thread_id */
+      db_make_bigint (&vals[idx], thrd->tid);
+      idx++;
+
+      /* Tran_index */
+      ival = thrd->tran_index;
+      if (ival >= 0)
+	{
+	  db_make_int (&vals[idx], ival);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Type */
+      db_make_string (&vals[idx], thread_type_to_string (thrd->type));
+      idx++;
+
+      /* Status */
+      db_make_string (&vals[idx], thread_status_to_string (thrd->status));
+      idx++;
+
+      /* Resume_status */
+      db_make_string (&vals[idx],
+		      thread_resume_status_to_string (thrd->resume_status));
+      idx++;
+
+      /* Net_request */
+      ival = thrd->net_request_index;
+      if (ival != -1)
+	{
+	  db_make_string (&vals[idx], net_server_request_name (ival));
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Conn_client_id */
+      ival = thrd->client_id;
+      if (ival != -1)
+	{
+	  db_make_int (&vals[idx], ival);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Conn_request_id */
+      ival = thrd->rid;
+      if (ival != 0)
+	{
+	  db_make_int (&vals[idx], ival);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Conn_index */
+      conn_entry = thrd->conn_entry;
+      if (conn_entry != NULL)
+	{
+	  db_make_int (&vals[idx], conn_entry->idx);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Last_error_code */
+      ival = er_errid ();
+      db_make_int (&vals[idx], ival);
+      idx++;
+
+      /* Last_error_msg */
+      if (ival != NO_ERROR)
+	{
+	  buf_len = 1024;
+	  area = er_get_area_error (buf, &buf_len);
+	  ((char *) (area))[255] = '\0';	/* truncate msg */
+	  error = db_make_string_copy (&vals[idx], (const char *) area);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Private_heap_id */
+      private_heap_id = thrd->private_heap_id;
+      if (private_heap_id != 0)
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64,
+		    (UINT64) private_heap_id);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Query_entry */
+      query_entry = thrd->query_entry;
+      if (query_entry != NULL)
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) query_entry);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Interrupted */
+      db_make_int (&vals[idx], thrd->interrupted);
+      idx++;
+
+      /* Shutdown */
+      db_make_int (&vals[idx], thrd->shutdown);
+      idx++;
+
+      /* Check_interrupt */
+      db_make_int (&vals[idx], thrd->check_interrupt);
+      idx++;
+
+      /* Check_page_validation */
+      db_make_int (&vals[idx], thrd->check_page_validation);
+      idx++;
+
+      /* Wait_for_latch_promote */
+      db_make_int (&vals[idx], thrd->wait_for_latch_promote);
+      idx++;
+
+      lockwait = (LK_ENTRY *) thrd->lockwait;
+      if (lockwait != NULL)
+	{
+	  /* lockwait_blocked_mode */
+	  strncpy (buf, LOCK_TO_LOCKMODE_STRING (lockwait->blocked_mode),
+		   sizeof (buf));
+	  buf[sizeof (buf) - 1] = '\0';
+	  trim (buf);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  idx++;
+
+	  /* Lockwait_start_time */
+	  i64val = thrd->lockwait_stime;
+	  stime = (time_t) (i64val / 1000LL);
+	  msecs = i64val % 1000;
+	  db_localdatetime_msec (&stime, msecs, &time_val);
+	  error = db_make_datetime (&vals[idx], &time_val);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  idx++;
+
+	  /* Lockwait_msecs */
+	  db_make_int (&vals[idx], thrd->lockwait_msecs);
+	  idx++;
+
+	  /* Lockwait_state */
+	  db_make_string (&vals[idx],
+			  lock_wait_state_to_string (thrd->lockwait_state));
+	  idx++;
+	}
+      else
+	{
+	  /* lockwait_blocked_mode */
+	  db_make_null (&vals[idx]);
+	  idx++;
+
+	  /* Lockwait_start_time */
+	  db_make_null (&vals[idx]);
+	  idx++;
+
+	  /* Lockwait_msecs */
+	  db_make_null (&vals[idx]);
+	  idx++;
+
+	  /* Lockwait_state */
+	  db_make_null (&vals[idx]);
+	  idx++;
+	}
+
+      /* Next_wait_thread_index */
+      next_thrd = thrd->next_wait_thrd;
+      if (next_thrd != NULL)
+	{
+	  db_make_int (&vals[idx], next_thrd->index);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Next_tran_wait_thread_index */
+      next_thrd = thrd->tran_next_wait;
+      if (next_thrd != NULL)
+	{
+	  db_make_int (&vals[idx], next_thrd->index);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Next_worker_thread_index */
+      next_thrd = thrd->worker_thrd_list;
+      if (next_thrd != NULL)
+	{
+	  db_make_int (&vals[idx], next_thrd->index);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      assert (idx == num_cols);
+    }
+
+  *ptr = ctx;
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (ctx != NULL)
+    {
+      showstmt_free_array_context (thread_p, ctx);
+    }
+
+  return error;
 }
 
 #if defined(SERVER_MODE)

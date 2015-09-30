@@ -88,6 +88,7 @@ static SHOWSTMT_METADATA *metadata_of_job_queues (void);
 static SHOWSTMT_METADATA *metadata_of_timezones (void);
 static SHOWSTMT_METADATA *metadata_of_full_timezones (void);
 static SHOWSTMT_METADATA *metadata_of_tran_tables (void);
+static SHOWSTMT_METADATA *metadata_of_threads (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -668,6 +669,50 @@ metadata_of_tran_tables (void)
   return &md;
 }
 
+static SHOWSTMT_METADATA *
+metadata_of_threads (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Index", "int"},
+    {"Jobq_index", "int"},
+    {"Thread_id", "bigint"},
+    {"Tran_index", "int"},
+    {"Type", "varchar(8)"},
+    {"Status", "varchar(8)"},
+    {"Resume_status", "varchar(32)"},
+    {"Net_request", "varchar(64)"},
+    {"Conn_client_id", "int"},
+    {"Conn_request_id", "int"},
+    {"Conn_index", "int"},
+    {"Last_error_code", "int"},
+    {"Last_error_msg", "varchar(256)"},
+    {"Private_heap_id", "varchar(20)"},
+    {"Query_entry", "varchar(20)"},
+    {"Interrupted", "int"},
+    {"Shutdown", "int"},
+    {"Check_interrupt", "int"},
+    {"Check_page_validation", "int"},
+    {"Wait_for_latch_promote", "int"},
+    {"Lockwait_blocked_mode", "varchar(24)"},
+    {"Lockwait_start_time", "datetime"},
+    {"Lockwait_msecs", "int"},
+    {"Lockwait_state", "varchar(24)"},
+    {"Next_wait_thread_index", "int"},
+    {"Next_tran_wait_thread_index", "int"},
+    {"Next_worker_thread_index", "int"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_THREADS, "show threads",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+  return &md;
+}
+
 /*
  * showstmt_get_metadata() -  return show statement column infos
  *   return:-
@@ -920,6 +965,7 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_TIMEZONES] = metadata_of_timezones ();
   show_Metas[SHOWSTMT_FULL_TIMEZONES] = metadata_of_full_timezones ();
   show_Metas[SHOWSTMT_TRAN_TABLES] = metadata_of_tran_tables ();
+  show_Metas[SHOWSTMT_THREADS] = metadata_of_threads ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

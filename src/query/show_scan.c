@@ -215,6 +215,12 @@ showstmt_scan_init (void)
   req->next_func = showstmt_array_next_scan;
   req->end_func = showstmt_array_end_scan;
 
+  req = &show_Requests[SHOWSTMT_THREADS];
+  req->show_type = SHOWSTMT_THREADS;
+  req->start_func = thread_start_scan;
+  req->next_func = showstmt_array_next_scan;
+  req->end_func = showstmt_array_end_scan;
+
   /* append to init other show statement scan function here */
 
 

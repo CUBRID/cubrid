@@ -627,36 +627,37 @@ extern int yybuffer_pos;
      TABLES = 775,
      TEXT = 776,
      THAN = 777,
-     TIMEOUT = 778,
-     TRACE = 779,
-     TRAN = 780,
-     TRIGGERS = 781,
-     UCASE = 782,
-     UNCOMMITTED = 783,
-     VAR_POP = 784,
-     VAR_SAMP = 785,
-     VARIANCE = 786,
-     VOLUME = 787,
-     WEEK = 788,
-     WITHIN = 789,
-     WORKSPACE = 790,
-     TIMEZONES = 791,
-     IdName = 792,
-     BracketDelimitedIdName = 793,
-     BacktickDelimitedIdName = 794,
-     DelimitedIdName = 795,
-     UNSIGNED_INTEGER = 796,
-     UNSIGNED_REAL = 797,
-     CHAR_STRING = 798,
-     NCHAR_STRING = 799,
-     BIT_STRING = 800,
-     HEX_STRING = 801,
-     CPP_STYLE_HINT = 802,
-     C_STYLE_HINT = 803,
-     SQL_STYLE_HINT = 804,
-     EUCKR_STRING = 805,
-     ISO_STRING = 806,
-     UTF8_STRING = 807
+     THREADS = 778,
+     TIMEOUT = 779,
+     TRACE = 780,
+     TRAN = 781,
+     TRIGGERS = 782,
+     UCASE = 783,
+     UNCOMMITTED = 784,
+     VAR_POP = 785,
+     VAR_SAMP = 786,
+     VARIANCE = 787,
+     VOLUME = 788,
+     WEEK = 789,
+     WITHIN = 790,
+     WORKSPACE = 791,
+     TIMEZONES = 792,
+     IdName = 793,
+     BracketDelimitedIdName = 794,
+     BacktickDelimitedIdName = 795,
+     DelimitedIdName = 796,
+     UNSIGNED_INTEGER = 797,
+     UNSIGNED_REAL = 798,
+     CHAR_STRING = 799,
+     NCHAR_STRING = 800,
+     BIT_STRING = 801,
+     HEX_STRING = 802,
+     CPP_STYLE_HINT = 803,
+     C_STYLE_HINT = 804,
+     SQL_STYLE_HINT = 805,
+     EUCKR_STRING = 806,
+     ISO_STRING = 807,
+     UTF8_STRING = 808
    };
 #endif
 
@@ -680,7 +681,7 @@ typedef union YYSTYPE
 
 
 /* Line 2638 of glr.c  */
-#line 684 "../../src/parser/csql_grammar.h"
+#line 685 "../../src/parser/csql_grammar.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 #endif

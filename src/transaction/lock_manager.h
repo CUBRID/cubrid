@@ -306,4 +306,5 @@ extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY *
 							int tran_index,
 							const OID *
 							class_oid);
+extern const char *lock_wait_state_to_string (int state);
 #endif /* _LOCK_MANAGER_H_ */
