@@ -124,6 +124,8 @@ typedef enum
   SHOWSTMT_JOB_QUEUES,
   SHOWSTMT_TIMEZONES,
   SHOWSTMT_FULL_TIMEZONES,
+  SHOWSTMT_TRAN_TABLES,
+
   /* append the new show statement types in here */
 
   SHOWSTMT_END

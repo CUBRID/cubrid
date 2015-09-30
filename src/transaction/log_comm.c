@@ -141,6 +141,27 @@ log_state_string (TRAN_STATE state)
 
 }
 
+
+/*
+ * log_state_short_string - Translate state into string representation
+ *                      without TRAN_ prefix
+ *
+ * return:
+ *
+ *   state(in): Transaction state
+ */
+const char *
+log_state_short_string (TRAN_STATE state)
+{
+  const char *state_string;
+  int skip_len;
+
+  skip_len = sizeof ("TRAN_") - 1;
+  state_string = log_state_string (state) + skip_len;
+
+  return state_string;
+}
+
 /*
  * log_isolation_string - Translate isolation level into string representation
  *

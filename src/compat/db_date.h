@@ -171,6 +171,8 @@ extern int db_strftime (char *s, int smax, const char *fmt,
 extern void db_localtime (time_t * epoch_time,
 			  DB_DATE * date, DB_TIME * timeval);
 extern void db_localdatetime (time_t * epoch_time, DB_DATETIME * datetime);
+extern void db_localdatetime_msec (time_t * epoch_time, int millisecond,
+				   DB_DATETIME * datetime);
 
 
 /* generic calculation functions */

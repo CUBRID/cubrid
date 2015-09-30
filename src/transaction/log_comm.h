@@ -203,6 +203,7 @@ struct tran_query_exec_info
 extern const int LOG_MIN_NBUFFERS;
 
 extern const char *log_state_string (TRAN_STATE state);
+extern const char *log_state_short_string (TRAN_STATE state);
 extern const char *log_isolation_string (TRAN_ISOLATION isolation);
 extern LOG_COPY *log_alloc_client_copy_area (int length);
 extern void log_free_client_copy_area (LOG_COPY * copy_area);

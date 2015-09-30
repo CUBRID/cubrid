@@ -7327,3 +7327,46 @@ boot_get_db_charset_from_header (THREAD_ENTRY * thread_p,
 
   return vol_header_db_charset;
 }
+
+const char *
+boot_client_type_to_string (BOOT_CLIENT_TYPE type)
+{
+  switch (type)
+    {
+    case BOOT_CLIENT_SYSTEM_INTERNAL:
+      return "SYSTEM_INTERNAL";
+    case BOOT_CLIENT_DEFAULT:
+      return "DEFAULT";
+    case BOOT_CLIENT_CSQL:
+      return "CSQL";
+    case BOOT_CLIENT_READ_ONLY_CSQL:
+      return "READ_ONLY_CSQL";
+    case BOOT_CLIENT_BROKER:
+      return "BROKER";
+    case BOOT_CLIENT_READ_ONLY_BROKER:
+      return "READ_ONLY_BROKER";
+    case BOOT_CLIENT_SLAVE_ONLY_BROKER:
+      return "SLAVE_ONLY_BROKER";
+    case BOOT_CLIENT_ADMIN_UTILITY:
+      return "ADMIN_UTILITY";
+    case BOOT_CLIENT_ADMIN_CSQL:
+      return "ADMIN_CSQL";
+    case BOOT_CLIENT_LOG_COPIER:
+      return "LOG_COPIER";
+    case BOOT_CLIENT_LOG_APPLIER:
+      return "LOG_APPLIER";
+    case BOOT_CLIENT_RW_BROKER_REPLICA_ONLY:
+      return "RW_BROKER_REPLICA_ONLY";
+    case BOOT_CLIENT_RO_BROKER_REPLICA_ONLY:
+      return "RO_BROKER_REPLICA_ONLY";
+    case BOOT_CLIENT_SO_BROKER_REPLICA_ONLY:
+      return "SO_BROKER_REPLICA_ONLY";
+    case BOOT_CLIENT_ADMIN_CSQL_WOS:
+      return "ADMIN_CSQL_WOS";
+    case BOOT_CLIENT_LOG_PREFETCHER:
+      return "LOG_PREFETCHER";
+    case BOOT_CLIENT_UNKNOWN:
+    default:
+      return "UNKNOWN";
+    }
+}

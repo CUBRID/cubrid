@@ -855,6 +855,7 @@ extern time_t mktime_for_win32 (struct tm *tm);
 
 #if (defined (WINDOWS) && !defined (PRId64))
 #define PRId64 "lld"
+#define PRIx64 "llx"
 #endif
 
 extern int msleep (const long msec);

@@ -469,6 +469,7 @@ static KEYWORD_RECORD keywords[] = {
   {TO, "TO", 0},
   {TRACE, "TRACE", 1},
   {TRAILING_, "TRAILING", 0},
+  {TRAN, "TRAN", 1},
   {TRANSACTION, "TRANSACTION", 0},
   {TRANSLATE, "TRANSLATE", 0},
   {TRANSLATION, "TRANSLATION", 0},

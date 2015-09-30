@@ -87,6 +87,7 @@ static SHOWSTMT_METADATA *metadata_of_global_critical_sections (void);
 static SHOWSTMT_METADATA *metadata_of_job_queues (void);
 static SHOWSTMT_METADATA *metadata_of_timezones (void);
 static SHOWSTMT_METADATA *metadata_of_full_timezones (void);
+static SHOWSTMT_METADATA *metadata_of_tran_tables (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -598,6 +599,75 @@ metadata_of_full_timezones (void)
   return &md;
 }
 
+/* for show transaction descriptors */
+static SHOWSTMT_METADATA *
+metadata_of_tran_tables (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Tran_index", "int"},
+    {"Tran_id", "int"},
+    {"Is_loose_end", "int"},
+    {"State", "varchar(64)"},
+    {"Isolation", "varchar(64)"},
+    {"Wait_msecs", "int"},
+    {"Head_lsa", "varchar(64)"},
+    {"Tail_lsa", "varchar(64)"},
+    {"Undo_next_lsa", "varchar(64)"},
+    {"Postpone_next_lsa", "varchar(64)"},
+    {"Savepoint_lsa", "varchar(64)"},
+    {"Topop_lsa", "varchar(64)"},
+    {"Tail_top_result_lsa", "varchar(64)"},
+    {"Client_undo_lsa", "varchar(64)"},
+    {"Client_postpone_lsa", "varchar(64)"},
+    {"Client_id", "int"},
+    {"Client_type", "varchar(40)"},
+    {"Client_info", "varchar(256)"},
+    {"Client_db_user", "varchar(40)"},
+    {"Client_program", "varchar(256)"},
+    {"Client_login_user", "varchar(16)"},
+    {"Client_host", "varchar(64)"},
+    {"Client_pid", "int"},
+    {"Topop_depth", "int"},
+    {"Num_unique_btrees", "int"},
+    {"Max_unique_btrees", "int"},
+    {"Interrupt", "int"},
+    {"Num_transient_classnames", "int"},
+    {"Repl_max_records", "int"},
+    {"Repl_records", "varchar(20)"},
+    {"Repl_current_index", "int"},
+    {"Repl_append_index", "int"},
+    {"Repl_flush_marked_index", "int"},
+    {"Repl_insert_lsa", "varchar(64)"},
+    {"Repl_update_lsa", "varchar(64)"},
+    {"First_save_entry", "varchar(20)"},
+    {"Tran_unique_stats", "varchar(20)"},
+    {"Modified_class_list", "varchar(20)"},
+    {"Num_new_files", "int"},
+    {"Num_new_temp_files", "int"},
+    {"Num_new_temp_temp_files", "int"},
+    {"Waiting_for_res", "varchar(20)"},
+    {"Has_deadlock_priority", "int"},
+    {"Suppress_replication", "int"},
+    {"Query_timeout", "datetime"},
+    {"Query_start_time", "datetime"},
+    {"Tran_start_time", "datetime"},
+    {"Xasl_id", "varchar(64)"},
+    {"Disable_modifications", "int"},
+    {"Abort_reason", "varchar(40)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_TRAN_TABLES, "show transaction tables",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+
+  return &md;
+}
+
 /*
  * showstmt_get_metadata() -  return show statement column infos
  *   return:-
@@ -849,6 +919,7 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_JOB_QUEUES] = metadata_of_job_queues ();
   show_Metas[SHOWSTMT_TIMEZONES] = metadata_of_timezones ();
   show_Metas[SHOWSTMT_FULL_TIMEZONES] = metadata_of_full_timezones ();
+  show_Metas[SHOWSTMT_TRAN_TABLES] = metadata_of_tran_tables ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

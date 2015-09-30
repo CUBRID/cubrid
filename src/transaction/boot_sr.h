@@ -167,5 +167,6 @@ extern int boot_rv_del_volume_extension (THREAD_ENTRY * thread_p,
 #endif
 extern void boot_rv_dump_del_volume (FILE * fp, int length_ignore,
 				     void *data);
+extern const char *boot_client_type_to_string (BOOT_CLIENT_TYPE type);
 
 #endif /* _BOOT_SR_H_ */

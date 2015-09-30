@@ -75,6 +75,8 @@
 #include "btree_load.h"
 #include "serial.h"
 #include "tsc_timer.h"
+#include "show_scan.h"
+#include "boot_sr.h"
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #include "replication.h"
@@ -7431,3 +7433,496 @@ logtb_collect_local_clients (int **local_clients_pids)
   return num_client;
 }
 #endif /* !NDEBUG */
+
+/*
+ * logtb_descriptors_start_scan () -  start scan function for tran descriptors
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in):
+ *   type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(in/out):
+ */
+int
+logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
+			      DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
+  int i, idx, msecs, error = NO_ERROR;
+  char buf[512], vpid_buf[64], vfid_buf[64];
+  const char *str;
+  time_t tval;
+  INT64 i64val;
+  XASL_ID xasl_val;
+  DB_DATETIME time_val;
+  void *ptr_val;
+  LOG_TDES *tdes;
+  DB_VALUE *vals = NULL;
+  const int num_cols = 50;
+
+  *ptr = NULL;
+
+  ctx =
+    showstmt_alloc_array_context (thread_p, NUM_TOTAL_TRAN_INDICES, num_cols);
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+
+  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+
+  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+    {
+      tdes = log_Gl.trantable.all_tdes[i];
+      if (tdes == NULL || tdes->trid == NULL_TRANID)
+	{
+	  /* The index is not assigned or is system transaction (no-client) */
+	  continue;
+	}
+
+      idx = 0;
+      vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+      if (vals == NULL)
+	{
+	  error = er_errid ();
+	  goto exit_on_error;
+	}
+
+      /* Tran_index */
+      db_make_int (&vals[idx], tdes->tran_index);
+      idx++;
+
+      /* Tran_id */
+      db_make_int (&vals[idx], tdes->trid);
+      idx++;
+
+      /* Is_loose_end */
+      db_make_int (&vals[idx], tdes->isloose_end);
+      idx++;
+
+      /* State */
+      db_make_string (&vals[idx], log_state_short_string (tdes->state));
+      idx++;
+
+      /* isolation */
+      db_make_string (&vals[idx], log_isolation_string (tdes->isolation));
+      idx++;
+
+      /* Wait_msecs */
+      db_make_int (&vals[idx], tdes->wait_msecs);
+      idx++;
+
+      /* Head_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->head_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Tail_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->tail_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Undo_next_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->undo_nxlsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Postpone_next_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->posp_nxlsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Savepoint_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->savept_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Topop_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->topop_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Tail_top_result_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->tail_topresult_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_undo_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->client_undo_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_postpone_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->client_posp_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_id */
+      db_make_int (&vals[idx], tdes->client_id);
+      idx++;
+
+      /* Client_type */
+      str = boot_client_type_to_string (tdes->client.client_type);
+      error = db_make_string_copy (&vals[idx], str);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_info */
+      error = db_make_string_copy (&vals[idx], tdes->client.client_info);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_db_user */
+      error = db_make_string_copy (&vals[idx], tdes->client.db_user);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_program */
+      error = db_make_string_copy (&vals[idx], tdes->client.program_name);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_login_user */
+      error = db_make_string_copy (&vals[idx], tdes->client.login_name);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_host */
+      error = db_make_string_copy (&vals[idx], tdes->client.host_name);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Client_pid */
+      db_make_int (&vals[idx], tdes->client.process_id);
+      idx++;
+
+      /* Topop_depth */
+      db_make_int (&vals[idx], tdes->topops.last + 1);
+      idx++;
+
+      /* Num_unique_btrees */
+      db_make_int (&vals[idx], tdes->num_unique_btrees);
+      idx++;
+
+      /* Max_unique_btrees */
+      db_make_int (&vals[idx], tdes->max_unique_btrees);
+      idx++;
+
+      /* Interrupt */
+      db_make_int (&vals[idx], tdes->interrupt);
+      idx++;
+
+      /* Num_transient_classnames */
+      db_make_int (&vals[idx], tdes->num_transient_classnames);
+      idx++;
+
+      /* Repl_max_records */
+      db_make_int (&vals[idx], tdes->num_repl_records);
+      idx++;
+
+      /* Repl_records */
+      ptr_val = tdes->repl_records;
+      if (ptr_val == NULL)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      idx++;
+
+      /* Repl_current_index */
+      db_make_int (&vals[idx], tdes->cur_repl_record);
+      idx++;
+
+      /* Repl_append_index */
+      db_make_int (&vals[idx], tdes->append_repl_recidx);
+      idx++;
+
+      /* Repl_flush_marked_index */
+      db_make_int (&vals[idx], tdes->fl_mark_repl_recidx);
+      idx++;
+
+      /* Repl_insert_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->repl_insert_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Repl_update_lsa */
+      lsa_to_string (buf, sizeof (buf), &tdes->repl_update_lsa);
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* First_save_entry */
+      ptr_val = tdes->first_save_entry;
+      if (ptr_val == NULL)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      idx++;
+
+      /* Tran_unique_stats */
+      ptr_val = tdes->tran_unique_stats;
+      if (ptr_val == NULL)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      idx++;
+
+      /* Modified_class_list */
+      ptr_val = tdes->modified_class_list;
+      if (ptr_val == NULL)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      idx++;
+
+      /* Num_new_files */
+      db_make_int (&vals[idx], tdes->num_new_files);
+      idx++;
+
+      /* Num_new_temp_files */
+      db_make_int (&vals[idx], tdes->num_new_tmp_files);
+      idx++;
+
+      /* Num_new_temp_temp_files */
+      db_make_int (&vals[idx], tdes->num_new_tmp_tmp_files);
+      idx++;
+
+      /* Waiting_for_res */
+      ptr_val = tdes->waiting_for_res;
+      if (ptr_val == NULL)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      idx++;
+
+      /* Has_deadlock_priority */
+      db_make_int (&vals[idx], tdes->has_deadlock_priority);
+      idx++;
+
+      /* Suppress_replication */
+      db_make_int (&vals[idx], tdes->suppress_replication);
+      idx++;
+
+      /* Query_timeout */
+      i64val = tdes->query_timeout;
+      if (i64val <= 0)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  tval = i64val / 1000;
+	  msecs = i64val % 1000;
+	  db_localdatetime_msec (&tval, msecs, &time_val);
+	  db_make_datetime (&vals[idx], &time_val);
+	}
+      idx++;
+
+      /* Query_start_time */
+      i64val = tdes->query_start_time;
+      if (i64val <= 0)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  tval = i64val / 1000;
+	  msecs = i64val % 1000;
+	  db_localdatetime_msec (&tval, msecs, &time_val);
+	  db_make_datetime (&vals[idx], &time_val);
+	}
+      idx++;
+
+      /* Tran_start_time */
+      i64val = tdes->tran_start_time;
+      if (i64val <= 0)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  tval = i64val / 1000;
+	  msecs = i64val % 1000;
+	  db_localdatetime_msec (&tval, msecs, &time_val);
+	  db_make_datetime (&vals[idx], &time_val);
+	}
+      idx++;
+
+      /* Xasl_id */
+      XASL_ID_COPY (&xasl_val, &tdes->xasl_id);
+      if (XASL_ID_IS_NULL (&xasl_val))
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  vpid_to_string (vpid_buf, sizeof (vpid_buf), &xasl_val.first_vpid);
+	  vfid_to_string (vfid_buf, sizeof (vfid_buf), &xasl_val.temp_vfid);
+	  snprintf (buf, sizeof (buf), "vpid: %s, vfid: %s", vpid_buf,
+		    vfid_buf);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      idx++;
+
+      /* Disable_modifications */
+      db_make_int (&vals[idx], tdes->disable_modifications);
+      idx++;
+
+      /* Abort_reason */
+      str = tran_abort_reason_to_string (tdes->tran_abort_reason);
+      db_make_string (&vals[idx], str);
+      idx++;
+
+      assert (idx == num_cols);
+    }
+
+
+  TR_TABLE_CS_EXIT (thread_p);
+
+  *ptr = ctx;
+  return NO_ERROR;
+
+exit_on_error:
+  TR_TABLE_CS_EXIT (thread_p);
+
+  if (ctx != NULL)
+    {
+      showstmt_free_array_context (thread_p, ctx);
+    }
+
+  return error;
+}
+
+/*
+ * tran_abort_reason_to_string() - return the string alias of enum value
+ *
+ *   return: constant string
+ *
+ *   val(in): the enum value
+ */
+const char *
+tran_abort_reason_to_string (TRAN_ABORT_REASON val)
+{
+  switch (val)
+    {
+    case TRAN_NORMAL:
+      return "NORMAL";
+    case TRAN_ABORT_DUE_DEADLOCK:
+      return "ABORT_DUE_DEADLOCK";
+    case TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION:
+      return "ABORT_DUE_ROLLBACK_ON_ESCALATION";
+    }
+  return "UNKNOWN";
+}

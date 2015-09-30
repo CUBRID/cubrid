@@ -1075,7 +1075,7 @@ db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval)
 
 
 /*
- * db_localtime() - Converts the time since epoch (jan 1 1970) into database
+ * db_localdatetime() - Converts the time since epoch (jan 1 1970) into database
  *    datetime structure.
  * return : void
  * epoch_time(in): number of seconds since epoch
@@ -1083,6 +1083,21 @@ db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval)
  */
 void
 db_localdatetime (time_t * epoch_time, DB_DATETIME * datetime)
+{
+  db_localdatetime_msec (epoch_time, 0, datetime);
+}
+
+/*
+ * db_localdatetime_msec() - Converts the time include milliseconds since
+ *    epoch (jan 1 1970) into database datetime structure.
+ * return : void
+ * epoch_time(in): number of seconds since epoch
+ * millisecond(in): part of extra milliseconds
+ * datetime(out): database datetime structure
+ */
+void
+db_localdatetime_msec (time_t * epoch_time, int millisecond,
+		       DB_DATETIME * datetime)
 {
   struct tm *temp;
   struct tm t;
@@ -1097,7 +1112,7 @@ db_localdatetime (time_t * epoch_time, DB_DATETIME * datetime)
     {
       db_datetime_encode (datetime, temp->tm_mon + 1, temp->tm_mday,
 			  temp->tm_year + 1900, temp->tm_hour, temp->tm_min,
-			  temp->tm_sec, 0);
+			  temp->tm_sec, millisecond);
     }
 }
 

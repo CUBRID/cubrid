@@ -2635,7 +2635,10 @@ extern char *logpb_backup_level_info_to_string (char *buf, int buf_size,
 						* info);
 extern void logpb_get_nxio_lsa (LOG_LSA * lsa_p);
 extern const char *logpb_perm_status_to_string (enum LOG_PSTATUS val);
-
+extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
+extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
+					 DB_VALUE ** arg_values, int arg_cnt,
+					 void **ctx);
 extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
 
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY *

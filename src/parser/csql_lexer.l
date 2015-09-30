@@ -791,6 +791,9 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return TRACE; }
 [tT][rR][aA][iI][lL][iI][nN][gG]					{ begin_token(yytext);   return TRAILING_; }
+[tT][rR][aA][nN]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return TRAN; }
 [tT][rR][aA][nN][sS][aA][cC][tT][iI][oO][nN]				{ begin_token(yytext);   return TRANSACTION; }
 [tT][rR][aA][nN][sS][lL][aA][tT][eE]					{ begin_token(yytext);   return TRANSLATE; }
 [tT][rR][aA][nN][sS][lL][aA][tT][iI][oO][nN]				{ begin_token(yytext);   return TRANSLATION; }

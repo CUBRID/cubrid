@@ -1569,6 +1569,7 @@ int g_original_buffer_len;
 %token <cptr> THAN
 %token <cptr> TIMEOUT
 %token <cptr> TRACE
+%token <cptr> TRAN
 %token <cptr> TRIGGERS
 %token <cptr> UCASE
 %token <cptr> UNCOMMITTED
@@ -6763,6 +6764,14 @@ show_type
 		{{
 			$$ = SHOWSTMT_FULL_TIMEZONES;
 		}}		
+	| TRANSACTION TABLES
+		{{
+			$$ = SHOWSTMT_TRAN_TABLES;
+		}}
+	| TRAN TABLES
+		{{
+			$$ = SHOWSTMT_TRAN_TABLES;
+		}}
 	;
 
 show_type_of_like
@@ -6792,6 +6801,14 @@ show_type_of_where
 	| FULL TIMEZONES
 		{{
 			$$ = SHOWSTMT_FULL_TIMEZONES;
+		}}
+	| TRANSACTION TABLES
+		{{
+			$$ = SHOWSTMT_TRAN_TABLES;
+		}}
+	| TRAN TABLES
+		{{
+			$$ = SHOWSTMT_TRAN_TABLES;
 		}}
 	;
 
@@ -20801,6 +20818,16 @@ identifier
 
 		DBG_PRINT}}
 	| TRACE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| TRAN
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
