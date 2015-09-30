@@ -157,6 +157,17 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, pb_num_iowrites);                       \
     DIFF_METHOD (RES, NEW, OLD, pb_num_victims);                        \
     DIFF_METHOD (RES, NEW, OLD, pb_num_replacements);                   \
+    DIFF_METHOD (RES, NEW, OLD, pb_num_hash_anchor_waits);              \
+    DIFF_METHOD (RES, NEW, OLD, pb_time_hash_anchor_wait);              \
+    /* Do not need to diff following non-accumulative stats */          \
+    PUT_STAT (RES, NEW, pb_fixed_cnt);					\
+    PUT_STAT (RES, NEW, pb_dirty_cnt);					\
+    PUT_STAT (RES, NEW, pb_lru1_cnt);					\
+    PUT_STAT (RES, NEW, pb_lru2_cnt);					\
+    PUT_STAT (RES, NEW, pb_ain_cnt);					\
+    PUT_STAT (RES, NEW, pb_avoid_dealloc_cnt);				\
+    PUT_STAT (RES, NEW, pb_avoid_victim_cnt);				\
+    PUT_STAT (RES, NEW, pb_victim_cand_cnt);				\
                                                                         \
     DIFF_METHOD (RES, NEW, OLD, log_num_fetches);                       \
     DIFF_METHOD (RES, NEW, OLD, log_num_fetch_ioreads);                 \
@@ -1762,6 +1773,16 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_data_page_iowrites",
   "Num_data_page_victims",
   "Num_data_page_iowrites_for_replacement",
+  "Num_data_page_hash_anchor_waits",
+  "Time_data_page_hash_anchor_wait",
+  "Num_data_page_fixed",
+  "Num_data_page_dirty",
+  "Num_data_page_lru1",
+  "Num_data_page_lru2",
+  "Num_data_page_ain",
+  "Num_data_page_avoid_dealloc",
+  "Num_data_page_avoid_victim",
+  "Num_data_page_victim_cand",
   "Num_log_page_fetches",
   "Num_log_page_fetch_ioreads",
   "Num_log_page_ioreads",
@@ -2456,6 +2477,23 @@ mnt_x_pb_replacements (THREAD_ENTRY * thread_p)
   if (stats != NULL)
     {
       ADD_STATS (stats, pb_num_replacements, 1);
+    }
+}
+
+/*
+ * mnt_x_pb_num_hash_anchor_waits - Increase page anchor waits counter and time
+ *   return: none
+ */
+void
+mnt_x_pb_num_hash_anchor_waits (THREAD_ENTRY * thread_p, UINT64 time_amount)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, pb_num_hash_anchor_waits, 1);
+      ADD_STATS (stats, pb_time_hash_anchor_wait, time_amount);
     }
 }
 
@@ -5275,6 +5313,13 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
   stats->pb_page_promote_total_time_10usec = 100 * total_promote_time / 1000;
   stats->pb_page_promote_success *= 100;
   stats->pb_page_promote_failed *= 100;
+
+#if defined (SERVER_MODE)
+  pgbuf_peek_stats (&stats->pb_fixed_cnt, &stats->pb_dirty_cnt,
+		    &stats->pb_lru1_cnt, &stats->pb_lru2_cnt,
+		    &stats->pb_ain_cnt, &stats->pb_avoid_dealloc_cnt,
+		    &stats->pb_avoid_victim_cnt, &stats->pb_victim_cand_cnt);
+#endif
 }
 
 

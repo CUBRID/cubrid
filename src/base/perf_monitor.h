@@ -62,12 +62,15 @@
  *    partitioned information per snapshot function
  * - PERF_ENABLE_LOCK_OBJECT_STAT
  *    partitioned information per type of lock
+ * - PERF_ENABLE_PB_HASH_ANCHOR_STAT
+ *    count and time of data page buffer hash anchor
  */
 
 #if 1
 #define PERF_ENABLE_DETAILED_BTREE_PAGE_STAT
 #define PERF_ENABLE_MVCC_SNAPSHOT_STAT
 #define PERF_ENABLE_LOCK_OBJECT_STAT
+#define PERF_ENABLE_PB_HASH_ANCHOR_STAT
 #endif
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
@@ -365,6 +368,17 @@ struct mnt_server_exec_stats
   UINT64 pb_num_iowrites;
   UINT64 pb_num_victims;
   UINT64 pb_num_replacements;
+  UINT64 pb_num_hash_anchor_waits;
+  UINT64 pb_time_hash_anchor_wait;
+  /* peeked stats */
+  UINT64 pb_fixed_cnt;
+  UINT64 pb_dirty_cnt;
+  UINT64 pb_lru1_cnt;
+  UINT64 pb_lru2_cnt;
+  UINT64 pb_ain_cnt;
+  UINT64 pb_avoid_dealloc_cnt;
+  UINT64 pb_avoid_victim_cnt;
+  UINT64 pb_victim_cand_cnt;
 
   /* Execution statistics for the log manager */
   UINT64 log_num_fetches;
@@ -575,7 +589,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 144
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 154
 
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
 #define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 14
@@ -877,6 +891,9 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_victims(thread_p)
 #define mnt_pb_replacements(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_replacements(thread_p)
+#define mnt_pb_num_hash_anchor_waits(thread_p, time_amount) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_num_hash_anchor_waits(thread_p, \
+								  time_amount)
 
 /*
  * Statistics at log level
@@ -1275,6 +1292,8 @@ extern void mnt_x_pb_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_iowrites (THREAD_ENTRY * thread_p, int num_pages);
 extern void mnt_x_pb_victims (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_replacements (THREAD_ENTRY * thread_p);
+extern void mnt_x_pb_num_hash_anchor_waits (THREAD_ENTRY * thread_p,
+					    UINT64 time_amount);
 extern void mnt_x_log_fetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_fetch_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_ioreads (THREAD_ENTRY * thread_p);
@@ -1509,6 +1528,7 @@ extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p,
 #define mnt_pb_iowrites(thread_p, num_pages)
 #define mnt_pb_victims(thread_p)
 #define mnt_pb_replacements(thread_p)
+#define mnt_pb_num_hash_anchor_waits(thread_p, time_amount)
 
 #define mnt_log_fetches(thread_p)
 #define mnt_log_fetch_ioreads(thread_p)

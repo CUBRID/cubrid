@@ -7231,6 +7231,17 @@ pgbuf_search_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
   int rv;
   int loop_cnt;
 #endif
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  TSC_TICKS start_tick, end_tick;
+  UINT64 lock_wait_time = 0;
+  bool is_perf_tracking = false;
+  THREAD_ENTRY *thread_p = NULL;
+#endif
+
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  thread_p = thread_get_thread_entry_info ();
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+#endif
 
   mbw_cnt = prm_get_integer_value (PRM_ID_MUTEX_BUSY_WAITING_CNT);
 
@@ -7296,7 +7307,21 @@ two_phase:
 
 try_again:
 
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+#endif
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
+      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+    }
+#endif
   bufptr = hash_anchor->hash_next;
   while (bufptr != NULL)
     {
@@ -7375,9 +7400,33 @@ pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor,
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  TSC_TICKS start_tick, end_tick;
+  UINT64 lock_wait_time = 0;
+  bool is_perf_tracking = false;
+  THREAD_ENTRY *thread_p = NULL;
+#endif
+
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  thread_p = thread_get_thread_entry_info ();
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+#endif
 
   /* Note that the caller is not holding bufptr->BCB_mutex */
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
+
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
+      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+    }
+#endif
   bufptr->hash_next = hash_anchor->hash_next;
   hash_anchor->hash_next = bufptr;
 
@@ -7405,6 +7454,21 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  TSC_TICKS start_tick, end_tick;
+  UINT64 lock_wait_time = 0;
+  bool is_perf_tracking = false;
+  THREAD_ENTRY *thread_p = NULL;
+#endif
+
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  thread_p = thread_get_thread_entry_info ();
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+#endif
 
   /* the caller is holding bufptr->BCB_mutex */
 
@@ -7415,6 +7479,14 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
   hash_anchor =
     &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&(bufptr->vpid))]);
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
+      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+    }
+#endif
   if (bufptr->avoid_victim == true)
     {
       assert (false);
@@ -7492,6 +7564,11 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
 #if defined(SERVER_MODE)
   PGBUF_BUFFER_LOCK *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  TSC_TICKS start_tick, end_tick;
+  UINT64 lock_wait_time = 0;
+  bool is_perf_tracking = false;
+#endif
 
   /* the caller is holding hash_anchor->hash_mutex */
   /* check whether the page is in the Buffer Lock Chain */
@@ -7500,6 +7577,10 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
     {
       thread_p = thread_get_thread_entry_info ();
     }
+
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+#endif
 
   cur_thrd_entry = thread_p;
   cur_buffer_lock = hash_anchor->lock_next;
@@ -7520,7 +7601,22 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
 	      THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
 	      int r;
 
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+	      if (is_perf_tracking)
+		{
+		  tsc_getticks (&start_tick);
+		}
+#endif
 	      r = pthread_mutex_lock (&hash_anchor->hash_mutex);
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+	      if (is_perf_tracking)
+		{
+		  tsc_getticks (&end_tick);
+		  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
+		  mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+		}
+#endif
+
 	      thrd_entry = cur_buffer_lock->next_wait_thrd;
 
 	      while (thrd_entry != NULL)
@@ -7593,13 +7689,35 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid,
 {
 #if defined(SERVER_MODE)
   int rv;
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+  TSC_TICKS start_tick, end_tick;
+  UINT64 lock_wait_time = 0;
+  bool is_perf_tracking = false;
+  THREAD_ENTRY *thread_p = NULL;
+#endif
 
   PGBUF_BUFFER_LOCK *prev_buffer_lock, *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
 
   if (need_hash_mutex)
     {
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+      thread_p = thread_get_thread_entry_info ();
+      is_perf_tracking = mnt_is_perf_tracking (thread_p);
+      if (is_perf_tracking)
+	{
+	  tsc_getticks (&start_tick);
+	}
+#endif
       rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
+#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+      if (is_perf_tracking)
+	{
+	  tsc_getticks (&end_tick);
+	  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
+	  mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+	}
+#endif
     }
 
   /* check whether the page is in the Buffer Lock Chain */
@@ -12650,4 +12768,65 @@ pgbuf_has_prevent_dealloc (PAGE_PTR pgptr)
 #else
   return false;
 #endif
+}
+
+void
+pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt,
+		  UINT64 * lru2_cnt, UINT64 * aint_cnt,
+		  UINT64 * avoid_dealloc_cnt, UINT64 * avoid_victim_cnt,
+		  UINT64 * victim_cand_cnt)
+{
+  PGBUF_BCB *bufptr;
+  int i;
+
+  *fixed_cnt = 0;
+  *dirty_cnt = 0;
+  *lru1_cnt = 0;
+  *lru2_cnt = 0;
+  *aint_cnt = 0;
+  *avoid_dealloc_cnt = 0;
+  *avoid_victim_cnt = 0;
+  *victim_cand_cnt = 0;
+
+  for (i = 0; i < pgbuf_Pool.num_buffers; i++)
+    {
+      bufptr = PGBUF_FIND_BCB_PTR (i);
+      if (bufptr->fcnt > 0)
+	{
+	  *fixed_cnt = *fixed_cnt + 1;
+	}
+
+      if (bufptr->dirty)
+	{
+	  *dirty_cnt = *dirty_cnt + 1;
+	}
+
+      if (bufptr->zone == PGBUF_LRU_1_ZONE)
+	{
+	  *lru1_cnt = *lru1_cnt + 1;
+	}
+      else if (bufptr->zone == PGBUF_LRU_2_ZONE)
+	{
+	  *lru2_cnt = *lru2_cnt + 1;
+	}
+      else if (bufptr->zone == PGBUF_AIN_ZONE)
+	{
+	  *aint_cnt = *aint_cnt + 1;
+	}
+
+      if (bufptr->avoid_dealloc_cnt > 0)
+	{
+	  *avoid_dealloc_cnt = *avoid_dealloc_cnt + 1;
+	}
+
+      if (bufptr->avoid_victim)
+	{
+	  *avoid_victim_cnt = *avoid_victim_cnt + 1;
+	}
+
+      if (bufptr->victim_candidate)
+	{
+	  *victim_cand_cnt = *victim_cand_cnt + 1;
+	}
+    }
 }
