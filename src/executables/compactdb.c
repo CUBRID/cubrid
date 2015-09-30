@@ -501,8 +501,8 @@ process_value (DB_VALUE * value)
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
 	scan_code =
-	  heap_mvcc_get_visible (NULL, ref_oid, NULL, NULL, S_SELECT, PEEK,
-				 NULL_CHN, &updated_oid);
+	  heap_mvcc_get_visible (NULL, ref_oid, NULL, NULL, NULL, S_SELECT,
+				 PEEK, NULL_CHN, &updated_oid);
 	heap_scancache_end (NULL, &scan_cache);
 
 #if defined(CUBRID_DEBUG)

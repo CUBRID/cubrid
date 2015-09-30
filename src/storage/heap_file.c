@@ -8889,6 +8889,7 @@ end:
  *			   - S_ERROR for errors.
  * thread_p (in)	 : Thread entry.
  * oid (in)		 : Initial OID.
+ * class_oid(in/out)	 : Class OID
  * op_type(in)		 : Scan operation type
  * recdes (in)		 : Record descriptor.
  * scan_cache (in)	 : Scan cache.
@@ -8898,13 +8899,13 @@ end:
  *			   the updated version.
  */
 SCAN_CODE
-heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
-		       HEAP_SCANCACHE * scan_cache,
+heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
+		       RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 		       SCAN_OPERATION_TYPE op_type, int ispeeking,
 		       int old_chn, OID * updated_oid)
 {
-  return heap_mvcc_lock_and_get_object_version (thread_p, oid, NULL, recdes,
-						scan_cache, op_type,
+  return heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid,
+						recdes, scan_cache, op_type,
 						ispeeking, old_chn, NULL,
 						updated_oid);
 }

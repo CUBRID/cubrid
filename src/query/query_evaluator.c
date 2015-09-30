@@ -3116,7 +3116,8 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 
       mvcc_last_record.data = NULL;
       if (heap_mvcc_get_visible (thread_p,
-				 DB_GET_OID (peek_dbval), &mvcc_last_record,
+				 DB_GET_OID (peek_dbval), NULL,
+				 &mvcc_last_record,
 				 &local_scancache, S_SELECT, COPY,
 				 NULL_CHN, &mvcc_updated_oid) != S_SUCCESS)
 	{

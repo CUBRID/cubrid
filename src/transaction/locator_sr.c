@@ -2751,7 +2751,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
 	      && (lock_mode == NULL_LOCK || lock_mode == S_LOCK));
       /* Don't lock anything and get visible object version. */
       scan =
-	heap_mvcc_get_visible (thread_p, oid, &assign->recdes,
+	heap_mvcc_get_visible (thread_p, oid, class_oid, &assign->recdes,
 			       assign->ptr_scancache, op_type, COPY, chn,
 			       &updated_oid);
     }

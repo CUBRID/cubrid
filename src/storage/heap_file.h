@@ -501,7 +501,7 @@ extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid,
 			   RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 			   int ispeeking, int chn);
 extern SCAN_CODE heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid,
-					RECDES * recdes,
+					OID * class_oid, RECDES * recdes,
 					HEAP_SCANCACHE * scan_cache,
 					SCAN_OPERATION_TYPE op_type,
 					int ispeeking, int old_chn,

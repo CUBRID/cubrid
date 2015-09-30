@@ -7176,7 +7176,7 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      scan_cache_end_needed = true;
 	    }
 
-	  if (heap_mvcc_get_visible (thread_p, DB_GET_OID (p_dbvalue),
+	  if (heap_mvcc_get_visible (thread_p, DB_GET_OID (p_dbvalue), NULL,
 				     NULL, &scan_cache, S_SELECT, COPY,
 				     NULL_CHN,
 				     &mvcc_updated_oid) != S_SUCCESS)
