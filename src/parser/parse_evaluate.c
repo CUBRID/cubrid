@@ -656,6 +656,8 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
   DB_OBJECT *obj_class = NULL;
   DB_TYPE vtype = DB_TYPE_NULL;
 
+  int ret_val = false;
+
   if (val == NULL)
     {
       return 0;
@@ -709,10 +711,18 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
       return 0;
     }
 
-  if (sm_is_reuse_oid_class (obj_class))
+  ret_val = sm_check_reuse_oid_class (obj_class);
+
+  if (ret_val < NO_ERROR)
+    {
+      return ret_val;
+    }
+
+  if (ret_val == true)
     {
       return 1;
     }
+
   return 0;
 }
 

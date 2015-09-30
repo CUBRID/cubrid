@@ -3138,6 +3138,33 @@ sm_is_reuse_oid_class (MOP op)
 }
 
 /*
+ * sm_check_reuse_oid_class() - Tests the reuse OID class flag of a class object.
+ *   return: true, false or error with negative value
+ *   op(in): class object
+ *  
+ */
+
+int
+sm_check_reuse_oid_class (MOP op)
+{
+  SM_CLASS *class_;
+  int error = NO_ERROR;
+
+  if (op != NULL)
+    {
+      error = au_fetch_class_force (op, &class_, AU_FETCH_READ);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      return (class_->flags & SM_CLASSFLAG_REUSE_OID);
+    }
+
+  return false;
+}
+
+/*
  * sm_is_partitioned_class () - test if this class is partitioned
  * return : < 0 if error, > 0 for partitioned classes, 0 otherwise
  * op (in) : class object
