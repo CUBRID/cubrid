@@ -1926,18 +1926,21 @@ static int btree_recompress_record (THREAD_ENTRY * thread_p,
 static int btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				PAGE_PTR page_ptr);
 static const char *node_type_to_string (short node_type);
+static char *key_type_to_string (char *buf, int buf_size,
+				 TP_DOMAIN * key_type);
+static int index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p,
+				  RECDES * recdes);
 static SCAN_CODE btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
 						   DB_VALUE ** out_values,
 						   int out_cnt,
 						   const char *class_name,
-						   const char *index_name,
-						   BTID * btid_p);
+						   OR_INDEX * index_p,
+						   OID * oid_p);
 static SCAN_CODE btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p,
 						     DB_VALUE ** out_values,
 						     int out_cnt,
 						     const char *class_name,
-						     const char *index_name,
-						     BTID * btid_p);
+						     OR_INDEX * index_p);
 static bool btree_leaf_lsa_eq (THREAD_ENTRY * thread_p, LOG_LSA * a,
 			       LOG_LSA * b);
 
@@ -23562,6 +23565,177 @@ node_type_to_string (short node_type)
 }
 
 /*
+ * key_type_to_string () -  convert key_type to string
+ *   return: the converted string
+ *
+ *   buf(in/out): 
+ *   buf_size(in):
+ *   key_type(in): 
+ */
+static char *
+key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type)
+{
+  int i, n, remain_size;
+  char *buf_p = NULL;
+  TP_DOMAIN *elem = NULL;
+  const char *format = NULL;
+  char temp_buf[256] = { 0 };
+
+  assert (key_type != NULL);
+
+  switch (TP_DOMAIN_TYPE (key_type))
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_OID:
+    case DB_TYPE_ENUMERATION:
+      snprintf (buf, buf_size, "%s",
+		pr_type_name (TP_DOMAIN_TYPE (key_type)));
+      break;
+
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_VARNCHAR:
+      snprintf (buf, buf_size, "%s(%d)",
+		pr_type_name (TP_DOMAIN_TYPE (key_type)),
+		key_type->precision);
+      break;
+
+    case DB_TYPE_NUMERIC:
+      snprintf (buf, buf_size, "%s(%d,%d)",
+		pr_type_name (TP_DOMAIN_TYPE (key_type)),
+		key_type->precision, key_type->scale);
+      break;
+
+    case DB_TYPE_MIDXKEY:
+      n =
+	snprintf (buf, buf_size, "%s(",
+		  pr_type_name (TP_DOMAIN_TYPE (key_type)));
+      buf_p = buf + n;
+      remain_size = buf_size - n - 1;	/* reserve 1 byte for ')' */
+
+      assert_release (remain_size > 0);
+
+      for (elem = key_type->setdomain; elem != NULL; elem = elem->next)
+	{
+	  format = (elem == key_type->setdomain) ? "%s" : ",%s";
+	  n =
+	    snprintf (buf_p, remain_size, format,
+		      key_type_to_string (temp_buf, sizeof (temp_buf), elem));
+
+	  if (n >= remain_size)	/* The buffer has not enough space */
+	    {
+	      strcpy (buf_p + remain_size - sizeof ("..."), "...");
+	      buf_p += remain_size - 1;
+	      break;
+	    }
+	  else
+	    {
+	      buf_p += n;
+	      remain_size -= n;
+	    }
+	}
+
+      *buf_p = ')';
+      break;
+
+    default:
+      /* It is invalid index type? */
+      assert (!tp_valid_indextype (TP_DOMAIN_TYPE (key_type)));
+
+      buf[0] = '\0';
+      break;
+    }
+
+  buf[buf_size - 1] = 0;
+
+  return buf;
+}
+
+/*
+ * index_attrs_to_string () -  convert the attributes info of index to string
+ *   return: NO_ERROR, or ER_code
+ *
+ *   buf(in/out): 
+ *   buf_size(in):
+ *   index_p(in): 
+ *   recdes(in): 
+ */
+static int
+index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p,
+		       RECDES * recdes)
+{
+  int i, n, remain_size;
+  char *buf_p = NULL;
+  const char *attr_name = NULL;
+  char format[20];
+  int error = NO_ERROR;
+
+  buf_p = buf;
+  remain_size = buf_size;
+
+  for (i = 0; i < index_p->n_atts; i++)
+    {
+      attr_name = or_get_attrname (recdes, index_p->atts[i]->id);
+      if (attr_name == NULL)
+	{
+	  error = ER_FAILED;
+	  break;
+	}
+
+      format[0] = '\0';
+      if (strchr (attr_name, ',') != NULL || strchr (attr_name, ' ') != NULL)
+	{
+	  strcpy (format, (i == 0) ? "[%s]" : ",[%s]");
+	}
+      else
+	{
+	  strcpy (format, (i == 0) ? "%s" : ",%s");
+	}
+
+      /* Show nothing for default order(ascending), show DESC for descending */
+      if (index_p->asc_desc[i] != 0)
+	{
+	  strcat (format, " DESC");
+	}
+
+      n = snprintf (buf_p, remain_size, format, attr_name);
+
+      if (n >= remain_size)	/* The buffer has not enough space */
+	{
+	  assert_release (buf_size >= (int) sizeof ("..."));
+	  strcpy (buf + buf_size - sizeof ("..."), "...");
+	  break;
+	}
+      else
+	{
+	  buf_p += n;
+	  remain_size -= n;
+	}
+    }
+
+  buf[buf_size - 1] = 0;
+
+  return error;
+}
+
+/*
  * btree_index_start_scan () -  start scan function for
  *                              show index header/capacity
  *   return: NO_ERROR, or ER_code
@@ -23731,8 +23905,6 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor,
 		       DB_VALUE ** out_values, int out_cnt, void *ptr)
 {
   SCAN_CODE ret;
-  BTID *btid_p;
-  const char *btname;
   char *class_name = NULL;
   OR_CLASSREP *classrep = NULL;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
@@ -23740,6 +23912,8 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor,
   int idx_in_cache;
   int selected_index = 0;
   int i, index_idx, oid_idx;
+  char columns[256] = { 0 };
+  OR_INDEX *index_p = NULL;
 
   ctx = (SHOW_INDEX_SCAN_CTX *) ptr;
   if (cursor >= ctx->indexes_count * ctx->class_oid_count)
@@ -23770,8 +23944,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor,
 
   if (ctx->is_all)
     {
-      btname = classrep->indexes[index_idx].btname;
-      btid_p = &classrep->indexes[index_idx].btid;
+      index_p = &classrep->indexes[index_idx];
     }
   else
     {
@@ -23797,8 +23970,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor,
 	  goto cleanup;
 	}
 
-      btname = classrep->indexes[selected_index].btname;
-      btid_p = &classrep->indexes[selected_index].btid;
+      index_p = &classrep->indexes[selected_index];
     }
 
   if (ctx->show_type == SHOWSTMT_INDEX_HEADER
@@ -23806,7 +23978,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor,
     {
       ret =
 	btree_scan_for_show_index_header (thread_p, out_values, out_cnt,
-					  class_name, btname, btid_p);
+					  class_name, index_p, oid_p);
     }
   else
     {
@@ -23815,7 +23987,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor,
 
       ret =
 	btree_scan_for_show_index_capacity (thread_p, out_values, out_cnt,
-					    class_name, btname, btid_p);
+					    class_name, index_p);
     }
 
 cleanup:
@@ -23875,29 +24047,36 @@ btree_index_end_scan (THREAD_ENTRY * thread_p, void **ptr)
  *   out_values(out):
  *   out_cnt(in):
  *   class_name(in);
- *   index_name(in);
- *   btid_p(in);
+ *   index_p(in);
+ *   oid_p(in);
  */
 static SCAN_CODE
 btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
 				  DB_VALUE ** out_values, int out_cnt,
 				  const char *class_name,
-				  const char *index_name, BTID * btid_p)
+				  OR_INDEX * index_p, OID * oid_p)
 {
-  int idx = 0, root_level = 0;
+  int idx = 0;
   int error = NO_ERROR;
   VPID root_vpid;
   PAGE_PTR root_page_ptr = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
-  BTREE_NODE_TYPE node_type;
   char buf[256] = { 0 };
   OR_BUF or_buf;
   TP_DOMAIN *key_type;
   int num_oids = 0, num_nulls = 0, num_keys = 0;
   bool fetch_unique_stats = false;
   int unique_stats_idx = -1;
+  RECDES recdes;
+  BTID *btid_p = NULL;
+
+  assert_release (index_p != NULL);
+
+  recdes.data = NULL;
+  recdes.area_size = 0;
 
   /* get root header point */
+  btid_p = &index_p->btid;
   root_vpid.pageid = btid_p->root_pageid;
   root_vpid.volid = btid_p->vfid.volid;
 
@@ -23925,7 +24104,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
       goto error;
     }
 
-  error = db_make_string_copy (out_values[idx], index_name);
+  error = db_make_string_copy (out_values[idx], index_p->btname);
   idx++;
   if (error != NO_ERROR)
     {
@@ -23940,26 +24119,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
       goto error;
     }
 
-  (void) vpid_to_string (buf, sizeof (buf), &root_header->node.prev_vpid);
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
-  if (error != NO_ERROR)
-    {
-      goto error;
-    }
-
-  (void) vpid_to_string (buf, sizeof (buf), &root_header->node.next_vpid);
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
-  if (error != NO_ERROR)
-    {
-      goto error;
-    }
-
-  root_level = root_header->node.node_level;
-  node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
-
-  error = db_make_string (out_values[idx], node_type_to_string (node_type));
+  db_make_int (out_values[idx], root_header->node.node_level);
   idx++;
 
   db_make_int (out_values[idx], root_header->node.max_key_len);
@@ -24010,9 +24170,34 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
 
   or_init (&or_buf, root_header->packed_key_domain, -1);
   key_type = or_get_domain (&or_buf, NULL, NULL);
-  error =
-    db_make_string_copy (out_values[idx],
-			 pr_type_name (TP_DOMAIN_TYPE (key_type)));
+  (void) key_type_to_string (buf, sizeof (buf), key_type);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* unfix page buffer before heap_get_alloc() */
+  if (root_page_ptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, root_page_ptr);
+    }
+
+  /* Get the name list with asc/desc info of attributes */
+  error = heap_get_alloc (thread_p, oid_p, &recdes);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error = index_attrs_to_string (buf, sizeof (buf), index_p, &recdes);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -24020,11 +24205,6 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
     }
 
   assert (idx == out_cnt);
-
-  if (root_page_ptr != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, root_page_ptr);
-    }
 
   if (fetch_unique_stats)
     {
@@ -24040,6 +24220,11 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
       db_make_int (out_values[unique_stats_idx + 2], num_keys);
     }
 
+  if (recdes.data != NULL)
+    {
+      free_and_init (recdes.data);
+    }
+
   return S_SUCCESS;
 
 error:
@@ -24047,6 +24232,11 @@ error:
   if (root_page_ptr != NULL)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
+    }
+
+  if (recdes.data != NULL)
+    {
+      free_and_init (recdes.data);
     }
 
   return S_ERROR;
@@ -25093,14 +25283,13 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
  *   out_values(out):
  *   out_cnt(in):
  *   class_name(in);
- *   index_name(in);
- *   btid_p(in);
+ *   index_p(in);
  */
 static SCAN_CODE
 btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p,
 				    DB_VALUE ** out_values, int out_cnt,
 				    const char *class_name,
-				    const char *index_name, BTID * btid_p)
+				    OR_INDEX * index_p)
 {
   int idx = 0;
   int error = NO_ERROR;
@@ -25108,8 +25297,12 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p,
   PAGE_PTR root_page_ptr = NULL;
   VPID root_vpid;
   char buf[256] = { 0 };
+  BTID *btid_p = NULL;
+
+  assert_release (index_p != NULL);
 
   /* get btree capacity */
+  btid_p = &index_p->btid;
   root_vpid.pageid = btid_p->root_pageid;
   root_vpid.volid = btid_p->vfid.volid;
   root_page_ptr =
@@ -25135,7 +25328,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p,
       goto cleanup;
     }
 
-  error = db_make_string_copy (out_values[idx], index_name);
+  error = db_make_string_copy (out_values[idx], index_p->btname);
   idx++;
   if (error != NO_ERROR)
     {

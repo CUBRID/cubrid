@@ -408,9 +408,7 @@ metadata_of_index_header (SHOW_ONLY_ALL flag)
     {"Table_name", "varchar(256)"},
     {"Index_name", "varchar(256)"},
     {"Btid", "varchar(64)"},
-    {"Prev_vpid", "varchar(32)"},
-    {"Next_vpid", "varchar(32)"},
-    {"Node_type", "varchar(16)"},
+    {"Node_level", "int"},
     {"Max_key_len", "int"},
     {"Num_oids", "int"},
     {"Num_nulls", "int"},
@@ -418,7 +416,8 @@ metadata_of_index_header (SHOW_ONLY_ALL flag)
     {"Topclass_oid", "varchar(64)"},
     {"Unique", "int"},
     {"Overflow_vfid", "varchar(32)"},
-    {"Key_type", "varchar(32)"}
+    {"Key_type", "varchar(256)"},
+    {"Columns", "varchar(256)"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
