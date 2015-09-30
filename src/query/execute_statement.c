@@ -3402,6 +3402,11 @@ end:
    * if current transaction was rollbacked by the system,
    * abort transaction on client side also.
    */
+  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
+    {
+      error = ER_LK_UNILATERALLY_ABORTED;
+    }
+
   if (error == ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_only_client (false);
@@ -3878,6 +3883,11 @@ end:
   /* During query execution,
      if current transaction was rollbacked by the system,
      abort transaction on client side also. */
+  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
+    {
+      err = ER_LK_UNILATERALLY_ABORTED;
+    }
+
   if (err == ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_only_client (false);
