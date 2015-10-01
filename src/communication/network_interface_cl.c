@@ -253,7 +253,8 @@ locator_fetch (OID * oidp, int chn, LOCK lock,
   ENTER_SERVER ();
 
   success = xlocator_fetch (NULL, oidp, chn, NULL, lock, fetch_version_type,
-			    class_oid, class_chn, prefetch, fetch_copyarea);
+			    fetch_version_type, class_oid, class_chn,
+			    prefetch, fetch_copyarea);
 
   EXIT_SERVER ();
 
