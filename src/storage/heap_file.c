@@ -30867,19 +30867,22 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p,
       temp_oid.volid = vpid.volid;
       temp_oid.pageid = vpid.pageid;
       worker.n_heap_objects = spage_number_of_slots (pg_watcher.pgptr) - 1;
-      for (i = 1; i <= worker.n_heap_objects; i++)
+      if (worker.n_heap_objects > 0)
 	{
-	  temp_oid.slotid = i;
-	  COPY_OID (&worker.heap_objects[i - 1].oid, &temp_oid);
-	}
+	  for (i = 1; i <= worker.n_heap_objects; i++)
+	    {
+	      temp_oid.slotid = i;
+	      COPY_OID (&worker.heap_objects[i - 1].oid, &temp_oid);
+	    }
 
-      error_code =
-	vacuum_heap_page (thread_p, worker.heap_objects,
-			  worker.n_heap_objects, threshold_mvccid, reusable,
-			  false);
-      if (error_code != NO_ERROR)
-	{
-	  goto exit;
+	  error_code =
+	    vacuum_heap_page (thread_p, worker.heap_objects,
+			      worker.n_heap_objects, threshold_mvccid,
+			      reusable, false);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	}
 
       pgbuf_replace_watcher (thread_p, &pg_watcher, &old_pg_watcher);
