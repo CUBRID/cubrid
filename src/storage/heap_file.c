@@ -8401,32 +8401,36 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
   PGBUF_WATCHER fwd_page_watcher;
   int error_code = NO_ERROR;
   OID forward_rec_buffer[2];
+  bool need_buffer = false;
 
   PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
 		      HEAP_SCAN_ORDERED_HFID (scan_cache));
   PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL,
 		      HEAP_SCAN_ORDERED_HFID (scan_cache));
 
-#if defined(CUBRID_DEBUG)
+#if !defined (NDEBUG)
   if (scan_cache == NULL && ispeeking == PEEK)
     {
       er_log_debug (ARG_FILE_LINE, "heap_get: Using wrong interface."
 		    " scan_cache cannot be NULL when peeking.");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      assert (0);
       return S_ERROR;
     }
 
   if (scan_cache != NULL
-      && scan_cache->debug_initpatter != HEAP_DEBUG_SCANCACHE_INITPATTER)
+      && scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "heap_get: Your scancache is not initialized");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      assert (0);
       return S_ERROR;
     }
-#endif /* CUBRID_DEBUG */
+#endif /* !NDEBUG */
 
   assert (recdes != NULL);
+
   if (scan_cache == NULL)
     {
       /* It is possible only in case of ispeeking == COPY */
@@ -8443,6 +8447,8 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
     {
       mvcc_snapshot = scan_cache->mvcc_snapshot;
     }
+
+  assert (scan_cache != NULL || (ispeeking == COPY && recdes->data != NULL));
 
   oid_valid = HEAP_ISVALID_OID (oid);
   if (oid_valid != DISK_VALID)
@@ -8579,6 +8585,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	  scan = S_DOESNT_EXIST;
 	  goto end;
 	}
+
       COPY_OID (&forward_oid, (OID *) forward_recdes.data);
 
       /* Fetch the page of relocated (forwarded) record */
@@ -8608,8 +8615,8 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
       (void) pgbuf_check_page_ptype (thread_p, fwd_page_watcher.pgptr,
 				     PAGE_HEAP);
 
-      type =
-	spage_get_record_type (fwd_page_watcher.pgptr, forward_oid.slotid);
+      type = spage_get_record_type (fwd_page_watcher.pgptr,
+				    forward_oid.slotid);
       if (type == REC_MVCC_NEXT_VERSION)
 	{
 	  scan = S_SNAPSHOT_NOT_SATISFIED;
@@ -8622,13 +8629,18 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	  goto end;
 	}
 
-      if (ispeeking == COPY && recdes->data == NULL)
+      /* NOTE that we will COPY to read the record. 
+       * REC_RELOCATION should always be COPIED.
+       */
+      if ((ispeeking == COPY && recdes->data == NULL) || ispeeking == PEEK)
 	{
+	  assert (scan_cache != NULL);
 	  /* It is guaranteed that scan_cache is not NULL. */
+
 	  if (scan_cache->area == NULL)
 	    {
 	      /* Allocate an area to hold the object. Assume that
-	         the object will fit in two pages for not better estimates.
+	       * the object will fit in two pages for not better estimates.
 	       */
 	      scan_cache->area_size = DB_PAGESIZE * 2;
 	      scan_cache->area = (char *) db_private_alloc (thread_p,
@@ -8643,14 +8655,17 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 		  goto end;
 		}
 	    }
+
 	  recdes->data = scan_cache->area;
 	  recdes->area_size = scan_cache->area_size;
 	  /* The allocated space is enough to save the instance. */
 	}
 
+      ispeeking = COPY;
       scan = heap_get_if_diff_chn (thread_p, fwd_page_watcher.pgptr,
-				   forward_oid.slotid, recdes,
-				   ispeeking, chn, mvcc_snapshot);
+				   forward_oid.slotid, recdes, ispeeking,
+				   chn, mvcc_snapshot);
+
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
 	  /* switch to scancache page watcher */
@@ -8697,8 +8712,27 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
       break;
 
     case REC_HOME:
+      need_buffer = false;
       if (ispeeking == COPY && recdes->data == NULL)
-	{			/* COPY */
+	{
+	  need_buffer = true;
+	}
+      else if (ispeeking == PEEK)
+	{
+	  assert (scan_cache != NULL);
+	  if (scan_cache && scan_cache->cache_last_fix_page == false)
+	    {
+	      need_buffer = true;
+
+	      /* This should also be COPY not PEEK, 
+	       * because the page is going to be unfixed. 
+	       */
+	      ispeeking = COPY;
+	    }
+	}
+
+      if (need_buffer)
+	{
 	  /* It is guaranteed that scan_cache is not NULL. */
 	  if (scan_cache->area == NULL)
 	    {
@@ -8722,9 +8756,10 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 	  /* The allocated space is enough to save the instance. */
 	}
 
-      scan =
-	heap_get_if_diff_chn (thread_p, home_page_watcher.pgptr, oid->slotid,
-			      recdes, ispeeking, chn, mvcc_snapshot);
+      scan = heap_get_if_diff_chn (thread_p, home_page_watcher.pgptr,
+				   oid->slotid, recdes, ispeeking, chn,
+				   mvcc_snapshot);
+
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
 	  /* switch to scancache page watcher */
