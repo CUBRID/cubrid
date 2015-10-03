@@ -563,6 +563,12 @@ end:
       pgbuf_unfix (thread_p, rcv->pgptr);
     }
 
+  if (tdes != NULL && tdes->mvccinfo.is_sub_active)
+    {
+      /* Remove sub-transaction. */
+      logtb_complete_sub_mvcc (thread_p, tdes);
+    }
+
   /* Convert thread back to system transaction. */
   if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
     {

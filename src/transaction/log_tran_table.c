@@ -227,6 +227,10 @@ static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p,
 					 MVCC_SNAPSHOT * snapshot);
 
+static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p,
+					       MVCC_INFO * curr_mvcc_info,
+					       MVCCID mvcc_subid);
+
 /*
  * logtb_realloc_topops_stack - realloc stack of top system operations
  *
@@ -1573,10 +1577,19 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p,
   /* Transaction should have no MVCCID assigned, or it should be the same
    * if it is already assigned.
    */
-  assert (!MVCCID_IS_VALID (tdes->mvccinfo.id)
-	  || tdes->mvccinfo.id == mvccid);
-
-  tdes->mvccinfo.id = mvccid;
+  if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+    {
+      if (tdes->mvccinfo.id != mvccid)
+	{
+	  /* Must be MVCCID of sub-transaction. */
+	  (void) logtb_assign_subtransaction_mvccid (thread_p,
+						     &tdes->mvccinfo, mvccid);
+	}
+    }
+  else
+    {
+      tdes->mvccinfo.id = mvccid;
+    }
 }
 
 /*
@@ -6142,35 +6155,6 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
 
   assert (curr_mvcc_info != NULL);
 
-  /* allocate before acquiring CS */
-  if (curr_mvcc_info->sub_ids == NULL)
-    {
-      curr_mvcc_info->sub_ids = (MVCCID *) malloc (OR_MVCCID_SIZE * 10);
-      if (curr_mvcc_info->sub_ids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (MVCCID) * 10);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      curr_mvcc_info->count_sub_ids = 0;
-      curr_mvcc_info->max_sub_ids = 10;
-    }
-  else if (curr_mvcc_info->count_sub_ids >= curr_mvcc_info->max_sub_ids)
-    {
-      curr_mvcc_info->sub_ids =
-	(MVCCID *) realloc (curr_mvcc_info->sub_ids,
-			    OR_MVCCID_SIZE
-			    * (curr_mvcc_info->max_sub_ids + 10));
-      if (curr_mvcc_info->sub_ids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (OR_MVCCID_SIZE
-			       * (curr_mvcc_info->max_sub_ids + 10)));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      curr_mvcc_info->max_sub_ids += 10;
-    }
-
   mvcc_table = &log_Gl.mvcc_table;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
@@ -6214,11 +6198,61 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
 #else
   pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
+
   /* store MVCCID in MVCCINFO */
   if (MVCCID_IS_VALID (id))
     {
       curr_mvcc_info->id = id;
     }
+
+  return
+    logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+}
+
+/*
+ * logtb_assign_subtransaction_mvccid () - Assign sub-transaction MVCCID.
+ *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * curr_mvcc_info (in) : Current transaction MVCC information.
+ * mvcc_subid (in)     : Sub-transaction MVCCID.
+ */
+static int
+logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p,
+				    MVCC_INFO * curr_mvcc_info,
+				    MVCCID mvcc_subid)
+{
+  assert (curr_mvcc_info != NULL);
+  assert (MVCCID_IS_VALID (curr_mvcc_info->id));
+
+  if (curr_mvcc_info->sub_ids == NULL)
+    {
+      curr_mvcc_info->sub_ids = (MVCCID *) malloc (OR_MVCCID_SIZE * 10);
+      if (curr_mvcc_info->sub_ids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (MVCCID) * 10);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      curr_mvcc_info->count_sub_ids = 0;
+      curr_mvcc_info->max_sub_ids = 10;
+    }
+  else if (curr_mvcc_info->count_sub_ids >= curr_mvcc_info->max_sub_ids)
+    {
+      curr_mvcc_info->sub_ids =
+	(MVCCID *) realloc (curr_mvcc_info->sub_ids,
+			    OR_MVCCID_SIZE
+			    * (curr_mvcc_info->max_sub_ids + 10));
+      if (curr_mvcc_info->sub_ids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (size_t) (OR_MVCCID_SIZE
+			       * (curr_mvcc_info->max_sub_ids + 10)));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      curr_mvcc_info->max_sub_ids += 10;
+    }
+
   curr_mvcc_info->sub_ids[curr_mvcc_info->count_sub_ids] = mvcc_subid;
   curr_mvcc_info->count_sub_ids++;
   curr_mvcc_info->is_sub_active = true;
