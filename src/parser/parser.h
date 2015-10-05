@@ -183,7 +183,8 @@ extern "C"
   extern char *pt_print_query_spec_no_list (PARSER_CONTEXT * parser,
 					    const PT_NODE * node);
 
-  extern PT_NODE *pt_compile (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern PT_NODE *pt_compile (PARSER_CONTEXT * parser,
+			      PT_NODE * volatile statement);
 
   extern PT_NODE *pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree,
 				    SEMANTIC_CHK_INFO * sc_info);

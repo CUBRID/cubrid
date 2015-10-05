@@ -5264,6 +5264,25 @@ sm_find_class (const char *name)
 }
 
 /*
+ * sm_find_class_with_purpose() - Given a class name, find the class.
+ *    All this really does is call locator_find_class but it makes sure
+ *    the search is case insensitive.
+ *   return: class object
+ *   name(in): class name
+ *   for_update(in): true, if search the class for update purpose
+ */
+
+MOP
+sm_find_class_with_purpose (const char *name, bool for_update)
+{
+  char realname[SM_MAX_IDENTIFIER_LENGTH];
+
+  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+
+  return (locator_find_class_with_purpose (realname, for_update));
+}
+
+/*
  * find_attribute_op() - Given the MOP of an object and an attribute name,
  *    return a pointer to the class structure and a pointer to the
  *    attribute structure with the given name.

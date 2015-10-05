@@ -51,8 +51,8 @@ extern PT_NODE *mq_bump_correlation_level (PARSER_CONTEXT * parser,
 extern PT_UPDATABILITY mq_updatable (PARSER_CONTEXT * parser,
 				     PT_NODE * statement);
 
-extern PT_NODE *mq_translate (PARSER_CONTEXT * parser, PT_NODE * node);
-
+extern PT_NODE *mq_translate (PARSER_CONTEXT * parser,
+			      PT_NODE * volatile node);
 
 extern PT_NODE *mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 				      PT_NODE * subquery, int *idx,

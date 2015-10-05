@@ -3863,6 +3863,7 @@ static PT_NODE *
 pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   PT_NODE **last, *temp1, *temp2, *chk_parent = NULL;
+  PT_FLAT_SPEC_INFO info;
 
   if (spec)
     {
@@ -3914,8 +3915,10 @@ pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
 	  return NULL;
 	}
 
+      info.spec_parent = NULL;
+      info.for_update = false;
       spec = parser_walk_tree (parser, spec, pt_flat_spec_pre,
-			       &chk_parent, pt_continue_walk, NULL);
+			       &info, pt_continue_walk, NULL);
     }
   return spec;
 }

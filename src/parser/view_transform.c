@@ -8141,7 +8141,8 @@ mq_reset_specs_from_column (PARSER_CONTEXT * parser, PT_NODE * statement,
 static PT_NODE *
 mq_new_spec (PARSER_CONTEXT * parser, const char *class_name)
 {
-  PT_NODE *class_spec, *chk_parent = NULL;
+  PT_NODE *class_spec;
+  PT_FLAT_SPEC_INFO info;
 
   if ((class_spec = parser_new_node (parser, PT_SPEC)) == NULL)
     {
@@ -8155,8 +8156,11 @@ mq_new_spec (PARSER_CONTEXT * parser, const char *class_name)
     {
       return NULL;
     }
+
+  info.spec_parent = NULL;
+  info.for_update = false;
   class_spec = parser_walk_tree (parser, class_spec, pt_flat_spec_pre,
-				 &chk_parent, pt_continue_walk, NULL);
+				 &info, pt_continue_walk, NULL);
   return class_spec;
 }
 

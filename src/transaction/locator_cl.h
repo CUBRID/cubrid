@@ -112,6 +112,9 @@ extern MOBJ locator_prepare_rename_class (MOP class_mop,
 					  const char *new_classname);
 extern OID *locator_assign_permanent_oid (MOP mop);
 extern MOP locator_find_class (const char *classname);
+extern MOP locator_find_class_with_purpose (const char *classname,
+					    bool for_update);
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern LC_FIND_CLASSNAME locator_find_query_class (const char *classname,
 						   DB_FETCH_MODE purpose,

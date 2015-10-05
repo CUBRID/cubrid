@@ -1711,6 +1711,8 @@ typedef struct pt_insert_value_info PT_INSERT_VALUE_INFO;
 
 typedef struct pt_set_timezone_info PT_SET_TIMEZONE_INFO;
 
+typedef struct pt_flat_spec_info PT_FLAT_SPEC_INFO;
+
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
 				      void *arg);
 
@@ -3474,6 +3476,12 @@ struct pt_non_groupby_col_info
 {
   PT_NODE *groupby;
   bool has_non_groupby_col;
+};
+
+struct pt_flat_spec_info
+{
+  PT_NODE *spec_parent;
+  bool for_update;
 };
 
 /*

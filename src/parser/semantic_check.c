@@ -320,7 +320,8 @@ static PT_NODE *pt_check_and_replace_hostvar (PARSER_CONTEXT * parser,
 					      int *continue_walk);
 static PT_NODE *pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node,
 				    SEMANTIC_CHK_INFO * info);
-static DB_OBJECT *pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p);
+static DB_OBJECT *pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p,
+				 bool for_update);
 static void pt_check_unique_attr (PARSER_CONTEXT * parser,
 				  const char *entity_name, PT_NODE * att,
 				  PT_NODE_TYPE att_type);
@@ -5175,12 +5176,23 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 #endif /* ENABLE_UNUSED_FUNCTION */
   bool reuse_oid = false;
   int collation_id = -1;
+  bool for_update;
 
   /* look up the class */
   name = alter->info.alter.entity_name;
   cls_nam = name->info.name.original;
 
-  db = pt_find_class (parser, name);
+  if (alter->info.alter.code == PT_CHANGE_ATTR
+      || alter->info.alter.code == PT_ADD_INDEX_CLAUSE)
+    {
+      for_update = false;
+    }
+  else
+    {
+      for_update = true;
+    }
+
+  db = pt_find_class (parser, name, for_update);
   if (!db)
     {
       PT_ERRORmf (parser,
@@ -5578,7 +5590,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   sup != NULL; sup = sup->next)
 	{
 	  sup_nam = sup->info.name.original;
-	  super = pt_find_class (parser, sup);
+	  super = pt_find_class (parser, sup, true);
 	  if (super == NULL)
 	    {
 	      PT_ERRORmf (parser, alter, MSGCAT_SET_PARSER_SEMANTIC,
@@ -9136,7 +9148,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
-  existing_entity = pt_find_class (parser, name);
+  existing_entity = pt_find_class (parser, name, false);
   if (existing_entity != NULL)
     {
       if (!(entity_type == PT_VCLASS
@@ -9203,7 +9215,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   for (parent = node->info.create_entity.supclass_list;
        parent != NULL; parent = parent->next)
     {
-      db_obj = pt_find_class (parser, parent);
+      db_obj = pt_find_class (parser, parent, false);
       if (db_obj != NULL)
 	{
 	  parent->info.name.db_object = db_obj;
@@ -9365,7 +9377,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       assert (entity_type == PT_CLASS);
 
-      db_obj = pt_find_class (parser, create_like);
+      db_obj = pt_find_class (parser, create_like, false);
       if (db_obj == NULL)
 	{
 	  PT_ERRORmf (parser, create_like, MSGCAT_SET_PARSER_SEMANTIC,
@@ -9590,9 +9602,9 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *temp;
   PT_NODE *name;
-  PT_NODE *chk_parent = NULL;
   DB_OBJECT *db_obj;
   DB_ATTRIBUTE *attributes;
+  PT_FLAT_SPEC_INFO info;
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   DB_OBJECT *domain_class;
   char *drop_name_list = NULL;
@@ -9612,7 +9624,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if ((name = free_node->info.spec.entity_name) != NULL
 	      && name->node_type == PT_NAME
 	      && (cls_name = name->info.name.original) != NULL
-	      && (db_obj = db_find_class (cls_name)) == NULL)
+	      && (db_obj =
+		  db_find_class_with_purpose (cls_name, true)) == NULL)
 	    {
 	      if (free_node == node->info.drop.spec_list)
 		{
@@ -9661,8 +9674,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      cls_name1 = name1->info.name.original;
 		      cls_name2 = name2->info.name.original;
 
-		      db_obj1 = db_find_class (cls_name1);
-		      db_obj2 = db_find_class (cls_name2);
+		      db_obj1 = db_find_class_with_purpose (cls_name1, true);
+		      db_obj2 = db_find_class_with_purpose (cls_name2, true);
 
 		      if ((db_obj1 == db_obj2)
 			  || ((tmp2->info.spec.only_all == PT_ALL)
@@ -9713,9 +9726,11 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 
     }
 
+  info.spec_parent = NULL;
+  info.for_update = true;
   /* Replace each Entity Spec with an Equivalent flat list */
   parser_walk_tree (parser, node,
-		    pt_flat_spec_pre, &chk_parent, pt_continue_walk, NULL);
+		    pt_flat_spec_pre, &info, pt_continue_walk, NULL);
 
   if (node->info.drop.entity_type != PT_MISC_DUMMY
       || node->info.drop.is_cascade_constraints)
@@ -9829,11 +9844,13 @@ static void
 pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *user;
-  PT_NODE *chk_parent = NULL;
   const char *username;
+  PT_FLAT_SPEC_INFO info;
 
   /* Replace each Entity Spec with an Equivalent flat list */
-  parser_walk_tree (parser, node, pt_flat_spec_pre, &chk_parent,
+  info.spec_parent = NULL;
+  info.for_update = false;
+  parser_walk_tree (parser, node, pt_flat_spec_pre, &info,
 		    pt_continue_walk, NULL);
 
   /* make sure the grantees/revokees exist */
@@ -10013,12 +10030,14 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *temp;
   PT_NODE *name;
-  PT_NODE *chk_parent = NULL;
+  PT_FLAT_SPEC_INFO info;
   DB_OBJECT *db_obj;
 
   /* replace entity spec with an equivalent flat list */
-  parser_walk_tree (parser, node,
-		    pt_flat_spec_pre, &chk_parent, pt_continue_walk, NULL);
+  info.spec_parent = NULL;
+  info.for_update = false;
+  parser_walk_tree (parser, node, pt_flat_spec_pre, &info,
+		    pt_continue_walk, NULL);
 
   temp = node->info.truncate.spec;
   if (temp && temp->node_type == PT_SPEC)
@@ -12284,7 +12303,7 @@ pt_semantic_check (PARSER_CONTEXT * parser, PT_NODE * node)
  * Finds CLASS VCLASS VIEW only
  */
 static DB_OBJECT *
-pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p)
+pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p, bool for_update)
 {
   if (!p)
     return 0;
@@ -12292,7 +12311,7 @@ pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->node_type != PT_NAME)
     return 0;
 
-  return db_find_class (p->info.name.original);
+  return db_find_class_with_purpose (p->info.name.original, for_update);
 }
 
 
@@ -16919,7 +16938,7 @@ pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert)
 static void
 pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *chk_parent = NULL;
+  PT_FLAT_SPEC_INFO info;
 
   assert (parser != NULL);
   if (!PT_IS_VACUUM_NODE (node))
@@ -16928,9 +16947,11 @@ pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
+  info.spec_parent = NULL;
+  info.for_update = false;
   /* Replace each Entity Spec with an Equivalent flat list */
-  parser_walk_tree (parser, node,
-		    pt_flat_spec_pre, &chk_parent, pt_continue_walk, NULL);
+  parser_walk_tree (parser, node, pt_flat_spec_pre, &info,
+		    pt_continue_walk, NULL);
 }
 
 /*

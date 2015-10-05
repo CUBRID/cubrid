@@ -3461,6 +3461,42 @@ locator_find_class (const char *classname)
   return class_mop;
 }
 
+/*
+ * locator_find_class_with_purpose () - Find mop of a class
+ *
+ * return: MOP
+ *
+ *   classname(in): Name of class to search
+ *   for_update: true, if search the class for update purpose
+ *
+ * Note: Find the mop of the class with the given classname. The class
+ *              object may be brought to the client for future references.
+ */
+MOP
+locator_find_class_with_purpose (const char *classname, bool for_update)
+{
+  MOP class_mop;
+  LOCK lock = SCH_S_LOCK;	/* This is done to avoid some deadlocks caused by
+				 * our parsing
+				 */
+  if (for_update == false)
+    {
+      lock = SCH_S_LOCK;
+    }
+  else
+    {
+      lock = SCH_M_LOCK;
+    }
+
+  if (locator_find_class_by_name (classname, lock,
+				  &class_mop) != LC_CLASSNAME_EXIST)
+    {
+      class_mop = NULL;
+    }
+
+  return class_mop;
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * locator_find_query_class () - Find mop of a class to be query

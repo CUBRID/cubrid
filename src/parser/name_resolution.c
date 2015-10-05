@@ -157,7 +157,8 @@ static PT_NODE *pt_resolve_correlation (PARSER_CONTEXT * parser,
 					PT_NODE ** p_entity);
 static PT_NODE *pt_resolve_partition_spec (PARSER_CONTEXT * parser,
 					   PT_NODE * partition_spec,
-					   PT_NODE * spec_parent);
+					   PT_NODE * spec_parent,
+					   bool fo_update);
 static int pt_spec_in_domain (PT_NODE * cls, PT_NODE * lst);
 static PT_NODE *pt_get_resolution (PARSER_CONTEXT * parser,
 				   PT_BIND_NAMES_ARG * bind_arg,
@@ -183,7 +184,8 @@ static PT_NODE *pt_make_subclass_list (PARSER_CONTEXT * parser,
 				       MHT_TABLE * names_mht);
 static PT_NODE *pt_make_flat_name_list (PARSER_CONTEXT * parser,
 					PT_NODE * spec,
-					PT_NODE * spec_parent);
+					PT_NODE * spec_parent,
+					bool for_update);
 static int pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p);
 static PT_NODE *pt_object_to_data_type (PARSER_CONTEXT * parser,
 					PT_NODE * class_list);
@@ -4484,11 +4486,11 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
  */
 PT_NODE *
 pt_flat_spec_pre (PARSER_CONTEXT * parser,
-		  PT_NODE * node, void *chk_parent, int *continue_walk)
+		  PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *q, *derived_table;
   PT_NODE *result = node;
-  PT_NODE **spec_parent = (PT_NODE **) chk_parent;
+  PT_FLAT_SPEC_INFO *info = (PT_FLAT_SPEC_INFO *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -4508,7 +4510,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser,
     case PT_GRANT:
     case PT_REVOKE:
     case PT_MERGE:
-      *spec_parent = node;
+      info->spec_parent = node;
       break;
     default:
       break;
@@ -4531,7 +4533,9 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser,
 	       */
 	      node->info.spec.id = (UINTPTR) node;
 
-	      q = pt_make_flat_name_list (parser, node, *spec_parent);
+	      q = pt_make_flat_name_list (parser, node,
+					  info->spec_parent,
+					  info->for_update);
 
 	      node->info.spec.flat_entity_list = q;
 	    }
@@ -4556,7 +4560,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser,
 		}
 
 	      parser_walk_tree (parser, derived_table, pt_flat_spec_pre,
-				chk_parent, pt_continue_walk, NULL);
+				info, pt_continue_walk, NULL);
 	    }
 
 	  node = node->next;	/* next item on spec list */
@@ -5047,8 +5051,9 @@ pt_get_resolution (PARSER_CONTEXT * parser,
 {
   PT_NODE *exposed_spec, *spec, *savespec, *arg1, *arg2, *arg1_name;
   PT_NODE *unique_entity, *path_correlation;
-  PT_NODE *temp, *chk_parent = NULL;
+  PT_NODE *temp;
   PT_NODE *reserved_name = NULL;
+  PT_FLAT_SPEC_INFO info;
 
   if (!in_node)
     {
@@ -5217,9 +5222,11 @@ pt_get_resolution (PARSER_CONTEXT * parser,
 		    {
 		      return NULL;
 		    }
+		  info.spec_parent = NULL;
+		  info.for_update = false;
 		  class_spec =
 		    parser_walk_tree (parser, class_spec, pt_flat_spec_pre,
-				      &chk_parent, pt_continue_walk, NULL);
+				      &info, pt_continue_walk, NULL);
 		  bind_arg->spec_frames->extra_specs = parser_append_node
 		    (class_spec, bind_arg->spec_frames->extra_specs);
 		}
@@ -6304,13 +6311,15 @@ end:
  */
 static PT_NODE *
 pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
-			PT_NODE * spec_parent)
+			PT_NODE * spec_parent, bool for_update)
 {
   PT_NODE *result = 0;		/* the list of names to return */
   PT_NODE *temp, *temp1, *temp2, *name;
   DB_OBJECT *db;		/* a temp for class object */
   const char *class_name = NULL;	/* a temp to extract name from class */
   PT_NODE *e_node;
+  DB_AUTH type;
+  AU_FETCHMODE fetchmode;
 
   if (!spec)
     {
@@ -6324,7 +6333,8 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 
   if (spec->info.spec.partition != NULL)
     {
-      spec = pt_resolve_partition_spec (parser, spec, spec_parent);
+      spec =
+	pt_resolve_partition_spec (parser, spec, spec_parent, for_update);
       if (spec == NULL)
 	{
 	  return spec;
@@ -6347,11 +6357,21 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
       SM_CLASS *class_;
 
       class_name = name->info.name.original;
-      classop = db_find_class (class_name);
+      classop = db_find_class_with_purpose (class_name, for_update);
       if (classop != NULL)
 	{
-	  if (au_fetch_class (classop, &class_,
-			      AU_FETCH_READ, AU_SELECT) == NO_ERROR)
+	  if (for_update)
+	    {
+	      fetchmode = AU_FETCH_UPDATE;
+	      type = AU_ALTER;
+	    }
+	  else
+	    {
+	      fetchmode = AU_FETCH_READ;
+	      type = AU_SELECT;
+	    }
+
+	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
 	      if (class_->partition != NULL)
 		{
@@ -6449,7 +6469,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		{
 		  /* recursion */
 		  temp2 = pt_make_flat_name_list (parser,
-						  e_node, spec_parent);
+						  e_node, spec_parent, false);
 		  if (!temp2)
 		    {
 		      return NULL;
@@ -6501,7 +6521,8 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
       /* for each (sub)entity_spec */
       while (temp)
 	{			/* recursion here */
-	  temp1 = pt_make_flat_name_list (parser, temp, spec_parent);
+	  temp1 = pt_make_flat_name_list (parser, temp, spec_parent,
+					  for_update);
 	  result = pt_name_list_union (parser, result, temp1);
 	  temp = temp->next;
 	}
@@ -7595,11 +7616,11 @@ pt_quick_resolve_names (PARSER_CONTEXT * parser, PT_NODE ** spec_p,
 			PT_NODE ** node_p, SEMANTIC_CHK_INFO * sc_info)
 {
   PT_BIND_NAMES_ARG bind_arg;
-  PT_NODE *chk_parent = NULL;
   PT_NODE *spec = NULL, *node = NULL, *parent = NULL;
   int walk = 0;
   SCOPES scopestack;
   PT_EXTRA_SPECS_FRAME spec_frame;
+  PT_FLAT_SPEC_INFO info;
 
   if (node_p == NULL || spec_p == NULL)
     {
@@ -7616,7 +7637,9 @@ pt_quick_resolve_names (PARSER_CONTEXT * parser, PT_NODE ** spec_p,
     }
 
   /* convert spec to a flat entity list */
-  spec = pt_flat_spec_pre (parser, spec, &parent, &walk);
+  info.spec_parent = NULL;
+  info.for_update = false;
+  spec = pt_flat_spec_pre (parser, spec, &info, &walk);
 
   /* bind spec in scope */
   bind_arg.scopes = NULL;
@@ -8157,7 +8180,6 @@ pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node,
 			 void *chk_parent, int *continue_walk)
 {
   PT_NODE *join_lhs, *join_rhs;
-  PT_NODE *select_from;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -8498,7 +8520,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  SEMANTIC_CHK_INFO * sc_info)
 {
   PT_BIND_NAMES_ARG bind_arg;
-  PT_NODE *chk_parent = NULL;
+  PT_FLAT_SPEC_INFO info;
 
   bind_arg.scopes = NULL;
   bind_arg.spec_frames = NULL;
@@ -8515,9 +8537,11 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   /* Replace each Entity Spec with an Equivalent flat list */
+  info.spec_parent = NULL;
+  info.for_update = false;
   statement =
     parser_walk_tree (parser, statement, pt_flat_spec_pre,
-		      &chk_parent, pt_continue_walk, NULL);
+		      &info, pt_continue_walk, NULL);
 
   if (statement != NULL && statement->node_type == PT_MERGE
       && statement->info.merge.into != NULL)
@@ -9799,10 +9823,11 @@ pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node,
  * parser (in) : parser context
  * spec (in)   : spec
  * spec_parent (in) : spec parent
+ * for_update (in): is update purpose?
  */
 static PT_NODE *
 pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
-			   PT_NODE * spec_parent)
+			   PT_NODE * spec_parent, bool for_update)
 {
   const char *partition_suffix = NULL;
   const char *partition_name = NULL;
@@ -9810,6 +9835,7 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
   SM_CLASS *class_ = NULL;
   PT_NODE *entity_name = NULL, *partition_node = NULL;
   const char *root_name = NULL;
+  AU_FETCHMODE fetchmode;
 
   if (spec == NULL || spec->info.spec.partition == NULL)
     {
@@ -9833,14 +9859,14 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
   spec->info.spec.entity_name = partition_node;
   spec->info.spec.partition = NULL;
   spec->info.spec.flat_entity_list =
-    pt_make_flat_name_list (parser, spec, spec_parent);
+    pt_make_flat_name_list (parser, spec, spec_parent, for_update);
   if (spec->info.spec.flat_entity_list == NULL)
     {
       return NULL;
     }
 
   /* Verify if current spec is a partition of the saved entity name */
-  root_op = db_find_class (root_name);
+  root_op = db_find_class_with_purpose (root_name, for_update);
   if (root_op == NULL)
     {
       PT_ERRORc (parser, spec, er_msg ());
@@ -9855,8 +9881,10 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
       return NULL;
     }
 
+  fetchmode = for_update ? AU_FETCH_UPDATE : AU_FETCH_READ;
+
   /* do not check authorization here */
-  if (au_fetch_class_force (partition_op, &class_, AU_FETCH_READ) != NO_ERROR)
+  if (au_fetch_class_force (partition_op, &class_, fetchmode) != NO_ERROR)
     {
       PT_ERRORc (parser, spec, er_msg ());
       return NULL;
