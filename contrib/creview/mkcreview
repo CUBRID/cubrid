@@ -32,6 +32,8 @@ Changelog
     Use PATH env for svn, indent, touch
   2014-05-02 xkyu
     Add --download option
+  2015-10-02 xkyu
+    Support creating unified format of patch file
 '''
 
 import os
@@ -49,6 +51,7 @@ verbose = False
 revision = False
 nochange = False
 forceyes = False
+svn_diff_opt = ''
 
 exclude_list = ['configure', 'Makefile.in', 'makefile']
 donottouch_dirs = ['heaplayers', 'contrib']
@@ -205,12 +208,37 @@ def isAllowToChange (file):
 
   return True
 
-def prepareCodeReviewFile (output, files):
+def prepareCodeReviewFile (output, files, crfile, patchfile):
   (svn_output_base, new_output_base) = prepareCodeReviewPath (output)
 
   if not svn_output_base or not new_output_base:
     print >> sys.stderr, "Prepare old & new base directory error."
-    return False
+    return (None, None)
+
+  if os.path.exists (crfile):
+    while True:
+      if forceyes:
+        answer = 'Y'
+      else:
+        answer = raw_input('overwrite "%s" file? <Y/n> : ' % (crfile))
+      if answer in ('y', 'Y', ''):
+        break
+      elif answer in ('n', 'N'):
+        print 'Aborted.'
+        sys.exit()
+
+  if forceyes:
+    answer = 'Y'
+  else:
+    answer = raw_input('create patch file [%s] also? <Y/n> : ' % (patchfile))
+  if answer in ('y', 'Y', ''):
+    create_patch = True
+    if os.path.exists (patchfile):
+      os.rename(patchfile, patchfile+'.old')
+      print '* Existing "%s" file has been renamed to "%s.old"' % (patchfile, patchfile)
+  else:
+    create_patch = False
+    patchfile = None
 
   if verbose:
     print 'No-change mode is', nochange
@@ -241,36 +269,26 @@ def prepareCodeReviewFile (output, files):
         new_file_path = new_output_base + '/' + files[i][1]
         if not os.path.exists (new_file_path):
           os.system ('touch ' + new_file_path)
+    if create_patch:
+      os.system ('svn diff %s "%s" >> "%s.patch"' % (svn_diff_opt, files[i][1], crfile))
+      print 'svn diff %s "%s" >> "%s.patch"' % (svn_diff_opt, files[i][1], crfile)
 
   print 'Prepared files :'
   for i in range (len (files)):
     print '  [%d] %s %s' % (i, files[i][0], files[i][1])
 
-  return True
+  return (crfile, patchfile)
     
 
 def createCodeReviewFile (path, output):
   if verbose:
     print 'Temporary path: "%s", filename: "%s"' % (path, output)
 
-  if os.path.exists (output):
-    while True:
-      if forceyes:
-        answer = 'Y'
-      else:
-        answer = raw_input('overwrite "%s"? file <Y/n> : ' % (output))
-      if answer in ('y', 'Y', ''):
-        break
-      elif answer in ('n', 'N'):
-        print 'Aborted.'
-        sys.exit()
-
   os.system ('svn status > %s/status.txt' % (path))
 
   tar = tarfile.open (output, "w:gz")
   tar.add (path)
 
-  print 'Done.'
   print output + ' is created.'
 
   return True
@@ -352,12 +370,14 @@ def main ():
   global nochange
   global forceyes
   global revision
+  global svn_diff_opt
 
-  config = ConfigParser.ConfigParser({'force_yes': forceyes, 'verbose': verbose})
+  config = ConfigParser.ConfigParser({'force_yes': forceyes, 'verbose': verbose, 'svn_diff_opt': ''})
   try:
     config.read(['.mkcreview.conf', os.path.expanduser('~/.mkcreview.conf')])
     forceyes = config.getboolean('mkcreview', 'force_yes')
     verbose = config.getboolean('mkcreview', 'verbose')
+    svn_diff_opt = config.get('mkcreview', 'svn_diff_opt')
     jira_project = config.get('jira', 'jira_project')
   except:
     pass
@@ -381,8 +401,10 @@ def main ():
       revision = True
     if o in ("-j", "--jira"):
       jira_id = a.upper()
+      print jira_id
       if not jira_id.startswith(jira_project.upper()):
         jira_id = jira_project.upper() + '-' + jira_id
+      print jira_id
       if not crfile:
         crfile = jira_id.lower()
     if o in ("-u", "--upload"):
@@ -408,6 +430,7 @@ def main ():
     crfile = 'CODE_REVIEW.creview'
   if not crfile.endswith('.creview'):
     crfile += '.creview'
+  patchfile = '%s.patch' % (crfile)
 
   # check environment (svn, indent, touch)
   for tool in ['svn', 'indent', 'touch']:
@@ -438,7 +461,8 @@ def main ():
     prepareSomething (path)
 
     # prepare Code review files
-    if not prepareCodeReviewFile (path, review_files):
+    crfile, patchfile = prepareCodeReviewFile (path, review_files, crfile, patchfile)
+    if crfile is None:
       print >> sys.stderr, "Cannot prepare code review files."
       sys.exit (2)
       
@@ -454,6 +478,14 @@ def main ():
       answer = raw_input('Upload code review file [%s] to [%s]? <Y/n> : ' % (crfile, jira_id))
     if answer in ('y', 'Y', ''):
       attachFiletoJira(config, jira_id, crfile)
+
+  if jira_id and patchfile and os.path.isfile (patchfile):
+    if forceyes:
+      answer = 'Y'
+    else:
+      answer = raw_input('Upload patch file [%s] to [%s]? <Y/n> : ' % (patchfile, jira_id))
+    if answer in ('y', 'Y', ''):
+      attachFiletoJira(config, jira_id, patchfile)
 
   if jira_id and len (jira_attachs):
     if forceyes:
