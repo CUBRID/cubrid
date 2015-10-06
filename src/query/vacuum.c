@@ -4579,6 +4579,9 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
       return ER_FAILED;
     }
 
+  /* Make sure the log is flushed up to vacuum_Data->crt_lsa. */
+  logpb_flush_log_for_wal (thread_p, &vacuum_Data->crt_lsa);
+
   vacuum_data_actual_size =
     VACUUM_DATA_HEADER_SIZE +
     (vacuum_Data->n_table_entries * sizeof (VACUUM_DATA_ENTRY));

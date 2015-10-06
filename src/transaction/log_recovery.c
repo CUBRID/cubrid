@@ -3954,9 +3954,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   * If page_lsa >= lsa... already updated. In this case make sure
 		   * that the redo is not far from the end_redo_lsa
 		   */
-		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr)
-		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
-			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa)))
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
+		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
 		      pgbuf_unfix (thread_p, rcv.pgptr);
@@ -4162,9 +4162,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (LOG_IS_VACUUM_DATA_RECOVERY (redo->data.rcvindex))
 		{
 		  vacuum_get_vacuum_data_lsa (thread_p, &rcv_vacuum_data_lsa);
-		  if (LSA_LE (&rcv_lsa, &rcv_vacuum_data_lsa)
-		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
-			  || LSA_LE (&rcv_vacuum_data_lsa, end_redo_lsa)))
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (&rcv_vacuum_data_lsa, end_redo_lsa));
+		  if (LSA_LE (&rcv_lsa, &rcv_vacuum_data_lsa))
 		    {
 		      break;
 		    }
@@ -4204,9 +4204,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr)
-		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
-			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa)))
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
+		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
 		      pgbuf_unfix (thread_p, rcv.pgptr);
@@ -4362,9 +4362,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr)
-		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
-			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa)))
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
+		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
 		      pgbuf_unfix (thread_p, rcv.pgptr);
@@ -4475,9 +4475,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr)
-		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
-			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa)))
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
+		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
 		      pgbuf_unfix (thread_p, rcv.pgptr);
