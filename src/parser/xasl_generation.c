@@ -12634,9 +12634,17 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
     {
       COLL_OPT collation_opt;
 
-      qo_check_coll_optimization (index_entryp, &collation_opt);
+      if (qo_check_type_index_covering (index_entryp) == false)
+	{
+	  indx_infop->coverage = false;
+	}
 
-      indx_infop->coverage = collation_opt.allow_index_opt;
+      if (indx_infop->coverage)
+	{
+	  qo_check_coll_optimization (index_entryp, &collation_opt);
+
+	  indx_infop->coverage = collation_opt.allow_index_opt;
+	}
     }
 
   indx_infop->class_oid = class_->oid_info.oid;

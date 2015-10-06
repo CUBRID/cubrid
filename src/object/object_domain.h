@@ -382,6 +382,10 @@ typedef enum tp_match
 #define TP_DOMAIN_COLLATION_FLAG(dom) \
   ((dom) ? (dom)->collation_flag: TP_DOMAIN_COLL_NORMAL)
 
+#define TP_TYPE_NOT_SUPPORT_COVERING(typeid) \
+   ((typeid) == DB_TYPE_TIMESTAMPTZ || (typeid) == DB_TYPE_DATETIMETZ ||\
+    (typeid) == DB_TYPE_TIMETZ)
+
 /*
  * FUNCTIONS
  */

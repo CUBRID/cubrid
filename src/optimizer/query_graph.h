@@ -995,6 +995,7 @@ extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
 extern bool qo_is_filter_index (QO_INDEX_ENTRY *);
 extern void qo_check_coll_optimization (QO_INDEX_ENTRY * ent,
 					COLL_OPT * collation_opt);
+extern bool qo_check_type_index_covering (QO_INDEX_ENTRY * ent);
 
 extern double QO_INFINITY;
 

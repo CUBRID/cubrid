@@ -9687,6 +9687,48 @@ qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt)
     }
 }
 
+
+/*
+ * qo_check_type_index_covering () - Checks for attributes with types not able
+ *				     to support index covering
+ *
+ *   return:
+ *   ent(in): index entry
+ *   collation_opt(out):
+ *
+ *  Note : this only checks for index covering optimization.
+ *	   If at least one attribute of index does not support index covering,
+ *	   this option will be disabled for the entire index.
+ */
+bool
+qo_check_type_index_covering (QO_INDEX_ENTRY * ent)
+{
+  if (ent && ent->class_ && ent->class_->smclass)
+    {
+      SM_CLASS_CONSTRAINT *cons;
+      SM_ATTRIBUTE **attr;
+      cons =
+	classobj_find_class_index (ent->class_->smclass,
+				   ent->constraints->name);
+      if (cons == NULL || cons->attributes == NULL)
+	{
+	  return true;
+	}
+
+      for (attr = cons->attributes; *attr != NULL; attr++)
+	{
+	  if ((*attr)->domain != NULL
+	      &&
+	      TP_TYPE_NOT_SUPPORT_COVERING (TP_DOMAIN_TYPE ((*attr)->domain)))
+	    {
+	      return false;
+	    }
+	}
+    }
+
+  return true;
+}
+
 /*
  * qo_discover_sort_limit_join_nodes () - discover nodes which are joined to
  *					  this node and do not need to be
