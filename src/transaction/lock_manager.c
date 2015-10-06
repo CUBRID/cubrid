@@ -4239,6 +4239,11 @@ lock_tran_lk_entry:
 
       entry_ptr->granted_mode = new_mode;
       entry_ptr->count += 1;
+      if (is_instant_duration)
+	{
+	  entry_ptr->instant_lock_count++;
+	  assert (entry_ptr->instant_lock_count > 0);
+	}
 
       assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
       res_ptr->total_holders_mode =
@@ -4345,6 +4350,12 @@ lock_tran_lk_entry:
 
   entry_ptr->blocked_mode = new_mode;
   entry_ptr->count += 1;
+  if (is_instant_duration)
+    {
+      entry_ptr->instant_lock_count++;
+      assert (entry_ptr->instant_lock_count > 0);
+    }
+
   entry_ptr->thrd_entry = thread_p;
 
   assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
