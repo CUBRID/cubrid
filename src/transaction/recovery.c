@@ -985,7 +985,14 @@ struct rvfun RV_fun[] = {
    heap_rv_undo_insert,
    heap_rv_mvcc_redo_redistribute,
    log_rv_dump_hexa,
-   log_rv_dump_hexa}
+   log_rv_dump_hexa},
+
+  {RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD,
+   "RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD",
+   btree_rv_keyval_undo_insert_unique_multiupd,
+   btree_rv_redo_record_modify,
+   btree_rv_keyval_dump,
+   log_rv_dump_hexa},
 };
 
 /*

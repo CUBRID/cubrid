@@ -504,6 +504,13 @@ enum btree_op_purpose
 						 * postponed.
 						 */
   BTREE_OP_DELETE_UNDO_INSERT,	/* Undo insert */
+  BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD,	/* Undo insert into unique index,
+						 * when multi-update exception to
+						 * unique constraint violation
+						 * is applied. Previous visible
+						 * object must be returned to
+						 * first position in record.
+						 */
   BTREE_OP_DELETE_UNDO_INSERT_DELID,	/* Remove only delete MVCCID for an
 					 * object in b-tree. It is called when
 					 * object deletion is roll-backed.
@@ -705,18 +712,17 @@ extern int btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key,
 					  char **data, int *capacity,
 					  int *length);
 extern int
-btree_rv_save_keyval_for_undo_mvcc_update_same_key (BTID_INT * btid,
-						    DB_VALUE * key,
-						    BTREE_OBJECT_INFO *
-						    old_version,
-						    BTREE_OBJECT_INFO *
-						    new_version,
-						    char *preallocated_buffer,
-						    char **data,
-						    int *capacity,
-						    int *length);
+btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key,
+					   BTREE_OBJECT_INFO * first_version,
+					   BTREE_OBJECT_INFO * second_version,
+					   char *preallocated_buffer,
+					   char **data, int *capacity,
+					   int *length);
 extern int btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
+extern int btree_rv_keyval_undo_insert_unique_multiupd (THREAD_ENTRY *
+							thread_p,
+							LOG_RCV * recv);
 extern int btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
 						   LOG_RCV * recv);
 extern int btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p,
@@ -838,16 +844,14 @@ extern void btree_rv_read_keybuf_nocopy (THREAD_ENTRY * thread_p, char *datap,
 					 OID * cls_oid, OID * oid,
 					 BTREE_MVCC_INFO * mvcc_info,
 					 OR_BUF * key_buf);
-extern void btree_rv_read_keybuf_mvcc_update_same_key (THREAD_ENTRY *
-						       thread_p,
-						       char *datap,
-						       int data_size,
-						       BTID_INT * btid_int,
-						       BTREE_OBJECT_INFO *
-						       old_version,
-						       BTREE_OBJECT_INFO *
-						       new_version,
-						       OR_BUF * key_buf);
+extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p,
+					      char *datap, int data_size,
+					      BTID_INT * btid_int,
+					      BTREE_OBJECT_INFO *
+					      first_version,
+					      BTREE_OBJECT_INFO *
+					      second_version,
+					      OR_BUF * key_buf);
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				     RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);

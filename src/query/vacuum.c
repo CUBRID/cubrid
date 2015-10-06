@@ -2862,8 +2862,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-  if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) ==
-      0)
+  if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) == 0)
     {
       local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
 
@@ -3378,14 +3377,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
 	  assert (undo_data != NULL);
 
-	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY)
+	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY
+	      || log_record_data.rcvindex
+	      == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
 	    {
-	      btree_rv_read_keybuf_mvcc_update_same_key (thread_p, undo_data,
-							 undo_data_size,
-							 &btid_int,
-							 &old_version,
-							 &new_version,
-							 &key_buf);
+	      btree_rv_read_keybuf_two_objects (thread_p, undo_data,
+						undo_data_size, &btid_int,
+						&old_version, &new_version,
+						&key_buf);
 	    }
 	  else
 	    {
@@ -3508,11 +3507,19 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 		btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf,
 				     &oid, &class_oid, mvccid);
 	    }
-	  else if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT)
+	  else if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT
+		   || log_record_data.rcvindex ==
+		   RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
 	    {
 	      /* Object was inserted and only its insert MVCCID must be
 	       * removed.
 	       */
+	      if (log_record_data.rcvindex
+		  == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
+		{
+		  COPY_OID (&oid, &old_version.oid);
+		  COPY_OID (&class_oid, &old_version.class_oid);
+		}
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 			     "VACUUM: thread(%d): vacuum from b-tree: "
 			     "btidp(%d, (%d %d)) oid(%d, %d, %d) "

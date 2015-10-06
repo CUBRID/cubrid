@@ -230,7 +230,9 @@ typedef enum
 
   RVHF_MVCC_REDISTRIBUTE = 147,
 
-  RV_LAST_LOGID = RVHF_MVCC_REDISTRIBUTE,
+  RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD = 148,
+
+  RV_LAST_LOGID = RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -282,7 +284,8 @@ extern void rv_check_rvfuns (void);
    || ((idx) == RVBT_NON_MVCC_INSERT_OBJECT) \
    || ((idx) == RVBT_MVCC_UPDATE_SAME_KEY) \
    || ((idx) == RVBT_MARK_DELETED) \
-   || ((idx) == RVBT_DELETE_OBJECT_POSTPONE))
+   || ((idx) == RVBT_DELETE_OBJECT_POSTPONE) \
+   || ((idx) == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD))
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   ((((vpid)->volid == NULL_VOLID) \
