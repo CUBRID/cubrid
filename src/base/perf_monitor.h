@@ -883,7 +883,7 @@ struct perf_utime_tracker
   TSC_TICKS start_tick;
   TSC_TICKS end_tick;
 };
-#define PERF_UTIME_TRACKER_INITIALIZER { false, 0, 0 }
+#define PERF_UTIME_TRACKER_INITIALIZER { false, {0}, {0} }
 #define PERF_UTIME_TRACKER_START(thread_p, track) \
   do \
     { \

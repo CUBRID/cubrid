@@ -20883,8 +20883,6 @@ exit_on_error:
 }
 
 /*
-
-/*
  * heap_attrinfo_set_uninitialized_global () -
  *   return: NO_ERROR
  *   inst_oid(in):

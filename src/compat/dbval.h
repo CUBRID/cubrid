@@ -620,7 +620,8 @@
         (v)->data.midxkey.domain         = NULL, \
         (v)->data.midxkey.size           = 0, \
         (v)->data.midxkey.buf            = NULL, \
-	(v)->data.midxkey.min_max_val.position = -1) \
+	(v)->data.midxkey.min_max_val.position = -1, \
+	(v)->data.midxkey.min_max_val.type = MIN_COLUMN) \
       : \
        ((v)->domain.general_info.is_null = 0, \
         (v)->data.midxkey.ncolumns       = (m)->ncolumns, \

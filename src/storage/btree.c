@@ -35090,6 +35090,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid,
 	       */
 	      assert (delete_helper->purpose
 		      != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
+		      || !LOG_ISRESTARTED ()
 		      || heap_is_mvcc_disabled_for_class
 		      (BTREE_DELETE_CLASS_OID (delete_helper)));
 	    }
