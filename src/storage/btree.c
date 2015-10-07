@@ -20872,9 +20872,9 @@ btree_rv_keyval_undo_insert_unique_multiupd (THREAD_ENTRY * thread_p,
   char *datap;
   int datasize;
   int err = NO_ERROR;
-  MVCCID insert_mvccid;
-  BTREE_OBJECT_INFO undo_insert_object;
-  BTREE_OBJECT_INFO second_object;
+  MVCCID insert_mvccid = MVCCID_NULL;
+  BTREE_OBJECT_INFO undo_insert_object = BTREE_OBJECT_INFO_INITIALIZER;
+  BTREE_OBJECT_INFO second_object = BTREE_OBJECT_INFO_INITIALIZER;
 
   /* btid needs a place to unpack the sys_btid into.  We'll use stack space. */
   btid.sys_btid = &sys_btid;
@@ -36532,6 +36532,8 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p,
     }
 
   /* Find second visible version (which must be moved first). */
+  assert (prev_found_page == NULL);
+  found_page = NULL;
   error_code =
     btree_find_oid_and_its_page (thread_p, btid_int,
 				 &delete_helper->second_object_info.oid,
