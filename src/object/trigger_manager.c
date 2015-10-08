@@ -5397,8 +5397,7 @@ start_state (TR_STATE ** current, const char *name)
  *    to derive it each time.
  */
 int
-tr_prepare_statement (TR_STATE ** state_p,
-		      DB_TRIGGER_EVENT event,
+tr_prepare_statement (TR_STATE ** state_p, DB_TRIGGER_EVENT event,
 		      DB_OBJECT * class_mop, int attcount,
 		      const char **attnames)
 {
@@ -5420,8 +5419,18 @@ tr_prepare_statement (TR_STATE ** state_p,
   triggers = NULL;
 
   /* could avoid repeated schema authorization checks */
-  if ((error = sm_get_trigger_cache (class_mop, NULL, 0, (void **) &cache)))
+  error = sm_get_trigger_cache (class_mop, NULL, 0, (void **) &cache);
+  if (error != NO_ERROR)
     {
+      if (error == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  /* Probably the client re-uses existing parse tree which refers a dropped table.
+	   * To confirm it includes a modified table, raise ER_QPROC_INVALID_XASLNODE.
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
+		  0);
+	}
+
       goto error_return;
     }
 
@@ -5435,40 +5444,49 @@ tr_prepare_statement (TR_STATE ** state_p,
       if (event < cache->array_length)
 	{
 	  if (merge_trigger_list (&triggers, cache->triggers[event], 0))
-	    goto error_return;
+	    {
+	      goto error_return;
+	    }
 	}
       /* else error ? */
     }
 
-  for (i = 0; i < attcount && !error; i++)
+  for (i = 0; i < attcount; i++)
     {
-      if (!
-	  (error =
-	   sm_get_trigger_cache (class_mop, attnames[i], 0,
-				 (void **) &cache)))
+      error = sm_get_trigger_cache (class_mop, attnames[i], 0,
+				    (void **) &cache);
+      if (error != NO_ERROR)
 	{
-	  if (cache != NULL)
+	  if (error == ER_HEAP_UNKNOWN_OBJECT)
 	    {
-	      if (tr_validate_schema_cache (cache, class_mop))
-		goto error_return;
-	      else
+	      /* Probably the client re-uses existing parse tree which refers a dropped table.
+	       * To confirm it includes a modified table, raise ER_QPROC_INVALID_XASLNODE.
+	       */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QPROC_INVALID_XASLNODE, 0);
+	    }
+	  goto error_return;
+	}
+
+      if (cache != NULL)
+	{
+	  if (tr_validate_schema_cache (cache, class_mop))
+	    {
+	      goto error_return;
+	    }
+	  else
+	    {
+	      if (event < cache->array_length)
 		{
-		  if (event < cache->array_length)
+		  error = merge_trigger_list (&triggers,
+					      cache->triggers[event], 0);
+		  if (error != NO_ERROR)
 		    {
-		      error =
-			merge_trigger_list (&triggers, cache->triggers[event],
-					    0);
+		      goto error_return;
 		    }
 		}
 	    }
 	}
-    }
-
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto error_return;
     }
 
   /*

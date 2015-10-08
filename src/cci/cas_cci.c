@@ -1427,7 +1427,7 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
      the error, CAS_ER_STMT_POOLING, is returned.
      In this case, prepare and execute have to be executed again.
    */
-  while (error == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
+  if (error == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
     {
       req_handle_content_free (req_handle, 1);
       error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
@@ -1791,7 +1791,7 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
 				&(con_handle->err_buf));
     }
 
-  while (error == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
+  if (error == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
     {
       req_handle_content_free (req_handle, 1);
       error = qe_prepare (req_handle, con_handle, req_handle->sql_text,

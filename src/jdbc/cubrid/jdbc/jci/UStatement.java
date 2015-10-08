@@ -893,9 +893,8 @@ public class UStatement {
 			}
 		}
 
-		while (relatedConnection.brokerInfoStatementPooling()
-		        &&
-		        errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
+		if (relatedConnection.brokerInfoStatementPooling()
+		    && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
 			try {
 				reset();
 				executeInternal(maxRow, maxField, isScrollable, queryTimeout);
@@ -1076,9 +1075,8 @@ public class UStatement {
 			}
 		}
 
-		while (relatedConnection.brokerInfoStatementPooling()
-		        &&
-		        errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
+		if (relatedConnection.brokerInfoStatementPooling()
+		    && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
 			try {
 				reset();
 				batchResult = executeBatchInternal(queryTimeout);

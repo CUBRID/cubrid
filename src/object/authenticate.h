@@ -200,6 +200,8 @@ extern int au_grant (MOP user, MOP class_mop, DB_AUTH type,
 		     bool grant_option);
 extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
 
+extern int au_delete_auth_of_dropping_table (const char *class_name);
+
 /* class & instance accessors */
 extern int au_fetch_class (MOP op, SM_CLASS ** class_ptr,
 			   AU_FETCHMODE fetchmode, DB_AUTH type);
