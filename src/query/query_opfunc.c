@@ -8656,9 +8656,28 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 		qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list,
 				 agg_p->option, false);
 
+	      if (list_id_p != NULL && er_has_error ())
+		{
+		  /* Some unexpected errors (like ER_INTERRUPTED           
+		   * due to timeout) should be handled. */
+		  qfile_close_list (thread_p, list_id_p);
+		  qfile_destroy_list (thread_p, list_id_p);
+		  list_id_p = NULL;
+		  error = er_errid ();
+		  goto exit;
+		}
+
+	      agg_p->list_id = list_id_p;
+
 	      if (list_id_p == NULL)
 		{
-		  error = ER_FAILED;
+		  if (!er_has_error ())
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_GENERIC_ERROR, 0);
+		    }
+
+		  error = er_errid ();
 		  goto exit;
 		}
 
@@ -8702,6 +8721,17 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			  scan_code =
 			    qfile_scan_list_next (thread_p, &scan_id,
 						  &tuple_record, PEEK);
+
+			  if (scan_code == S_ERROR && er_has_error ())
+			    {
+			      /* Some unexpected errors (like ER_INTERRUPTED           
+			       * due to timeout) should be handled. */
+			      qfile_close_scan (thread_p, &scan_id);
+			      qfile_close_list (thread_p, list_id_p);
+			      qfile_destroy_list (thread_p, list_id_p);
+			      goto exit;
+			    }
+
 			  if (scan_code != S_SUCCESS)
 			    {
 			      break;
