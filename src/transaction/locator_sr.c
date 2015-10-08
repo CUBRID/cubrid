@@ -2971,8 +2971,11 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 	      || ((class_lock = lock_get_object_lock
 		   (class_oid, oid_Root_class_oid,
 		    LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
+		  || class_lock >= SIX_LOCK)
+	      || ((class_lock = lock_get_object_lock
+		   (oid_Root_class_oid, NULL,
+		    LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
 		  || class_lock >= SIX_LOCK)));
-
 
   if (!OID_IS_ROOTOID (class_oid) && lock > NULL_LOCK && !object_locked)
     {
