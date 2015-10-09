@@ -676,7 +676,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
 			    -1);
   tdes->query_timeout = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
-  tdes->has_upgrade_domain = false;
+  tdes->block_global_oldest_active_until_commit = false;
 
   return NO_ERROR;
 }
@@ -2283,7 +2283,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL,
 			    NULL, NULL, NULL, -1);
-  tdes->has_upgrade_domain = false;
+  tdes->block_global_oldest_active_until_commit = false;
 }
 
 /*
@@ -5180,6 +5180,20 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   if (MVCCID_IS_VALID (mvccid))
     {
+      /* Block global oldest active until commit is finished. */
+      if (tdes->block_global_oldest_active_until_commit == false)
+	{
+	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid
+	   */
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
+	  tdes->block_global_oldest_active_until_commit = true;
+	}
+      else
+	{
+	  assert (ATOMIC_INC_32
+		  (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+	}
+
       current_trans_status = &log_Gl.mvcc_table.current_trans_status;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
@@ -5545,14 +5559,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     }
 
   MVCC_CLEAR_MVCC_INFO (curr_mvcc_info);
-  /* global counter */
-  if (tdes->has_upgrade_domain)
-    {
-      ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
-      tdes->has_upgrade_domain = false;
-      assert (ATOMIC_INC_32
-	      (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
-    }
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 

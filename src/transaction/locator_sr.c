@@ -14220,11 +14220,11 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid,
     }
   scancache_inited = true;
 
-  if (tdes->has_upgrade_domain == false)
+  if (tdes->block_global_oldest_active_until_commit == false)
     {
       /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
       ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
-      tdes->has_upgrade_domain = true;
+      tdes->block_global_oldest_active_until_commit = true;
     }
   else
     {

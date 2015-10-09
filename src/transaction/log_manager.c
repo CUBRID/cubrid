@@ -207,6 +207,8 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
+extern int vacuum_Global_oldest_active_blockers_counter;
+
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid,
 				   const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p,
@@ -6598,6 +6600,14 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       if (state != TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
 	{
 	  state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
+	}
+      /* Unblock global oldest active update. */
+      if (tdes->block_global_oldest_active_until_commit)
+	{
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
+	  tdes->block_global_oldest_active_until_commit = false;
+	  assert (ATOMIC_INC_32
+		  (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
 	}
     }
 
