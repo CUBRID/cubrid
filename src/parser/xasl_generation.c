@@ -3697,6 +3697,30 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * pt_set_is_system_generated_stmt () - 
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   void_arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_set_is_system_generated_stmt (PARSER_CONTEXT * parser,
+				 PT_NODE * tree,
+				 void *void_arg, int *continue_walk)
+{
+  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      bool is_system_generated_stmt;
+
+      is_system_generated_stmt = *(bool *) void_arg;
+      tree->is_system_generated_stmt = is_system_generated_stmt;
+    }
+
+  return tree;
+}
+
+/*
  * pt_flush_class_and_null_xasl () - Flushes each class encountered
  * 	Partition pruning is applied to PT_SELECT nodes
  *   return:
@@ -18127,8 +18151,10 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   XASL_NODE *xasl;
   QO_PLAN *plan = NULL;
+  PT_NODE *spec;
   int level, trace_format;
   bool hint_ignored = false;
+  bool dump_plan;
 
   if (select_node->node_type != PT_SELECT)
     {
@@ -18213,30 +18239,37 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
     }
 
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+  if (level >= 0x100
+      && !PT_SELECT_INFO_IS_FLAGED (select_node,
+				    PT_SELECT_INFO_COLS_SCHEMA)
+      && !PT_SELECT_INFO_IS_FLAGED (select_node,
+				    PT_SELECT_FULL_INFO_COLS_SCHEMA)
+      && !select_node->is_system_generated_stmt
+      && !((spec = select_node->info.query.q.select.from) != NULL
+	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
+    {
+      dump_plan = true;
+    }
+  else
+    {
+      dump_plan = false;
+    }
+
   /* Print out any needed post-optimization info.  Leave a way to find
    * out about environment info if we aren't able to produce a plan.
    * If this happens in the field at least we'll be able to glean some info */
-  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-  if (level >= 0x100 && plan)
+  if (plan != NULL && dump_plan == true)
     {
-      PT_NODE *spec;
-      if (!PT_SELECT_INFO_IS_FLAGED (select_node,
-				     PT_SELECT_INFO_COLS_SCHEMA) &&
-	  !PT_SELECT_INFO_IS_FLAGED (select_node,
-				     PT_SELECT_FULL_INFO_COLS_SCHEMA) &&
-	  !((spec = select_node->info.query.q.select.from) != NULL
-	    && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
+      if (query_Plan_dump_fp == NULL)
 	{
-	  if (query_Plan_dump_fp == NULL)
-	    {
-	      query_Plan_dump_fp = stdout;
-	    }
-	  fputs ("\nQuery plan:\n", query_Plan_dump_fp);
-	  qo_plan_dump (plan, query_Plan_dump_fp);
+	  query_Plan_dump_fp = stdout;
 	}
+      fputs ("\nQuery plan:\n", query_Plan_dump_fp);
+      qo_plan_dump (plan, query_Plan_dump_fp);
     }
 
-  if (level >= 0x100)
+  if (dump_plan == true)
     {
       unsigned int save_custom;
 
@@ -18315,7 +18348,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      sql_plan = pt_alloc_packing_buf (sizeloc + 1);
 	      if (sql_plan == NULL)
 		{
-		  goto error_exit;
+		  goto exit;
 		}
 
 	      strncpy (sql_plan, ptr, sizeloc);
@@ -18334,7 +18367,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      contextp->sql_plan_text = parser_alloc (parser, size);
 	      if (contextp->sql_plan_text == NULL)
 		{
-		  goto error_exit;
+		  goto exit;
 		}
 
 	      contextp->sql_plan_alloc_size = size;
@@ -18349,7 +18382,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      ptr = parser_alloc (parser, size);
 	      if (ptr == NULL)
 		{
-		  goto error_exit;
+		  goto exit;
 		}
 
 	      ptr[0] = '\0';
@@ -18378,7 +18411,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
     }
 
-error_exit:
+exit:
   if (plan != NULL)
     {
       qo_plan_discard (plan);
@@ -20290,6 +20323,9 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node,
     default:
       return NO_ERROR;
     }
+
+  select_stmt->is_system_generated_stmt = node->is_system_generated_stmt;
+
   select_stmt->info.query.q.select.hint |= hint_flags;
   select_stmt->recompile = node->recompile;
 
@@ -22694,6 +22730,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   XASL_NODE *xasl = NULL;
   PT_NODE *next;
+  bool is_system_generated_stmt;
 
   assert (parser != NULL && node != NULL);
 
@@ -22701,8 +22738,12 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   node->next = NULL;
   parser->dbval_cnt = 0;
 
+  is_system_generated_stmt = node->is_system_generated_stmt;
+
   node = parser_walk_tree (parser, node,
-			   pt_flush_class_and_null_xasl, NULL, NULL, NULL);
+			   pt_flush_class_and_null_xasl, NULL,
+			   pt_set_is_system_generated_stmt,
+			   &is_system_generated_stmt);
 
   /* During the above parser_walk_tree the request to get a driver may cause a
      deadlock. We give up the following steps and propagate the error

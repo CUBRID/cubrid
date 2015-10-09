@@ -2075,39 +2075,42 @@ au_delete_auth_of_dropping_table (const char *class_name)
 {
   int error = NO_ERROR, save;
   const char *sql_query =
-    "SELECT [au] FROM [" CT_CLASSAUTH_NAME "] [au]"
-    " WHERE [au].[class_of].[class_name] = ? FOR UPDATE;";
+    "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]"
+    " WHERE [au].[class_of] IN"
+    " (SELECT [cl] FROM " CT_CLASS_NAME " [cl] WHERE [class_name] = ?);";
   DB_VALUE val;
-  DB_VALUE auth;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
-  MOP mop;
-  int stmt_id, pos;
+  int stmt_id;
 
   db_make_null (&val);
-  db_make_null (&auth);
 
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
 
   assert (class_name != NULL);
 
-  db_make_string (&val, class_name);
-
-  session = db_open_buffer (sql_query);
+  session = db_open_buffer_local (sql_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto exit;
     }
 
-  stmt_id = db_compile_statement (session);
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
       ASSERT_ERROR_AND_SET (error);
       goto release;
     }
 
+  db_make_string (&val, class_name);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -2118,32 +2121,6 @@ au_delete_auth_of_dropping_table (const char *class_name)
   if (error < 0)
     {
       goto release;
-    }
-
-  pos = db_query_first_tuple (result);
-  while (pos == DB_CURSOR_SUCCESS)
-    {
-      error = db_query_get_tuple_value (result, 0, &auth);
-      if (error != NO_ERROR)
-	{
-	  break;
-	}
-
-      mop = db_get_object (&auth);
-      if (mop == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  error = ER_GENERIC_ERROR;
-	  break;
-	}
-
-      error = obj_delete (mop);
-      if (error != NO_ERROR)
-	{
-	  break;
-	}
-
-      pos = db_query_next_tuple (result);
     }
 
   error = db_query_end (result);

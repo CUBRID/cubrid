@@ -581,6 +581,8 @@ db_compile_statement_local (DB_SESSION * session)
   statement->use_plan_cache = 0;
   statement->use_query_cache = 0;
 
+  statement->is_system_generated_stmt = parser->is_system_generated_stmt;
+
   /* check if the statement is already processed */
   if (session->stage[stmt_ndx] >= StatementPreparedStage)
     {
@@ -3367,6 +3369,33 @@ db_compile_and_execute_queries_internal (const char *CSQL_query,
   db_close_session_local (session);
 
   return error;
+}
+
+/*
+ * db_set_system_generated_statement () - 
+ *
+ * returns  : error status, if an invalid session is given
+ *            NO_ERROR 
+ * session(in) : contains the SQL query that has been compiled
+ *
+ */
+int
+db_set_system_generated_statement (DB_SESSION * session)
+{
+  PT_NODE *statement;
+
+  CHECK_CONNECT_MINUSONE ();
+
+  if (session == NULL || session->parser == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  session->parser->is_system_generated_stmt = 1;
+
+  return NO_ERROR;
 }
 
 /*

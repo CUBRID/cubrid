@@ -341,6 +341,7 @@ extern int db_compile_and_execute_queries_internal (const char *CSQL_query,
 						    int execute,
 						    QUERY_EXEC_MODE exec_mode,
 						    bool is_new_statement);
+extern int db_set_system_generated_statement (DB_SESSION * session);
 extern void db_close_session_local (DB_SESSION * session);
 extern int db_savepoint_transaction_internal (const char *savepoint_name);
 extern int db_drop_set_attribute_domain (MOP class_,
