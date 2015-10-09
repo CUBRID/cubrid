@@ -10861,7 +10861,9 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   assert (delete_helper->is_system_op_started == false);
   assert (delete_helper->purpose != BTREE_OP_UNDO_SAME_KEY_DIFF_OID
-	  && delete_helper->purpose != BTREE_OP_INSERT_MVCC_DELID);
+	  && delete_helper->purpose != BTREE_OP_INSERT_MVCC_DELID
+	  && delete_helper->purpose
+	  != BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
 
   /* Is this an overflow key? Should we delete it too? */
   /* If this is undo of inserted object, overflow key deletion will be handled
@@ -13958,6 +13960,7 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p,
       return ER_FAILED;
 
     case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
       /* We just inserted this object and want to remove it. Insert MVCCID
        * must match and should not be deleted.
        */
@@ -32368,7 +32371,8 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p,
       return error_code;
     }
 
-  if (!insert_helper->is_unique_key_added_or_deleted)
+  if (!insert_helper->is_unique_key_added_or_deleted
+      && insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT)
     {
       /* We need to log two objects: the one that is being inserted and the
        * one that was first before. Undo will return the visible object to
@@ -36454,6 +36458,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p,
   char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
   char *rv_redo_data_ptr = NULL;
   int rv_redo_data_length = 0;
+  char helper_rv_redo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
 
   LOG_LSA prev_lsa;
 
@@ -36524,11 +36529,61 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p,
       goto exit;
     }
   /* Object was found. */
+
+  delete_helper->rv_redo_data =
+    PTR_ALIGN (helper_rv_redo_data_buffer, BTREE_MAX_ALIGN);
+  delete_helper->rv_redo_data_ptr = delete_helper->rv_redo_data;
+
   if (offset_to_object != 0 || found_page != *leaf_page)
     {
-      /* Object was expected to be first. */
-      assert_release (false);
-      error_code = ER_FAILED;
+      /* Object is normally expected to be first. */
+      /* But there is this case:
+       * create table t (a int unique);
+       * insert into t values (1), (2);
+       * update t set a=a+1 where a > 0;
+       * rollback;
+       *
+       * First a new version of object from key 1 is inserted in key 2. Then
+       * the other object in key 2 is updated to key 3. The version in key 2
+       * is deleted (marked as deleted).
+       * On undo/rollback, the second object old version delete MVCCID is
+       * removed first. The algorithm for undo MVCC delete in unique index
+       * makes sure it is brought back to the first position in key. The
+       * inserted version is relocated to another position.
+       */
+      BTREE_NODE_TYPE node_type;
+
+#if !defined (NDEBUG)
+      {
+	/* Let's confirm the above theory. The first object in leaf record
+	 * must be same with the object we wanted to bring first.
+	 */
+	BTREE_OBJECT_INFO first_object;
+	btree_leaf_get_first_object (btid_int, &leaf_record,
+				     &first_object.oid,
+				     &first_object.class_oid,
+				     &first_object.mvcc_info);
+	assert (OID_EQ (&first_object.oid,
+			&delete_helper->second_object_info.oid));
+      }
+#endif /* !NDEBUG */
+
+      /* Just remove inserted object. */
+      node_type =
+	(*leaf_page == found_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
+      error_code =
+	btree_key_remove_object (thread_p, key, btid_int, delete_helper,
+				 *leaf_page, &leaf_record, &leaf_rec_info,
+				 offset_after_key, search_key, &found_page,
+				 prev_found_page, node_type,
+				 offset_to_object);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+      /* Skip the rest of the function. The code handles the case when
+       * inserted version was first.
+       */
       goto exit;
     }
 
@@ -36850,7 +36905,9 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p,
 				rv_undo_data_length, rv_redo_data_length,
 				rv_undo_data, delete_helper->rv_redo_data);
     }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
+  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
+	   || delete_helper->purpose
+	   == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
     {
       log_append_compensate_with_undo_nxlsa (thread_p,
 					     RVBT_RECORD_MODIFY_COMPENSATE,
@@ -37509,7 +37566,9 @@ btree_leaf_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  || delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
 	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID
 	  || delete_helper->purpose
-	  == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
+	  == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
+	  || delete_helper->purpose
+	  == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
 
 #if !defined (NDEBUG)
   (void) btree_check_valid_record (thread_p, btid_int, leaf_record,
