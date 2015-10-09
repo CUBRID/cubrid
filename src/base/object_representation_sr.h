@@ -237,8 +237,4 @@ extern int orc_superclasses_from_record (RECDES * record, int *array_size,
 					 OID ** array_ptr);
 extern OR_CLASSREP **or_get_all_representation (RECDES * record,
 						bool do_indexes, int *count);
-
-extern int class_is_system_class (THREAD_ENTRY * thread_p,
-				  const OID * class_oid,
-				  bool * is_system_class_p);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

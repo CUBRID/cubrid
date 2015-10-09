@@ -9409,10 +9409,28 @@ start_current_version:
 	      /* Check if there is next version. */
 	      if (OID_ISNULL (&MVCC_GET_NEXT_VERSION (&mvcc_header)))
 		{
+		  bool is_system_class = false;
+
 		  /* No next versions. Stop here. */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_HEAP_UNKNOWN_OBJECT, 3, current_oid.volid,
-			  current_oid.pageid, current_oid.slotid);
+		  if (oid_is_system_class (&current_class_oid,
+					   &is_system_class) != NO_ERROR)
+		    {
+		      scan_code = S_DOESNT_EXIST;
+		      goto end;
+		    }
+		  if (MVCC_IS_REC_DELETED_BY_ME (thread_p, &mvcc_header)
+		      && is_system_class == true)
+		    {
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			      ER_HEAP_UNKNOWN_OBJECT, 3, current_oid.volid,
+			      current_oid.pageid, current_oid.slotid);
+		    }
+		  else
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_HEAP_UNKNOWN_OBJECT, 3, current_oid.volid,
+			      current_oid.pageid, current_oid.slotid);
+		    }
 		  scan_code = S_DOESNT_EXIST;
 		  goto end;
 		}
@@ -10071,6 +10089,7 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
   int try_max = 1;
   DISK_ISVALID oid_is_valid;
   int ret;
+  bool is_system_class = false;
 
   assert (oid != NULL);
   assert (forward_oid != NULL);
@@ -10365,6 +10384,24 @@ try_again:
     case REC_DELETED_WILL_REUSE:
     case REC_MARKDELETED:
       /* Vacuumed/deleted record. */
+#if defined(SA_MODE)
+      /* Accessing a REC_MARKDELETED record from a system class can happen in
+       * SA mode, when no MVCC operations have been performed on the system
+       * class.
+       */
+      if (oid_is_system_class (class_oid, &is_system_class) !=
+	  NO_ERROR)
+	{
+	  goto error;
+	}
+      if (is_system_class == true)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,
+		  3, oid->volid, oid->pageid, oid->slotid);
+	  return S_DOESNT_EXIST;
+	}
+#endif /* SA_MODE */
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
 	      oid->volid, oid->pageid, oid->slotid);
       return S_DOESNT_EXIST;

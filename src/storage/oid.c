@@ -42,6 +42,25 @@ static OID oid_Collation_class = { 0, 0, 0 };
 static OID oid_HA_apply_info_class = { 0, 0, 0 };
 static OID oid_Class_class = { 0, 0, 0 };
 static OID oid_Attribute_class = { 0, 0, 0 };
+static OID oid_Domain_class = { 0, 0, 0 };
+static OID oid_Method_class = { 0, 0, 0 };
+static OID oid_Methsig_class = { 0, 0, 0 };
+static OID oid_Metharg_class = { 0, 0, 0 };
+static OID oid_Methfile_class = { 0, 0, 0 };
+static OID oid_Queryspec_class = { 0, 0, 0 };
+static OID oid_Index_class = { 0, 0, 0 };
+static OID oid_Indexkey_class = { 0, 0, 0 };
+static OID oid_Datatype_class = { 0, 0, 0 };
+static OID oid_Classauth_class = { 0, 0, 0 };
+static OID oid_Stored_proc_class = { 0, 0, 0 };
+static OID oid_Stored_proc_args_class = { 0, 0, 0 };
+static OID oid_Charset_class = { 0, 0, 0 };
+static OID oid_Trigger_class = { 0, 0, 0 };
+static OID oid_User_class = { 0, 0, 0 };
+static OID oid_Password_class = { 0, 0, 0 };
+static OID oid_Authorization_class = { 0, 0, 0 };
+static OID oid_Authorizations_class = { 0, 0, 0 };
+
 static OID oid_Rep_Read_Tran = { 0, 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -57,12 +76,30 @@ OID *oid_Partition_class_oid = &oid_Partition_class;
 
 OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Root_class, NULL},	/* Root class is not identifiable by a name */
-  {&oid_Serial_class, CT_SERIAL_NAME},
-  {&oid_Partition_class, CT_PARTITION_NAME},
-  {&oid_Collation_class, CT_COLLATION_NAME},
-  {&oid_HA_apply_info_class, CT_HA_APPLY_INFO_NAME},
   {&oid_Class_class, CT_CLASS_NAME},
-  {&oid_Attribute_class, CT_ATTRIBUTE_NAME}
+  {&oid_Attribute_class, CT_ATTRIBUTE_NAME},
+  {&oid_Domain_class, CT_DOMAIN_NAME},
+  {&oid_Method_class, CT_METHOD_NAME},
+  {&oid_Methsig_class, CT_METHSIG_NAME},
+  {&oid_Metharg_class, CT_METHARG_NAME},
+  {&oid_Methfile_class, CT_METHFILE_NAME},
+  {&oid_Queryspec_class, CT_QUERYSPEC_NAME},
+  {&oid_Index_class, CT_INDEX_NAME},
+  {&oid_Indexkey_class, CT_INDEXKEY_NAME},
+  {&oid_Datatype_class, CT_DATATYPE_NAME},
+  {&oid_Classauth_class, CT_CLASSAUTH_NAME},
+  {&oid_Partition_class, CT_PARTITION_NAME},
+  {&oid_Stored_proc_class, CT_STORED_PROC_NAME},
+  {&oid_Stored_proc_args_class, CT_STORED_PROC_ARGS_NAME},
+  {&oid_Serial_class, CT_SERIAL_NAME},
+  {&oid_HA_apply_info_class, CT_HA_APPLY_INFO_NAME},
+  {&oid_Collation_class, CT_COLLATION_NAME},
+  {&oid_Charset_class, CT_CHARSET_NAME},
+  {&oid_Trigger_class, CT_TRIGGER_NAME},
+  {&oid_User_class, CT_USER_NAME},
+  {&oid_Password_class, CT_PASSWORD_NAME},
+  {&oid_Authorization_class, CT_AUTHORIZATION_NAME},
+  {&oid_Authorizations_class, CT_AUTHORIZATIONS_NAME}
 };
 
 /*
@@ -312,6 +349,29 @@ oid_get_cached_class_name (const int cache_id)
 }
 
 /*
+ * oid_is_cached_class_oid () - Used to find a class OID in the cache.
+ *			      Currently only used for system classes.
+ *
+ * return	 : true/false if found
+ * class_oid (in): class OID to search for
+ */
+bool
+oid_is_cached_class_oid (OID * class_oid)
+{
+  int i;
+
+  for (i = OID_CACHE_ROOT_CLASS_ID; i < OID_CACHE_SIZE; i++)
+    {
+      if (OID_EQ (oid_Cache[i].oid, class_oid))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * oid_get_rep_read_tran_oid () - Get OID that is used for RR transactions
  *				  locking. 
  *
@@ -321,4 +381,22 @@ OID *
 oid_get_rep_read_tran_oid (void)
 {
   return &oid_Rep_Read_Tran;
+}
+
+/*
+ * oid_is_system_class () - Check if class identified with class_oid is
+ *			      system class.
+ *
+ * return		   : Error code.
+ * class_oid (in)	   : Class object identifier.
+ * is_system_class_p (out) : True is class is a system class.
+ */
+int
+oid_is_system_class (const OID * class_oid, bool * is_system_class_p)
+{
+  assert (is_system_class_p != NULL && class_oid != NULL
+	  && !OID_ISNULL (class_oid));
+
+  *is_system_class_p = oid_is_cached_class_oid (class_oid);
+  return NO_ERROR;
 }

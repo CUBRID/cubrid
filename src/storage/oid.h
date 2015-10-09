@@ -159,12 +159,30 @@
 enum
 {
   OID_CACHE_ROOT_CLASS_ID = 0,
-  OID_CACHE_SERIAL_CLASS_ID,
-  OID_CACHE_PARTITION_CLASS_ID,
-  OID_CACHE_COLLATION_CLASS_ID,
-  OID_CACHE_HA_APPLY_INFO_CLASS_ID,
   OID_CACHE_CLASS_CLASS_ID,
   OID_CACHE_ATTRIBUTE_CLASS_ID,
+  OID_CACHE_DOMAIN_CLASS_ID,
+  OID_CACHE_METHOD_CLASS_ID,
+  OID_CACHE_METHSIG_CLASS_ID,
+  OID_CACHE_METHARG_CLASS_ID,
+  OID_CACHE_METHFILE_CLASS_ID,
+  OID_CACHE_QUERYSPEC_CLASS_ID,
+  OID_CACHE_INDEX_CLASS_ID,
+  OID_CACHE_INDEXKEY_CLASS_ID,
+  OID_CACHE_DATATYPE_CLASS_ID,
+  OID_CACHE_CLASSAUTH_CLASS_ID,
+  OID_CACHE_PARTITION_CLASS_ID,
+  OID_CACHE_STORED_PROC_CLASS_ID,
+  OID_CACHE_STORED_PROC_ARGS_CLASS_ID,
+  OID_CACHE_SERIAL_CLASS_ID,
+  OID_CACHE_HA_APPLY_INFO_CLASS_ID,
+  OID_CACHE_COLLATION_CLASS_ID,
+  OID_CACHE_CHARSET_CLASS_ID,
+  OID_CACHE_TRIGGER_CLASS_ID,
+  OID_CACHE_USER_CLASS_ID,
+  OID_CACHE_PASSWORD_CLASS_ID,
+  OID_CACHE_AUTH_CLASS_ID,
+  OID_CACHE_OLD_ROOT_CLASS_ID,
 
   OID_CACHE_SIZE
 };
@@ -194,5 +212,8 @@ extern int oid_compare_equals (const void *key_oid1, const void *key_oid2);
 extern bool oid_check_cached_class_oid (const int cache_id, const OID * oid);
 extern void oid_set_cached_class_oid (const int cache_id, const OID * oid);
 extern const char *oid_get_cached_class_name (const int cache_id);
+extern bool oid_is_cached_class_oid (OID * class_oid);
 extern OID *oid_get_rep_read_tran_oid (void);
+extern int oid_is_system_class (const OID * class_oid,
+				bool * is_system_class_p);
 #endif /* _OID_H_ */

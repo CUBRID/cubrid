@@ -6012,7 +6012,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
 		  tmp_datetime.time /= 1000;
 
 		  tmp_log_record_time =
-		      db_mktime (&tmp_datetime.date, &tmp_datetime.time);
+		    db_mktime (&tmp_datetime.date, &tmp_datetime.time);
 		}
 	      break;
 	    }
@@ -6055,10 +6055,6 @@ exit:
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
- *
- * NOTE: This was required for MVCC. It is probably a good idea to extend
- *	 cached OID's for all system classes, to avoid looking for them every
- *	 time they're needed.
  */
 int
 catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p)
@@ -6068,7 +6064,7 @@ catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p)
   int i;
 
   /* skip OID for root class, is already set with 'boot_get_db_parm' */
-  for (i = OID_CACHE_SERIAL_CLASS_ID; i < OID_CACHE_SIZE; i++)
+  for (i = OID_CACHE_CLASS_CLASS_ID; i < OID_CACHE_SIZE; i++)
     {
       status =
 	xlocator_find_class_oid (thread_p, oid_get_cached_class_name (i),
