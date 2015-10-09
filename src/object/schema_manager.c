@@ -435,8 +435,12 @@ static int allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 static int allocate_disk_structures (MOP classop, SM_CLASS * class_,
 				     DB_OBJLIST * subclasses,
 				     SM_TEMPLATE * template_);
-static int drop_foreign_key_ref (MOP classop, SM_CLASS_CONSTRAINT * flat_cons,
-				 SM_CLASS_CONSTRAINT * cons);
+static int drop_foreign_key_ref (MOP classop, SM_CLASS * class_,
+				 SM_CLASS_CONSTRAINT * flat_cons,
+				 SM_CLASS_CONSTRAINT ** cons);
+static int drop_foreign_key_ref_internal (MOP classop,
+					  SM_CLASS_CONSTRAINT * flat_cons,
+					  SM_CLASS_CONSTRAINT * cons);
 static bool is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con);
 static int inherit_constraint (MOP classop, SM_CLASS_CONSTRAINT * con);
 static int transfer_disk_structures (MOP classop, SM_CLASS * class_,
@@ -11508,7 +11512,77 @@ structure_error:
 }
 
 /*
- * drop_foreign_key_ref()
+ * drop_foreign_key_ref() - The wrap function to drop foreign key reference
+ *    and retrieve some data which may have been renewed during the process.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classop(in): the class object
+ *   class_(in):  the class structure
+ *   flat_cons(in): the flattened constraint list
+ *   cons(in/out): the constraint to drop.
+ */
+static int
+drop_foreign_key_ref (MOP classop, SM_CLASS * class_,
+		      SM_CLASS_CONSTRAINT * flat_cons,
+		      SM_CLASS_CONSTRAINT ** cons)
+{
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *saved_constraints = NULL;
+  char *saved_name = NULL;
+  int name_length = 0;
+
+  assert (class_ != NULL && *cons != NULL);
+
+  saved_constraints = class_->constraints;
+
+  name_length = strlen ((*cons)->name) + 1;
+  saved_name = (char *) malloc (name_length);
+  if (saved_name == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) name_length);
+      goto end;
+    }
+
+  strcpy (saved_name, (*cons)->name);
+
+  error = drop_foreign_key_ref_internal (classop, flat_cons, *cons);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (saved_constraints != class_->constraints)
+    {
+      /* The above function may free and refetch the class_ together with
+       * its constraints list. When it happens, 'con' should have been freed,
+       * therefore we have to retrieve the 'con' from the renewed constraints
+       * list.*/
+      *cons =
+	classobj_find_class_constraint (class_->constraints,
+					SM_CONSTRAINT_FOREIGN_KEY,
+					saved_name);
+      if (*cons == NULL)
+	{
+	  /* Normally, it should not reach here. */
+	  assert (false);
+
+	  error = ER_GENERIC_ERROR;
+	  goto end;
+	}
+    }
+
+end:
+  if (saved_name != NULL)
+    {
+      free_and_init (saved_name);
+    }
+
+  return error;
+}
+
+/*
+ * drop_foreign_key_ref_internal()
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in):
  *   flat_cons(in):
@@ -11516,9 +11590,9 @@ structure_error:
  */
 
 static int
-drop_foreign_key_ref (MOP classop,
-		      SM_CLASS_CONSTRAINT * flat_cons,
-		      SM_CLASS_CONSTRAINT * cons)
+drop_foreign_key_ref_internal (MOP classop,
+			       SM_CLASS_CONSTRAINT * flat_cons,
+			       SM_CLASS_CONSTRAINT * cons)
 {
   int err = NO_ERROR;
   MOP ref_clsop;
@@ -11843,8 +11917,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 			{
 			  error =
-			    drop_foreign_key_ref (classop, flat_constraints,
-						  con);
+			    drop_foreign_key_ref (classop, class_,
+						  flat_constraints, &con);
 			  if (error != NO_ERROR)
 			    {
 			      goto end;
@@ -11869,7 +11943,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	{
 	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      error = drop_foreign_key_ref (classop, flat_constraints, con);
+	      error =
+		drop_foreign_key_ref (classop, class_, flat_constraints,
+				      &con);
 	      if (error != NO_ERROR)
 		{
 		  goto end;
@@ -11981,8 +12057,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	    {
 	      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 		{
-		  error = drop_foreign_key_ref (classop, flat_constraints,
-						con);
+		  error =
+		    drop_foreign_key_ref (classop, class_, flat_constraints,
+					  &con);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
