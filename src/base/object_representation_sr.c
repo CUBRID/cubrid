@@ -29,6 +29,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "error_manager.h"
 #include "oid.h"

@@ -25,6 +25,8 @@
 
 #include "config.h"
 
+#include <assert.h>
+
 #include "oid.h"
 #include "transform.h"
 
