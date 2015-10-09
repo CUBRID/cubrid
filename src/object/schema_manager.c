@@ -4225,25 +4225,38 @@ sm_get_trigger_cache (DB_OBJECT * classop,
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
   SM_CLASS *class_;
+  OID *oid;
 
+  oid = WS_OID (classop);
   *cache = NULL;
+
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      if (attribute == NULL)
+      if (WS_IS_DELETED (classop) && er_errid() != ER_HEAP_UNKNOWN_OBJECT)
 	{
-	  *cache = class_->triggers;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
+		  oid->volid, oid->pageid, oid->slotid);
+	  error = er_errid ();
 	}
-      else
+
+      return error;
+    }
+
+  if (attribute == NULL)
+    {
+      *cache = class_->triggers;
+    }
+  else
+    {
+      att = classobj_find_attribute (class_, attribute, class_attribute);
+      if (att != NULL)
 	{
-	  att = classobj_find_attribute (class_, attribute, class_attribute);
-	  if (att != NULL)
-	    {
-	      *cache = att->triggers;
-	    }
+	  *cache = att->triggers;
 	}
     }
-  return (error);
+
+  return NO_ERROR;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

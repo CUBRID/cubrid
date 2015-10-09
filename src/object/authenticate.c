@@ -6337,7 +6337,6 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
   if (class_ == NULL)
     {
       /* does it make sense to check WS_IS_DELETED here ? */
-      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       /* !!! do we need to mask the error here ? */
 

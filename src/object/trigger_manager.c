@@ -4909,6 +4909,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
   OID oid_of_trigger;
   TR_RECURSION_DECISION dec;
   bool is_statement = false;
+  bool used_cached_statement = true;
 
   if (trigger->object)
     {
@@ -4984,6 +4985,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 	    fprintf (stdout, "%s\n", trigger->action->source);
 	  break;
 	case TR_ACT_EXPRESSION:
+compile_stmt_again:
 	  if (tr_Current_depth <= 1
 	      && ++act->exec_cnt >
 	      prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
@@ -4999,6 +5001,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 	  if (act->parser == NULL)
 	    {
 	      error = compile_trigger_activity (trigger, act, 0);
+	      used_cached_statement = false;
 	    }
 
 	  if (error == NO_ERROR)
@@ -5022,6 +5025,22 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 		    pt_exec_trigger_stmt ((PARSER_CONTEXT *) act->parser,
 					  (PT_NODE *) act->statement,
 					  current, temp, &value);
+
+		  /* If using the cached statement and ER_QPROC_INVALID_XASLNODE
+		   * error returned, It means that the act->statement is old or
+		   * invalid. It should be re-compiled again.
+		   */
+		  if (pt_status == ER_QPROC_INVALID_XASLNODE
+		      && used_cached_statement)
+		    {
+		      parser_free_parser (act->parser);
+		      act->parser = NULL;
+		      act->statement = NULL;
+
+		      er_clear ();
+		      goto compile_stmt_again;
+		    }
+
 		  /*
 		   * recall that pt_exec_trigger_stmt can return positive
 		   * values to indicate success, errors must be explicitly
