@@ -6126,10 +6126,16 @@ static int
 boot_client_find_and_cache_class_oids (void)
 {
   MOP class_mop = NULL;
+  int error;
 
   class_mop = sm_find_class (CT_SERIAL_NAME);
   if (class_mop == NULL)
     {
+      error = er_errid ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
@@ -6139,6 +6145,12 @@ boot_client_find_and_cache_class_oids (void)
   class_mop = sm_find_class (CT_HA_APPLY_INFO_NAME);
   if (class_mop == NULL)
     {
+      error = er_errid ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
