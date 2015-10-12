@@ -14116,19 +14116,20 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
   CHECK_MODIFICATION_ERROR ();
 
   error = insert_local (parser, statement);
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_EXECUTION);
+    }
 
   while (error < NO_ERROR && statement->next)
     {
-      if (pt_has_error (parser))
-	{
-	  pt_report_to_ersys (parser, PT_EXECUTION);
-	}
       /* assume error was from mismatch of multiple possible translated
        * inserts. Try the next statement in the list.
        * Only report the last error.
        */
       parser_free_tree (parser, parser->error_msgs);
       parser->error_msgs = NULL;
+
       statement = statement->next;
       error = insert_local (parser, statement);
 
@@ -14139,6 +14140,12 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 	  assert (er_errid () != NO_ERROR);
 	  return (er_errid ());
 	}
+
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys (parser, PT_EXECUTION);
+	}
+
       /* This is to allow the row "counting" to be done
        * in db_execute_and_keep_statement, and also correctly
        * returns the "result" of the last insert statement.
