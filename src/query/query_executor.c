@@ -16296,13 +16296,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 		}
 #endif /* NDEBUG */
 
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user,
-				     1);
-#endif /* ENABLE_SYSTEMTAP */
-
 	      /* caller will detect the error condition and free the listid */
-	      return list_id;
+	      goto end;
 	    }			/* if-else */
 	}			/* if */
       /* for async query, clean error */
@@ -16373,8 +16368,10 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   }
 #endif /* CUBRID_DEBUG */
 
+end:
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 0);
+  CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user,
+			 (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }

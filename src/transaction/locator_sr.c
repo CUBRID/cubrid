@@ -9323,14 +9323,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 			      &dummy_unique, p_mvcc_rec_header);
 
 #if defined(ENABLE_SYSTEMTAP)
-	      if (error_code != NO_ERROR)
-		{
-		  CUBRID_IDX_INSERT_END (classname, index->btname, 1);
-		}
-	      else
-		{
-		  CUBRID_IDX_INSERT_END (classname, index->btname, 0);
-		}
+	      CUBRID_IDX_INSERT_END (classname, index->btname,
+				     (error_code != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
 	    }
 	  else if (use_mvcc == true)

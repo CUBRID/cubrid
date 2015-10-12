@@ -10389,8 +10389,7 @@ try_again:
        * SA mode, when no MVCC operations have been performed on the system
        * class.
        */
-      if (oid_is_system_class (class_oid, &is_system_class) !=
-	  NO_ERROR)
+      if (oid_is_system_class (class_oid, &is_system_class) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -29709,14 +29708,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p,
 error:
 
 #if defined(ENABLE_SYSTEMTAP)
-  if (rc < 0)
-    {
-      CUBRID_OBJ_INSERT_END (&context->class_oid, 1);
-    }
-  else
-    {
-      CUBRID_OBJ_INSERT_END (&context->class_oid, 0);
-    }
+  CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
   /* all ok */

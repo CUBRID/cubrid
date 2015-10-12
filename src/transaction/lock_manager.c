@@ -3695,11 +3695,7 @@ start:
 	  if (tdes && tdes->tran_abort_reason ==
 	      TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION)
 	    {
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				       LK_NOTGRANTED_DUE_ABORTED);
-#endif /* ENABLE_SYSTEMTAP */
-	      return ret_val;
+	      goto end;
 	    }
 	}
 
@@ -3709,10 +3705,8 @@ start:
 					    tran_index), lock) == true)
 	{
 	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, LK_GRANTED);
-#endif /* ENABLE_SYSTEMTAP */
-	  return LK_GRANTED;
+	  ret_val = LK_GRANTED;
+	  goto end;
 	}
     }
   else
@@ -3761,12 +3755,8 @@ start:
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		  1, "lock heap entry");
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-
-	  return LK_NOTGRANTED_DUE_ERROR;
+	  ret_val = LK_NOTGRANTED_DUE_ERROR;
+	  goto end;
 	}
 
       /* initialize the lock entry as granted state */
@@ -3803,14 +3793,11 @@ start:
 	    {
 	      assert (is_res_mutex_locked);
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				       LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		      1, "history");
-	      return LK_NOTGRANTED_DUE_ERROR;
+	      ret_val = LK_NOTGRANTED_DUE_ERROR;
+	      goto end;
 	    }
 
 	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
@@ -3821,11 +3808,9 @@ start:
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
       *entry_addr_ptr = entry_ptr;
-#if defined (ENABLE_SYSTEMTAP)
-      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, LK_GRANTED);
-#endif /* ENABLE_SYSTEMTAP */
 
-      return LK_GRANTED;
+      ret_val = LK_GRANTED;
+      goto end;
     }
 
   /* the lockable object existed in the hash chain
@@ -3866,12 +3851,9 @@ start:
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		      1, "lock heap entry");
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				       LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
 
-	      return LK_NOTGRANTED_DUE_ERROR;
+	      ret_val = LK_NOTGRANTED_DUE_ERROR;
+	      goto end;
 	    }
 
 	  /* initialize the lock entry as granted state */
@@ -3916,14 +3898,11 @@ start:
 		{
 		  assert (is_res_mutex_locked);
 		  pthread_mutex_unlock (&res_ptr->res_mutex);
-#if defined(ENABLE_SYSTEMTAP)
-		  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-					   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LK_ALLOC_RESOURCE, 1, "history");
-		  return LK_NOTGRANTED_DUE_ERROR;
+		  ret_val = LK_NOTGRANTED_DUE_ERROR;
+		  goto end;
 		}
 
 	      RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
@@ -3932,11 +3911,9 @@ start:
 	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  *entry_addr_ptr = entry_ptr;
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, LK_GRANTED);
-#endif /* ENABLE_SYSTEMTAP */
 
-	  return LK_GRANTED;
+	  ret_val = LK_GRANTED;
+	  goto end;
 	}
 
       /* 2. I am not a holder & my request cannot be granted. */
@@ -3955,11 +3932,8 @@ start:
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_LK_ALLOC_RESOURCE, 1, "lock heap entry");
-#if defined(ENABLE_SYSTEMTAP)
-		      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-					       LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-		      return LK_NOTGRANTED_DUE_ERROR;
+		      ret_val = LK_NOTGRANTED_DUE_ERROR;
+		      goto end;
 		    }
 		  lock_initialize_entry_as_blocked (entry_ptr, thread_p,
 						    tran_index, res_ptr,
@@ -3979,15 +3953,13 @@ start:
 	      if (rv != NO_ERROR)
 		{
 		  assert (false);
-		  return LK_NOTGRANTED_DUE_ERROR;
+		  ret_val = LK_NOTGRANTED_DUE_ERROR;
+		  goto end;
 		}
 	    }
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_TIMEOUT);
-#endif /* ENABLE_SYSTEMTAP */
 
-	  return LK_NOTGRANTED_DUE_TIMEOUT;
+	  ret_val = LK_NOTGRANTED_DUE_TIMEOUT;
+	  goto end;
 	}
 
       /* check if another thread is waiting for the same resource
@@ -4036,32 +4008,25 @@ start:
 		  THREAD_RESUME_DUE_TO_INTERRUPT)
 		{
 		  /* a shutdown thread wakes me up */
-#if defined(ENABLE_SYSTEMTAP)
-		  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-					   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED,
 			  0);
 
-		  return LK_NOTGRANTED_DUE_ERROR;
+		  ret_val = LK_NOTGRANTED_DUE_ERROR;
+		  goto end;
 		}
 	      else if (entry_ptr->thrd_entry->resume_status !=
 		       THREAD_LOCK_RESUMED)
 		{
 		  /* wake up with other reason */
 		  assert (0);
-#if defined(ENABLE_SYSTEMTAP)
-		  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-					   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
 
 		  if (er_errid () == NO_ERROR)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_INTERRUPTED, 0);
 		    }
-		  return LK_NOTGRANTED_DUE_ERROR;
+		  ret_val = LK_NOTGRANTED_DUE_ERROR;
+		  goto end;
 		}
 	      else
 		{
@@ -4081,11 +4046,8 @@ start:
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		  1, "lock heap entry");
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-	  return LK_NOTGRANTED_DUE_ERROR;
+	  ret_val = LK_NOTGRANTED_DUE_ERROR;
+	  goto end;
 	}
       /* initialize the lock entry as blocked state */
       lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index,
@@ -4164,14 +4126,10 @@ lock_tran_lk_entry:
 		{
 		  pthread_mutex_unlock (&res_ptr->res_mutex);
 		}
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				       LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		      1, "history");
-	      return LK_NOTGRANTED_DUE_ERROR;
+	      ret_val = LK_NOTGRANTED_DUE_ERROR;
+	      goto end;
 	    }
 
 	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
@@ -4184,11 +4142,8 @@ lock_tran_lk_entry:
       mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
       *entry_addr_ptr = entry_ptr;
 
-#if defined (ENABLE_SYSTEMTAP)
-      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, LK_GRANTED);
-#endif /* ENABLE_SYSTEMTAP */
-
-      return LK_GRANTED;
+      ret_val = LK_GRANTED;
+      goto end;
     }
 
   if (!is_res_mutex_locked)
@@ -4224,14 +4179,11 @@ lock_tran_lk_entry:
 	    {
 	      assert (is_res_mutex_locked);
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				       LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		      1, "history");
-	      return LK_NOTGRANTED_DUE_ERROR;
+	      ret_val = LK_NOTGRANTED_DUE_ERROR;
+	      goto end;
 	    }
 
 	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
@@ -4274,12 +4226,9 @@ lock_tran_lk_entry:
 	      lf_freelist_retire (t_entry_ent, &lk_Gl.obj_free_entry_list, p);
 	    }
 	}
-#if defined(ENABLE_SYSTEMTAP)
-      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-			       LK_NOTGRANTED_DUE_TIMEOUT);
-#endif /* ENABLE_SYSTEMTAP */
 
-      return LK_NOTGRANTED_DUE_TIMEOUT;
+      ret_val = LK_NOTGRANTED_DUE_TIMEOUT;
+      goto end;
     }
 
   /* Upgrader Positioning Rule (UPR) */
@@ -4317,28 +4266,21 @@ lock_tran_lk_entry:
       if (thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	{
 	  /* a shutdown thread wakes me up */
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	  return LK_NOTGRANTED_DUE_ERROR;
+	  ret_val = LK_NOTGRANTED_DUE_ERROR;
+	  goto end;
 	}
       else if (thrd_entry->resume_status != THREAD_LOCK_RESUMED)
 	{
 	  /* wake up with other reason */
 	  assert (0);
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
 
 	  if (er_errid () == NO_ERROR)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	    }
-	  return LK_NOTGRANTED_DUE_ERROR;
+	  ret_val = LK_NOTGRANTED_DUE_ERROR;
+	  goto end;
 	}
       else
 	{
@@ -4422,27 +4364,18 @@ blocked:
 
       if (ret_val == LOCK_RESUMED_ABORTED)
 	{
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_ABORTED);
-#endif /* ENABLE_SYSTEMTAP */
-	  return LK_NOTGRANTED_DUE_ABORTED;
+	  ret_val = LK_NOTGRANTED_DUE_ABORTED;
+	  goto end;
 	}
       else if (ret_val == LOCK_RESUMED_INTERRUPT)
 	{
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-	  return LK_NOTGRANTED_DUE_ERROR;
+	  ret_val = LK_NOTGRANTED_DUE_ERROR;
+	  goto end;
 	}
       else			/* LOCK_RESUMED_TIMEOUT || LOCK_SUSPENDED */
 	{
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_TIMEOUT);
-#endif /* ENABLE_SYSTEMTAP */
-	  return LK_NOTGRANTED_DUE_TIMEOUT;
+	  ret_val = LK_NOTGRANTED_DUE_TIMEOUT;
+	  goto end;
 	}
     }
 
@@ -4452,14 +4385,10 @@ blocked:
 	malloc (sizeof (LK_ACQUISITION_HISTORY));
       if (history == NULL)
 	{
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1,
 		  "history");
-	  return LK_NOTGRANTED_DUE_ERROR;
+	  ret_val = LK_NOTGRANTED_DUE_ERROR;
+	  goto end;
 	}
 
       RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
@@ -4517,11 +4446,14 @@ lock_conversion_treatement:
     }
 
   *entry_addr_ptr = entry_ptr;
+  ret_val = LK_GRANTED;
+
+end:
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, LK_GRANTED);
+  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
 
-  return LK_GRANTED;
+  return ret_val;
 }
 #endif /* SERVER_MODE */
 
@@ -8355,12 +8287,7 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
 	  lock_internal_perform_unlock_object (thread_p, entry_ptr, false,
 					       true);
 	}
-
-#if defined(ENABLE_SYSTEMTAP)
-      CUBRID_LOCK_RELEASE_END (oid, class_oid, lock);
-#endif /* ENABLE_SYSTEMTAP */
-
-      return;
+      goto end;
     }
 
   /* force != true */
@@ -8390,9 +8317,11 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
       break;
     }
 
+end:
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_LOCK_RELEASE_END (oid, class_oid, lock);
 #endif /* ENABLE_SYSTEMTAP */
+  return;
 
 #endif /* !SERVER_MODE */
 }

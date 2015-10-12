@@ -9263,6 +9263,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
   LOG_LSA oldest_unflush_lsa;
+  int error = NO_ERROR;
 #if defined(ENABLE_SYSTEMTAP)
   int tran_index;
   QMGR_TRAN_ENTRY *tran_entry;
@@ -9349,23 +9350,20 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       LSA_COPY (&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
 
       bufptr->avoid_victim = false;
-
-#if defined(ENABLE_SYSTEMTAP)
-      if (monitored == true)
-	{
-	  CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 1);
-	}
-#endif /* ENABLE_SYSTEMTAP */
-
-      return ER_FAILED;
+      error = ER_FAILED;
     }
 
 #if defined(ENABLE_SYSTEMTAP)
   if (monitored == true)
     {
-      CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 0);
+      CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, (error != NO_ERROR));
     }
 #endif /* ENABLE_SYSTEMTAP */
+
+  if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 
@@ -11087,14 +11085,8 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	{
 	  *flushed = true;
 	  mnt_pb_iowrites (thread_p, 1);
-	  /* ignore error */
-
-#if defined(ENABLE_SYSTEMTAP)
-	  if (monitored == true)
-	    {
-	      CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 1);
-	    }
-#endif /* ENABLE_SYSTEMTAP */
+	  /* ignore error, just store it for Systemtap marker */
+	  error = ER_FAILED;
 	}
 
       MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
@@ -11103,7 +11095,7 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 
 #if defined(ENABLE_SYSTEMTAP)
       {
-	CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 0);
+	CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, (error != NO_ERROR));
       }
 #endif /* ENABLE_SYSTEMTAP */
 
