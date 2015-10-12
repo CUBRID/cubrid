@@ -36905,9 +36905,7 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p,
 				rv_undo_data_length, rv_redo_data_length,
 				rv_undo_data, delete_helper->rv_redo_data);
     }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	   || delete_helper->purpose
-	   == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
+  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
     {
       log_append_compensate_with_undo_nxlsa (thread_p,
 					     RVBT_RECORD_MODIFY_COMPENSATE,
@@ -37096,7 +37094,9 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 				rv_undo_data_length, rv_redo_data_length,
 				rv_undo_data, delete_helper->rv_redo_data);
     }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
+  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
+	   || delete_helper->purpose
+	   == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
     {
       log_append_compensate_with_undo_nxlsa (thread_p,
 					     RVBT_RECORD_MODIFY_COMPENSATE,
