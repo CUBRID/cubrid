@@ -3144,7 +3144,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       er_log_debug (ARG_FILE_LINE, "log_run_postpone: Warning run postpone"
 		    " logging is ignored when transaction is not committed\n");
 #endif /* CUBRID_DEBUG */
-      ;				/* Nothing */
+      assert (false);
     }
   else
     {
@@ -4521,7 +4521,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	   */
 	  log_do_postpone (thread_p, tdes,
 			   &tdes->topops.stack[tdes->topops.last].posp_lsa,
-			   LOG_COMMIT_TOPOPE_WITH_POSTPONE);
+			   LOG_COMMIT_TOPOPE_WITH_POSTPONE, true);
 
 	  if (!LSA_ISNULL
 	      (&tdes->topops.stack[tdes->topops.last].client_posp_lsa))
@@ -6275,7 +6275,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
        */
 
       log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa,
-		       LOG_COMMIT_WITH_POSTPONE);
+		       LOG_COMMIT_WITH_POSTPONE, true);
 
       /*
        * The files created by this transaction are not new files any longer.
@@ -10838,6 +10838,11 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  *   tdes(in): Transaction descriptor
  *   start_posplsa(in): Where to start looking for postpone records
  *   posp_type(in): Type of postpone executed
+ *   append_commit_postpone(in): Should a log record be appended for commit
+ *				 postpone (or commit top-ope with postpone).
+ *				 This is false when postpone is executed based
+ *				 on an existing such log record, during
+ *				 recovery.
  *
  * NOTE: Scan the log forward doing postpone operations of given
  *              transaction. This function is invoked after a transaction is
@@ -10845,7 +10850,8 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  */
 void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-		 LOG_LSA * start_postpone_lsa, LOG_RECTYPE postpone_type)
+		 LOG_LSA * start_postpone_lsa, LOG_RECTYPE postpone_type,
+		 bool append_commit_postpone)
 {
   LOG_LSA end_postpone_lsa;	/* The last postpone record of
 				 * transaction cannot be after this
@@ -10880,20 +10886,29 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       return;
     }
 
-  if (log_is_in_crash_recovery () == false)
+  if (append_commit_postpone)
     {
       /* Log the transaction as committed with postpone actions and then
        * start executing the postpone actions.
        */
       if (postpone_type == LOG_COMMIT_WITH_POSTPONE)
 	{
+	  assert (tdes->topops.last < 0);
 	  log_append_commit_postpone (thread_p, tdes, start_postpone_lsa);
 	}
       else
 	{
+	  assert (postpone_type == LOG_COMMIT_TOPOPE_WITH_POSTPONE);
+	  assert (tdes->topops.last >= 0);
 	  log_append_topope_commit_postpone (thread_p, tdes,
 					     start_postpone_lsa);
 	}
+    }
+  else
+    {
+      assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+	      || tdes->state == TRAN_UNACTIVE_WILL_COMMIT
+	      || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
     }
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -11208,7 +11223,7 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	    }
 
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_do_postpone");
+			     "log_run_postpone_op");
 
 	  return ER_FAILED;
 	}

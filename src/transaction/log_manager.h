@@ -238,7 +238,8 @@ extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				LOG_GETNEWTRID get_newtrid);
 extern void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-		 LOG_LSA * start_posplsa, LOG_RECTYPE posp_type);
+		 LOG_LSA * start_posplsa, LOG_RECTYPE posp_type,
+		 bool append_commit_postpone);
 extern int log_recreate (THREAD_ENTRY * thread_p,
 			 const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, DKNPAGES log_npages,

@@ -1008,7 +1008,9 @@ er_start (THREAD_ENTRY * thread_p)
 {
   ER_MSG *er_entry_p, *er_entry_buffer_p;
   int status = NO_ERROR;
+#if defined (SERVER_MODE)
   int r;
+#endif /* SERVER_MODE */
   int i;
 
   if (er_Hasalready_initiated == false)
@@ -1457,6 +1459,33 @@ er_print_callstack (const char *file_name, const int line_no, const char *fmt,
 		    ...)
 {
   va_list ap;
+  int r = NO_ERROR;
+  THREAD_ENTRY *thread_p;
+  ER_MSG *er_entry_p;
+  static bool doing_er_start = false;
+
+  thread_p = thread_get_thread_entry_info ();
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p == NULL)
+    {
+      /* Avoid infinite recursion in case of errors in error restart */
+
+      if (doing_er_start == false)
+	{
+	  doing_er_start = true;
+
+	  (void) er_start (thread_p);
+	  er_entry_p = er_get_er_entry (thread_p);
+
+	  doing_er_start = false;
+	}
+    }
+
+  r = ER_CSECT_ENTER_LOG_FILE ();
+  if (r != NO_ERROR)
+    {
+      return;
+    }
 
   va_start (ap, fmt);
   _er_log_debug_internal (file_name, line_no, fmt, &ap);
@@ -1464,6 +1493,8 @@ er_print_callstack (const char *file_name, const int line_no, const char *fmt,
 
   er_dump_call_stack (er_Msglog_fh);
   fprintf (er_Msglog_fh, "\n");
+
+  ER_CSECT_EXIT_LOG_FILE ();
 }
 
 /*
@@ -1607,7 +1638,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
     }
 
   /* Do any necessary allocation for the buffer. */
-  if (er_make_room (thread_p, new_size + 1) == ER_FAILED)
+  if (er_make_room (thread_p, (int) new_size + 1) == ER_FAILED)
     {
       ret_val = ER_FAILED;
       goto end;
@@ -2283,42 +2314,10 @@ void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
   va_list ap;
-
-  va_start (ap, fmt);
-  _er_log_debug_internal (file_name, line_no, fmt, &ap);
-  va_end (ap);
-}
-
-/*
- * er_log_debug - Print debugging message to the log file
- *   return: none
- *   file_name(in):
- *   line_no(in):
- *   fmt(in):
- *   ap(in):
- *
- * Note:
- */
-static void
-_er_log_debug_internal (const char *file_name, const int line_no,
-			const char *fmt, va_list * ap)
-{
-  FILE *out;
-  static bool doing_er_start = false;
-  time_t er_time;
-  struct tm er_tm;
-  struct tm *er_tm_p = &er_tm;
-  struct timeval tv;
-  char time_array[256];
-  int r;
+  int r = NO_ERROR;
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
-
-  if (er_Hasalready_initiated == false)
-    {
-      /* do not print debug info */
-      return;
-    }
+  static bool doing_er_start = false;
 
   thread_p = thread_get_thread_entry_info ();
   er_entry_p = er_get_er_entry (thread_p);
@@ -2342,6 +2341,45 @@ _er_log_debug_internal (const char *file_name, const int line_no,
     {
       return;
     }
+
+  va_start (ap, fmt);
+  _er_log_debug_internal (file_name, line_no, fmt, &ap);
+  va_end (ap);
+
+  ER_CSECT_EXIT_LOG_FILE ();
+}
+
+/*
+ * er_log_debug - Print debugging message to the log file
+ *   return: none
+ *   file_name(in):
+ *   line_no(in):
+ *   fmt(in):
+ *   ap(in):
+ *
+ * Note:
+ */
+static void
+_er_log_debug_internal (const char *file_name, const int line_no,
+			const char *fmt, va_list * ap)
+{
+  FILE *out;
+  time_t er_time;
+  struct tm er_tm;
+  struct tm *er_tm_p = &er_tm;
+  struct timeval tv;
+  char time_array[256];
+  THREAD_ENTRY *thread_p;
+  ER_MSG *er_entry_p;
+
+  if (er_Hasalready_initiated == false)
+    {
+      /* do not print debug info */
+      return;
+    }
+
+  thread_p = thread_get_thread_entry_info ();
+  er_entry_p = er_get_er_entry (thread_p);
 
   out = (er_Msglog_fh != NULL) ? er_Msglog_fh : stderr;
 
@@ -2369,8 +2407,6 @@ _er_log_debug_internal (const char *file_name, const int line_no,
   /* Print out remainder of message */
   vfprintf (out, fmt, *ap);
   fflush (out);
-
-  ER_CSECT_EXIT_LOG_FILE ();
 }
 
 /*

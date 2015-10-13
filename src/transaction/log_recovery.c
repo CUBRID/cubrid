@@ -4993,7 +4993,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 					&tdes->posp_nxlsa, tdes);
 
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
-		       LOG_COMMIT_WITH_POSTPONE);
+		       LOG_COMMIT_WITH_POSTPONE, false);
 
       /*
        * Are there any postpone client actions that need to be done at the
@@ -5037,7 +5037,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 					tdes);
 
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
-		       LOG_COMMIT_TOPOPE_WITH_POSTPONE);
+		       LOG_COMMIT_TOPOPE_WITH_POSTPONE, false);
       LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
       (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
       LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
