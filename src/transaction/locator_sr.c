@@ -13672,7 +13672,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
 
   error_code = heap_scancache_start (thread_p, &scan_cache, hfid, cls_oid,
-				     true, false, mvcc_snapshot);
+				     false, false, mvcc_snapshot);
   if (error_code != NO_ERROR)
     {
       return error_code;
