@@ -23583,7 +23583,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
     {
       res_type = TP_DOMAIN_TYPE (domain);
       if (res_type != DB_TYPE_TIME && res_type != DB_TYPE_DATE &&
-	  res_type != DB_TYPE_DATETIME)
+	  res_type != DB_TYPE_DATETIME && res_type != DB_TYPE_DATETIMETZ)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
