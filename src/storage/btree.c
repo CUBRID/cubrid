@@ -30162,6 +30162,11 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       assert (op_type == MULTI_ROW_UPDATE);
       assert (unique_stat_info != NULL);
 
+      /* Save the actual BTID to help reporting an unique violation error of a
+       * partition table.
+       */
+      unique_stat_info->btid = *(btid_int.sys_btid);
+
       /* Key was not inserted/deleted. Correct unique_stat_info (which assumed
        * that key will be inserted/deleted).
        */

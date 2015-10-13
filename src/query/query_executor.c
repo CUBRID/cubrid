@@ -12909,7 +12909,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    */
   if (pcontext != NULL)
     {
-      qexec_process_partition_unique_stats (thread_p, pcontext);
+      error = qexec_process_partition_unique_stats (thread_p, pcontext);
+      if (error != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
   else
     {
