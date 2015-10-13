@@ -30029,6 +30029,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	   && purpose != BTREE_OP_INSERT_MVCC_DELID
 	   && purpose != BTREE_OP_INSERT_MARK_DELETED)
 	  || (class_oid != NULL && !OID_ISNULL (class_oid)));
+  assert (file_is_new_file (thread_p, &btid->vfid) == FILE_OLD_FILE);
 
   PERF_UTIME_TRACKER_START (thread_p, &insert_helper.time_track);
 

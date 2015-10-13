@@ -2816,6 +2816,11 @@ file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid,
   for (i = 0; i < n_created_files; i++)
     {
       file_destroy (thread_p, &created_files[i]);
+      /* remove the file from new file cache.
+       * Since we are in a top operation, 
+       * file_destroy didn't change the file as OLD_FILE.
+       */
+      file_new_declare_as_old (thread_p, &created_files[i]);
     }
 
   /* Return result: NULL if create files, VFID of file if successful. */
