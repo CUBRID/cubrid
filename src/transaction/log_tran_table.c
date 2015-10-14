@@ -5180,20 +5180,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   if (MVCCID_IS_VALID (mvccid))
     {
-      /* Block global oldest active until commit is finished. */
-      if (tdes->block_global_oldest_active_until_commit == false)
-	{
-	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid
-	   */
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
-	  tdes->block_global_oldest_active_until_commit = true;
-	}
-      else
-	{
-	  assert (ATOMIC_INC_32
-		  (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
-	}
-
       current_trans_status = &log_Gl.mvcc_table.current_trans_status;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
@@ -5480,6 +5466,19 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       ATOMIC_TAS_32 (&next_trans_status_history->long_tran_mvccids_length,
 		     count);
 
+      /* Block global oldest active until commit is finished. */
+      if (tdes->block_global_oldest_active_until_commit == false)
+	{
+	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid
+	   */
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
+	  tdes->block_global_oldest_active_until_commit = true;
+	}
+      else
+	{
+	  assert (ATOMIC_INC_32
+		  (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+	}
 
       /* prevent code rearrangement */
       ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position,
