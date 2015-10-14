@@ -121,7 +121,11 @@ if ! [ "$?" -eq 0 ] ; then
 	exit 1
 fi
 
-echo $PS | grep -o 'Could not make all the data backward compatible!'
+OUT=$(echo $PS | grep -o 'Could not make all the data backward compatible!')
+if [ "$OUT" = "Could not make all the data backward compatible!" ]; then
+	echo 'Could not make all the data backward compatible!'
+	exit 1
+fi
 
 current_dir=$CD
 cd $CUBRID/timezones/tzlib
