@@ -2035,7 +2035,8 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
 	}
       else
 	{
-	  if (ds_rule != NULL && ds_rule->save_time != 0)
+	  if (ds_rule != NULL && ds_rule->save_time != 0
+	      && zone_off_rule->save_format != NULL)
 	    {
 	      p_dst_format = zone_off_rule->save_format;
 	    }
