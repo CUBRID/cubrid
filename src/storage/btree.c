@@ -36536,6 +36536,10 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p,
     }
   /* Object was found. */
 
+  /* Prepare logging. */
+  delete_helper->leaf_addr.pgptr = *leaf_page;
+  delete_helper->leaf_addr.offset = search_key->slotid;
+  delete_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
   delete_helper->rv_redo_data =
     PTR_ALIGN (helper_rv_redo_data_buffer, BTREE_MAX_ALIGN);
   delete_helper->rv_redo_data_ptr = delete_helper->rv_redo_data;
@@ -36613,11 +36617,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p,
     }
 
   /* Prepare leaf page logging. */
-  delete_helper->leaf_addr.pgptr = *leaf_page;
-  delete_helper->leaf_addr.offset = search_key->slotid;
-  delete_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
   rv_redo_data_ptr = rv_redo_data;
-
   LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr,
 				 LOG_RV_RECORD_UPDATE_PARTIAL);
 
@@ -37018,7 +37018,7 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (record != NULL);
   assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND
 	  && search_key->slotid > 0);
-  assert (addr != NULL);
+  assert (addr != NULL && addr->offset != 0 && addr->pgptr == page);
   assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
 	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
