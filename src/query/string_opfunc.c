@@ -6638,6 +6638,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
   INTL_CODESET codeset;
   int collation_id;
   TZ_ID tz_id = 0;
+  DB_DATETIMETZ ldatetimetz;
 
   if (DB_IS_NULL (left) || DB_IS_NULL (right))
     {
@@ -6652,7 +6653,9 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       {
+	bool has_zone = false;
 	bool is_explicit_time = false;
+
 	error =
 	  db_date_parse_time (DB_PULL_STRING (left),
 			      DB_GET_STRING_SIZE (left), &ltime, &lms);
@@ -6666,16 +6669,28 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 					    NULL, NULL, NULL);
 	    if (error != NO_ERROR || is_explicit_time)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
-			0);
-		error = ER_TIME_CONVERSION;
-		goto error_return;
+		error = db_string_to_datetimetz (DB_PULL_STRING (left),
+						 &ldatetimetz, &has_zone);
+		if (error != NO_ERROR)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_TIME_CONVERSION, 0);
+		    error = ER_TIME_CONVERSION;
+		    goto error_return;
+		  }
+		tz_id = ldatetimetz.tz_id;
+		ldatetime = ldatetimetz.datetime;
 	      }
 
 	    left_is_datetime = true;
-	    db_date_decode (&ldatetime.date, &month, &day, &year);
-	    is_datetime_decoded = true;
-	    result_type = DB_TYPE_VARCHAR;
+	    if (has_zone == true)
+	      {
+		result_type = DB_TYPE_DATETIMETZ;
+	      }
+	    else
+	      {
+		result_type = DB_TYPE_VARCHAR;
+	      }
 	    break;
 	  }
 
