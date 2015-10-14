@@ -1670,9 +1670,9 @@ pt_internal_error (PARSER_CONTEXT * parser, const char *file,
 
   if (parser && !pt_has_error (parser))
     {
+      parser->has_internal_error = 1;
       pt_frob_error (parser, &node, "System error (%s) in %s (line: %d)",
 		     what, file, line);
-      parser->has_internal_error = 1;
     }
 
   return NULL;
@@ -2220,7 +2220,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 
   if (pt_has_error (parser))
     {
-      parser_append_node (node, parser->error_msgs);
+      parser->error_msgs = parser_append_node (node, parser->error_msgs);
     }
   else
     {
