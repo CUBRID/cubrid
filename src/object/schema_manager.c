@@ -4233,7 +4233,7 @@ sm_get_trigger_cache (DB_OBJECT * classop,
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
-      if (WS_IS_DELETED (classop) && er_errid() != ER_HEAP_UNKNOWN_OBJECT)
+      if (WS_IS_DELETED (classop) && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
 		  oid->volid, oid->pageid, oid->slotid);
@@ -11418,6 +11418,8 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
   int num_indexes = 0;
   int err;
   bool dont_decache_and_flush = false;
+  SM_ATTRIBUTE **att, **new_attributes;
+  int att_count;
 
   assert (classop != NULL);
 
@@ -11432,9 +11434,48 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
    */
   dont_decache_and_flush = class_->dont_decache_constraints_or_flush;
 
-  if (!dont_decache_and_flush && classobj_cache_class_constraints (class_))
+  if (!dont_decache_and_flush)
     {
-      goto structure_error;
+      if (classobj_cache_class_constraints (class_) != NO_ERROR)
+	{
+	  goto structure_error;
+	}
+      /* be sure that constraints attributes are not decached.
+       * This may happen for foreign key, when allocate_disk_structures
+       * function may be called second time.
+       */
+      for (con = class_->constraints; con != NULL; con = con->next)
+	{
+	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY
+	      && con->attributes[0] != NULL)
+	    {
+	      /* we are sure that con->attributes points to class attributes */
+	      att_count = 0;
+	      for (att = con->attributes; *att; att++)
+		{
+		  att_count++;
+		}
+
+	      new_attributes =
+		(SM_ATTRIBUTE **) db_ws_alloc (sizeof (SM_ATTRIBUTE *) *
+					       (att_count + 1));
+	      if (new_attributes == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  goto structure_error;
+		}
+
+	      att_count = 0;
+	      for (att = con->attributes; *att; att++)
+		{
+		  new_attributes[att_count++] =
+		    classobj_copy_attribute (*att, NULL);
+		}
+
+	      new_attributes[att_count] = NULL;
+	      con->attributes = new_attributes;
+	    }
+	}
     }
   class_->dont_decache_constraints_or_flush = 1;
 
@@ -11482,11 +11523,31 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
       /* Reset dont_decache_constraints_or_flush */
       class_->dont_decache_constraints_or_flush = 0;
 
-      /* recache class constraint for foreign key */
-      if (class_->recache_constraints
-	  && classobj_cache_class_constraints (class_))
+      for (con = class_->constraints; con != NULL; con = con->next)
 	{
-	  goto structure_error;
+	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      /* free attributes to avoid memory leak */
+	      for (att = con->attributes; *att; att++)
+		{
+		  db_ws_free_and_init (*att);
+		}
+
+	      if (class_->recache_constraints == 0)
+		{
+		  /* recache constraints since attributes are not set */
+		  class_->recache_constraints = 1;
+		}
+	    }
+	}
+
+      /* recache class constraint for foreign key */
+      if (class_->recache_constraints)
+	{
+	  if (classobj_cache_class_constraints (class_) != NO_ERROR)
+	    {
+	      goto structure_error;
+	    }
 	}
       class_->recache_constraints = 0;
 
