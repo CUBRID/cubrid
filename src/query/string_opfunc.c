@@ -20316,8 +20316,9 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
 	}
 
     case 'f':
-      if ((str_type == DB_TYPE_DATETIME || str_type == DB_TYPE_DATETIMETZ) &&
-	  strncasecmp (sp, "ff", 2) == 0)
+      if ((str_type == DB_TYPE_DATETIME || str_type == DB_TYPE_DATETIMETZ
+	   || str_type == DB_TYPE_DATETIMELTZ)
+	  && strncasecmp (sp, "ff", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
