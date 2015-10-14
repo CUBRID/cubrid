@@ -1574,22 +1574,7 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p,
   assert (tdes != NULL);
   assert (MVCCID_IS_VALID (mvccid));
 
-  /* Transaction should have no MVCCID assigned, or it should be the same
-   * if it is already assigned.
-   */
-  if (MVCCID_IS_VALID (tdes->mvccinfo.id))
-    {
-      if (tdes->mvccinfo.id != mvccid)
-	{
-	  /* Must be MVCCID of sub-transaction. */
-	  (void) logtb_assign_subtransaction_mvccid (thread_p,
-						     &tdes->mvccinfo, mvccid);
-	}
-    }
-  else
-    {
-      tdes->mvccinfo.id = mvccid;
-    }
+  tdes->mvccinfo.id = mvccid;
 }
 
 /*
@@ -5225,6 +5210,8 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	      assert (false);
 	    }
 
+	  /* Safe guard: */
+	  assert (current_trans_status->long_tran_mvccids_length > 0);
 	  /* remove MVCCID from mvcc_table->long_tran_mvccids array */
 	  for (i = 0; i < current_trans_status->long_tran_mvccids_length - 1;
 	       i++)
@@ -6340,6 +6327,8 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
 #endif
 
+      /* Safe guard: */
+      assert (current_trans_status->long_tran_mvccids_length > 0);
       /* remove MVCCID from mvcc_table->long_tran_mvccids array */
       for (i = 0; i < current_trans_status->long_tran_mvccids_length - 1; i++)
 	{
