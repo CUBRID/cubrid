@@ -158,6 +158,13 @@ static int get_closest_ds_rule (const int src_julian_date,
 				const TZ_DS_RULESET * ds_ruleset,
 				const TZ_DATA * tzd,
 				const DS_SEARCH_DIRECTION direction);
+static int get_saving_time_from_offset_rule (const TZ_OFFSET_RULE *
+					     offset_rule, const TZ_DATA * tzd,
+					     int *save_time);
+static bool is_in_overlap_interval (const TZ_TIME_TYPE time_type,
+				    const full_date_t offset_rule_diff,
+				    const full_date_t gmt_diff,
+				    const int save_time_diff);
 #if defined (LINUX)
 static int find_timezone_from_clock (char *timezone_name, int buf_len);
 static int find_timezone_from_localtime (char *timezone_name, int buf_len);
@@ -1831,6 +1838,10 @@ tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc,
 	{
 	  total_offset += tz_info.zone.p_ds_rule->save_time;
 	}
+      if (tz_info.zone.p_zone_off_rule->ds_type == DS_TYPE_FIXED)
+	{
+	  total_offset += tz_info.zone.p_zone_off_rule->ds_ruleset;
+	}
     }
 
   if (dt_utc->date == 0)
@@ -3092,6 +3103,104 @@ get_closest_ds_rule (const int src_julian_date,
 }
 
 /*
+ * get_saving_time_from_offset_rule() - Computes the daylight saving time
+ *					for the last day when the input offset
+ *					rule applies
+ *								  
+ * Returns: error or no error
+ * offset_rule(in): input offset rule
+ * tzd(in): timezone data
+ * save_time(out): output daylight saving time 
+ * 
+ */
+static int
+get_saving_time_from_offset_rule (const TZ_OFFSET_RULE * offset_rule,
+				  const TZ_DATA * tzd, int *save_time)
+{
+  int err_status = NO_ERROR;
+
+  *save_time = 0;
+  if (offset_rule->ds_type == DS_TYPE_RULESET_ID)
+    {
+      int ds_rule_id = -1;
+      TZ_DS_RULESET *ds_ruleset_off_rule;
+      int offset_rule_src_year;
+      int offset_rule_src_month;
+
+      julian_decode (offset_rule->julian_date, &offset_rule_src_month, NULL,
+		     &offset_rule_src_year, NULL);
+      ds_ruleset_off_rule = &(tzd->ds_rulesets[offset_rule->ds_ruleset]);
+
+      err_status = tz_fast_find_ds_rule (tzd, ds_ruleset_off_rule,
+					 offset_rule->julian_date,
+					 offset_rule_src_year,
+					 offset_rule_src_month, &ds_rule_id);
+      if (err_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      if (ds_rule_id != -1)
+	{
+	  TZ_DS_RULE *ds_rule;
+
+	  assert (ds_rule_id + ds_ruleset_off_rule->index_start
+		  < tzd->ds_rule_count);
+
+	  ds_rule =
+	    &(tzd->ds_rules[ds_rule_id + ds_ruleset_off_rule->index_start]);
+	  *save_time = ds_rule->save_time;
+	}
+    }
+  else
+    {
+      *save_time = offset_rule->ds_ruleset;
+    }
+exit:
+  return err_status;
+}
+
+/*
+ * is_in_overlap_interval() - Verifies if a specific date is in the
+ *			      overlap interval between two offset rules
+ *															  
+ * Returns: true or false
+ * time_type(in): time reference
+ * offset_rule_diff(in): time difference between the date and
+ *			 the time when the first offset rule ends
+ * gmt_diff(in): offset time difference between the two offset rules
+ * save_time_diff(in): daylight saving time difference between the two offset
+ *		       rules
+ * 
+ */
+static bool
+is_in_overlap_interval (const TZ_TIME_TYPE time_type,
+			const full_date_t offset_rule_diff,
+			const full_date_t gmt_diff, const int save_time_diff)
+{
+  full_date_t add_time = 0;
+  bool overlap = true;
+
+  if (time_type == TZ_TIME_TYPE_LOCAL_STD)
+    {
+      add_time = save_time_diff;
+    }
+  else if (time_type == TZ_TIME_TYPE_UTC)
+    {
+      add_time = gmt_diff + save_time_diff;
+    }
+
+  if (gmt_diff + save_time_diff > 0
+      || (ABS (offset_rule_diff + add_time) >
+	  ABS (gmt_diff + save_time_diff)))
+    {
+      overlap = false;
+    }
+
+  return overlap;
+}
+
+/*
  * tz_datetime_utc_conv () - 
  *
  * Return: error code
@@ -3253,8 +3362,8 @@ detect_dst:
     {
       prev_rule_julian_date = prev_off_rule->julian_date;
       prev_rule_time_sec = (prev_off_rule->until_hour * 60
-			    + curr_off_rule->until_min) * 60
-	+ curr_off_rule->until_sec;
+			    + prev_off_rule->until_min) * 60
+	+ prev_off_rule->until_sec;
       leap_offset_rule_interval = curr_off_rule->gmt_off
 	- prev_off_rule->gmt_off;
     }
@@ -3266,13 +3375,14 @@ detect_dst:
 
       curr_time_offset =
 	tz_offset (src_is_utc, curr_off_rule->until_time_type,
-		   gmt_std_offset_sec, 0);
+		   gmt_std_offset_sec, curr_off_rule->ds_ruleset);
       if (prev_off_rule != NULL)
 	{
 	  src_offset_prev_off_rule = tz_offset (src_is_utc,
 						prev_off_rule->
 						until_time_type,
-						gmt_std_offset_sec, 0);
+						gmt_std_offset_sec,
+						curr_off_rule->ds_ruleset);
 	}
 
       offset_rule_diff = FULL_DATE (src_julian_date, src_time_sec
@@ -3282,8 +3392,30 @@ detect_dst:
       if (FULL_DATE (src_julian_date, src_time_sec + curr_time_offset)
 	  < FULL_DATE (rule_julian_date, rule_time_sec))
 	{
-	  if (leap_offset_rule_interval > 0 && offset_rule_diff >= 0
-	      && (offset_rule_diff < leap_offset_rule_interval))
+	  int add_ds_save_time_diff = 0;
+	  int prev_rule_save_time = 0;
+
+	  if (prev_off_rule != NULL &&
+	      prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
+	    {
+	      add_ds_save_time_diff = curr_off_rule->ds_ruleset;
+	      if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
+		{
+		  err_status =
+		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						      &prev_rule_save_time);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		}
+	      add_ds_save_time_diff -= prev_rule_save_time;
+	    }
+
+	  if (try_offset_rule_overlap == false
+	      && leap_offset_rule_interval + add_ds_save_time_diff >= 0
+	      && (offset_rule_diff < leap_offset_rule_interval +
+		  add_ds_save_time_diff))
 	    {
 	      /* invalid time, abort */
 	      err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
@@ -3317,11 +3449,34 @@ detect_dst:
 	  else if (src_is_utc == false && tz_info->zone.dst_str[0] != '\0'
 		   && try_offset_rule_overlap == true)
 	    {
-	      if (leap_offset_rule_interval > 0
-		  || (ABS (offset_rule_diff) >
-		      ABS (leap_offset_rule_interval)))
+	      bool overlap = false;
+
+	      if (ABS (offset_rule_diff) <= 3 * SECONDS_IN_A_DAY)
 		{
-		  err_status = ER_TZ_DST_NOT_SUPPORTED;
+		  int prev_rule_save_time = 0;
+		  int save_time_diff = 0;
+
+		  err_status =
+		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						      &prev_rule_save_time);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+
+		  save_time_diff =
+		    curr_off_rule->ds_ruleset - prev_rule_save_time;
+		  overlap =
+		    is_in_overlap_interval (prev_off_rule->until_time_type,
+					    offset_rule_diff,
+					    leap_offset_rule_interval,
+					    save_time_diff);
+		}
+
+	      if (overlap == false)
+		{
+		  /* invalid time, abort */
+		  err_status = ER_TZ_INVALID_COMBINATION;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
@@ -3545,10 +3700,27 @@ detect_dst:
 	    {
 	      if (leap_interval < 0 && ABS (date_diff) <= ABS (leap_interval))
 		{
-		  /* invalid time, abort */
-		  err_status = ER_TZ_DURING_DS_LEAP;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
-		  goto exit;
+		  int offset;
+
+		  offset = tz_offset (src_is_utc,
+				      curr_off_rule->until_time_type,
+				      gmt_std_offset_sec, 0);
+
+		  if (FULL_DATE (src_julian_date, src_time_sec + offset)
+		      < FULL_DATE (rule_julian_date, rule_time_sec))
+		    {
+		      /* invalid time, abort */
+		      err_status = ER_TZ_DURING_DS_LEAP;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status,
+			      0);
+		      goto exit;
+		    }
+		  else
+		    {
+		      applying_ds_id = -1;
+		      second_best_applying_ds_id = -1;
+		      break;
+		    }
 		}
 	    }
 	}
@@ -3647,6 +3819,7 @@ detect_dst:
   if (applying_ds_id != -1)
     {
       full_date_t offset_rule_diff;
+      int add_ds_save_time = 0;
 
       if (FULL_DATE (src_julian_date, src_time_sec + src_offset_curr_off_rule)
 	  >= FULL_DATE (rule_julian_date, rule_time_sec))
@@ -3659,8 +3832,29 @@ detect_dst:
 				    + src_offset_prev_off_rule) -
 	FULL_DATE (prev_rule_julian_date, prev_rule_time_sec);
 
-      if (leap_offset_rule_interval > 0 && offset_rule_diff >= 0
-	  && (offset_rule_diff < leap_offset_rule_interval))
+      if (prev_off_rule != NULL &&
+	  prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
+	{
+	  int prev_rule_save_time = 0;
+
+	  add_ds_save_time = save_time;
+	  if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
+	    {
+	      err_status =
+		get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						  &prev_rule_save_time);
+	      if (err_status != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+	  add_ds_save_time -= prev_rule_save_time;
+	}
+
+      if (try_offset_rule_overlap == false
+	  && leap_offset_rule_interval + add_ds_save_time >= 0
+	  && (offset_rule_diff <
+	      leap_offset_rule_interval + add_ds_save_time))
 	{
 	  /* invalid time, abort */
 	  err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
@@ -3693,9 +3887,30 @@ detect_dst:
 	   */
 	  else if (try_offset_rule_overlap == true)
 	    {
-	      if (leap_offset_rule_interval > 0
-		  || (ABS (offset_rule_diff) >
-		      ABS (leap_offset_rule_interval)))
+	      bool overlap = false;
+
+	      if (ABS (offset_rule_diff) <= 3 * SECONDS_IN_A_DAY)
+		{
+		  int prev_rule_save_time = 0;
+		  int save_time_diff = 0;
+
+		  err_status =
+		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						      &prev_rule_save_time);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+
+		  save_time_diff = save_time - prev_rule_save_time;
+		  overlap =
+		    is_in_overlap_interval (prev_off_rule->until_time_type,
+					    offset_rule_diff,
+					    leap_offset_rule_interval,
+					    save_time_diff);
+		}
+
+	      if (overlap == false)
 		{
 		  /* invalid time, abort */
 		  err_status = ER_TZ_INVALID_COMBINATION;
@@ -3716,13 +3931,35 @@ detect_dst:
 	   FULL_DATE (rule_julian_date, rule_time_sec)))
 	{
 	  full_date_t offset_rule_diff;
+	  int add_ds_save_time = 0;
 
 	  offset_rule_diff = FULL_DATE (src_julian_date, src_time_sec
 					+ src_offset_prev_off_rule) -
 	    FULL_DATE (prev_rule_julian_date, prev_rule_time_sec);
 
-	  if (leap_offset_rule_interval > 0 && offset_rule_diff >= 0
-	      && (offset_rule_diff < leap_offset_rule_interval))
+	  if (prev_off_rule != NULL &&
+	      prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
+	    {
+	      int prev_rule_save_time = 0;
+
+	      add_ds_save_time = save_time;
+	      if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
+		{
+		  err_status =
+		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						      &prev_rule_save_time);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		}
+	      add_ds_save_time -= prev_rule_save_time;
+	    }
+
+	  if (try_offset_rule_overlap == false
+	      && leap_offset_rule_interval + add_ds_save_time >= 0
+	      && (offset_rule_diff < leap_offset_rule_interval +
+		  add_ds_save_time))
 	    {
 	      /* invalid time, abort */
 	      err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
@@ -3758,11 +3995,32 @@ detect_dst:
 						ds_ruleset->default_abrev)
 		   == true && try_offset_rule_overlap == true)
 	    {
-	      if (leap_offset_rule_interval > 0
-		  || (ABS (offset_rule_diff) >
-		      ABS (leap_offset_rule_interval)))
+	      bool overlap = false;
+
+	      if (ABS (offset_rule_diff) <= 3 * SECONDS_IN_A_DAY)
 		{
-		  err_status = ER_TZ_INVALID_DST;
+		  int prev_rule_save_time = 0;
+		  int save_time_diff = 0;
+
+		  err_status =
+		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						      &prev_rule_save_time);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+
+		  save_time_diff = save_time - prev_rule_save_time;
+		  overlap =
+		    is_in_overlap_interval (prev_off_rule->until_time_type,
+					    offset_rule_diff,
+					    leap_offset_rule_interval,
+					    save_time_diff);
+		}
+	      if (overlap == false)
+		{
+		  /* invalid time, abort */
+		  err_status = ER_TZ_INVALID_COMBINATION;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
@@ -3805,6 +4063,11 @@ exit:
     {
       if (curr_offset_id >= 0)
 	{
+	  if (curr_off_rule->ds_type == DS_TYPE_FIXED)
+	    {
+	      total_offset_sec += curr_off_rule->ds_ruleset;
+	    }
+
 	  tz_info->zone.offset_id = curr_offset_id;
 
 	  if (applying_ds_id >= 0)
