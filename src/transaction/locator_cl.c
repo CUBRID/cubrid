@@ -899,6 +899,17 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
       is_prefetch = false;
     }
 
+  if (fetch_version_type == LC_FETCH_CURRENT_VERSION
+      && TM_TRAN_READ_FETCH_VERSION () == LC_FETCH_CURRENT_VERSION)
+    {
+      /* The purpose was to fetch current version from beginning
+       * (not based on mop). This may happen when write results to stream.
+       * Converts LC_FETCH_CURRENT_VERSION to LC_FETCH_CURRENT_VERSION_NO_CHECK
+       * to avoid checks on server side.
+       */
+      fetch_version_type = LC_FETCH_CURRENT_VERSION_NO_CHECK;
+    }
+
   if (locator_fetch (oid, chn, lock, fetch_version_type,
 		     class_oid, class_chn, is_prefetch, &fetch_area)
       != NO_ERROR)

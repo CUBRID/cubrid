@@ -180,7 +180,10 @@ typedef enum
 {
   LC_FETCH_CURRENT_VERSION = 0x01,	/* fetch current version */
   LC_FETCH_MVCC_VERSION = 0x02,	/* fetch MVCC - visible version */
-  LC_FETCH_DIRTY_VERSION = 0x03	/* fetch dirty version - S-locked */
+  LC_FETCH_DIRTY_VERSION = 0x03,	/* fetch dirty version - S-locked */
+  LC_FETCH_CURRENT_VERSION_NO_CHECK = 0x04,	/* fetch current version 
+						 * and not check server side
+						 */
 } LC_FETCH_VERSION_TYPE;
 
 #define LC_FETCH_IS_MVCC_VERSION_NEEDED(fetch_type) \

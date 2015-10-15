@@ -2832,12 +2832,23 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
   bool object_locked = false;
   int is_mvcc_disabled_class = -1;
   LOCK class_lock;
-
-
   /* We assume that the object have to be locked;
    * after it is locked or we determine that this is not necessary,
    * object_need_locking will be set to false; */
   bool object_need_locking = true;
+  bool skip_fetch_version_type_check = false;
+
+  if (fetch_version_type == LC_FETCH_CURRENT_VERSION_NO_CHECK)
+    {
+      /* The purpose was to fetch the current version. Avoid checks. */
+      fetch_version_type = LC_FETCH_CURRENT_VERSION;
+      skip_fetch_version_type_check = true;
+    }
+
+  if (LC_FETCH_IS_MVCC_VERSION_NEEDED (initial_fetch_version_type))
+    {
+      skip_fetch_version_type_check = true;
+    }
 
   if (class_oid == NULL)
     {
@@ -2962,8 +2973,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
    * only if the transaction already has a lock. This means that is not
    * necessary to request the lock again. 
    */
-  assert ((OID_EQ (class_oid, oid_Root_class_oid))
-	  || (LC_FETCH_IS_MVCC_VERSION_NEEDED (initial_fetch_version_type))
+  assert (skip_fetch_version_type_check
+	  || (OID_EQ (class_oid, oid_Root_class_oid))
 	  || ((lock != NULL_LOCK)
 	      || (lock_get_object_lock
 		  (oid, class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p))
