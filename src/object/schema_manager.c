@@ -11600,13 +11600,10 @@ drop_foreign_key_ref (MOP classop, SM_CLASS * class_,
 		      SM_CLASS_CONSTRAINT ** cons)
 {
   int error = NO_ERROR;
-  SM_CLASS_CONSTRAINT *saved_constraints = NULL;
   char *saved_name = NULL;
   int name_length = 0;
 
-  assert (class_ != NULL && *cons != NULL);
-
-  saved_constraints = class_->constraints;
+  assert (class_ != NULL && class_->constraints != NULL && *cons != NULL);
 
   name_length = strlen ((*cons)->name) + 1;
   saved_name = (char *) malloc (name_length);
@@ -11620,18 +11617,24 @@ drop_foreign_key_ref (MOP classop, SM_CLASS * class_,
 
   strcpy (saved_name, (*cons)->name);
 
+  /* Since the constraints may be reallocated during the following process,
+   * we have to mark a special status flag to be used for identifying whether
+   * the instance will have been reallocated.
+   */
+  class_->constraints->extra_status = SM_FLAG_TO_BE_REINTIALIZED;
+
   error = drop_foreign_key_ref_internal (classop, flat_cons, *cons);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
-  if (saved_constraints != class_->constraints)
+  if (class_->constraints->extra_status == SM_FLAG_NORMALLY_INITIALIZED)
     {
-      /* The above function may free and refetch the class_ together with
-       * its constraints list. When it happens, 'con' should have been freed,
-       * therefore we have to retrieve the 'con' from the renewed constraints
-       * list.*/
+      /* The above function has freed and refetched the class_ together with
+       * its constraints list. The 'con' should have been freed also, therefore
+       * we have to retrieve the 'con' from the renewed constraints list.
+       */
       *cons =
 	classobj_find_class_constraint (class_->constraints,
 					SM_CONSTRAINT_FOREIGN_KEY,
@@ -11647,6 +11650,16 @@ drop_foreign_key_ref (MOP classop, SM_CLASS * class_,
     }
 
 end:
+
+  if (class_->constraints != NULL
+      && class_->constraints->extra_status == SM_FLAG_TO_BE_REINTIALIZED)
+    {
+      /* Since the constraints have never been reallocated during the
+       * above process, just recover the normal status of the constraint.
+       */
+      class_->constraints->extra_status = SM_FLAG_NORMALLY_INITIALIZED;
+    }
+
   if (saved_name != NULL)
     {
       free_and_init (saved_name);

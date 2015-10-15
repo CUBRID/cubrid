@@ -492,6 +492,15 @@ typedef enum
 } SM_CONSTRAINT_FAMILY;
 
 /*
+ *    The extra status or flags for constraint instance.
+ */
+typedef enum
+{
+  SM_FLAG_NORMALLY_INITIALIZED,	/* Normally initialized */
+  SM_FLAG_TO_BE_REINTIALIZED	/* Ready or possible to be reinitialized */
+} SM_CONSTRAINT_EXTRA_FLAG;
+
+/*
  *    This is used at the top of all "meta" objects that are represented
  *    with C structures rather than in the usual instance memory format
  *    It serves as a convenient way to store common information
@@ -682,6 +691,7 @@ struct sm_class_constraint
   SM_CONSTRAINT_TYPE type;
   SM_FUNCTION_INFO *func_index_info;
   const char *comment;
+  SM_CONSTRAINT_EXTRA_FLAG extra_status;
 };
 
 /*

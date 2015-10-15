@@ -3190,6 +3190,7 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->filter_predicate = NULL;
   new_->func_index_info = NULL;
   new_->comment = NULL;
+  new_->extra_status = SM_FLAG_NORMALLY_INITIALIZED;
 
   return new_;
 }
