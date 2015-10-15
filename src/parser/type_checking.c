@@ -10808,7 +10808,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    node->type_enum = PT_TYPE_NULL;
 	    break;
 	  }
-	if (!PT_IS_VALUE_NODE (arg2) && !PT_IS_INPUT_HOSTVAR (arg2))
+	if (!PT_IS_VALUE_NODE (arg2) && !PT_IS_INPUT_HOSTVAR (arg2)
+	    && !(arg2->node_type == PT_EXPR
+		 && arg2->info.expr.op == PT_EVALUATE_VARIABLE))
 	  {
 	    node->type_enum = PT_TYPE_NONE;
 	    break;
