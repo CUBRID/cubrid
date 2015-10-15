@@ -1502,7 +1502,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
    * Was the database system shut down or was it involved in a crash ?
    */
   if (init_emergency == false
-      && (log_Gl.hdr.is_shutdown == false || ismedia_crash != false))
+      && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
     {
       /*
        * System was involved in a crash.
@@ -1512,6 +1512,19 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
     }
   else
     {
+      if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
+	{
+	  if (LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
+	    {
+	      /* We cannot believe in append_lsa for this case. 
+	       * It points to an unflushed log page. 
+	       * Since we are going to skip recovery for emergency startup,
+	       * just replace it with eof_lsa.
+	       */
+	      LOG_RESET_APPEND_LSA (&log_Gl.hdr.eof_lsa);
+	    }
+	}
+
       /*
        * The system was shut down. There is nothing to recover.
        * Find the append page and start execution

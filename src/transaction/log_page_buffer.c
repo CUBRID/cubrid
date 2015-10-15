@@ -138,7 +138,7 @@ static int rv;
 /* ARCHIVE LOG PAGES */
 #define LOGPB_IS_ARCHIVE_PAGE(pageid) \
   ((pageid) != LOGPB_HEADER_PAGE_ID && (pageid) < LOGPB_NEXT_ARCHIVE_PAGE_ID)
-#define LOGPB_AT_NEXT_ARCHIVE_PAGE_ID(pageid)  \
+#define LOGPB_AT_NEXT_ARCHIVE_PAGE_ID(pageid) \
   (logpb_to_physical_pageid(pageid) == log_Gl.hdr.nxarv_phy_pageid)
 
 #define ARV_PAGE_INFO_TABLE_SIZE    256
@@ -148,56 +148,69 @@ static int rv;
 
 #define LOG_PRIOR_LSA_LAST_APPEND_OFFSET()  LOGAREA_SIZE
 
-#define LOG_PRIOR_LSA_APPEND_ALIGN()                                       \
-  do {                                                                             \
-    log_Gl.prior_info.prior_lsa.offset = DB_ALIGN(log_Gl.prior_info.prior_lsa.offset, DOUBLE_ALIGNMENT); \
-    if (log_Gl.prior_info.prior_lsa.offset >= (int)LOGAREA_SIZE)                    \
-      log_Gl.prior_info.prior_lsa.pageid++, log_Gl.prior_info.prior_lsa.offset = 0;            \
-  } while(0)
+#define LOG_PRIOR_LSA_APPEND_ALIGN() \
+  do { \
+    log_Gl.prior_info.prior_lsa.offset = DB_ALIGN (log_Gl.prior_info.prior_lsa.offset, \
+						   DOUBLE_ALIGNMENT); \
+    if (log_Gl.prior_info.prior_lsa.offset >= (int) LOGAREA_SIZE) \
+      { \
+        log_Gl.prior_info.prior_lsa.pageid++; \
+	log_Gl.prior_info.prior_lsa.offset = 0; \
+      } \
+  } while (0)
 
-#define LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT(length)  \
-  do {                                                                   \
-    if (log_Gl.prior_info.prior_lsa.offset + (int)(length) >= (int)LOGAREA_SIZE)    \
-      log_Gl.prior_info.prior_lsa.pageid++, log_Gl.prior_info.prior_lsa.offset = 0;            \
-  } while(0)
+#define LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT(length) \
+  do { \
+    if (log_Gl.prior_info.prior_lsa.offset + (int) (length) >= (int) LOGAREA_SIZE) \
+      { \
+        log_Gl.prior_info.prior_lsa.pageid++; \
+	log_Gl.prior_info.prior_lsa.offset = 0; \
+      } \
+  } while (0)
 
-#define LOG_PRIOR_LSA_APPEND_ADD_ALIGN(add)                    \
-  do {                                                                   \
-    log_Gl.prior_info.prior_lsa.offset += (add);                                    \
-    LOG_PRIOR_LSA_APPEND_ALIGN();                              \
-  } while(0)
+#define LOG_PRIOR_LSA_APPEND_ADD_ALIGN(add) \
+  do { \
+    log_Gl.prior_info.prior_lsa.offset += (add); \
+    LOG_PRIOR_LSA_APPEND_ALIGN (); \
+  } while (0)
 
+#define LOG_LAST_APPEND_PTR() ((char *) log_Gl.append.log_pgptr->area \
+                               + LOGAREA_SIZE)
 
-#define LOG_LAST_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area +        \
-                               LOGAREA_SIZE)
+#define LOG_APPEND_ALIGN(thread_p, current_setdirty) \
+  do { \
+    if ((current_setdirty) == LOG_SET_DIRTY) \
+      { \
+        logpb_set_dirty ((thread_p), log_Gl.append.log_pgptr, DONT_FREE); \
+      } \
+    log_Gl.hdr.append_lsa.offset = DB_ALIGN (log_Gl.hdr.append_lsa.offset, \
+					     DOUBLE_ALIGNMENT); \
+    if (log_Gl.hdr.append_lsa.offset >= (int) LOGAREA_SIZE) \
+      { \
+        logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY); \
+      } \
+  } while (0)
 
-#define LOG_APPEND_ALIGN(thread_p, current_setdirty)                                    \
-  do {                                                                        \
-    if ((current_setdirty) == LOG_SET_DIRTY)                                  \
-      logpb_set_dirty((thread_p), log_Gl.append.log_pgptr, DONT_FREE);        \
-    log_Gl.hdr.append_lsa.offset = DB_ALIGN(log_Gl.hdr.append_lsa.offset, DOUBLE_ALIGNMENT);                    \
-    if (log_Gl.hdr.append_lsa.offset >= (int)LOGAREA_SIZE)                    \
-      logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY);                               \
-  } while(0)
+#define LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT(thread_p, length) \
+  do { \
+    if (log_Gl.hdr.append_lsa.offset + (int) (length) >= (int) LOGAREA_SIZE) \
+      { \
+        logpb_next_append_page ((thread_p), LOG_DONT_SET_DIRTY); \
+      } \
+  } while (0)
 
-#define LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT(thread_p, length)                           \
-  do {                                                                        \
-    if (log_Gl.hdr.append_lsa.offset + (int)(length) >= (int)LOGAREA_SIZE)    \
-      logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY);                               \
-  } while(0)
+#define LOG_APPEND_SETDIRTY_ADD_ALIGN(thread_p, add) \
+  do { \
+    log_Gl.hdr.append_lsa.offset += (add); \
+    LOG_APPEND_ALIGN ((thread_p), LOG_SET_DIRTY); \
+  } while (0)
 
-#define LOG_APPEND_SETDIRTY_ADD_ALIGN(thread_p, add)                                    \
-  do {                                                                        \
-    log_Gl.hdr.append_lsa.offset += (add);                                    \
-    LOG_APPEND_ALIGN((thread_p), LOG_SET_DIRTY);                                          \
-  } while(0)
-
-#define LOG_PREV_APPEND_PTR()                                                 \
-  ((log_Gl.append.delayed_free_log_pgptr != NULL)                             \
-   ? ((char *)log_Gl.append.delayed_free_log_pgptr->area +                    \
-      log_Gl.append.prev_lsa.offset)                                          \
-   : ((char *)log_Gl.append.log_pgptr->area +                                 \
-      log_Gl.append.prev_lsa.offset))
+#define LOG_PREV_APPEND_PTR() \
+  ((log_Gl.append.delayed_free_log_pgptr != NULL) \
+   ? ((char *) log_Gl.append.delayed_free_log_pgptr->area \
+      + log_Gl.append.prev_lsa.offset) \
+   : ((char *) log_Gl.append.log_pgptr->area \
+      + log_Gl.append.prev_lsa.offset))
 
 /* LOG BUFFER STRUCTURE */
 
@@ -265,15 +278,15 @@ typedef struct
 } ARV_LOG_PAGE_INFO_TABLE;
 
 #define SIZEOF_LOG_BUFFER \
-  (offsetof(struct log_buffer, logpage) + LOG_PAGESIZE)
+  (offsetof (struct log_buffer, logpage) + LOG_PAGESIZE)
 
-#define LOG_GET_LOG_BUFFER_PTR(log_pgptr)                       \
-  ((struct log_buffer *) ((char *)(log_pgptr) - offsetof(struct log_buffer, logpage)))
+#define LOG_GET_LOG_BUFFER_PTR(log_pgptr) \
+  ((struct log_buffer *) ((char *) (log_pgptr) - offsetof (struct log_buffer, logpage)))
 
 static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 /* MIN AND MAX BUFFERS */
 #define LOG_MAX_NUM_CONTIGUOUS_BUFFERS \
-  ((unsigned int)(INT_MAX / (5 * SIZEOF_LOG_BUFFER)))
+  ((unsigned int) (INT_MAX / (5 * SIZEOF_LOG_BUFFER)))
 
 #define LOG_MAX_LOGINFO_LINE (PATH_MAX * 4)
 
@@ -2053,20 +2066,33 @@ void
 logpb_flush_header (THREAD_ENTRY * thread_p)
 {
   struct log_header *log_hdr;
-
 #if defined(CUBRID_DEBUG)
-  struct timeval start_time = {
-    0, 0
-  };
-  struct timeval end_time = {
-    0, 0
-  };
+  struct timeval start_time = { 0, 0 };
+  struct timeval end_time = { 0, 0 };
 
   css_gettimeofday (&start_time, NULL);
 #endif /* CUBRID_DEBUG */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  assert (log_Gl.loghdr_pgptr != NULL);
+
+  if (log_Gl.loghdr_pgptr == NULL)
+    {
+      assert (log_Gl.loghdr_pgptr != NULL);
+
+      /* This is just a safe guard. 
+       * log_initialize frees log_Gl.loghdr_pgptr when it fails.
+       * It can only happen when deletedb or emergency utilities fail to initialize log.
+       */
+      log_Gl.loghdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
+      if (log_Gl.loghdr_pgptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (size_t) LOG_PAGESIZE);
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "logpb_flush_header");
+	  return;
+	}
+    }
 
   log_hdr = (struct log_header *) (log_Gl.loghdr_pgptr->area);
   *log_hdr = log_Gl.hdr;
