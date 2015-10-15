@@ -4579,9 +4579,9 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr,
 	      dt->info.data_type.collation_id = attr_coll;
 	      dt->info.data_type.units = attr_cs;
 
-	      if (attr_cs == INTL_CODESET_ISO88591)
+	      if (attr_cs == INTL_CODESET_RAW_BYTES)
 		{
-		  /* conversion from multi-byte to ISO88591 must keep text */
+		  /* conversion from multi-byte to binary must keep text */
 		  if (elem->info.value.data_value.str != NULL)
 		    {
 		      dt->info.data_type.precision =

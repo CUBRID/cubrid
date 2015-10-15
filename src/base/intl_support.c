@@ -988,6 +988,7 @@ intl_convert_charset (unsigned char *src, int length_in_chars,
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
     case INTL_CODESET_UTF8:
+    case INTL_CODESET_RAW_BYTES:
     default:
       error_code = ER_QSTR_BAD_SRC_CODESET;
       break;
@@ -1013,6 +1014,7 @@ intl_char_count (unsigned char *src, int length_in_bytes,
   switch (src_codeset)
     {
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
       *char_count = length_in_bytes;
       break;
 
@@ -1040,7 +1042,7 @@ intl_char_count (unsigned char *src, int length_in_bytes,
  *   src(in): number of byets
  *   length_in_chars(in): legnth of the string in characters
  *   src_code_set(in): enumeration of src codeset
- *   bytes_count(out): number of byets used for encode teh number of
+ *   bytes_count(out): number of byets used for encode the number of
  *                     characters specified
  *
  * Note: Embedded NULL's are counted as characters.
@@ -1052,6 +1054,7 @@ intl_char_size (unsigned char *src, int length_in_chars,
   switch (src_codeset)
     {
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
       *byte_count = length_in_chars;
       break;
 
@@ -1167,6 +1170,7 @@ intl_prev_char (unsigned char *s, const unsigned char *s_start,
       return intl_prevchar_utf8 (s, s_start, prev_char_size);
 
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
       break;
     default:
       assert (false);
@@ -1250,6 +1254,7 @@ intl_next_char (unsigned char *s, INTL_CODESET codeset,
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
       *current_char_size = 1;
       return ++s;
 
@@ -1339,6 +1344,7 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
       *char_size = 1;
       return *s1 - *s2;
 
@@ -1531,6 +1537,7 @@ intl_pad_size (INTL_CODESET codeset)
       break;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_UTF8:
+    case INTL_CODESET_RAW_BYTES:
     default:
       size = 1;
       break;
@@ -1560,6 +1567,7 @@ intl_upper_string_size (const void *alphabet, unsigned char *src,
   switch (((ALPHABET_DATA *) alphabet)->codeset)
     {
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
       break;
 
     case INTL_CODESET_KSC5601_EUC:
@@ -1609,6 +1617,11 @@ intl_upper_string (const void *alphabet, unsigned char *src,
 
   switch (((ALPHABET_DATA *) alphabet)->codeset)
     {
+    case INTL_CODESET_RAW_BYTES:
+      memcpy (dst, src, length_in_chars);
+      char_count = length_in_chars;
+      break;
+
     case INTL_CODESET_ISO88591:
       {
 	unsigned char *d, *s;
@@ -1671,6 +1684,7 @@ intl_lower_string_size (const void *alphabet, unsigned char *src,
   switch (((ALPHABET_DATA *) alphabet)->codeset)
     {
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
       break;
 
     case INTL_CODESET_KSC5601_EUC:
@@ -1730,6 +1744,10 @@ intl_lower_string (const void *alphabet, unsigned char *src,
 	  }
 	char_count = length_in_chars;
       }
+      break;
+
+    case INTL_CODESET_RAW_BYTES:
+      memcpy (dst, src, length_in_chars);
       break;
 
     case INTL_CODESET_KSC5601_EUC:
@@ -1852,6 +1870,7 @@ intl_reverse_string (unsigned char *src, unsigned char *dst,
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
       d = dst + length_in_chars - 1;
       end = src + length_in_chars;
       for (; s < end; char_count++)
@@ -1931,28 +1950,29 @@ intl_reverse_string (unsigned char *src, unsigned char *dst,
 bool
 intl_is_max_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
 {
-  if (codeset == INTL_CODESET_UTF8)
+  switch (codeset)
     {
+    case INTL_CODESET_UTF8:
       if ((*chr == 0xf4) && (*(chr + 1) == 0x8f) &&
 	  (*(chr + 2) == 0xbf) && (*(chr + 3) == 0xbf))
 	{
 	  return true;
 	}
       return false;
-    }
-  else if (codeset == INTL_CODESET_KSC5601_EUC)
-    {
+    case INTL_CODESET_KSC5601_EUC:
       if (((*chr == 0xff) && (*(chr + 1) == 0xff)))
 	{
 	  return true;
 	}
       return false;
-    }
-
-  assert (codeset == INTL_CODESET_ISO88591);
-  if (*chr == 0xff)
-    {
-      return true;
+    case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
+    default:
+      if (*chr == 0xff)
+	{
+	  return true;
+	}
+      return false;
     }
 
   return false;
@@ -2017,23 +2037,24 @@ intl_set_min_bound_chr (INTL_CODESET codeset, char *chr)
 int
 intl_set_max_bound_chr (INTL_CODESET codeset, char *chr)
 {
-  if (codeset == INTL_CODESET_UTF8)
+  switch (codeset)
     {
+    case INTL_CODESET_UTF8:
       *chr = 0xf4;
       *(chr + 1) = 0x8f;
       *(chr + 2) = 0xbf;
       *(chr + 3) = 0xbf;
       return 4;
-    }
-  else if (codeset == INTL_CODESET_KSC5601_EUC)
-    {
+    case INTL_CODESET_KSC5601_EUC:
       *chr = 0xff;
       *(chr + 1) = 0xff;
       return 2;
+    case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
+    default:
+      *chr = (char) 0xff;
+      return 1;
     }
-
-  assert (codeset == INTL_CODESET_ISO88591);
-  *chr = (char) 0xff;
 
   return 1;
 }
@@ -2958,6 +2979,7 @@ intl_identifier_lower_string_size (const char *src)
 #endif
       break;
 
+    case INTL_CODESET_RAW_BYTES:
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
     default:
@@ -3095,6 +3117,7 @@ intl_identifier_upper_string_size (const char *src)
 #endif
       break;
 
+    case INTL_CODESET_RAW_BYTES:
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
     default:
@@ -3340,6 +3363,13 @@ intl_identifier_mht_1strlowerhash (const void *key,
 	  hash = (hash << 5) - hash + ch;
 	}
       break;
+    case INTL_CODESET_RAW_BYTES:
+      for (hash = 0; *byte_p; byte_p++)
+	{
+	  ch = *byte_p;
+	  hash = (hash << 5) - hash + ch;
+	}
+      break;
     case INTL_CODESET_KSC5601_EUC:
     default:
       for (hash = 0; *byte_p; byte_p++)
@@ -3444,6 +3474,7 @@ intl_put_char (unsigned char *dest, const unsigned char *char_p,
       return char_len;
 
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
     default:
       *dest = *char_p;
       return 1;
@@ -3520,6 +3551,7 @@ intl_is_space (const char *str, const char *str_end,
       break;
     case INTL_CODESET_UTF8:
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
     default:
       if (str_end == NULL)
 	{
@@ -3607,6 +3639,7 @@ intl_skip_spaces (const char *str, const char *str_end,
       break;
     case INTL_CODESET_UTF8:
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
     default:
       if (str_end == NULL)
 	{
@@ -3671,6 +3704,7 @@ intl_backskip_spaces (const char *str_begin, const char *str_end,
       break;
     case INTL_CODESET_UTF8:
     case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
     default:
       while (str_end > str_begin && char_isspace (*str_end))
 	{
@@ -4356,6 +4390,7 @@ intl_check_string (const char *buf, int size, char **pos,
     case INTL_CODESET_KSC5601_EUC:
       return intl_check_euckr ((const unsigned char *) buf, size, pos);
 
+    case INTL_CODESET_RAW_BYTES:
     default:
       break;
     }
@@ -5032,6 +5067,131 @@ intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size,
 }
 
 /*
+ * intl_euckr_to_iso88591() - converts a buffer containing EUCKR text to 
+ *			      ISO88591
+ *
+ *   return: 0 conversion ok, 1 conversion done, but invalid characters where
+ *	     found
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer;
+ *   out_size(out): size of string (NUL terminator not included)
+ */
+int
+intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size,
+			unsigned char **out_buf, int *out_size)
+{
+  const unsigned char *p_in = NULL;
+  const unsigned char *p_end;
+  unsigned char *p_out = NULL;
+  unsigned int unicode_cp;
+  int status = 0;
+
+  assert (in_size > 0);
+  assert (in_buf != NULL);
+  assert (out_buf != NULL);
+  assert (out_size != NULL);
+
+  for (p_in = in_buf, p_end = p_in + in_size,
+       p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
+    {
+      if (*p_in < 0x80)
+	{
+	  *p_out++ = *p_in;
+	}
+      else if (*p_in >= 0xa1 && *p_in < 0xff && p_end - p_in >= 2)
+	{
+	  if (*(p_in + 1) >= 0xa1 && *(p_in + 1) < 0xff)
+	    {
+	      /* KSC5601 two-bytes character */
+	      unsigned char ksc_buf[2];
+
+	      ksc_buf[0] = *p_in - 0x80;
+	      ksc_buf[1] = *(p_in + 1) - 0x80;
+
+	      if (ksc5601_mbtowc (&unicode_cp, ksc_buf, 2) <= 0)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		}
+	      else
+		{
+		  if ((unicode_cp <= 0x1F) || (unicode_cp > 0xFF)
+		      || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
+		    {
+		      *p_out++ = '?';
+		      status = 1;
+		    }
+		  else
+		    {
+		      *p_out++ = unicode_cp;
+		    }
+		}
+	    }
+	  else
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	    }
+
+	  /* skip one additional byte */
+	  p_in++;
+	}
+      else if (*p_in == 0x8f && p_end - p_in >= 3)
+	{
+	  if (*(p_in + 1) >= 0xa1 && *(p_in + 1) < 0xff
+	      && *(p_in + 2) >= 0xa1 && *(p_in + 2) < 0xff)
+	    {
+	      /* JISX0212 three bytes character */
+	      unsigned char jis_buf[2];
+
+	      jis_buf[0] = *(p_in + 1) - 0x80;
+	      jis_buf[1] = *(p_in + 2) - 0x80;
+
+	      if (jisx0212_mbtowc (&unicode_cp, jis_buf, 2) <= 0)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		}
+	      else
+		{
+		  if ((unicode_cp <= 0x1F) || (unicode_cp > 0xFF)
+		      || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
+		    {
+		      *p_out++ = '?';
+		      status = 1;
+		    }
+		  else
+		    {
+		      *p_out++ = unicode_cp;
+		    }
+		}
+	    }
+	  else
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	    }
+
+	  /* skip two additional bytes */
+	  p_in++;
+	  p_in++;
+	}
+      else
+	{
+	  /* EUC-KR byte not valid */
+	  *p_out++ = '?';
+	  status = 1;
+	}
+    }
+
+  *out_size = p_out - *(out_buf);
+
+  return status;
+}
+
+/*
  * intl_euckr_to_utf8() - converts a buffer containing text with EUC-KR
  *			  + JISX0212 to UTF-8
  *
@@ -5141,6 +5301,56 @@ intl_euckr_to_utf8 (const unsigned char *in_buf, const int in_size,
   return status;
 }
 
+/*
+ * intl_utf8_to_iso88591() - converts a buffer containing UTF8 text to ISO88591
+ *
+ *   return: 0 conversion ok, 1 conversion done, but invalid characters where
+ *	     found
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer;
+ *   out_size(out): size of string (NUL terminator not included)
+ */
+int
+intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size,
+		       unsigned char **out_buf, int *out_size)
+{
+  const unsigned char *p_in = NULL;
+  const unsigned char *p_end;
+  unsigned char *p_out = NULL;
+  unsigned char *next_utf8;
+  int status = 0, next_utf8_size = 0;
+  unsigned int unicode_cp = 0;
+
+  assert (in_size > 0);
+  assert (in_buf != NULL);
+  assert (out_buf != NULL);
+  assert (out_size != NULL);
+
+  for (p_in = in_buf, p_end = in_buf + in_size, p_out =
+       (unsigned char *) *out_buf; p_in < p_end;)
+    {
+      unicode_cp = intl_utf8_to_cp (p_in, p_end - p_in, &next_utf8);
+
+      if ((unicode_cp <= 0x1F) || (unicode_cp > 0xFF)
+	  || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
+	{
+	  *p_out++ = '?';
+	  status = 1;
+	}
+      else
+	{
+	  *p_out++ = unicode_cp;
+	}
+
+      p_in = next_utf8;
+    }
+
+  *out_size = p_out - *(out_buf);
+
+  return status;
+}
 
 /*
  * intl_utf8_to_euckr() - converts a buffer containing UTF8 text to EUC-KR

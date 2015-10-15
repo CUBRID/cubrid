@@ -3731,14 +3731,14 @@ enum pt_coll_coerc_lev
   PT_COLLATION_L1_BIN_COERC,	/* with binary collation */
   /* SELECT values, expressions */
   PT_COLLATION_L2_COERC,	/* non-binary collations */
-  PT_COLLATION_L2_ISO_BIN_COERC,	/* with ISO binary coll */
-  PT_COLLATION_L2_BIN_COERC,	/* with binary collation */
+  PT_COLLATION_L2_BINARY_COERC,	/* with binary collation */
+  PT_COLLATION_L2_BIN_COERC,	/* with ISO, UTF8 or EUCKR binary collation */
   /* special operators (USER()) */
   PT_COLLATION_L3_COERC,
   /* constants (string literals) */
   PT_COLLATION_L4_COERC,	/* non-binary collations */
-  PT_COLLATION_L4_ISO_BIN_COERC,	/* with ISO binary collation */
-  PT_COLLATION_L4_BIN_COERC,	/* with binary collation */
+  PT_COLLATION_L4_BINARY_COERC,	/* with binary collation */
+  PT_COLLATION_L4_BIN_COERC,	/* with ISO, UTF8 or EUCKR binary collation */
   /* HV, session variables */
   PT_COLLATION_L5_COERC,
   /* nodes not having collation (internal use) */

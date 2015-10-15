@@ -422,6 +422,17 @@ struct coll_tailoring
   LDML_CONTEXT ldml_context;
 };
 
+
+/* Alphabet usage mode :
+ *  - built-in routines codeset specific (lower_cp, upper_cp not used)
+ *  - using data in lower_cp, upper_cp arrays
+ * */
+typedef enum
+{
+  ALPHABET_USE_BUILTIN = 0,
+  ALPHABET_USE_DATA
+} ALPHABET_USE_MODE;
+
 /* Alphabet generation type :
  * in case several locales use the same UNICODE or ASCII modes, only one
  * reference copy is loaded */

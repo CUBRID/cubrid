@@ -1597,6 +1597,7 @@ int g_original_buffer_len;
 %token <cptr> CPP_STYLE_HINT
 %token <cptr> C_STYLE_HINT
 %token <cptr> SQL_STYLE_HINT
+%token <cptr> BINARY_STRING
 %token <cptr> EUCKR_STRING
 %token <cptr> ISO_STRING
 %token <cptr> UTF8_STRING
@@ -2108,6 +2109,33 @@ set_stmt
 			if (node)
 			  {
 				node->info.set_variables.assignments = $2;
+			  }
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SET NAMES BINARY
+		{{
+
+			PT_NODE *node = NULL;
+			PT_NODE *charset_node = NULL;
+
+			charset_node = parser_new_node (this_parser, PT_VALUE);
+
+			if (charset_node)
+			  {
+			    charset_node->type_enum = PT_TYPE_CHAR;
+			    charset_node->info.value.string_type = ' ';
+			    charset_node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, "binary", strlen ("binary"));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, charset_node);
+			  }
+
+			node = parser_new_node (this_parser, PT_SET_NAMES);
+			if (node)
+			  {
+			    node->info.set_names.charset_node = charset_node;
+			    node->info.set_names.collation_node = NULL;
 			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -19141,6 +19169,23 @@ collation_spec
 			$$ = $2;
 
 		DBG_PRINT}}
+	| COLLATE BINARY
+		{{
+			PT_NODE *node;
+
+			node = parser_new_node (this_parser, PT_VALUE);
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_CHAR;
+			    node->info.value.string_type = ' ';
+			    node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, "binary", strlen ("binary"));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			  }
+
+			$$ = node;
+		DBG_PRINT}}
 	| COLLATE IdName
 		{{
 			PT_NODE *node;
@@ -19246,6 +19291,23 @@ charset_spec
 
 			$$ = $2;
 
+		DBG_PRINT}}
+	| of_charset BINARY
+		{{
+			PT_NODE *node;
+
+			node = parser_new_node (this_parser, PT_VALUE);
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_CHAR;
+			    node->info.value.string_type = ' ';
+			    node->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, "binary", strlen ("binary"));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			  }
+
+			$$ = node;
 		DBG_PRINT}}
 	| of_charset IdName
 		{{
@@ -21338,6 +21400,27 @@ char_string
 						       charset, collation_id,
 						       force);
 			    node->info.value.has_cs_introducer = force;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| BINARY_STRING
+		{{
+
+			PT_NODE *node = NULL;
+
+			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
+							      $1, INTL_CODESET_RAW_BYTES);
+
+			if (node)
+			  {
+			    pt_value_set_charset_coll (this_parser, node,
+						       INTL_CODESET_RAW_BYTES,
+						       LANG_COLL_BINARY,
+						       true);
+			    node->info.value.has_cs_introducer = true;
 			  }
 
 			$$ = node;

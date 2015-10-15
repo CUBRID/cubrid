@@ -9656,7 +9656,7 @@ qstr_coerce (const unsigned char *src,
       *dest_length = src_padded_length;
     }
 
-  if (dest_codeset == INTL_CODESET_ISO88591)
+  if (dest_codeset == INTL_CODESET_RAW_BYTES)
     {
       /* when coercing multibyte to ISO charset, we just reinterpret each
        * byte as one character */
@@ -9757,16 +9757,29 @@ qstr_coerce (const unsigned char *src,
 						&conv_size);
 	  copy_size = conv_size;
 	}
+      else if (src_codeset == INTL_CODESET_UTF8
+	       && dest_codeset == INTL_CODESET_ISO88591)
+	{
+	  int conv_size = 0;
+
+	  assert (copy_size > 0);
+	  conv_status = intl_utf8_to_iso88591 (src, copy_size, dest,
+					       &conv_size);
+	  copy_size = conv_size;
+	}
+      else if (src_codeset == INTL_CODESET_KSC5601_EUC
+	       && dest_codeset == INTL_CODESET_ISO88591)
+	{
+	  int conv_size = 0;
+
+	  assert (copy_size > 0);
+	  conv_status = intl_euckr_to_iso88591 (src, copy_size, dest,
+						&conv_size);
+	  copy_size = conv_size;
+	}
       else
 	{
-	  if (copy_size > alloc_size)
-	    {
-	      assert (INTL_CODESET_MULT (src_codeset) > 1
-		      && dest_codeset == INTL_CODESET_ISO88591);
-
-	      copy_size = alloc_size;
-	      *data_status = DATA_STATUS_TRUNCATED;
-	    }
+	  assert (copy_size <= alloc_size);
 	  (void) memcpy ((char *) *dest, (char *) src, (int) copy_size);
 	}
 

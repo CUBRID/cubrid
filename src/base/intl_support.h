@@ -161,6 +161,8 @@ enum intl_codeset
   INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
   INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
 
+  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
+
   INTL_CODESET_LAST = INTL_CODESET_UTF8
 };
 
@@ -371,12 +373,18 @@ extern "C"
 					 const int in_size,
 					 unsigned char **out_buf,
 					 int *out_size);
+  extern int intl_euckr_to_iso88591 (const unsigned char *in_buf,
+				     const int in_size,
+				     unsigned char **out_buf, int *out_size);
   extern int intl_euckr_to_utf8 (const unsigned char *in_buf,
 				 const int in_size, unsigned char **out_buf,
 				 int *out_size);
   extern int intl_utf8_to_euckr (const unsigned char *in_buf,
 				 const int in_size, unsigned char **out_buf,
 				 int *out_size);
+  extern int intl_iso88591_to_utf8 (const unsigned char *in_buf,
+				    const int in_size,
+				    unsigned char **out_buf, int *out_size);
   extern int intl_iso88591_to_euckr (const unsigned char *in_buf,
 				     const int in_size,
 				     unsigned char **out_buf, int *out_size);
@@ -395,6 +403,12 @@ extern "C"
 			       int size, char **pos);
   extern bool intl_check_euckr (const unsigned char *buf, int size,
 				char **pos);
+  extern int intl_utf8_to_iso88591 (const unsigned char *in_buf,
+				    const int in_size,
+				    unsigned char **out_buf, int *out_size);
+  extern int intl_euckr_to_iso88591 (const unsigned char *in_buf,
+				     const int in_size,
+				     unsigned char **out_buf, int *out_size);
 
 #ifdef __cplusplus
 }

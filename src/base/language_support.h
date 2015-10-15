@@ -59,7 +59,8 @@
 #define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
   ? LANG_COLL_UTF8_BINARY :					 \
   (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
-    LANG_COLL_ISO_BINARY))
+  (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
+    LANG_COLL_BINARY)))
 
 /* collation and charset do be used by system : */
 #define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
@@ -108,7 +109,8 @@ enum
   LANG_COLL_UTF8_EN_CI = 5,
   LANG_COLL_UTF8_TR_CS = 6,
   LANG_COLL_UTF8_KO_CS = 7,
-  LANG_COLL_EUCKR_BINARY = 8
+  LANG_COLL_EUCKR_BINARY = 8,
+  LANG_COLL_BINARY = 9
 };
 
 /*

@@ -61,6 +61,7 @@ static LANG_LOCALE_DATA lc_Turkish_utf8;
 static LANG_LOCALE_DATA lc_Korean_iso88591;
 static LANG_LOCALE_DATA lc_Korean_utf8;
 static LANG_LOCALE_DATA lc_Korean_euckr;
+static LANG_LOCALE_DATA lc_English_binary;
 static LANG_LOCALE_DATA *lang_Loc_data = &lc_English_iso88591;
 
 static bool lang_builtin_initialized = false;
@@ -124,8 +125,8 @@ static const DB_CHARSET lang_Db_charsets[] = {
    "", INTL_CODESET_ASCII, 1},
   {"raw-bits", "Uninterpreted bits - Raw encoding", "", "",
    "", INTL_CODESET_RAW_BITS, 1},
-  {"raw-bytes", "Uninterpreted bytes - Raw encoding", "", "",
-   "", INTL_CODESET_RAW_BYTES, 1},
+  {"raw-bytes", "Uninterpreted bytes - Raw encoding", "", "_binary",
+   "binary", INTL_CODESET_BINARY, 1},
   {"iso8859-1", "Latin 1 charset - ISO 8859 encoding", " ", "_iso88591",
    "iso88591", INTL_CODESET_ISO88591, 1},
   {"ksc-euc", "KSC 5601 1990 charset - EUC encoding", "\241\241", "_euckr",
@@ -175,6 +176,17 @@ static int lang_fastcmp_byte (const LANG_COLLATION * lang_coll,
 			      const unsigned char *string1,
 			      const int size1,
 			      const unsigned char *string2, const int size2);
+static int lang_fastcmp_binary (const LANG_COLLATION * lang_coll,
+				const unsigned char *string1, const int size1,
+				const unsigned char *string2,
+				const int size2);
+static int lang_strmatch_binary (const LANG_COLLATION * lang_coll,
+				 bool is_match,
+				 const unsigned char *str1, int size1,
+				 const unsigned char *str2, int size2,
+				 const unsigned char *escape,
+				 const bool has_last_escape,
+				 int *str1_match_size);
 static int lang_next_alpha_char_iso88591 (const LANG_COLLATION * lang_coll,
 					  const unsigned char *seq,
 					  const int size,
@@ -289,6 +301,11 @@ static int lang_split_key_byte (const LANG_COLLATION * lang_coll,
 				const unsigned char *str1, const int size1,
 				const unsigned char *str2, const int size2,
 				unsigned char **key, int *byte_size);
+static int lang_split_key_binary (const LANG_COLLATION * lang_coll,
+				  const bool is_desc,
+				  const unsigned char *str1, const int size1,
+				  const unsigned char *str2, const int size2,
+				  unsigned char **key, int *byte_size);
 static int lang_split_key_utf8 (const LANG_COLLATION * lang_coll,
 				const bool is_desc,
 				const unsigned char *str1, const int size1,
@@ -526,6 +543,22 @@ static LANG_COLLATION coll_euckr_bin = {
   NULL
 };
 
+static LANG_COLLATION coll_binary = {
+  INTL_CODESET_BINARY, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_BINARY, "binary",
+   LANG_COLL_GENERIC_SORT_OPT,
+   NULL, NULL, 0,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "93fbdcc87193d2783b2396c6bec068bb"},
+  lang_fastcmp_binary,
+  lang_strmatch_binary,
+  lang_next_alpha_char_iso88591,
+  lang_split_key_binary,
+  lang_mht2str_default,
+  NULL
+};
 
 static LANG_COLLATION *built_in_collations[] = {
   &coll_iso_binary,
@@ -537,6 +570,7 @@ static LANG_COLLATION *built_in_collations[] = {
   &coll_utf8_tr_cs,
   &coll_utf8_ko_cs,
   &coll_euckr_bin,
+  &coll_binary,
 };
 
 /*
@@ -586,6 +620,7 @@ lang_init_builtin (void)
   (void) register_lang_locale_data (&lc_English_utf8);
   (void) register_lang_locale_data (&lc_Korean_utf8);
   (void) register_lang_locale_data (&lc_Turkish_utf8);
+  (void) register_lang_locale_data (&lc_English_binary);
 
   lang_builtin_initialized = true;
 }
@@ -1456,6 +1491,8 @@ lang_get_codeset_name (int codeset_id)
       return "iso88591";
     case INTL_CODESET_KSC5601_EUC:
       return "euckr";
+    case INTL_CODESET_BINARY:
+      return "binary";
     }
 
   /* codeset_id is propagated downwards from the grammar, so it is either
@@ -2502,17 +2539,16 @@ lang_get_parser_use_client_charset (void)
 INTL_CODESET
 lang_charset_cubrid_name_to_id (const char *name)
 {
-  if (strcasecmp (name, "utf8") == 0)
+  int current_codeset = INTL_CODESET_BINARY;
+
+  while (current_codeset <= INTL_CODESET_LAST)
     {
-      return INTL_CODESET_UTF8;
-    }
-  else if (strcasecmp (name, "euckr") == 0)
-    {
-      return INTL_CODESET_KSC5601_EUC;
-    }
-  else if (strcasecmp (name, "iso88591") == 0)
-    {
-      return INTL_CODESET_ISO88591;
+      if (strcasecmp
+	  (name, lang_Db_charsets[current_codeset].charset_cubrid_name) == 0)
+	{
+	  return (INTL_CODESET) current_codeset;
+	}
+      current_codeset++;
     }
 
   return INTL_CODESET_NONE;
@@ -2529,7 +2565,7 @@ lang_charset_introducer (const INTL_CODESET codeset)
 {
   int i;
 
-  assert (codeset >= INTL_CODESET_ISO88591 && codeset <= INTL_CODESET_UTF8);
+  assert (codeset >= INTL_CODESET_BINARY && codeset <= INTL_CODESET_UTF8);
 
   for (i = 0; lang_Db_charsets[i].charset_id != INTL_CODESET_NONE; i++)
     {
@@ -5071,6 +5107,20 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc,
   return NO_ERROR;
 }
 
+/* 
+ * Locales data
+ */
+
+#define LOCALE_DUMMY_ALPHABET(codeset)  \
+  {(codeset), 0, 0, NULL, 0, NULL, false}
+
+#define LOCALE_NULL_DATE_FORMATS NULL, NULL, NULL, NULL, NULL, NULL, NULL
+
+/* Calendar names and parsing order of these names */
+#define LOCALE_NULL_CALENDAR_NAMES  \
+  {NULL}, {NULL}, {NULL}, {NULL}, {NULL}, \
+  NULL, NULL, NULL, NULL, NULL
+
 /*
  * English Locale Data
  */
@@ -5720,6 +5770,26 @@ static LANG_LOCALE_DATA lc_English_utf8 = {
   false
 };
 
+static LANG_LOCALE_DATA lc_English_binary = {
+  NULL,
+  LANG_NAME_ENGLISH,
+  INTL_LANG_ENGLISH,
+  INTL_CODESET_BINARY,
+  LOCALE_DUMMY_ALPHABET (INTL_CODESET_BINARY),
+  LOCALE_DUMMY_ALPHABET (INTL_CODESET_BINARY),
+  &coll_binary,			/* collation */
+  NULL,				/* console text conversion */
+  false,
+  LOCALE_NULL_DATE_FORMATS,	/* time, date, date-time, timestamp format */
+  LOCALE_NULL_CALENDAR_NAMES,
+  '.',
+  ',',
+  DB_CURRENCY_DOLLAR,
+  LANG_NO_NORMALIZATION,
+  "390462b716493cbd74c77f545a77a2bf",
+  NULL,
+  false
+};
 
 /*
  * Turkish Locale Data
@@ -6498,6 +6568,260 @@ lang_next_alpha_char_ko (const LANG_COLLATION * lang_coll,
   return char_size;
 }
 
+/*
+ * lang_fastcmp_binary () - string compare for "binary" collation (with binary
+ *			    charset). Space character does not count with
+ *			    zero weight
+ *   return:
+ *   lang_coll(in):
+ *   string1(in):
+ *   size1(in):
+ *   string2(in):
+ *   size2(in):
+ */
+static int
+lang_fastcmp_binary (const LANG_COLLATION * lang_coll,
+		     const unsigned char *string1, const int size1,
+		     const unsigned char *string2, const int size2)
+{
+  int i, size;
+
+  size = size1 < size2 ? size1 : size2;
+  for (i = 0; i < size; i++, string1++, string2++)
+    {
+      /* compare weights of the two chars */
+      if (*string1 > *string2)
+	{
+	  return 1;
+	}
+      else if (*string1 < *string2)
+	{
+	  return -1;
+	}
+    }
+
+  if (size1 < size2)
+    {
+      size = size2 - size1;
+      for (i = 0; i < size; i++)
+	{
+	  /* ignore tailing white spaces */
+	  if (*string2++ > 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  else if (size1 > size2)
+    {
+      size = size1 - size2;
+      for (i = 0; i < size; i++)
+	{
+	  /* ignore trailing white spaces */
+	  if (*string1++ > 0)
+	    {
+	      return 1;
+	    }
+	}
+    }
+
+  return 0;
+}
+
+/*
+ * lang_strmatch_binary () - match or compare two character strings of
+ *			     Binary (Raw-byte) codeset
+ *
+ *   return: negative if str1 < str2, positive if str1 > str2, zero otherwise
+ *   lang_coll(in) : collation data
+ *   is_match(in) : true if match, otherwise is compare
+ *   str1(in):
+ *   size1(in):
+ *   str2(in): this is the pattern string in case of match
+ *   size2(in):
+ *   escape(in): pointer to escape character (multi-byte allowed)
+ *		 (used in context of LIKE)
+ *   has_last_escape(in): true if it should check if last character is the
+ *			  escape character
+ *   str1_match_size(out): size from str1 which is matched with str2
+ */
+static int
+lang_strmatch_binary (const LANG_COLLATION * lang_coll, bool is_match,
+		      const unsigned char *str1, int size1,
+		      const unsigned char *str2, int size2,
+		      const unsigned char *escape,
+		      const bool has_last_escape, int *str1_match_size)
+{
+  unsigned int c1, c2;
+  const unsigned char *str1_end;
+  const unsigned char *str2_end;
+  const unsigned char *str1_begin;
+
+  str1_begin = str1;
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  for (; str1 < str1_end && str2 < str2_end; str1++, str2++)
+    {
+      assert (str1_end - str1 > 0);
+      assert (str2_end - str2 > 0);
+
+      c1 = *str1;
+      c2 = *str2;
+
+      if (is_match && escape != NULL && c2 == *escape)
+	{
+	  str2++;
+	  if (!(has_last_escape && str2 + 1 >= str2_end))
+	    {
+	      c2 = *str2;
+	    }
+	}
+
+      if (c1 != c2)
+	{
+	  return (c1 < c2) ? -1 : 1;
+	}
+    }
+
+  size1 = str1_end - str1;
+  size2 = str2_end - str2;
+
+  assert (size1 == 0 || size2 == 0);
+
+  if (is_match)
+    {
+      assert (str1_match_size != NULL);
+      *str1_match_size = str1 - str1_begin;
+    }
+
+  if (size1 == size2)
+    {
+      return 0;
+    }
+  else if (size2 > 0)
+    {
+      if (is_match)
+	{
+	  /* pattern string should be exhausted for a full match */
+	  return -1;
+	}
+      for (; str2 < str2_end; str2++)
+	{
+	  if (*str2 > 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  else
+    {
+      assert (size1 > 0);
+
+      if (is_match)
+	{
+	  return 0;
+	}
+
+      for (; str1 < str1_end; str1++)
+	{
+	  if (*str1 > 0)
+	    {
+	      return 1;
+	    }
+	}
+    }
+  return 0;
+}
+
+/*
+ * lang_split_key_binary() - finds the prefix key for "binary" collation
+ *			     (binary/raw-byte charset)
+ *
+ *   return:  error status
+ *   lang_coll(in):
+ *   is_desc(in):
+ *   str1(in):
+ *   size1(in):
+ *   str2(in):
+ *   size2(in):
+ *   key(out): key
+ *   byte_size(out): size in bytes of key
+ *
+ *  Note : this function is used by index prefix computation (BTREE building)
+ */
+static int
+lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool is_desc,
+		       const unsigned char *str1, const int size1,
+		       const unsigned char *str2, const int size2,
+		       unsigned char **key, int *byte_size)
+{
+  const unsigned char *str1_end, *str2_end;
+  const unsigned char *str1_begin, *str2_begin;
+  int key_size;
+
+  assert (key != NULL);
+  assert (byte_size != NULL);
+
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  str1_begin = str1;
+  str2_begin = str2;
+
+  for (; str1 < str1_end && str2 < str2_end; str1++, str2++)
+    {
+      if (*str1 != *str2)
+	{
+	  assert ((!is_desc && *str1 < *str2) || (is_desc && *str1 > *str2));
+	  break;
+	}
+    }
+
+  if (!is_desc)
+    {				/* normal index */
+      *key = (unsigned char *) str2_begin;
+
+      /* common part plus a character with non-zero weight */
+      while (str2 < str2_end)
+	{
+	  if (*str2++ != 0)
+	    {
+	      break;
+	    }
+	}
+      assert (str2 <= str2_end);
+      key_size = str2 - str2_begin;
+    }
+  else
+    {				/* reverse index */
+      assert (is_desc);
+
+      /* common part plus a character with non-zero weight from str1 */
+      while (str1 < str1_end)
+	{
+	  if (*str1++ != 0)
+	    {
+	      break;
+	    }
+	}
+
+      if (str1 >= str1_end)
+	{
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = str2_end - str2_begin;
+	}
+      else
+	{
+	  assert (str1 < str1_end);
+	  *key = (unsigned char *) str1_begin;
+	  key_size = str1 - str1_begin;
+	}
+    }
+
+  *byte_size = key_size;
+
+  return NO_ERROR;
+}
 
 static LANG_LOCALE_DATA lc_Korean_iso88591 = {
   NULL,

@@ -11538,18 +11538,21 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser,
       assert (coll_node == NULL);
       /* set a default collation for a charset */
 
-      if (*charset == INTL_CODESET_ISO88591)
+      switch (*charset)
 	{
+	case INTL_CODESET_ISO88591:
 	  *coll_id = LANG_COLL_ISO_BINARY;
-	}
-      else if (*charset == INTL_CODESET_KSC5601_EUC)
-	{
+	  break;
+	case INTL_CODESET_KSC5601_EUC:
 	  *coll_id = LANG_COLL_EUCKR_BINARY;
-	}
-      else
-	{
-	  assert (*charset == INTL_CODESET_UTF8);
+	  break;
+	case INTL_CODESET_UTF8:
 	  *coll_id = LANG_COLL_UTF8_BINARY;
+	  break;
+	default:
+	  assert (*charset == INTL_CODESET_BINARY);
+	  *coll_id = LANG_COLL_BINARY;
+	  break;
 	}
     }
 

@@ -23069,9 +23069,9 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
   switch (node->node_type)
     {
     case PT_VALUE:
-      if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
+      if (coll_infer->coll_id == LANG_COLL_BINARY)
 	{
-	  coll_infer->coerc_level = PT_COLLATION_L4_ISO_BIN_COERC;
+	  coll_infer->coerc_level = PT_COLLATION_L4_BINARY_COERC;
 	}
       else if (LANG_IS_COERCIBLE_COLL (coll_infer->coll_id))
 	{
@@ -23130,9 +23130,9 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
     case PT_INTERSECTION:
     case PT_FUNCTION:
     case PT_METHOD_CALL:
-      if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
+      if (coll_infer->coll_id == LANG_COLL_BINARY)
 	{
-	  coll_infer->coerc_level = PT_COLLATION_L2_ISO_BIN_COERC;
+	  coll_infer->coerc_level = PT_COLLATION_L2_BINARY_COERC;
 	}
       else if (LANG_IS_COERCIBLE_COLL (coll_infer->coll_id))
 	{
@@ -23147,9 +23147,9 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
     case PT_NAME:
       if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_GENERATED_DERIVED_SPEC))
 	{
-	  if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
+	  if (coll_infer->coll_id == LANG_COLL_BINARY)
 	    {
-	      coll_infer->coerc_level = PT_COLLATION_L2_ISO_BIN_COERC;
+	      coll_infer->coerc_level = PT_COLLATION_L2_BINARY_COERC;
 	    }
 	  else if (LANG_IS_COERCIBLE_COLL (coll_infer->coll_id))
 	    {
@@ -23169,7 +23169,7 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
 	}
       /* Fall through */
     case PT_DOT_:
-      if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
+      if (coll_infer->coll_id == LANG_COLL_BINARY)
 	{
 	  coll_infer->coerc_level = PT_COLLATION_L1_ISO_BIN_COERC;
 	}
@@ -23353,9 +23353,9 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     {
     case PT_VALUE:
       assert (has_collation);
-      if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
+      if (coll_infer->coll_id == LANG_COLL_BINARY)
 	{
-	  coll_infer->coerc_level = PT_COLLATION_L4_ISO_BIN_COERC;
+	  coll_infer->coerc_level = PT_COLLATION_L4_BINARY_COERC;
 	}
       else if (LANG_IS_COERCIBLE_COLL (coll_infer->coll_id))
 	{
@@ -23378,10 +23378,10 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      if ((!has_collation && LANG_SYS_COLLATION == LANG_COLL_ISO_BINARY)
-	  || (coll_infer->coll_id == LANG_COLL_ISO_BINARY))
+      if ((!has_collation && LANG_SYS_COLLATION == LANG_COLL_BINARY)
+	  || (coll_infer->coll_id == LANG_COLL_BINARY))
 	{
-	  coll_infer->coerc_level = PT_COLLATION_L2_ISO_BIN_COERC;
+	  coll_infer->coerc_level = PT_COLLATION_L2_BINARY_COERC;
 	}
       else if (!has_collation || LANG_IS_COERCIBLE_COLL (coll_infer->coll_id))
 	{
@@ -23396,7 +23396,7 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     case PT_NAME:
     case PT_DOT_:
       assert (has_collation);
-      if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
+      if (coll_infer->coll_id == LANG_COLL_BINARY)
 	{
 	  coll_infer->coerc_level = PT_COLLATION_L1_ISO_BIN_COERC;
 	}
@@ -24010,18 +24010,18 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		    TP_DOMAIN_COLL_NORMAL;
 		}
 	      if (node->node_type == PT_VALUE
-		  && codeset == INTL_CODESET_ISO88591
+		  && codeset == INTL_CODESET_RAW_BYTES
 		  && node->data_type->info.data_type.units !=
-		  INTL_CODESET_ISO88591)
+		  INTL_CODESET_RAW_BYTES)
 		{
 		  /* cannot have values of ENUM type here */
 		  assert (PT_IS_CHAR_STRING_TYPE (node->type_enum));
-		  /* converting from multibyte charset to ISO charset, may
+		  /* converting from multibyte charset to binary charset, may
 		   * truncate the string data (precision is kept);
 		   * this workaround ensures that new precision (after charset
 		   * conversion) grows to the size in bytes of original data:
-		   * conversion rule from multibyte charset to ISO is to
-		   * reinterpret the bytes as ISO characters.
+		   * conversion rule from multibyte charset to binary is to
+		   * reinterpret the bytes as binary characters.
 		   */
 		  if (node->info.value.data_value.str != NULL)
 		    {
