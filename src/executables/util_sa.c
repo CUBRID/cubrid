@@ -4271,8 +4271,16 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 
   tz_gen_mode = utility_get_option_string_value (arg_map, GEN_TZ_MODE_S, 0);
 
-  if (tz_gen_mode == NULL || *tz_gen_mode == '\0'
-      || strcasecmp (tz_gen_mode, "new") == 0)
+  if (tz_gen_mode == NULL)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_GEN_TZ,
+				       GEN_TZ_MSG_USAGE),
+	       basename (arg->argv0));
+      goto exit;
+    }
+
+  if (strcasecmp (tz_gen_mode, "new") == 0)
     {
       tz_gen_type = TZ_GEN_TYPE_NEW;
     }
@@ -4398,6 +4406,12 @@ dump_tz (UTIL_FUNCTION_ARG * arg)
   is_dump_leap_sec =
     utility_get_option_bool_value (arg_map, DUMP_TZ_LEAP_SEC_S);
   zone = utility_get_option_string_value (arg_map, DUMP_TZ_ZONE_ID_S, 0);
+
+  if ((zone == NULL) && (!is_dump_countries) && (!is_dump_zone_list)
+      && (!is_dump_leap_sec))
+    {
+      goto print_dump_tz_usage;
+    }
 
   if (zone != NULL && *zone != '\0')
     {
