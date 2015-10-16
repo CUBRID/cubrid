@@ -4808,6 +4808,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 {
   int data_size = 0;
   char col_type;
+  bool client_support_tz = true;
 
   if (db_value_is_null (val) == true)
     {
@@ -4822,6 +4823,12 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
   else
     {
       col_type = 0;
+    }
+
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (cas_get_client_version (),
+					    PROTOCOL_V7))
+    {
+      client_support_tz = false;
     }
 
   switch (db_value_type (val))
@@ -5121,8 +5128,18 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	  }
 
 	db_time_decode (&time_local, &hour, &minute, &second);
-	add_res_data_timetz (net_buf, (short) hour, (short) minute,
-			     (short) second, tz_str, col_type, &data_size);
+	if (client_support_tz == true)
+	  {
+	    add_res_data_timetz (net_buf, (short) hour, (short) minute,
+				 (short) second, tz_str, col_type,
+				 &data_size);
+	  }
+	else
+	  {
+	    add_res_data_time (net_buf, (short) hour, (short) minute,
+			       (short) second, col_type, &data_size);
+
+	  }
       }
       break;
     case DB_TYPE_TIMESTAMP:
@@ -5187,9 +5204,19 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 
 	db_date_decode (&date, &mon, &day, &yr);
 	db_time_decode (&time, &hh, &mm, &ss);
-	add_res_data_timestamptz (net_buf, (short) yr, (short) mon,
-				  (short) day, (short) hh, (short) mm,
-				  (short) ss, tz_str, col_type, &data_size);
+	if (client_support_tz == true)
+	  {
+	    add_res_data_timestamptz (net_buf, (short) yr, (short) mon,
+				      (short) day, (short) hh, (short) mm,
+				      (short) ss, tz_str, col_type,
+				      &data_size);
+	  }
+	else
+	  {
+	    add_res_data_timestamp (net_buf, (short) yr, (short) mon,
+				    (short) day, (short) hh, (short) mm,
+				    (short) ss, col_type, &data_size);
+	  }
       }
       break;
     case DB_TYPE_DATETIME:
@@ -5247,10 +5274,20 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	  }
 
 	db_datetime_decode (&dt_local, &mon, &day, &yr, &hh, &mm, &ss, &ms);
-	add_res_data_datetimetz (net_buf, (short) yr, (short) mon,
-				 (short) day, (short) hh, (short) mm,
-				 (short) ss, (short) ms, tz_str, col_type,
-				 &data_size);
+	if (client_support_tz == true)
+	  {
+	    add_res_data_datetimetz (net_buf, (short) yr, (short) mon,
+				     (short) day, (short) hh, (short) mm,
+				     (short) ss, (short) ms, tz_str, col_type,
+				     &data_size);
+	  }
+	else
+	  {
+	    add_res_data_datetime (net_buf, (short) yr, (short) mon,
+				   (short) day, (short) hh, (short) mm,
+				   (short) ss, (short) ms, col_type,
+				   &data_size);
+	  }
       }
       break;
     case DB_TYPE_NUMERIC:

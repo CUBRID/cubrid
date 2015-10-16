@@ -3067,3 +3067,9 @@ query_seq_num_current_value (void)
 {
   return query_sequence_num;
 }
+
+T_BROKER_VERSION
+cas_get_client_version (void)
+{
+  return req_info.client_version;
+}
