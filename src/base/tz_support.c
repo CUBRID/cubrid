@@ -1164,13 +1164,12 @@ tz_get_zone_id_by_name (const char *name, const int name_size)
 	}
       else
 	{
-	  assert (cmp_res == 0);
 	  if (strlen (tzd->names[name_index].name) != name_size)
 	    {
 	      index_top = name_index - 1;
 	      continue;
 	    }
-	  return tzd->names[name_index].zone_id;
+	  return name_index;
 	}
     }
 
@@ -1998,9 +1997,9 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
 
   zone_id = tz_info->zone.zone_id;
   zone_offset_id = tz_info->zone.offset_id;
-  zone_name_size = strlen (tzd->timezone_names[zone_id]);
+  zone_name_size = strlen (tzd->names[zone_id].name);
 
-  timezone = &(tzd->timezones[zone_id]);
+  timezone = &(tzd->timezones[tzd->names[zone_id].zone_id]);
   zone_off_rule = &(tzd->offset_rules[timezone->gmt_off_rule_start
 				      + zone_offset_id]);
 
@@ -2069,12 +2068,12 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
 
   if (p_dst_format != NULL)
     {
-      snprintf (tz_str, tz_str_size, "%s %s", tzd->timezone_names[zone_id],
+      snprintf (tz_str, tz_str_size, "%s %s", tzd->names[zone_id].name,
 		p_dst_format);
     }
   else
     {
-      snprintf (tz_str, tz_str_size, "%s", tzd->timezone_names[zone_id]);
+      snprintf (tz_str, tz_str_size, "%s", tzd->names[zone_id].name);
     }
 
   return total_len - 1;
@@ -2332,12 +2331,12 @@ tz_decode_tz_id (const TZ_ID * tz_id, const bool is_full_decode,
 	      return;
 	    }
 
-	  zone_id = tz_info->zone.zone_id;
+	  zone_id = tzd->names[tz_info->zone.zone_id].zone_id;
 	  zone_offset_id = tz_info->zone.offset_id;
 
 	  assert (zone_offset_id >= 0 && zone_offset_id < TZ_OFFSET_ID_MAX);
 
-	  timezone = &(tzd->timezones[tz_info->zone.zone_id]);
+	  timezone = &(tzd->timezones[zone_id]);
 	  tz_info->zone.p_timezone = timezone;
 
 	  zone_off_rule = &(tzd->offset_rules[timezone->gmt_off_rule_start
@@ -3282,8 +3281,8 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
       goto exit;
     }
   /* start decoding zone , GMT offset id, DST id */
-  assert ((int) tz_info->zone.zone_id < tzd->timezone_count);
-  timezone = &(tzd->timezones[tz_info->zone.zone_id]);
+  assert ((int) tz_info->zone.zone_id < tzd->name_count);
+  timezone = &(tzd->timezones[tzd->names[tz_info->zone.zone_id].zone_id]);
 
   assert (timezone->gmt_off_rule_count > 0);
 
@@ -4385,9 +4384,9 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr,
   *tzm = (total_offset % 3600) / 60;
   zone_id = tz_info.zone.zone_id;
   zone_offset_id = tz_info.zone.offset_id;
-  zone_name_size = strlen (tzd->timezone_names[zone_id]);
+  zone_name_size = strlen (tzd->names[zone_id].name);
 
-  timezone = &(tzd->timezones[zone_id]);
+  timezone = &(tzd->timezones[tzd->names[zone_id].zone_id]);
   zone_off_rule = &(tzd->offset_rules[timezone->gmt_off_rule_start
 				      + zone_offset_id]);
 
@@ -4447,13 +4446,13 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr,
 
   if (p_dst_format != NULL)
     {
-      snprintf (tzr, tzr_size, "%s", tzd->timezone_names[zone_id]);
+      snprintf (tzr, tzr_size, "%s", tzd->names[zone_id].name);
       snprintf (tzdst, tzdst_size, "%s", p_dst_format);
       tzdst[dst_format_size] = '\0';
     }
   else
     {
-      snprintf (tzr, tzr_size, "%s", tzd->timezone_names[zone_id]);
+      snprintf (tzr, tzr_size, "%s", tzd->names[zone_id].name);
     }
 
   tzr[zone_name_size] = '\0';
@@ -4660,7 +4659,7 @@ tz_get_best_match_zone (const char *name, int *size)
     }
 
   *size = strlen (tzd->names[index_bot - 1].name);
-  return tzd->names[index_bot - 1].zone_id;
+  return index_bot - 1;
 }
 
 /* 
@@ -5365,7 +5364,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type,
       db_make_string (&vals[idx++], tzd->names[i].name);
 
       /* First get the zone id */
-      zone_id = tzd->names[i].zone_id;
+      zone_id = i;
 
       tzinfo.type = TZ_REGION_ZONE;
       tzinfo.zone.zone_id = zone_id;
@@ -5378,7 +5377,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type,
 	  goto exit_on_error;
 	}
 
-      timezone = tzd->timezones[zone_id];
+      timezone = tzd->timezones[tzd->names[i].zone_id];
       zone_off_rule = tzd->offset_rules[timezone.gmt_off_rule_start +
 					tzinfo.zone.offset_id];
 
