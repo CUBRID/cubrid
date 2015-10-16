@@ -5112,7 +5112,7 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc,
  */
 
 #define LOCALE_DUMMY_ALPHABET(codeset)  \
-  {(codeset), 0, 0, NULL, 0, NULL, false}
+  {ALPHABET_TAILORED, (codeset), 0, 0, NULL, 0, NULL, false}
 
 #define LOCALE_NULL_DATE_FORMATS NULL, NULL, NULL, NULL, NULL, NULL, NULL
 
@@ -7108,9 +7108,9 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
   /* alphabet */
   SHLIB_GET_ADDR (temp_num_sym, "alphabet_a_type", int *,
 		  lib_handle, lld->lang_name);
-  assert (*temp_num_sym >= ALPHABET_UNICODE &&
-	  *temp_num_sym <= ALPHABET_TAILORED);
-  lld->alphabet.a_type = (ALPHABET_TYPE) * temp_num_sym;
+  assert (*temp_num_sym >= ALPHABET_UNICODE
+	  && *temp_num_sym <= ALPHABET_TAILORED);
+  lld->alphabet.a_type = (ALPHABET_TYPE) (*temp_num_sym);
 
   if (lld->alphabet.a_type == ALPHABET_UNICODE)
     {
@@ -7135,9 +7135,9 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
   /* identifier alphabet */
   SHLIB_GET_ADDR (temp_num_sym, "ident_alphabet_a_type", int *,
 		  lib_handle, lld->lang_name);
-  assert (*temp_num_sym >= ALPHABET_UNICODE &&
-	  *temp_num_sym <= ALPHABET_TAILORED);
-  lld->ident_alphabet.a_type = (ALPHABET_TYPE) * temp_num_sym;
+  assert (*temp_num_sym >= ALPHABET_UNICODE
+	  && *temp_num_sym <= ALPHABET_TAILORED);
+  lld->ident_alphabet.a_type = (ALPHABET_TYPE) (*temp_num_sym);
 
   load_w_identifier_name = false;
   if (lld->ident_alphabet.a_type == ALPHABET_UNICODE)

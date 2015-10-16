@@ -406,10 +406,6 @@ extern "C"
   extern int intl_utf8_to_iso88591 (const unsigned char *in_buf,
 				    const int in_size,
 				    unsigned char **out_buf, int *out_size);
-  extern int intl_euckr_to_iso88591 (const unsigned char *in_buf,
-				     const int in_size,
-				     unsigned char **out_buf, int *out_size);
-
 #ifdef __cplusplus
 }
 #endif

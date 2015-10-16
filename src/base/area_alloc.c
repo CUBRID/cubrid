@@ -372,6 +372,9 @@ area_alloc (AREA * area)
   AREA_BLOCK *block, *hint_block;
   int used_count, i, entry_idx;
   char *entry_ptr;
+#if defined(SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
 #if !defined (NDEBUG)
   int *prefix;
 #endif /* !NDEBUG */
@@ -415,7 +418,7 @@ area_alloc (AREA * area)
   /* Step 3: if not found, add an new block. Then find free entry in
    * this new block. Only allow 1 thread add new block in the same time
    */
-  pthread_mutex_lock (&area->area_mutex);
+  rv = pthread_mutex_lock (&area->area_mutex);
 
   if (area->hint_block != hint_block)
     {

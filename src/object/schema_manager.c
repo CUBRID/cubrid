@@ -11385,11 +11385,11 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
    * back out to the property list.  This is where the promotion of
    * attribute name references to ids references happens.
    */
-  if (classobj_put_index_id
-      (&(class_->properties), con->type, con->name, con->attributes,
-       con->asc_desc, con->attrs_prefix_length, &(con->index_btid),
-       con->filter_predicate,
-       con->fk_info, NULL, con->func_index_info, con->comment) != NO_ERROR)
+  if (classobj_put_index_id (&(class_->properties), con->type, con->name, 
+			     con->attributes, con->asc_desc, 
+			     con->attrs_prefix_length, &(con->index_btid), 
+			     con->filter_predicate, con->fk_info, NULL, 
+			     con->func_index_info, con->comment) != NO_ERROR)
     {
       return error;
     }
