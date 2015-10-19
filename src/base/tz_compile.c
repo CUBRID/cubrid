@@ -3652,6 +3652,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
   if (IS_EMPTY_STR (str))
     {
       offset_rule->until_flag = UNTIL_INFINITE;
+      offset_rule->until_time_type = TZ_TIME_TYPE_LOCAL_WALL;
       return NO_ERROR;
     }
 
@@ -3675,6 +3676,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
     }
 
   offset_rule->until_flag = UNTIL_EXPLICIT;
+  offset_rule->until_time_type = TZ_TIME_TYPE_LOCAL_WALL;
 
   /* read month */
   str_cursor = strtok (NULL, " ");
