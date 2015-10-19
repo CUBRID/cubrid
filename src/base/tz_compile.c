@@ -2104,14 +2104,14 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
   assert (tzd_raw != NULL);
 
   col_name = strtok (rule_text, " \t");
-  col_from = strtok (NULL, "\t");
-  col_to = strtok (NULL, "\t");
-  col_type = strtok (NULL, "\t");
-  col_in = strtok (NULL, "\t");
+  col_from = strtok (NULL, " \t");
+  col_to = strtok (NULL, " \t");
+  col_type = strtok (NULL, " \t");
+  col_in = strtok (NULL, " \t");
   col_on = strtok (NULL, " \t");
-  col_at = strtok (NULL, "\t");
-  col_save = strtok (NULL, "\t");
-  col_letters = strtok (NULL, "\t");
+  col_at = strtok (NULL, " \t");
+  col_save = strtok (NULL, " \t");
+  col_letters = strtok (NULL, " \t");
 
   /* all tokens above must be at least one character long */
   if (IS_EMPTY_STR (col_name) || IS_EMPTY_STR (col_from)
