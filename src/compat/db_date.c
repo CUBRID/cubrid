@@ -4668,6 +4668,13 @@ db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt,
   DB_DATETIME dt_local;
 
   retval = tz_utc_datetimetz_to_local (dt, tz_id, &dt_local);
+  if (retval == ER_QPROC_TIME_UNDERFLOW)
+    {
+      db_datetime_encode (&dt_local, 0, 0, 0, 0, 0, 0, 0);
+      retval = NO_ERROR;
+      er_clear ();
+    }
+
   if (retval != NO_ERROR)
     {
       return 0;

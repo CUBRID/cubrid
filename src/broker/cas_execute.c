@@ -5259,6 +5259,13 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	  }
 
 	err = tz_utc_datetimetz_to_local (&dt_utc, &tz_id, &dt_local);
+	if (err == ER_QPROC_TIME_UNDERFLOW)
+	  {
+	    db_datetime_encode (&dt_local, 0, 0, 0, 0, 0, 0, 0);
+	    err = NO_ERROR;
+	    er_clear ();
+	  }
+
 	if (err != NO_ERROR)
 	  {
 	    net_buf_cp_int (net_buf, -1, NULL);
