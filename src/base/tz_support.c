@@ -4421,7 +4421,8 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr,
 	}
       else
 	{
-	  if (ds_rule->save_time != 0)
+	  if (ds_rule != NULL && ds_rule->save_time != 0
+	      && zone_off_rule->save_format != NULL)
 	    {
 	      p_dst_format = zone_off_rule->save_format;
 	    }
