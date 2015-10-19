@@ -25425,6 +25425,17 @@ start_current_version:
 			     PGBUF_LATCH_READ);
   if (scan_code != S_SUCCESS)
     {
+      /* next version might be deleted. This case is expected and removal
+       * of partition links must still continue
+       */
+      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT
+	  && (type == REC_MARKDELETED || type == REC_DELETED_WILL_REUSE))
+	{
+	  er_clear ();
+	  scan_code = S_SUCCESS;
+	  OID_SET_NULL (next_version);
+	  OID_SET_NULL (next_version_class_oid);
+	}
       /* Stop here. */
       goto end;
     }
