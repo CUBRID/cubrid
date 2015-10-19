@@ -2899,8 +2899,12 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	    {
 	      error_code = ER_HEAP_UNKNOWN_OBJECT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3,
-		      oid->volid, oid->pageid, oid->slotid);
+	      if (er_errid () != error_code)
+		{
+		  /* error has not been previously set */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3,
+			  oid->volid, oid->pageid, oid->slotid);
+		}
 	      return error_code;
 	    }
 	  else
@@ -3096,8 +3100,13 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn,
 	  heap_scancache_end (thread_p, &nxobj.area_scancache);
 	  nxobj.comm_area = *fetch_area = NULL;
 	  error_code = ER_HEAP_UNKNOWN_OBJECT;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
-		  oid->volid, oid->pageid, oid->slotid);
+	  if (er_errid () != error_code)
+	    {
+	      /* error was not previously set */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
+		      oid->slotid);
+	    }
 	  goto error;
 	}
       else if (scan != S_DOESNT_FIT)
