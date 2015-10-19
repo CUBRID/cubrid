@@ -2326,7 +2326,7 @@ lang_charset_name (const INTL_CODESET codeset)
 {
   int i;
 
-  assert (codeset >= INTL_CODESET_ISO88591 && codeset <= INTL_CODESET_UTF8);
+  assert (codeset >= INTL_CODESET_BINARY && codeset <= INTL_CODESET_UTF8);
 
   for (i = 0; lang_Db_charsets[i].charset_id != INTL_CODESET_NONE; i++)
     {
@@ -2350,7 +2350,7 @@ lang_charset_cubrid_name (const INTL_CODESET codeset)
 {
   int i;
 
-  assert (codeset >= INTL_CODESET_ISO88591 && codeset <= INTL_CODESET_UTF8);
+  assert (codeset >= INTL_CODESET_BINARY && codeset <= INTL_CODESET_UTF8);
 
   for (i = 0; lang_Db_charsets[i].charset_id != INTL_CODESET_NONE; i++)
     {

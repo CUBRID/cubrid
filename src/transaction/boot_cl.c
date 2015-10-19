@@ -3995,7 +3995,7 @@ boot_add_charsets (MOP class_mop)
 
   count_collations = lang_collation_count ();
 
-  for (i = INTL_CODESET_ISO88591; i <= INTL_CODESET_LAST; i++)
+  for (i = INTL_CODESET_BINARY; i <= INTL_CODESET_LAST; i++)
     {
       DB_OBJECT *obj;
       DB_VALUE val;
