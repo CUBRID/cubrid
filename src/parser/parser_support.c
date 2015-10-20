@@ -7420,7 +7420,7 @@ pt_make_if_with_expressions (PARSER_CONTEXT * parser, PT_NODE * pred,
  *   parser(in): Parser context
  *   pred(in): a node for expression used as predicate
  *   string1(in): string used to build a value node for true value of predicate
- *   string1(in): string used to build a value node for false value of predicate
+ *   string2(in): string used to build a value node for false value of predicate
  *   alias(in): alias for this new node
  */
 static PT_NODE *
@@ -11623,7 +11623,8 @@ pt_make_tuple_value_reference (PARSER_CONTEXT * parser, PT_NODE * name,
  *    (SELECT coll_name AS [Collation],
  *	      IF (charset_id = 3, 'iso88591',
  *		  IF (charset_id = 5, 'utf8',
- *		      IF (charset_id = 4, 'euckr', 'other'))) AS Charset,
+ *		      IF (charset_id = 2, 'binary',
+ *			  IF (charset_id = 4, 'euckr', 'other')))) AS Charset,
  *	      coll_id AS Id,
  *	      IF (built_in = 0, 'No', 'Yes') AS Built_in,
  *	      IF (expansions = 0, 'No', 'Yes') AS Expansions,
@@ -11669,14 +11670,27 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser,
     PT_NODE *if_node1 = NULL;
     PT_NODE *if_node2 = NULL;
     PT_NODE *if_node3 = NULL;
+    PT_NODE *if_node4 = NULL;
 
     {
       /* IF (charset_id = 4, 'euckr', 'other') */
       PT_NODE *pred = NULL;
 
       pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 4);
-      if_node3 =
+      if_node4 =
 	pt_make_if_with_strings (parser, pred, "euckr", "other", NULL);
+    }
+
+    {
+      /* IF (charset_id = 2, 'binary',  IF_NODE_ 4) */
+      PT_NODE *pred = NULL;
+      PT_NODE *string_node = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 2);
+      string_node = pt_make_string_value (parser, "binary");
+
+      if_node3 = pt_make_if_with_expressions (parser, pred,
+					      string_node, if_node4, NULL);
     }
 
     {
