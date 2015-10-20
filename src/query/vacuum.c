@@ -1334,7 +1334,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 
       if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 	{
-	  goto end;
+	  continue;
 	}
 
       /* Check page vacuum status. */
