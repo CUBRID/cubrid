@@ -7164,6 +7164,7 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 			 (unsigned long long int)
 			 (*chkpt_block_newest_mvccid),
 			 (long long int) chkpt_blockid);
+	  *is_chkpt_block = false;
 	}
       else
 	{
