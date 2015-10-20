@@ -19588,19 +19588,6 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   recdes.data = (char *) (rcv->data) + sizeof (recdes.type);
   recdes.area_size = recdes.length = rcv->length - sizeof (recdes.type);
 
-  if (recdes.type == REC_ASSIGN_ADDRESS)
-    {
-      /*
-       * The data here isn't really the data to be inserted (because there
-       * wasn't any); instead it's the number of bytes that were reserved
-       * for future insertion.  Change recdes.length to reflect the number
-       * of bytes to reserve, but there's no need for a valid recdes.data:
-       * spage_insert_for_recovery knows to ignore it in this case.
-       */
-      recdes.area_size = recdes.length = *(INT16 *) recdes.data;
-      recdes.data = NULL;
-    }
-
   sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid,
 					  &recdes);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -27568,21 +27555,7 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
     }
   else
     {
-      INT16 bytes_reserved;
-      RECDES temp_recdes;
-
-      if (recdes_p->type == REC_ASSIGN_ADDRESS)
-	{
-	  /* special case for REC_ASSIGN */
-	  temp_recdes.type = recdes_p->type;
-	  temp_recdes.area_size = sizeof (bytes_reserved);
-	  temp_recdes.length = sizeof (bytes_reserved);
-	  bytes_reserved = (INT16) recdes_p->length;
-	  temp_recdes.data = (char *) &bytes_reserved;
-	  log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL,
-				      &temp_recdes);
-	}
-      else if (recdes_p->type == REC_NEWHOME)
+      if (recdes_p->type == REC_NEWHOME)
 	{
 	  /* we don't want replication for REC_NEWHOME; in any other respect
 	     RVHF_INSERT_NEWHOME is the same as RVHF_INSERT */
