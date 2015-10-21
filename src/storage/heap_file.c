@@ -28630,9 +28630,25 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   log_addr.pgptr = page_p;
   log_addr.vfid = vfid_p;
 
-  /* log record descriptor */
-  log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p,
-			      NULL);
+  if (recdes_p->type == REC_ASSIGN_ADDRESS)
+    {
+      /* special case for REC_ASSIGN */
+      RECDES temp_recdes;
+      INT16 bytes_reserved;
+      temp_recdes.type = recdes_p->type;
+      temp_recdes.area_size = sizeof (bytes_reserved);
+      temp_recdes.length = sizeof (bytes_reserved);
+      bytes_reserved = (INT16) recdes_p->length;
+      temp_recdes.data = (char *) &bytes_reserved;
+      log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL,
+				  &temp_recdes);
+    }
+  else
+    {
+      /* log record descriptor */
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p,
+				  NULL);
+    }
 
   /* log postponed operation */
   if (mark_reusable)
