@@ -76,8 +76,6 @@ struct log_2pc_global_data
 struct log_2pc_global_data log_2pc_Userfun =
   { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
-extern int vacuum_Global_oldest_active_blockers_counter;
-
 static int log_2pc_get_num_participants (int *partid_len,
 					 void **block_particps_ids);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -730,14 +728,6 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       else
 	{
 	  state = tdes->state;
-	}
-      /* Unblock global oldest active update. */
-      if (tdes->block_global_oldest_active_until_commit)
-	{
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
-	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (ATOMIC_INC_32
-		  (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
 	}
     }
   else
@@ -2881,14 +2871,6 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* Check if all the acknowledgements have been received */
 
       (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
-    }
-  /* Unblock global oldest active update. */
-  if (tdes->block_global_oldest_active_until_commit)
-    {
-      ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
-      tdes->block_global_oldest_active_until_commit = false;
-      assert (ATOMIC_INC_32
-	      (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
     }
 }
 

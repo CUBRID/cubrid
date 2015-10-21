@@ -6614,14 +6614,6 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 	{
 	  state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
 	}
-      /* Unblock global oldest active update. */
-      if (tdes->block_global_oldest_active_until_commit)
-	{
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
-	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (ATOMIC_INC_32
-		  (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
-	}
     }
 
 #if defined (CUBRID_DEBUG)
@@ -7159,6 +7151,32 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        */
       log_append_donetime (thread_p, tdes, iscommitted);
       state = tdes->state;
+
+      /* Unblock global oldest active update. */
+      if ((iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT)
+	  && tdes->block_global_oldest_active_until_commit)
+	{
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
+	  tdes->block_global_oldest_active_until_commit = false;
+	  assert (ATOMIC_INC_32
+		  (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+	}
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+      if (iscommitted == LOG_COMMIT)
+	{
+	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  volatile MVCCID *p_transaction_lowest_active_mvccid =
+	    LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
+	  if (*p_transaction_lowest_active_mvccid != MVCCID_NULL)
+	    {
+	      /* set transaction lowest active MVCCID to null to allow
+	       * VACUUM advancing
+	       */
+	      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
+	    }
+	}
+#endif
 
       /* If recovery restart operation, or, if this is a coordinator loose end
        * transaction return this index and decrement coordinator loose end

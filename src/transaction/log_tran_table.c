@@ -119,7 +119,6 @@
 #define pthread_mutex_unlock(a)
 #endif /* not SERVER_MODE */
 
-extern int vacuum_Global_oldest_active_blockers_counter;
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested
@@ -5453,18 +5452,26 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       ATOMIC_TAS_32 (&next_trans_status_history->long_tran_mvccids_length,
 		     count);
 
-      /* Block global oldest active until commit is finished. */
-      if (tdes->block_global_oldest_active_until_commit == false)
+      if (committed)
 	{
-	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid
+	  /* be sure that transaction modifications can't be vacuumed up to
+	   * LOG_COMMIT. Otherwise, the following scenario will corrupt the
+	   * database:
+	   *  - transaction set its lowest_active_mvccid to MVCCID_NULL
+	   *  - VACUUM clean up transaction modifications
+	   *  - the system crash before LOG_COMMIT of current transaction          
 	   */
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
-	  tdes->block_global_oldest_active_until_commit = true;
+	  if ((*p_transaction_lowest_active_mvccid == MVCCID_NULL)
+	      || MVCC_ID_PRECEDES (*p_transaction_lowest_active_mvccid,
+				   mvccid))
+	    {
+	      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, mvccid);
+	    }
 	}
       else
 	{
-	  assert (ATOMIC_INC_32
-		  (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+	  /* atomic set transaction lowest active MVCCID */
+	  ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
 	}
 
       /* prevent code rearrangement */
@@ -5476,15 +5483,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     }
   else
     {
-#if !defined(HAVE_ATOMIC_BUILTINS)
-      /* Need to guarantee lowest active MVCCID atomicity.
-       * logtb_get_lowest_active_mvccid will read lowest active MVCCID
-       * using write mode in this case
-       */
-      r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
-      *p_transaction_lowest_active_mvccid = MVCCID_NULL;
-      pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif
 #if defined(SA_MODE)
       if (committed
 	  && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
@@ -5529,12 +5527,20 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	    }
 	}
 #endif /* SERVER_MODE */
-    }
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-/* atomic set transaction lowest active MVCCID */
-  ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
+      /* atomic set transaction lowest active MVCCID */
+      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
+#else
+      /* Need to guarantee lowest active MVCCID atomicity.
+       * logtb_get_lowest_active_mvccid will read lowest active MVCCID
+       * using write mode in this case
+       */
+      r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+      *p_transaction_lowest_active_mvccid = MVCCID_NULL;
+      pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
+    }
 
   curr_mvcc_info->recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
 
