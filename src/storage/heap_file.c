@@ -6668,6 +6668,7 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid,
 {
   HEAP_OPERATION_CONTEXT insert_context;
   RECDES recdes;
+  TRANID tranid;
   int rc;
 
   if (expected_length <= 0)
@@ -6683,19 +6684,22 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
     }
 
-  /*
-   * Use the expected length only when it is larger than the size of an OID
+  /* Use the expected length only when it is larger than the size of an OID
    * and it is smaller than the maximum size of an object that can be stored
    * in the primary area (no in overflow). In any other case, use the the size
    * of an OID as the length.
    */
-
   recdes.length = ((expected_length > SSIZEOF (OID)
 		    && !heap_is_big_length (expected_length))
 		   ? expected_length : SSIZEOF (OID));
-
-  recdes.data = NULL;
   recdes.type = REC_ASSIGN_ADDRESS;
+
+  /* We are going to just log the entire recdes.data with recdes.length.
+   * Note that the only content is the first 4 bytes which is its TRANID and
+   * the remaining parts are reserved.
+   */
+  tranid = logtb_find_current_tranid (thread_p);
+  recdes.data = (char *) (&tranid);
 
   /* create context */
   heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid,

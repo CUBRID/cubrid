@@ -2028,32 +2028,17 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
     }
 
   tmp_slot_p = (SPAGE_SLOT *) slot_p;
-  if (record_descriptor_p->type != REC_ASSIGN_ADDRESS)
-    {
-      if ((unsigned int) tmp_slot_p->offset_to_record +
-	  record_descriptor_p->length > (unsigned int) DB_PAGESIZE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  assert_release (false);
-	  return SP_ERROR;
-	}
 
-      memcpy (((char *) page_p + tmp_slot_p->offset_to_record),
-	      record_descriptor_p->data, record_descriptor_p->length);
-    }
-  else
+  if ((unsigned int) tmp_slot_p->offset_to_record +
+      record_descriptor_p->length > (unsigned int) DB_PAGESIZE)
     {
-      if (tmp_slot_p->offset_to_record + SSIZEOF (TRANID) >
-	  (unsigned int) DB_PAGESIZE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  assert_release (false);
-	  return SP_ERROR;
-	}
-
-      *((TRANID *) (page_p + tmp_slot_p->offset_to_record)) =
-	logtb_find_current_tranid (thread_p);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      assert_release (false);
+      return SP_ERROR;
     }
+
+  memcpy (((char *) page_p + tmp_slot_p->offset_to_record),
+	  record_descriptor_p->data, record_descriptor_p->length);
 
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 
