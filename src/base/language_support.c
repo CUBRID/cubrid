@@ -5151,6 +5151,20 @@ lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld)
 }
 
 /*
+ * lang_initloc_en_binary () - init locale data for English language
+ *   return:
+ */
+static void
+lang_initloc_en_binary (LANG_LOCALE_DATA * ld)
+{
+  assert (ld != NULL);
+
+  coll_binary.default_lang = ld;
+
+  ld->is_initialized = true;
+}
+
+/*
  * lang_init_common_en_cs () - init collation data for English case
  *			       sensitive (no matter the charset)
  *   return:
@@ -5787,7 +5801,7 @@ static LANG_LOCALE_DATA lc_English_binary = {
   DB_CURRENCY_DOLLAR,
   LANG_NO_NORMALIZATION,
   "390462b716493cbd74c77f545a77a2bf",
-  NULL,
+  lang_initloc_en_binary,
   false
 };
 
