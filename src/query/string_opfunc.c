@@ -6656,6 +6656,17 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 	bool has_zone = false;
 	bool is_explicit_time = false;
 
+	error = db_string_to_datetimetz (DB_PULL_STRING (left),
+					 &ldatetimetz, &has_zone);
+	if (error == NO_ERROR && has_zone == true)
+	  {
+	    tz_id = ldatetimetz.tz_id;
+	    ldatetime = ldatetimetz.datetime;
+	    result_type = DB_TYPE_DATETIMETZ;
+	    left_is_datetime = true;
+	    break;
+	  }
+
 	error =
 	  db_date_parse_time (DB_PULL_STRING (left),
 			      DB_GET_STRING_SIZE (left), &ltime, &lms);
@@ -6667,19 +6678,13 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 					    DB_GET_STRING_SIZE (left),
 					    &ldatetime, &is_explicit_time,
 					    NULL, NULL, NULL);
-	    if (error != NO_ERROR || is_explicit_time)
+	    if (error != NO_ERROR)
 	      {
-		error = db_string_to_datetimetz (DB_PULL_STRING (left),
-						 &ldatetimetz, &has_zone);
-		if (error != NO_ERROR)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			    ER_TIME_CONVERSION, 0);
-		    error = ER_TIME_CONVERSION;
-		    goto error_return;
-		  }
-		tz_id = ldatetimetz.tz_id;
-		ldatetime = ldatetimetz.datetime;
+
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			ER_TIME_CONVERSION, 0);
+		error = ER_TIME_CONVERSION;
+		goto error_return;
 	      }
 
 	    left_is_datetime = true;

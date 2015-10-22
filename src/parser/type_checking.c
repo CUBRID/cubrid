@@ -1154,7 +1154,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_ADDTIME:
       num = 0;
 
-      /* 15 overloads */
+      /* 16 overloads */
 
       /* arg1 */
       sig.arg1_type.is_generic = false;
@@ -1317,6 +1317,17 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_TIMELTZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_MAYBE;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_MAYBE;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
