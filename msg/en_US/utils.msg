@@ -1081,6 +1081,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Generate source files containing timezone data to be compiled into\n\
         a shared library.\n\
 usage: %s gen_tz [OPTION]\n\
+       %s gen_tz -g extend [OPTION] database-name\n\
 \n\
 valid options:\n\
   -i, --input-folder    path to an input folder containing a version of\n\
@@ -1118,7 +1119,7 @@ $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 60 \
 dump_tz: Display timezone related information. By default, it only shows\n\
  a short summary describing existing information.\n\
-usage: %s gen_tz [OPTION]\n\
+usage: %s dump_tz [OPTION]\n\
 \n\
 valid options:\n\
   -c, --list-countries      shows the list of countries currently supported\n\

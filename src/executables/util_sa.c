@@ -4276,7 +4276,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_GEN_TZ,
 				       GEN_TZ_MSG_USAGE),
-	       basename (arg->argv0));
+	       basename (arg->argv0), basename (arg->argv0));
       goto exit;
     }
 
@@ -4291,7 +4291,17 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 						 0);
       if (db_name == NULL || check_database_name (db_name) != NO_ERROR)
 	{
-	  exit_status = EXIT_FAILURE;
+	  if (db_name == NULL)
+	    {
+	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_GEN_TZ,
+					       GEN_TZ_MSG_USAGE),
+		       basename (arg->argv0), basename (arg->argv0));
+	    }
+	  else
+	    {
+	      exit_status = EXIT_FAILURE;
+	    }
 	  goto exit;
 	}
     }
@@ -4370,7 +4380,8 @@ exit:
 print_gen_tz_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_GEN_TZ,
-				   GEN_TZ_MSG_USAGE), basename (arg->argv0));
+				   GEN_TZ_MSG_USAGE), basename (arg->argv0),
+	   basename (arg->argv0));
   return EXIT_FAILURE;
 #undef CHECKSUM_SIZE
 }
