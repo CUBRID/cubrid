@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <sys/timeb.h>
 #if !defined(WINDOWS)
 #include <sys/time.h>
 #endif
@@ -2051,15 +2052,33 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       else
 	{
-	  time_t now;
+	  DB_TIMESTAMP db_timestamp;
+	  DB_DATETIME sys_datetime;
+	  DB_TIME db_time;
+	  struct timeb tloc;
+	  struct tm *c_time_struct, tm_val;
 
-	  now = time (NULL);
-	  if (now < (time_t) 0)
+	  /* get the local time of the system */
+	  ftime (&tloc);
+	  c_time_struct = localtime_r (&tloc.time, &tm_val);
+
+	  if (c_time_struct != NULL)
 	    {
-	      goto error;
+	      db_datetime_encode (&sys_datetime, c_time_struct->tm_mon + 1,
+				  c_time_struct->tm_mday,
+				  c_time_struct->tm_year + 1900,
+				  c_time_struct->tm_hour,
+				  c_time_struct->tm_min,
+				  c_time_struct->tm_sec, tloc.millitm);
 	    }
 
-	  db_make_int (arithptr->value, now);
+	  db_time = sys_datetime.time / 1000;
+
+	  /* convert to timestamp (this takes into account leap second) */
+	  db_timestamp_encode_sys (&sys_datetime.date, &db_time,
+				   &db_timestamp, NULL);
+
+	  db_make_int (arithptr->value, db_timestamp);
 	}
       break;
 
