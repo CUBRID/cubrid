@@ -9418,7 +9418,9 @@ start_current_version:
 		      scan_code = S_DOESNT_EXIST;
 		      goto end;
 		    }
-		  if (MVCC_IS_REC_DELETED_BY_ME (thread_p, &mvcc_header)
+		  if (MVCC_IS_FLAG_SET
+		      (&mvcc_header, OR_MVCC_FLAG_VALID_DELID)
+		      && MVCC_IS_REC_DELETED_BY_ME (thread_p, &mvcc_header)
 		      && is_system_class == true)
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
