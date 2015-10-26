@@ -19412,6 +19412,22 @@ opt_using_charset
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| USING BINARY
+		{{
+
+			PT_NODE *node;
+
+			node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_INTEGER;
+			    node->info.value.data_value.i = INTL_CODESET_BINARY;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 set_type

@@ -1544,7 +1544,8 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
 
   codeset = DB_GET_INTEGER (dbval2);
   if (codeset != INTL_CODESET_UTF8 && codeset != INTL_CODESET_ISO88591
-      && codeset != INTL_CODESET_KSC5601_EUC)
+      && codeset != INTL_CODESET_KSC5601_EUC
+      && codeset != INTL_CODESET_BINARY)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       err_status = ER_OBJ_INVALID_ARGUMENTS;

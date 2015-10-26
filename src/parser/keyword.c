@@ -69,6 +69,7 @@ static KEYWORD_RECORD keywords[] = {
   {BEGIN_, "BEGIN", 0},
   {BETWEEN, "BETWEEN", 0},
   {BIGINT, "BIGINT", 0},
+  {BINARY, "BINARY", 0},
   {BIT, "BIT", 0},
   {BIT_AND, "BIT_AND", 1},
   {BIT_LENGTH, "BIT_LENGTH", 0},
