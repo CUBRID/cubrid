@@ -28638,12 +28638,14 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
       /* special case for REC_ASSIGN */
       RECDES temp_recdes;
       INT16 bytes_reserved;
+
       temp_recdes.type = recdes_p->type;
       temp_recdes.area_size = sizeof (bytes_reserved);
       temp_recdes.length = sizeof (bytes_reserved);
       bytes_reserved = (INT16) recdes_p->length;
       temp_recdes.data = (char *) &bytes_reserved;
-      log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr,
+
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr,
 				  &temp_recdes, NULL);
     }
   else
