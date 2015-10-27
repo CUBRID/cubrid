@@ -32781,7 +32781,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p,
       bool dummy_clear_key = false;
       error_code =
 	btree_read_record (thread_p, btid_int, leaf, leaf_record, NULL,
-			   &leaf_record_info, BTREE_LEAF_NODE,
+			   leaf_record_info, BTREE_LEAF_NODE,
 			   &dummy_clear_key, &offset_after_key,
 			   PEEK_KEY_VALUE, NULL);
       error_code =
