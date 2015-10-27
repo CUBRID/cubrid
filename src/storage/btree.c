@@ -2111,6 +2111,7 @@ static int btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid,
 static int btree_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID * btid,
 				       DB_VALUE * key, OID * class_oid,
 				       OID * old_version, OID * new_version,
+				       int op_type,
 				       MVCC_REC_HEADER *
 				       old_version_mvcc_header,
 				       MVCC_REC_HEADER *
@@ -16653,7 +16654,7 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
     {
       ret =
 	btree_mvcc_update_same_key (thread_p, btid, old_key, cls_oid, oid,
-				    new_oid, &p_mvcc_rec_header[0],
+				    new_oid, op_type, &p_mvcc_rec_header[0],
 				    &p_mvcc_rec_header[1], unique);
       if (ret != NO_ERROR)
 	{
@@ -29804,6 +29805,7 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
  * class_oid (in)		: Class OID.
  * old_version (in)		: Old version OID.
  * new_version (in)		: New version OID.
+ * op_type (in)			: Operation type.
  * old_version_mvcc_header (in) : Old version MVCC header.
  * new_version_mvcc_header (in) : New version MVCC header.
  * unique (out)			: Output whether index is unique.
@@ -29812,6 +29814,7 @@ static int
 btree_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID * btid,
 			    DB_VALUE * key, OID * class_oid,
 			    OID * old_version, OID * new_version,
+			    int op_type,
 			    MVCC_REC_HEADER * old_version_mvcc_header,
 			    MVCC_REC_HEADER * new_version_mvcc_header,
 			    int *unique)
@@ -29864,8 +29867,8 @@ btree_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID * btid,
 	  == old_mvcc_info.delete_mvccid);
 
   return btree_insert_internal (thread_p, btid, key, class_oid, old_version,
-				SINGLE_ROW_UPDATE, NULL, unique,
-				&old_mvcc_info, NULL, &new_version_info,
+				op_type, NULL, unique, &old_mvcc_info, NULL,
+				&new_version_info,
 				BTREE_OP_UPDATE_SAME_KEY_DIFF_OID);
 }
 
@@ -33461,7 +33464,7 @@ btree_key_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	{
 	  /* Mark old version as deleted. */
 	  btree_record_add_delid (thread_p, btid_int, &leaf_record,
-				  BTREE_LEAF_NODE, offset_after_key,
+				  BTREE_LEAF_NODE, offset_to_old_version,
 				  helper->obj_info.mvcc_info.delete_mvccid,
 				  NULL, &helper->rv_redo_data);
 	  /* Move first object to the end of record. */
