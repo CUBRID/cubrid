@@ -79,16 +79,16 @@
 
 /* Checks if string having charset 'cs_from' can be safely reinterpreted as
  * having charset 'cs_to'.
- * All strings can be reinterpreted as ISO-8859-1 charset.
+ * All strings can be reinterpreted as Binary charset.
  * Other combinations are not compatible, since 8 bit values are starter for
  * mutibyte characters.
  */
 #define INTL_CAN_STEAL_CS(cs_from,cs_to)  \
-    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_ISO88591)
+    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_RAW_BYTES)
 
 /* Checks if string having charset 'cs_from' can be coerced (transformed) as
  * having charset 'cs_to'.
- * All strings can be transformed to ISO-8859-1 charset by reinterpreting data
+ * All strings can be transformed to Binary charset by reinterpreting data
  * The other transformations require charset conversion.
  * In some cases, the destination charset may not contain an encoding of the
  * original character, and is replaced with '?' character (ASCII 3f)
@@ -98,7 +98,8 @@
 #define INTL_NEXT_CHAR(ptr, s, codeset, current_char_size) \
   do \
     { \
-      if ((codeset) == INTL_CODESET_ISO88591) \
+      if (((codeset) == INTL_CODESET_ISO88591) \
+       || ((codeset) == INTL_CODESET_RAW_BYTES)) \
 	{ \
 	  (*(current_char_size)) = 1; \
 	  (ptr) = (s) + 1; \
