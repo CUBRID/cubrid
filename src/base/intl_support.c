@@ -72,12 +72,12 @@
 #define ISO_8859_9_FIRST_CP 0x11e
 #define ISO_8859_9_LAST_CP 0x15f
 
-static CONV_CP_TO_BYTES iso8859_9_to_utf8_conv[256];
-static CONV_CP_TO_BYTES utf8_cp_to_iso_8859_9_conv[ISO_8859_9_LAST_CP -
+static CONV_CP_TO_BYTES iso8859_9_To_utf8_conv[256];
+static CONV_CP_TO_BYTES utf8_Cp_to_iso_8859_9_conv[ISO_8859_9_LAST_CP -
 						   ISO_8859_9_FIRST_CP + 1];
 
 /* conversion from Latin 1 ISO 8859-1 to UTF-8: */
-static CONV_CP_TO_BYTES iso8859_1_to_utf8_conv[256];
+static CONV_CP_TO_BYTES iso8859_1_To_utf8_conv[256];
 
 
 /* identifiers : support for multibyte chars in INTL_CODESET_ISO88591 codeset
@@ -120,7 +120,7 @@ static void intl_init_conv_iso8859_9_to_utf8 (void);
 static void intl_init_conv_iso8859_1_to_utf8 (void);
 
 
-TEXT_CONVERSION con_iso_8859_9_conv = {
+TEXT_CONVERSION con_Iso_8859_9_conv = {
   TEXT_CONV_ISO_88599_BUILTIN,	/* type */
   (char *) "28599",		/* Windows Code page */
   (char *) "iso88599",		/* Linux charset identifiers */
@@ -132,7 +132,7 @@ TEXT_CONVERSION con_iso_8859_9_conv = {
   intl_init_conv_iso8859_9_to_utf8,	/* init function */
 };
 
-TEXT_CONVERSION con_iso_8859_1_conv = {
+TEXT_CONVERSION con_Iso_8859_1_conv = {
   TEXT_CONV_ISO_88591_BUILTIN,	/* type */
   (char *) "28591",		/* Windows Code page */
   (char *) "iso88591",		/* Linux charset identifiers */
@@ -4667,35 +4667,35 @@ intl_init_conv_iso8859_1_to_utf8 (void)
   /* 00 - 7E : mapped to ASCII */
   for (i = 0; i <= 0x7e; i++)
     {
-      iso8859_1_to_utf8_conv[i].size = 1;
-      *((unsigned char *) (iso8859_1_to_utf8_conv[i].bytes)) =
+      iso8859_1_To_utf8_conv[i].size = 1;
+      *((unsigned char *) (iso8859_1_To_utf8_conv[i].bytes)) =
 	(unsigned char) i;
     }
 
   /* 7F - 9F : not mapped */
   for (i = 0x7f; i <= 0x9f; i++)
     {
-      iso8859_1_to_utf8_conv[i].size = 1;
-      *((unsigned char *) (iso8859_1_to_utf8_conv[i].bytes)) =
+      iso8859_1_To_utf8_conv[i].size = 1;
+      *((unsigned char *) (iso8859_1_To_utf8_conv[i].bytes)) =
 	(unsigned char) '?';
     }
 
   /* A0 - FF : mapped to Unicode codepoint with the same value */
   for (i = 0xa0; i <= 0xff; i++)
     {
-      iso8859_1_to_utf8_conv[i].size =
-	intl_cp_to_utf8 (i, iso8859_1_to_utf8_conv[i].bytes);
+      iso8859_1_To_utf8_conv[i].size =
+	intl_cp_to_utf8 (i, iso8859_1_To_utf8_conv[i].bytes);
     }
 
-  con_iso_8859_1_conv.text_first_cp = 0;
-  con_iso_8859_1_conv.text_last_cp = 0xff;
-  con_iso_8859_1_conv.text_to_utf8 = iso8859_1_to_utf8_conv;
+  con_Iso_8859_1_conv.text_first_cp = 0;
+  con_Iso_8859_1_conv.text_last_cp = 0xff;
+  con_Iso_8859_1_conv.text_to_utf8 = iso8859_1_To_utf8_conv;
 
   /* no specific mapping here : Unicode codepoints in range 00-FF map directly
    * onto ISO-8859-1 */
-  con_iso_8859_1_conv.utf8_first_cp = 0;
-  con_iso_8859_1_conv.utf8_last_cp = 0;
-  con_iso_8859_1_conv.utf8_to_text = NULL;
+  con_Iso_8859_1_conv.utf8_first_cp = 0;
+  con_Iso_8859_1_conv.utf8_last_cp = 0;
+  con_Iso_8859_1_conv.utf8_to_text = NULL;
 }
 
 /*
@@ -4720,30 +4720,30 @@ intl_init_conv_iso8859_9_to_utf8 (void)
   /* 00 - 7E : mapped to ASCII */
   for (i = 0; i <= 0x7e; i++)
     {
-      iso8859_9_to_utf8_conv[i].size = 1;
-      *((unsigned char *) (iso8859_9_to_utf8_conv[i].bytes)) =
+      iso8859_9_To_utf8_conv[i].size = 1;
+      *((unsigned char *) (iso8859_9_To_utf8_conv[i].bytes)) =
 	(unsigned char) i;
     }
 
   /* 7F - 9F : not mapped */
   for (i = 0x7f; i <= 0x9f; i++)
     {
-      iso8859_9_to_utf8_conv[i].size = 1;
-      *((unsigned char *) (iso8859_9_to_utf8_conv[i].bytes)) =
+      iso8859_9_To_utf8_conv[i].size = 1;
+      *((unsigned char *) (iso8859_9_To_utf8_conv[i].bytes)) =
 	(unsigned char) '?';
     }
 
   /* A0 - FF : mapped to Unicode codepoint with the same value */
   for (i = 0xa0; i <= 0xff; i++)
     {
-      iso8859_9_to_utf8_conv[i].size =
-	intl_cp_to_utf8 (i, iso8859_9_to_utf8_conv[i].bytes);
+      iso8859_9_To_utf8_conv[i].size =
+	intl_cp_to_utf8 (i, iso8859_9_To_utf8_conv[i].bytes);
     }
 
   for (i = ISO_8859_9_FIRST_CP; i <= ISO_8859_9_LAST_CP; i++)
     {
-      utf8_cp_to_iso_8859_9_conv[i - ISO_8859_9_FIRST_CP].size = 1;
-      *(utf8_cp_to_iso_8859_9_conv[i - ISO_8859_9_FIRST_CP].bytes) = '?';
+      utf8_Cp_to_iso_8859_9_conv[i - ISO_8859_9_FIRST_CP].size = 1;
+      *(utf8_Cp_to_iso_8859_9_conv[i - ISO_8859_9_FIRST_CP].bytes) = '?';
     }
 
   /* special mapping */
@@ -4752,21 +4752,21 @@ intl_init_conv_iso8859_9_to_utf8 (void)
       unsigned int val8bit = iso8859_9_special_mapping[i][0];
       unsigned int cp = iso8859_9_special_mapping[i][1];
 
-      iso8859_9_to_utf8_conv[val8bit].size =
-	intl_cp_to_utf8 (cp, iso8859_9_to_utf8_conv[val8bit].bytes);
+      iso8859_9_To_utf8_conv[val8bit].size =
+	intl_cp_to_utf8 (cp, iso8859_9_To_utf8_conv[val8bit].bytes);
 
-      *(utf8_cp_to_iso_8859_9_conv[cp - ISO_8859_9_FIRST_CP].bytes) = val8bit;
+      *(utf8_Cp_to_iso_8859_9_conv[cp - ISO_8859_9_FIRST_CP].bytes) = val8bit;
 
-      assert (utf8_cp_to_iso_8859_9_conv[cp - ISO_8859_9_FIRST_CP].size == 1);
+      assert (utf8_Cp_to_iso_8859_9_conv[cp - ISO_8859_9_FIRST_CP].size == 1);
     }
 
-  con_iso_8859_9_conv.text_first_cp = 0;
-  con_iso_8859_9_conv.text_last_cp = 0xff;
-  con_iso_8859_9_conv.text_to_utf8 = iso8859_9_to_utf8_conv;
+  con_Iso_8859_9_conv.text_first_cp = 0;
+  con_Iso_8859_9_conv.text_last_cp = 0xff;
+  con_Iso_8859_9_conv.text_to_utf8 = iso8859_9_To_utf8_conv;
 
-  con_iso_8859_9_conv.utf8_first_cp = ISO_8859_9_FIRST_CP;
-  con_iso_8859_9_conv.utf8_last_cp = ISO_8859_9_LAST_CP;
-  con_iso_8859_9_conv.utf8_to_text = utf8_cp_to_iso_8859_9_conv;
+  con_Iso_8859_9_conv.utf8_first_cp = ISO_8859_9_FIRST_CP;
+  con_Iso_8859_9_conv.utf8_last_cp = ISO_8859_9_LAST_CP;
+  con_Iso_8859_9_conv.utf8_to_text = utf8_Cp_to_iso_8859_9_conv;
 }
 
 /*
