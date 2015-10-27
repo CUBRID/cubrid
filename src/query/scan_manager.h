@@ -229,7 +229,6 @@ struct indx_scan_id
 					 * search
 					 */
   INDEX_SKIP_SCAN iss;		/* index skip scan structure */
-  bool duplicate_key_locked;	/* true if duplicate key have been scanned */
   DB_VALUE **key_info_values;	/* Used for index key info scan */
   REGU_VARIABLE_LIST key_info_regu_list;	/* regulator variable list */
   bool check_not_vacuumed;	/* if true then during index scan, the entries

@@ -74,8 +74,6 @@ extern void locator_end_force_scan_cache (THREAD_ENTRY * thread_p,
 					  HEAP_SCANCACHE * scan_cache);
 extern int locator_attribute_info_force (THREAD_ENTRY * thread_p,
 					 const HFID * hfid, OID * oid,
-					 BTID * btid,
-					 bool btid_duplicate_key_locked,
 					 HEAP_CACHE_ATTRINFO * attr_info,
 					 ATTR_ID * att_id, int n_att_id,
 					 LC_COPYAREA_OPERATION operation,
@@ -89,7 +87,8 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p,
 					 MVCC_REEV_DATA * mvcc_reev_data,
 					 UPDATE_INPLACE_STYLE
 					 force_update_inplace,
-					 RECDES * rec_descriptor);
+					 RECDES * rec_descriptor,
+					 bool need_locking);
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY *
 							     thread_p,
 							     HEAP_CACHE_ATTRINFO
@@ -130,24 +129,22 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p,
 						 const char *btname,
 						 bool repair);
 extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid,
-				 OID * oid, BTID * search_btid,
-				 bool duplicate_key_locked, int has_index,
+				 OID * oid, int has_index,
 				 int op_type, HEAP_SCANCACHE * scan_cache,
 				 int *force_count,
-				 MVCC_REEV_DATA * mvcc_reev_data);
+				 MVCC_REEV_DATA * mvcc_reev_data,
+				 bool need_locking);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p,
 					RECDES * recdes, OID * inst_oid,
-					OID * class_oid, BTID * search_btid,
-					bool duplicate_key_locked,
-					int is_insert, int op_type,
+					OID * class_oid, int is_insert,
+					int op_type,
 					HEAP_SCANCACHE * scan_cache,
 					bool datayn, bool replyn, HFID * hfid,
 					FUNC_PRED_UNPACK_INFO * func_preds);
 extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 				 RECDES * old_recdes, ATTR_ID * att_id,
 				 int n_att_id, OID * old_oid, OID * new_oid,
-				 OID * class_oid, BTID * search_btid,
-				 bool duplicate_key_locked, int op_type,
+				 OID * class_oid, int op_type,
 				 HEAP_SCANCACHE * scan_cache,
 				 REPL_INFO * repl_info);
 extern int locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid,

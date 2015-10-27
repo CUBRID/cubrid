@@ -4147,7 +4147,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p,
-				   NULL, false, true, SINGLE_ROW_INSERT,
+				   true, SINGLE_ROW_INSERT,
 				   scan_p, false, false, hfid_p, NULL) !=
       NO_ERROR)
     {
@@ -4258,9 +4258,8 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p,
-				   NULL, false, false, SINGLE_ROW_DELETE,
-				   scan_p, false, false, hfid_p, NULL) !=
-      NO_ERROR)
+				   false, SINGLE_ROW_DELETE, scan_p, false,
+				   false, hfid_p, NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4433,8 +4432,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
       /* give up setting updated attr info */
       if (locator_update_index (thread_p, &record, &old_record, NULL, 0,
-				oid_p, oid_p, class_oid_p, NULL, false,
-				SINGLE_ROW_UPDATE, scan_p, NULL) != NO_ERROR)
+				oid_p, oid_p, class_oid_p, SINGLE_ROW_UPDATE,
+				scan_p, NULL) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -5588,8 +5587,8 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
 
   /* give up setting updated attr info */
   if (locator_update_index (thread_p, &record, &old_record, NULL, 0,
-			    oid_p, new_oid, class_oid_p, NULL, false,
-			    SINGLE_ROW_UPDATE, scan_p, NULL) != NO_ERROR)
+			    oid_p, new_oid, class_oid_p, SINGLE_ROW_UPDATE,
+			    scan_p, NULL) != NO_ERROR)
     {
       error = er_errid ();
       goto error;

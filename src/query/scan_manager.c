@@ -348,7 +348,6 @@ scan_init_index_scan (INDX_SCAN_ID * isidp,
   memset ((void *) (&(isidp->indx_cov)), 0, sizeof (INDX_COV));
   isidp->indx_info = NULL;
   memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
-  isidp->duplicate_key_locked = false;
   scan_init_iss (isidp);
   isidp->scan_cache.mvcc_snapshot = mvcc_snapshot;
   isidp->need_count_only = false;
@@ -3564,8 +3563,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     scan_id->stats.multi_range_opt = isidp->multi_range_opt.use;
   }
 
-  isidp->duplicate_key_locked = false;
-
   return ret;
 
 exit_on_error:
@@ -3795,8 +3792,6 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* initialize multiple range search optimization structure */
   isidp->multi_range_opt.use = false;
-
-  isidp->duplicate_key_locked = false;
 
   isidp->key_info_values = key_info_values;
   isidp->key_info_regu_list = key_info_regu_list;

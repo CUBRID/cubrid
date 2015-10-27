@@ -278,16 +278,17 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
       (attr_info->read_classrepr != NULL && attr_info->last_classrepr != NULL
        && attr_info->read_classrepr->id != attr_info->last_classrepr->id))
     {
+      /* oid already locked at heap_mvcc_get_for_delete */
       error_code =
 	locator_attribute_info_force (thread_p, &upd_scancache->node.hfid,
-				      oid, NULL, false, attr_info, atts_id,
+				      oid, attr_info, atts_id,
 				      updated_n_attrs_id, LC_FLUSH_UPDATE,
 				      SINGLE_ROW_UPDATE, upd_scancache,
 				      &force_count, false,
 				      REPL_INFO_TYPE_RBR_NORMAL,
 				      DB_NOT_PARTITIONED_CLASS, NULL, NULL,
 				      NULL, UPDATE_INPLACE_NONE,
-				      &copy_recdes);
+				      &copy_recdes, false);
       if (error_code != NO_ERROR)
 	{
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)

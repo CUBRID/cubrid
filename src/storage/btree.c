@@ -6915,9 +6915,9 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid,
 	  return error;
 	}
 
-      error = locator_delete_force (thread_p, &hfid, &unique_oid, btid, false,
-				    true, SINGLE_ROW_DELETE, &scan_cache,
-				    &force_count, NULL);
+      error = locator_delete_force (thread_p, &hfid, &unique_oid, true,
+				    SINGLE_ROW_DELETE, &scan_cache,
+				    &force_count, NULL, false);
       if (error == NO_ERROR)
 	{
 	  /* monitor */

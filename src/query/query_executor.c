@@ -472,9 +472,6 @@ struct upddel_class_info_internal
   OID *oid;			/* instance oid of current class */
   OID *class_oid;		/* oid of current class */
   HFID *class_hfid;		/* hfid of current class */
-  BTID *btid;			/* btid of the current class */
-  bool *btid_dup_key_locked;	/* true, if corresponding btid contain
-				   duplicate keys locked when searching  */
   HEAP_SCANCACHE *scan_cache;
 
   OID prev_class_oid;		/* previous class oid */
@@ -485,10 +482,6 @@ struct upddel_class_info_internal
   int no_lob_attrs;		/* number of lob attributes */
   int *lob_attr_ids;		/* lob attribute ids */
   DEL_LOB_INFO *crt_del_lob_info;	/* DEL_LOB_INFO for current class_oid */
-  BTID *btids;			/* btids used when searching subclasses
-				   of the current class */
-  bool **btids_dup_key_locked;	/* true, if corresponding btid contain
-				   duplicate keys locked when searching  */
   BTREE_UNIQUE_STATS_UPDATE_INFO unique_stats;	/* unique indexes statistics */
   int extra_assign_reev_cnt;	/* size of mvcc_extra_assign_reev in elements */
   UPDDEL_MVCC_COND_REEVAL **mvcc_extra_assign_reev;	/* classes in the select list
@@ -959,7 +952,7 @@ static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p,
 static int qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid,
 				    OID * class_oid, HFID * class_hfid,
 				    ATTR_ID attrid, int n_increment,
-				    int pruning_type);
+				    int pruning_type, bool need_locking);
 static int qexec_execute_selupd_list (THREAD_ENTRY * thread_p,
 				      XASL_NODE * xasl,
 				      XASL_STATE * xasl_state);
@@ -9817,7 +9810,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   bool scan_open = false;
   bool should_delete = false;
   int current_op_type = SINGLE_ROW_UPDATE;
-  bool btid_dup_key_locked = false;
   PRUNING_CONTEXT *pcontext = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
   RECDES recdes;
@@ -9825,6 +9817,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   MVCC_REEV_DATA mvcc_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
+  bool need_locking;
 
   /* get the snapshot, before acquiring locks, since the transaction may
    * be blocked and we need the snapshot when update starts, not later
@@ -9873,6 +9866,14 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  /* already locked in select phase */
+  need_locking = false;
+  if (class_oid_cnt > 1)
+    {
+      /* multi update - need last version - can be optimized to avoid locks */
+      need_locking = true;
     }
 
   /* This guarantees that the result list file will have a type list.
@@ -10208,24 +10209,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		    }
 
 		  force_count = 0;
-		  if (internal_class->btid_dup_key_locked != NULL)
-		    {
-		      btid_dup_key_locked =
-			*(internal_class->btid_dup_key_locked);
-		    }
-		  else
-		    {
-		      btid_dup_key_locked = false;
-		    }
 		  error = locator_attribute_info_force
 		    (thread_p, internal_class->class_hfid,
-		     internal_class->oid, internal_class->btid,
-		     btid_dup_key_locked, NULL, NULL, 0,
-		     LC_FLUSH_DELETE, current_op_type,
-		     internal_class->scan_cache, &force_count, false,
-		     REPL_INFO_TYPE_RBR_NORMAL,
-		     DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-		     &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL);
+		     internal_class->oid, NULL, NULL, 0, LC_FLUSH_DELETE,
+		     current_op_type, internal_class->scan_cache,
+		     &force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
+		     DB_NOT_PARTITIONED_CLASS, NULL, NULL, &mvcc_reev_data,
+		     UPDATE_INPLACE_NONE, NULL, need_locking);
 
 		  if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		    {
@@ -10394,16 +10384,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  pcontext = NULL;
 		}
 
-	      if (internal_class->btid_dup_key_locked != NULL)
-		{
-		  btid_dup_key_locked =
-		    *(internal_class->btid_dup_key_locked);
-		}
-	      else
-		{
-		  btid_dup_key_locked = false;
-		}
-
 	      mvcc_upddel_reev_data.curr_extra_assign_reev =
 		internal_class->mvcc_extra_assign_reev;
 	      mvcc_upddel_reev_data.curr_extra_assign_cnt =
@@ -10415,8 +10395,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      error =
 		locator_attribute_info_force (thread_p,
 					      internal_class->class_hfid, oid,
-					      internal_class->btid,
-					      btid_dup_key_locked,
 					      &internal_class->attr_info,
 					      &upd_cls->
 					      att_id[internal_class->
@@ -10429,7 +10407,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					      internal_class->needs_pruning,
 					      pcontext, NULL,
 					      &mvcc_reev_data,
-					      UPDATE_INPLACE_NONE, NULL);
+					      UPDATE_INPLACE_NONE, NULL,
+					      need_locking);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -10862,6 +10841,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   MVCC_REEV_DATA mvcc_reev_data;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
+  bool need_locking;
 
   /* get the snapshot, before acquiring locks, since the transaction may
    * be blocked and we need the snapshot when delete starts, not later
@@ -10909,6 +10889,14 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  /* already locked in select phase */
+  need_locking = false;
+  if (class_oid_cnt > 1)
+    {
+      /* multi update - need last version - can be optimized to avoid locks */
+      need_locking = true;
     }
 
   /* This guarantees that the result list file will have a type list.
@@ -11178,28 +11166,18 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 
 	      force_count = 0;
-	      if (internal_class->btid_dup_key_locked != NULL)
-		{
-		  btid_dup_key_locked =
-		    *(internal_class->btid_dup_key_locked);
-		}
-	      else
-		{
-		  btid_dup_key_locked = false;
-		}
-
 	      error =
 		locator_attribute_info_force (thread_p,
 					      internal_class->class_hfid, oid,
-					      internal_class->btid,
-					      btid_dup_key_locked, NULL, NULL,
-					      0, LC_FLUSH_DELETE, op_type,
+					      NULL, NULL, 0,
+					      LC_FLUSH_DELETE, op_type,
 					      internal_class->scan_cache,
 					      &force_count, false,
 					      REPL_INFO_TYPE_RBR_NORMAL,
 					      DB_NOT_PARTITIONED_CLASS, NULL,
 					      NULL, &mvcc_reev_data,
-					      UPDATE_INPLACE_NONE, NULL);
+					      UPDATE_INPLACE_NONE, NULL,
+					      need_locking);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -11674,15 +11652,13 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	    }
 
 	  force_count = 0;
+	  /* The object was locked during find unique */
 	  error_code =
-	    locator_attribute_info_force (thread_p, &pruned_hfid, &unique_oid,
-					  &btid, false, NULL, NULL, 0,
-					  LC_FLUSH_DELETE, local_op_type,
-					  local_scan_cache, &force_count,
-					  false, REPL_INFO_TYPE_RBR_NORMAL,
-					  DB_NOT_PARTITIONED_CLASS, NULL,
-					  NULL, NULL, UPDATE_INPLACE_NONE,
-					  NULL);
+	    locator_attribute_info_force
+	    (thread_p, &pruned_hfid, &unique_oid, NULL, NULL, 0,
+	     LC_FLUSH_DELETE, local_op_type, local_scan_cache, &force_count,
+	     false, REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL,
+	     NULL, NULL, UPDATE_INPLACE_NONE, NULL, false);
 
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 	    {
@@ -12121,13 +12097,15 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
       goto exit_on_error;
     }
 
-  error = locator_attribute_info_force (thread_p, hfid, &unique_oid, NULL,
-					false, attr_info, odku->attr_ids,
+  /* unique_oid already locked in qexec_oid_of_duplicate_key_update */
+  error = locator_attribute_info_force (thread_p, hfid, &unique_oid,
+					attr_info, odku->attr_ids,
 					odku->no_assigns, LC_FLUSH_UPDATE,
 					local_op_type, local_scan_cache,
 					force_count, false, repl_info,
 					pruning_type, pcontext, NULL, NULL,
-					UPDATE_INPLACE_NONE, &rec_descriptor);
+					UPDATE_INPLACE_NONE, &rec_descriptor,
+					false);
   if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
     {
       error = NO_ERROR;
@@ -12644,9 +12622,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 
 	      force_count = 0;
+	      /* when insert in heap, don't care about instance locking */
 	      if (locator_attribute_info_force (thread_p, &insert->class_hfid,
-						&oid, NULL, false, &attr_info,
-						NULL, 0, operation,
+						&oid, &attr_info, NULL,
+						0, operation,
 						scan_cache_op_type,
 						&scan_cache, &force_count,
 						false,
@@ -12654,7 +12633,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						insert->pruning_type,
 						pcontext, func_indx_preds,
 						NULL, UPDATE_INPLACE_NONE,
-						NULL) != NO_ERROR)
+						NULL, false) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -12846,17 +12825,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	  if (force_count == 0)
 	    {
-	      if (locator_attribute_info_force (thread_p, &insert->class_hfid,
-						&oid, NULL, false, &attr_info,
-						NULL, 0, operation,
-						scan_cache_op_type,
-						&scan_cache, &force_count,
-						false,
-						REPL_INFO_TYPE_RBR_NORMAL,
-						insert->pruning_type,
-						pcontext, NULL, NULL,
-						UPDATE_INPLACE_NONE, NULL) !=
-		  NO_ERROR)
+	      if (locator_attribute_info_force
+		  (thread_p, &insert->class_hfid, &oid, &attr_info,
+		   NULL, 0, operation, scan_cache_op_type, &scan_cache,
+		   &force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
+		   insert->pruning_type, pcontext, NULL, NULL,
+		   UPDATE_INPLACE_NONE, NULL, false) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -13541,11 +13515,12 @@ exit_on_error:
  *   attrid(in) :
  *   n_increment(in)    :
  *   pruning_type(in)	:
+ *   need_locking(in)	: true, if need locking
  */
 static int
 qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 			 HFID * class_hfid, ATTR_ID attrid, int n_increment,
-			 int pruning_type)
+			 int pruning_type, bool need_locking)
 {
   HEAP_CACHE_ATTRINFO attr_info;
   int attr_info_inited = 0;
@@ -13599,13 +13574,15 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
       value->do_increment = n_increment;
 
       force_count = 0;
-      error = locator_attribute_info_force (thread_p, class_hfid, oid, NULL,
-					    false, &attr_info, &attrid, 1,
+      /* oid was already locked in select phase */
+      error = locator_attribute_info_force (thread_p, class_hfid, oid,
+					    &attr_info, &attrid, 1,
 					    area_op, op_type, &scan_cache,
 					    &force_count, false,
 					    REPL_INFO_TYPE_RBR_NORMAL,
 					    pruning_type, NULL, NULL,
-					    NULL, UPDATE_INPLACE_NONE, NULL);
+					    NULL, UPDATE_INPLACE_NONE, NULL,
+					    need_locking);
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 	{
 	  assert (force_count == 0);
@@ -13686,6 +13663,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
   bool clear_list_id = false;
   MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  bool need_locking;
 
   assert (xasl->list_id->tuple_cnt == 1);
   OID_SET_NULL (&last_cached_class_oid);
@@ -13743,6 +13721,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* do increment operation */
   for (selupd = list; selupd; selupd = selupd->next)
     {
+      need_locking = false;
       for (outptr = selupd->select_list; outptr; outptr = outptr->next)
 	{
 	  if (outptr->list == NULL)
@@ -13968,16 +13947,19 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  else
 	    {
 	      /* already locked during scan phase */
-	      assert (lock_get_object_lock (oid, class_oid, tran_index)
-		      == X_LOCK);
+	      assert ((lock_get_object_lock (oid, class_oid, tran_index)
+		       == X_LOCK)
+		      || lock_get_object_lock (class_oid, oid_Root_class_oid,
+					       tran_index) >= X_LOCK);
 	    }
 
 	  if (qexec_execute_increment (thread_p, oid, class_oid, class_hfid,
-				       attrid, n_increment, needs_pruning)
-	      != NO_ERROR)
+				       attrid, n_increment, needs_pruning,
+				       need_locking) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
+	  need_locking = true;
 	}
     }
 
@@ -27534,14 +27516,6 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 			      return error;
 			    }
 
-			  if (specp->access == INDEX)
-			    {
-			      BTID_COPY (internal_classes[i].btids + j,
-					 &(specp->indexptr->indx_id.i.btid));
-			      internal_classes[i].btids_dup_key_locked[j] =
-				&(specp->s_id.s.isid.duplicate_key_locked);
-			    }
-
 			  found = true;
 			  break;
 			}
@@ -28832,7 +28806,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
   UPDDEL_CLASS_INFO_INTERNAL *class_ = NULL, *classes = NULL;
   UPDDEL_CLASS_INFO *query_class = NULL;
   size_t size;
-  int i = 0, error = NO_ERROR, cl_index;
+  int i = 0, error = NO_ERROR;
 
   if (internal_classes == NULL)
     {
@@ -28864,11 +28838,6 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
       class_->is_attr_info_inited = 0;
 
       class_->unique_stats.unique_stat_info = NULL;
-      class_->btids = NULL;
-      class_->btids_dup_key_locked = NULL;
-
-      class_->btid = NULL;
-      class_->btid_dup_key_locked = NULL;
 
       class_->no_lob_attrs = 0;
       class_->lob_attr_ids = NULL;
@@ -28906,30 +28875,6 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 	    {
 	      goto exit_on_error;
 	    }
-	}
-
-      class_->btids =
-	(BTID *) db_private_alloc (thread_p,
-				   query_class->no_subclasses *
-				   sizeof (BTID));
-      if (class_->btids == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      class_->btids_dup_key_locked =
-	(bool **) db_private_alloc (thread_p,
-				    query_class->no_subclasses *
-				    sizeof (bool *));
-      if (class_->btids_dup_key_locked == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      for (cl_index = 0; cl_index < query_class->no_subclasses; cl_index++)
-	{
-	  BTID_SET_NULL (&class_->btids[cl_index]);
-	  class_->btids_dup_key_locked[cl_index] = NULL;
 	}
     }
 
@@ -29060,14 +29005,6 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p,
   for (i = 0; i < count; i++)
     {
       cls_int = &classes[i];
-      if (cls_int->btids != NULL)
-	{
-	  db_private_free_and_init (thread_p, cls_int->btids);
-	}
-      if (cls_int->btids_dup_key_locked)
-	{
-	  db_private_free_and_init (thread_p, cls_int->btids_dup_key_locked);
-	}
       if (cls_int->unique_stats.scan_cache_inited)
 	{
 	  locator_end_force_scan_cache (thread_p,
@@ -29212,9 +29149,6 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p,
   /* Find class HFID */
   if (internal_class->needs_pruning)
     {
-      internal_class->btid = NULL;
-      internal_class->btid_dup_key_locked = NULL;
-
       /* test root class */
       if (OID_EQ (&query_class->class_oid[0], current_oid))
 	{
@@ -29255,9 +29189,6 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p,
 	    {
 	      internal_class->class_oid = &query_class->class_oid[i];
 	      internal_class->class_hfid = &query_class->class_hfid[i];
-	      internal_class->btid = internal_class->btids + i;
-	      internal_class->btid_dup_key_locked =
-		internal_class->btids_dup_key_locked[i];
 	      internal_class->subclass_idx = i;
 
 	      if (query_class->no_lob_attrs && query_class->lob_attr_ids)
