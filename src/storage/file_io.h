@@ -401,7 +401,9 @@ struct token_bucket
 {
   pthread_mutex_t token_mutex;
   int tokens;			/* shared tokens between all lines */
-  int token_consumed;
+  int token_consumed;		/* TODO: Remove me? This seems to server no
+				 * true purpose.
+				 */
 
   pthread_cond_t waiter_cond;
 };

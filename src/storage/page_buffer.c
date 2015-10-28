@@ -652,6 +652,8 @@ struct pgbuf_buffer_pool
   int ain_victim_req_cnt;
 
   int fix_req_cnt;
+
+  INT64 dirties_cnt;		/* Number of dirty buffers. */
 };
 
 /* victim candidate list */
@@ -731,6 +733,27 @@ static PGBUF_PS_INFO ps_info;
 
 #define AOUT_HASH_DIVIDE_RATIO 1000
 #define AOUT_HASH_IDX(vpid, list) ((vpid)->pageid % list->num_hashes)
+
+/* Set buffer dirty flag & update dirties count. */
+#define PGBUF_SET_DIRTY(bufptr) \
+  do \
+    { \
+      if (!(bufptr)->dirty) ATOMIC_INC_64 (&pgbuf_Pool.dirties_cnt, 1); \
+      bufptr->dirty = true; \
+      assert (pgbuf_Pool.dirties_cnt > 0 \
+	      && pgbuf_Pool.dirties_cnt <= pgbuf_Pool.num_buffers); \
+    } \
+  while (false)
+/* Reset buffer dirty flag & update dirties count. */
+#define PGBUF_RESET_DIRTY(bufptr) \
+  do \
+    { \
+      if ((bufptr)->dirty) ATOMIC_INC_64 (&pgbuf_Pool.dirties_cnt, -1); \
+      bufptr->dirty = false; \
+      assert (pgbuf_Pool.dirties_cnt >= 0 \
+	      && pgbuf_Pool.dirties_cnt < pgbuf_Pool.num_buffers); \
+    } \
+  while (false)
 
 static INLINE unsigned int
 pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
@@ -1169,6 +1192,8 @@ pgbuf_initialize (void)
       goto error;
     }
 #endif /* PAGE_STATISTICS */
+
+  pgbuf_Pool.dirties_cnt = 0;
 
   return NO_ERROR;
 
@@ -2769,7 +2794,7 @@ pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid,
       /* Even though pgbuf_invalidate_bcb() will reset dirty and
        * oldest_unflush_lsa field, the function may fail before reset these.
        */
-      bufptr->dirty = false;
+      PGBUF_RESET_DIRTY (bufptr);
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
 #if 0				/* BTS CUBRIDSUS-3627 */
@@ -7967,7 +7992,7 @@ pgbuf_invalidate_bcb (PGBUF_BCB * bufptr)
       return NO_ERROR;
     }
 
-  bufptr->dirty = false;
+  PGBUF_RESET_DIRTY (bufptr);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   /* bufptr->BCB_mutex is still held by the caller. */
@@ -9316,6 +9341,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage),
 	  IO_PAGESIZE);
+  PGBUF_RESET_DIRTY (bufptr);
   bufptr->dirty = false;
   LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
@@ -9346,7 +9372,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 		    iopage, bufptr->vpid.pageid, IO_PAGESIZE) == NULL)
     {
       MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
-      bufptr->dirty = true;
+      PGBUF_SET_DIRTY (bufptr);
       LSA_COPY (&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
 
       bufptr->avoid_victim = false;
@@ -10561,10 +10587,7 @@ pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   PGBUF_HOLDER *holder;
   assert (bufptr != NULL);
 
-  if (bufptr->dirty == false)
-    {
-      bufptr->dirty = true;
-    }
+  PGBUF_SET_DIRTY (bufptr);
 
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
   if (holder != NULL && holder->perf_stat.dirtied_by_holder == 0)
@@ -12821,4 +12844,50 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt,
 	  *victim_cand_cnt = *victim_cand_cnt + 1;
 	}
     }
+}
+
+/*
+ * pgbuf_flush_control_from_dirty_ratio () - Try to control adaptive flush
+ *					     aggressiveness based on the
+ *					     page buffer "dirtiness".
+ *
+ * return : Suggested number to increase flush rate.
+ */
+int
+pgbuf_flush_control_from_dirty_ratio (void)
+{
+  static int prev_dirties_cnt = 0;
+  int crt_dirties_cnt = (int) pgbuf_Pool.dirties_cnt;
+  int desired_dirty_cnt = pgbuf_Pool.num_buffers / 2;
+  int adapt_flush_rate = 0;
+
+  /* If the dirty ratio is now above the desired level, try to suggest a more
+   * aggressive flush to bring it back.
+   */
+  if (crt_dirties_cnt > desired_dirty_cnt)
+    {
+      /* Try to get dirties count back to dirty desired ratio. */
+      /* Accelerate the rate when dirties count is higher. */
+      int dirties_above_desired_cnt = crt_dirties_cnt - desired_dirty_cnt;
+      int total_above_desired_cnt =
+	pgbuf_Pool.num_buffers - desired_dirty_cnt;
+
+      adapt_flush_rate =
+	dirties_above_desired_cnt * dirties_above_desired_cnt
+	/ total_above_desired_cnt;
+    }
+
+  /* Now consider dirty growth rate. Even if page buffer dirty ratio is not
+   * yet reached, try to avoid a sharp growth. Flush may be not be aggressive
+   * enough and may require time to get there. In the meantime, the dirty
+   * ratio could go well beyond the desired ratio.
+   */
+  if (crt_dirties_cnt > prev_dirties_cnt)
+    {
+      int diff = crt_dirties_cnt - prev_dirties_cnt;
+      /* Set a weight on the difference based on the dirty rate of buffer. */
+      adapt_flush_rate += diff * crt_dirties_cnt / pgbuf_Pool.num_buffers;
+    }
+
+  return adapt_flush_rate;
 }

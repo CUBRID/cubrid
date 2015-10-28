@@ -230,8 +230,23 @@
 
 #define FILEIO_END_OF_FILE                (1)
 
-#define FILEIO_MIN_FLUSH_PAGES_PER_SEC    10	/* minimum unit: #pages */
-#define FILEIO_PAGE_FLUSH_RATE            0.01	/* minimum unit: 1% */
+/* Minimum flush rate 40MB/s */
+#define FILEIO_MIN_FLUSH_PAGES_PER_SEC    (41943040 / IO_PAGESIZE)
+/* TODO: Growth/drop flush rate values can be tweaked. They have been set to
+ * meet the needs of stressful workload. They have been set to drop slowly and
+ * grow back quickly.
+ * Please consider that token consumption depend on two factors:
+ * 1. System IO capabilities.
+ * 2. Flush thinking time.
+ * If flush thinking time prevents it from consuming tokens, we might reduce
+ * the numbers of token for next iterations unwillingly. A fast drop rate and
+ * slow growth rate can make it impossible to recover from a "missed"
+ * iteration (e.g. flush has been blocked on AIN list mutex).
+ */
+/* Rate of growing flush rate when tokens are consumed. */
+#define FILEIO_PAGE_FLUSH_GROW_RATE            0.5
+/* Rate of reducing flush rate when tokens are not consumed. */
+#define FILEIO_PAGE_FLUSH_DROP_RATE	       0.1
 
 #if defined(WINDOWS)
 #define fileio_lock_file_write(fd, offset, whence, len) \
@@ -413,8 +428,6 @@ static int fileio_Flushed_page_count = 0;
 static TOKEN_BUCKET fc_Token_bucket_s;
 static TOKEN_BUCKET *fc_Token_bucket = NULL;
 static FLUSH_STATS fc_Stats;
-
-static int max_flush_pages_per_sec = 0;
 
 #if defined(CUBRID_DEBUG)
 /* Set this to get various levels of io information regarding
@@ -743,9 +756,6 @@ fileio_flush_control_initialize (void)
   fc_Stats.num_log_pages = 0;
   fc_Stats.num_pages = 0;
 
-  max_flush_pages_per_sec =
-    prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND);
-
   fc_Token_bucket = tb;
   return rv;
 #endif
@@ -901,20 +911,21 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec,
 
   if (prm_get_bool_value (PRM_ID_ADAPTIVE_FLUSH_CONTROL) == true)
     {
-      max_flush_pages_per_sec += fileio_flush_control_get_desired_rate (tb);
-      max_flush_pages_per_sec = MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC,
-				     max_flush_pages_per_sec);
+      /* Get desired rate from evaluating changes in last iteration. */
+      gen_tokens = fileio_flush_control_get_desired_rate (tb);
+      /* Check new rate is not below minimum required. */
+      gen_tokens =
+	MAX (gen_tokens,
+	     (double) FILEIO_MIN_FLUSH_PAGES_PER_SEC * (double) diff_usec
+	     / 1000000.0);
     }
-  else if (max_flush_pages_per_sec !=
-	   prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND))
+  else
     {
-      max_flush_pages_per_sec =
-	prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND);
+      /* Always set maximum rate. */
+      gen_tokens =
+	(double) prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND)
+	* (double) diff_usec / 1000000.0;
     }
-
-  gen_tokens = (int) ((double) max_flush_pages_per_sec / 1000000.0
-		      * (double) diff_usec);
-  gen_tokens = MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC, gen_tokens);
 
   *token_gen = gen_tokens;
 
@@ -940,25 +951,34 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec,
 static int
 fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb)
 {
+  int dirty_rate = pgbuf_flush_control_from_dirty_ratio ();
+  int adjust_rate = fc_Stats.num_tokens;	/* Start with previous rate. */
+
   if (tb->tokens > 0)
     {
-      return -(tb->tokens);
-    }
-  else
-    {
-      if (fc_Stats.num_log_pages == 0)
+      if (dirty_rate > 0)
 	{
-	  return (int) ((fc_Stats.num_tokens
-			 + MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC,
-				(fc_Stats.num_tokens *
-				 FILEIO_PAGE_FLUSH_RATE))));
+	  /* This is difficult situation. We did not consume all tokens but
+	   * dirty rate goes up. Let's keep the number of tokens until dirty
+	   * rate is no longer an issue.
+	   */
 	}
       else
 	{
-	  return ((fc_Stats.num_pages + fc_Stats.num_log_pages)
-		  - fc_Stats.num_tokens);
+	  /* Do not drop the tokens too fast. If for any reason flush has
+	   * been completely stopped, tokens drop to minimum directly.
+	   */
+	  adjust_rate -= (int) (tb->tokens * FILEIO_PAGE_FLUSH_DROP_RATE);
 	}
     }
+  else
+    {
+      /* We need to increase the rate. */
+      adjust_rate +=
+	MAX (dirty_rate,
+	     (int) (fc_Stats.num_tokens * FILEIO_PAGE_FLUSH_GROW_RATE));
+    }
+  return adjust_rate;
 }
 
 /*
