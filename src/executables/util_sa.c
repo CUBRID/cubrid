@@ -4404,6 +4404,7 @@ dump_tz (UTIL_FUNCTION_ARG * arg)
   bool is_dump_zone_list = false;
   bool is_dump_zone = false;
   bool is_dump_leap_sec = false;
+  bool is_dump_summary = false;
   const TZ_DATA *tzd;
 
   assert (arg != NULL);
@@ -4416,10 +4417,12 @@ dump_tz (UTIL_FUNCTION_ARG * arg)
     utility_get_option_bool_value (arg_map, DUMP_TZ_ZONES_S);
   is_dump_leap_sec =
     utility_get_option_bool_value (arg_map, DUMP_TZ_LEAP_SEC_S);
+  is_dump_summary =
+    utility_get_option_bool_value (arg_map, DUMP_TZ_DUMP_SUM_S);
   zone = utility_get_option_string_value (arg_map, DUMP_TZ_ZONE_ID_S, 0);
 
   if ((zone == NULL) && (!is_dump_countries) && (!is_dump_zone_list)
-      && (!is_dump_leap_sec))
+      && (!is_dump_leap_sec) && (!is_dump_summary))
     {
       goto print_dump_tz_usage;
     }

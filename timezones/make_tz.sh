@@ -10,13 +10,10 @@ show_usage ()
   echo "    -t arg  Set target machine (32(i386) or 64(x86_64)); [default: 64]"
   echo "            Values for arg: i386, x86, 32, 32bit, x86_64, x64, 64, 64bit"
   echo "    -m arg  Set build mode(release or debug); [default: release]"
-  echo "    -g arg  Set generation mode(new, update or extend); [default: new]"
+  echo "    -g arg  Set generation mode(new or extend); [default: new]"
   echo "            See detailed description below for each flag."
   echo "        new    = build timezone library from scratch; also generates a"
   echo "                 C file containing all timezone names (for developers)"
-  echo "        update = for timezones encoded into CUBRID, update GMT offset"
-  echo "                 information and daylight saving rules from the files"
-  echo "                 in the input folder (no timezone C file is generated)"
   echo "        extend = build timezone library using the data in the input"
   echo "                 folder; timezone IDs encoded into CUBRID are preserved;"
   echo "                 new timezones are added; GMT offset and daylight saving"
@@ -33,7 +30,6 @@ show_usage ()
   echo " EXAMPLES"
   echo "   $APP_NAME                  # Build and pack timezone data (64bit/release/new)"
   echo "   $APP_NAME -m debug         # Create debug mode library with timezone data"
-  echo "   $APP_NAME -m debug -g update   # Update existing timezone library (in debug mode)"
   echo "   $APP_NAME -t 32 -m release  # Build and pack timezone data (32bit/release/new)"
   echo ""
 }
@@ -94,7 +90,6 @@ esac
 
 case $TZ_GEN_MODE in
 	new) TZ_GEN_MODE=new;;
-	update) TZ_GEN_MODE=update;;
 	extend) TZ_GEN_MODE=extend;;
 	*)
 		show_usage

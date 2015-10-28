@@ -1113,12 +1113,13 @@ $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 The supplied zone ID is out of range. Use -z to see all\n\
  timezones and their IDs.\n
 60 \
-dump_tz: Display timezone related information. By default, it only shows\n\
- a short summary describing existing information.\n\
+dump_tz: Display timezone related information.\n\
 usage: %s dump_tz [OPTION]\n\
 \n\
 valid options:\n\
   -c, --list-countries      shows the list of countries currently supported\n\
+  -l, --leap-seconds	    shows the list of the leap seconds\n\
+  -s, --summary		    shows a summary of dump timezone data\n\
   -z, --list-zones          shows the list of timezones currently supported\n\
   -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
                             to a timezone having the supplied ZONE_ID or for\n\

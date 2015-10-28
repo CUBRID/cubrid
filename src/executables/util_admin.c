@@ -772,6 +772,7 @@ static UTIL_ARG_MAP ua_DumpTz_Map[] = {
   {DUMP_TZ_ZONES_S, {ARG_BOOLEAN}, {0}},
   {DUMP_TZ_ZONE_ID_S, {ARG_STRING}, {0}},
   {DUMP_TZ_LEAP_SEC_S, {ARG_BOOLEAN}, {0}},
+  {DUMP_TZ_DUMP_SUM_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
@@ -780,6 +781,7 @@ static GETOPT_LONG ua_DumpTz_Option[] = {
   {DUMP_TZ_ZONES_L, 0, 0, DUMP_TZ_ZONES_S},
   {DUMP_TZ_ZONE_ID_L, 1, 0, DUMP_TZ_ZONE_ID_S},
   {DUMP_TZ_LEAP_SEC_L, 0, 0, DUMP_TZ_LEAP_SEC_S},
+  {DUMP_TZ_DUMP_SUM_L, 0, 0, DUMP_TZ_DUMP_SUM_S},
   {0, 0, 0, 0}
 };
 

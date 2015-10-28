@@ -1502,8 +1502,10 @@ typedef struct _ha_config
 #define DUMP_TZ_ZONES_L				"list-zones"
 #define DUMP_TZ_ZONE_ID_S			'd'
 #define DUMP_TZ_ZONE_ID_L			"zone-id"
-#define DUMP_TZ_LEAP_SEC_S			's'
+#define DUMP_TZ_LEAP_SEC_S			'l'
 #define DUMP_TZ_LEAP_SEC_L			"leap-seconds"
+#define DUMP_TZ_DUMP_SUM_S			's'
+#define DUMP_TZ_DUMP_SUM_L			"summary"
 
 #define VERSION_S                               20000
 #define VERSION_L                               "version"

@@ -32,12 +32,6 @@ set TZ_MODE=new
 GOTO :DO_SHIFT
 ) else (GOTO :ERROR_BUILD_MODE)
 )
-if "%1" == "/update" (
-if "%TZ_MODE%" == "." (
-set TZ_MODE=update
-GOTO :DO_SHIFT
-) else (GOTO :ERROR_BUILD_MODE)
-)
 if "%1" == "/extend" (
 if "%TZ_MODE%" == "." (
 set TZ_MODE=extend
@@ -164,7 +158,7 @@ GOTO :SHOW_USAGE
 
 :ERROR_BUILD_MODE
 @echo. Build mode already set to %BUILD_MODE%
-@echo. Only one of the options "/new", "/extend" or "/update" can be used.
+@echo. Only one of the options "/new" or "/extend" can be used.
 GOTO :SHOW_USAGE
 
 :ERROR
@@ -185,18 +179,15 @@ goto :GENERIC_ERROR
 
 :SHOW_USAGE
 @echo.
-@echo.USAGE: %APP_NAME% [/release^|/debug] [/new^|/update^|/extend] [database_name] (only for extend mode)
+@echo.USAGE: %APP_NAME% [/release^|/debug] [/new^|/extend] [database_name] (only for extend mode)
 @echo.Build timezone shared 32bit DLL for CUBRID
 @echo. OPTIONS
 @echo.  /release or /debug    Build with release or debug mode (default: release)
-@echo.  /new or /update or /extend     Type of timezone library to generate.
+@echo.  /new or /extend       Type of timezone library to generate.
 @echo.                        See detailed description below for each flag.
 @echo.                        By default, /new is used, unless specified otherwise.
 @echo.         /new    = build timezone library from scratch; also generates a
 @echo.                   C file containing all timezone names (for developers)
-@echo.         /update = for timezones encoded into CUBRID, update GMT offset
-@echo.                   information and daylight saving rules from the files
-@echo.                   in the input folder (no timezone C file is generated)
 @echo.         /extend = build timezone library using the data in the input
 @echo.                   folder; timezone IDs encoded into CUBRID are preserved;
 @echo.                   new timezones are added; GMT offset and daylight saving
@@ -216,7 +207,6 @@ goto :GENERIC_ERROR
 @echo. Examples:
 @echo.  %APP_NAME%                  # Build and pack timezone data (32bit/release)
 @echo.  %APP_NAME% /debug           # Create debug mode library with timezone data
-@echo.  %APP_NAME% /debug /update # Update existing timezone library (in debug mode)
 
 :GENERIC_ERROR
 if exist %CUBRID%\timezones\tzlib\Output (
