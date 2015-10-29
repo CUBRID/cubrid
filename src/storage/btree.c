@@ -11114,7 +11114,8 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p,
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
 	  || delete_helper->purpose
 	  == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
+	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
+	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID);
   assert (delete_helper->rv_redo_data != NULL);
   assert (delete_helper->leaf_addr.offset != 0
 	  && delete_helper->leaf_addr.pgptr == leaf_page);
@@ -38887,6 +38888,7 @@ btree_overflow_record_replace_object (THREAD_ENTRY * thread_p,
 	  || delete_helper->purpose
 	  == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
+	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_DELID);
   assert (overflow_page != NULL);
   assert (overflow_record != NULL);
