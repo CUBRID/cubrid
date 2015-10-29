@@ -951,6 +951,9 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec,
 static int
 fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb)
 {
+#if !defined (SERVER_MODE)
+  return 0;
+#else
   int dirty_rate = pgbuf_flush_control_from_dirty_ratio ();
   int adjust_rate = fc_Stats.num_tokens;	/* Start with previous rate. */
 
@@ -979,6 +982,7 @@ fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb)
 	     (int) (fc_Stats.num_tokens * FILEIO_PAGE_FLUSH_GROW_RATE));
     }
   return adjust_rate;
+#endif
 }
 
 /*
