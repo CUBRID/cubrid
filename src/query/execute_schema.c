@@ -15564,6 +15564,14 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node,
 	6 /* strlen(" FROM ") */  +
 	2 /* [] */  +
 	1 /* terminating null */ ;
+      if (buf_size > DB_MAX_PARTITION_EXPR_LENGTH)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PARTITION_EXPRESSION_TOO_LONG,
+		  DB_MAX_PARTITION_EXPR_LENGTH);
+	  goto fail_return;
+	}
+
       query_str = (char *) malloc (buf_size);
       if (query_str == NULL)
 	{

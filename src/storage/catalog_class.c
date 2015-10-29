@@ -6133,7 +6133,9 @@ catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL,
 			       vars[ORC_PARTITION_EXPR_INDEX].length, true,
 			       NULL, 0);
-  db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
+  assert (DB_IS_NULL (attr_val_p)
+	  || DB_GET_STRING_LENGTH (attr_val_p)
+	  <= DB_MAX_PARTITION_EXPR_LENGTH);
 
   /* values */
   attr_val_p = &attrs[4].value;

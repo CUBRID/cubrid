@@ -3012,7 +3012,7 @@ boot_define_partition (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "pexpr", "varchar(255)", NULL);
+  error_code = smt_add_attribute (def, "pexpr", "varchar(2048)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5316,7 +5316,7 @@ boot_define_view_partition (void)
     {"partition_name", "varchar(255)"},
     {"partition_class_name", "varchar(255)"},
     {"partition_type", "varchar(32)"},
-    {"partition_expr", "varchar(255)"},
+    {"partition_expr", "varchar(2048)"},
     {"partition_values", "sequence of"},
     {"comment", "varchar(1024)"}
   };

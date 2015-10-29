@@ -177,6 +177,9 @@
 /* This constant defines the default scale of DB_TYPE_DATETIME. */
 #define DB_DATETIME_DECIMAL_SCALE      3
 
+/* The maximum length of the partition expression after it is processed */
+#define DB_MAX_PARTITION_EXPR_LENGTH 2048
+
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection

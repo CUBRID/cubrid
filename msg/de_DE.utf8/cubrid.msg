@@ -1259,7 +1259,8 @@ $ LOADDB
 1190 Stand-alone vacuum execution is started.
 1191 Stand-alone vacuum execution is ended.
 1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 Letzter Fehler
+1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1194 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

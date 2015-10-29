@@ -1532,7 +1532,8 @@
 #define ER_STAND_ALONE_VACUUM_END		    -1191
 
 #define ER_PRECISION_OVERFLOW			    -1192
-#define ER_LAST_ERROR                               -1193
+#define ER_PARTITION_EXPRESSION_TOO_LONG            -1193
+#define ER_LAST_ERROR                               -1194
 
 /*
  * CAUTION!
