@@ -3499,8 +3499,11 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       goto end;
     }
 
-  qsort ((void *) victim_cand_list, victim_count,
-	 sizeof (PGBUF_VICTIM_CANDIDATE_LIST), pgbuf_compare_victim_list);
+  if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
+    {
+      qsort ((void *) victim_cand_list, victim_count,
+	     sizeof (PGBUF_VICTIM_CANDIDATE_LIST), pgbuf_compare_victim_list);
+    }
 
   num_tries = 1;
 #if defined (SERVER_MODE)
