@@ -12758,9 +12758,10 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	  pr_clone_value (&varval, func_p->value);
 	}
 
-      if (func_p->function == PT_STDDEV
-	  || func_p->function == PT_STDDEV_POP
-	  || func_p->function == PT_STDDEV_SAMP)
+      if (!DB_IS_NULL (&varval)
+	  && (func_p->function == PT_STDDEV
+	      || func_p->function == PT_STDDEV_POP
+	      || func_p->function == PT_STDDEV_SAMP))
 	{
 	  db_value_domain_init (&dval, DB_TYPE_DOUBLE,
 				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
