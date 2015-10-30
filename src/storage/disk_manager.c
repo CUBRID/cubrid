@@ -2935,6 +2935,7 @@ disk_map_init (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_fpageid,
   VPID vpid;
   LOG_DATA_ADDR addr;
   int i;
+  INT32 saved_nalloc_bits;
 
 
   addr.vfid = NULL;
@@ -2971,6 +2972,7 @@ disk_map_init (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_fpageid,
 
       disk_set_page_to_zeros (thread_p, addr.pgptr);
 
+      saved_nalloc_bits = nalloc_bits;
       /* One byte at a time */
       out_chptr = (unsigned char *) addr.pgptr + DB_PAGESIZE;
       for (at_chptr = (unsigned char *) addr.pgptr;
@@ -2992,7 +2994,7 @@ disk_map_init (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_fpageid,
        */
 
       log_append_redo_data (thread_p, RVDK_INITMAP, &addr,
-			    sizeof (nalloc_bits), &nalloc_bits);
+			    sizeof (saved_nalloc_bits), &saved_nalloc_bits);
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
       addr.pgptr = NULL;
     }
