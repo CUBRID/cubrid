@@ -905,7 +905,8 @@ static int qexec_open_scan (THREAD_ENTRY * thread_p,
 			    int fixed, int grouped, bool iscan_oid_order,
 			    SCAN_ID * s_id, QUERY_ID query_id,
 			    SCAN_OPERATION_TYPE scan_op_type,
-			    bool scan_immediately_stop);
+			    bool scan_immediately_stop,
+			    bool * p_mvcc_select_lock_needed);
 static void qexec_close_scan (THREAD_ENTRY * thread_p,
 			      ACCESS_SPEC_TYPE * curr_spec);
 static void qexec_end_scan (THREAD_ENTRY * thread_p,
@@ -1019,7 +1020,9 @@ static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p,
 
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p,
 					     XASL_NODE * xasl,
-					     XASL_STATE * xasl_state);
+					     XASL_STATE * xasl_state,
+					     UPDDEL_CLASS_INSTANCE_LOCK_INFO *
+					     p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p,
 						   XASL_STATE * xasl_state,
 						   UPDDEL_CLASS_INFO_INTERNAL
@@ -7276,7 +7279,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   outer_spec->fixed_scan,
 			   outer_spec->grouped_scan,
 			   true, &outer_spec->s_id, xasl_state->query_id,
-			   S_SELECT, false) != NO_ERROR)
+			   S_SELECT, false, NULL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -7288,7 +7291,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   inner_spec->fixed_scan,
 			   inner_spec->grouped_scan,
 			   true, &inner_spec->s_id, xasl_state->query_id,
-			   S_SELECT, false) != NO_ERROR)
+			   S_SELECT, false, NULL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -7347,6 +7350,7 @@ exit_on_error:
  *   grouped(in)        : Grouped scan flag
  *   iscan_oid_order(in)       :
  *   s_id(out)   : Set to the scan identifier
+ *   p_mvcc_select_lock_needed(out): true, whether instance lock needed at select 
  *
  * Note: This routine is used to open a scan on an access specification
  * node. A scan identifier is created with the given parameters.
@@ -7356,7 +7360,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 		 VAL_LIST * val_list, VAL_DESCR * vd,
 		 bool force_select_lock, int fixed, int grouped,
 		 bool iscan_oid_order, SCAN_ID * s_id, QUERY_ID query_id,
-		 SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop)
+		 SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
+		 bool * p_mvcc_select_lock_needed)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
@@ -7684,6 +7689,11 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
     }				/* switch */
 
   s_id->scan_immediately_stop = scan_immediately_stop;
+
+  if (p_mvcc_select_lock_needed)
+    {
+      *p_mvcc_select_lock_needed = mvcc_select_lock_needed;
+    }
 
   return NO_ERROR;
 
@@ -8250,8 +8260,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  /* skip if linked to regu var */
 		  continue;
 		}
-	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state) !=
-		  NO_ERROR)
+	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL)
+		  != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -8932,8 +8942,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      /* skip if linked to regu var */
 		      continue;
 		    }
-		  if (qexec_execute_mainblock (thread_p, xptr, xasl_state) !=
-		      NO_ERROR)
+		  if (qexec_execute_mainblock (thread_p, xptr, xasl_state,
+					       NULL) != NO_ERROR)
 		    {
 		      return S_ERROR;
 		    }
@@ -9287,8 +9297,8 @@ qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      /* skip if linked to regu var */
 		      continue;
 		    }
-		  if (qexec_execute_mainblock (thread_p, xptr, xasl_state) !=
-		      NO_ERROR)
+		  if (qexec_execute_mainblock (thread_p, xptr, xasl_state,
+					       NULL) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -9818,6 +9828,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   bool need_locking;
+  UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info,
+    *p_class_instance_lock_info = NULL;
 
   /* get the snapshot, before acquiring locks, since the transaction may
    * be blocked and we need the snapshot when update starts, not later
@@ -9863,16 +9875,38 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
+  if (class_oid_cnt == 1 && update->classes->no_subclasses == 1)
+    {
+      /* We update instances of only one class. We expect to lock the instances
+       * at select phase. However this not happens in all situations.
+       * The qexec_execute_mainblock function will set instances_locked of
+       * p_class_instance_lock_info to true in case that current class instances
+       * are locked at select phase.       
+       */
+      COPY_OID (&class_instance_lock_info.class_oid,
+		(*((*update).classes)).class_oid);
+      class_instance_lock_info.instances_locked = false;
+      p_class_instance_lock_info = &class_instance_lock_info;
+    }
+
+  if (qexec_execute_mainblock (thread_p, aptr, xasl_state,
+			       p_class_instance_lock_info) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* already locked in select phase */
-  need_locking = false;
-  if (class_oid_cnt > 1)
+
+  if (p_class_instance_lock_info
+      && p_class_instance_lock_info->instances_locked)
     {
-      /* multi update - need last version - can be optimized to avoid locks */
+      /* already locked in select phase. Avoid locking again the same instances
+       * at update phase
+       */
+      need_locking = false;
+    }
+  else
+    {
+      /* not locked in select phase, need locking at update phase */
       need_locking = true;
     }
 
@@ -9920,7 +9954,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_open_scan
       (thread_p, specp, xasl->val_list, &xasl_state->vd, false,
        specp->fixed_scan, specp->grouped_scan, true, &specp->s_id,
-       xasl_state->query_id, S_SELECT, false) != NO_ERROR)
+       xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
     {
       if (savepoint_used)
 	{
@@ -10842,6 +10876,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   bool need_locking;
+  UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info,
+    *p_class_instance_lock_info = NULL;
 
   /* get the snapshot, before acquiring locks, since the transaction may
    * be blocked and we need the snapshot when delete starts, not later
@@ -10886,16 +10922,37 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
+  if (class_oid_cnt == 1 && delete_->classes->no_subclasses == 1)
+    {
+      /* We delete instances of only one class. We expect to lock the instances
+       * at select phase. However this not happens in all situations.
+       * The qexec_execute_mainblock function will set instances_locked of
+       * p_class_instance_lock_info to true in case that current class instances
+       * are locked at select phase.
+       */
+      COPY_OID (&class_instance_lock_info.class_oid,
+		(*((*delete_).classes)).class_oid);
+      class_instance_lock_info.instances_locked = false;
+      p_class_instance_lock_info = &class_instance_lock_info;
+    }
+
+  if (qexec_execute_mainblock (thread_p, aptr, xasl_state,
+			       p_class_instance_lock_info) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* already locked in select phase */
-  need_locking = false;
-  if (class_oid_cnt > 1)
+  if (p_class_instance_lock_info
+      && p_class_instance_lock_info->instances_locked)
     {
-      /* multi update - need last version - can be optimized to avoid locks */
+      /* already locked in select phase. Avoid locking again the same instances
+       * at delete phase.
+       */
+      need_locking = false;
+    }
+  else
+    {
+      /* not locked in select phase, need locking at update phase */
       need_locking = true;
     }
 
@@ -10942,7 +10999,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_open_scan (thread_p, specp, xasl->val_list,
 		       &xasl_state->vd, false, specp->fixed_scan,
 		       specp->grouped_scan, true, &specp->s_id,
-		       xasl_state->query_id, S_SELECT, false) != NO_ERROR)
+		       xasl_state->query_id, S_SELECT, false,
+		       NULL) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -12182,7 +12240,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (!skip_aptr)
     {
       if (aptr
-	  && qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
+	  && qexec_execute_mainblock (thread_p, aptr, xasl_state,
+				      NULL) != NO_ERROR)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
@@ -12483,7 +12542,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   &xasl_state->vd, false, specp->fixed_scan,
 			   specp->grouped_scan, true,
 			   &specp->s_id, xasl_state->query_id,
-			   S_SELECT, false) != NO_ERROR)
+			   S_SELECT, false, NULL) != NO_ERROR)
 	{
 	  if (savepoint_used)
 	    {
@@ -13138,7 +13197,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
       if (xptr->status == XASL_CLEARED || xptr->status == XASL_INITIALIZED)
 	{
-	  if (qexec_execute_mainblock (thread_p, xptr, xasl_state) !=
+	  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) !=
 	      NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -13439,8 +13498,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  /* skip if linked to regu var */
 		  continue;
 		}
-	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state) !=
-		  NO_ERROR)
+	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL)
+		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -14806,11 +14865,14 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
  *   xasl_state(in)     : XASL state information
+ *   p_class_instance_lock_info(in/out): class instance lock info
  *
  */
 int
 qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-			 XASL_STATE * xasl_state)
+			 XASL_STATE * xasl_state,
+			 UPDDEL_CLASS_INSTANCE_LOCK_INFO *
+			 p_class_instance_lock_info)
 {
   int error = NO_ERROR;
   bool on_trace;
@@ -14837,7 +14899,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       old_ioreads = mnt_get_pb_ioreads (thread_p);
     }
 
-  error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state);
+  error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state,
+					    p_class_instance_lock_info);
 
   if (on_trace)
     {
@@ -14859,11 +14922,14 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
  *   xasl_state(in)     : XASL state information
+ *   p_class_instance_lock_info(in/out): class instance lock info
  *
  */
 static int
 qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-				  XASL_STATE * xasl_state)
+				  XASL_STATE * xasl_state,
+				  UPDDEL_CLASS_INSTANCE_LOCK_INFO *
+				  p_class_instance_lock_info)
 {
   XASL_NODE *xptr, *xptr2;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
@@ -14885,6 +14951,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   bool scan_immediately_stop = false;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool instant_lock_mode_started = false;
+  bool mvcc_select_lock_needed;
 
   /*
    * Pre_processing
@@ -15218,8 +15285,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      if (xptr2->status == XASL_CLEARED
 		  || xptr2->status == XASL_INITIALIZED)
 		{
-		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state) !=
-		      NO_ERROR)
+		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state,
+					       NULL) != NO_ERROR)
 		    {
 		      if (tplrec.tpl)
 			{
@@ -15437,12 +15504,25 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					       &specp->s_id,
 					       xasl_state->query_id,
 					       xasl->scan_op_type,
-					       scan_immediately_stop) !=
+					       scan_immediately_stop,
+					       &mvcc_select_lock_needed) !=
 			      NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p,
 								xasl);
 			      GOTO_EXIT_ON_ERROR;
+			    }
+
+			  if (p_class_instance_lock_info
+			      && specp->type == TARGET_CLASS
+			      && OID_EQ (&specp->s.cls_node.cls_oid,
+					 &p_class_instance_lock_info->
+					 class_oid)
+			      && mvcc_select_lock_needed)
+			    {
+			      /* the instances are locked at select phase */
+			      p_class_instance_lock_info->instances_locked
+				= true;
 			    }
 			}
 		      else
@@ -15476,12 +15556,25 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					       &specp->s_id,
 					       xasl_state->query_id,
 					       xptr->scan_op_type,
-					       scan_immediately_stop) !=
+					       scan_immediately_stop,
+					       &mvcc_select_lock_needed) !=
 			      NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p,
 								xasl);
 			      GOTO_EXIT_ON_ERROR;
+			    }
+
+			  if (p_class_instance_lock_info
+			      && specp->type == TARGET_CLASS
+			      && OID_EQ (&specp->s.cls_node.cls_oid,
+					 &p_class_instance_lock_info->
+					 class_oid)
+			      && mvcc_select_lock_needed)
+			    {
+			      /* the instances are locked at select phase */
+			      p_class_instance_lock_info->instances_locked
+				= true;
 			    }
 			}
 		    }
@@ -16148,7 +16241,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
        */
 
       xasl->query_in_progress = true;
-      stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state);
+      stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
       xasl->query_in_progress = false;
 
 #if defined(SERVER_MODE)
@@ -19240,7 +19333,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				   &xasl_state->vd, false, true, false, false,
 				   &xasl->spec_list->s_id,
 				   xasl_state->query_id,
-				   S_SELECT, false) != NO_ERROR)
+				   S_SELECT, false, NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -21583,7 +21676,8 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
   /* evaluate subqueries in HAVING predicate */
   for (xptr = gbstate->eptr_list; xptr; xptr = xptr->next)
     {
-      if (qexec_execute_mainblock (thread_p, xptr, xasl_state) != NO_ERROR)
+      if (qexec_execute_mainblock (thread_p, xptr, xasl_state,
+				   NULL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -29303,7 +29397,8 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       if (xptr && xptr->aptr_list)
 	{
 	  error =
-	    qexec_execute_mainblock (thread_p, xptr->aptr_list, xasl_state);
+	    qexec_execute_mainblock (thread_p, xptr->aptr_list, xasl_state,
+				     NULL);
 	}
     }
   /* execute update */

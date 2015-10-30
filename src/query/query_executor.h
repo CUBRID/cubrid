@@ -1091,7 +1091,7 @@ do {                                                                          \
             if ((_x)->status == XASL_CLEARED				      \
 		|| (_x)->status == XASL_INITIALIZED) {                        \
                 /* execute xasl query                                    */   \
-                qexec_execute_mainblock((thread_p), _x, (v)->xasl_state);     \
+                qexec_execute_mainblock((thread_p), _x, (v)->xasl_state, NULL);     \
             } /* else: already evaluated. success or failure */               \
         } else {                                                              \
             /* currently, not-supported unknown case                     */   \
@@ -1176,12 +1176,22 @@ struct xasl_cache_clo
   void *xasl_buf_info;		/* XASL tree buffer info */
 };
 
+typedef struct upddel_class_instances_lock_info
+  UPDDEL_CLASS_INSTANCE_LOCK_INFO;
+struct upddel_class_instances_lock_info
+{
+  OID class_oid;
+  bool instances_locked;
+};
+
 extern QFILE_LIST_ID *qexec_execute_query (THREAD_ENTRY * thread_p,
 					   XASL_NODE * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr,
 					   QUERY_ID query_id);
 extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-				    XASL_STATE * xasl_state);
+				    XASL_STATE * xasl_state,
+				    UPDDEL_CLASS_INSTANCE_LOCK_INFO *
+				    p_class_instance_lock_info);
 extern int qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p,
 					     XASL_NODE * xasl,
 					     XASL_STATE * xasl_state);
