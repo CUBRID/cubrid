@@ -13163,7 +13163,7 @@ btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p,
 		  && BTREE_IS_UNIQUE (btid_int->unique_pk)));
       BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data,
 				rv_undo_data_length);
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr,
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr,
 				rv_undo_data_length, rv_redo_data_length,
 				rv_undo_data, rv_redo_data);
     }
