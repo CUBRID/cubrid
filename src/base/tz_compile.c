@@ -6563,6 +6563,7 @@ exit:
 	{
 	  printf ("Could not make all the data backward compatible!\n");
 	  *write_checksum = false;
+	  err_status = ER_TZ_COMPILE_ERROR;
 	}
       else
 	{
