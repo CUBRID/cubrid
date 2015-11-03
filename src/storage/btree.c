@@ -33467,7 +33467,7 @@ btree_key_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  btree_record_add_delid (thread_p, btid_int, &leaf_record,
 				  BTREE_LEAF_NODE, offset_to_old_version,
 				  helper->obj_info.mvcc_info.delete_mvccid,
-				  NULL, &helper->rv_redo_data);
+				  NULL, &helper->rv_redo_data_ptr);
 	  /* Move first object to the end of record. */
 	  btree_leaf_get_first_object (btid_int, &leaf_record,
 				       &first_object.oid,
