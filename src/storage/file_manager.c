@@ -3992,6 +3992,9 @@ file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   BTID btid;
   int error_code = NO_ERROR;
   bool is_btid = false;
+  GLOBAL_UNIQUE_STATS *stats = NULL;
+  int num_oids, num_keys = -1, num_nulls;
+  LF_TRAN_ENTRY *t_entry;
 
   if (rcv->length == sizeof (*vfid))
     {
@@ -4018,19 +4021,52 @@ file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
 
+  if (is_btid)
+    {
+      /* save global statistics before delete */
+      t_entry =
+	thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
+      lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash,
+		    &btid, (void **) &stats);
+      if (stats)
+	{
+	  num_oids = stats->unique_stats.num_oids;
+	  num_keys = stats->unique_stats.num_keys;
+	  num_nulls = stats->unique_stats.num_nulls;
+	  pthread_mutex_unlock (&stats->mutex);
+	}
+
+      /* delete global statistics */
+      (void) logtb_delete_global_unique_stats (thread_p, &btid);
+    }
+
   /* Destroy file */
   error_code = file_destroy (thread_p, vfid);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
 
+      if (is_btid)
+	{
+	  if (num_keys != -1)
+	    {
+	      /* restore global statistics for debug purpose */
+	      stats = NULL;
+	      lf_hash_find_or_insert (t_entry,
+				      &log_Gl.unique_stats_table.
+				      unique_stats_hash, &btid,
+				      (void **) &stats);
+	      stats->unique_stats.num_oids = num_oids;
+	      stats->unique_stats.num_keys = num_keys;
+	      stats->unique_stats.num_nulls = num_nulls;
+	      pthread_mutex_unlock (&stats->mutex);
+	    }
+	}
+
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
       return error_code;
     }
-  if (is_btid)
-    {
-      (void) logtb_delete_global_unique_stats (thread_p, &btid);
-    }
+
   /* Success. */
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
   return NO_ERROR;
