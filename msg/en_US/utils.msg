@@ -1094,13 +1094,7 @@ valid options:\n\
                         also generate a source file containing all countries\n\
                         and timezone names (intended for developer use, to\n\
                         be integrated into future CUBRID versions).\n\
-                        2. UPDATE : generate timezone source file(s) for\n\
-                        the shared library only for the timezones supported\n\
-                        by the current version of CUBRID, containing updated\n\
-                        GMT offset information and daylight saving rules from\n\
-                        the files in the input folder; no additional source\n\
-                        files are generated.\n\
-                        3. EXTEND : generate timezone source file(s) using the\n\
+                        2. EXTEND : generate timezone source file(s) using the\n\
                         data from the input folder; timezone IDs encoded into\n\
                         CUBRID are preserved; new timezones found in the input\n\
                         files are added to the secondary source file that is\n\
