@@ -1959,18 +1959,16 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 	      continue;
 	    }
 	  if (check_xasl_cache
-	      || lock_object (thread_p,
-			      &xasl_cache_entry_p->class_oid_list[i],
-			      oid_Root_class_oid,
-			      (LOCK) xasl_cache_entry_p->class_locks[i],
-			      LK_COND_LOCK) != LK_GRANTED)
+	      || lock_scan (thread_p, &xasl_cache_entry_p->class_oid_list[i],
+			    LK_COND_LOCK,
+			    (LOCK) xasl_cache_entry_p->class_locks[i])
+	      != LK_GRANTED)
 	    {
 	      check_xasl_cache = true;
-	      if (lock_object (thread_p,
-			       &xasl_cache_entry_p->class_oid_list[i],
-			       oid_Root_class_oid,
-			       (LOCK) xasl_cache_entry_p->class_locks[i],
-			       LK_UNCOND_LOCK) != LK_GRANTED)
+	      if (lock_scan (thread_p, &xasl_cache_entry_p->class_oid_list[i],
+			     LK_UNCOND_LOCK,
+			     (LOCK) xasl_cache_entry_p->class_locks[i])
+		  != LK_GRANTED)
 		{
 		  ASSERT_ERROR ();
 		  qexec_remove_my_tran_id_in_xasl_entry (thread_p,

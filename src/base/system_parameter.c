@@ -2769,7 +2769,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_LK_MAX_SCANID_BIT,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_OBSOLETED),
    PRM_INTEGER,
    (void *) &prm_lk_max_scanid_bit_flag,
    (void *) &prm_lk_max_scanid_bit_default,
@@ -9499,7 +9499,6 @@ static void
 prm_tune_parameters (void)
 {
   SYSPRM_PARAM *max_clients_prm;
-  SYSPRM_PARAM *max_scanid_bit_prm;
   SYSPRM_PARAM *max_plan_cache_entries_prm;
 #if defined (ENABLE_UNUSED_FUNCTION)
   SYSPRM_PARAM *max_plan_cache_clones_prm;
@@ -9527,7 +9526,6 @@ prm_tune_parameters (void)
 
   /* Find the parameters that require tuning */
   max_clients_prm = prm_find (PRM_NAME_CSS_MAX_CLIENTS, NULL);
-  max_scanid_bit_prm = prm_find (PRM_NAME_LK_MAX_SCANID_BIT, NULL);
   max_plan_cache_entries_prm =
     prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -9594,22 +9592,6 @@ prm_tune_parameters (void)
 	  (void) prm_set (max_clients_prm, newval, false);
 	}
     }
-
-#if defined (SERVER_MODE)
-  assert (max_scanid_bit_prm != NULL);
-  if (max_scanid_bit_prm == NULL)
-    {
-      return;
-    }
-
-  if (PRM_GET_INT (max_scanid_bit_prm->value) % 32)
-    {
-      sprintf (newval, "%d",
-	       ((PRM_GET_INT (max_scanid_bit_prm->value)) +
-		32 - (PRM_GET_INT (max_scanid_bit_prm->value)) % 32));
-      (void) prm_set (max_scanid_bit_prm, newval, false);
-    }
-#endif /* SERVER_MODE */
 
   /* check Plan Cache and Query Cache parameters */
   assert (max_plan_cache_entries_prm != NULL);

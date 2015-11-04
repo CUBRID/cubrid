@@ -1042,7 +1042,7 @@
 
 #define ER_AU_USER_HAS_DATABASE_OBJECTS		    -837
 
-#define ER_NOT_ENOUGH_SCANID_BIT                    -838
+#define ER_NOT_ENOUGH_SCANID_BIT                    -838	/* Obsolete */
 
 #define ER_PRM_BAD_VALUE                            -839
 #define ER_PRM_CANNOT_CHANGE                        -840

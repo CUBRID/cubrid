@@ -88,11 +88,10 @@
    : disk_isvalid_page (NULL, (oid)->volid, (oid)->pageid))
 #endif
 
-#define HEAP_SCANCACHE_SET_NODE(scan_cache, class_oid_p, hfid_p, scan_bit) \
+#define HEAP_SCANCACHE_SET_NODE(scan_cache, class_oid_p, hfid_p) \
   do  {	\
   COPY_OID (&(scan_cache)->node.class_oid, class_oid_p); \
   HFID_COPY (&(scan_cache)->node.hfid, hfid_p); \
-  (scan_cache)->node.scanid_bit = scan_bit; \
   }while(0)
 
 /*
@@ -122,7 +121,6 @@ struct heap_scancache_node
 {
   HFID hfid;			/* Heap file of scan                   */
   OID class_oid;		/* Class oid of scanned instances       */
-  int scanid_bit;
 };
 
 typedef struct heap_scancache_node_list HEAP_SCANCACHE_NODE_LIST;

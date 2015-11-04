@@ -180,9 +180,6 @@ extern int lock_Comp[11][11];
 
 #endif /* SERVER_MODE */
 
-#define SET_SCANID_BIT(s, i)    (s[i/8] |= (1 << (i%8)))
-#define RESET_SCANID_BIT(s, i)  (s[i/8] &= ~(1 << (i%8)))
-#define IS_SCANID_BIT_SET(s, i) (s[i/8] & (1 << (i%8)))
 #define RESOURCE_ALLOC_WAIT_TIME 10	/* 10 msec */
 #define KEY_LOCK_ESCALATION_THRESHOLD 10	/* key lock escalation threshold */
 #define MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG 100
@@ -380,7 +377,6 @@ struct lk_global_data
   struct timeval last_deadlock_run;	/* last deadlock detetion time */
   LK_WFG_NODE *TWFG_node;	/* transaction WFG node */
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
-  unsigned char *scanid_bitmap;
   int max_TWFG_edge;
   int TWFG_free_edge_idx;
   int global_edge_seq_num;
@@ -397,7 +393,7 @@ LK_GLOBAL_DATA lk_Gl = {
   0, LF_HASH_TABLE_INITIALIZER,
   LF_FREELIST_INITIALIZER, LF_FREELIST_INITIALIZER,
   0, NULL, PTHREAD_MUTEX_INITIALIZER, {0, 0},
-  NULL, NULL, NULL, 0, 0, 0, 0, false
+  NULL, NULL, 0, 0, 0, 0, false
 #if defined(LK_DUMP)
     , 0
 #endif /* LK_DUMP */
@@ -408,9 +404,6 @@ static const int SIZEOF_LK_LOCKINFO = sizeof (LK_LOCKINFO);
 static const int SIZEOF_LK_WFG_NODE = sizeof (LK_WFG_NODE);
 static const int SIZEOF_LK_WFG_EDGE = sizeof (LK_WFG_EDGE);
 static const int SIZEOF_LK_TRAN_LOCK = sizeof (LK_TRAN_LOCK);
-/* TODO : change const */
-#define SIZEOF_LK_ENTRY (offsetof (LK_ENTRY, scanid_bitset)    \
-  + (lock_Max_scanid_bit / 8))
 
 static const int SIZEOF_LK_RES = sizeof (LK_RES);
 static const int SIZEOF_LK_ENTRY_BLOCK = sizeof (LK_ENTRY_BLOCK);
@@ -449,7 +442,6 @@ static const int LK_COMPOSITE_LOCK_OID_INCREMENT = 100;
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-static int lock_Max_scanid_bit;	/* comes from PRM_ID_LK_MAX_SCANID_BIT */
 
 static LK_WFG_EDGE TWFG_edge_block[LK_MID_TWFG_EDGE_COUNT];
 static LK_DEADLOCK_VICTIM victims[LK_MAX_VICTIM_COUNT];
@@ -487,13 +479,6 @@ static int lock_initialize_object_hash_table (void);
 static int lock_initialize_object_lock_res_list (void);
 static int lock_initialize_object_lock_entry_list (void);
 static int lock_initialize_deadlock_detection (void);
-static int lock_initialize_scanid_bitmap (void);
-static int lock_final_scanid_bitmap (void);
-static int lock_alloc_scanid_bit (THREAD_ENTRY * thread_p);
-static void lock_free_scanid_bit (THREAD_ENTRY * thread_p, int idx);
-#if 0				/* TODO: not used */
-static void lk_free_all_scanid_bit (void);
-#endif
 static int lock_remove_resource (LK_RES * res_ptr);
 static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr,
 					     int owner_tran_index);
@@ -580,14 +565,6 @@ static bool lock_check_consistent_resource (THREAD_ENTRY * thread_p,
 					    LK_RES * res_ptr);
 static bool lock_check_consistent_tran_lock (LK_TRAN_LOCK * tran_lock);
 #endif
-static int lock_find_scanid_bit (unsigned char *scanid_bit);
-static void lock_remove_all_inst_locks_with_scanid (THREAD_ENTRY * thread_p,
-						    int tran_index,
-						    int scanid_bit,
-						    LOCK lock);
-static void lock_remove_all_key_locks_with_scanid (THREAD_ENTRY * thread_p,
-						   int tran_index,
-						   int scanid_bit, LOCK lock);
 
 static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
@@ -742,11 +719,11 @@ lock_init_entry (void *entry)
   LK_ENTRY *entry_ptr = (LK_ENTRY *) entry;
   if (entry_ptr != NULL)
     {
-      memset (&entry_ptr->scanid_bitset, 0, lock_Max_scanid_bit / 8);
       return NO_ERROR;
     }
   else
     {
+      assert (false);
       return ER_FAILED;
     }
 }
@@ -1103,7 +1080,6 @@ lock_get_hash_value (const OID * oid, int htsize)
  *   - lock_init_object_lock_res_list()
  *   - lock_init_object_lock_entry_list()
  *   - lock_init_deadlock_detection()
- *   - lock_init_scanid_bitmap()
  */
 
 #if defined(SERVER_MODE)
@@ -1291,105 +1267,6 @@ lock_initialize_deadlock_detection (void)
 
   return NO_ERROR;
 }
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * lock_initialize_scanid_bitmap -
- *
- * return:
- *
- * Note: do not use system transaction(0 tran_index) bitmap
- */
-static int
-lock_initialize_scanid_bitmap (void)
-{
-  size_t nbytes;
-
-  lock_Max_scanid_bit = prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT);
-
-  nbytes = 1 + (MAX_NTRANS - 1) * lock_Max_scanid_bit / 8;
-  lk_Gl.scanid_bitmap = (unsigned char *) malloc (nbytes);
-  if (lk_Gl.scanid_bitmap == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, nbytes);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  memset (lk_Gl.scanid_bitmap, 0, nbytes);
-
-  return NO_ERROR;
-}
-
-/*
- * lock_final_scanid_bitmap -
- *
- * return: NO_ERROR
- */
-static int
-lock_final_scanid_bitmap (void)
-{
-  if (lk_Gl.scanid_bitmap)
-    {
-      free_and_init (lk_Gl.scanid_bitmap);
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * lock_alloc_scanid_bit -
- *
- * return:
- */
-static int
-lock_alloc_scanid_bit (THREAD_ENTRY * thread_p)
-{
-  int i;
-  int tran_index;
-  unsigned char *scanid_bit;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  scanid_bit = &lk_Gl.scanid_bitmap[tran_index * lock_Max_scanid_bit / 8];
-
-  for (i = 0; i < lock_Max_scanid_bit; i++)
-    {
-      if (!IS_SCANID_BIT_SET (scanid_bit, i))
-	{
-	  SET_SCANID_BIT (scanid_bit, i);
-	  break;
-	}
-    }
-  if (i == lock_Max_scanid_bit)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_ENOUGH_SCANID_BIT, 1,
-	      lock_Max_scanid_bit + 1);
-      return ER_NOT_ENOUGH_SCANID_BIT;
-    }
-
-  return i;
-}
-
-/*
- * lock_free_scanid_bit -
- *
- * return:
- *
- *   idx(in):
- */
-static void
-lock_free_scanid_bit (THREAD_ENTRY * thread_p, int idx)
-{
-  int tran_index;
-  unsigned char *scanid_bit;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  scanid_bit = &lk_Gl.scanid_bitmap[tran_index * lock_Max_scanid_bit / 8];
-
-  RESET_SCANID_BIT (scanid_bit, idx);
-}
-
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -5208,266 +5085,6 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index,
 }
 #endif /* SERVER_MODE */
 
-#if defined(SERVER_MODE)
-/*
- * lock_find_scanid_bit -
- *
- * return:
- *
- *   scanid_bit(in):
- */
-static int
-lock_find_scanid_bit (unsigned char *scanid_bit)
-{
-  int i;
-
-  for (i = 0; i < lock_Max_scanid_bit; i++)
-    {
-      if (IS_SCANID_BIT_SET (scanid_bit, i))
-	{
-	  return i;
-	}
-    }
-
-  return -1;
-}
-
-/*
- * lock_remove_all_inst_locks_with_scanid -
- *
- * return:
- *
- *   tran_index(in):
- *   scanid_bit(in):
- *   lock(in):
- *
- * Note:
- */
-static void
-lock_remove_all_inst_locks_with_scanid (THREAD_ENTRY * thread_p,
-					int tran_index, int scanid_bit,
-					LOCK lock)
-{
-  LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *curr, *next;
-  bool unlock;
-  int x;
-
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-
-  /* remove instance locks if given condition is satisfied */
-  curr = tran_lock->inst_hold_list;
-  while (curr != NULL)
-    {
-      assert (tran_index == curr->tran_index);
-
-      next = curr->tran_next;
-      if (IS_SCANID_BIT_SET (curr->scanid_bitset, scanid_bit)
-	  && (curr->granted_mode <= lock || lock == X_LOCK))
-	{
-	  unlock = false;
-
-	  /* I think there's no need to acquire the mutex here. */
-
-	  if (curr->history)
-	    {
-	      LK_ACQUISITION_HISTORY *prev, *last, *p;
-
-	      last = curr->recent;
-	      prev = last->prev;
-	      if ((last->req_mode == S_LOCK)
-		  && (curr->granted_mode == S_LOCK))
-		{
-		  p = curr->history;
-		  while (p != last)
-		    {
-		      if (p->req_mode == S_LOCK)
-			{
-			  break;
-			}
-		      p = p->next;
-		    }
-
-		  if (p != last)
-		    {
-		      /* do not unlock shared instance lock */
-		    }
-		  else
-		    {
-		      unlock = true;
-		    }
-		}
-
-	      /* free the last node */
-	      if (prev == NULL)
-		{
-		  curr->history = NULL;
-		  curr->recent = NULL;
-		}
-	      else
-		{
-		  prev->next = NULL;
-		  curr->recent = prev;
-		}
-	      free_and_init (last);
-	    }
-	  else
-	    {
-	      if (curr->granted_mode == S_LOCK)
-		{
-		  unlock = true;
-		}
-	    }
-
-	  if (unlock)
-	    {
-	      lock_internal_perform_unlock_object (thread_p, curr, false,
-						   false);
-	    }
-	  else if (curr->granted_mode == S_LOCK)
-	    {
-	      curr->count--;
-
-	      if (lock_is_instant_lock_mode (tran_index))
-		{
-		  curr->instant_lock_count--;
-		  assert (curr->instant_lock_count >= 0);
-		}
-	    }
-
-	}
-      else
-	{
-	  x = lock_find_scanid_bit (curr->scanid_bitset);
-	  if (x >= 0 && scanid_bit >= 0 && scanid_bit > x)
-	    {
-	      break;
-	    }
-	}
-      curr = next;
-    }
-}
-
-/*
- * lock_remove_all_key_locks_with_scanid - remove all key locks acquired
- *					   by transaction at scanning
- *
- * return:
- *
- *   thread_p(in):
- *   tran_index(in): transaction index
- *   scanid_bit(in): scanid bit for a scan
- *   lock(in): Lock to remove
- *
- * Note:
- */
-static void
-lock_remove_all_key_locks_with_scanid (THREAD_ENTRY * thread_p,
-				       int tran_index, int scanid_bit,
-				       LOCK lock)
-{
-  LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *curr, *next;
-  bool unlock;
-  int x;
-
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-
-  /* remove instance locks if given condition is satisfied */
-  curr = tran_lock->inst_hold_list;
-  while (curr != NULL)
-    {
-      assert (tran_index == curr->tran_index);
-
-      next = curr->tran_next;
-      if (IS_SCANID_BIT_SET (curr->scanid_bitset, scanid_bit)
-	  && (curr->granted_mode <= lock || lock == X_LOCK)
-	  && OID_IS_PSEUDO_OID (&curr->res_head->key.oid))
-	{
-	  unlock = false;
-
-	  /* I think there's no need to acquire the mutex here. */
-
-	  if (curr->history)
-	    {
-	      LK_ACQUISITION_HISTORY *prev, *last, *p;
-
-	      last = curr->recent;
-	      prev = last->prev;
-	      if ((last->req_mode == S_LOCK)
-		  && (curr->granted_mode == S_LOCK))
-		{
-		  p = curr->history;
-		  while (p != last)
-		    {
-		      if (p->req_mode == S_LOCK)
-			{
-			  break;
-			}
-		      p = p->next;
-		    }
-
-		  if (p != last)
-		    {
-		      /* do not unlock shared instance lock */
-		    }
-		  else
-		    {
-		      unlock = true;
-		    }
-		}
-
-	      /* free the last node */
-	      if (prev == NULL)
-		{
-		  curr->history = NULL;
-		  curr->recent = NULL;
-		}
-	      else
-		{
-		  prev->next = NULL;
-		  curr->recent = prev;
-		}
-	      free_and_init (last);
-	    }
-	  else
-	    {
-	      if (curr->granted_mode == S_LOCK)
-		{
-		  unlock = true;
-		}
-	    }
-
-	  if (unlock)
-	    {
-	      lock_internal_perform_unlock_object (thread_p, curr, false,
-						   false);
-	    }
-	  else if (curr->granted_mode == S_LOCK)
-	    {
-	      curr->count--;
-
-	      if (lock_is_instant_lock_mode (tran_index))
-		{
-		  curr->instant_lock_count--;
-		  assert (curr->instant_lock_count >= 0);
-		}
-	    }
-
-	}
-      else
-	{
-	  x = lock_find_scanid_bit (curr->scanid_bitset);
-	  if (x >= 0 && scanid_bit >= 0 && scanid_bit > x)
-	    {
-	      break;
-	    }
-	}
-      curr = next;
-    }
-}
-#endif /* SERVER_MODE */
-
 /*
  *  Private Functions Group: non two pahse locks
  *
@@ -7016,11 +6633,6 @@ lock_initialize (void)
   const char *env_value;
   int error_code = NO_ERROR;
 
-  error_code = lock_initialize_scanid_bitmap ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
   error_code = lock_initialize_tran_lock_table ();
   if (error_code != NO_ERROR)
     {
@@ -7134,8 +6746,6 @@ lock_finalize (void)
   lf_hash_destroy (&lk_Gl.obj_hash_table);
   lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
   lf_freelist_destroy (&lk_Gl.obj_free_res_list);
-
-  (void) lock_final_scanid_bitmap ();
 #endif /* !SERVER_MODE */
 }
 
@@ -7586,206 +7196,6 @@ lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid,
 }
 
 /*
- * lock_object_on_iscan -
- *
- * return:
- *
- *   oid(in):
- *   class_oid(in):
- *   btid(in):
- *   lock(in):
- *   cond_flag(in):
- *   scanid_bit(in):
- *
- * Note:Same as lock_object except that scanid_bit is given as an argument.
- *  this scanid_bit value is kept in lk_entry structure,
- *  and used in lock_unlock_scan.
- */
-int
-lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
-		      const OID * class_oid, const BTID * btid,
-		      LOCK lock, int cond_flag, int scanid_bit)
-{
-#if !defined (SERVER_MODE)
-  LK_SET_STANDALONE_XLOCK (lock);
-  return LK_GRANTED;
-#else /* !SERVER_MODE */
-  int tran_index;
-  int wait_msecs;
-  TRAN_ISOLATION isolation;
-  LOCK new_class_lock;
-  LOCK old_class_lock;
-  int granted;
-  LK_ENTRY *root_class_entry = NULL;
-  LK_ENTRY *class_entry = NULL;
-  LK_ENTRY *inst_entry = NULL;
-#if defined (EnableThreadMonitoring)
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL elapsed_time;
-#endif
-
-  if (oid == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lock_object_on_iscan", "NULL OID pointer");
-      return LK_NOTGRANTED_DUE_ERROR;
-    }
-  if (class_oid == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lock_object_on_iscan", "NULL ClassOID pointer");
-      return LK_NOTGRANTED_DUE_ERROR;
-    }
-
-
-  if (lock == NULL_LOCK)
-    {
-      return LK_GRANTED;
-    }
-
-#if defined (EnableThreadMonitoring)
-  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
-    {
-      tsc_getticks (&start_tick);
-    }
-#endif
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (cond_flag == LK_COND_LOCK)	/* conditional request */
-    {
-      wait_msecs = LK_FORCE_ZERO_WAIT;
-    }
-  else
-    {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
-    }
-  isolation = logtb_find_isolation (tran_index);
-
-  /* check if the given oid is root class oid */
-  if (OID_IS_ROOTOID (oid))
-    {
-      /* case 1 : resource type is LOCK_RESOURCE_ROOT_CLASS
-       * acquire a lock on the root class oid.
-       * NOTE that in case of acquiring a lock on a class object,
-       * the higher lock granule of the class object must not be given.
-       */
-
-      granted =
-	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   NULL, btid, lock,
-					   wait_msecs, &root_class_entry,
-					   NULL);
-      goto end;
-    }
-
-  /* get the intentional lock mode to be acquired on class oid */
-  if (lock <= S_LOCK)
-    {
-      new_class_lock = IS_LOCK;
-    }
-  else
-    {
-      new_class_lock = IX_LOCK;
-    }
-
-  /* Check if current transaction has already held the class lock.
-   * If the class lock is not held, hold the class lock, now.
-   */
-  class_entry = lock_get_class_lock (class_oid, tran_index);
-  old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
-
-  if (OID_IS_ROOTOID (class_oid))
-    {
-      if (old_class_lock < new_class_lock)
-	{
-	  granted =
-	    lock_internal_perform_lock_object (thread_p, tran_index,
-					       class_oid, NULL,
-					       btid, new_class_lock,
-					       wait_msecs,
-					       &root_class_entry, NULL);
-	  if (granted != LK_GRANTED)
-	    {
-	      goto end;
-	    }
-	}
-      /* case 2 : resource type is LOCK_RESOURCE_CLASS */
-      /* acquire a lock on the given class object */
-
-      /* NOTE that in case of acquiring a lock on a class object,
-       * the higher lock granule of the class object must not be given.
-       */
-      granted =
-	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   NULL, btid, lock,
-					   wait_msecs,
-					   &class_entry, root_class_entry);
-    }
-  else
-    {
-      if (old_class_lock < new_class_lock)
-	{
-	  root_class_entry =
-	    lock_get_class_lock (oid_Root_class_oid, tran_index);
-
-	  granted =
-	    lock_internal_perform_lock_object (thread_p, tran_index,
-					       class_oid, NULL,
-					       btid, new_class_lock,
-					       wait_msecs, &class_entry,
-					       root_class_entry);
-	  if (granted != LK_GRANTED)
-	    {
-	      goto end;
-	    }
-	}
-
-      /* case 3 : resource type is LOCK_RESOURCE_INSTANCE */
-      if (lock_is_class_lock_escalated (old_class_lock, lock) == true)
-	{			/* already granted on the class level */
-	  /* if incompatible old class lock with requested lock,
-	     remove instant class locks */
-	  lock_stop_instant_lock_mode (thread_p, tran_index, false);
-	  granted = LK_GRANTED;
-	  goto end;
-	}
-      /* acquire a lock on the given instance oid */
-
-      /* NOTE that in case of acquiring a lock on an instance object,
-       * the class oid of the intance object must be given.
-       */
-      granted =
-	lock_internal_perform_lock_object (thread_p, tran_index, oid,
-					   class_oid, btid, lock, wait_msecs,
-					   &inst_entry, class_entry);
-      if (scanid_bit >= 0 && granted == LK_GRANTED && inst_entry != NULL)
-	{
-	  SET_SCANID_BIT (inst_entry->scanid_bitset, scanid_bit);
-	}
-    }
-
-end:
-#if defined (EnableThreadMonitoring)
-  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
-    }
-  if (MONITOR_WAITING_THREAD (elapsed_time))
-    {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_object_on_iscan)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "lock_object_on_iscan: %6d.%06d\n",
-		    elapsed_time.tv_sec, elapsed_time.tv_usec);
-    }
-#endif
-
-  return granted;
-#endif /* !SERVER_MODE */
-}
-
-/*
  * lock_scan - Lock for scanning a heap
  *
  * return: one of following values)
@@ -7795,32 +7205,19 @@ end:
  *     LK_NOTGRANTED_DUE_ERROR
  *
  *   class_oid(in): class oid of the instances to be scanned
- *   is_indexscan(in): scan type
- *                      - true  => index scan
- *                      - false => sequential scan
- *   current_lock(in/out): currently acquired lock
- *   scanid_bit(in): scanid bit for an index scan
+ *   current_lock(in): acquired lock
  *
  */
 int
-lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
-	   int cond_flag, LOCK * current_lock, int *scanid_bit)
+lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag,
+	   LOCK class_lock)
 {
 #if !defined (SERVER_MODE)
-  if (lk_Standalone_has_xlock == true)
-    {
-      *current_lock = X_LOCK;
-    }
-  else
-    {
-      *current_lock = S_LOCK;
-    }
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
   TRAN_ISOLATION isolation;
-  LOCK class_lock;
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
@@ -7855,34 +7252,6 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
     }
   isolation = logtb_find_isolation (tran_index);
 
-  /* get the class lock mode to be acquired */
-  if (OID_EQ (class_oid, oid_Root_class_oid))
-    {
-      class_lock = IS_LOCK;
-    }
-  else
-    {
-      if (is_indexscan == true)
-	{
-	  class_lock = IS_LOCK;
-	}
-      else
-	{
-	  class_lock = IS_LOCK;
-	}
-    }
-
-  if (is_indexscan)
-    {
-      *scanid_bit = lock_alloc_scanid_bit (thread_p);
-      if (*scanid_bit < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
-		  1, "scanid bit");
-	  return LK_NOTGRANTED_DUE_ERROR;
-	}
-    }
-
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object,
    * the higher lock granule of the class object is not given.
@@ -7893,17 +7262,9 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
 					       NULL, class_lock, wait_msecs,
 					       &class_entry,
 					       root_class_entry);
-  if (granted == LK_GRANTED)
+  if (granted != LK_GRANTED)
     {
-      *current_lock = class_lock;
-    }
-  else
-    {
-      if (*scanid_bit >= 0)
-	{
-	  lock_free_scanid_bit (thread_p, *scanid_bit);
-	}
-      *current_lock = NULL_LOCK;
+      ASSERT_ERROR ();
     }
 
 #if defined (EnableThreadMonitoring)
@@ -8440,7 +7801,6 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
  * return: nothing..
  *
  *   class_oid(in): Class of the instance that were scanned
- *   scanid_bit(in): scanid bit for a scan
  *   scan_state(in):
  *
  * Note:Unlock the given "class_oid" scan according to the transaction
@@ -8449,13 +7809,15 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
  */
 void
 lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
-		  int scanid_bit, bool scan_state)
+		  bool scan_state)
 {
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
   int tran_index;		/* transaction table index */
   TRAN_ISOLATION isolation;	/* transaction isolation level */
+
+  /* TODO: Should we remove this function? */
 
   if (class_oid == NULL)
     {
@@ -8470,23 +7832,11 @@ lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
   switch (isolation)
     {
     case TRAN_SERIALIZABLE:
-      if (scanid_bit >= 0)
-	{
-	  lock_free_scanid_bit (thread_p, scanid_bit);
-	}
       break;			/* nothing to do */
     case TRAN_REPEATABLE_READ:
-      if (scanid_bit >= 0)
-	{
-	  lock_free_scanid_bit (thread_p, scanid_bit);
-	}
       break;			/* nothing to do */
 
     case TRAN_READ_COMMITTED:
-      if (scanid_bit >= 0)
-	{
-	  lock_free_scanid_bit (thread_p, scanid_bit);
-	}
       break;
 
     default:			/* TRAN_UNKNOWN_ISOLATION */

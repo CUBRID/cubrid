@@ -1374,8 +1374,7 @@ static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p,
 
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p,
 					      HEAP_SCANCACHE * scan_cache,
-					      OID * partition_oid,
-					      int scanid_bit);
+					      OID * partition_oid);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -7559,8 +7558,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
   LOCK class_lock = NULL_LOCK;
   int ret = NO_ERROR;
 
-  scan_cache->node.scanid_bit = -1;
-
   if (class_oid != NULL)
     {
       /*
@@ -7575,8 +7572,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
 	   * during the scan of the heap. This can happen in transaction isolation
 	   * levels that release the locks of the class when the class is read.
 	   */
-	  if (lock_scan (thread_p, class_oid, is_indexscan, LK_UNCOND_LOCK,
-			 &class_lock, &scan_cache->node.scanid_bit)
+	  if (lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK)
 	      != LK_GRANTED)
 	    {
 	      goto exit_on_error;
@@ -7609,7 +7605,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
 	{
 	  if (class_oid != NULL && is_queryscan == true)
 	    {
-	      lock_unlock_scan (class_oid, scancache->scanid_bit);
+	      lock_unlock_scan (thread_p, class_oid, END_SCAN);
 	    }
 	  if (valid_file != DISK_ERROR)
 	    {
@@ -8087,8 +8083,7 @@ heap_scancache_end_internal (THREAD_ENTRY * thread_p,
 
   if (!OID_ISNULL (&scan_cache->node.class_oid))
     {
-      lock_unlock_scan (thread_p, &scan_cache->node.class_oid,
-			scan_cache->node.scanid_bit, scan_state);
+      lock_unlock_scan (thread_p, &scan_cache->node.class_oid, scan_state);
     }
 
   p = scan_cache->partition_list;
@@ -8096,8 +8091,7 @@ heap_scancache_end_internal (THREAD_ENTRY * thread_p,
     {
       if (!OID_EQ (&p->node.class_oid, &scan_cache->node.class_oid))
 	{
-	  lock_unlock_scan (thread_p, &p->node.class_oid,
-			    p->node.scanid_bit, scan_state);
+	  lock_unlock_scan (thread_p, &p->node.class_oid, scan_state);
 	}
       p = p->next;
     }
@@ -9086,7 +9080,6 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
   OID partition_class_oid;
   OID save_class_oid;
   HFID save_hfid;
-  int save_scanid_bit;
   bool is_watcher_replaced = false;
   bool vacuum_allowed = false;
   HEAP_SCANCACHE local_scancache;
@@ -9102,7 +9095,6 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
     {
       COPY_OID (&save_class_oid, &scan_cache->node.class_oid);
       HFID_COPY (&save_hfid, &scan_cache->node.hfid);
-      save_scanid_bit = scan_cache->node.scanid_bit;
     }
 
   /* Start by checking all arguments are correct. */
@@ -10027,8 +10019,7 @@ end:
   /* restore original scancache information */
   if (scan_cache != NULL)
     {
-      HEAP_SCANCACHE_SET_NODE (scan_cache, &save_class_oid, &save_hfid,
-			       save_scanid_bit);
+      HEAP_SCANCACHE_SET_NODE (scan_cache, &save_class_oid, &save_hfid);
     }
 
   COPY_OID (class_oid, &current_class_oid);
@@ -17593,7 +17584,6 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
   FILE_TYPE file_type;
   VPID vpid;
   FILE_HEAP_DES hfdes;
-  int scanid_bit = -1;
   DISK_ISVALID rv = DISK_VALID;
 
   file_type = file_get_type (thread_p, &hfid->vfid);
@@ -25255,7 +25245,6 @@ heap_mvcc_lock_scan_and_set_scancache_node (THREAD_ENTRY * thread_p,
 					    bool * unfixed_watchers)
 {
   LOCK curr_lock = NULL_LOCK;
-  int scanid_bit = 0;
   int rc;
   HEAP_SCANCACHE_NODE_LIST *p = NULL;
 
@@ -25276,7 +25265,7 @@ heap_mvcc_lock_scan_and_set_scancache_node (THREAD_ENTRY * thread_p,
       if (OID_EQ (partition_oid_p, &p->node.class_oid))
 	{
 	  HEAP_SCANCACHE_SET_NODE (scan_cache, &p->node.class_oid,
-				   &p->node.hfid, p->node.scanid_bit);
+				   &p->node.hfid);
 	  /* no need to acquire lock */
 	  return LK_GRANTED;
 	}
@@ -25290,19 +25279,16 @@ heap_mvcc_lock_scan_and_set_scancache_node (THREAD_ENTRY * thread_p,
     }
 
   /* try a conditional lock */
-  rc = lock_scan (thread_p, partition_oid_p, false, LK_COND_LOCK, &curr_lock,
-		  &scanid_bit);
+  rc = lock_scan (thread_p, partition_oid_p, LK_COND_LOCK, IS_LOCK);
   if (rc != LK_NOTGRANTED_DUE_TIMEOUT)
     {
       /* could be granted, error, aborted ...  */
       if (rc == LK_GRANTED)
 	{
 	  if (heap_scancache_add_partition_node (thread_p, scan_cache,
-						 partition_oid_p, scanid_bit)
-	      != NO_ERROR)
+						 partition_oid_p) != NO_ERROR)
 	    {
-	      lock_unlock_scan (thread_p, partition_oid_p, scanid_bit,
-				END_SCAN);
+	      lock_unlock_scan (thread_p, partition_oid_p, END_SCAN);
 	      return LK_NOTGRANTED;
 	    }
 	}
@@ -25325,15 +25311,13 @@ heap_mvcc_lock_scan_and_set_scancache_node (THREAD_ENTRY * thread_p,
 
 unconditional_lock:
   /* unconditional lock */
-  rc = lock_scan (thread_p, partition_oid_p, false, LK_UNCOND_LOCK,
-		  &curr_lock, &scanid_bit);
+  rc = lock_scan (thread_p, partition_oid_p, LK_UNCOND_LOCK, IS_LOCK);
   if (rc == LK_GRANTED)
     {
       if (heap_scancache_add_partition_node (thread_p, scan_cache,
-					     partition_oid_p,
-					     scanid_bit) != NO_ERROR)
+					     partition_oid_p) != NO_ERROR)
 	{
-	  lock_unlock_scan (thread_p, partition_oid_p, scanid_bit, END_SCAN);
+	  lock_unlock_scan (thread_p, partition_oid_p, END_SCAN);
 	  return LK_NOTGRANTED;
 	}
     }
@@ -31587,12 +31571,11 @@ heap_should_try_update_stat (const int current_freespace,
  * thread_p (in)	:
  * scan_cache (in)	:
  * partition_oid (in)   :
- * scanid_bit (in)	:
  */
 static int
 heap_scancache_add_partition_node (THREAD_ENTRY * thread_p,
 				   HEAP_SCANCACHE * scan_cache,
-				   OID * partition_oid, int scanid_bit)
+				   OID * partition_oid)
 {
   HFID hfid;
   HEAP_SCANCACHE_NODE_LIST *new_ = NULL;
@@ -31618,7 +31601,6 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p,
 
   COPY_OID (&new_->node.class_oid, partition_oid);
   HFID_COPY (&new_->node.hfid, &hfid);
-  new_->node.scanid_bit = scanid_bit;
   if (scan_cache->partition_list == NULL)
     {
       new_->next = NULL;
@@ -31631,7 +31613,7 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p,
     }
 
   /* set the new node as the current node */
-  HEAP_SCANCACHE_SET_NODE (scan_cache, partition_oid, &hfid, scanid_bit);
+  HEAP_SCANCACHE_SET_NODE (scan_cache, partition_oid, &hfid);
 
   return NO_ERROR;
 }

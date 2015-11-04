@@ -108,7 +108,6 @@ struct lk_entry
   int instant_lock_count;	/* number of instant lock requests  */
   int bind_index_in_tran;
   XASL_ID xasl_id;
-  unsigned char scanid_bitset[1];	/* prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT)/8];       */
 #else				/* not SERVER_MODE */
   int dummy;
 #endif				/* not SERVER_MODE */
@@ -221,12 +220,8 @@ extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
 extern int lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 				  const OID * class_oid, const BTID * btid,
 				  LOCK lock, int cond_flag);
-extern int lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
-				 const OID * class_oid, const BTID * btid,
-				 LOCK lock, int cond_flag, int scanid_bit);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
-		      bool is_indexscan, int cond_flag, LOCK * current_lock,
-		      int *scanid_bit);
+		      int cond_flag, LOCK class_lock);
 extern int lock_classes_lock_hint (THREAD_ENTRY * thread_p,
 				   LC_LOCKHINT * lockhint);
 extern void lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid,
@@ -240,7 +235,7 @@ extern void lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
 extern void lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p,
 					  LC_LOCKSET * lockset);
 extern void lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
-			      int scanid_bit, bool scan_state);
+			      bool scan_state);
 extern void lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p,
 					   LC_LOCKHINT * lockhint);
 extern void lock_unlock_all (THREAD_ENTRY * thread_p);
