@@ -2287,7 +2287,6 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (it->curr, edesc->of_next)))
 		{
 		  /* deleted in the meantime, skip it */
-		  pthread_mutex_unlock (mx);
 		  continue;
 		}
 	    }
