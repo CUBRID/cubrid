@@ -17,13 +17,13 @@ if "%1" == "" (GOTO :CHECK_ENV)
 if "%1" == "/debug" (
 if "%BUILD_MODE%" == "." (
 set BUILD_MODE=debug
-GOTO :DO_SHIFT
+shift
 ) else (GOTO :ERROR_BUILD_MODE)
 )
 if "%1" == "/release" (
 if "%BUILD_MODE%" == "." (
 set BUILD_MODE=release
-GOTO :DO_SHIFT
+shift
 ) else (GOTO :ERROR_BUILD_MODE)
 )
 if "%1" == "/new" (
