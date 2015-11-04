@@ -1249,6 +1249,42 @@ net_client_request (int request, char *argbuf, int argsize, char *replybuf,
 		    int replysize, char *databuf, int datasize,
 		    char *replydata, int replydatasize)
 {
+  static int saved_request = NET_SERVER_REQUEST_END;
+
+  if (request == NET_SERVER_INVALIDATE_MVCC_SNAPSHOT
+      && saved_request != NET_SERVER_INVALIDATE_MVCC_SNAPSHOT)
+    {
+      /* postpone a snapshot invalidation request. */
+      or_pack_int (replybuf, NO_ERROR);
+
+      saved_request = NET_SERVER_INVALIDATE_MVCC_SNAPSHOT;
+      return NO_ERROR;
+    }
+  else if (request == NET_SERVER_TM_SERVER_COMMIT
+	   || request == NET_SERVER_TM_SERVER_ABORT)
+    {
+      /* just forget the previous snapshot invalidation request. */
+      saved_request = NET_SERVER_REQUEST_END;
+    }
+  else if (saved_request == NET_SERVER_INVALIDATE_MVCC_SNAPSHOT)
+    {
+      /* We have a pending snapshot invalidation request and have another. 
+       * We are going to issue the pending request and then do the new one.
+       */
+      char *reply;
+      OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+      int err = NO_ERROR;
+
+      reply = OR_ALIGNED_BUF_START (a_reply);
+      err = net_client_request_internal (saved_request, NULL, 0,
+					 reply, OR_ALIGNED_BUF_SIZE (a_reply),
+					 NULL, 0, NULL, 0);
+
+      /* Don't have an interest on the result */
+
+      saved_request = NET_SERVER_REQUEST_END;
+    }
+
   return (net_client_request_internal (request, argbuf, argsize,
 				       replybuf, replysize,
 				       databuf, datasize,
