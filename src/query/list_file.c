@@ -1616,9 +1616,10 @@ qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
   if (temp_file_p->membuf && list_id_p->last_vpid.volid == NULL_VOLID)
     {
       /* The last page is in the membuf */
-      assert_release (temp_file_p->membuf_last ==
+      assert_release (temp_file_p->membuf_last >=
 		      list_id_p->last_vpid.pageid);
-      last_page_ptr = temp_file_p->membuf[temp_file_p->membuf_last];
+      /* The page of last record in the membuf */
+      last_page_ptr = temp_file_p->membuf[list_id_p->last_vpid.pageid];
     }
   else
     {

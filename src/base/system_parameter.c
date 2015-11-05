@@ -2705,7 +2705,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_TEMP_MEM_BUFFER_PAGES,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_temp_mem_buffer_pages_flag,
    (void *) &prm_temp_mem_buffer_pages_default,
