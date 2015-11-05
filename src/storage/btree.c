@@ -34288,7 +34288,8 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   error_code =
     log_rv_undoredo_record_partial_changes
     (thread_p, rcv_data_ptr,
-     rcv->length - CAST_BUFLEN (rcv_data_ptr - rcv->data), &update_record);
+     rcv->length - CAST_BUFLEN (rcv_data_ptr - rcv->data), &update_record,
+     is_undo);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

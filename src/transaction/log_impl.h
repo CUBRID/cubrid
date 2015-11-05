@@ -2715,7 +2715,8 @@ extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY *
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p,
 						   char *rcv_data,
 						   int rcv_data_length,
-						   RECDES * record);
+						   RECDES * record,
+						   bool is_undo);
 extern int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern char *log_rv_pack_redo_record_changes (char *ptr,

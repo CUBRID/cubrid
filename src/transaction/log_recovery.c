@@ -236,6 +236,10 @@ static void log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 
 static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv, bool is_undo);
+static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p,
+						      OR_BUF * rcv_buf,
+						      RECDES * record,
+						      bool is_undo);
 
 /*
  * CRASH RECOVERY PROCESS
@@ -7204,6 +7208,118 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * log_rv_undoredo_partial_changes_recursive () - Parse log data recursively
+ *						  and apply changes.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv_buf (in)  : Buffer to process log data.
+ * record (in)   : Record being modified.
+ * is_undo (in)  : True for undo, false for redo.
+ *
+ * NOTE: The recursive function is applied for both undo and redo data.
+ *	 Changes are logged in the order they are made during runtime.
+ *	 Redo will apply all changes in the same order, but undo will have
+ *	 to apply them in reversed order.
+ */
+static int
+log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p,
+					   OR_BUF * rcv_buf, RECDES * record,
+					   bool is_undo)
+{
+  int error_code = NO_ERROR;	/* Error code. */
+  int offset_to_data;		/* Offset to data being modified. */
+  int old_data_size;		/* Size of old data. */
+  int new_data_size;		/* Size of new data. */
+  char *new_data = NULL;	/* New data. */
+
+  if (rcv_buf->ptr == rcv_buf->endptr)
+    {
+      /* Finished. */
+      return NO_ERROR;
+    }
+
+  /* At least offset_to_data, old_data_size and new_data_size should be
+   * stored.
+   */
+  if (rcv_buf->ptr + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE > rcv_buf->endptr)
+    {
+      assert_release (false);
+      return or_overflow (rcv_buf);
+    }
+
+  /* Get offset_to_data. */
+  offset_to_data = (int) or_get_short (rcv_buf, &error_code);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+
+  /* Get old_data_size */
+  old_data_size = (int) or_get_byte (rcv_buf, &error_code);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+
+  /* Get new_data_size */
+  new_data_size = (int) or_get_byte (rcv_buf, &error_code);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+
+  if (new_data_size > 0)
+    {
+      /* Get new data. */
+      new_data = rcv_buf->ptr;
+      error_code = or_advance (rcv_buf, new_data_size);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+    }
+  else
+    {
+      /* No new data. */
+      new_data = NULL;
+    }
+
+  /* Align buffer to expected alignment. */
+  or_align (rcv_buf, INT_ALIGNMENT);
+
+  if (!is_undo)
+    {
+      /* Changes must be applied in the same order they are logged. Change
+       * record and then advance to next changes.
+       */
+      RECORD_REPLACE_DATA (record, offset_to_data, old_data_size,
+			   new_data_size, new_data);
+    }
+  error_code =
+    log_rv_undoredo_partial_changes_recursive (thread_p, rcv_buf, record,
+					       is_undo);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+  if (is_undo)
+    {
+      /* Changes must be made in reversed order. Change record after advancing
+       * to next changes.
+       */
+      RECORD_REPLACE_DATA (record, offset_to_data, old_data_size,
+			   new_data_size, new_data);
+    }
+  return NO_ERROR;
+}
+
+/*
  * log_rv_undoredo_record_partial_changes () - Undoredo record data changes.
  *
  * return		: Error code.
@@ -7217,14 +7333,10 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 int
 log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p,
 					char *rcv_data,
-					int rcv_data_length, RECDES * record)
+					int rcv_data_length, RECDES * record,
+					bool is_undo)
 {
   OR_BUF rcv_buf;		/* Buffer used to process recovery data. */
-  int error_code = NO_ERROR;	/* Error code. */
-  int offset_to_data;		/* Offset to data being modified. */
-  int old_data_size;		/* Size of old data. */
-  int new_data_size;		/* Size of new data. */
-  char *new_data = NULL;	/* New data. */
 
   /* Assert expected arguments. */
   assert (rcv_data != NULL);
@@ -7234,72 +7346,8 @@ log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p,
   /* Prepare buffer. */
   OR_BUF_INIT (rcv_buf, rcv_data, rcv_data_length);
 
-  /* Read buffer to obtain record changes. There can be more than one change.
-   */
-  /* Align buffer to expected alignment. */
-  or_align (&rcv_buf, INT_ALIGNMENT);
-  while (rcv_buf.ptr < rcv_buf.endptr)
-    {
-      /* At least offset_to_data, old_data_size and new_data_size should be
-       * stored.
-       */
-      if (rcv_buf.ptr + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE > rcv_buf.endptr)
-	{
-	  assert_release (false);
-	  return or_overflow (&rcv_buf);
-	}
-
-      /* Get offset_to_data. */
-      offset_to_data = (int) or_get_short (&rcv_buf, &error_code);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  return error_code;
-	}
-
-      /* Get old_data_size */
-      old_data_size = (int) or_get_byte (&rcv_buf, &error_code);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  return error_code;
-	}
-
-      /* Get new_data_size */
-      new_data_size = (int) or_get_byte (&rcv_buf, &error_code);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  return error_code;
-	}
-
-      if (new_data_size > 0)
-	{
-	  /* Get new data. */
-	  new_data = rcv_buf.ptr;
-	  error_code = or_advance (&rcv_buf, new_data_size);
-	  if (error_code != NO_ERROR)
-	    {
-	      assert_release (false);
-	      return error_code;
-	    }
-	}
-      else
-	{
-	  /* No new data. */
-	  new_data = NULL;
-	}
-      /* Align buffer to expected alignment. */
-      or_align (&rcv_buf, INT_ALIGNMENT);
-
-      /* Make record changes. */
-      RECORD_REPLACE_DATA (record, offset_to_data, old_data_size,
-			   new_data_size, new_data);
-    }
-  assert (rcv_buf.ptr == rcv_buf.endptr);
-
-  /* Success. */
-  return NO_ERROR;
+  return log_rv_undoredo_partial_changes_recursive (thread_p, &rcv_buf,
+						    record, is_undo);
 }
 
 /*
@@ -7428,7 +7476,8 @@ log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
       /* Make recorded changes. */
       error_code =
 	log_rv_undoredo_record_partial_changes (thread_p, (char *) rcv->data,
-						rcv->length, &record);
+						rcv->length, &record,
+						is_undo);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
