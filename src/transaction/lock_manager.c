@@ -7262,10 +7262,8 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag,
 					       NULL, class_lock, wait_msecs,
 					       &class_entry,
 					       root_class_entry);
-  if (granted != LK_GRANTED)
-    {
-      ASSERT_ERROR ();
-    }
+  assert (granted == LK_GRANTED || cond_flag == LK_COND_LOCK
+	  || er_errid () != NO_ERROR);
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
