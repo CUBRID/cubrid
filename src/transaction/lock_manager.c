@@ -337,6 +337,12 @@ struct lk_tran_lock
   LK_ENTRY *inst_hold_list;	/* instance lock hold list */
   LK_ENTRY *class_hold_list;	/* class lock hold list */
   LK_ENTRY *root_class_hold;	/* root class lock hold */
+  LK_ENTRY *lk_entry_pool;	/* local pool of lock entries which can be
+				 * used with no synchronization.
+				 */
+  int lk_entry_pool_count;	/* Current count of lock entries in local
+				 * pool.
+				 */
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int class_hold_count;		/* # of entries in class_hold_list */
 
@@ -353,6 +359,8 @@ struct lk_tran_lock
   /* locking on manual duration */
   bool is_instant_duration;
 };
+/* Max size of transaction local pool of lock entries. */
+#define LOCK_TRAN_LOCAL_POOL_MAX_SIZE 10
 
 /*
  * Lock Manager Global Data Structure
@@ -590,6 +598,12 @@ static LK_RES_KEY lock_create_search_key (OID * oid, OID * class_oid,
 static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p,
 					 LK_ENTRY * entry_ptr);
 #endif /* SERVER_MODE */
+
+static LK_ENTRY *lock_get_new_entry (int tran_index,
+				     LF_TRAN_ENTRY * tran_entry,
+				     LF_FREELIST * freelist);
+static void lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry,
+			     LF_FREELIST * freelist, LK_ENTRY * lock_entry);
 
 /* object lock entry */
 static void *lock_alloc_entry (void);
@@ -1095,7 +1109,8 @@ static int
 lock_initialize_tran_lock_table (void)
 {
   LK_TRAN_LOCK *tran_lock;	/* pointer to transaction hold entry */
-  int i;			/* loop variable                     */
+  int i, j;			/* loop variable                     */
+  LK_ENTRY *entry = NULL;
 
   /* initialize the number of transactions */
   lk_Gl.num_trans = MAX_NTRANS;
@@ -1117,6 +1132,15 @@ lock_initialize_tran_lock_table (void)
       tran_lock = &lk_Gl.tran_lock_table[i];
       pthread_mutex_init (&tran_lock->hold_mutex, NULL);
       pthread_mutex_init (&tran_lock->non2pl_mutex, NULL);
+
+      for (j = 0; j < LOCK_TRAN_LOCAL_POOL_MAX_SIZE; j++)
+	{
+	  entry = (LK_ENTRY *) malloc (sizeof (LK_ENTRY));
+	  lock_initialize_entry (entry);
+	  entry->next = tran_lock->lk_entry_pool;
+	  tran_lock->lk_entry_pool = entry;
+	}
+      tran_lock->lk_entry_pool_count = LOCK_TRAN_LOCAL_POOL_MAX_SIZE;
     }
 
   return NO_ERROR;
@@ -1788,7 +1812,8 @@ lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
     {				/* non2pl == (LK_ENTRY *)NULL */
       /* 2. I do not have a non2pl entry on the lock resource */
       /* allocate a lock entry, initialize it, and connect it */
-      non2pl = lf_freelist_claim (t_entry, &lk_Gl.obj_free_entry_list);
+      non2pl =
+	lock_get_new_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list);
       if (non2pl != NULL)
 	{
 	  lock_initialize_entry_as_non2pl (non2pl, tran_index, res_ptr, lock);
@@ -3625,7 +3650,9 @@ start:
       /* initialize the lock resource entry */
       lock_initialize_resource_as_allocated (res_ptr, NULL_LOCK);
 
-      entry_ptr = lf_freelist_claim (t_entry_ent, &lk_Gl.obj_free_entry_list);
+      entry_ptr =
+	lock_get_new_entry (tran_index, t_entry_ent,
+			    &lk_Gl.obj_free_entry_list);
       if (entry_ptr == NULL)
 	{
 	  assert (is_res_mutex_locked);
@@ -3720,9 +3747,9 @@ start:
 
       if (compat1 == true && compat2 == true)
 	{
-
-	  entry_ptr = lf_freelist_claim (t_entry_ent,
-					 &lk_Gl.obj_free_entry_list);
+	  entry_ptr =
+	    lock_get_new_entry (tran_index, t_entry_ent,
+				&lk_Gl.obj_free_entry_list);
 	  if (entry_ptr == NULL)
 	    {
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -3803,8 +3830,8 @@ start:
 	      if (entry_ptr == NULL)
 		{
 		  entry_ptr =
-		    lf_freelist_claim (t_entry_ent,
-				       &lk_Gl.obj_free_entry_list);
+		    lock_get_new_entry (tran_index, t_entry_ent,
+					&lk_Gl.obj_free_entry_list);
 		  if (entry_ptr == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -3824,15 +3851,8 @@ start:
 		}
 	      (void) lock_set_error_for_timeout (thread_p, entry_ptr);
 
-	      rv =
-		lf_freelist_retire (t_entry_ent, &lk_Gl.obj_free_entry_list,
-				    entry_ptr);
-	      if (rv != NO_ERROR)
-		{
-		  assert (false);
-		  ret_val = LK_NOTGRANTED_DUE_ERROR;
-		  goto end;
-		}
+	      lock_free_entry (tran_index, t_entry_ent,
+			       &lk_Gl.obj_free_entry_list, entry_ptr);
 	    }
 
 	  ret_val = LK_NOTGRANTED_DUE_TIMEOUT;
@@ -3916,7 +3936,9 @@ start:
 	}
 
       /* allocate a lock entry. */
-      entry_ptr = lf_freelist_claim (t_entry_ent, &lk_Gl.obj_free_entry_list);
+      entry_ptr =
+	lock_get_new_entry (tran_index, t_entry_ent,
+			    &lk_Gl.obj_free_entry_list);
       if (entry_ptr == NULL)
 	{
 	  assert (is_res_mutex_locked);
@@ -4092,15 +4114,16 @@ lock_tran_lk_entry:
       pthread_mutex_unlock (&res_ptr->res_mutex);
       if (wait_msecs == LK_ZERO_WAIT)
 	{
-	  LK_ENTRY *p =
-	    lf_freelist_claim (t_entry_ent, &lk_Gl.obj_free_entry_list);
+	  LK_ENTRY *p = lock_get_new_entry (tran_index, t_entry_ent,
+					    &lk_Gl.obj_free_entry_list);
 
 	  if (p != NULL)
 	    {
 	      lock_initialize_entry_as_blocked (p, thread_p, tran_index,
 						res_ptr, lock);
 	      lock_set_error_for_timeout (thread_p, p);
-	      lf_freelist_retire (t_entry_ent, &lk_Gl.obj_free_entry_list, p);
+	      lock_free_entry (tran_index, t_entry_ent,
+			       &lk_Gl.obj_free_entry_list, p);
 	    }
 	}
 
@@ -4460,7 +4483,8 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
 	    }
 
 	  /* free the lock entry */
-	  lf_freelist_retire (t_entry, &lk_Gl.obj_free_entry_list, curr);
+	  lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list,
+			   curr);
 
 	  if (from_whom != NULL)
 	    {
@@ -4531,7 +4555,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
 				       curr->granted_mode);
 	}
       /* free the lock entry */
-      lf_freelist_retire (t_entry, &lk_Gl.obj_free_entry_list, curr);
+      lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list, curr);
     }
 
   /* change total_holders_mode */
@@ -5149,7 +5173,7 @@ lock_remove_non2pl (LK_ENTRY * non2pl, int tran_index)
   /* (void)lk_delete_from_tran_non2pl_list(curr); */
 
   /* free the lock entry */
-  lf_freelist_retire (t_entry, &lk_Gl.obj_free_entry_list, curr);
+  lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list, curr);
 
   if (res_ptr->holder == NULL && res_ptr->waiter == NULL
       && res_ptr->non2pl == NULL)
@@ -5206,7 +5230,8 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 	      prev->next = curr->next;
 	    }
 	  (void) lock_delete_from_tran_non2pl_list (curr, tran_index);
-	  lf_freelist_retire (t_entry, &lk_Gl.obj_free_entry_list, curr);
+	  lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list,
+			   curr);
 	  curr = next;
 	}
       else
@@ -6732,6 +6757,12 @@ lock_finalize (void)
 	  tran_lock = &lk_Gl.tran_lock_table[i];
 	  pthread_mutex_destroy (&tran_lock->hold_mutex);
 	  pthread_mutex_destroy (&tran_lock->non2pl_mutex);
+	  while (tran_lock->lk_entry_pool != NULL)
+	    {
+	      LK_ENTRY *entry = tran_lock->lk_entry_pool;
+	      tran_lock->lk_entry_pool = tran_lock->lk_entry_pool->next;
+	      free (entry);
+	    }
 	}
       free_and_init (lk_Gl.tran_lock_table);
     }
@@ -11275,3 +11306,70 @@ lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   return is_safe;
 }
 #endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * lock_get_new_entry () - Get new lock entry. Local pool of free entries is
+ *			   first used. When this pool is depleted, a new
+ *			   entry is claimed from shared list of lock entries.
+ *
+ * return	   : New lock entry.
+ * tran_index (in) : Transaction index of requester.
+ * tran_entry (in) : Lock-free transaction entry.
+ * freelist (in)   : Lock-free shared list of entries.
+ */
+static LK_ENTRY *
+lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry,
+		    LF_FREELIST * freelist)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  LK_ENTRY *lock_entry;
+
+  /* Check if local pool has free entries. */
+  if (tran_lock->lk_entry_pool)
+    {
+      assert (tran_lock->lk_entry_pool_count > 0);
+      lock_entry = tran_lock->lk_entry_pool;
+      tran_lock->lk_entry_pool = tran_lock->lk_entry_pool->next;
+      tran_lock->lk_entry_pool_count--;
+      return lock_entry;
+    }
+
+  /* Claim from shared freelist. */
+  return lf_freelist_claim (tran_entry, freelist);
+}
+
+/*
+ * lock_free_entry () - Free lock entry. Local pool has high priority if its
+ *			maximum size is not reached. Otherwise, the entry
+ *			is "retired" to shared list of free lock entries.
+ *
+ * return	   : Error code.
+ * tran_index (in) : Transaction index.
+ * tran_entry (in) : Lock-free transaction entry.
+ * freelist (in)   : Lock-free shared list of lock entries.
+ * lock_entry (in) : Lock entry being freed.
+ */
+static void
+lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry,
+		 LF_FREELIST * freelist, LK_ENTRY * lock_entry)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  assert (tran_lock->lk_entry_pool_count >= 0
+	  && tran_lock->lk_entry_pool_count <= LOCK_TRAN_LOCAL_POOL_MAX_SIZE);
+
+  /* "Free" entry to local pool or shared list. */
+  if (tran_lock->lk_entry_pool_count < LOCK_TRAN_LOCAL_POOL_MAX_SIZE)
+    {
+      lock_uninit_entry (lock_entry);
+      lock_entry->next = tran_lock->lk_entry_pool;
+      tran_lock->lk_entry_pool = lock_entry;
+      tran_lock->lk_entry_pool_count++;
+    }
+  else
+    {
+      lf_freelist_retire (tran_entry, freelist, lock_entry);
+    }
+}
+#endif
