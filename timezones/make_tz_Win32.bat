@@ -39,11 +39,15 @@ GOTO :DO_SHIFT
 ) else (GOTO :ERROR_BUILD_MODE)
 )
 
+if "%BUILD_MODE%" == "." (
 if "%1" == "/h"            (GOTO :SHOW_USAGE)
 if "%1" == "/?"            (GOTO :SHOW_USAGE)
 if "%1" == "/help"         (GOTO :SHOW_USAGE)
-
 GOTO :ERROR
+) else (
+if "%TZ_MODE%" == "." set TZ_MODE=new
+GOTO :GET_DATABASE_NAME
+)
 
 :DO_SHIFT
 shift
@@ -201,7 +205,7 @@ goto :GENERIC_ERROR
 @echo.        database_name = this is necessary only when using extend mode;
 @echo.                        the computed timezone checksum is written in
 @echo.                        the timezone_checksum column of the db_root
-@echo.                        system table              
+@echo.                        system table
 @echo.  /help /h /?      Display this help message and exit
 @echo.
 @echo. Examples:
