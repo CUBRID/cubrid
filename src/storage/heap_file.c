@@ -10394,8 +10394,21 @@ try_again:
 	}
 #endif /* SA_MODE */
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
-	      oid->volid, oid->pageid, oid->slotid);
+      if (OID_EQ (class_oid, oid_Root_class_oid))
+	{
+	  /* a deleted class record, corresponding to a deleted class can be
+	   * accessed through catalog update operations on another class.
+	   * This is possible if a class has an attribute holding a domain that
+	   * references the dropped class.
+	   */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,
+		  3, oid->volid, oid->pageid, oid->slotid);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
+		  oid->volid, oid->pageid, oid->slotid);
+	}
       return S_DOESNT_EXIST;
 
     case REC_NEWHOME:
