@@ -3394,28 +3394,35 @@ detect_dst:
 	{
 	  int add_ds_save_time_diff = 0;
 	  int prev_rule_save_time = 0;
+	  full_date_t leap = 0;
 
-	  if (prev_off_rule != NULL &&
-	      prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
+	  if (prev_off_rule != NULL)
 	    {
-	      add_ds_save_time_diff = curr_off_rule->ds_ruleset;
-	      if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
+	      if (prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
 		{
-		  err_status =
-		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
-						      &prev_rule_save_time);
-		  if (err_status != NO_ERROR)
+		  add_ds_save_time_diff = curr_off_rule->ds_ruleset;
+		  if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
 		    {
-		      goto exit;
+		      err_status =
+			get_saving_time_from_offset_rule (prev_off_rule, tzd,
+							  &prev_rule_save_time);
+		      if (err_status != NO_ERROR)
+			{
+			  goto exit;
+			}
 		    }
+		  add_ds_save_time_diff -= prev_rule_save_time;
+		  leap = leap_offset_rule_interval + add_ds_save_time_diff;
 		}
-	      add_ds_save_time_diff -= prev_rule_save_time;
+	      else if (prev_off_rule->until_time_type ==
+		       TZ_TIME_TYPE_LOCAL_STD)
+		{
+		  leap = leap_offset_rule_interval;
+		}
 	    }
 
 	  if (try_offset_rule_overlap == false
-	      && leap_offset_rule_interval + add_ds_save_time_diff >= 0
-	      && (offset_rule_diff < leap_offset_rule_interval +
-		  add_ds_save_time_diff))
+	      && leap >= 0 && (offset_rule_diff < leap))
 	    {
 	      /* invalid time, abort */
 	      err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
@@ -3528,6 +3535,7 @@ detect_dst:
       bool is_in_leap_interval = false;
       bool check_prev_year = true;
       int year_to_apply_rule = 0;
+      TZ_DS_RULE *wall_ds_rule = NULL;
 
       assert (curr_ds_id + ds_ruleset->index_start < tzd->ds_rule_count);
       curr_ds_rule = &(tzd->ds_rules[curr_ds_id + ds_ruleset->index_start]);
@@ -3615,7 +3623,6 @@ detect_dst:
 	{
 	  int wall_ds_rule_id;
 	  int wall_safe_julian_date;
-	  TZ_DS_RULE *wall_ds_rule;
 	  full_date_t leap_interval;
 	  int ds_time_offset = 0;
 	  full_date_t ds_rule_date = 0;
@@ -3764,6 +3771,15 @@ detect_dst:
 	      && (applying_date_diff < 0 || date_diff < applying_date_diff
 		  || applying_is_in_leap_interval))
 	    {
+	      if (is_in_leap_interval == true && wall_ds_rule != NULL
+		  && check_user_dst == true
+		  && tz_check_ds_match_string (curr_off_rule, wall_ds_rule,
+					       tz_info->zone.dst_str,
+					       ds_ruleset->default_abrev) ==
+		  true)
+		{
+		  continue;
+		}
 	      /* this is the best rule so far (ignoring user DST) */
 	      applying_date_diff = date_diff;
 	      applying_ds_rule = curr_ds_rule;
@@ -3820,6 +3836,7 @@ detect_dst:
     {
       full_date_t offset_rule_diff;
       int add_ds_save_time = 0;
+      full_date_t leap = 0;
 
       if (FULL_DATE (src_julian_date, src_time_sec + src_offset_curr_off_rule)
 	  >= FULL_DATE (rule_julian_date, rule_time_sec))
@@ -3832,29 +3849,34 @@ detect_dst:
 				    + src_offset_prev_off_rule) -
 	FULL_DATE (prev_rule_julian_date, prev_rule_time_sec);
 
-      if (prev_off_rule != NULL &&
-	  prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
+      if (prev_off_rule != NULL)
 	{
-	  int prev_rule_save_time = 0;
-
-	  add_ds_save_time = save_time;
-	  if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
+	  if (prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
 	    {
-	      err_status =
-		get_saving_time_from_offset_rule (prev_off_rule, tzd,
-						  &prev_rule_save_time);
-	      if (err_status != NO_ERROR)
+	      int prev_rule_save_time = 0;
+
+	      add_ds_save_time = save_time;
+	      if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
 		{
-		  goto exit;
+		  err_status =
+		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						      &prev_rule_save_time);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
 		}
+	      add_ds_save_time -= prev_rule_save_time;
+	      leap = leap_offset_rule_interval + add_ds_save_time;
 	    }
-	  add_ds_save_time -= prev_rule_save_time;
+	  else if (prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_STD)
+	    {
+	      leap = leap_offset_rule_interval;
+	    }
 	}
 
       if (try_offset_rule_overlap == false
-	  && leap_offset_rule_interval + add_ds_save_time >= 0
-	  && (offset_rule_diff <
-	      leap_offset_rule_interval + add_ds_save_time))
+	  && leap >= 0 && (offset_rule_diff < leap))
 	{
 	  /* invalid time, abort */
 	  err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
@@ -3932,34 +3954,41 @@ detect_dst:
 	{
 	  full_date_t offset_rule_diff;
 	  int add_ds_save_time = 0;
+	  full_date_t leap = 0;
 
 	  offset_rule_diff = FULL_DATE (src_julian_date, src_time_sec
 					+ src_offset_prev_off_rule) -
 	    FULL_DATE (prev_rule_julian_date, prev_rule_time_sec);
 
-	  if (prev_off_rule != NULL &&
-	      prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
+	  if (prev_off_rule != NULL)
 	    {
-	      int prev_rule_save_time = 0;
-
-	      add_ds_save_time = save_time;
-	      if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
+	      if (prev_off_rule->until_time_type == TZ_TIME_TYPE_LOCAL_WALL)
 		{
-		  err_status =
-		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
-						      &prev_rule_save_time);
-		  if (err_status != NO_ERROR)
+		  int prev_rule_save_time = 0;
+
+		  add_ds_save_time = save_time;
+		  if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
 		    {
-		      goto exit;
+		      err_status =
+			get_saving_time_from_offset_rule (prev_off_rule, tzd,
+							  &prev_rule_save_time);
+		      if (err_status != NO_ERROR)
+			{
+			  goto exit;
+			}
 		    }
+		  add_ds_save_time -= prev_rule_save_time;
+		  leap = leap_offset_rule_interval + add_ds_save_time;
 		}
-	      add_ds_save_time -= prev_rule_save_time;
+	      else if (prev_off_rule->until_time_type ==
+		       TZ_TIME_TYPE_LOCAL_STD)
+		{
+		  leap = leap_offset_rule_interval;
+		}
 	    }
 
 	  if (try_offset_rule_overlap == false
-	      && leap_offset_rule_interval + add_ds_save_time >= 0
-	      && (offset_rule_diff < leap_offset_rule_interval +
-		  add_ds_save_time))
+	      && leap >= 0 && (offset_rule_diff < leap))
 	    {
 	      /* invalid time, abort */
 	      err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
@@ -3967,10 +3996,28 @@ detect_dst:
 	      goto exit;
 	    }
 
+	  if (curr_ds_id == ds_ruleset->count)
+	    {
+	      applying_ds_id =
+		get_closest_ds_rule (src_julian_date, src_time_sec,
+				     ds_ruleset, tzd, BACKWARD);
+	    }
+	  else
+	    {
+	      applying_ds_id =
+		get_closest_ds_rule (src_julian_date, src_time_sec,
+				     ds_ruleset, tzd, FORWARD);
+	    }
+
+	  assert (applying_ds_id + ds_ruleset->index_start <
+		  tzd->ds_rule_count);
+	  applying_ds_rule =
+	    &(tzd->ds_rules[applying_ds_id + ds_ruleset->index_start]);
+
 	  /* check if provided DS specifier matches the offset rule format */
 	  if (tz_info->zone.dst_str[0] != '\0'
 	      && curr_off_rule->var_format != NULL
-	      && tz_check_ds_match_string (curr_off_rule, NULL,
+	      && tz_check_ds_match_string (curr_off_rule, applying_ds_rule,
 					   tz_info->zone.dst_str,
 					   ds_ruleset->default_abrev)
 	      == false)
@@ -3990,10 +4037,11 @@ detect_dst:
 	    }
 	  else if (tz_info->zone.dst_str[0] != '\0'
 		   && curr_off_rule->var_format != NULL
-		   && tz_check_ds_match_string (curr_off_rule, NULL,
+		   && tz_check_ds_match_string (curr_off_rule,
+						applying_ds_rule,
 						tz_info->zone.dst_str,
-						ds_ruleset->default_abrev)
-		   == true && try_offset_rule_overlap == true)
+						ds_ruleset->default_abrev) ==
+		   true && try_offset_rule_overlap == true)
 	    {
 	      bool overlap = false;
 
@@ -4026,25 +4074,6 @@ detect_dst:
 		}
 	    }
 
-	  if (curr_ds_id == ds_ruleset->count)
-	    {
-	      applying_ds_id =
-		get_closest_ds_rule (src_julian_date, src_time_sec,
-				     ds_ruleset, tzd, BACKWARD);
-	    }
-	  else
-	    {
-	      applying_ds_id =
-		get_closest_ds_rule (src_julian_date, src_time_sec,
-				     ds_ruleset, tzd, FORWARD);
-	    }
-
-	  if (applying_ds_id == -1)
-	    {
-	      goto exit;
-	    }
-	  applying_ds_rule =
-	    &(tzd->ds_rules[applying_ds_id + ds_ruleset->index_start]);
 	  goto exit;
 	}
       APPLY_NEXT_OFF_RULE ();
