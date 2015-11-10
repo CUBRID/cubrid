@@ -7148,7 +7148,9 @@ parameter_info_decode (char *buf, int size, int num_param,
 
   param = (T_CCI_PARAM_INFO *) MALLOC (sizeof (T_CCI_PARAM_INFO) * num_param);
   if (param == NULL)
-    return CCI_ER_NO_MORE_MEMORY;
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
   memset (param, 0, sizeof (T_CCI_PARAM_INFO) * num_param);
 
   for (i = 0; i < num_param; i++)
@@ -7157,7 +7159,7 @@ parameter_info_decode (char *buf, int size, int num_param,
 	{
 	  goto param_decode_error;
 	}
-      param[i].mode = (T_CCI_PARAM_MODE) * buf;
+      param[i].mode = (T_CCI_PARAM_MODE) (*buf);
       size -= 1;
       buf += 1;
 
@@ -7165,7 +7167,7 @@ parameter_info_decode (char *buf, int size, int num_param,
 	{
 	  goto param_decode_error;
 	}
-      param[i].type = (T_CCI_U_TYPE) * buf;
+      param[i].type = (T_CCI_U_TYPE) (*buf);
       size -= 1;
       buf += 1;
 
@@ -7204,13 +7206,15 @@ decode_fetch_result (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
   int num_tuple;
 
   if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
-    num_cols = req_handle->num_bind + 1;
+    {
+      num_cols = req_handle->num_bind + 1;
+    }
   else
-    num_cols = req_handle->num_col_info;
+    {
+      num_cols = req_handle->num_col_info;
+    }
 
-  num_tuple = fetch_info_decode (result_msg_start,
-				 result_msg_size,
-				 num_cols,
+  num_tuple = fetch_info_decode (result_msg_start, result_msg_size, num_cols,
 				 &(req_handle->tuple_value), FETCH_FETCH,
 				 req_handle, con_handle);
   if (num_tuple < 0)
