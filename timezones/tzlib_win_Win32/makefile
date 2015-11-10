@@ -61,6 +61,7 @@ $(OUTFILE)_debug : timezones.c
 	@echo off
 	cl.exe $(C_PARAMS_DEBUG_32BIT) .\timezones.c
 	link.exe $(LINK_PARAMS_DEBUG_32BIT) .\Output\timezones.obj
+	mt.exe /outputresource:".\Output\tzlib.dll;#2" /manifest .\Output\tzlib.dll.intermediate.manifest
 
 $(OUTFILE)_release : timezones.c
 	@echo off
