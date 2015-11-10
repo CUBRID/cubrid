@@ -532,9 +532,10 @@ proxy_unset_force_out_tran (char *msg)
 }
 
 int
-proxy_make_net_buf (T_NET_BUF * net_buf, int size)
+proxy_make_net_buf (T_NET_BUF * net_buf, int size,
+		    T_BROKER_VERSION client_version)
 {
-  net_buf_init (net_buf);
+  net_buf_init (net_buf, client_version);
 
   net_buf->data = (char *) MALLOC (size);
   if (net_buf->data == NULL)
@@ -588,12 +589,16 @@ proxy_io_make_ex_get_int (char *driver_info, char **buffer, int *argv)
 {
   int error;
   T_NET_BUF net_buf;
+  T_BROKER_VERSION client_version;
 
   assert (buffer);
   assert (*buffer == NULL);
   assert (argv != NULL);
 
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
+			      client_version);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -636,7 +641,8 @@ proxy_io_make_error_msg (char *driver_info, char **buffer, int error_ind,
 
   client_version = CAS_MAKE_PROTO_VER (driver_info);
 
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
+			      client_version);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. "
@@ -743,11 +749,14 @@ proxy_io_make_end_tran_request (char *driver_info, char **buffer, bool commit)
   T_NET_BUF net_buf;
   unsigned char func_code;
   unsigned char tran_commit;
+  T_BROKER_VERSION client_version;
 
   assert (buffer);
   assert (*buffer == NULL);
 
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
+			      client_version);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -801,11 +810,14 @@ proxy_io_make_close_req_handle_ok (char *driver_info,
   int error;
   char *p;
   T_NET_BUF net_buf;
+  T_BROKER_VERSION client_version;
 
   assert (buffer);
   assert (*buffer == NULL);
 
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
+			      client_version);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -869,11 +881,14 @@ proxy_io_make_get_db_version (char *driver_info, char **buffer)
   int error;
   T_NET_BUF net_buf;
   char *p;
+  T_BROKER_VERSION client_version;
 
   assert (buffer);
   assert (*buffer == NULL);
 
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
+			      client_version);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -928,10 +943,12 @@ proxy_io_make_client_proxy_alive (char *driver_info, char **buffer)
 {
   int error;
   T_NET_BUF net_buf;
+  T_BROKER_VERSION client_version;
 
   assert (buffer);
 
-  error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+  error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE, client_version);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1079,11 +1096,13 @@ proxy_io_make_shard_info (char *driver_info, char **buffer)
   int shard_index;
   T_NET_BUF net_buf;
   T_SHARD_CONN *shard_conn_p;
+  T_BROKER_VERSION client_version;
 
   assert (buffer);
   assert (*buffer == NULL);
 
-  error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+  error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE, client_version);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1130,11 +1149,13 @@ proxy_io_make_check_cas (char *driver_info, char **buffer)
 {
   int error;
   T_NET_BUF net_buf;
+  T_BROKER_VERSION client_version;
 
   assert (buffer);
   assert (*buffer == NULL);
 
-  error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+  error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE, client_version);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,

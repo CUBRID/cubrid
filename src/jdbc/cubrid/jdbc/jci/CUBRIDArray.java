@@ -93,7 +93,9 @@ class CUBRIDArray {
 		case UUType.U_TYPE_TIMESTAMP:
 		case UUType.U_TYPE_DATETIME:
 		case UUType.U_TYPE_TIMESTAMPTZ:
+		case UUType.U_TYPE_TIMESTAMPLTZ:
 		case UUType.U_TYPE_DATETIMETZ:
+		case UUType.U_TYPE_DATETIMELTZ:
 			internalArray = (Object[]) (new Timestamp[length]);
 			break;
 		case UUType.U_TYPE_CHAR:

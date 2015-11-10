@@ -127,7 +127,7 @@ extern "C"
 
   typedef struct
   {
-    T_CCI_U_TYPE u_type;
+    T_CCI_U_TYPE u_type;	/* primary type (without any collection flags) */
     int size;			/* bind_param : value size
 				   bind_param_array : a_type of value */
     void *value;

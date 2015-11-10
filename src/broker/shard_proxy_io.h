@@ -98,7 +98,8 @@ extern void proxy_set_con_status_in_tran (char *msg);
 extern void proxy_set_con_status_out_tran (char *msg);
 extern void proxy_set_force_out_tran (char *msg);
 extern void proxy_unset_force_out_tran (char *msg);
-extern int proxy_make_net_buf (T_NET_BUF * net_buf, int size);
+extern int proxy_make_net_buf (T_NET_BUF * net_buf, int size,
+			       T_BROKER_VERSION client_version);
 
 extern int proxy_io_make_error_msg (char *driver_info,
 				    char **buffer, int error_ind,

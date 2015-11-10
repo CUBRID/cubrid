@@ -526,7 +526,7 @@ shard_cas_main (void)
 
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
-  net_buf_init (&net_buf);
+  net_buf_init (&net_buf, cas_get_client_version ());
   net_buf.data = (char *) MALLOC (SHARD_NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
     {
@@ -852,7 +852,7 @@ cas_main (void)
       return -1;
     }
 
-  net_buf_init (&net_buf);
+  net_buf_init (&net_buf, cas_get_client_version ());
   net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
     {
@@ -1449,7 +1449,7 @@ libcas_main (SOCKET jsp_sock_fd)
     BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
   client_sock_fd = jsp_sock_fd;
 
-  net_buf_init (&net_buf);
+  net_buf_init (&net_buf, cas_get_client_version ());
   net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
     {
@@ -2095,6 +2095,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #endif
 
+  net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   set_hang_check_time ();

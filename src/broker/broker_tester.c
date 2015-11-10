@@ -670,7 +670,7 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info,
   char *data;
   char *col_name;
   char *data_with_quot = NULL;
-  T_CCI_U_TYPE *col_type_arr;
+  T_CCI_U_EXT_TYPE *col_type_arr;
 
   col_size_arr = (int *) malloc (sizeof (int) * col_count);
   if (col_size_arr == NULL)
@@ -679,7 +679,8 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info,
       return -1;
     }
 
-  col_type_arr = (T_CCI_U_TYPE *) malloc (sizeof (T_CCI_U_TYPE) * col_count);
+  col_type_arr =
+    (T_CCI_U_EXT_TYPE *) malloc (sizeof (T_CCI_U_EXT_TYPE) * col_count);
   if (col_type_arr == NULL)
     {
       FREE_MEM (col_size_arr);

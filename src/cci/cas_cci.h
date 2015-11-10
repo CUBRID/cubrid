@@ -55,7 +55,7 @@ extern "C"
  ************************************************************************/
 
 #define CCI_GET_RESULT_INFO_TYPE(RES_INFO, INDEX)	\
-		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].type)
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].ext_type)
 
 #define CCI_GET_RESULT_INFO_SCALE(RES_INFO, INDEX)	\
 		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].scale)
@@ -111,7 +111,8 @@ extern "C"
 #define CCI_IS_COLLECTION_TYPE(TYPE)	\
 	((((TYPE) & CCI_CODE_COLLECTION) || ((TYPE) == CCI_U_TYPE_SET) || ((TYPE) == CCI_U_TYPE_MULTISET) || ((TYPE) == CCI_U_TYPE_SEQUENCE)) ? 1 : 0)
 
-#define CCI_GET_COLLECTION_DOMAIN(TYPE)	(~(CCI_CODE_COLLECTION) & (TYPE))
+#define CCI_GET_COLLECTION_DOMAIN(TYPE)	(((CCI_TYPE_BIT7_MASK & (TYPE)) >> 2) \
+  | ((TYPE) & CCI_TYPE_LSB_MASK))
 
 #define CCI_QUERY_RESULT_RESULT(QR, INDEX)	\
 	(((T_CCI_QUERY_RESULT*) (QR))[(INDEX) - 1].result_count)
@@ -137,6 +138,9 @@ extern "C"
 #define CCI_GET_PARAM_INFO_PRECISION(PARAM_INFO, INDEX)	\
 	(((T_CCI_PARAM_INFO*) (PARAM_INFO))[(INDEX) - 1].precision)
 
+#define CCI_NET_TYPE_HAS_2BYTES(type) \
+  ((((type) & CCI_TYPE_BIT7_MASK) != 0) ? true : false)
+
 #define CCI_BIND_PTR			1
 
 #define CCI_TRAN_COMMIT			1
@@ -160,6 +164,11 @@ extern "C"
 
 #define CCI_CLASS_NAME_PATTERN_MATCH	1
 #define CCI_ATTR_NAME_PATTERN_MATCH	2
+
+/* encoding of composed type :
+ * TCCT TTTT  (T - set type bits ; C - collection bits) */
+#define CCI_TYPE_BIT7_MASK		0x80
+#define CCI_TYPE_LSB_MASK		0x1f
 
 #define CCI_CODE_SET			0x20
 #define CCI_CODE_MULTISET		0x40
@@ -342,12 +351,16 @@ extern "C"
     CCI_U_TYPE_UINT = 27,
     CCI_U_TYPE_UBIGINT = 28,
     CCI_U_TYPE_TIMESTAMPTZ = 29,
-    CCI_U_TYPE_DATETIMETZ = 30,
+    CCI_U_TYPE_TIMESTAMPLTZ = 30,
+    CCI_U_TYPE_DATETIMETZ = 31,
+    CCI_U_TYPE_DATETIMELTZ = 32,
     /* Disabled type */
-    CCI_U_TYPE_TIMETZ = 31,	/* internal use only - RESERVED */
+    CCI_U_TYPE_TIMETZ = 33,	/* internal use only - RESERVED */
     /* end of disabled types */
-    CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIMETZ
+    CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIMELTZ
   } T_CCI_U_TYPE;
+
+  typedef unsigned char T_CCI_U_EXT_TYPE;
 
   typedef void *T_CCI_SET;
 
@@ -648,7 +661,7 @@ extern "C"
 
   typedef struct
   {
-    T_CCI_U_TYPE type;
+    T_CCI_U_EXT_TYPE ext_type;	/* extended type : TCCT TTTT (T : set type, C: collection flags) */
     char is_non_null;
     short scale;
     int precision;
@@ -759,7 +772,7 @@ extern "C"
   typedef struct
   {
     T_CCI_PARAM_MODE mode;
-    T_CCI_U_TYPE type;
+    T_CCI_U_EXT_TYPE ext_type;	/* extended type : TCCT TTTT (T : set type, C: collection flags) */
     short scale;
     int precision;
   } T_CCI_PARAM_INFO;

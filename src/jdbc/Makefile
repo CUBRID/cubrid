@@ -26,11 +26,13 @@ JDBC_BUILD_NUMBER := $(shell cat ../../BUILD_NUMBER)
 
 VERSION_FILE = CUBRID-JDBC-$(JDBC_BUILD_NUMBER)
 JDBC_DRIVER = JDBC-$(JDBC_BUILD_NUMBER)-cubrid.jar
+JSP_DRIVER = jspserver.jar
 
-all: src/$(VERSION_FILE) $(JDBC_DRIVER)
+all: src/$(VERSION_FILE) $(JDBC_DRIVER) $(JSP_DRIVER)
 
 clean:
 	ant -buildfile ../../jdbc/build.xml -Dbasedir=. -Dversion=$(JDBC_BUILD_NUMBER) clean
+	ant -buildfile ../../java/build.xml -Dbasedir=. -Dversion=$(JDBC_BUILD_NUMBER) clean
 
 src/$(VERSION_FILE):
 	mkdir -p src
@@ -39,3 +41,5 @@ src/$(VERSION_FILE):
 $(JDBC_DRIVER):
 	ant -buildfile ../../jdbc/build.xml -Dbasedir=. -Dsrc=$(JDBC_SRC_DIR) -Dversion=$(JDBC_BUILD_NUMBER) dist-cubrid
 
+$(JSP_DRIVER):
+	ant -buildfile ../../java/build.xml -Dbasedir=. -Dsrc=$(JDBC_SRC_DIR) -Dversion=$(JDBC_BUILD_NUMBER) dist 

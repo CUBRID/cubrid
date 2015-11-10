@@ -184,7 +184,7 @@ static int fetch_info_decode (char *buf, int size, int num_cols,
 			      T_CON_HANDLE * con_handle);
 static void stream_to_obj (char *buf, T_OBJECT * obj);
 
-static int get_data_set (T_CCI_U_TYPE u_type, char *col_value_p,
+static int get_data_set (T_CCI_U_EXT_TYPE u_ext_type, char *col_value_p,
 			 T_SET ** value, int data_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int get_file_size (char *filename);
@@ -206,13 +206,14 @@ static int next_result_info_decode (char *buf, int size,
 static int bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type,
 				  char flag, void *value, int length,
 				  T_BIND_VALUE * bind_value);
-static int bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type,
-				  void *value, int size, char *charset,
+static int bind_value_to_net_buf (T_NET_BUF * net_buf,
+				  T_CCI_U_TYPE u_type, void *value,
+				  int size, char *charset,
 				  bool set_default_value);
 static int execute_array_info_decode (char *buf, int size, char flag,
 				      T_CCI_QUERY_RESULT ** qr,
 				      int *res_remain_size);
-static T_CCI_U_TYPE get_basic_utype (T_CCI_U_TYPE u_type);
+static T_CCI_U_TYPE get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type);
 static int parameter_info_decode (char *buf, int size, int num_param,
 				  T_CCI_PARAM_INFO ** res_param);
 static int decode_fetch_result (T_CON_HANDLE * con_handle,
@@ -238,6 +239,8 @@ static int shard_info_decode (char *buf_p, int size, int num_shard,
 static bool is_set_default_value_if_null (T_CON_HANDLE * con_handle,
 					  T_CCI_CUBRID_STMT stmt_type,
 					  char bind_mode);
+static T_CCI_U_EXT_TYPE get_ext_utype_from_net_bytes (T_CCI_U_TYPE basic_type,
+						      T_CCI_U_TYPE set_type);
 
 
 /************************************************************************
@@ -567,6 +570,8 @@ qe_bind_param (T_REQ_HANDLE * req_handle, int index, T_CCI_A_TYPE a_type,
 {
   int err_code;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   index--;
 
   if (index < 0 || index >= req_handle->num_bind)
@@ -693,7 +698,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   for (i = 0; i < req_handle->num_bind; i++)
     {
       bind_value_to_net_buf (&net_buf,
-			     (char) req_handle->bind_value[i].u_type,
+			     req_handle->bind_value[i].u_type,
 			     req_handle->bind_value[i].value,
 			     req_handle->bind_value[i].size,
 			     con_handle->charset,
@@ -1811,6 +1816,7 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no,
 	     int a_type, void *value, int *indicator)
 {
   char *col_value_p;
+  T_CCI_U_EXT_TYPE u_ext_type;
   T_CCI_U_TYPE u_type;
   int data_size;
   int err_code;
@@ -1832,20 +1838,27 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no,
     }
 
   if (col_no <= 0 || col_no > num_cols)
-    return CCI_ER_COLUMN_INDEX;
+    {
+      return CCI_ER_COLUMN_INDEX;
+    }
 
   if (req_handle->cur_fetch_tuple_index < 0)
-    return CCI_ER_INVALID_CURSOR_POS;
+    {
+      return CCI_ER_INVALID_CURSOR_POS;
+    }
 
   col_value_p =
     req_handle->tuple_value[req_handle->cur_fetch_tuple_index].
     column_ptr[col_no - 1];
 
   if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
-    u_type = CCI_U_TYPE_NULL;
+    {
+      u_ext_type = CCI_U_TYPE_NULL;
+    }
   else
-    u_type = CCI_GET_RESULT_INFO_TYPE (req_handle->col_info, col_no);
-
+    {
+      u_ext_type = CCI_GET_RESULT_INFO_TYPE (req_handle->col_info, col_no);
+    }
 
   NET_STR_TO_INT (data_size, col_value_p);
   if (data_size <= 0)
@@ -1859,22 +1872,54 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no,
       return 0;
     }
 
-  if (CCI_IS_SET_TYPE (u_type))
-    u_type = CCI_U_TYPE_SET;
-  else if (CCI_IS_MULTISET_TYPE (u_type))
-    u_type = CCI_U_TYPE_MULTISET;
-  else if (CCI_IS_SEQUENCE_TYPE (u_type))
-    u_type = CCI_U_TYPE_SEQUENCE;
-
   col_value_p += NET_SIZE_INT;
-  if (u_type == CCI_U_TYPE_NULL)
+  if (u_ext_type == CCI_U_TYPE_NULL)
     {
-      char type;
-      NET_STR_TO_BYTE (type, col_value_p);
-      u_type = (T_CCI_U_TYPE) type;
+      char basic_type, set_type;
+
+      if (data_size <= NET_SIZE_BYTE)
+	{
+	  *indicator = -1;
+	  if (a_type == CCI_A_TYPE_STR || a_type == CCI_A_TYPE_SET
+	      || a_type == CCI_A_TYPE_BLOB || a_type == CCI_A_TYPE_CLOB)
+	    {
+	      *((void **) value) = NULL;
+	    }
+	  return 0;
+	}
+
+      NET_STR_TO_BYTE (basic_type, col_value_p);
+      data_size -= NET_SIZE_BYTE;
       col_value_p += NET_SIZE_BYTE;
-      data_size--;
+
+      if (CCI_NET_TYPE_HAS_2BYTES (basic_type))
+	{
+	  /* type encoded on 2 bytes */
+	  if (data_size <= NET_SIZE_BYTE)
+	    {
+	      *indicator = -1;
+	      if (a_type == CCI_A_TYPE_STR || a_type == CCI_A_TYPE_SET
+		  || a_type == CCI_A_TYPE_BLOB || a_type == CCI_A_TYPE_CLOB)
+		{
+		  *((void **) value) = NULL;
+		}
+	      return 0;
+	    }
+
+	  NET_STR_TO_BYTE (set_type, col_value_p);
+	  data_size -= NET_SIZE_BYTE;
+	  col_value_p += NET_SIZE_BYTE;
+
+	  u_ext_type = get_ext_utype_from_net_bytes (basic_type, set_type);
+	}
+      else
+	{
+	  /* legacy server */
+	  u_ext_type = basic_type;
+	}
     }
+
+  u_type = get_basic_utype (u_ext_type);
 
   *indicator = 0;
 
@@ -2136,7 +2181,7 @@ qe_oid_put2 (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name,
   int err_code;
   int i, data_size = 0;
   T_OBJECT oid;
-  char u_type;
+  T_CCI_U_TYPE u_type;
   void *value;
   T_BIND_VALUE tmp_cell;
 
@@ -3081,7 +3126,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		  return err_code;
 		}
 	    }
-	  bind_value_to_net_buf (&net_buf, (char) cur_cell.u_type,
+	  bind_value_to_net_buf (&net_buf, cur_cell.u_type,
 				 cur_cell.value, cur_cell.size,
 				 con_handle->charset, false);
 	  if (cur_cell.flag == BIND_PTR_DYNAMIC)
@@ -3225,7 +3270,7 @@ qe_cursor_update (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	  return CCI_ER_TYPE_CONVERSION;
 	}
 
-      u_type = get_basic_utype (req_handle->col_info[index - 1].type);
+      u_type = get_basic_utype (req_handle->col_info[index - 1].ext_type);
       if (u_type <= CCI_U_TYPE_FIRST || u_type > CCI_U_TYPE_LAST)
 	{
 	  net_buf_clear (&net_buf);
@@ -3245,7 +3290,7 @@ qe_cursor_update (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	}
     }
 
-  bind_value_to_net_buf (&net_buf, (char) bind_value.u_type, bind_value.value,
+  bind_value_to_net_buf (&net_buf, bind_value.u_type, bind_value.value,
 			 bind_value.size, con_handle->charset, false);
   if (bind_value.flag == BIND_PTR_DYNAMIC)
     {
@@ -3377,6 +3422,8 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 		 char *col_value_p, int col_val_size, void *value,
 		 int *indicator)
 {
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   switch (u_type)
     {
     case CCI_U_TYPE_CHAR:
@@ -3500,7 +3547,9 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
       break;
     case CCI_U_TYPE_TIMETZ:
     case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
     case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_DATETIMELTZ:
       {
 	T_CCI_DATE_TZ data_tz;
 
@@ -3582,6 +3631,8 @@ qe_get_data_bigint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   INT64 data;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   switch (u_type)
     {
     case CCI_U_TYPE_CHAR:
@@ -3654,6 +3705,8 @@ int
 qe_get_data_ubigint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   UINT64 data;
+
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
   switch (u_type)
     {
@@ -3728,6 +3781,8 @@ qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   int data;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   switch (u_type)
     {
     case CCI_U_TYPE_CHAR:
@@ -3800,6 +3855,8 @@ qe_get_data_uint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   unsigned int data;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   switch (u_type)
     {
     case CCI_U_TYPE_CHAR:
@@ -3871,6 +3928,8 @@ int
 qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   float data;
+
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
   switch (u_type)
     {
@@ -3952,6 +4011,8 @@ qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   double data;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   switch (u_type)
     {
     case CCI_U_TYPE_CHAR:
@@ -4031,6 +4092,8 @@ qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   T_CCI_DATE data;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   memset ((char *) &data, 0, sizeof (T_CCI_DATE));
 
   switch (u_type)
@@ -4061,6 +4124,8 @@ qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value,
 {
   T_CCI_DATE_TZ data;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   memset ((char *) &data, 0, sizeof (data));
 
   switch (u_type)
@@ -4069,9 +4134,11 @@ qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value,
       NET_STR_TO_TIMETZ (data, col_value_p, total_size);
       break;
     case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
       NET_STR_TO_TIMESTAMPTZ (data, col_value_p, total_size);
       break;
     case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_DATETIMELTZ:
       NET_STR_TO_DATETIMETZ (data, col_value_p, total_size);
       break;
     default:
@@ -4087,6 +4154,8 @@ qe_get_data_lob (T_CCI_U_TYPE u_type, char *col_value_p, int col_val_size,
 		 void *value)
 {
   T_LOB *lob;
+
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
   if (u_type != CCI_U_TYPE_BLOB && u_type != CCI_U_TYPE_CLOB)
     {
@@ -5214,6 +5283,9 @@ fetch_info_decode (char *buf, int size, int num_cols,
 	{
 	  int data_size;
 	  char *col_p;
+#if defined (WINDOWS)
+	  T_CCI_U_TYPE u_type;
+#endif
 
 	  col_p = cur_p;
 	  if (remain_size < 4)
@@ -5232,12 +5304,17 @@ fetch_info_decode (char *buf, int size, int num_cols,
 	    }
 
 #if defined (WINDOWS)
+	  if (charset != NULL)
+	    {
+	      u_type = get_basic_utype (req_handle->col_info[j].ext_type);
+	    }
+
 	  if (charset != NULL
-	      && (req_handle->col_info[j].type == CCI_U_TYPE_CHAR
-		  || req_handle->col_info[j].type == CCI_U_TYPE_STRING
-		  || req_handle->col_info[j].type == CCI_U_TYPE_NCHAR
-		  || req_handle->col_info[j].type == CCI_U_TYPE_VARNCHAR
-		  || req_handle->col_info[j].type == CCI_U_TYPE_ENUM))
+	      && (u_type == CCI_U_TYPE_CHAR
+		  || u_type == CCI_U_TYPE_STRING
+		  || u_type == CCI_U_TYPE_NCHAR
+		  || u_type == CCI_U_TYPE_VARNCHAR
+		  || u_type == CCI_U_TYPE_ENUM))
 	    {
 	      err_code =
 		decode_result_col (col_p, data_size,
@@ -5332,7 +5409,7 @@ stream_to_obj (char *buf, T_OBJECT * obj)
 }
 
 static int
-get_data_set (T_CCI_U_TYPE u_type, char *col_value_p, T_SET ** value,
+get_data_set (T_CCI_U_EXT_TYPE u_ext_type, char *col_value_p, T_SET ** value,
 	      int data_size)
 {
   T_SET *set;
@@ -5345,7 +5422,7 @@ get_data_set (T_CCI_U_TYPE u_type, char *col_value_p, T_SET ** value,
       return err_code;
     }
 
-  if (!(CCI_IS_COLLECTION_TYPE (u_type)))
+  if (!(CCI_IS_COLLECTION_TYPE (u_ext_type)))
     {
       return CCI_ER_TYPE_CONVERSION;
     }
@@ -5442,16 +5519,34 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
       for (i = 0; i < num_col_info; i++)
 	{
 	  int name_size;
-	  char type;
+	  char type, set_type;
 
 	  if (remain_size < NET_SIZE_BYTE)
 	    {
 	      goto get_column_info_error;
 	    }
 	  NET_STR_TO_BYTE (type, cur_p);
-	  col_info[i].type = (T_CCI_U_TYPE) type;
 	  remain_size -= NET_SIZE_BYTE;
 	  cur_p += NET_SIZE_BYTE;
+
+	  if (CCI_NET_TYPE_HAS_2BYTES (type))
+	    {
+	      /* read two bytes for byte */
+	      if (remain_size < NET_SIZE_BYTE)
+		{
+		  goto get_column_info_error;
+		}
+	      NET_STR_TO_BYTE (set_type, cur_p);
+	      col_info[i].ext_type =
+		get_ext_utype_from_net_bytes (type, set_type);
+	      remain_size -= NET_SIZE_BYTE;
+	      cur_p += NET_SIZE_BYTE;
+	    }
+	  else
+	    {
+	      /* legacy server : one byte */
+	      col_info[i].ext_type = type;
+	    }
 
 	  if (remain_size < NET_SIZE_SHORT)
 	    {
@@ -5866,6 +5961,8 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 {
   int err_code;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   if (a_type == CCI_A_TYPE_STR)
     {
       switch (u_type)
@@ -6079,6 +6176,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  }
 	  break;
 	case CCI_U_TYPE_TIMESTAMPTZ:
+	case CCI_U_TYPE_TIMESTAMPLTZ:
 	  {
 	    const char *p_tz = NULL;
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
@@ -6117,6 +6215,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  }
 	  break;
 	case CCI_U_TYPE_DATETIMETZ:
+	case CCI_U_TYPE_DATETIMELTZ:
 	  {
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
 
@@ -6677,7 +6776,9 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	{
 	case CCI_U_TYPE_TIMETZ:
 	case CCI_U_TYPE_TIMESTAMPTZ:
+	case CCI_U_TYPE_TIMESTAMPLTZ:
 	case CCI_U_TYPE_DATETIMETZ:
+	case CCI_U_TYPE_DATETIMELTZ:
 	  {
 	    ALLOC_COPY_DATE_TZ (bind_value->value,
 				*((T_CCI_DATE_TZ *) value));
@@ -6763,9 +6864,11 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
       bind_value->size = NET_SIZE_TIME + NET_SIZE_TZ (bind_value->value);
       break;
     case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
       bind_value->size = NET_SIZE_TIMESTAMP + NET_SIZE_TZ (bind_value->value);
       break;
     case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_DATETIMELTZ:
       bind_value->size = NET_SIZE_DATETIME + NET_SIZE_TZ (bind_value->value);
       break;
     default:
@@ -6776,8 +6879,9 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 }
 
 static int
-bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
-		       int size, char *charset, bool set_default_value)
+bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type,
+		       void *value, int size, char *charset,
+		       bool set_default_value)
 {
   if (u_type < CCI_U_TYPE_FIRST || u_type > CCI_U_TYPE_LAST)
     {
@@ -6914,7 +7018,9 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
       break;
     case CCI_U_TYPE_TIMETZ:
     case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
     case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_DATETIMELTZ:
       if (value == NULL)
 	{
 	  T_CCI_DATE_TZ default_value;
@@ -7127,16 +7233,24 @@ execute_array_info_decode (char *buf, int size, char flag,
 }
 
 static T_CCI_U_TYPE
-get_basic_utype (T_CCI_U_TYPE u_type)
+get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
 {
-  if (CCI_IS_SET_TYPE (u_type))
-    return CCI_U_TYPE_SET;
-  else if (CCI_IS_MULTISET_TYPE (u_type))
-    return CCI_U_TYPE_MULTISET;
-  else if (CCI_IS_SEQUENCE_TYPE (u_type))
-    return CCI_U_TYPE_SEQUENCE;
+  if (CCI_IS_SET_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_SET;
+    }
+  else if (CCI_IS_MULTISET_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_MULTISET;
+    }
+  else if (CCI_IS_SEQUENCE_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_SEQUENCE;
+    }
   else
-    return u_type;
+    {
+      return CCI_GET_COLLECTION_DOMAIN (u_ext_type);
+    }
 }
 
 static int
@@ -7155,6 +7269,8 @@ parameter_info_decode (char *buf, int size, int num_param,
 
   for (i = 0; i < num_param; i++)
     {
+      T_CCI_U_TYPE basic_type, set_type;
+
       if (size < 1)
 	{
 	  goto param_decode_error;
@@ -7167,9 +7283,30 @@ parameter_info_decode (char *buf, int size, int num_param,
 	{
 	  goto param_decode_error;
 	}
-      param[i].type = (T_CCI_U_TYPE) (*buf);
+      basic_type = (T_CCI_U_TYPE) (*buf);
       size -= 1;
       buf += 1;
+
+      if (CCI_NET_TYPE_HAS_2BYTES (basic_type))
+	{
+	  if (size < 1)
+	    {
+	      goto param_decode_error;
+	    }
+
+	  /* type is encoded with 2 bytes */
+	  set_type = (T_CCI_U_TYPE) * buf;
+	  size -= 1;
+	  buf += 1;
+
+	  param[i].ext_type =
+	    get_ext_utype_from_net_bytes (basic_type, set_type);
+	}
+      else
+	{
+	  /* legacy server : one byte */
+	  param[i].ext_type = basic_type;
+	}
 
       if (size < 2)
 	{
@@ -7407,4 +7544,27 @@ is_set_default_value_if_null (T_CON_HANDLE * con_handle,
   return (is_connected_to_oracle (con_handle)
 	  && (stmt_type == CUBRID_STMT_CALL_SP
 	      && bind_mode == CCI_PARAM_MODE_OUT));
+}
+
+/* get_ext_utype_from_net_bytes - creates an internal CCI extended type from
+ *				  bytes received from network
+ *				  input bits: basic_type : 0CCR RRRR
+ *					      set_type   : TTTT TTTT
+ *				  output bits            : TCCT TTTT
+ *				  Only 6 bits from set_type are retained
+ *				  (enough for 63 values)
+ *
+ */
+static T_CCI_U_EXT_TYPE
+get_ext_utype_from_net_bytes (T_CCI_U_TYPE basic_type, T_CCI_U_TYPE set_type)
+{
+  T_CCI_U_EXT_TYPE ext_type_lsb, ext_type_msb, ext_type_cc, ext_type;
+
+  ext_type_lsb = set_type & 0x1f;
+  ext_type_msb = (set_type & 0x20) << 2;
+  ext_type_cc = basic_type & CCI_CODE_COLLECTION;
+
+  ext_type = ext_type_msb | ext_type_cc | ext_type_lsb;
+
+  return ext_type;
 }

@@ -306,6 +306,8 @@ extern "C"
                       (DRIVER_INFO)[SRV_CON_MSG_IDX_MINOR_VER], \
                       (DRIVER_INFO)[SRV_CON_MSG_IDX_PATCH_VER])
 
+#define CAS_TYPE_FIRST_BYTE_PROTOCOL_MASK 0x80
+
 /* For backward compatibility */
 #define CAS_VER_TO_MAJOR(VER)    ((int) (((VER) >> 16) & 0xFF))
 #define CAS_VER_TO_MINOR(VER)    ((int) (((VER) >> 8) & 0xFF))

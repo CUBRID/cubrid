@@ -1221,6 +1221,8 @@ cci_register_out_param_ex (int mapped_stmt_id, int index, T_CCI_U_TYPE u_type)
   T_REQ_HANDLE *req_handle = NULL;
   int error;
 
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
+
   error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -1287,6 +1289,8 @@ cci_bind_param_array (int mapped_stmt_id, int index, T_CCI_A_TYPE a_type,
 		    dbg_a_type_str (a_type), value, null_ind,
 		    dbg_u_type_str (u_type)));
 #endif
+
+  assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
   error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
   if (error != CCI_ER_NO_ERROR)

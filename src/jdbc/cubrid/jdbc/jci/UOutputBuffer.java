@@ -389,6 +389,7 @@ class UOutputBuffer {
 			}
 
 		case UUType.U_TYPE_TIMESTAMPTZ:
+		case UUType.U_TYPE_TIMESTAMPLTZ:
 			if (value == null) {
 				return addTimestamptz(UGetTypeConvertedValue
 				        .getTimestamptz(new Timestamp(0)));
@@ -405,6 +406,7 @@ class UOutputBuffer {
 			}
 
 		case UUType.U_TYPE_DATETIMETZ:
+		case UUType.U_TYPE_DATETIMELTZ:
 			if (value == null) {
 				return addDatetimetz(UGetTypeConvertedValue
 				        .getTimestamptz(new Timestamp(0)));
@@ -555,8 +557,10 @@ class UOutputBuffer {
 		case UUType.U_TYPE_TIMETZ:
 		case UUType.U_TYPE_TIMESTAMP:
 		case UUType.U_TYPE_TIMESTAMPTZ:
+		case UUType.U_TYPE_TIMESTAMPLTZ:
 		case UUType.U_TYPE_DATETIME:
 		case UUType.U_TYPE_DATETIMETZ:
+		case UUType.U_TYPE_DATETIMELTZ:
 		case UUType.U_TYPE_OBJECT:
 		case UUType.U_TYPE_BLOB:
 		case UUType.U_TYPE_CLOB:

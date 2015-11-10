@@ -70,6 +70,10 @@ public class UStatement {
 	        EXEC_FLAG_ONLY_QUERY_PLAN = 0x08, EXEC_FLAG_HOLDABLE_RESULT = 0x20,
 			EXEC_FLAG_GET_GENERATED_KEYS = 0x40;
 
+	private final static byte MASK_COLLECTION_FROM_TYPE = (byte) 0140;
+	private final static byte MASK_TYPE_HAS_2_BYTES = (byte) 0200;
+	private final static byte MASK_TYPE_FROM_SINGLE_BYTE = (byte) 0037;
+
 	private byte statementType;
 
 	private UConnection relatedConnection;
@@ -2029,7 +2033,7 @@ public class UStatement {
 		case USchType.SCH_SUPERCLASS:
 		case USchType.SCH_SUBCLASS:
 			fetchedType = (Short) tuples[index].getAttribute(1);
-			realType = UColumnInfo.confirmType(fetchedType.byteValue());
+			realType = UColumnInfo.confirmType(fetchedType.byteValue(), (byte) 0);
 			tuples[index].setAttribute(1, new Short((short) realType[0]));
 		}
 	}
@@ -2084,10 +2088,12 @@ public class UStatement {
 		case UUType.U_TYPE_TIMESTAMP:
 			return inBuffer.readTimestamp();
 		case UUType.U_TYPE_TIMESTAMPTZ:
+		case UUType.U_TYPE_TIMESTAMPLTZ:
 			return inBuffer.readTimestamptz(dataSize);			
 		case UUType.U_TYPE_DATETIME:
 			return inBuffer.readDatetime();
 		case UUType.U_TYPE_DATETIMETZ:
+		case UUType.U_TYPE_DATETIMELTZ:
 			return inBuffer.readDatetimetz(dataSize);			
 		case UUType.U_TYPE_OBJECT:
 			return inBuffer.readOID(relatedConnection.cubridcon);
@@ -2174,7 +2180,7 @@ public class UStatement {
 	}
 
 	private void readColumnInfo(UInputBuffer inBuffer) throws UJciException {
-		byte type;
+		byte type, collectionByte = 0;
 		short scale;
 		int precision;
 		String name;
@@ -2183,12 +2189,22 @@ public class UStatement {
 		colNameToIndex = new HashMap<String, Integer>(columnNumber);
 
 		for (int i = 0; i < columnNumber; i++) {
-			type = inBuffer.readByte();
+			collectionByte = inBuffer.readByte();
+			if ((byte)(collectionByte & MASK_TYPE_HAS_2_BYTES) == 0){
+				/* legacy server : type has only one byte */
+				type = (byte)(collectionByte & MASK_TYPE_FROM_SINGLE_BYTE);
+				collectionByte = (byte)(collectionByte & MASK_COLLECTION_FROM_TYPE); 
+			}
+			else{
+				collectionByte = (byte)(collectionByte & MASK_COLLECTION_FROM_TYPE); 
+				type = inBuffer.readByte();
+			}
+			
 			scale = inBuffer.readShort();
 			precision = inBuffer.readInt();
 			name = inBuffer.readString(inBuffer.readInt(),
 			        relatedConnection.getCharset());
-			columnInfo[i] = new UColumnInfo(type, scale, precision, name);
+			columnInfo[i] = new UColumnInfo(type, scale, precision, name, collectionByte);
 			name = name.toLowerCase();
 			if (statementType == NORMAL) {
 				/*

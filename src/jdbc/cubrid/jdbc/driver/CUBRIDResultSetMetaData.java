@@ -232,6 +232,12 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				ele_type[i] = -1;
 				break;				
 
+			case UUType.U_TYPE_TIMESTAMPLTZ:
+				col_type_name[i] = "TIMESTAMPLTZ";
+				col_type[i] = java.sql.Types.TIMESTAMP;
+				ele_type[i] = -1;
+				break;
+				
 			case UUType.U_TYPE_DATETIME:
 				col_type_name[i] = "DATETIME";
 				col_type[i] = java.sql.Types.TIMESTAMP;
@@ -244,6 +250,12 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				ele_type[i] = -1;
 				break;				
 
+			case UUType.U_TYPE_DATETIMELTZ:
+				col_type_name[i] = "DATETIMELTZ";
+				col_type[i] = java.sql.Types.TIMESTAMP;
+				ele_type[i] = -1;
+				break;
+				
 			case UUType.U_TYPE_NULL:
 				col_type_name[i] = "";
 				// col_type[i] = java.sql.Types.NULL;
@@ -344,6 +356,10 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				case UUType.U_TYPE_TIMESTAMPTZ:
 					ele_type[i] = java.sql.Types.TIMESTAMP;
 					ele_type_name[i] = "TIMESTAMPTZ";
+					break;
+				case UUType.U_TYPE_TIMESTAMPLTZ:
+					ele_type[i] = java.sql.Types.TIMESTAMP;
+					ele_type_name[i] = "TIMESTAMPLTZ";
 					break;					
 				case UUType.U_TYPE_DATETIME:
 					ele_type[i] = java.sql.Types.TIMESTAMP;
@@ -352,7 +368,11 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				case UUType.U_TYPE_DATETIMETZ:
 					ele_type[i] = java.sql.Types.TIMESTAMP;
 					ele_type_name[i] = "DATETIMETZ";
-					break;					
+					break;
+				case UUType.U_TYPE_DATETIMELTZ:
+					ele_type[i] = java.sql.Types.TIMESTAMP;
+					ele_type_name[i] = "DATETIMELTZ";
+					break;
 				case UUType.U_TYPE_NULL:
 					ele_type[i] = java.sql.Types.NULL;
 					ele_type_name[i] = "";
@@ -544,14 +564,15 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 			ret_size = 19;
 			break;
 		case UUType.U_TYPE_TIMESTAMPTZ:
+		case UUType.U_TYPE_TIMESTAMPLTZ:
 			ret_size = 19 + 63;
-			break;			
+			break;
 		case UUType.U_TYPE_DATETIME:
-			/* FIXME: as is 2010-11-11 20:10:10,to be 2010-11-11 20:20:20.123 */
-			ret_size = 19;
+			ret_size = 23;
 			break;
 		case UUType.U_TYPE_DATETIMETZ:
-			ret_size = 19 + 63;
+		case UUType.U_TYPE_DATETIMELTZ:
+			ret_size = 23 + 63;
 			break;			
 		case UUType.U_TYPE_NULL:
 			ret_size = 4;

@@ -37,6 +37,10 @@
 package cubrid.jdbc.jci;
 
 public class UColumnInfo {
+	private final static byte SET_FLAG = (byte) 0040;
+	private final static byte MULTISET_FLAG = (byte) 0100;
+	private final static byte SEQUENCE_FLAG = (byte) 0140;
+
 	private byte type;
 	private byte collectionBaseType;
 	private short scale;
@@ -54,10 +58,10 @@ public class UColumnInfo {
 	private byte is_reverse_unique;
 	private byte is_shared;
 
-	UColumnInfo(byte cType, short cScale, int cPrecision, String cName) throws UJciException {
+	UColumnInfo(byte cType, short cScale, int cPrecision, String cName, byte collection) throws UJciException {
 		byte realType[];
 
-		realType = UColumnInfo.confirmType(cType);
+		realType = UColumnInfo.confirmType(cType, collection);
 		type = realType[0];
 		collectionBaseType = realType[1];
 		scale = cScale;
@@ -148,32 +152,30 @@ public class UColumnInfo {
 		return attributeName;
 	}
 
-	static byte[] confirmType(byte originalType) throws UJciException {
-		int collectionTypeOrNot = 0;
+	static byte[] confirmType(byte originalType, byte collectionFlags) throws UJciException {
 		byte typeInfo[];
-
+	
 		typeInfo = new byte[2];
-		collectionTypeOrNot = originalType & (byte) 0140;
-		switch (collectionTypeOrNot) {
+		switch (collectionFlags) {
 		case 0:
 			typeInfo[0] = originalType;
 			typeInfo[1] = -1;
 			return typeInfo;
-		case 040:
+		case SET_FLAG:
 			typeInfo[0] = UUType.U_TYPE_SET;
-			typeInfo[1] = (byte) (originalType & 037);
+			typeInfo[1] = originalType;
 			if (typeInfo[1] < UUType.U_TYPE_MIN || typeInfo[1] > UUType.U_TYPE_MAX)
 				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 			return typeInfo;
-		case 0100:
+		case MULTISET_FLAG:
 			typeInfo[0] = UUType.U_TYPE_MULTISET;
-			typeInfo[1] = (byte) (originalType & 037);
+			typeInfo[1] = originalType;
 			if (typeInfo[1] < UUType.U_TYPE_MIN || typeInfo[1] > UUType.U_TYPE_MAX)
 				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 			return typeInfo;
-		case 0140:
+		case SEQUENCE_FLAG:
 			typeInfo[0] = UUType.U_TYPE_SEQUENCE;
-			typeInfo[1] = (byte) (originalType & 037);
+			typeInfo[1] = originalType;
 			if (typeInfo[1] < UUType.U_TYPE_MIN || typeInfo[1] > UUType.U_TYPE_MAX)
 				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 			return typeInfo;
@@ -241,7 +243,9 @@ public class UColumnInfo {
 		case UUType.U_TYPE_TIMESTAMP:
 		case UUType.U_TYPE_DATETIME:
 		case UUType.U_TYPE_TIMESTAMPTZ:
+		case UUType.U_TYPE_TIMESTAMPLTZ:
 		case UUType.U_TYPE_DATETIMETZ:
+		case UUType.U_TYPE_DATETIMELTZ:
 			return "java.sql.Timestamp";
 		case UUType.U_TYPE_SET:
 		case UUType.U_TYPE_SEQUENCE:
@@ -293,7 +297,9 @@ public class UColumnInfo {
 		case UUType.U_TYPE_TIMESTAMP:
 		case UUType.U_TYPE_DATETIME:
 		case UUType.U_TYPE_TIMESTAMPTZ:
+		case UUType.U_TYPE_TIMESTAMPLTZ:
 		case UUType.U_TYPE_DATETIMETZ:
+		case UUType.U_TYPE_DATETIMELTZ:
 			return "java.sql.Timestamp[]";
 		case UUType.U_TYPE_SET:
 		case UUType.U_TYPE_SEQUENCE:

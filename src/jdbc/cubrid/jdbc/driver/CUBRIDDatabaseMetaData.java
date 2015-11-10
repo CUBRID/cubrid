@@ -1206,9 +1206,15 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			} else if (type == UUType.U_TYPE_TIMESTAMPTZ) {
 				value[4] = new Short((short) java.sql.Types.TIMESTAMP);
 				value[5] = "TIMESTAMPTZ";
+			} else if (type == UUType.U_TYPE_TIMESTAMPLTZ) {
+				value[4] = new Short((short) java.sql.Types.TIMESTAMP);
+				value[5] = "TIMESTAMPLTZ";
 			} else if (type == UUType.U_TYPE_DATETIMETZ) {
 				value[4] = new Short((short) java.sql.Types.TIMESTAMP);
 				value[5] = "DATETIMETZ";
+			} else if (type == UUType.U_TYPE_DATETIMELTZ) {
+				value[4] = new Short((short) java.sql.Types.TIMESTAMP);
+				value[5] = "DATETIMELTZ";
 			} else if (type == UUType.U_TYPE_TIMETZ) {
 				value[4] = new Short((short) java.sql.Types.TIME);
 				value[5] = "TIMETZ";
@@ -1532,9 +1538,19 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				value[3] = "TIMESTAMPTZ";
 				value[4] = new Integer(0);
 				break;
+			case UUType.U_TYPE_TIMESTAMPLTZ:
+				value[2] = new Integer(java.sql.Types.TIMESTAMP);
+				value[3] = "TIMESTAMPLTZ";
+				value[4] = new Integer(0);
+				break;
 			case UUType.U_TYPE_DATETIMETZ:
 				value[2] = new Integer(java.sql.Types.TIMESTAMP);
 				value[3] = "DATETIMETZ";
+				value[4] = new Integer(0);
+				break;
+			case UUType.U_TYPE_DATETIMELTZ:
+				value[2] = new Integer(java.sql.Types.TIMESTAMP);
+				value[3] = "DATETIMELTZ";
 				value[4] = new Integer(0);
 				break;
 			}

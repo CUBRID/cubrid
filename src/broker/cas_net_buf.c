@@ -50,7 +50,7 @@
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 
 void
-net_buf_init (T_NET_BUF * net_buf)
+net_buf_init (T_NET_BUF * net_buf, T_BROKER_VERSION client_version)
 {
   net_buf->data = NULL;
   net_buf->alloc_size = 0;
@@ -58,6 +58,7 @@ net_buf_init (T_NET_BUF * net_buf)
   net_buf->err_code = 0;
   net_buf->post_file_size = 0;
   net_buf->post_send_file = NULL;
+  net_buf->client_version = client_version;
 }
 
 void
@@ -408,7 +409,7 @@ void
 net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale,
 			 int prec, const char *name)
 {
-  net_buf_cp_byte (net_buf, ut);
+  net_buf_cp_cas_type (net_buf, ut);
   net_buf_cp_short (net_buf, scale);
   net_buf_cp_int (net_buf, prec, NULL);
   if (name == NULL)
@@ -865,4 +866,53 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
   err_buf[buf_size - 1] = '\0';
 
   return strlen (err_buf);
+}
+
+/* net_buf_cp_cas_type - sends the type information into a network buffer
+ *		         The cas_type is expected to be encoded by function
+ *			 'set_extended_cas_type'. The network buffer bytes will
+ *			 be encoded as:  
+ *			      MSB byte : 1CCR RRRR : C = collection code bits
+ *					 R = reserver bits
+ *			      (please note the bit 7 is 1)
+ *			      LSB byte : TTTT TTTT : T = type bits
+ *			    
+ */
+int
+net_buf_cp_cas_type (T_NET_BUF * net_buf, unsigned char cas_type)
+{
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+      (net_buf->client_version, PROTOCOL_V7))
+    {
+      unsigned char cas_net_first_byte, cas_net_second_byte;
+
+      if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_SHORT
+	  && net_buf_realloc (net_buf, NET_SIZE_SHORT) < 0)
+	{
+	  return CAS_ER_NO_MORE_MEMORY;
+	}
+
+      cas_net_first_byte = cas_type & CCI_CODE_COLLECTION;
+      cas_net_first_byte |= CAS_TYPE_FIRST_BYTE_PROTOCOL_MASK;
+
+      net_buf_cp_byte (net_buf, cas_net_first_byte);
+
+      cas_net_second_byte = CCI_GET_COLLECTION_DOMAIN (cas_type);
+
+      net_buf_cp_byte (net_buf, cas_net_second_byte);
+    }
+  else
+    {
+      if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_BYTE
+	  && net_buf_realloc (net_buf, NET_SIZE_BYTE) < 0)
+	{
+	  return CAS_ER_NO_MORE_MEMORY;
+	}
+
+      assert (cas_type < 0x80);
+      cas_type &= 0x3f;
+      net_buf_cp_byte (net_buf, CCI_GET_COLLECTION_DOMAIN (cas_type));
+    }
+
+  return 0;
 }

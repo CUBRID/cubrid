@@ -95,12 +95,14 @@ struct t_net_buf
   int err_code;
   int post_file_size;
   char *post_send_file;
+  T_BROKER_VERSION client_version;
 };
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_BIGINT 	int64_t
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-extern void net_buf_init (T_NET_BUF * net_buf);
+extern void net_buf_init (T_NET_BUF * net_buf,
+			  T_BROKER_VERSION client_version);
 extern void net_buf_clear (T_NET_BUF * net_buf);
 extern void net_buf_destroy (T_NET_BUF * net_buf);
 extern int net_buf_cp_post_send_file (T_NET_BUF * net_buf, int, char *str);
@@ -177,5 +179,6 @@ extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 extern void net_arg_put_int (void *arg, int *value);
 extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg,
 					   int buf_size);
+extern int net_buf_cp_cas_type (T_NET_BUF * net_buf, unsigned char cas_type);
 
 #endif /* _CAS_NET_BUF_H_ */
