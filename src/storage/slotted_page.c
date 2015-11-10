@@ -5404,6 +5404,7 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
   int free_space;
   OID oid_buff[2];
   int size = 0;
+  unsigned int saved_record_length;
 
   SPAGE_VERIFY_HEADER (page_header_p);
 
@@ -5434,8 +5435,10 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
 	      || slot_p->record_type == REC_MVCC_NEXT_VERSION
 	      || slot_p->record_type == REC_RELOCATION);
 
-      if (slot_p->record_length > OR_OID_SIZE)
+      saved_record_length = slot_p->record_length;
+      if ((slot_p->record_length > OR_OID_SIZE) && (partition_oid != NULL))
 	{
+	  /* We may improve the disk space by adding only not null partition */
 	  size = 2 * OR_OID_SIZE;
 	  COPY_OID (&oid_buff[0], next_version);
 	  COPY_OID (&oid_buff[1], partition_oid ?
@@ -5466,7 +5469,7 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
 	}
       spage_set_slot (slot_p, slot_p->offset_to_record, size,
 		      REC_MVCC_NEXT_VERSION);
-
+      assert (saved_record_length >= slot_p->record_length);
       SPAGE_VERIFY_HEADER (page_header_p);
       return NO_ERROR;
     }
