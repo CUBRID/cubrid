@@ -1346,11 +1346,21 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 
       /* Page can be removed if no other worker will access this page.
        * If this worker is the only one expected, then it can remove the page.
+       *
        * It is also possible that this job was previously executed and
-       * interrupted due to shutdown or crash. Again, this is the only worker
-       * expected to access it.
+       * interrupted due to shutdown or crash. This case is a little more
+       * complicated. There are two scenarios:
+       * 1. Current worker managed to vacuum record. In this case, we can be
+       *    sure it was the only vacuum expected and it will not be followed
+       *    by another.
+       * 2. Current worker did not vacuum object. In this case, it cannot be
+       *    told whether this was the expected vacuum job, or if this was an
+       *    older job and another one is still expected. Since we don't have
+       *    enough information here, we'll choose to play it safe and expect
+       *    another vacuum task. It is a very limited case.
        */
-      if (page_vacuum_status == HEAP_PAGE_VACUUM_ONCE
+      if ((page_vacuum_status == HEAP_PAGE_VACUUM_ONCE
+	   && (!was_interrupted || helper.n_vacuumed == 1))
 	  || (page_vacuum_status == HEAP_PAGE_VACUUM_NONE && was_interrupted))
 	{
 	  assert (n_heap_objects == 1);
