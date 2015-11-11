@@ -10345,6 +10345,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *arg1, *arg2;
   PT_NODE *union_orderby, *union_orderby_for, *union_limit;
   PT_FUNCTION_INFO *func_info_p = NULL;
+  unsigned int union_rewrite_limit;
 
   assert (parser != NULL);
 
@@ -10632,15 +10633,53 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1
 	       || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
 	{
+	  PT_NODE *new_node, *active;
+
+	  if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
+	    {
+	      active = arg1;
+	    }
+	  else
+	    {
+	      active = arg2;
+	    }
+
 	  /* to save union's orderby or limit clause to arg1 or arg2 */
 	  union_orderby = node->info.query.order_by;
 	  union_orderby_for = node->info.query.orderby_for;
 	  union_limit = node->info.query.limit;
+	  union_rewrite_limit = node->info.query.rewrite_limit;
 
+	  /* When active node has a limit or orderby_for clause and
+	   * union node has a limit or ORDERBY clause,
+	   * need a derived table to keep both conflicting clauses.
+	   * When a subquery has orderby clause without limit/orderby_for,
+	   * it may be ignored for meaningless cases. 
+	   */
+	  if ((active->info.query.limit || active->info.query.orderby_for)
+	      && (union_limit || union_orderby))
+	    {
+	      PT_NODE *derived;
+
+	      derived = mq_rewrite_query_as_derived (parser, active);
+	      if (derived == NULL)
+		{
+		  assert (pt_has_error (parser));
+		  break;
+		}
+
+	      new_node = derived;
+	    }
+	  else
+	    {
+	      /* just use active node */
+	      new_node = active;
+	    }
+
+	  /* unlink and free union node */
 	  node->info.query.order_by = NULL;
 	  node->info.query.orderby_for = NULL;
 	  node->info.query.limit = NULL;
-
 	  if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
 	    {
 	      node->info.query.q.union_.arg1 = NULL;	/* to save arg1 to fold */
@@ -10653,28 +10692,22 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  parser_free_tree (parser, node);
 
 	  /* to fold the query with remaining parts */
-	  if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
-	    {
-	      node = arg1;
-	    }
-	  else
-	    {
-	      node = arg2;
-	    }
-
 	  if (union_orderby != NULL)
 	    {
-	      node->info.query.order_by = union_orderby;
-	      node->info.query.orderby_for = union_orderby_for;
+	      new_node->info.query.order_by = union_orderby;
+	      new_node->info.query.orderby_for = union_orderby_for;
 	    }
-
 	  if (union_limit != NULL)
 	    {
-	      node->info.query.limit = union_limit;
+	      new_node->info.query.limit = union_limit;
+	      new_node->info.query.rewrite_limit = union_rewrite_limit;
 	    }
 
 	  /* check the union's orderby or limit clause if present */
-	  pt_check_order_by (parser, node);
+	  pt_check_order_by (parser, new_node);
+
+	  /* now node points to the folded */
+	  node = new_node;
 
 	  /* don't need do the following steps */
 	  break;

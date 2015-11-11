@@ -6026,163 +6026,6 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 }
 
 /*
- * qo_rewrite_query_as_derived () -
- *   return: rewritten select statement with derived table subquery
- *   parser(in):
- *   query(in):
- *
- * Note: returned result depends on global schema state.
- */
-static PT_NODE *
-qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
-{
-  PT_NODE *new_query = NULL, *derived = NULL;
-  PT_NODE *range = NULL, *spec = NULL, *temp, *node = NULL;
-  PT_NODE **head;
-  int i = 0;
-
-  /* set line number to range name */
-  range = pt_name (parser, "d3201");
-  if (range == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      goto exit_on_error;
-    }
-
-  /* construct new spec
-   * We are now copying the query and updating the spec_id references
-   */
-  spec = parser_new_node (parser, PT_SPEC);
-  if (spec == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      goto exit_on_error;
-    }
-
-  derived = parser_copy_tree (parser, query);
-  derived = mq_reset_ids_in_statement (parser, derived);
-
-  /* increase correlation level of the query */
-  if (derived != NULL && query->info.query.correlation_level)
-    {
-      derived = mq_bump_correlation_level (parser, derived, 1,
-					   derived->info.
-					   query.correlation_level);
-    }
-
-  spec->info.spec.derived_table = derived;
-  spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
-  spec->info.spec.range_var = range;
-  spec->info.spec.id = (UINTPTR) spec;
-  range->info.name.spec_id = (UINTPTR) spec;
-
-  new_query = parser_new_node (parser, PT_SELECT);
-  if (new_query == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      goto exit_on_error;
-    }
-
-  if (query->info.query.correlation_level)
-    {
-      new_query->info.query.correlation_level =
-	query->info.query.correlation_level;
-    }
-
-  new_query->info.query.q.select.from = spec;
-  new_query->info.query.is_subquery = query->info.query.is_subquery;
-
-
-  temp = pt_get_select_list (parser, spec->info.spec.derived_table);
-  head = &new_query->info.query.q.select.list;
-
-  while (temp)
-    {
-      /* generate as_attr_list */
-      if (temp->node_type == PT_NAME && temp->info.name.original != NULL)
-	{
-	  /* we have the original name */
-	  node = pt_name (parser, temp->info.name.original);
-	}
-      else
-	{
-	  /* don't have name for attribute; generate new name */
-	  node = pt_name (parser, mq_generate_name (parser, "a", &i));
-	}
-
-      if (node == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  goto exit_on_error;
-	}
-      /* set line, column number */
-      node->line_number = temp->line_number;
-      node->column_number = temp->column_number;
-
-      node->info.name.meta_class = PT_NORMAL;
-      node->info.name.resolved = range->info.name.original;
-      node->info.name.spec_id = spec->info.spec.id;
-      node->type_enum = temp->type_enum;
-      node->data_type = parser_copy_tree (parser, temp->data_type);
-      spec->info.spec.as_attr_list =
-	parser_append_node (node, spec->info.spec.as_attr_list);
-      /* keep out hidden columns from derived select list */
-      if (query->info.query.order_by && temp->is_hidden_column)
-	{
-	  temp->is_hidden_column = 0;
-	}
-      else
-	{
-	  if (temp->node_type == PT_NAME
-	      && temp->info.name.meta_class == PT_SHARED)
-	    {
-	      /* This should not get lambda replaced during translation.
-	       * Copy this node as-is rather than rewriting.
-	       */
-	      *head = parser_copy_tree (parser, temp);
-	    }
-	  else
-	    {
-	      *head = parser_copy_tree (parser, node);
-	    }
-	  head = &((*head)->next);
-	}
-
-      temp = temp->next;
-    }
-
-  /* move query id # */
-  new_query->info.query.id = query->info.query.id;
-  query->info.query.id = 0;
-
-  return new_query;
-
-exit_on_error:
-
-  if (node != NULL)
-    {
-      parser_free_node (parser, node);
-    }
-  if (new_query != NULL)
-    {
-      parser_free_node (parser, new_query);
-    }
-  if (derived != NULL)
-    {
-      parser_free_node (parser, derived);
-    }
-  if (spec != NULL)
-    {
-      parser_free_node (parser, spec);
-    }
-  if (range != NULL)
-    {
-      parser_free_node (parser, range);
-    }
-  return NULL;
-}
-
-/*
  * qo_rewrite_hidden_col_as_derived () - Rewrite subquery with ORDER BY
  *				      hidden column as derived one
  *   return: PT_NODE *
@@ -6279,7 +6122,7 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node,
 		  if (t_node->is_hidden_column)
 		    {
 		      /* make derived query */
-		      derived = qo_rewrite_query_as_derived (parser, node);
+		      derived = mq_rewrite_query_as_derived (parser, node);
 		      if (derived == NULL)
 			{
 			  break;
@@ -6831,7 +6674,7 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		  PT_NODE *rewritten = NULL;
 
 		  /* if it is composite query, rewrite to simple query */
-		  rewritten = qo_rewrite_query_as_derived (parser, arg2);
+		  rewritten = mq_rewrite_query_as_derived (parser, arg2);
 		  if (rewritten == NULL)
 		    {
 		      return NULL;
@@ -7311,7 +7154,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	    {
 	      node->info.query.rewrite_limit = 0;
 
-	      derived = qo_rewrite_query_as_derived (parser, node);
+	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
 		{
 		  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
