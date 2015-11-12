@@ -880,7 +880,8 @@ extern SCAN_CODE heap_prepare_get_record (THREAD_ENTRY * thread_p,
 					  PGBUF_WATCHER * home_page_watcher,
 					  PGBUF_WATCHER * fwd_page_watcher,
 					  INT16 * record_type,
-					  PGBUF_LATCH_MODE latch_mode);
+					  PGBUF_LATCH_MODE latch_mode,
+					  bool is_heap_scan);
 extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p,
 				       const OID * oid,
 				       const OID * forward_oid,

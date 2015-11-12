@@ -13602,7 +13602,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
   OID oid;
-  RECDES peek_recdes;
+  RECDES copy_recdes;
   DB_VALUE *key_val, tmpval;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   int error_code;
@@ -13637,13 +13637,14 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
   OID_SET_NULL (&oid);
   oid.volid = hfid->vfid.volid;
 
-  while (heap_next (thread_p, hfid, NULL, &oid, &peek_recdes, &scan_cache,
-		    PEEK) == S_SUCCESS)
+  copy_recdes.data = NULL;
+  while (heap_next (thread_p, hfid, NULL, &oid, &copy_recdes, &scan_cache,
+		    COPY) == S_SUCCESS)
     {
       if (n_attrs == 1)
 	{
 	  error_code = heap_attrinfo_read_dbvalues (thread_p, &oid,
-						    &peek_recdes, NULL,
+						    &copy_recdes, NULL,
 						    &attr_info);
 	  if (error_code != NO_ERROR)
 	    {
@@ -13652,7 +13653,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
 	}
 
       key_val = heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids, NULL,
-					    &attr_info, &peek_recdes, &tmpval,
+					    &attr_info, &copy_recdes, &tmpval,
 					    aligned_midxkey_buf, NULL);
       if (key_val == NULL)
 	{

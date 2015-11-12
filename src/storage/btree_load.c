@@ -3453,6 +3453,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   do
     {				/* Infinite loop */
       int cur_class, attr_offset;
+      bool save_cache_last_fix_page;
 
       /*
        * This infinite loop will be exited when a satisfactory next value is
@@ -3467,10 +3468,12 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       cur_class = sort_args->cur_class;
       attr_offset = cur_class * sort_args->n_attrs;
-      scan_result = heap_next (thread_p, &sort_args->hfids[cur_class],
-			       &sort_args->class_ids[cur_class],
-			       &sort_args->cur_oid, &sort_args->in_recdes,
-			       &sort_args->hfscan_cache, PEEK);
+      sort_args->in_recdes.data = NULL;
+      scan_result =
+	heap_next (thread_p, &sort_args->hfids[cur_class],
+		   &sort_args->class_ids[cur_class], &sort_args->cur_oid,
+		   &sort_args->in_recdes, &sort_args->hfscan_cache,
+		   sort_args->hfscan_cache.cache_last_fix_page ? PEEK : COPY);
 
       switch (scan_result)
 	{
@@ -3493,6 +3496,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		}
 	    }
 	  sort_args->attrinfo_inited = 0;
+	  save_cache_last_fix_page =
+	    sort_args->hfscan_cache.cache_last_fix_page;
 	  if (sort_args->scancache_inited)
 	    {
 	      (void) heap_scancache_end (thread_p, &sort_args->hfscan_cache);
@@ -3520,7 +3525,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	      if (heap_scancache_start (thread_p, &sort_args->hfscan_cache,
 					&sort_args->hfids[cur_class],
 					&sort_args->class_ids[cur_class],
-					true, false, NULL) != NO_ERROR)
+					save_cache_last_fix_page, false, NULL)
+		  != NO_ERROR)
 		{
 		  return SORT_ERROR_OCCURRED;
 		}

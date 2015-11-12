@@ -1029,13 +1029,12 @@ static char *heap_bestspace_to_string (char *buf, int buf_size,
 
 static int fill_string_to_buffer (char **start, char *end, const char *str);
 
-static int heap_get_record (THREAD_ENTRY * thread_p,
-			    const OID oid,
-			    RECDES * recdes,
-			    RECDES forward_recdes,
-			    PGBUF_WATCHER * page_watcher,
-			    HEAP_SCANCACHE * scan_cache,
-			    int ispeeking, int type, bool check_snapshot);
+static int heap_scan_get_record (THREAD_ENTRY * thread_p, const OID oid,
+				 OID * class_oid, RECDES * recdes,
+				 RECDES forward_recdes,
+				 PGBUF_WATCHER * home_pg_watcher,
+				 HEAP_SCANCACHE * scan_cache, int ispeeking,
+				 bool check_snapshot);
 static int heap_get_record_info (THREAD_ENTRY * thread_p,
 				 const OID oid,
 				 RECDES * recdes,
@@ -9272,7 +9271,7 @@ start_current_version:
     heap_prepare_get_record (thread_p, &current_oid, &current_class_oid,
 			     &forward_oid, &partition_class_oid,
 			     &home_page_watcher, &fwd_page_watcher, &type,
-			     PGBUF_LATCH_READ);
+			     PGBUF_LATCH_READ, false);
   if (scan_code != S_SUCCESS)
     {
       /* Stop here. */
@@ -10071,7 +10070,8 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
 			 OID * partition_class_oid,
 			 PGBUF_WATCHER * home_page_watcher,
 			 PGBUF_WATCHER * fwd_page_watcher,
-			 INT16 * record_type, PGBUF_LATCH_MODE latch_mode)
+			 INT16 * record_type, PGBUF_LATCH_MODE latch_mode,
+			 bool is_heap_scan)
 {
   SPAGE_SLOT *slot_p = NULL;
   VPID home_vpid;
@@ -10088,18 +10088,6 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
   assert (forward_oid != NULL);
   assert (home_page_watcher != NULL);
   assert (fwd_page_watcher != NULL);
-
-  oid_is_valid = HEAP_ISVALID_OID (oid);
-  if (oid_is_valid != DISK_VALID)
-    {
-      if (oid_is_valid != DISK_ERROR)
-	{
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
-		  oid->volid, oid->pageid, oid->slotid);
-	}
-      return S_ERROR;
-    }
 
 try_again:
 
@@ -10164,10 +10152,12 @@ try_again:
   if (slot_p == NULL)
     {
       /* Slot doesn't exist. */
-      pgbuf_ordered_unfix (thread_p, home_page_watcher);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
-	      oid->volid, oid->pageid, oid->slotid);
-
+      if (!is_heap_scan)
+	{
+	  /* Do not set error for heap scan and get record info. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
+		  oid->volid, oid->pageid, oid->slotid);
+	}
       if (record_type != NULL)
 	{
 	  /* Output record type as REC_UNKNOWN. */
@@ -10180,6 +10170,14 @@ try_again:
   if (record_type != NULL)
     {
       *record_type = slot_p->record_type;
+    }
+
+  if (fwd_page_watcher->pgptr != NULL
+      && slot_p->record_type != REC_RELOCATION
+      && slot_p->record_type != REC_BIGONE)
+    {
+      /* Forward page no longer required. */
+      pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
     }
 
   /* Fix required pages. */
@@ -10329,6 +10327,11 @@ try_again:
 
     case REC_ASSIGN_ADDRESS:
       /* Object without content.. only the address has been assigned */
+      if (is_heap_scan)
+	{
+	  /* Just ignore record. */
+	  return S_DOESNT_EXIST;
+	}
       if (spage_check_slot_owner (thread_p, home_page_watcher->pgptr,
 				  oid->slotid))
 	{
@@ -10355,6 +10358,11 @@ try_again:
        */
       /* Output next_version to forward_oid in case caller wants to advance.
        */
+      if (is_heap_scan)
+	{
+	  /* Just ignore record.. */
+	  return S_DOESNT_EXIST;
+	}
       scan = spage_get_record (home_page_watcher->pgptr, oid->slotid,
 			       &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
@@ -10377,6 +10385,11 @@ try_again:
     case REC_DELETED_WILL_REUSE:
     case REC_MARKDELETED:
       /* Vacuumed/deleted record. */
+      if (is_heap_scan)
+	{
+	  /* Just ignore record. */
+	  return S_DOESNT_EXIST;
+	}
 #if defined(SA_MODE)
       /* Accessing a REC_MARKDELETED record from a system class can happen in
        * SA mode, when no MVCC operations have been performed on the system
@@ -10412,6 +10425,11 @@ try_again:
       return S_DOESNT_EXIST;
 
     case REC_NEWHOME:
+      if (is_heap_scan)
+	{
+	  /* Just ignore record. */
+	  return S_DOESNT_EXIST;
+	}
       /* REC_NEWHOME are only allowed to be accessed through REC_RELOCATION
        * slots.
        */
@@ -11065,9 +11083,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    }
 
 	  scan =
-	    heap_get_record (thread_p, oid, recdes, forward_recdes,
-			     &curr_page_watcher, scan_cache, ispeeking, type,
-			     check_snapshot);
+	    heap_scan_get_record (thread_p, oid, class_oid, recdes,
+				  forward_recdes, &curr_page_watcher,
+				  scan_cache, ispeeking, check_snapshot);
 	}
 
       if (scan == S_SUCCESS)
@@ -11094,9 +11112,11 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      continue;
 	    }
 	}
-      else if (scan == S_SNAPSHOT_NOT_SATISFIED)
+      else if (scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_DOESNT_EXIST)
 	{
-	  /* the record does not satisfies snapshot - continue */
+	  /* the record does not satisfies snapshot or was deleted
+	   * - continue
+	   */
 	  if (is_null_recdata)
 	    {
 	      /* reset recdes->data before getting next record */
@@ -22774,10 +22794,10 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid,
  * recdes (out)	       : Record descriptor (to save record data).
  * forward_recdes (in) : Record descriptor used by REC_RELOCATION & REC_BIGONE
  *			 records.
- * pgptr (in/out)       : Pointer to the page this object belongs to.
+ * pgptr (in/out)      : Pointer to the page this object belongs to.
  * scan_cache (in)     : Heap scan cache.
  * ispeeking (in)      : PEEK/COPY.
- * record_info (out)    : Stores record information.
+ * record_info (out)   : Stores record information.
  */
 static int
 heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
@@ -23048,7 +23068,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
  * oid (in)	       : Object to be obtained.
  * recdes (in)	       : Record descriptor to keep object data.
  * forward_recdes (in) : Record descriptor used for REC_BIGONE and
- *			 REC_RELOCATION.
+ *			 REC_RELOCATION. -- legacy
  * pgptr (in)	       : Pointer to home page.
  * scan_cache (in)     : Scan cache.
  * ispeeking (in)      : Peek record or copy.
@@ -23058,18 +23078,18 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid,
  * NOTE: This is called from heap_next_internal.
  */
 static int
-heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
-		 RECDES forward_recdes, PGBUF_WATCHER * home_pg_watcher,
-		 HEAP_SCANCACHE * scan_cache, int ispeeking, int type,
-		 bool check_snapshot)
+heap_scan_get_record (THREAD_ENTRY * thread_p, const OID oid, OID * class_oid,
+		      RECDES * recdes, RECDES forward_recdes,
+		      PGBUF_WATCHER * home_pg_watcher,
+		      HEAP_SCANCACHE * scan_cache, int ispeeking,
+		      bool check_snapshot)
 {
-  OID forward_oid;
+  OID forward_oid = OID_INITIALIZER;
   SCAN_CODE scan = S_SUCCESS;
-  VPID vpid;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-  MVCC_REC_HEADER mvcc_header;
+  MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
   PGBUF_WATCHER fwd_pg_watcher;
-  int ret;
+  INT16 type;
 
   assert (recdes != NULL);
   assert ((check_snapshot == false) ||
@@ -23082,307 +23102,70 @@ heap_get_record (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes,
   PGBUF_INIT_WATCHER (&fwd_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL,
 		      HEAP_SCAN_ORDERED_HFID (scan_cache));
 
+  scan =
+    heap_prepare_get_record (thread_p, &oid, class_oid, &forward_oid,
+			     NULL, home_pg_watcher, &fwd_pg_watcher, &type,
+			     PGBUF_LATCH_READ, true);
+  if (scan != S_SUCCESS)
+    {
+      goto exit;
+    }
+  assert (type == REC_HOME || type == REC_BIGONE || type == REC_RELOCATION);
+  assert (type == REC_HOME
+	  || (!OID_ISNULL (&forward_oid) && fwd_pg_watcher.pgptr != NULL));
+
   if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
-      && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+      && scan_cache->mvcc_snapshot->snapshot_fnc != NULL && check_snapshot)
     {
       mvcc_snapshot = scan_cache->mvcc_snapshot;
     }
-
-  switch (type)
+  if (mvcc_snapshot != NULL)
     {
-    case REC_RELOCATION:
-      /* The record stored on the page is a relocation record, get the new
-       * home of the record
-       */
-      COPY_OID (&forward_oid, (OID *) forward_recdes.data);
-
-      /* Fetch the page of relocated (forwarded/new home) record */
-      vpid.volid = forward_oid.volid;
-      vpid.pageid = forward_oid.pageid;
-      PGBUF_WATCHER_COPY_GROUP (&fwd_pg_watcher, home_pg_watcher);
-      ret = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
-			       &fwd_pg_watcher);
-      if (ret != NO_ERROR)
-	{
-	  if (er_errid () == ER_PB_BAD_PAGEID)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_HEAP_BAD_RELOCATION_RECORD, 3, forward_oid.volid,
-		      forward_oid.pageid, forward_oid.slotid);
-	    }
-	  else if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_PAGE_LATCH_ABORTED, 2, vpid.volid, vpid.pageid);
-	    }
-	  return S_ERROR;
-	}
-
-      assert (fwd_pg_watcher.pgptr != NULL);
-      assert (home_pg_watcher->pgptr != NULL);
-
-      if (home_pg_watcher->page_was_unfixed
-	  && spage_get_record_type (home_pg_watcher->pgptr, oid.slotid)
-	  != REC_RELOCATION)
-	{
-	  /* Home record has changed */
-	  pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
-	  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-	  return S_SNAPSHOT_NOT_SATISFIED;
-	}
-
-      if (spage_get_record_type (fwd_pg_watcher.pgptr, forward_oid.slotid)
-	  != REC_NEWHOME)
-	{
-	  /* Record must have been vacuumed. */
-	  pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
-	  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-	  return S_SNAPSHOT_NOT_SATISFIED;
-	}
-
-      /* REC_NEWHOME cannot be PEEKED during scans. Even if it is a fixed scan
-       * there is no point on holding the forward page since next record
-       * must be in home page (or maybe relocated somewhere else).
-       * Always COPY REC_NEWHOME.
-       */
-      assert (scan_cache != NULL || recdes->data != NULL);
-      if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL))
-	{
-	  /* It is guaranteed that scan_cache is not NULL. */
-	  if (scan_cache->area == NULL)
-	    {
-	      /* Allocate an area to hold the object. Assume that
-	       * the object will fit in two pages for not better estimates.
-	       */
-	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area =
-		(char *) db_private_alloc (thread_p, scan_cache->area_size);
-	      if (scan_cache->area == NULL)
-		{
-		  scan_cache->area_size = -1;
-
-		  assert (fwd_pg_watcher.pgptr != NULL);
-		  assert (home_pg_watcher->pgptr != NULL);
-		  pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
-		  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-		  return S_ERROR;
-		}
-	    }
-	  recdes->data = scan_cache->area;
-	  recdes->area_size = scan_cache->area_size;
-	  /* The allocated space is enough to save the instance. */
-	}
-
-      /* Get record. */
       scan =
-	spage_get_record (fwd_pg_watcher.pgptr, forward_oid.slotid, recdes,
-			  COPY);
-      if (scan == S_SUCCESS && check_snapshot)
+	heap_get_mvcc_header (thread_p, &oid, &forward_oid,
+			      home_pg_watcher->pgptr, fwd_pg_watcher.pgptr,
+			      type, &mvcc_header);
+      if (scan != S_SUCCESS)
 	{
-	  /* Check if record satisfies snapshot. */
-	  or_mvcc_get_header (recdes, &mvcc_header);
-	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
-					   mvcc_snapshot) == false)
-	    {
-	      scan = S_SNAPSHOT_NOT_SATISFIED;
-	    }
+	  goto exit;
 	}
-
-      /* Forward page can be unfixed. */
-      pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
-
-      if (scan == S_SUCCESS && scan_cache != NULL
-	  && scan_cache->cache_last_fix_page)
+      if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot)
+	  == false)
 	{
-	  /* Record was successfully obtained and scan is fixed.
-	   * Save home page (or NULL if it had to be unfixed) to scan_cache.
-	   */
-	  pgbuf_replace_watcher (thread_p, home_pg_watcher,
-				 &scan_cache->page_watcher);
-	  assert (home_pg_watcher->pgptr == NULL);
+	  scan = S_SNAPSHOT_NOT_SATISFIED;
+	  goto exit;
 	}
-      else if (home_pg_watcher->pgptr != NULL)
-	{
-	  /* Unfix home page. */
-	  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-	}
-      break;
-
-    case REC_BIGONE:
-      {
-	/* Get the address of the content of the multipage object */
-	COPY_OID (&forward_oid, (OID *) forward_recdes.data);
-
-	/* Now get the content of the multipage object. */
-	/* Try to reuse the previously allocated area */
-	if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL))
-	  {
-	    /* It is guaranteed that scan_cache is not NULL. */
-	    if (scan_cache->area == NULL)
-	      {
-		/* Allocate an area to hold the object. Assume that the object
-		 * will fit in two pages for not better estimates.
-		 * We could call heap_ovf_get_length, but it may be better
-		 * to just guess and realloc if needed. We could also check
-		 * the estimates for average object length, but again,
-		 * it may be expensive and may not be accurate for the object.
-		 */
-		scan_cache->area_size = DB_PAGESIZE * 2;
-		scan_cache->area =
-		  (char *) db_private_alloc (thread_p, scan_cache->area_size);
-		if (scan_cache->area == NULL)
-		  {
-		    scan_cache->area_size = -1;
-		    pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-		    return S_ERROR;
-		  }
-	      }
-	    recdes->data = scan_cache->area;
-	    recdes->area_size = scan_cache->area_size;
-
-	    while ((scan =
-		    heap_ovf_get (thread_p, &forward_oid, recdes,
-				  NULL_CHN, mvcc_snapshot)) == S_DOESNT_FIT)
-	      {
-		/* The object did not fit into such an area, reallocate a new
-		 * area
-		 */
-		if (home_pg_watcher->page_was_unfixed)
-		  {
-		    assert_release (false);
-		    pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-		    return S_ERROR;
-		  }
-
-		recdes->area_size = -recdes->length;
-		recdes->data =
-		  (char *) db_private_realloc (thread_p, scan_cache->area,
-					       recdes->area_size);
-		if (recdes->data == NULL)
-		  {
-		    pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-		    return S_ERROR;
-		  }
-		scan_cache->area_size = recdes->area_size;
-		scan_cache->area = recdes->data;
-	      }
-	    if (scan != S_SUCCESS)
-	      {
-		recdes->data = NULL;
-		recdes->length = 0;
-	      }
-	  }
-	else
-	  {
-	    scan = heap_ovf_get (thread_p, &forward_oid, recdes, NULL_CHN,
-				 mvcc_snapshot);
-	    if (home_pg_watcher->page_was_unfixed)
-	      {
-		assert_release (false);
-		pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-		return S_ERROR;
-	      }
-
-	  }
-
-	/* Unfix home page. Keep it while getting overflow data to stop others
-	 * from trying to change/remove it.
-	 */
-	pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-
-	break;
-      }
-
-    case REC_HOME:
-      assert (ispeeking == PEEK || scan_cache != NULL
-	      || recdes->data != NULL);
-      if (scan_cache != NULL && ispeeking == COPY && recdes->data == NULL)
-	{
-	  /* It is guaranteed that scan_cache is not NULL. */
-	  if (scan_cache->area == NULL)
-	    {
-	      /* Allocate an area to hold the object. Assume that
-	       * the object will fit in two pages for not better estimates.
-	       */
-	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area =
-		(char *) db_private_alloc (thread_p, scan_cache->area_size);
-	      if (scan_cache->area == NULL)
-		{
-		  scan_cache->area_size = -1;
-		  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-		  return S_ERROR;
-		}
-	    }
-	  recdes->data = scan_cache->area;
-	  recdes->area_size = scan_cache->area_size;
-	  /* The allocated space is enough to save the instance. */
-	}
-
-      if (ispeeking == true)
-	{
-	  scan = spage_get_record (home_pg_watcher->pgptr, oid.slotid, recdes,
-				   PEEK);
-	  if (scan == S_SUCCESS && check_snapshot)
-	    {
-	      or_mvcc_get_header (recdes, &mvcc_header);
-	      if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
-					       mvcc_snapshot) == false)
-		{
-		  scan = S_SNAPSHOT_NOT_SATISFIED;
-		}
-	    }
-	}
-      else
-	{
-	  RECDES temp_recdes;
-	  scan = S_SUCCESS;
-	  if (check_snapshot)
-	    {
-	      scan = spage_get_record (home_pg_watcher->pgptr, oid.slotid,
-				       &temp_recdes, PEEK);
-	      if (scan == S_SUCCESS)
-		{
-		  or_mvcc_get_header (&temp_recdes, &mvcc_header);
-		  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
-						   mvcc_snapshot) == false)
-		    {
-		      scan = S_SNAPSHOT_NOT_SATISFIED;
-		    }
-		}
-	    }
-
-	  if (scan == S_SUCCESS)
-	    {
-	      scan = spage_get_record (home_pg_watcher->pgptr, oid.slotid,
-				       recdes, COPY);
-	    }
-	}
-
-      if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
-	{
-	  pgbuf_replace_watcher (thread_p, home_pg_watcher,
-				 &scan_cache->page_watcher);
-	}
-      else
-	{
-	  pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-	}
-      break;
-
-    case REC_NEWHOME:
-    case REC_MVCC_NEXT_VERSION:
-    case REC_MARKDELETED:
-    case REC_DELETED_WILL_REUSE:
-    default:
-      /* This should never happen */
-      scan = S_ERROR;
-      pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3,
-	      oid.volid, oid.pageid, oid.slotid);
-      break;
     }
+  assert (scan == S_SUCCESS);
+  scan =
+    heap_get_record_data_when_all_ready (thread_p, (OID *) & oid,
+					 &forward_oid, home_pg_watcher->pgptr,
+					 fwd_pg_watcher.pgptr, type, recdes,
+					 scan_cache, ispeeking);
+  /* Fall through to exit. */
 
+exit:
+
+  if (fwd_pg_watcher.pgptr != NULL)
+    {
+      /* Unfix forward page. */
+      pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
+    }
+  if (scan == S_SUCCESS && scan_cache != NULL
+      && scan_cache->cache_last_fix_page)
+    {
+      /* Record was successfully obtained and scan is fixed.
+       * Save home page (or NULL if it had to be unfixed) to scan_cache.
+       */
+      pgbuf_replace_watcher (thread_p, home_pg_watcher,
+			     &scan_cache->page_watcher);
+      assert (home_pg_watcher->pgptr == NULL);
+    }
+  else if (home_pg_watcher->pgptr)
+    {
+      /* Unfix home page. */
+      pgbuf_ordered_unfix (thread_p, home_pg_watcher);
+    }
   return scan;
 }
 
@@ -23625,7 +23408,7 @@ try_again:
       if (heap_prepare_get_record
 	  (thread_p, oid, class_oid, forward_oid, &partition_class_oid,
 	   home_page_watcher, fwd_page_watcher, record_type,
-	   PGBUF_LATCH_READ) != S_SUCCESS)
+	   PGBUF_LATCH_READ, false) != S_SUCCESS)
 	{
 	  goto error;
 	}
@@ -25422,7 +25205,7 @@ start_current_version:
     heap_prepare_get_record (thread_p, &current_oid, &current_class_oid,
 			     &forward_oid, &partition_oid,
 			     &home_page_watcher, &fwd_page_watcher, &type,
-			     PGBUF_LATCH_READ);
+			     PGBUF_LATCH_READ, false);
   if (scan_code != S_SUCCESS)
     {
       /* next version might be deleted. This case is expected and removal
@@ -25684,7 +25467,8 @@ retry:
   scan_code =
     heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid,
 			     &partition_oid, home_page_watcher,
-			     &fwd_page_watcher, &type, PGBUF_LATCH_WRITE);
+			     &fwd_page_watcher, &type, PGBUF_LATCH_WRITE,
+			     false);
   if (scan_code != S_SUCCESS)
     {
       /* Stop here. */
