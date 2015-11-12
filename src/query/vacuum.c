@@ -1350,17 +1350,28 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
        * It is also possible that this job was previously executed and
        * interrupted due to shutdown or crash. This case is a little more
        * complicated. There are two scenarios:
-       * 1. Current worker managed to vacuum record. In this case, we can be
-       *    sure it was the only vacuum expected and it will not be followed
-       *    by another.
-       * 2. Current worker did not vacuum object. In this case, it cannot be
-       *    told whether this was the expected vacuum job, or if this was an
-       *    older job and another one is still expected. Since we don't have
-       *    enough information here, we'll choose to play it safe and expect
-       *    another vacuum task. It is a very limited case.
+       * 1. Current page status is vacuum none. This means all vacuum was
+       *    already executed.
+       * 2. Current page status is vacuum once. This means a vacuum is
+       *    expected, but we cannot tell if current vacuum worker was
+       *    interrupted and re-executes an old vacuum task or if it is
+       *    executing the task expected by page status.
+       *    Take next scenario:
+       *    1. Insert new object at OID1. page status is vacuum once.
+       *    2. Block with above operations is finished and vacuum job is
+       *       started.
+       *    3. Vacuum insert MVCCID at OID1. status is now vacuum none.
+       *    4. Delete object at OID1. page status is set to vacuum once.
+       *    5. Crash.
+       *    6. Job on block at step #2 is restarted.
+       *    7. Vacuum is executed on object OID1. Object can be removed.
+       *    8. Vacuum is executed for delete operation at #4.
+       *    It would be incorrect to change page status from vacuum once to
+       *    none, since it will be followed by another vacuum task. Since
+       *    vacuum none status means page might be deallocated, it is better
+       *    to be paranoid about it.
        */
-      if ((page_vacuum_status == HEAP_PAGE_VACUUM_ONCE
-	   && (!was_interrupted || helper.n_vacuumed == 1))
+      if ((page_vacuum_status == HEAP_PAGE_VACUUM_ONCE && !was_interrupted)
 	  || (page_vacuum_status == HEAP_PAGE_VACUUM_NONE && was_interrupted))
 	{
 	  assert (n_heap_objects == 1);
