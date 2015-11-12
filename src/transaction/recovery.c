@@ -993,6 +993,13 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_record_modify,
    btree_rv_keyval_dump,
    log_rv_dump_hexa},
+
+  {RVEH_INIT_NEW_DIR_PAGE,
+   "RVEH_INIT_NEW_DIR_PAGE",
+   NULL,
+   ehash_rv_init_dir_new_page_redo,
+   NULL,
+   NULL},
 };
 
 /*

@@ -266,6 +266,12 @@ static bool ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p,
 					      const VPID * vpid,
 					      DKNPAGES ignore_npages,
 					      void *alignment_depth);
+static bool ehash_initialize_dir_new_pages (THREAD_ENTRY * thread_p,
+					    const VFID * vfid,
+					    const FILE_TYPE file_type,
+					    const VPID * ignore_vpid,
+					    const INT32 * nthpage,
+					    INT32 npages, void *ignore_args);
 static short ehash_get_key_size (DB_TYPE key_type);
 static EHID *ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid,
 				  DB_TYPE key_type, int exp_num_entries,
@@ -790,6 +796,68 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p,
   pgbuf_set_dirty (thread_p, page_p, FREE);
 
   return true;
+}
+
+/*
+ * ehash_initialize_dir_new_pages () - Initialize new pages used to expand
+ *				       extensible hash directory.
+ *
+ * return	    : True/false for success/failure.
+ * vfid (in)	    : File identifier.
+ * file_type (in)   : File type
+ * ignore_vpid (in) : Not used.
+ * nthpage (in)	    : First page.
+ * npages (in)	    : Number of pages.
+ * ignore_args (in) : (not used)
+ */
+static bool
+ehash_initialize_dir_new_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
+				const FILE_TYPE file_type,
+				const VPID * ignore_vpid,
+				const INT32 * nthpage, INT32 npages,
+				void *ignore_args)
+{
+  int i, max;
+  VPID nth_vpid;
+  PAGE_PTR page_p = NULL;
+
+  max = *nthpage + npages;
+  for (i = *(int *) nthpage; i < max; i++)
+    {
+      if (file_find_nthpages (thread_p, vfid, &nth_vpid, i, 1) == -1)
+	{
+	  return false;
+	}
+
+      page_p =
+	pgbuf_fix (thread_p, &nth_vpid, NEW_PAGE, PGBUF_LATCH_WRITE,
+		   PGBUF_UNCONDITIONAL_LATCH);
+      if (page_p == NULL)
+	{
+	  return false;
+	}
+      (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
+      log_append_redo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, vfid, page_p,
+			     -1, 0, NULL);
+      pgbuf_set_dirty (thread_p, page_p, FREE);
+    }
+  return true;
+}
+
+/*
+ * ehash_rv_init_dir_new_page_redo () - Redo initialize new page used to
+ *					expand extensible hash table.
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : No data.
+ */
+int
+ehash_rv_init_dir_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_EHASH);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
 }
 
 #if defined(EHINSERTION_ORDER)
@@ -3054,7 +3122,8 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
     {
       if (file_alloc_pages_as_noncontiguous (thread_p, &ehid_p->vfid,
 					     &expand_vpid, &expand_nth_page,
-					     needed_pages, NULL, NULL,
+					     needed_pages, NULL,
+					     ehash_initialize_dir_new_pages,
 					     NULL, NULL) == NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, dir_header_page_p);
@@ -3066,7 +3135,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
      Perform expansion
    ******************************/
 
-  /* Initilize source variables */
+  /* Initialize source variables */
   old_dir_nth_page = old_pages;	/* The last page of the old directory */
 
   old_dir_page_p = ehash_fix_nth_page (thread_p, &ehid_p->vfid,
@@ -3078,7 +3147,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
     }
   old_dir_offset = end_offset;
 
-  /* Initilize destination variables */
+  /* Initialize destination variables */
   new_dir_nth_page = new_pages;	/* The last page of the new directory */
 
   new_dir_page_p = ehash_fix_nth_page (thread_p, &ehid_p->vfid,

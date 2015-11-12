@@ -77,5 +77,6 @@ int ehash_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 int ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 int ehash_rv_increment (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 int ehash_rv_connect_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+int ehash_rv_init_dir_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 #endif /* _EXTENDIBLE_HASH_H_ */
