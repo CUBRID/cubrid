@@ -9608,7 +9608,6 @@ qstr_coerce (const unsigned char *src,
   int alloc_size;
   char *end_of_string;
   int error_status = NO_ERROR;
-  int error_binary_conversion = NO_ERROR;
 
   *data_status = DATA_STATUS_OK;
   *dest_size = 0;
@@ -9787,35 +9786,6 @@ qstr_coerce (const unsigned char *src,
       else
 	{
 	  assert (copy_size <= alloc_size);
-
-	  if (src_codeset == INTL_CODESET_RAW_BYTES
-	      && ((dest_codeset == INTL_CODESET_UTF8)
-		  || (dest_codeset == INTL_CODESET_KSC5601_EUC)))
-	    {
-	      char *value = src;
-	      char *invalid_pos;
-
-	      if (dest_codeset == INTL_CODESET_UTF8)
-		{
-		  error_binary_conversion =
-		    intl_check_utf8 ((const unsigned char *) value,
-				     src_length, &invalid_pos);
-		}
-	      else
-		{
-		  error_binary_conversion =
-		    intl_check_euckr ((const unsigned char *) value,
-				      src_length, &invalid_pos);
-		}
-
-	      if (error_binary_conversion != 0)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR,
-			  1, invalid_pos - value);
-		  return ER_INVALID_CHAR;
-		}
-	    }
-
 	  (void) memcpy ((char *) *dest, (char *) src, (int) copy_size);
 	}
 
