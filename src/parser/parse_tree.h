@@ -3601,6 +3601,7 @@ struct compile_context
 
   char *sql_plan_text;		/* plans for this query */
   int sql_plan_alloc_size;	/* query_plan alloc size */
+  bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
 };
 
 struct parser_context
@@ -3701,6 +3702,12 @@ struct parser_context
 				   CNF start nodes. */
   unsigned is_holdable:1;	/* set to true if result must be available across
 				   commits */
+  unsigned is_xasl_pinned_reference:1;	/* set to 1 if the prepared xasl cache need 
+					   to be pinned in server side. To prevent 
+					   other thread from preempting the xasl 
+					   cache again. This will happen when 
+					   a jdbc/cci driver retries to prepare/execute
+					   a query due to CAS_ER_STMT_POOLING. */
   unsigned dont_collect_exec_stats:1;
   unsigned return_generated_keys:1;
   unsigned is_system_generated_stmt:1;

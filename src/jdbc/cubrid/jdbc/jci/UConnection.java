@@ -74,6 +74,7 @@ public class UConnection {
 	public final static byte PREPARE_UPDATABLE = 0x02;
 	public final static byte PREPARE_QUERY_INFO = 0x04;
 	public final static byte PREPARE_HOLDABLE = 0x08;
+	public final static byte PREPARE_XASL_CACHE_PINNED = 0x10;
 	public final static byte PREPARE_CALL = 0x40;
 
 	public final static byte DROP_BY_OID = 1, IS_INSTANCE = 2,

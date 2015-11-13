@@ -1042,6 +1042,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   tdes->num_new_files = 0;
   tdes->num_new_tmp_files = 0;
   tdes->num_new_tmp_tmp_files = 0;
+  tdes->num_pinned_xasl_cache_entries = 0;
   RB_INIT (&tdes->lob_locator_root);
 }
 
@@ -2142,6 +2143,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
+  assert (tdes->num_pinned_xasl_cache_entries == 0);
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -2227,6 +2229,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->num_new_files = 0;
   tdes->num_new_tmp_files = 0;
   tdes->num_new_tmp_tmp_files = 0;
+  tdes->num_pinned_xasl_cache_entries = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
@@ -2902,7 +2905,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	      /* retrieve query statement in the xasl_cache entry */
 	      ent =
 		qexec_check_xasl_cache_ent_by_xasl (thread_p, &tdes->xasl_id,
-						    -1, NULL);
+						    -1, NULL, false);
 
 	      /* entry can be NULL, if xasl cache entry is deleted */
 	      if (ent != NULL)
@@ -2932,7 +2935,8 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 			}
 		    }
 		  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
-								ent, true);
+								ent, true,
+								false);
 		}
 
 	      /* structure copy */

@@ -216,7 +216,7 @@ xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 	}
 
       (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_entry,
-						    true);
+						    true, false);
     }
 
   return error;

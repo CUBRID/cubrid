@@ -6248,6 +6248,10 @@ RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 {
+  if (tdes->num_pinned_xasl_cache_entries > 0)
+    {
+      qexec_clear_my_leaked_pinned_cache_entries (thread_p);
+    }
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   /* log_clear_lob_locator_list and logtb_complete_mvcc operations must be done
@@ -6406,6 +6410,10 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 TRAN_STATE
 log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  if (tdes->num_pinned_xasl_cache_entries > 0)
+    {
+      qexec_clear_my_leaked_pinned_cache_entries (thread_p);
+    }
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
   tdes->state = TRAN_UNACTIVE_ABORTED;

@@ -5994,11 +5994,12 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr;
   char *reply = NULL, *reply_buffer = NULL;
   int csserror, reply_buffer_size = 0, get_xasl_header = 0;
+  int xasl_cache_pinned = 0;
   OID user_oid;
   XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
-  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0 };
+  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, 0 };
   XASL_STREAM stream = { NULL, NULL, NULL, 0 };
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6018,6 +6019,9 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &stream.xasl_stream_size);
   /* unpack get XASL node header boolean */
   ptr = or_unpack_int (ptr, &get_xasl_header);
+  /* unpack pinned xasl cache flag boolean */
+  ptr = or_unpack_int (ptr, &xasl_cache_pinned);
+  context.is_xasl_pinned_reference = (bool) xasl_cache_pinned;
 
   if (get_xasl_header)
     {
@@ -6274,7 +6278,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	       */
 	      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
 							    xasl_cache_entry_p,
-							    true);
+							    true,
+							    IS_XASL_CACHE_PINNED_REFERENCE
+							    (query_flag));
+
 	      xasl_cache_entry_p = NULL;
 	    }
 	}
@@ -6389,7 +6396,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   if (xasl_cache_entry_p)
     {
       (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
-						    xasl_cache_entry_p, true);
+						    xasl_cache_entry_p, true,
+						    IS_XASL_CACHE_PINNED_REFERENCE
+						    (query_flag));
     }
 
   ptr = or_pack_int (ptr, queryinfo_string_length);

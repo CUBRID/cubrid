@@ -1067,6 +1067,22 @@ db_session_set_holdable (DB_SESSION * session, bool holdable)
 }
 
 /*
+ * db_session_set_xasl_cache_pinned () - mark query as xasl cache pinned
+ * return : void
+ * session (in) :
+ * holdable (in) :
+ */
+void
+db_session_set_xasl_cache_pinned (DB_SESSION * session, bool is_pinned)
+{
+  if (session == NULL || session->parser == NULL)
+    {
+      return;
+    }
+  session->parser->is_xasl_pinned_reference = is_pinned ? 1 : 0;
+}
+
+/*
  * db_session_set_return_generated_keys () - return generated keys for insert
  *					  statements
  * return : void

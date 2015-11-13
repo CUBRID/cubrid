@@ -7866,6 +7866,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
   request_size += OR_OID_SIZE;	/* user_oid */
   request_size += OR_INT_SIZE;	/* size */
   request_size += OR_INT_SIZE;	/* get_xasl_header */
+  request_size += OR_INT_SIZE;	/* whether to pin xasl cache entry */
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -7891,6 +7892,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
   /* pack size of XASL stream */
   ptr = or_pack_int (ptr, stream->xasl_stream_size);
   ptr = or_pack_int (ptr, get_xasl_header);
+  ptr = or_pack_int (ptr, (int) context->is_xasl_pinned_reference);
 
   /* send SERVER_QM_QUERY_PREPARE request with request data and XASL stream;
      receive XASL file id (XASL_ID) as a reply */

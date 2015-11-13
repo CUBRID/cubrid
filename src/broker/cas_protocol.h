@@ -219,7 +219,7 @@ extern "C"
     PROTOCOL_V4 = 4,		/* send as_index to driver */
     PROTOCOL_V5 = 5,		/* shard feature, fetch end flag */
     PROTOCOL_V6 = 6,		/* cci/cas4m support unsigned integer type */
-    PROTOCOL_V7 = 7,		/* timezone types */
+    PROTOCOL_V7 = 7,		/* timezone types, to pin xasl entry for retry */
     CURRENT_PROTOCOL = PROTOCOL_V7
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;

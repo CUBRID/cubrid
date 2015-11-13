@@ -1253,9 +1253,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
       /* lookup the XASL cache with the query string as the key */
       cache_entry_p =
 	qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text,
-				     user_oid_p);
+				     user_oid_p,
+				     context->is_xasl_pinned_reference);
 
-      if (cache_entry_p)
+      if (cache_entry_p && !context->is_xasl_pinned_reference)
 	{
 	  /* check recompilation threshold */
 	  if (qexec_RT_xasl_cache_ent (thread_p, cache_entry_p) == NO_ERROR)
@@ -1270,7 +1271,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 	    }
 
 	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
-							cache_entry_p, true);
+							cache_entry_p, true,
+							false);
 	}
 
       return stream->xasl_id;
@@ -1286,7 +1288,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
      updated the cache before me */
   cache_entry_p =
     qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text,
-				 user_oid_p);
+				 user_oid_p,
+				 context->is_xasl_pinned_reference);
   if (cache_entry_p)
     {
       er_log_debug (ARG_FILE_LINE,
@@ -1295,10 +1298,11 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
       XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
 
 #if defined (SERVER_MODE)
-      if (cache_entry_p)
+      if (cache_entry_p && !context->is_xasl_pinned_reference)
 	{
 	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
-							cache_entry_p, true);
+							cache_entry_p, true,
+							false);
 	}
 #endif
       goto exit_on_end;
@@ -1358,7 +1362,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
     qexec_update_xasl_cache_ent (thread_p, context, stream,
 				 &creator_oid, n_oid_list,
 				 class_oid_list_p, class_locks, tcard_list_p,
-				 dbval_cnt);
+				 dbval_cnt,
+				 context->is_xasl_pinned_reference);
   if (cache_entry_p == NULL)
     {
       XASL_ID *xasl_id = stream->xasl_id;
@@ -1889,6 +1894,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   bool cached_result;
   bool saved_is_stats_on;
   bool xasl_trace;
+  bool is_xasl_pinned_reference;
 
   cached_result = false;
   query_p = NULL;
@@ -1919,6 +1925,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
 
+  is_xasl_pinned_reference = IS_XASL_CACHE_PINNED_REFERENCE (*flag_p);
+
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
       if (saved_is_stats_on == true)
@@ -1946,11 +1954,13 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   cache_clone_p = NULL;		/* mark as pop */
   xasl_cache_entry_p =
     qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p, dbval_count,
-					&cache_clone_p);
+					&cache_clone_p,
+					is_xasl_pinned_reference);
   if (xasl_cache_entry_p != NULL)
     {
       int i;
       bool check_xasl_cache = false;
+
       for (i = 0; i < xasl_cache_entry_p->n_oid_list; i++)
 	{
 	  if (xasl_cache_entry_p->class_locks[i] <= NULL_LOCK)
@@ -1973,27 +1983,44 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 		  ASSERT_ERROR ();
 		  qexec_remove_my_tran_id_in_xasl_entry (thread_p,
 							 xasl_cache_entry_p,
-							 false);
+							 false,
+							 is_xasl_pinned_reference);
 		  return NULL;
 		}
 	    }
 	}
-      if (xasl_cache_entry_p->deletion_marker)
+
+      if (is_xasl_pinned_reference)
 	{
-	  /* Entry is actually deleted. */
-	  qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p,
-						 false);
-	  xasl_cache_entry_p = NULL;
+#if defined (SERVER_MODE)
+	  /* the entry should be fixed */
+	  assert (xasl_cache_entry_p->tran_fix_count_array[tran_index] > 0);
+#endif
 	}
-      else if (check_xasl_cache)
+      else
 	{
-	  qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p,
-						 false);
-	  xasl_cache_entry_p =
-	    qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p,
-						dbval_count, &cache_clone_p);
+	  if (xasl_cache_entry_p->deletion_marker)
+	    {
+	      /* Entry is actually deleted. */
+	      qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+						     xasl_cache_entry_p,
+						     false, false);
+	      xasl_cache_entry_p = NULL;
+	    }
+	  else if (check_xasl_cache)
+	    {
+	      qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+						     xasl_cache_entry_p,
+						     false, false);
+	      xasl_cache_entry_p =
+		qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p,
+						    dbval_count,
+						    &cache_clone_p,
+						    is_xasl_pinned_reference);
+	    }
 	}
     }
+
   if (xasl_cache_entry_p == NULL)
     {
       /* It doesn't be there or was marked to be deleted. */
@@ -2371,7 +2398,8 @@ end:
       if (cache_clone_p)
 	{
 	  (void) qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p, -1,
-						     &cache_clone_p);
+						     &cache_clone_p,
+						     is_xasl_pinned_reference);
 	}
     }
 

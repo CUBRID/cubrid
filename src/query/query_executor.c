@@ -388,6 +388,7 @@ struct xasl_cache_ent_info
 #if defined (SERVER_MODE)
   XASL_CACHE_MARK_DELETED_LIST *mark_deleted_list;
   XASL_CACHE_MARK_DELETED_LIST *mark_deleted_list_tail;
+  XASL_CACHE_ENTRY *pinned_xasl_cache_list;
 #if !defined (HAVE_ATOMIC_BUILTINS)
   pthread_mutex_t num_fixed_tran_mutex;
 #endif
@@ -521,7 +522,8 @@ static XASL_CACHE_ENT_INFO xasl_ent_cache = {
 #if defined (SERVER_MODE)
     ,
   NULL,				/* mark deleted list */
-  NULL				/* mark deleted list tail pointer */
+  NULL,				/* mark deleted list tail pointer */
+  NULL				/* pinned xasl cache entry list */
 #if !defined (HAVE_ATOMIC_BUILTINS)
     , PTHREAD_MUTEX_INITIALIZER
 #endif
@@ -542,7 +544,8 @@ static XASL_CACHE_ENT_INFO filter_pred_ent_cache = {
 #if defined (SERVER_MODE)
     ,
   NULL,				/* mark deleted list */
-  NULL				/* mark deleted list tail pointer */
+  NULL,				/* mark deleted list tail pointer */
+  NULL				/* not used */
 #if !defined (HAVE_ATOMIC_BUILTINS)
     , PTHREAD_MUTEX_INITIALIZER
 #endif
@@ -602,7 +605,7 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
          + sizeof(int) * (noid)    /* space for tcard_list */ \
          + (qlen))		/* space for sql_hash_text, sql_plan_text, sql_user_text */
 #define XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY(ent) \
-        (int *) (((char *) (ent)) + sizeof(XASL_CACHE_ENTRY))
+        (char *) (((char *) (ent)) + sizeof(XASL_CACHE_ENTRY))
 #define XASL_CACHE_ENTRY_CLASS_OID_LIST(ent) \
         (OID *) (((char *) XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY(ent)) + \
                  sizeof(char) * MAX_NTRANS)
@@ -637,6 +640,40 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
         (char *) (XASL_CACHE_ENTRY_SQL_PLAN_TEXT(ent) + \
                   (ent->sql_info.sql_plan_text ? \
 		  (strlen (ent->sql_info.sql_plan_text) + 1) : 0))
+
+#if defined (HAVE_ATOMIC_BUILTINS)
+#define XASL_CACHE_INCREMENT_REFERER_COUNT(ent) \
+  ATOMIC_INC_32 (&(ent)->num_fixed_tran, 1)
+#define XASL_CACHE_DECREMENT_REFERER_COUNT(ent) \
+  ATOMIC_INC_32 (&(ent)->num_fixed_tran, -1)
+#define XASL_CACHE_RESET_REFERER_COUNT(ent) \
+  ATOMIC_TAS_32 (&(ent)->num_fixed_tran, 0)
+#else
+#define XASL_CACHE_INCREMENT_REFERER_COUNT(ent) \
+  do \
+    { \
+      pthread_mutex_lock (&xasl_ent_cache.num_fixed_tran_mutex); \
+      ent->num_fixed_tran++; \
+      pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex); \
+    } \
+  while (0)
+#define XASL_CACHE_DECREMENT_REFERER_COUNT(ent) \
+  do \
+    { \
+      pthread_mutex_lock (&xasl_ent_cache.num_fixed_tran_mutex); \
+      ent->num_fixed_tran--; \
+      pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex); \
+    } \
+  while (0)
+#define XASL_CACHE_RESET_REFERER_COUNT(ent) \
+  do \
+    { \
+      pthread_mutex_lock (&xasl_ent_cache.num_fixed_tran_mutex); \
+      ent->num_fixed_tran = 0; \
+      pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex); \
+    } \
+  while (0)
+#endif
 
 static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p,
 					   XASL_NODE * xasl,
@@ -1077,6 +1114,13 @@ static int qexec_delete_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p,
 						  void *data, void *args);
 static int qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
 					       void *data, void *args);
+#if defined(SERVER_MODE)
+static int qexec_add_into_pinned_xasl_cache_list (THREAD_ENTRY * thread_p,
+						  XASL_CACHE_ENTRY * ent);
+static int qexec_remove_from_pinned_xasl_cache_list (THREAD_ENTRY * thread_p,
+						     XASL_CACHE_ENTRY * ent,
+						     bool force_remove);
+#endif
 static REGU_VARIABLE *replace_null_arith (REGU_VARIABLE * regu_var,
 					  DB_VALUE * set_dbval);
 static REGU_VARIABLE *replace_null_dbval (REGU_VARIABLE * regu_var,
@@ -17035,8 +17079,8 @@ qexec_alloc_xasl_cache_ent (int req_size)
   /* this function should be called within CSECT_QP_XASL_CACHE */
   POOLED_XASL_CACHE_ENTRY *pent = NULL;
 
-  if (req_size > RESERVED_SIZE_FOR_XASL_CACHE_ENTRY ||
-      xasl_cache_entry_pool.free_list == -1)
+  if (req_size > RESERVED_SIZE_FOR_XASL_CACHE_ENTRY
+      || xasl_cache_entry_pool.free_list == -1)
     {
       /* malloc from the heap if required memory size is bigger than reserved,
          or the pool is exhausted */
@@ -17061,13 +17105,24 @@ qexec_alloc_xasl_cache_ent (int req_size)
       xasl_cache_entry_pool.free_list = pent->s.next;
       pent->s.next = -1;
     }
-  /* initialize */
-  if (pent)
-    {
-      (void) memset ((void *) &pent->s.entry, 0, req_size);
-    }
 
-  return (pent ? &pent->s.entry : NULL);
+  if (pent == NULL)
+    {
+      return NULL;
+    }
+  else
+    {
+      XASL_CACHE_ENTRY *ent;
+
+      ent = &pent->s.entry;
+
+      (void) memset ((void *) ent, 0, req_size);
+#if defined (SERVER_MODE)
+      ent->tran_fix_count_array = XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY (ent);
+#endif
+
+      return ent;
+    }
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -17420,6 +17475,7 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
  *   return:
  *   qstr(in)   :
  *   user_oid(in)       :
+ *   is_pinned_reference (in):
  *
  * NOTE : In SERVER_MODE. If a entry is found in the query string hash table,
  *        this function increases the fix count in the tran_fix_count_array
@@ -17432,7 +17488,7 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
  */
 XASL_CACHE_ENTRY *
 qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
-			     const OID * user_oid)
+			     const OID * user_oid, bool is_pinned_reference)
 {
   XASL_CACHE_ENTRY *ent;
   XASL_QSTR_HT_KEY key;
@@ -17494,13 +17550,16 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	  if (ent->tran_fix_count_array[tran_index] == 0)
 	    {
-#if defined (HAVE_ATOMIC_BUILTINS)
-	      ATOMIC_INC_32 (&ent->num_fixed_tran, 1);
-#else
-	      pthread_mutex_lock (&xasl_ent_cache.num_fixed_tran_mutex);
-	      ent->num_fixed_tran++;
-	      pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex);
-#endif
+	      XASL_CACHE_INCREMENT_REFERER_COUNT (ent);
+
+	      if (is_pinned_reference)
+		{
+		  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+		  tdes->num_pinned_xasl_cache_entries++;
+
+		  qexec_add_into_pinned_xasl_cache_list (thread_p, ent);
+		}
 	    }
 	  ent->tran_fix_count_array[tran_index]++;
 
@@ -17539,6 +17598,7 @@ end:
  *   class_locks(in)   : locks required for each class
  *   tcards(in)        : #pages of class_oids
  *   dbval_cnt(in)     :
+ *   is_pinned_reference(in):
  *
  * Note: Update XASL cache entry if exist or create new one
  * As a side effect, the given 'xasl_id' can be change if the entry which has
@@ -17550,7 +17610,8 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 			     XASL_STREAM * stream,
 			     const OID * oid, int n_oids,
 			     const OID * class_oids, const int *class_locks,
-			     const int *tcards, int dbval_cnt)
+			     const int *tcards, int dbval_cnt,
+			     bool is_pinned_reference)
 {
   XASL_CACHE_ENTRY *ent, *victim_ent;
   const OID *o;
@@ -17592,6 +17653,26 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
          to find the query in the cache;
          change the given XASL_ID to force to use the cached entry */
       XASL_ID_COPY (stream->xasl_id, &(ent->xasl_id));
+
+#if defined(SERVER_MODE)
+      if (is_pinned_reference)
+	{
+	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+	  if (ent->tran_fix_count_array[tran_index] == 0)
+	    {
+	      XASL_CACHE_INCREMENT_REFERER_COUNT (ent);
+
+	      tdes->num_pinned_xasl_cache_entries++;
+
+	      qexec_add_into_pinned_xasl_cache_list (thread_p, ent);
+	    }
+	  ent->tran_fix_count_array[tran_index]++;
+
+	  assert (ent->tran_fix_count_array[tran_index] > 0);
+	}
+#endif
 
       (void) gettimeofday (&ent->time_last_used, NULL);
       ent->ref_count++;
@@ -17690,20 +17771,28 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
     {
       goto end;
     }
+
   /* initialize the entry */
 #if defined(SERVER_MODE)
-#if defined (HAVE_ATOMIC_BUILTINS)
-  ATOMIC_TAS_32 (&ent->num_fixed_tran, 0);
-#else
-  pthread_mutex_lock (&xasl_ent_cache.num_fixed_tran_mutex);
-  ent->num_fixed_tran = 0;
-  pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex);
+  if (is_pinned_reference)
+    {
+      /* init fix count as 1 for pinned xasl cache entry */
+      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+      XASL_CACHE_INCREMENT_REFERER_COUNT (ent);
+      ent->tran_fix_count_array[tran_index] = 1;
+
+      tdes->num_pinned_xasl_cache_entries++;
+
+      qexec_add_into_pinned_xasl_cache_list (thread_p, ent);
+    }
+  else
+    {
+      XASL_CACHE_RESET_REFERER_COUNT (ent);
+    }
 #endif
 
-  ent->tran_fix_count_array =
-    (char *) memset (XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY (ent),
-		     0, MAX_NTRANS * sizeof (char));
-#endif
   ent->n_oid_list = n_oids;
 
   if (class_oids)
@@ -17903,10 +17992,12 @@ qexec_remove_my_tran_id_in_filter_pred_xasl_entry (THREAD_ENTRY * thread_p,
  *   return: NO_ERROR, or ER_code
  *   ent(in)    :
  *   unfix_all(in) :
+ *   is_pinned_reference(in):
  */
 int
 qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p,
-				       XASL_CACHE_ENTRY * ent, bool unfix_all)
+				       XASL_CACHE_ENTRY * ent, bool unfix_all,
+				       bool is_pinned_reference)
 {
 #if defined(SERVER_MODE)
   int tran_index;
@@ -17923,15 +18014,21 @@ qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p,
   if (ent->num_fixed_tran <= 0)
     {
       assert_release (0);
-      ent->tran_fix_count_array[tran_index] = 0;
 
-#if defined (HAVE_ATOMIC_BUILTINS)
-      ATOMIC_TAS_32 (&ent->num_fixed_tran, 0);
-#else
-      pthread_mutex_lock (&xasl_ent_cache.num_fixed_tran_mutex);
-      ent->num_fixed_tran = 0;
-      pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex);
-#endif
+      if (ent->num_pinned_tran > 0)
+	{
+	  if (csect_enter (thread_p, CSECT_QPROC_XASL_CACHE, INF_WAIT) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  qexec_remove_from_pinned_xasl_cache_list (thread_p, ent, true);
+
+	  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
+	}
+      ent->tran_fix_count_array[tran_index] = 0;
+      XASL_CACHE_RESET_REFERER_COUNT (ent);
 
       return ER_FAILED;
     }
@@ -17965,13 +18062,25 @@ qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p,
 
   if (ent->tran_fix_count_array[tran_index] == 0)
     {
-#if defined (HAVE_ATOMIC_BUILTINS)
-      ATOMIC_INC_32 (&ent->num_fixed_tran, -1);
-#else
-      pthread_mutex_lock (&xasl_ent_cache.num_fixed_tran_mutex);
-      ent->num_fixed_tran--;
-      pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex);
-#endif
+      if (is_pinned_reference)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+	  if (csect_enter (thread_p, CSECT_QPROC_XASL_CACHE, INF_WAIT) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  assert_release (tdes->num_pinned_xasl_cache_entries > 0);
+	  tdes->num_pinned_xasl_cache_entries--;
+
+	  qexec_remove_from_pinned_xasl_cache_list (thread_p, ent, false);
+
+	  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
+	}
+
+      XASL_CACHE_DECREMENT_REFERER_COUNT (ent);
     }
 #endif /* SERVER_MODE */
 
@@ -18109,6 +18218,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
  *   xasl_id(in)        :
  *   dbval_cnt(in)      :
  *   clop(in)   :
+ *   is_pinned_reference(in) :
  *
  * NOTE : In SERVER_MODE. If a entry is found in the query string hash table,
  *        this function increases the fix count in the tran_fix_count_array
@@ -18123,7 +18233,8 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 XASL_CACHE_ENTRY *
 qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 				    const XASL_ID * xasl_id, int dbval_cnt,
-				    XASL_CACHE_CLONE ** clop)
+				    XASL_CACHE_CLONE ** clop,
+				    bool is_pinned_reference)
 {
   XASL_CACHE_ENTRY *ent;
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -18147,7 +18258,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 
   if (ent)
     {
-      if (ent->deletion_marker)
+      if (ent->deletion_marker && !is_pinned_reference)
 	{
 	  ent = NULL;
 	}
@@ -18179,22 +18290,27 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
       if (ent)
 	{
 	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  if (ent->tran_fix_count_array[tran_index] == 0)
+
+	  if (is_pinned_reference)
 	    {
-#if defined (HAVE_ATOMIC_BUILTINS)
-	      ATOMIC_INC_32 (&ent->num_fixed_tran, 1);
-#else
-	      pthread_mutex_lock (&xasl_ent_cache.num_fixed_tran_mutex);
-	      ent->num_fixed_tran++;
-	      pthread_mutex_unlock (&xasl_ent_cache.num_fixed_tran_mutex);
-#endif
+	      /* skip to incr tran_fix_count_array[tran_index] */
+	      assert (ent->tran_fix_count_array[tran_index] > 0);
+	      assert (ent->num_pinned_tran > 0);
 	    }
-	  ent->tran_fix_count_array[tran_index]++;
-	  assert (ent->tran_fix_count_array[tran_index] > 0);
+	  else
+	    {
+	      if (ent->tran_fix_count_array[tran_index] == 0)
+		{
+		  XASL_CACHE_INCREMENT_REFERER_COUNT (ent);
+		}
+	      ent->tran_fix_count_array[tran_index]++;
+	      assert (ent->tran_fix_count_array[tran_index] > 0);
+	    }
 	}
 #endif
 
-      if (ent && xasl_ent_cache.qstr_ht->build_lru_list)
+      if (ent && !ent->deletion_marker
+	  && xasl_ent_cache.qstr_ht->build_lru_list)
 	{
 	  if (ent->qstr_ht_entry_ptr)
 	    {
@@ -18333,7 +18449,8 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
       if (ent)
 	{
 	  /* remove my transaction id from the entry and do compaction */
-	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
+	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false,
+							false);
 
 	  if (qexec_delete_xasl_cache_ent (thread_p, ent, &args) == NO_ERROR)
 	    {
@@ -18379,7 +18496,8 @@ qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p,
   if (ent)
     {
       /* remove my transaction id from the entry and do compaction */
-      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
+      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false,
+						    false);
       (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
     }
 
@@ -18415,7 +18533,8 @@ qexec_remove_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
   if (ent)
     {
       /* remove my transaction id from the entry and do compaction */
-      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
+      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false,
+						    false);
       (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
     }
 
@@ -18620,6 +18739,171 @@ qexec_delete_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p, void *data,
     }
 
   return rc;
+}
+
+#if defined (SERVER_MODE)
+/*
+ * qexec_add_into_pinned_xasl_cache_list() -- add the cache entry into the 
+ *                                            pinned xasl cache list
+ *
+ *   return:
+ *   thread_p(in) :
+ *   ent(in) :
+ */
+static int
+qexec_add_into_pinned_xasl_cache_list (THREAD_ENTRY * thread_p,
+				       XASL_CACHE_ENTRY * ent)
+{
+  assert (csect_check_own (thread_p, CSECT_QPROC_XASL_CACHE) == 1);
+
+  if (ent->num_pinned_tran == 0)
+    {
+      /* first time */
+      assert (ent->prev_pinned_ent == NULL && ent->next_pinned_ent == NULL);
+
+      if (xasl_ent_cache.pinned_xasl_cache_list == NULL)
+	{
+	  xasl_ent_cache.pinned_xasl_cache_list = ent;
+	}
+      else
+	{
+	  ent->next_pinned_ent = xasl_ent_cache.pinned_xasl_cache_list;
+	  xasl_ent_cache.pinned_xasl_cache_list->prev_pinned_ent = ent;
+
+	  xasl_ent_cache.pinned_xasl_cache_list = ent;
+	}
+    }
+  ent->num_pinned_tran++;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_remove_from_pinned_xasl_cache_list() -- remove the cache entry 
+ *                                      from the pinned xasl cache list
+ *
+ *   return:
+ *   thread_p(in) :
+ *   ent(in) :
+ *   force_remove(in):
+ */
+static int
+qexec_remove_from_pinned_xasl_cache_list (THREAD_ENTRY * thread_p,
+					  XASL_CACHE_ENTRY * ent,
+					  bool force_remove)
+{
+  XASL_CACHE_ENTRY *prev, *next;
+
+  assert (csect_check_own (thread_p, CSECT_QPROC_XASL_CACHE) == 1);
+
+  if (ent->num_pinned_tran <= 0)
+    {
+      assert_release (ent->num_pinned_tran > 0);
+      return ER_FAILED;
+    }
+
+  if (force_remove)
+    {
+      ent->num_pinned_tran = 0;
+    }
+  else
+    {
+      ent->num_pinned_tran--;
+    }
+
+  if (ent->num_pinned_tran == 0)
+    {
+      prev = ent->prev_pinned_ent;
+      next = ent->next_pinned_ent;
+
+      if (prev != NULL)
+	{
+	  prev->next_pinned_ent = next;
+	}
+
+      if (next != NULL)
+	{
+	  next->prev_pinned_ent = prev;
+	}
+
+      if (ent == xasl_ent_cache.pinned_xasl_cache_list)
+	{
+	  xasl_ent_cache.pinned_xasl_cache_list = next;
+	}
+
+      ent->prev_pinned_ent = NULL;
+      ent->next_pinned_ent = NULL;
+    }
+
+  return NO_ERROR;
+}
+
+#endif
+
+/*
+ * qexec_clear_my_leaked_pinned_cache_entries :
+ *
+ *   return:
+ *   thread_p (in) :
+ */
+int
+qexec_clear_my_leaked_pinned_cache_entries (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  int tran_index;
+  LOG_TDES *tdes;
+  XASL_CACHE_ENTRY *ent, *next;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  assert (tdes->num_pinned_xasl_cache_entries >= 0);
+  if (tdes->num_pinned_xasl_cache_entries == 0)
+    {
+      /* no leak */
+      return NO_ERROR;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_XASL_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  ent = xasl_ent_cache.pinned_xasl_cache_list;
+  while (ent != NULL && tdes->num_pinned_xasl_cache_entries > 0)
+    {
+      next = ent->next_pinned_ent;
+
+      if (ent->tran_fix_count_array[tran_index] > 0)
+	{
+	  tdes->num_pinned_xasl_cache_entries--;
+
+	  qexec_remove_from_pinned_xasl_cache_list (thread_p, ent, false);
+
+	  ent->tran_fix_count_array[tran_index]--;
+	  if (ent->tran_fix_count_array[tran_index] > 0)
+	    {
+	      assert_release (ent->tran_fix_count_array[tran_index] == 0);
+	      ent->tran_fix_count_array[tran_index] = 0;
+	    }
+
+	  XASL_CACHE_DECREMENT_REFERER_COUNT (ent);
+	}
+
+      ent = next;
+    }
+
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
+
+  /* assertion */
+  if (tdes->num_pinned_xasl_cache_entries > 0)
+    {
+      assert_release (tdes->num_pinned_xasl_cache_entries == 0);
+      tdes->num_pinned_xasl_cache_entries = 0;
+    }
+#endif
+
+  return NO_ERROR;
 }
 
 #if defined (SERVER_MODE)

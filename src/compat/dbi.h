@@ -868,6 +868,8 @@ extern DB_SESSION_ERROR *db_get_next_warning (DB_SESSION_WARNING *
 					      int *linenumber,
 					      int *columnnumber);
 extern void db_session_set_holdable (DB_SESSION * session, bool holdable);
+extern void db_session_set_xasl_cache_pinned (DB_SESSION * session,
+					      bool is_pinned);
 extern void db_session_set_return_generated_keys (DB_SESSION * session,
 						  bool return_generated_keys);
 extern DB_PARAMETER *db_get_parameters (DB_SESSION * session,

@@ -1140,6 +1140,10 @@ struct xasl_cache_ent
 				 * size is MAX_NTRANS */
   int num_fixed_tran;		/* number of transactions
 				 * fixed this entry */
+  int num_pinned_tran;		/* number of transactions
+				   pinned this entry */
+  XASL_CACHE_ENTRY *prev_pinned_ent;	/* the prev pointer of poinned cache entry */
+  XASL_CACHE_ENTRY *next_pinned_ent;	/* the next pointer of poinned cache entry */
 #endif
   const OID *class_oid_list;	/* list of class/serial OIDs referenced
 				 * in the XASL */
@@ -1225,7 +1229,9 @@ extern int qexec_dump_xasl_cache (THREAD_ENTRY * thread_p, const char *fname,
 #endif
 extern XASL_CACHE_ENTRY *qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p,
 						      const char *qstr,
-						      const OID * user_oid);
+						      const OID * user_oid,
+						      bool
+						      is_pinned_reference);
 extern XASL_CACHE_ENTRY *qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY *
 							     thread_p,
 							     const char *qstr,
@@ -1240,7 +1246,9 @@ extern XASL_CACHE_ENTRY *qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 						      const OID * class_oids,
 						      const int *class_locks,
 						      const int *repr_ids,
-						      int dbval_cnt);
+						      int dbval_cnt,
+						      bool
+						      is_pinned_reference);
 extern XASL_CACHE_ENTRY *qexec_update_filter_pred_cache_ent (THREAD_ENTRY *
 							     thread_p,
 							     const char *qstr,
@@ -1261,7 +1269,8 @@ extern int qexec_remove_my_tran_id_in_filter_pred_xasl_entry (THREAD_ENTRY *
 							      bool unfix_all);
 extern int qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p,
 						  XASL_CACHE_ENTRY * ent,
-						  bool unfix_all);
+						  bool unfix_all,
+						  bool is_pinned_reference);
 
 extern int qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
 						   const XASL_ID * xasl_id,
@@ -1274,7 +1283,9 @@ extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY *
 							     xasl_id,
 							     int dbval_cnt,
 							     XASL_CACHE_CLONE
-							     ** clop);
+							     ** clop,
+							     bool
+							     is_pinned_reference);
 extern XASL_CACHE_ENTRY
   * qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 					       const XASL_ID * xasl_id,
@@ -1368,4 +1379,7 @@ extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p,
 				    int indent);
 #endif /* SERVER_MODE */
 extern const char *qdump_function_type_string (FUNC_TYPE ftype);
+
+extern int qexec_clear_my_leaked_pinned_cache_entries (THREAD_ENTRY *
+						       thread_p);
 #endif /* _QUERY_EXECUTOR_H_ */

@@ -365,7 +365,8 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp,
       return;
     }
 
-  ent = qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id, -1, NULL);
+  ent =
+    qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id, -1, NULL, false);
 
   if (ent != NULL && ent->sql_info.sql_hash_text != NULL)
     {
@@ -378,7 +379,8 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp,
 
   if (ent != NULL)
     {
-      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
+      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false,
+						    false);
     }
 }
 

@@ -966,6 +966,11 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       db_include_oid (session, DB_ROW_OIDS);
     }
 
+  if (flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, true);
+    }
+
   stmt_id = db_compile_statement (session);
   if (stmt_id < 0)
     {
@@ -1295,6 +1300,11 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  srv_handle->query_info_flag = TRUE;
 	}
 
+      if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+	{
+	  db_session_set_xasl_cache_pinned (session, true);
+	}
+
       stmt_id = db_compile_statement (session);
       if (stmt_id < 0)
 	{
@@ -1423,6 +1433,11 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   net_buf_cp_int (net_buf, n, NULL);
 
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, false);
+      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
+    }
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
   srv_handle->q_result->result = (void *) result;
@@ -1521,6 +1536,11 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 execute_error:
   NET_BUF_ERR_SET (net_buf);
 
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, false);
+      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
+    }
   if (srv_handle->auto_commit_mode)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
@@ -1629,6 +1649,11 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
       if (is_prepared == FALSE)
 	{
+	  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+	    {
+	      db_session_set_xasl_cache_pinned (session, true);
+	    }
+
 	  stmt_id = db_compile_statement (session);
 	  if (stmt_id == 0)
 	    {
@@ -1791,6 +1816,11 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	}
     }
 
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, false);
+      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
+    }
   srv_handle->max_row = max_row;
   srv_handle->max_col_size = max_col_size;
   srv_handle->cur_result = (void *) srv_handle->q_result;
@@ -1870,6 +1900,11 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 execute_all_error:
   NET_BUF_ERR_SET (net_buf);
 
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, false);
+      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
+    }
   if (srv_handle->auto_commit_mode)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
@@ -2429,6 +2464,11 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
       if (is_prepared == FALSE)
 	{
+	  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+	    {
+	      db_session_set_xasl_cache_pinned (session, true);
+	    }
+
 	  stmt_id = db_compile_statement (session);
 	  if (stmt_id < 0)
 	    {
@@ -2478,6 +2518,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       if (is_prepared == FALSE)
 	{
 	  db_close_session (session);
+	  session = NULL;
 	}
 
       net_buf_cp_int (net_buf, res_count, NULL);
@@ -2504,6 +2545,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	      if (is_prepared == FALSE && session != NULL)
 		{
 		  db_close_session (session);
+		  session = NULL;
 		}
 
 	      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -2532,6 +2574,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       if (is_prepared == FALSE && session != NULL)
 	{
 	  db_close_session (session);
+	  session = NULL;
 	}
 
       num_bind -= num_markers;
@@ -2565,11 +2608,23 @@ return_success:
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
     }
 
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, false);
+      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
+    }
+
   return 0;
 
 execute_array_error:
   NET_BUF_ERR_SET (net_buf);
   errors_in_transaction++;
+
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, false);
+      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
+    }
 
   if (value_list)
     {

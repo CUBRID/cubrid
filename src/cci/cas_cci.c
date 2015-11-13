@@ -1338,6 +1338,9 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
   int con_err_code = 0;
   struct timeval st, et;
   bool is_first_exec_in_tran = false;
+  T_BROKER_VERSION broker_ver;
+  int loop;
+  char prepare_flag;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -1427,23 +1430,42 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
 			  &(con_handle->err_buf));
     }
 
-  /* If prepared plan is invalidated while using plan cache,
-     the error, CAS_ER_STMT_POOLING, is returned.
-     In this case, prepare and execute have to be executed again.
-   */
-  if (error == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V7))
     {
-      req_handle_content_free (req_handle, 1);
-      error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
-			  req_handle->prepare_flag, &(con_handle->err_buf),
-			  1);
-      if (error < 0)
-	{
-	  goto execute_end;
-	}
-      error = qe_execute (req_handle, con_handle, flag, max_col_size,
-			  &(con_handle->err_buf));
+      loop = 0;			/* retry once more */
+      prepare_flag = (req_handle->prepare_flag
+		      | CCI_PREPARE_XASL_CACHE_PINNED);
     }
+  else
+    {
+      /* legacy broker */
+
+      loop = 1;			/* infinitely */
+      prepare_flag = req_handle->prepare_flag;
+    }
+
+  do
+    {
+      /* If prepared plan is invalidated while using plan cache,
+       * the error, CAS_ER_STMT_POOLING, is returned.
+       * In this case, prepare and execute have to be executed again.
+       */
+      if (error == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
+	{
+	  req_handle_content_free (req_handle, 1);
+	  error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			      prepare_flag, &(con_handle->err_buf), 1);
+	  if (error < 0)
+	    {
+	      goto execute_end;
+	    }
+	  error = qe_execute (req_handle, con_handle, flag, max_col_size,
+			      &(con_handle->err_buf));
+	}
+    }
+  while (loop && error == CAS_ER_STMT_POOLING
+	 && IS_BROKER_STMT_POOL (con_handle));
 
 execute_end:
   RESET_START_TIME (con_handle);
@@ -1723,6 +1745,9 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
   int error = CCI_ER_NO_ERROR;
   int con_err_code = CCI_ER_NO_ERROR;
   bool is_first_exec_in_tran = false;
+  T_BROKER_VERSION broker_ver;
+  int loop;
+  char prepare_flag;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -1795,19 +1820,38 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
 				&(con_handle->err_buf));
     }
 
-  if (error == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V7))
     {
-      req_handle_content_free (req_handle, 1);
-      error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
-			  req_handle->prepare_flag, &(con_handle->err_buf),
-			  1);
-      if (error < 0)
-	{
-	  goto execute_end;
-	}
-      error = qe_execute_array (req_handle, con_handle, qr,
-				&(con_handle->err_buf));
+      loop = 0;			/* retry once more */
+      prepare_flag = (req_handle->prepare_flag
+		      | CCI_PREPARE_XASL_CACHE_PINNED);
     }
+  else
+    {
+      /* legacy broker */
+
+      loop = 1;			/* infinitely */
+      prepare_flag = req_handle->prepare_flag;
+    }
+
+  do
+    {
+      if (error == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
+	{
+	  req_handle_content_free (req_handle, 1);
+	  error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			      prepare_flag, &(con_handle->err_buf), 1);
+	  if (error < 0)
+	    {
+	      goto execute_end;
+	    }
+	  error = qe_execute_array (req_handle, con_handle, qr,
+				    &(con_handle->err_buf));
+	}
+    }
+  while (loop && error == CAS_ER_STMT_POOLING
+	 && IS_BROKER_STMT_POOL (con_handle));
 
 execute_end:
   RESET_START_TIME (con_handle);

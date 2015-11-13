@@ -8425,6 +8425,8 @@ static void
 init_compile_context (PARSER_CONTEXT * parser)
 {
   memset (&parser->context, 0x00, sizeof (COMPILE_CONTEXT));
+  parser->context.is_xasl_pinned_reference =
+    (bool) parser->is_xasl_pinned_reference;
 }
 
 /*
@@ -9613,6 +9615,11 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  query_flag |= NOT_FROM_RESULT_CACHE;
 	  query_flag |= RESULT_CACHE_INHIBITED;
+
+	  if (parser->is_xasl_pinned_reference)
+	    {
+	      query_flag |= XASL_CACHE_PINNED_REFERENCE;
+	    }
 
 	  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
 	      && parser->query_trace == true)
@@ -10926,6 +10933,10 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
+      if (parser->is_xasl_pinned_reference)
+	{
+	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
+	}
 
       if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
 	  && parser->query_trace == true)
@@ -14286,6 +14297,10 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       query_flag |= RETURN_GENERATED_KEYS;
     }
+  if (parser->is_xasl_pinned_reference)
+    {
+      query_flag |= XASL_CACHE_PINNED_REFERENCE;
+    }
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
       && parser->query_trace == true)
@@ -15088,6 +15103,10 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       query_flag |= RESULT_HOLDABLE;
     }
+  if (parser->is_xasl_pinned_reference)
+    {
+      query_flag |= XASL_CACHE_PINNED_REFERENCE;
+    }
 
   if (query_trace == true)
     {
@@ -15276,6 +15295,10 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->is_holdable)
     {
       query_flag |= RESULT_HOLDABLE;
+    }
+  if (parser->is_xasl_pinned_reference)
+    {
+      query_flag |= XASL_CACHE_PINNED_REFERENCE;
     }
 
   if (parser->dont_collect_exec_stats)

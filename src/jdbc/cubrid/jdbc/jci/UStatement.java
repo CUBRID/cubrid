@@ -823,6 +823,8 @@ public class UStatement {
 	        boolean isExecuteAll, boolean isSensitive, boolean isScrollable,
 	        boolean isQueryPlan, boolean isOnlyPlan, boolean isHoldable,
 	        UStatementCacheData cacheData, int queryTimeout) {
+		boolean loop;
+		byte additional_prepare_flag;
 
 		isFetchCompleted = false;
 		flushLobStreams();
@@ -831,7 +833,7 @@ public class UStatement {
 		if (isClosed) {
 			if (relatedConnection.brokerInfoStatementPooling()) {
 				try {
-					reset();
+					reset((byte) 0);
 				} catch (UJciException e) {
 					e.toUError(errorHandler);
 					return;
@@ -883,7 +885,7 @@ public class UStatement {
 				}
 
 				try {
-					reset();
+					reset((byte) 0);
 					executeInternal(maxRow, maxField, isScrollable,
 					        queryTimeout);
 					return;
@@ -897,27 +899,38 @@ public class UStatement {
 			}
 		}
 
-		if (relatedConnection.brokerInfoStatementPooling()
-		    && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
-			try {
-				reset();
-				executeInternal(maxRow, maxField, isScrollable, queryTimeout);
-				return;
-			} catch (UJciException e) {
-				relatedConnection.logException(e);
-				e.toUError(errorHandler);
-			} catch (IOException e) {
-				relatedConnection.logException(e);
-				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-			}
+		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V7)) {
+			loop = false; 	/* retry once more */
+			additional_prepare_flag = UConnection.PREPARE_XASL_CACHE_PINNED;
+		} else {
+			loop = true; 	/* infinitely */
+			additional_prepare_flag = (byte) 0;
 		}
+
+		do {
+			if (relatedConnection.brokerInfoStatementPooling()
+			    && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
+				try {
+					reset(additional_prepare_flag);
+					executeInternal(maxRow, maxField, isScrollable, queryTimeout);
+					return;
+				} catch (UJciException e) {
+					relatedConnection.logException(e);
+					e.toUError(errorHandler);
+				} catch (IOException e) {
+					relatedConnection.logException(e);
+					errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+				}
+			}
+		} while (loop && relatedConnection.brokerInfoStatementPooling()
+			 && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING);
 	}
 
-	private void reset() throws UJciException {
+	private void reset(byte flag) throws UJciException {
 		close();
 
 		UStatement tmp = relatedConnection
-		        .prepare(sql_stmt, prepare_flag, true);
+		        .prepare(sql_stmt, (byte) (prepare_flag | flag), true);
 		UError err = relatedConnection.getRecentError();
 		if (err.getErrorCode() != UErrorCode.ER_NO_ERROR) {
 			int indicator =
@@ -1028,12 +1041,14 @@ public class UStatement {
 
 	synchronized public UBatchResult executeBatch(int queryTimeout) {
 		UBatchResult batchResult;
+		boolean loop;
+		byte additional_prepare_flag;
 
 		errorHandler = new UError(relatedConnection);
 		if (isClosed) {
 			if (relatedConnection.brokerInfoStatementPooling()) {
 				try {
-					reset();
+					reset((byte) 0);
 				} catch (UJciException e) {
 					e.toUError(errorHandler);
 					return null;
@@ -1066,7 +1081,7 @@ public class UStatement {
 				}
 
 				try {
-					reset();
+					reset((byte) 0);
 					batchResult = executeBatchInternal(queryTimeout);
 					return batchResult;
 				} catch (UJciException e) {
@@ -1079,20 +1094,31 @@ public class UStatement {
 			}
 		}
 
-		if (relatedConnection.brokerInfoStatementPooling()
-		    && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
-			try {
-				reset();
-				batchResult = executeBatchInternal(queryTimeout);
-				return batchResult;
-			} catch (UJciException e) {
-				relatedConnection.logException(e);
-				e.toUError(errorHandler);
-			} catch (IOException e) {
-				relatedConnection.logException(e);
-				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-			}
+		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V7)) {
+			loop = false; 	/* retry once more */
+			additional_prepare_flag = UConnection.PREPARE_XASL_CACHE_PINNED;
+		} else {
+			loop = true; 	/* infinitely */
+			additional_prepare_flag = (byte) 0;
 		}
+
+		do {
+			if (relatedConnection.brokerInfoStatementPooling()
+			    && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
+				try {
+					reset(additional_prepare_flag);
+					batchResult = executeBatchInternal(queryTimeout);
+					return batchResult;
+				} catch (UJciException e) {
+					relatedConnection.logException(e);
+					e.toUError(errorHandler);
+				} catch (IOException e) {
+					relatedConnection.logException(e);
+					errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+				}
+			}
+		} while (loop && relatedConnection.brokerInfoStatementPooling()
+			 && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING);
 		return null;
 	}
 
