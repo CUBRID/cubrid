@@ -45,6 +45,7 @@ public class UColumnInfo {
 	private byte collectionBaseType;
 	private short scale;
 	private int precision;
+	private String charsetName;
 	private String name, className, attributeName;
 	// private String FQDN;
 	private boolean isNullable;
@@ -58,7 +59,7 @@ public class UColumnInfo {
 	private byte is_reverse_unique;
 	private byte is_shared;
 
-	UColumnInfo(byte cType, short cScale, int cPrecision, String cName, byte collection) throws UJciException {
+	UColumnInfo(byte cType, short cScale, int cPrecision, String cName, byte collection, String cCharset) throws UJciException {
 		byte realType[];
 
 		realType = UColumnInfo.confirmType(cType, collection);
@@ -66,6 +67,7 @@ public class UColumnInfo {
 		collectionBaseType = realType[1];
 		scale = cScale;
 		precision = cPrecision;
+		charsetName = cCharset;
 		name = cName;
 		className = null;
 		attributeName = null;
@@ -137,6 +139,10 @@ public class UColumnInfo {
 
 	public int getColumnScale() {
 		return (int) scale;
+	}
+
+	public String getColumnCharset() {
+		return charsetName;
 	}
 
 	public byte getColumnType() {

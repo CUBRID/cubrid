@@ -56,6 +56,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 	private int[] col_null;
 	private String[] col_class_name;
 	private boolean[] is_auto_increment_col;
+	private String[] col_charset_name;
 
 	protected CUBRIDResultSetMetaData(UColumnInfo[] col_info) {
 		col_name = new String[col_info.length];
@@ -70,6 +71,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 		col_null = new int[col_info.length];
 		col_class_name = new String[col_info.length];
 		is_auto_increment_col = new boolean[col_info.length];
+		col_charset_name = new String[col_info.length];
 
 		for (int i = 0; i < col_info.length; i++) {
 			col_disp_size[i] = getDefaultColumnDisplaySize(col_info[i]
@@ -90,6 +92,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 			} else {
 				is_auto_increment_col[i] = true;
 			}
+			col_charset_name[i] = col_info[i].getColumnCharset();
 
 			switch (col_info[i].getColumnType()) {
 			case UUType.U_TYPE_CHAR:
@@ -455,6 +458,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 		col_null = new int[col_name.length];
 		col_class_name = new String[col_name.length];
 		is_auto_increment_col = new boolean[col_name.length];
+		col_charset_name = new String[col_name.length];
 
 		for (int i = 0; i < col_name.length; i++) {
 			col_disp_size[i] = getDefaultColumnDisplaySize((byte) r.type[i]);
@@ -503,6 +507,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 			col_scale[i] = 0;
 			ele_type[i] = -1;
 			col_table[i] = "";
+			col_charset_name[i] = null;
 			if (r.nullable[i]) {
 				col_null[i] = columnNullable;
 			} else {
@@ -757,6 +762,11 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 
 		return ele_type_name[column - 1];
 	}
+	
+	public String getColumnCharset(int column) throws SQLException {
+		checkColumnIndex(column);
+		return col_charset_name[column - 1];
+	}	
 
 	/* JDK 1.6 */
 	public boolean isWrapperFor(Class<?> iface) throws SQLException {

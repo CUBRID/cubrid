@@ -241,4 +241,15 @@ abstract public class UJCIUtil {
 			timeinfo.isPM = isPM;
 			return timeinfo;
 	};
+
+	public static String getJavaCharsetName(byte cubridCharset){
+		switch (cubridCharset){
+		case 0: return "ASCII";
+		case 3: return "ISO8859_1";
+		case 4: return "EUC_KR";
+		case 5: return "UTF8";
+		default : 
+		}
+		return null;
+	}
 }

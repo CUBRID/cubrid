@@ -222,11 +222,16 @@ class UInputBuffer {
 		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 		}
 
-		try {
-			stringData = new String(buffer, position, size - 1, charsetName);
-		} catch (java.io.UnsupportedEncodingException e) {
+		if (charsetName != null) {
+			try {
+				stringData = new String(buffer, position, size - 1, charsetName);
+			} catch (java.io.UnsupportedEncodingException e) {
+				stringData = new String(buffer, position, size - 1);
+			}
+		} else {
 			stringData = new String(buffer, position, size - 1);
 		}
+
 
 		position += size;
 

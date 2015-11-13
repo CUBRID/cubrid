@@ -1540,7 +1540,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       ERROR_INFO_SET (CAS_ER_NOT_COLLECTION, CAS_ERROR_INDICATOR);
       goto fn_col_finale;
     }
-  ele_type = get_set_domain (domain, NULL, NULL, &db_type);
+  ele_type = get_set_domain (domain, NULL, NULL, &db_type, NULL);
   ele_domain = db_domain_set (domain);
   if (ele_type <= 0)
     {

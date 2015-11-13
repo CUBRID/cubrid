@@ -134,7 +134,8 @@ extern double net_htond (double from);
 #endif
 
 extern void net_buf_column_info_set (T_NET_BUF * net_buf, char ut,
-				     short scale, int prec, const char *name);
+				     short scale, int prec, char charset,
+				     const char *name);
 
 extern void net_arg_get_size (int *size, void *arg);
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
@@ -179,6 +180,7 @@ extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 extern void net_arg_put_int (void *arg, int *value);
 extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg,
 					   int buf_size);
-extern int net_buf_cp_cas_type (T_NET_BUF * net_buf, unsigned char cas_type);
-
+extern int net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf,
+					    unsigned char cas_type,
+					    unsigned char charset);
 #endif /* _CAS_NET_BUF_H_ */

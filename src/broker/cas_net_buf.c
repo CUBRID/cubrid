@@ -407,9 +407,9 @@ net_htond (double from)
 
 void
 net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale,
-			 int prec, const char *name)
+			 int prec, char charset, const char *name)
 {
-  net_buf_cp_cas_type (net_buf, ut);
+  net_buf_cp_cas_type_and_charset (net_buf, ut, charset);
   net_buf_cp_short (net_buf, scale);
   net_buf_cp_int (net_buf, prec, NULL);
   if (name == NULL)
@@ -868,18 +868,21 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
   return strlen (err_buf);
 }
 
-/* net_buf_cp_cas_type - sends the type information into a network buffer
+/* net_buf_cp_cas_type_and_charset - 
+ *			 sends the type information into a network buffer
  *		         The cas_type is expected to be encoded by function
  *			 'set_extended_cas_type'. The network buffer bytes will
  *			 be encoded as:  
- *			      MSB byte : 1CCR RRRR : C = collection code bits
- *					 R = reserver bits
+ *			      MSB byte : 1CCR RHHH : C = collection code bits
+ *					 R = reserved bits
+ *					 H = charset
  *			      (please note the bit 7 is 1)
  *			      LSB byte : TTTT TTTT : T = type bits
  *			    
  */
 int
-net_buf_cp_cas_type (T_NET_BUF * net_buf, unsigned char cas_type)
+net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type,
+				 unsigned char charset)
 {
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
       (net_buf->client_version, PROTOCOL_V7))
@@ -894,6 +897,7 @@ net_buf_cp_cas_type (T_NET_BUF * net_buf, unsigned char cas_type)
 
       cas_net_first_byte = cas_type & CCI_CODE_COLLECTION;
       cas_net_first_byte |= CAS_TYPE_FIRST_BYTE_PROTOCOL_MASK;
+      cas_net_first_byte |= charset & 0x07;
 
       net_buf_cp_byte (net_buf, cas_net_first_byte);
 

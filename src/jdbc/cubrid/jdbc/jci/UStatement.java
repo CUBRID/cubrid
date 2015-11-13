@@ -73,6 +73,7 @@ public class UStatement {
 	private final static byte MASK_COLLECTION_FROM_TYPE = (byte) 0140;
 	private final static byte MASK_TYPE_HAS_2_BYTES = (byte) 0200;
 	private final static byte MASK_TYPE_FROM_SINGLE_BYTE = (byte) 0037;
+	private final static byte MASK_CHARSET_FROM_TYPE = (byte) 0007;
 
 	private byte statementType;
 
@@ -2079,10 +2080,10 @@ public class UStatement {
 		else
 			size--;
 
-		return (readData(inBuffer, localType, size));
+		return (readData(inBuffer, localType, size, null));
 	}
 
-	private Object readData(UInputBuffer inBuffer, int dataType, int dataSize)
+	private Object readData(UInputBuffer inBuffer, int dataType, int dataSize, String charsetName)
 	        throws UJciException
 	{
 		switch (dataType) {
@@ -2091,8 +2092,7 @@ public class UStatement {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
-			return inBuffer.readString(dataSize,
-			        relatedConnection.getCharset());
+			return inBuffer.readString(dataSize, charsetName);
 		case UUType.U_TYPE_NUMERIC:
 			return new BigDecimal(inBuffer.readString(dataSize,
 			        UJCIManager.sysCharsetName));
@@ -2134,7 +2134,7 @@ public class UStatement {
 				if (eleSize <= 0)
 					aArray.setElement(i, null);
 				else
-					aArray.setElement(i, readData(inBuffer, baseType, eleSize));
+					aArray.setElement(i, readData(inBuffer, baseType, eleSize, charsetName));
 			}
 			return aArray;
 		}
@@ -2209,7 +2209,9 @@ public class UStatement {
 		byte type, collectionByte = 0;
 		short scale;
 		int precision;
+		byte charset;
 		String name;
+ 		String charsetName;
 
 		columnInfo = new UColumnInfo[columnNumber];
 		colNameToIndex = new HashMap<String, Integer>(columnNumber);
@@ -2218,19 +2220,22 @@ public class UStatement {
 			collectionByte = inBuffer.readByte();
 			if ((byte)(collectionByte & MASK_TYPE_HAS_2_BYTES) == 0){
 				/* legacy server : type has only one byte */
+				charset = (byte) (collectionByte & MASK_CHARSET_FROM_TYPE);
+				charsetName = UJCIUtil.getJavaCharsetName ((byte)charset);
 				type = (byte)(collectionByte & MASK_TYPE_FROM_SINGLE_BYTE);
 				collectionByte = (byte)(collectionByte & MASK_COLLECTION_FROM_TYPE); 
 			}
 			else{
 				collectionByte = (byte)(collectionByte & MASK_COLLECTION_FROM_TYPE); 
 				type = inBuffer.readByte();
+				charsetName = relatedConnection.getCharset();
 			}
 			
 			scale = inBuffer.readShort();
 			precision = inBuffer.readInt();
 			name = inBuffer.readString(inBuffer.readInt(),
 			        relatedConnection.getCharset());
-			columnInfo[i] = new UColumnInfo(type, scale, precision, name, collectionByte);
+			columnInfo[i] = new UColumnInfo(type, scale, precision, name, collectionByte, charsetName);
 			name = name.toLowerCase();
 			if (statementType == NORMAL) {
 				/*

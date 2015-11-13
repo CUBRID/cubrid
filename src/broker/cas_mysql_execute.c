@@ -1179,7 +1179,8 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
   const char *attr_name_p, *class_name_p;
   int attr_name_len, class_name_len;
 
-  net_buf_column_info_set (net_buf, ut, scale, prec, col_name);
+  net_buf_column_info_set (net_buf, ut, scale, prec,
+			   CAS_SCHEMA_DEFAULT_CHARSET, col_name);
 
   attr_name_p = (attr_name != NULL) ? attr_name : "";
   attr_name_len = strlen (attr_name_p);

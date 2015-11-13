@@ -131,7 +131,7 @@ extern int ux_col_seq_put (DB_COLLECTION * col, int index, DB_VALUE * ele_val,
 			   T_NET_BUF * net_buf);
 
 extern char get_set_domain (DB_DOMAIN * col, int *precision, short *scale,
-			    char *db_type);
+			    char *db_type, char *charset);
 
 extern int ux_next_result (T_SRV_HANDLE * srv_h_id, char flag,
 			   T_NET_BUF * net_buf, T_REQ_INFO * req_info);

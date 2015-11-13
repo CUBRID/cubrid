@@ -3007,7 +3007,8 @@ send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
       strncpy ((char *) tmp, (char *) attr_name, attr_size);
       tmp[attr_size] = 0;
 
-      net_buf_column_info_set (net_buf, type, scale, prec, (char *) tmp);
+      net_buf_column_info_set (net_buf, type, scale, prec,
+			       CAS_SCHEMA_DEFAULT_CHARSET, (char *) tmp);
       /* fprintf (stdout, "SN: %d, %s\n", size, tmp); */
 
       net_buf_cp_int (net_buf, 0, NULL);

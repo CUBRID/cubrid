@@ -203,6 +203,7 @@ static int prepare_column_list_info_set (DB_SESSION * session,
 					 T_BROKER_VERSION client_version);
 static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     short scale, int prec,
+				     char charset,
 				     const char *col_name,
 				     const char *default_value,
 				     char auto_increment, char unique_key,
@@ -212,7 +213,7 @@ static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     const char *class_name, char nullable,
 				     T_BROKER_VERSION client_version);
 static void set_column_info (T_NET_BUF * net_buf, char ut, short scale,
-			     int prec, const char *col_name,
+			     int prec, char charset, const char *col_name,
 			     const char *attr_name, const char *class_name,
 			     char is_non_null,
 			     T_BROKER_VERSION client_version);
@@ -3224,7 +3225,8 @@ ux_col_get (DB_COLLECTION * col, char col_type, char ele_type,
   net_buf_column_info_set (net_buf,
 			   ele_type,
 			   (short) db_domain_scale (ele_domain),
-			   db_domain_precision (ele_domain), NULL);
+			   db_domain_precision (ele_domain),
+			   db_domain_codeset (ele_domain), NULL);
 
   net_buf_cp_int (net_buf, col_size, NULL);	/* set size */
   if (col_size > 0)
@@ -3442,7 +3444,7 @@ oid_put_error:
 
 char
 get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale,
-		char *db_type)
+		char *db_type, char *charset)
 {
   DB_DOMAIN *ele_domain;
   int set_domain_count = 0;
@@ -3470,6 +3472,10 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale,
       if (scale)
 	{
 	  *scale = (short) db_domain_scale (ele_domain);
+	}
+      if (charset)
+	{
+	  *charset = db_domain_codeset (ele_domain);
 	}
     }
 
@@ -3651,6 +3657,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
   DB_TYPE db_type;
   char param_mode;
   unsigned char cas_type;
+  char charset;
   int precision;
   short scale;
   int i;
@@ -3691,6 +3698,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
       db_type = DB_TYPE_NULL;
       precision = 0;
       scale = 0;
+      charset = 0;
 
       if (param != NULL)
 	{
@@ -3702,6 +3710,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 	      param_mode = CCI_PARAM_MODE_IN;
 	      precision = db_domain_precision (domain);
 	      scale = db_domain_scale (domain);
+	      charset = db_domain_codeset (domain);
 	    }
 
 	  param = db_marker_next (param);
@@ -3710,7 +3719,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
       if (TP_IS_SET_TYPE (db_type))
 	{
 	  char set_type;
-	  set_type = get_set_domain (domain, NULL, NULL, NULL);
+	  set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
 
 	  cas_type = set_extended_cas_type (set_type, db_type);
 	}
@@ -3720,8 +3729,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 	}
 
       net_buf_cp_byte (net_buf, param_mode);
-
-      net_buf_cp_cas_type (net_buf, cas_type);
+      net_buf_cp_cas_type_and_charset (net_buf, cas_type, charset);
       net_buf_cp_short (net_buf, scale);
       net_buf_cp_int (net_buf, precision, NULL);
     }
@@ -3991,6 +3999,7 @@ ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle, char *param_mode,
 
 static void
 prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
+			 char charset,
 			 const char *col_name, const char *default_value,
 			 char auto_increment, char unique_key,
 			 char primary_key, char reverse_index,
@@ -4002,7 +4011,7 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
   const char *attr_name_p, *class_name_p;
   int attr_name_len, class_name_len;
 
-  net_buf_column_info_set (net_buf, ut, scale, prec, col_name);
+  net_buf_column_info_set (net_buf, ut, scale, prec, charset, col_name);
 
   attr_name_p = (attr_name != NULL) ? attr_name : "";
   attr_name_len = strlen (attr_name_p);
@@ -4167,7 +4176,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 
 static void
 set_column_info (T_NET_BUF * net_buf, char ut,
-		 short scale, int prec,
+		 short scale, int prec, char charset,
 		 const char *col_name,
 		 const char *attr_name,
 		 const char *class_name,
@@ -4203,7 +4212,7 @@ set_column_info (T_NET_BUF * net_buf, char ut,
 	get_column_default_as_string (attr, &alloced_default_value_string);
     }
 
-  prepare_column_info_set (net_buf, ut, scale, prec, col_name,
+  prepare_column_info_set (net_buf, ut, scale, prec, charset, col_name,
 			   default_value_string, auto_increment,
 			   unique_key, primary_key, reverse_index,
 			   reverse_unique, foreign_key, shared,
@@ -5422,7 +5431,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 		DB_DOMAIN *set_domain;
 		char element_type;
 		set_domain = db_col_domain (set);
-		element_type = get_set_domain (set_domain, NULL, NULL, NULL);
+		element_type = get_set_domain (set_domain, NULL, NULL, NULL,
+					       NULL);
 		if (element_type > 0)
 		  {
 		    cas_type = element_type;
@@ -5690,6 +5700,7 @@ oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num,
   int precision;
   short scale;
   char *p;
+  char charset;
 
   for (i = 0; i < attr_num; i++)
     {
@@ -5733,6 +5744,7 @@ oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num,
 	  cas_type = CCI_U_TYPE_NULL;
 	  scale = 0;
 	  precision = 0;
+	  charset = 0;
 	}
       else
 	{
@@ -5742,7 +5754,7 @@ oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num,
 	  if (TP_IS_SET_TYPE (db_type))
 	    {
 	      char set_type;
-	      set_type = get_set_domain (domain, NULL, NULL, NULL);
+	      set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
 
 	      cas_type = set_extended_cas_type (set_type, db_type);
 	      precision = 0;
@@ -5753,9 +5765,10 @@ oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num,
 	      cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
 	      precision = db_domain_precision (domain);
 	      scale = (short) db_domain_scale (domain);
+	      charset = db_domain_codeset (domain);
 	    }
 	}
-      net_buf_column_info_set (net_buf, cas_type, scale, precision,
+      net_buf_column_info_set (net_buf, cas_type, scale, precision, charset,
 			       attr_name[i]);
     }
 
@@ -6302,11 +6315,9 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       domain = db_method_arg_domain (tmp_p, 0);
       db_type = TP_DOMAIN_TYPE (domain);
 
-
       if (TP_IS_SET_TYPE (db_type))
 	{
-	  set_type = get_set_domain (domain, NULL, NULL, NULL);
-
+	  set_type = get_set_domain (domain, NULL, NULL, NULL, NULL);
 	  cas_type = set_extended_cas_type (set_type, db_type);
 	}
       else
@@ -6325,8 +6336,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  if (TP_IS_SET_TYPE (db_type))
 	    {
-	      set_type = get_set_domain (domain, NULL, NULL, NULL);
-
+	      set_type = get_set_domain (domain, NULL, NULL, NULL, NULL);
 	      cas_type = set_extended_cas_type (set_type, db_type);
 	    }
 	  else
@@ -7630,6 +7640,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	  int precision;
 	  short scale;
 	  char *temp_column = NULL;
+	  char charset;
 
 	  temp_column = (char *) REALLOC (null_type_column, num_cols + 1);
 	  if (temp_column == NULL)
@@ -7702,7 +7713,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 
 	  if (TP_IS_SET_TYPE (db_type))
 	    {
-	      set_type = get_set_domain (domain, NULL, NULL, NULL);
+	      set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
 
 	      cas_type = set_extended_cas_type (set_type, db_type);
 	      precision = 0;
@@ -7713,6 +7724,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	      cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
 	      precision = db_domain_precision (domain);
 	      scale = (short) db_domain_scale (domain);
+	      charset = db_domain_codeset (domain);
 	    }
 
 	  if (IS_NULL_CAS_TYPE (cas_type))
@@ -7738,7 +7750,8 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 
 	  set_column_info (net_buf,
 			   cas_type, scale,
-			   precision, col_name, attr_name, class_name,
+			   precision, charset, col_name, attr_name,
+			   class_name,
 			   (char) db_query_format_is_non_null (col),
 			   client_version);
 
@@ -7769,8 +7782,9 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
       updatable_flag = 0;
       net_buf_cp_byte (net_buf, updatable_flag);
       net_buf_cp_int (net_buf, 1, NULL);
-      prepare_column_info_set (net_buf, 0, 0, 0, "", "", 0, 0, 0, 0, 0, 0, 0,
-			       "", "", 0, client_version);
+      prepare_column_info_set (net_buf, 0, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       "", "", 0, 0, 0, 0, 0, 0, 0, "", "", 0,
+			       client_version);
     }
   else
     {
@@ -7898,7 +7912,7 @@ get_attr_type (DB_OBJECT * obj_p, char *attr_name)
 
   if (TP_IS_SET_TYPE (db_type))
     {
-      if (get_set_domain (attr_domain, NULL, NULL, &db_type) < 0)
+      if (get_set_domain (attr_domain, NULL, NULL, &db_type, NULL) < 0)
 	{
 	  db_type = DB_TYPE_NULL;
 	}
@@ -8778,7 +8792,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern,
 
   if (TP_IS_SET_TYPE (db_type))
     {
-      set_type = get_set_domain (domain, &precision, &scale, NULL);
+      set_type = get_set_domain (domain, &precision, &scale, NULL, NULL);
       attr_table->domain = set_extended_cas_type (set_type, db_type);
       precision = 0;
       scale = 0;
@@ -10146,6 +10160,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       const char *col_name, *attr_name, *class_name;
       DB_DOMAIN *domain;
       DB_TYPE db_type;
+      char charset;
 
       if (col == NULL)
 	{
@@ -10175,8 +10190,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
       if (TP_IS_SET_TYPE (db_type))
 	{
-	  set_type = get_set_domain (domain, NULL, NULL, NULL);
-
+	  set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
 	  cas_type = set_extended_cas_type (set_type, db_type);
 	  precision = 0;
 	  scale = 0;
@@ -10186,6 +10200,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
 	  precision = db_domain_precision (domain);
 	  scale = (short) db_domain_scale (domain);
+	  charset = db_domain_codeset (domain);
 	}
 
       if (IS_NULL_CAS_TYPE (cas_type))
@@ -10205,7 +10220,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       /* precision = DB_MAX_STRING_LENGTH; */
 #endif /* !LIBCAS_FOR_JSP */
 
-      set_column_info (net_buf, cas_type, scale, precision, col_name,
+      set_column_info (net_buf, cas_type, scale, precision, charset, col_name,
 		       attr_name, class_name,
 		       (char) db_query_format_is_non_null (col),
 		       client_version);
@@ -10995,12 +11010,12 @@ set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values)
 static unsigned char
 set_extended_cas_type (DB_TYPE set_type, DB_TYPE db_type)
 {
-  unsigned char u_set_type_lsb, u_set_type_msb, ext_type_cc;
+  unsigned char u_set_type_lsb, u_set_type_msb;
   unsigned char u_set_type;
 
   if (TP_IS_SET_TYPE (db_type))
     {
-      unsigned short cas_ext_type;
+      unsigned char cas_ext_type;
 
       u_set_type = ux_db_type_to_cas_type (set_type);
 
