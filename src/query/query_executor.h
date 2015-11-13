@@ -1380,6 +1380,6 @@ extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p,
 #endif /* SERVER_MODE */
 extern const char *qdump_function_type_string (FUNC_TYPE ftype);
 
-extern int qexec_clear_my_leaked_pinned_cache_entries (THREAD_ENTRY *
-						       thread_p);
+extern int qexec_clear_my_leaked_pinned_xasl_cache_entries (THREAD_ENTRY *
+							    thread_p);
 #endif /* _QUERY_EXECUTOR_H_ */

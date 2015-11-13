@@ -1006,10 +1006,10 @@ struct log_tdes
   int num_repl_records;		/* # of replication records */
   int cur_repl_record;		/* # of replication records */
   int append_repl_recidx;	/* index of append replication records */
-  struct log_repl *repl_records;	/* replication records */
   int fl_mark_repl_recidx;	/* index of flush marked
 				   replication record at first
 				 */
+  struct log_repl *repl_records;	/* replication records */
   LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
   LOG_LSA repl_update_lsa;	/* in-place update target lsa */
   void *first_save_entry;	/* first save entry for the transaction */
@@ -1026,11 +1026,11 @@ struct log_tdes
 
   INT64 query_start_time;
   INT64 tran_start_time;
-  int num_pinned_xasl_cache_entries;	/* the number of pinned xasl cache entries in this
-					   in this transaction */
   XASL_ID xasl_id;		/* xasl id of current query */
   LK_RES *waiting_for_res;	/* resource that i'm waiting for */
 
+  int num_pinned_xasl_cache_entries;	/* the number of pinned xasl cache entries in this
+					   in this transaction */
   int disable_modifications;	/* db_Disable_modification for each tran */
 
   TRAN_ABORT_REASON tran_abort_reason;
@@ -1039,14 +1039,14 @@ struct log_tdes
   int num_exec_queries;
   DB_VALUE_ARRAY bind_history[MAX_NUM_EXEC_QUERY_HISTORY];
 
-  bool has_deadlock_priority;
-
   int num_log_records_written;	/* # of log records generated */
 
   LOG_TRAN_UPDATE_STATS log_upd_stats;	/* Collects data about inserted/
 					 * deleted records during last
 					 * command/transaction
 					 */
+  bool has_deadlock_priority;
+
   bool block_global_oldest_active_until_commit;
 };
 

@@ -18841,13 +18841,13 @@ qexec_remove_from_pinned_xasl_cache_list (THREAD_ENTRY * thread_p,
 #endif
 
 /*
- * qexec_clear_my_leaked_pinned_cache_entries :
+ * qexec_clear_my_leaked_pinned_xasl_cache_entries :
  *
  *   return:
  *   thread_p (in) :
  */
 int
-qexec_clear_my_leaked_pinned_cache_entries (THREAD_ENTRY * thread_p)
+qexec_clear_my_leaked_pinned_xasl_cache_entries (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   int tran_index;
