@@ -2220,15 +2220,15 @@ public class UStatement {
 			collectionByte = inBuffer.readByte();
 			if ((byte)(collectionByte & MASK_TYPE_HAS_2_BYTES) == 0){
 				/* legacy server : type has only one byte */
-				charset = (byte) (collectionByte & MASK_CHARSET_FROM_TYPE);
-				charsetName = UJCIUtil.getJavaCharsetName ((byte)charset);
 				type = (byte)(collectionByte & MASK_TYPE_FROM_SINGLE_BYTE);
 				collectionByte = (byte)(collectionByte & MASK_COLLECTION_FROM_TYPE); 
+				charsetName = relatedConnection.getCharset();
 			}
 			else{
+				charset = (byte) (collectionByte & MASK_CHARSET_FROM_TYPE);
+				charsetName = UJCIUtil.getJavaCharsetName ((byte)charset);
 				collectionByte = (byte)(collectionByte & MASK_COLLECTION_FROM_TYPE); 
 				type = inBuffer.readByte();
-				charsetName = relatedConnection.getCharset();
 			}
 			
 			scale = inBuffer.readShort();
