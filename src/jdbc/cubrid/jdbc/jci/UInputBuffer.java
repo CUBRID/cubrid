@@ -50,6 +50,7 @@ import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
 import cubrid.sql.CUBRIDTimetz;
+import java.util.TimeZone;
 
 class UInputBuffer {
 	private UTimedDataInputStream input;
@@ -311,7 +312,7 @@ class UInputBuffer {
 		}
 	}
 	
-	CUBRIDTimestamp readTimestamp() throws UJciException {
+	CUBRIDTimestamp readTimestamp(boolean is_tz) throws UJciException {
 		int year, month, day, hour, minute, second;
 		year = readShort();
 		month = readShort();
@@ -331,6 +332,9 @@ class UInputBuffer {
 		}
 
 		Calendar cal = Calendar.getInstance();
+		if (is_tz) {
+			cal.setTimeZone(TimeZone.getTimeZone("UTC"));
+		}
 		if (year == 0 && month == 0 && day == 0) {
 			cal.setTimeInMillis(0); /* round to 1970-01-01 00:00:00 UTC */
 		} else {
@@ -353,7 +357,7 @@ class UInputBuffer {
 		}
 				
 		tmp_position = position;
-		cubrid_ts = readTimestamp ();
+		cubrid_ts = readTimestamp (true);
 		
 		ts_size = position - tmp_position;
 				
@@ -369,7 +373,7 @@ class UInputBuffer {
 		return CUBRIDTimestamptz.valueOf(cubrid_ts, timezone);
 	}	
 
-	CUBRIDTimestamp readDatetime() throws UJciException {
+	CUBRIDTimestamp readDatetime(boolean is_tz) throws UJciException {
 		int year, month, day, hour, minute, second, millisecond;
 		year = readShort();
 		month = readShort();
@@ -390,6 +394,9 @@ class UInputBuffer {
 		}
 
 		Calendar cal = Calendar.getInstance();
+		if (is_tz) {
+			cal.setTimeZone(TimeZone.getTimeZone("UTC"));
+		}
 		if (year == 0 && month == 0 && day == 0) {
 			cal.set(0, 0, 1, 0, 0, 0); /* round to 0001-01-01 00:00:00) */
 		} else {
@@ -412,7 +419,7 @@ class UInputBuffer {
 		}
 				
 		tmp_position = position;
-		cubrid_ts = readDatetime ();
+		cubrid_ts = readDatetime (true);
 		
 		if (cubrid_ts == null){
 			/* zero datetime NULL behavior */

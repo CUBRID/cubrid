@@ -2112,12 +2112,12 @@ public class UStatement {
 		case UUType.U_TYPE_TIMETZ:
 			return inBuffer.readTimetz(dataSize);			
 		case UUType.U_TYPE_TIMESTAMP:
-			return inBuffer.readTimestamp();
+			return inBuffer.readTimestamp(false);
 		case UUType.U_TYPE_TIMESTAMPTZ:
 		case UUType.U_TYPE_TIMESTAMPLTZ:
 			return inBuffer.readTimestamptz(dataSize);			
 		case UUType.U_TYPE_DATETIME:
-			return inBuffer.readDatetime();
+			return inBuffer.readDatetime(false);
 		case UUType.U_TYPE_DATETIMETZ:
 		case UUType.U_TYPE_DATETIMELTZ:
 			return inBuffer.readDatetimetz(dataSize);			

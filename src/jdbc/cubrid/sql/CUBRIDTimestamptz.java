@@ -35,7 +35,9 @@ import cubrid.sql.CUBRIDTimestamp;
 import cubrid.jdbc.jci.UJCIUtil;
 import cubrid.jdbc.jci.UJCIUtil.TimeInfo;
 import cubrid.jdbc.driver.*;
-
+import java.text.SimpleDateFormat;
+import java.text.DateFormat;
+import java.util.TimeZone;
 
 public class CUBRIDTimestamptz extends CUBRIDTimestamp {
     private static final long serialVersionUID = 6217189754717078421L;
@@ -83,11 +85,27 @@ public class CUBRIDTimestamptz extends CUBRIDTimestamp {
 
 
 	public String toString() {
+		SimpleDateFormat df;
+		int millis = this.getNanos() / 1000000;
+		String millisString ="";
+
+		/* for milliseconds, we don't print trailing zeros */
+		df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.");
+		df.setTimeZone(TimeZone.getTimeZone("UTC"));
+		
+		if ((millis % 10) != 0) {
+			millisString = String.format("%03d", millis);
+		} else if (millis % 100 != 0) {
+			millisString = String.format("%02d", millis / 10);
+		} else {
+			millisString = String.format("%01d", millis / 100);
+		}
+			
 		if (timezone.isEmpty()) {
-			return "" + super.toString();
+			return df.format(this) + millisString;
 		}
 		else {
-			return super.toString() + " " + timezone;
+			return df.format(this) + millisString + " " + timezone;
 		}
 	}
 
