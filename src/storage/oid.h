@@ -190,6 +190,7 @@ enum
 extern const OID oid_Null_oid;
 extern OID *oid_Root_class_oid;
 extern OID *oid_Serial_class_oid;
+extern OID *oid_User_class_oid;
 extern PAGEID oid_Next_tempid;
 
 extern void oid_set_root (const OID * oid);

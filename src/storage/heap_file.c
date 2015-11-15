@@ -10405,12 +10405,17 @@ try_again:
 	}
 #endif /* SA_MODE */
 
-      if (OID_EQ (class_oid, oid_Root_class_oid))
+      if (OID_EQ (class_oid, oid_Root_class_oid)
+	  || OID_EQ (class_oid, oid_User_class_oid))
 	{
-	  /* a deleted class record, corresponding to a deleted class can be
+	  /* A deleted class record, corresponding to a deleted class can be
 	   * accessed through catalog update operations on another class.
 	   * This is possible if a class has an attribute holding a domain that
 	   * references the dropped class.
+	   *
+	   * Another situation is the client request for authentication, which
+	   * fetches the object (an instance of db_user) using dirty version.
+	   * If it has been removed, it will be found as a deleted record.
 	   */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,
 		  3, oid->volid, oid->pageid, oid->slotid);

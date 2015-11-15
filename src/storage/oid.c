@@ -74,6 +74,7 @@ OID *oid_Root_class_oid = &oid_Root_class;
 
 OID *oid_Serial_class_oid = &oid_Serial_class;
 OID *oid_Partition_class_oid = &oid_Partition_class;
+OID *oid_User_class_oid = &oid_User_class;
 
 
 OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
