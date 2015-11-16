@@ -146,8 +146,8 @@
 #define ER_LOG_POSTPONE_INTERFACE                    -91
 #define ER_LOG_COMPENSATE_INTERFACE                  -92
 #define ER_LOG_REDO_LOGGING_DURING_RECOVERY          -93
-#define ER_LOG_POSTPONE_LOGGING_DURING_RECOVERY      -94
-#define ER_LOG_UNDO_LOGGING_DURING_RECOVERY          -95
+#define ER_LOG_POSTPONE_LOGGING_DURING_RECOVERY      -94	/* Obsolete */
+#define ER_LOG_UNDO_LOGGING_DURING_RECOVERY          -95	/* Obsolete */
 #define ER_LOG_MAYNEED_MEDIA_RECOVERY                -96
 #define ER_LOG_NOTIN_ARCHIVE                         -97
 #define ER_LOG_CREATE_LOGARCHIVE_FAIL                -98
@@ -771,7 +771,7 @@
 #define ER_LOG_NOTACTIVE_TOPOPS                     -642
 #define ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT       -643
 #define ER_LOG_FATAL_ERROR                          -644
-#define ER_LOG_BADSTATE_FOR_CLIENT_UNDO_OR_POSTPONE -645
+#define ER_LOG_BADSTATE_FOR_CLIENT_UNDO_OR_POSTPONE -645	/* Obsolete */
 #define ER_LOG_MISSING_COMPENSATING_RECORD          -646
 #define ER_LOG_BKUP_DOESNOT_CORRESPOND              -647
 #define ER_LOG_BKUP_INCOMPATIBLE                    -648

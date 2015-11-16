@@ -81,35 +81,6 @@ extern void slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void sqst_server_get_statistics (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
-extern void slog_client_get_first_postpone (THREAD_ENTRY * thread_p,
-					    unsigned int rid, char *request,
-					    int reqlen);
-extern void slog_client_get_next_postpone (THREAD_ENTRY * thread_p,
-					   unsigned int rid, char *request,
-					   int reqlen);
-extern void slog_client_get_first_undo (THREAD_ENTRY * thread_p,
-					unsigned int rid, char *request,
-					int reqlen);
-extern void slog_client_get_next_undo (THREAD_ENTRY * thread_p,
-				       unsigned int rid, char *request,
-				       int reqlen);
-extern void slog_client_unknown_state_abort_get_first_undo (THREAD_ENTRY *
-							    thread_p,
-							    unsigned int rid,
-							    char *request,
-							    int reqlen);
-extern void slog_append_client_undo (THREAD_ENTRY * thread_p,
-				     unsigned int rid, char *request,
-				     int reqlen);
-extern void slog_append_client_postpone (THREAD_ENTRY * thread_p,
-					 unsigned int rid, char *request,
-					 int reqlen);
-extern void slog_client_complete_postpone (THREAD_ENTRY * thread_p,
-					   unsigned int rid, char *request,
-					   int reqlen);
-extern void slog_client_complete_undo (THREAD_ENTRY * thread_p,
-				       unsigned int rid, char *request,
-				       int reqlen);
 extern void slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid,
 			     char *request, int reqlen);
 #if defined(ENABLE_UNUSED_FUNCTION)

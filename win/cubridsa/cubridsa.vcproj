@@ -852,10 +852,6 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\transaction\recovery_cl.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\transaction\replication.c"
 					>
 				</File>

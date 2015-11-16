@@ -215,10 +215,6 @@ extern TRAN_STATE log_end_system_op (THREAD_ENTRY * thread_p,
 extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p,
 					      LOG_LSA * parent_lsa);
 extern bool log_is_tran_in_system_op (THREAD_ENTRY * thread_p);
-extern void log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p,
-						 LOG_TDES * tdes);
-extern void log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p,
-						LOG_TDES * tdes);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
 					   const char *classname,
 					   const OID * class_oid);

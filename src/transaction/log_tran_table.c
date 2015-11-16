@@ -46,9 +46,6 @@
 #include "log_manager.h"
 #include "log_comm.h"
 #include "recovery.h"
-#if !defined(SERVER_MODE)
-#include "recovery_cl.h"
-#endif /* SERVER_MODE */
 #include "system_parameter.h"
 #include "release_string.h"
 #include "memory_alloc.h"
@@ -632,7 +629,6 @@ logtb_initialize_trantable (TRANTABLE * trantable_p)
 {
   trantable_p->num_total_indices = 0;
   trantable_p->num_assigned_indices = 1;
-  trantable_p->num_client_loose_end_indices = 0;
   trantable_p->num_coord_loose_end_indices = 0;
   trantable_p->num_prepared_loose_end_indices = 0;
   trantable_p->hint_free_index = 0;
@@ -1102,46 +1098,6 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 #endif /* SERVER_MODE */
 
   save_tran_index = tran_index = NULL_TRAN_INDEX;
-
-  if (log_Gl.trantable.num_client_loose_end_indices > 0
-      && client_credential != NULL && client_credential->db_user != NULL)
-    {
-      /*
-       * Check if the client_user has a dangling entry for client loose ends.
-       * If it does, assign such a dangling index to it
-       */
-      for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
-	{
-	  tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != NULL
-	      && tdes->isloose_end == true
-	      && LOG_ISTRAN_CLIENT_LOOSE_ENDS (tdes)
-	      && strcmp (tdes->client.db_user,
-			 client_credential->db_user) == 0)
-	    {
-	      /*
-	       * A client loose end transaction for current user.
-	       */
-	      log_Gl.trantable.num_client_loose_end_indices--;
-	      logtb_set_tdes (thread_p, tdes, client_credential, wait_msecs,
-			      isolation);
-
-	      if (current_state != NULL)
-		{
-		  *current_state = tdes->state;
-		}
-
-	      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
-
-	      return i;
-	    }
-	  if (tdes != NULL && tdes->trid == NULL_TRANID)
-	    {
-	      save_tran_index = i;
-	    }
-	}
-      tran_index = save_tran_index;
-    }
 
   /* Is there any free index ? */
   if (NUM_ASSIGNED_TRAN_INDICES >= NUM_TOTAL_TRAN_INDICES)
@@ -1615,32 +1571,23 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 	  tdes->topops.last = -1;
 	}
 
-      if (LOG_ISTRAN_CLIENT_LOOSE_ENDS (tdes))
+      if (LOG_ISTRAN_2PC_PREPARE (tdes))
 	{
 	  tdes->isloose_end = true;
-	  log_Gl.trantable.num_client_loose_end_indices++;
+	  log_Gl.trantable.num_prepared_loose_end_indices++;
 	}
       else
 	{
-	  if (LOG_ISTRAN_2PC_PREPARE (tdes))
+	  if (LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS (tdes))
 	    {
 	      tdes->isloose_end = true;
-	      log_Gl.trantable.num_prepared_loose_end_indices++;
+	      log_Gl.trantable.num_coord_loose_end_indices++;
 	    }
 	  else
 	    {
-	      if (LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS (tdes))
-		{
-		  tdes->isloose_end = true;
-		  log_Gl.trantable.num_coord_loose_end_indices++;
-		}
-	      else
-		{
-		  logtb_free_tran_index (thread_p, tran_index);
-		  logtb_set_client_ids_all (&tdes->client,
-					    BOOT_CLIENT_UNKNOWN, NULL, NULL,
-					    NULL, NULL, NULL, -1);
-		}
+	      logtb_free_tran_index (thread_p, tran_index);
+	      logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN,
+					NULL, NULL, NULL, NULL, NULL, -1);
 	    }
 	}
 
@@ -1793,8 +1740,7 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   " Postpone_lsa = %lld|%d,\n"
 	   "    SaveLSA = %lld|%d, UndoNextLSA = %lld|%d,\n"
 	   "    Client_User: (Type = %d, User = %s, Program = %s, "
-	   "Login = %s, Host = %s, Pid = %d,\n"
-	   "                  undo_lsa = %lld|%d, posp_nxlsa = %lld|%d)"
+	   "Login = %s, Host = %s, Pid = %d)"
 	   "\n",
 	   tdes->tran_index, tdes->trid,
 	   log_state_string (tdes->state),
@@ -1812,11 +1758,7 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   (int) tdes->undo_nxlsa.offset,
 	   tdes->client.client_type, tdes->client.db_user,
 	   tdes->client.program_name, tdes->client.login_name,
-	   tdes->client.host_name, tdes->client.process_id,
-	   (long long int) tdes->client_undo_lsa.pageid,
-	   (int) tdes->client_undo_lsa.offset,
-	   (long long int) tdes->client_posp_lsa.pageid,
-	   (int) tdes->client_posp_lsa.offset);
+	   tdes->client.host_name, tdes->client.process_id);
 
   if (tdes->topops.max != 0 && tdes->topops.last >= 0)
     {
@@ -1847,16 +1789,11 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
   fprintf (out_fp, "    Active top system operations for tran:\n");
   for (i = topops_p->last; i >= 0; i--)
     {
-      fprintf (out_fp, " Head = %lld|%d, Posp_Head = %lld|%d,"
-	       "Client_posp_Head = %lld|%d, Client_undo_Head = %lld|%d\n",
+      fprintf (out_fp, " Head = %lld|%d, Posp_Head = %lld|%d\n",
 	       (long long int) topops_p->stack[i].lastparent_lsa.pageid,
 	       topops_p->stack[i].lastparent_lsa.offset,
 	       (long long int) topops_p->stack[i].posp_lsa.pageid,
-	       topops_p->stack[i].posp_lsa.offset,
-	       (long long int) topops_p->stack[i].client_posp_lsa.pageid,
-	       topops_p->stack[i].client_posp_lsa.offset,
-	       (long long int) topops_p->stack[i].client_undo_lsa.pageid,
-	       topops_p->stack[i].client_undo_lsa.offset);
+	       topops_p->stack[i].posp_lsa.offset);
     }
 }
 
@@ -2062,8 +1999,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->savept_lsa);
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
-  LSA_SET_NULL (&tdes->client_undo_lsa);
-  LSA_SET_NULL (&tdes->client_posp_lsa);
   tdes->topops.last = -1;
   tdes->topops.type = LOG_TOPOPS_NORMAL;
   tdes->topops.compensate_level = -1;
@@ -2194,8 +2129,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->savept_lsa);
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
-  LSA_SET_NULL (&tdes->client_undo_lsa);
-  LSA_SET_NULL (&tdes->client_posp_lsa);
 
   csect_initialize_critical_section (&tdes->cs_topop);
 
@@ -5619,40 +5552,7 @@ logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 static void
 logtb_set_loose_end_tdes (LOG_TDES * tdes)
 {
-  if (LOG_ISTRAN_CLIENT_LOOSE_ENDS (tdes))
-    {
-      tdes->isloose_end = true;
-      log_Gl.trantable.num_client_loose_end_indices++;
-#if !defined(NDEBUG)
-      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
-	{
-	  const char *str_tmp;
-	  switch (tdes->state)
-	    {
-	    case TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-	      str_tmp = "COMMIT";
-	      break;
-	    case TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
-	      str_tmp = "ABORT";
-	      break;
-	    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-	      str_tmp = "TOPSYS COMMIT";
-	      break;
-	    default:
-	      str_tmp = "TOPSYS ABORT";
-	      break;
-	    }
-	  fprintf (stdout,
-		   "\n*** Transaction = %d (index = %d) has loose"
-		   " ends %s recovery actions.\n They will be fully recovered"
-		   " when client user = %s restarts a client ***\n",
-		   tdes->trid, tdes->tran_index, str_tmp,
-		   tdes->client.db_user);
-	  fflush (stdout);
-	}
-#endif
-    }
-  else if (LOG_ISTRAN_2PC_PREPARE (tdes))
+  if (LOG_ISTRAN_2PC_PREPARE (tdes))
     {
       tdes->isloose_end = true;
       log_Gl.trantable.num_prepared_loose_end_indices++;
@@ -5714,7 +5614,6 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
 
   TR_TABLE_CS_ENTER (thread_p);
 
-  log_Gl.trantable.num_client_loose_end_indices = 0;
   log_Gl.trantable.num_coord_loose_end_indices = 0;
   log_Gl.trantable.num_prepared_loose_end_indices = 0;
 
@@ -5730,8 +5629,7 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
 	}
     }
 
-  r = (log_Gl.trantable.num_client_loose_end_indices
-       + log_Gl.trantable.num_coord_loose_end_indices
+  r = (log_Gl.trantable.num_coord_loose_end_indices
        + log_Gl.trantable.num_prepared_loose_end_indices);
 
   TR_TABLE_CS_EXIT (thread_p);
@@ -7513,7 +7411,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
   void *ptr_val;
   LOG_TDES *tdes;
   DB_VALUE *vals = NULL;
-  const int num_cols = 50;
+  const int num_cols = 48;
 
   *ptr = NULL;
 
@@ -7624,24 +7522,6 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
 
       /* Tail_top_result_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->tail_topresult_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
-      idx++;
-      if (error != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      /* Client_undo_lsa */
-      lsa_to_string (buf, sizeof (buf), &tdes->client_undo_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
-      idx++;
-      if (error != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      /* Client_postpone_lsa */
-      lsa_to_string (buf, sizeof (buf), &tdes->client_posp_lsa);
       error = db_make_string_copy (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)

@@ -254,38 +254,26 @@
   ((tdes)->state == TRAN_UNACTIVE_COMMITTED \
    || (tdes)->state == TRAN_UNACTIVE_WILL_COMMIT \
    || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS \
    || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
    || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
 
 #define LOG_ISTRAN_ABORTED(tdes) \
   ((tdes)->state == TRAN_UNACTIVE_ABORTED \
    || (tdes)->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS \
    || (tdes)->state == TRAN_UNACTIVE_2PC_ABORT_DECISION \
    || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 
 #define LOG_ISTRAN_LOOSE_ENDS(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS \
-   || (tdes)->state == TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
+  ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
    || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS \
    || (tdes)->state == TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES \
    || (tdes)->state == TRAN_UNACTIVE_2PC_PREPARE)
-
-#define LOG_ISTRAN_CLIENT_LOOSE_ENDS(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS \
-   || (tdes)->state == TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
 
 #define LOG_ISTRAN_2PC_IN_SECOND_PHASE(tdes) \
   ((tdes)->state == TRAN_UNACTIVE_2PC_ABORT_DECISION \
    || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
    || (tdes)->state == TRAN_UNACTIVE_WILL_COMMIT \
    || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS \
    || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS \
    || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
 
@@ -698,8 +686,8 @@ struct log_2pc_coordinator
 {				/* Coordinator maintains this info */
   int num_particps;		/* Number of participating sites      */
   int particp_id_length;	/* Length of a participant identifier */
-  void *block_particps_ids;	/* A block of participants identfiers */
-  int *ack_received;		/* Acknowledgement received vector   */
+  void *block_particps_ids;	/* A block of participants identifiers */
+  int *ack_received;		/* Acknowledgment received vector   */
 };
 
 struct log_topops_addresses
@@ -708,16 +696,10 @@ struct log_topops_addresses
 				 * This is needed for undo of the top system
 				 * action
 				 */
-  LOG_LSA posp_lsa;		/* The first address of a pospone log record
+  LOG_LSA posp_lsa;		/* The first address of a postpone log record
 				 * for top system operation. We add this since
 				 * it is reset during recovery to the last
-				 * reference pospone address.
-				 */
-  LOG_LSA client_posp_lsa;	/* The first address of a client pospone log record
-				 * for top system operation.
-				 */
-  LOG_LSA client_undo_lsa;	/* The first address of a client undo log record
-				 * for top system operation.
+				 * reference postpone address.
 				 */
 };
 
@@ -950,12 +932,6 @@ struct log_tdes
   LOG_LSA savept_lsa;		/* Address of last savepoint             */
   LOG_LSA topop_lsa;		/* Address of last top operation         */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit  */
-  LOG_LSA client_undo_lsa;	/* First address of a client undo log
-				   record
-				 */
-  LOG_LSA client_posp_lsa;	/* First address of a client postpone
-				   log
-				 */
   int client_id;		/* unique client id */
   int gtrid;			/* Global transaction identifier; used only
 				   if this transaction is a participant to
@@ -1065,8 +1041,6 @@ struct trantable
   int num_assigned_indices;	/* Number of assigned transaction indices
 				 * (i.e., number of active thread/clients)
 				 */
-  /* Number of client loose end indices */
-  int num_client_loose_end_indices;
   /* Number of coordinator loose end indices */
   int num_coord_loose_end_indices;
   /* Number of prepared participant loose end indices */
@@ -1085,7 +1059,7 @@ struct trantable
 };
 
 #define TRANTABLE_INITIALIZER \
-  {0, 0, 0, 0, 0, 0, 0, NULL, NULL}
+  {0, 0, 0, 0, 0, 0, NULL, NULL}
 
 /*
  * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
@@ -1418,9 +1392,9 @@ enum log_rectype
   /* In order of likely of appearance in the log */
   LOG_SMALLER_LOGREC_TYPE = 0,	/* A lower bound check */
 
-  LOG_CLIENT_NAME = 1,		/* Name of the client associated
-				   with transaction
-				 */
+#if 0
+  LOG_CLIENT_NAME = 1,		/* Obsolete */
+#endif
   LOG_UNDOREDO_DATA = 2,	/* An undo and redo data record */
   LOG_UNDO_DATA = 3,		/* Only undo data */
   LOG_REDO_DATA = 4,		/* Only redo data */
@@ -1433,44 +1407,37 @@ enum log_rectype
   LOG_COMPENSATE = 8,		/* Compensation record (compensate a
 				   undo record of an aborted tran)
 				 */
+#if 0
   LOG_LCOMPENSATE = 9,		/* Obsolete */
-  LOG_CLIENT_USER_UNDO_DATA = 10,	/* User client undo data */
-  LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* User client postpone */
-  LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Used to indicate that a set of
-					   client undo operations has
-					   been executed and the address of
-					   the next client undo to execute
-					 */
-  LOG_RUN_NEXT_CLIENT_POSTPONE = 13,	/* Used to indicate that a set of
-					   client postpone operations has
-					   been executed and the address of
-					   the next client postpone to
-					   execute
-					 */
+  LOG_CLIENT_USER_UNDO_DATA = 10,	/* Obsolete */
+  LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* Obsolete */
+  LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Obsolete */
+  LOG_RUN_NEXT_CLIENT_POSTPONE = 13,	/* Obsolete */
+#endif
   LOG_WILL_COMMIT = 14,		/* Transaction will be committed */
   LOG_COMMIT_WITH_POSTPONE = 15,	/* Committing server postpone
 					   operations
 					 */
-  LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Committing client postpone
-						   operations
-						 */
+#if 0
+  LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Obsolete */
+#endif
   LOG_COMMIT = 17,		/* A commit record */
   LOG_COMMIT_TOPOPE_WITH_POSTPONE = 18,	/* Committing server top system
 					   postpone operations
 					 */
-  LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 19,
-  /* Committing client postpone
-     top system operations
-   */
+#if 0
+  LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 19,	/* Obsolete */
+#endif
   LOG_COMMIT_TOPOPE = 20,	/* A partial commit record, usually
 				   from a top system operation
 				 */
-  LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS = 21,	/* Aborting client loose ends */
+#if 0
+  LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS = 21,	/* Obsolete */
+#endif
   LOG_ABORT = 22,		/* An abort record */
-  LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 23,
-  /* Committing client postpone
-     top system operations
-   */
+#if 0
+  LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 23,	/* Obsolete */
+#endif
   LOG_ABORT_TOPOPE = 24,	/* A partial abort record, usually
 				   from a top system operation or
 				   partial rollback to a save point
@@ -1780,10 +1747,6 @@ struct log_chkpt_trans
   LOG_LSA posp_nxlsa;		/* First address of a postpone record */
   LOG_LSA savept_lsa;		/* Address of last savepoint */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
-  LOG_LSA client_undo_lsa;	/* First address of a client undo log record  */
-  LOG_LSA client_posp_lsa;	/* First address of a client postpone log
-				 * record
-				 */
   char user_name[LOG_USERNAME_MAX];	/* Name of the client */
 
 };
@@ -1795,50 +1758,11 @@ struct log_chkpt_topops_commit_posp
 				 * This is needed for undo of the top system
 				 * action
 				 */
-  LOG_LSA posp_lsa;		/* The first address of a pospone log record
+  LOG_LSA posp_lsa;		/* The first address of a postpone log record
 				 * for top system operation. We add this since
 				 * it is reset during recovery to the last
-				 * reference pospone address.
+				 * reference postpone address.
 				 */
-  LOG_LSA client_posp_lsa;	/* The first address of a client pospone log record
-				 * for top system operation.
-				 */
-  LOG_LSA client_undo_lsa;	/* The first address of a client undo log record
-				 * for top system operation.
-				 */
-
-};
-
-/* Information of a client undo/postpone log record */
-struct log_client
-{
-  LOG_RCVCLIENT_INDEX rcvclient_index;	/* Index to recovery function on
-					 * client
-					 */
-  int length;			/* Length of client data */
-};
-
-/* Hint where to start looking for client actions either for commit or abort */
-struct log_start_client
-{
-  LOG_LSA lsa;			/* Starting page with a client record */
-};
-
-/* Hint where to start looking for client actions either for commit or abort */
-struct log_topope_start_client
-{
-  LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. */
-  LOG_LSA lsa;			/* Starting page with a client record */
-};
-
-/*
- * Information of execution of a client undo or postpone data. This record
- * is needed since we do not have compensating records and run postpone
- * records for client actions
- */
-struct log_run_client
-{
-  LOG_LSA nxlsa;		/* Check for the next undo client record to check */
 };
 
 struct log_savept

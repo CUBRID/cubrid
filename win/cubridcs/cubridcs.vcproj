@@ -978,10 +978,6 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\transaction\recovery_cl.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\transaction\transaction_cl.c"
 					>
 				</File>

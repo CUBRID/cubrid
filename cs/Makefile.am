@@ -254,7 +254,6 @@ TRANSACTION_SOURCES = \
 	$(TRANSACTION_DIR)/locator_cl.c \
 	$(TRANSACTION_DIR)/lock_table.c \
 	$(TRANSACTION_DIR)/log_comm.c \
-	$(TRANSACTION_DIR)/recovery_cl.c \
 	$(TRANSACTION_DIR)/transaction_cl.c \
 	$(TRANSACTION_DIR)/log_writer.c \
 	$(TRANSACTION_DIR)/log_applier.c \

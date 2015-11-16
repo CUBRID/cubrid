@@ -82,8 +82,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
 #if defined(ENABLE_SYSTEMTAP)
   if (state == TRAN_UNACTIVE_COMMITTED ||
-      state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS ||
-      state == TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
+      state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
     {
       CUBRID_TRAN_COMMIT (tran_index);
     }

@@ -496,52 +496,6 @@ net_server_init (void)
   req_p->processing_function = slogtb_set_interrupt;
   req_p->name = "NET_SERVER_LOG_SET_INTERRUPT";
 
-  req_p = &net_Requests[NET_SERVER_LOG_CLIENT_UNDO];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_append_client_undo;
-  req_p->name = "NET_SERVER_LOG_CLIENT_UNDO";
-
-  req_p = &net_Requests[NET_SERVER_LOG_CLIENT_POSTPONE];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_append_client_postpone;
-  req_p->name = "NET_SERVER_LOG_CLIENT_POSTPONE";
-
-  req_p = &net_Requests[NET_SERVER_LOG_HAS_FINISHED_CLIENT_POSTPONE];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_client_complete_postpone;
-  req_p->name = "NET_SERVER_LOG_HAS_FINISHED_CLIENT_POSTPONE";
-
-  req_p = &net_Requests[NET_SERVER_LOG_HAS_FINISHED_CLIENT_UNDO];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_client_complete_undo;
-  req_p->name = "NET_SERVER_LOG_HAS_FINISHED_CLIENT_UNDO";
-
-  req_p = &net_Requests[NET_SERVER_LOG_CLIENT_GET_FIRST_POSTPONE];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_client_get_first_postpone;
-  req_p->name = "NET_SERVER_LOG_CLIENT_GET_FIRST_POSTPONE";
-
-  req_p = &net_Requests[NET_SERVER_LOG_CLIENT_GET_FIRST_UNDO];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_client_get_first_undo;
-  req_p->name = "NET_SERVER_LOG_CLIENT_GET_FIRST_UNDO";
-
-  req_p = &net_Requests[NET_SERVER_LOG_CLIENT_GET_NEXT_POSTPONE];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_client_get_next_postpone;
-  req_p->name = "NET_SERVER_LOG_CLIENT_GET_NEXT_POSTPONE";
-
-  req_p = &net_Requests[NET_SERVER_LOG_CLIENT_GET_NEXT_UNDO];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_client_get_next_undo;
-  req_p->name = "NET_SERVER_LOG_CLIENT_GET_NEXT_UNDO";
-
-  req_p =
-    &net_Requests[NET_SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slog_client_unknown_state_abort_get_first_undo;
-  req_p->name = "NET_SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO";
-
   req_p = &net_Requests[NET_SERVER_LOG_DUMP_STAT];
   req_p->processing_function = slogpb_dump_stat;
   req_p->name = "NET_SERVER_LOG_DUMP_STAT";

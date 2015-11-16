@@ -157,18 +157,6 @@ disk_get_purpose_and_space_info (VOLID volid,
 				 VOL_SPACE_INFO * space_info);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
 extern bool disk_is_volume_exist (VOLID volid);
-extern LOG_COPY *log_client_get_first_postpone (LOG_LSA * next_lsa);
-extern LOG_COPY *log_client_get_next_postpone (LOG_LSA * next_lsa);
-extern LOG_COPY *log_client_get_first_undo (LOG_LSA * next_lsa);
-extern LOG_COPY *log_client_get_next_undo (LOG_LSA * next_lsa);
-extern LOG_COPY *log_client_unknown_state_abort_get_first_undo (LOG_LSA *
-								next_lsa);
-extern void log_append_client_undo (LOG_RCVCLIENT_INDEX rcv_index, int length,
-				    void *data);
-extern void log_append_client_postpone (LOG_RCVCLIENT_INDEX rcv_index,
-					int length, void *data);
-extern TRAN_STATE log_has_finished_client_postpone (void);
-extern TRAN_STATE log_has_finished_client_undo (void);
 extern int log_reset_wait_msecs (int wait_msecs);
 extern int log_reset_isolation (TRAN_ISOLATION isolation,
 				bool unlock_by_isolation);
@@ -488,10 +476,6 @@ extern int net_client_request_recv_copyarea (int request, char *argbuf,
 					     int argsize, char *replybuf,
 					     int replysize,
 					     LC_COPYAREA ** reply_copy_area);
-extern int net_client_request_recv_logarea (int request, char *argbuf,
-					    int argsize, char *replybuf,
-					    int replysize,
-					    LOG_COPY ** reply_log_area);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int net_client_request_recv_large_data (int request, char *argbuf,
 					       int argsize, char *replybuf,

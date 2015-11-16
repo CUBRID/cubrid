@@ -265,26 +265,6 @@ extern INT64 xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
 extern void xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set);
 extern void xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
 						     int set);
-extern void xlog_append_client_undo (THREAD_ENTRY * thread_p,
-				     LOG_RCVCLIENT_INDEX rcvindex, int length,
-				     void *data);
-extern void xlog_append_client_postpone (THREAD_ENTRY * thread_p,
-					 LOG_RCVCLIENT_INDEX rcvindex,
-					 int length, void *data);
-extern LOG_COPY *xlog_client_get_first_postpone (THREAD_ENTRY * thread_p,
-						 LOG_LSA * next_lsa);
-extern LOG_COPY *xlog_client_get_next_postpone (THREAD_ENTRY * thread_p,
-						LOG_LSA * next_lsa);
-extern TRAN_STATE xlog_client_complete_postpone (THREAD_ENTRY * thread_p);
-extern LOG_COPY *xlog_client_get_first_undo (THREAD_ENTRY * thread_p,
-					     LOG_LSA * next_lsa);
-extern LOG_COPY *xlog_client_unknown_state_abort_get_first_undo (THREAD_ENTRY
-								 * thread_p,
-								 LOG_LSA *
-								 next_lsa);
-extern LOG_COPY *xlog_client_get_next_undo (THREAD_ENTRY * thread_p,
-					    LOG_LSA * next_lsa);
-extern TRAN_STATE xlog_client_complete_undo (THREAD_ENTRY * thread_p);
 
 extern int xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs);
 extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p,

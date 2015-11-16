@@ -1360,36 +1360,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
     }
-
-  /* If the client has any loose ends from the recovery manager, do them */
-
-  if (transtate != TRAN_ACTIVE)
-    {
-      if (transtate == TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
-	{
-	  transtate = tran_commit_client_loose_ends ();
-	  /* We expect loose_ends are gone and ready to move on */
-	  if (transtate == TRAN_UNACTIVE_COMMITTED)
-	    {
-	      transtate = TRAN_ACTIVE;
-	    }
-	}
-      else
-	{
-	  transtate = tran_abort_client_loose_ends (true);
-	  /* We expect loose_ends are gone and ready to move on */
-	  if (transtate == TRAN_UNACTIVE_ABORTED)
-	    {
-	      transtate = TRAN_ACTIVE;
-	    }
-	}
-      if (transtate != TRAN_ACTIVE)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error_code = er_errid ();
-	  goto error;
-	}
-    }
   /* Does not care if was committed/aborted .. */
   (void) tran_commit (false);
 

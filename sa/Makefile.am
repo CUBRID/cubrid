@@ -278,7 +278,6 @@ TRANSACTION_SOURCES = \
 	$(TRANSACTION_DIR)/log_recovery.c \
 	$(TRANSACTION_DIR)/log_tran_table.c \
 	$(TRANSACTION_DIR)/replication.c \
-	$(TRANSACTION_DIR)/recovery_cl.c \
 	$(TRANSACTION_DIR)/recovery.c \
 	$(TRANSACTION_DIR)/transaction_cl.c \
 	$(TRANSACTION_DIR)/transaction_sr.c \

@@ -68,8 +68,6 @@ extern void tran_get_tran_settings (int *lock_timeout_in_msecs,
 				    bool * async_ws);
 extern int tran_reset_wait_times (int wait_in_msecs);
 extern int tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws);
-extern TRAN_STATE tran_commit_client_loose_ends (void);
-extern TRAN_STATE tran_abort_client_loose_ends (bool isknown_state);
 extern int tran_commit (bool retain_lock);
 extern int tran_abort (void);
 extern int tran_unilaterally_abort (void);
@@ -83,11 +81,6 @@ extern int tran_2pc_prepare (void);
 extern int tran_2pc_recovery_prepared (int gtrids[], int size);
 extern int tran_2pc_attach_global_tran (int gtrid);
 extern int tran_2pc_prepare_global_tran (int gtrid);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int tran_start_topop (void);
-extern int tran_end_topop (LOG_RESULT_TOPOP result);
-extern int tran_get_savepoints (DB_NAMELIST ** savepoint_list);
-#endif
 extern void tran_free_savepoint_list (void);
 extern int tran_system_savepoint (const char *savept_name);
 extern int tran_savepoint_internal (const char *savept_name,

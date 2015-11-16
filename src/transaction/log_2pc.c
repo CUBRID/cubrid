@@ -693,7 +693,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /*
        * The transaction has been declared as 2PC commit. We could execute the
        * LOCAL COMMIT AND THE REMOTE COMMITS IN PARALLEL, however our
-       * communication subsystem does not support asyncronous communication
+       * communication subsystem does not support asynchronous communication
        * types. The commitment of the participants is done after the local
        * commitment is completed.
        */
@@ -703,32 +703,18 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /* 2PC protocol does not support RETAIN LOCK */
       (void) log_commit_local (thread_p, tdes, false);
 
-      if (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
-	{
-	  /*
-	   * there are not client loose ends, execute the commit at participants
-	   * sites at this time.
-	   */
-	  tdes->state = state;	/* Revert to 2PC state... */
-	  /*
-	   * If the following function fails, the transaction will be dangling
-	   * and we need to retry sending the decision at another point.
-	   * We have already decided and log the decision in the log file.
-	   */
-	  (void) log_2pc_send_commit_decision (tdes->gtrid,
-					       tdes->coord->num_particps,
-					       tdes->coord->ack_received,
-					       tdes->coord->
-					       block_particps_ids);
-
-	  /* Check if all the acknowledgements have been received */
-
-	  state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
-	}
-      else
-	{
-	  state = tdes->state;
-	}
+      tdes->state = state;	/* Revert to 2PC state... */
+      /*
+       * If the following function fails, the transaction will be dangling
+       * and we need to retry sending the decision at another point.
+       * We have already decided and log the decision in the log file.
+       */
+      (void) log_2pc_send_commit_decision (tdes->gtrid,
+					   tdes->coord->num_particps,
+					   tdes->coord->ack_received,
+					   tdes->coord->block_particps_ids);
+      /* Check if all the acknowledgments have been received */
+      state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
     }
   else
     {
@@ -737,12 +723,12 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        * The coordinator and/or some of the participants of distributed
        * transaction could not agree to commit the transaction. The abort
        * decision is logged. We do not need to forced since the default is
-       * abort. It does not matter wether this is a root coordinator or not
+       * abort. It does not matter whether this is a root coordinator or not
        * the current site has decide to abort.
        */
 
       /*
-       * If the transaction is active and there are not acknowledgements
+       * If the transaction is active and there are not acknowledgments
        * needed, the abort for the distributed transaction was decided
        * without using the 2PC
        */
@@ -755,7 +741,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /*
        * The transaction has been declared as 2PC abort. We could execute the
        * LOCAL ABORT AND THE REMOTE ABORTS IN PARALLEL, however our
-       * communication subsystem does not support asyncronous communication
+       * communication subsystem does not support asynchronous communication
        * types. The abort of the participants is done after the local abort
        * is completed.
        */
@@ -765,56 +751,48 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /* 2PC protocol does not support RETAIN LOCK */
       (void) log_abort_local (thread_p, tdes);
 
-      if (tdes->state != TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
+      if (tdes->state == TRAN_UNACTIVE_ABORTED)
 	{
-	  if (tdes->state == TRAN_UNACTIVE_ABORTED)
-	    {
-	      tdes->state = state;	/* Revert to 2PC state... */
-	    }
+	  tdes->state = state;	/* Revert to 2PC state... */
+	}
+      /*
+       * Execute the abort at participants sites at this time.
+       */
+      if (tdes->coord->ack_received)
+	{
 	  /*
-	   * There are not client undo loose ends, execute the abort at
-	   * participants sites at this time.
+	   * Current site was also a coordinator site (of course not the root
+	   * coordinator). Thus, we need to collect acknowledgments.
+	   *
+	   * If the following function fails, the transaction will be dangling
+	   * and we need to retry sending the decision at another point.
+	   * We have already decided and log the decision in the log file.
 	   */
-	  if (tdes->coord->ack_received)
-	    {
-	      /*
-	       * Current site was also a coordinator site (of course not the root
-	       * coodinator). Thus, we need to collect acknowledgements.
-	       *
-	       * If the following function fails, the transaction will be dangling
-	       * and we need to retry sending the decision at another point.
-	       * We have already decided and log the decision in the log file.
-	       */
-	      (void) log_2pc_send_abort_decision (tdes->gtrid,
-						  tdes->coord->num_particps,
-						  tdes->coord->ack_received,
-						  tdes->coord->
-						  block_particps_ids, true);
-	    }
-	  else
-	    {
-	      /*
-	       * Abort was decided without using the 2PC protocol at this site.
-	       * That is, the participants are not prepare to commit). Therefore,
-	       * there is no need to collect acknowledgements.
-	       *
-	       * If the following function fails, the transaction will be dangling
-	       * and we need to retry sending the decision at another point.
-	       * We have already decided and log the decision in the log file.
-	       */
-	      (void) log_2pc_send_abort_decision (tdes->gtrid,
-						  tdes->coord->num_particps,
-						  tdes->coord->ack_received,
-						  tdes->coord->
-						  block_particps_ids, false);
-	    }
-	  /* Check if all the acknowledgements have been received */
-	  state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
+	  (void) log_2pc_send_abort_decision (tdes->gtrid,
+					      tdes->coord->num_particps,
+					      tdes->coord->ack_received,
+					      tdes->coord->block_particps_ids,
+					      true);
 	}
       else
 	{
-	  state = tdes->state;
+	  /*
+	   * Abort was decided without using the 2PC protocol at this site.
+	   * That is, the participants are not prepare to commit). Therefore,
+	   * there is no need to collect acknowledgments.
+	   *
+	   * If the following function fails, the transaction will be dangling
+	   * and we need to retry sending the decision at another point.
+	   * We have already decided and log the decision in the log file.
+	   */
+	  (void) log_2pc_send_abort_decision (tdes->gtrid,
+					      tdes->coord->num_particps,
+					      tdes->coord->ack_received,
+					      tdes->coord->block_particps_ids,
+					      false);
 	}
+      /* Check if all the acknowledgments have been received */
+      state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
     }
 
   return state;
@@ -1208,17 +1186,6 @@ static int
 log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		       LOG_TDES * client_tdes)
 {
-  /*
-   * If there are client postpone/undo operations, we allow the
-   * attachment only if the client is the same user as the 2PC user
-   */
-  if ((!LSA_ISNULL (&tdes->client_posp_lsa)
-       || !LSA_ISNULL (&tdes->client_undo_lsa))
-      && strcmp (tdes->client.db_user, client_tdes->client.db_user) != 0)
-    {
-      return ER_LOG_2PC_CANNOT_ATTACH;
-    }
-
   /*
    * Abort the current client transaction, then attach to the desired
    * transaction.
@@ -2515,12 +2482,8 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p,
 
     case LOG_COMPENSATE:
     case LOG_RUN_POSTPONE:
-    case LOG_RUN_NEXT_CLIENT_UNDO:
-    case LOG_RUN_NEXT_CLIENT_POSTPONE:
     case LOG_WILL_COMMIT:
     case LOG_COMMIT_WITH_POSTPONE:
-    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -2539,15 +2502,10 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p,
     case LOG_DBEXTERN_REDO_DATA:
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_POSTPONE:
-    case LOG_CLIENT_NAME:
-    case LOG_CLIENT_USER_UNDO_DATA:
-    case LOG_CLIENT_USER_POSTPONE_DATA:
     case LOG_SAVEPOINT:
     case LOG_COMMIT:
     case LOG_ABORT:
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
     case LOG_COMMIT_TOPOPE:
     case LOG_ABORT_TOPOPE:
     case LOG_START_CHKPT:
@@ -2720,8 +2678,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /*
        * A 2PC start log record was not found for the coordinator
        */
-      if (!LOG_ISTRAN_CLIENT_LOOSE_ENDS (tdes)
-	  && tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
+      if (tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
 	{
 #if defined(CUBRID_DEBUG)
 	  er_log_debug (ARG_FILE_LINE, "log_2pc_recovery_analysis_info:"
@@ -2790,40 +2747,23 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   /* 2PC protocol does not support RETAIN LOCK */
   (void) log_abort_local (thread_p, tdes);
 
-  /*
-   * If there are client loose ends then the following operations
-   * will be done after the client loose ends are finished; So, skip
-   * them here.
-   */
-
-  if (tdes->state != TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
+  if (tdes->state == TRAN_UNACTIVE_ABORTED)
     {
-      if (tdes->state == TRAN_UNACTIVE_ABORTED)
-	{
-	  tdes->state = state;	/* Revert to 2PC state... */
-	}
-
-      /*
-       * There are not client undo loose ends, execute the abort at
-       * participants sites at this time.
-       */
-
-      /* Try to reconnect to participants that have not sent ack. yet */
-
-      /*
-       * If the following function fails, the transaction will be
-       * dangling and we need to retry sending the decision at another
-       * point.
-       * We have already decided and log the decision in the log file.
-       */
-      (void) log_2pc_send_abort_decision (tdes->gtrid,
-					  tdes->coord->num_particps,
-					  tdes->coord->ack_received,
-					  tdes->coord->block_particps_ids,
-					  true);
-      /* Check if all the acknowledgements have been received */
-      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
+      tdes->state = state;	/* Revert to 2PC state... */
     }
+
+  /* Try to reconnect to participants that have not sent ACK. yet */
+
+  /*
+   * If the following function fails, the transaction will be dangling and we
+   * need to retry sending the decision at another point.
+   * We have already decided and log the decision in the log file.
+   */
+  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps,
+				      tdes->coord->ack_received,
+				      tdes->coord->block_particps_ids, true);
+  /* Check if all the acknowledgements have been received */
+  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
 }
 
 /*
@@ -2847,31 +2787,20 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   /* First perform local commit;
    * 2PC protocol does not support RETAIN LOCK
    */
-  if (log_commit_local (thread_p, tdes, false) !=
-      TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
-    {
-      /*
-       * there are not client loose ends, execute the commit at
-       * participants sites at this time.
-       */
+  (void) log_commit_local (thread_p, tdes, false);
+  tdes->state = state;		/* Revert to 2PC state... */
 
-      tdes->state = state;	/* Revert to 2PC state... */
+  /*
+   * If the following function fails, the transaction will be dangling and we
+   * need to retry sending the decision at another point.
+   * We have already decided and log the decision in the log file.
+   */
 
-      /*
-       * If the following function fails, the transaction will be
-       * dangling and we need to retry sending the decision at another
-       * point.
-       * We have already decided and log the decision in the log file.
-       */
-
-      (void) log_2pc_send_commit_decision (tdes->gtrid,
-					   tdes->coord->num_particps,
-					   tdes->coord->ack_received,
-					   tdes->coord->block_particps_ids);
-      /* Check if all the acknowledgements have been received */
-
-      (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
-    }
+  (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps,
+				       tdes->coord->ack_received,
+				       tdes->coord->block_particps_ids);
+  /* Check if all the acknowledgments have been received */
+  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
 }
 
 /*
@@ -3000,20 +2929,10 @@ log_2pc_recovery (THREAD_ENTRY * thread_p)
 	  log_2pc_recovery_aborted_informing_participants (thread_p, tdes);
 	  break;
 
-	case TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
-	case TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-	  /*
-	   * Commit protocol actions will be invoked after the client loose
-	   * ends are done in these cases.
-	   */
-	  break;
-
 	case TRAN_RECOVERY:
 	case TRAN_ACTIVE:
 	case TRAN_UNACTIVE_COMMITTED:
 	case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-	case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-	case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
 	case TRAN_UNACTIVE_ABORTED:
 	case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
 	case TRAN_UNACTIVE_2PC_PREPARE:

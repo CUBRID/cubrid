@@ -3878,45 +3878,6 @@ prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p,
 }
 
 /*
- * prior_lsa_gen_user_client_record -
- *
- * return: error code or NO_ERROR
- *
- *   node(in/out):
- *   rcvindex(in):
- *   length(in):
- *   data(in):
- */
-static int
-prior_lsa_gen_user_client_record (THREAD_ENTRY * thread_p,
-				  LOG_PRIOR_NODE * node,
-				  LOG_RCVINDEX rcvindex, int length,
-				  char *data)
-{
-  struct log_client *client_data;
-  int error_code = NO_ERROR;
-
-  node->data_header_length = sizeof (struct log_client);
-  node->data_header = (char *) malloc (node->data_header_length);
-  if (node->data_header == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  client_data = (struct log_client *) node->data_header;
-
-  client_data->rcvclient_index = rcvindex;
-  client_data->length = length;
-
-  error_code =
-    prior_lsa_copy_undo_data_to_node (node, client_data->length, data);
-
-  return error_code;
-}
-
-/*
  * prior_lsa_gen_2pc_prepare_record -
  *
  * return: error code or NO_ERROR
@@ -4044,11 +4005,6 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
       node->data_header_length = sizeof (struct log_ha_server_state);
       break;
 
-    case LOG_CLIENT_NAME:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = LOG_USERNAME_MAX;
-      break;
-
     case LOG_SAVEPOINT:
       node->data_header_length = sizeof (struct log_savept);
       break;
@@ -4061,17 +4017,6 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
       node->data_header_length = sizeof (struct log_topope_start_postpone);
       break;
 
-    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
-      node->data_header_length = sizeof (struct log_start_client);
-      break;
-
-    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_topope_start_client);
-      break;
-
     case LOG_COMMIT:
     case LOG_ABORT:
       assert (length == 0 && data == NULL);
@@ -4082,12 +4027,6 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
     case LOG_ABORT_TOPOPE:
       assert (length == 0 && data == NULL);
       node->data_header_length = sizeof (struct log_topop_result);
-      break;
-
-    case LOG_RUN_NEXT_CLIENT_POSTPONE:
-    case LOG_RUN_NEXT_CLIENT_UNDO:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_run_client);
       break;
 
     case LOG_REPLICATION_DATA:
@@ -4197,14 +4136,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
 						  rlength, rdata);
       break;
 
-    case LOG_CLIENT_USER_UNDO_DATA:
-    case LOG_CLIENT_USER_POSTPONE_DATA:
-      assert (rlength == 0 && rdata == NULL);
-      error_code = prior_lsa_gen_user_client_record (thread_p, node,
-						     rcvindex, ulength,
-						     udata);
-      break;
-
     case LOG_2PC_PREPARE:
       assert (addr == NULL);
       error_code = prior_lsa_gen_2pc_prepare_record (thread_p, node,
@@ -4230,13 +4161,8 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
 
     case LOG_2PC_COMMIT_DECISION:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
-    case LOG_CLIENT_NAME:
     case LOG_COMMIT_WITH_POSTPONE:
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
     case LOG_UNLOCK_COMMIT:
     case LOG_COMMIT:
     case LOG_ABORT:
@@ -4244,8 +4170,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_COMMIT_TOPOPE:
     case LOG_ABORT_TOPOPE:
-    case LOG_RUN_NEXT_CLIENT_POSTPONE:
-    case LOG_RUN_NEXT_CLIENT_UNDO:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
@@ -8756,18 +8680,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  LSA_COPY (&chkpt_one->savept_lsa, &act_tdes->savept_lsa);
 	  LSA_COPY (&chkpt_one->tail_topresult_lsa,
 		    &act_tdes->tail_topresult_lsa);
-	  LSA_COPY (&chkpt_one->client_undo_lsa, &act_tdes->client_undo_lsa);
-	  LSA_COPY (&chkpt_one->client_posp_lsa, &act_tdes->client_posp_lsa);
 	  strncpy (chkpt_one->user_name, act_tdes->client.db_user,
 		   LOG_USERNAME_MAX);
 	  ntrans++;
 	  if (act_tdes->topops.last >= 0
-	      && ((act_tdes->state ==
-		   TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
-		  || (act_tdes->state ==
-		      TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
-		  || (act_tdes->state ==
-		      TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)))
+	      && (act_tdes->state ==
+		  TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
 	    {
 	      ntops += act_tdes->topops.last + 1;
 	    }
@@ -8831,8 +8749,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		  switch (act_tdes->state)
 		    {
 		    case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-		    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-		    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
 		      if (ntops >= tmp_chkpt.ntops)
 			{
 			  tmp_chkpt.ntops +=
@@ -8858,10 +8774,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 				&act_tdes->topops.stack[j].lastparent_lsa);
 		      LSA_COPY (&chkpt_topone->posp_lsa,
 				&act_tdes->topops.stack[j].posp_lsa);
-		      LSA_COPY (&chkpt_topone->client_posp_lsa,
-				&act_tdes->topops.stack[j].client_posp_lsa);
-		      LSA_COPY (&chkpt_topone->client_undo_lsa,
-				&act_tdes->topops.stack[j].client_undo_lsa);
 		      ntops++;
 		      break;
 		    default:
@@ -9162,8 +9074,7 @@ logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 	       "        Head_lsa = %lld|%d, Tail_lsa = %lld|%d, UndoNxtLSA = %lld|%d,\n"
 	       "        Postpone_lsa = %lld|%d, Save_lsa = %lld|%d,"
 	       " Tail_topresult_lsa = %lld|%d,\n"
-	       "        Client_User: (name = %s, undo_lsa = %lld|%d,"
-	       " posp_nxlsa = %lld|%d)\n",
+	       "	Client_User: name=%s.\n",
 	       chkpt_one->trid, log_state_string (chkpt_one->state),
 	       chkpt_one->isloose_end,
 	       (long long int) chkpt_one->head_lsa.pageid,
@@ -9178,11 +9089,7 @@ logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 	       (int) chkpt_one->savept_lsa.offset,
 	       (long long int) chkpt_one->tail_topresult_lsa.pageid,
 	       (int) chkpt_one->tail_topresult_lsa.offset,
-	       chkpt_one->user_name,
-	       (long long int) chkpt_one->client_undo_lsa.pageid,
-	       (int) chkpt_one->client_undo_lsa.offset,
-	       (long long int) chkpt_one->client_posp_lsa.pageid,
-	       (int) chkpt_one->client_posp_lsa.offset);
+	       chkpt_one->user_name);
     }
   (void) fprintf (out_fp, "\n");
 }
@@ -9216,17 +9123,13 @@ logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
     {
       chkpt_topone = &chkpt_topops[i];
       fprintf (out_fp,
-	       "     Trid = %d, Lastparent_lsa = %lld|%d, Postpone_lsa = %lld|%d,"
-	       "     Client_Postpone_lsa = %lld|%d, Client_undo_lsa = %lld|%d\n",
+	       "     Trid = %d, Lastparent_lsa = %lld|%d, "
+	       "Postpone_lsa = %lld|%d\n",
 	       chkpt_topone->trid,
 	       (long long int) chkpt_topone->lastparent_lsa.pageid,
 	       chkpt_topone->lastparent_lsa.offset,
 	       (long long int) chkpt_topone->posp_lsa.pageid,
-	       chkpt_topone->posp_lsa.offset,
-	       (long long int) chkpt_topone->client_posp_lsa.pageid,
-	       chkpt_topone->client_posp_lsa.offset,
-	       (long long int) chkpt_topone->client_undo_lsa.pageid,
-	       chkpt_topone->client_undo_lsa.offset);
+	       chkpt_topone->posp_lsa.offset);
     }
   (void) fprintf (out_fp, "\n");
 }

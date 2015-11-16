@@ -47,7 +47,6 @@
 #include "work_space.h"
 #include "server_interface.h"
 #include "log_comm.h"
-#include "recovery_cl.h"
 #include "db_query.h"
 #include "boot_cl.h"
 #include "virtual_object.h"
@@ -229,123 +228,6 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
   return error_code;
 }
 
-/*
- * tran_commit_client_loose_ends - Execute client user loose ends of current
- *                              committed transaction (i.e., do client
- *                              postpone)
- *
- * return: state of commit operation
- *
- * NOTE: Execute client postpone operations of current transaction
- *              which has been already declared as committed.
- */
-TRAN_STATE
-tran_commit_client_loose_ends (void)
-{
-  LOG_COPY *log_area;		/* Area of loose end actions                */
-  struct manylogs *manylogs;	/* All loose end action sin area            */
-  struct onelog *onelog;	/* One loose end action                     */
-  LOG_LSA next_lsa;		/* Next loose end actions start at next_lsa */
-  int i;
-
-  /* Get the first set of loose end actions */
-  log_area = log_client_get_first_postpone (&next_lsa);
-  while (log_area != NULL)
-    {
-      manylogs =
-	(struct manylogs *) ((char *) log_area->mem + log_area->length -
-			     sizeof (*manylogs));
-      onelog =
-	(struct onelog *) ((char *) log_area->mem + log_area->length -
-			   sizeof (*manylogs));
-      /* Execute all postpone/loose_end actions given in the area */
-      for (i = 0; i < manylogs->num_logs; i++)
-	{
-	  (void) (*RVCL_fun[onelog->rcvindex].redofun)
-	    (onelog->length, (char *) log_area->mem + onelog->offset);
-	  onelog--;
-	}
-      /* Free the area and if there are more loose end actions... bring them */
-      log_free_client_copy_area (log_area);
-      if (next_lsa.pageid != NULL_PAGEID)
-	{
-	  log_area = log_client_get_next_postpone (&next_lsa);
-	}
-      else
-	{
-	  log_area = NULL;
-	}
-    }
-
-  tm_Tran_rep_read_lock = NULL_LOCK;
-  /* Indicate the recovery manager that all loose actions have been done */
-  return log_has_finished_client_postpone ();
-}
-
-/*
- * tran_abort_client_loose_ends - UNDO CLIENT LOOSE ENDS OF CURRENT ABORTED
- *                             TRANSACTION
- *
- * return: state of abort operation
- *
- *   isknown_state(in): Do we know the state of the abort ?
- *
- * NOTE: Execute client undo operations of current transaction which
- *              has been already declared as aborted.
- */
-TRAN_STATE
-tran_abort_client_loose_ends (bool isknown_state)
-{
-  LOG_COPY *log_area;		/* Area of loose end actions                */
-  struct manylogs *manylogs;	/* All loose end action sin area            */
-  struct onelog *onelog;	/* One loose end action                     */
-  LOG_LSA next_lsa;		/* Next loose end actions start at next_lsa */
-  int i;
-
-  /* Get the first set of loose end actions */
-  if (isknown_state == true)
-    {
-      log_area = log_client_get_first_undo (&next_lsa);
-    }
-  else
-    {
-      log_area = log_client_unknown_state_abort_get_first_undo (&next_lsa);
-      /* Are there any loose ends ? */
-      if (log_area == NULL)
-	{
-	  return TRAN_UNACTIVE_ABORTED;
-	}
-    }
-  while (log_area != NULL)
-    {
-      manylogs =
-	(struct manylogs *) ((char *) log_area->mem + log_area->length -
-			     sizeof (*manylogs));
-      onelog =
-	(struct onelog *) ((char *) log_area->mem + log_area->length -
-			   sizeof (*manylogs));
-      /* Execute all undo loose_end actions given in the area */
-      for (i = 0; i < manylogs->num_logs; i++)
-	{
-	  (void) (*RVCL_fun[onelog->rcvindex].undofun)
-	    (onelog->length, (char *) log_area->mem + onelog->offset);
-	  onelog--;
-	}
-      /* Free the area and if there are more loose end actions... bring them */
-      log_free_client_copy_area (log_area);
-      if (next_lsa.pageid == NULL_PAGEID)
-	{
-	  break;
-	}
-      log_area = log_client_get_next_undo (&next_lsa);
-    }
-
-  tm_Tran_rep_read_lock = NULL_LOCK;
-
-  /* Indicate the recovery manager that all loose actions have been done */
-  return log_has_finished_client_undo ();
-}
-
 /* only loaddb changes this setting */
 bool tm_Use_OID_preflush = true;
 
@@ -420,35 +302,12 @@ tran_commit (bool retain_lock)
       error_code = NO_ERROR;
       break;
 
-    case TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-      /*
-       * The recovery manager has declared the transaction as committed but
-       * there are loose postpone actions that need to be executed in the client
-       */
-      state = tran_commit_client_loose_ends ();
-      error_code = NO_ERROR;
-      break;
-
     case TRAN_UNACTIVE_ABORTED:
     case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
     case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
       /* The commit failed */
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_commit: Unable to commit. Transaction was aborted\n");
-#endif /* CUBRID_DEBUG */
-      break;
-
-    case TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
-      /*
-       * The commit failed and there are loose end undo action to execute in
-       * the client
-       */
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      state = tran_abort_client_loose_ends (true);
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "tm_commit: Unable to commit. Transaction was aborted\n");
@@ -467,8 +326,6 @@ tran_commit (bool retain_lock)
     case TRAN_ACTIVE:
     case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
     case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
     case TRAN_UNACTIVE_2PC_PREPARE:
     case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
@@ -562,11 +419,6 @@ tran_abort (void)
     case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
       break;
 
-    case TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
-      /* Successful abort with client loose end undoes */
-      state = tran_abort_client_loose_ends (true);
-      break;
-
     case TRAN_UNACTIVE_UNKNOWN:
       if (!BOOT_IS_CLIENT_RESTARTED ())
 	{
@@ -579,11 +431,8 @@ tran_abort (void)
     case TRAN_ACTIVE:
     case TRAN_UNACTIVE_COMMITTED:
     case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
     case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
     case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
     case TRAN_UNACTIVE_2PC_PREPARE:
     case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
@@ -692,8 +541,6 @@ tran_abort_only_client (bool is_server_down)
 
   if (is_server_down == false)
     {
-      /* Do we need to execute any loose ends ? */
-      (void) tran_abort_client_loose_ends (false);
       tr_check_abort_triggers ();
       return NO_ERROR;
     }
@@ -876,18 +723,6 @@ tran_2pc_prepare (void)
 #endif /* CUBRID_DEBUG */
       break;
 
-    case TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
-      /* The preparation failed and there are loose end undo action to execute
-         in the client */
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      state = tran_abort_client_loose_ends (true);
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unable to prepare. Transaction was aborted\n");
-#endif /* CUBRID_DEBUG */
-      break;
-
     case TRAN_UNACTIVE_COMMITTED:
       /* The transaction was committed. There is not a need for 2PC prepare.
          This could happend for read only transactions. */
@@ -905,10 +740,7 @@ tran_2pc_prepare (void)
 
     case TRAN_RECOVERY:
     case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
     case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
     case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
     case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
@@ -1054,25 +886,10 @@ tran_2pc_prepare_global_tran (int gtrid)
 #endif /* CUBRID_DEBUG */
       break;
 
-    case TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
-      /*
-       * The preperation to commit failed and there are loose end undo action
-       * to execute in the client
-       */
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      state = tran_abort_client_loose_ends (true);
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unable to prepare to commit.\n %s",
-		    "Transaction was aborted\n");
-#endif /* CUBRID_DEBUG */
-      break;
-
     case TRAN_UNACTIVE_COMMITTED:
       /*
        * The transaction was committed. There is not a need for 2PC prepare.
-       * This could happend for read only transactions
+       * This could happen for read only transactions
        */
       error_code = NO_ERROR;
       break;
@@ -1088,10 +905,7 @@ tran_2pc_prepare_global_tran (int gtrid)
 
     case TRAN_RECOVERY:
     case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
     case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
-    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
     case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
     case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
@@ -1118,183 +932,6 @@ tran_2pc_prepare_global_tran (int gtrid)
 
   return error_code;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * tran_start_topop - Start a macro nested top operation
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- */
-int
-tran_start_topop (void)
-{
-  LOG_LSA topop_lsa;
-  int error_code = NO_ERROR;
-
-  /* Flush all dirty objects */
-  if (ws_need_flush ())
-    {
-      error_code = locator_all_flush ();
-      if (error_code != NO_ERROR)
-	{
-#if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"tran_start_topop: Unable to start a top operation. \n %s",
-			" Flush failed.\nerrmsg = %s\n", er_msg ());
-#endif /* CUBRID_DEBUG */
-	  goto end;
-	}
-    }
-
-  if (tran_server_start_topop (&topop_lsa) != NO_ERROR)
-    {
-      error_code = ER_FAILED;
-    }
-
-end:
-  return error_code;
-}
-
-static int
-tran_end_topop_commit (void)
-{
-  int error_code = NO_ERROR;
-  TRAN_STATE state;
-  LOG_LSA topop_lsa;
-
-  /* Flush all dirty objects */
-  if (ws_need_flush ())
-    {
-      error_code = locator_all_flush ();
-      if (error_code != NO_ERROR)
-	{
-#if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"tm_end_topop: Unable to finish a nested top oper. Flush failed.\nerrmsg = %s\n",
-			er_msg ());
-#endif /* CUBRID_DEBUG */
-	  goto end;
-	}
-    }
-
-  state = tran_server_end_topop (LOG_RESULT_TOPOP_COMMIT, &topop_lsa);
-  if (state == TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
-    {
-      /*
-       * The recovery manager has declared the top system operation as
-       * committed but there are loose postpone actions that need
-       * to be executed in the client
-       */
-      state = tran_commit_client_loose_ends ();
-    }
-  else if (state == TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
-    {
-      /*
-       * The commit of the nested top action failed and there are loose
-       * end undo actions to execute in the client
-       */
-      state = tran_abort_client_loose_ends (true);
-    }
-
-  if (state != TRAN_UNACTIVE_COMMITTED)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_end_topop: oper failed with state = %s at client.\n",
-		    log_state_string (state));
-#endif /* CUBRID_DEBUG */
-    }
-
-end:
-  return error_code;
-}
-
-static int
-tran_end_topop_abort (void)
-{
-  int error_code = NO_ERROR;
-  TRAN_STATE state;
-  LOG_LSA topop_lsa;
-
-  /* Remove any dirty objects */
-  ws_abort_mops (false);
-  ws_filter_dirty ();
-#if defined(SA_MODE)
-  ws_clear ();
-#endif /* SA_MODE */
-  state = tran_server_end_topop (LOG_RESULT_TOPOP_ABORT, &topop_lsa);
-  if (state == TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
-    {
-      /* Successful abort with client loose end undoes */
-      state = tran_abort_client_loose_ends (true);
-    }
-  if (state != TRAN_UNACTIVE_ABORTED)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_end_topop: oper failed with state = %s at client.\n",
-		    log_state_string (state));
-#endif /* CUBRID_DEBUG */
-    }
-
-  return error_code;
-}
-
-/*
- * tran_end_topop - END A MACRO NESTED TOP OPERATION
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- *   result(in): Result of the nested top action
- *
- * NOTE: Finish the latest nested top macro operation by either
- *              committing, aborting, or attaching to outter parent. Note that
- *              a top operation is not associated with the current
- *              transaction, thus, it can be committed and/or aborted
- *              independently of the transaction.
- */
-int
-tran_end_topop (LOG_RESULT_TOPOP result)
-{
-  int error_code = NO_ERROR;
-  LOG_LSA topop_lsa;
-  TRAN_STATE state;
-
-  switch (result)
-    {
-    case LOG_RESULT_TOPOP_COMMIT:
-      error_code = tran_end_topop_commit ();
-      break;
-
-    case LOG_RESULT_TOPOP_ABORT:
-      error_code = tran_end_topop_abort ();
-      break;
-
-    case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:
-    default:
-      state = tran_server_end_topop (result, &topop_lsa);
-      if (state != TRAN_ACTIVE)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error_code = er_errid ();
-#if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"tm_end_topop: oper failed with state = %s at client.\n",
-			log_state_string (state));
-#endif /* CUBRID_DEBUG */
-	}
-      break;
-    }
-
-  return error_code;
-
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tran_add_savepoint -
@@ -1398,31 +1035,6 @@ tran_free_list_upto_savepoint (const char *savept_name)
       user_savepoint_list = sp;
     }
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * tran_get_savepoints - Get list of current savepoint names.  The latest
- *                    savepoint is listed first. (Reverse chronological
- *                    order)
- *
- * return: NO_ERROR
- *
- *   savepoint_list(in): savepoint list pointer
- *
- * NOTE: A list of user-defined savepoint names is maintained locally.
- *              The list has a lifespan of the current transaction and is
- *              freed upon commit or abort.  It is partially freed upon a
- *              partial rollback (to savepoint).  The savepoint list returned
- *              in this function must be later freed by db_namelist_free() or
- *              nlist_free().
- */
-int
-tran_get_savepoints (DB_NAMELIST ** savepoint_list)
-{
-  *savepoint_list = nlist_copy (user_savepoint_list);
-  return NO_ERROR;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tran_system_savepoint -
@@ -1603,11 +1215,6 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
     }
 
   state = tran_server_partial_abort (savepoint_name, &savept_lsa);
-  if (state == TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
-    {
-      /* Successful abort with client loose end undoes */
-      state = tran_abort_client_loose_ends (true);
-    }
   if (state != TRAN_UNACTIVE_ABORTED)
     {
       assert (er_errid () != NO_ERROR);

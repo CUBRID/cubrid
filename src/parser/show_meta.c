@@ -617,8 +617,6 @@ metadata_of_tran_tables (void)
     {"Savepoint_lsa", "varchar(64)"},
     {"Topop_lsa", "varchar(64)"},
     {"Tail_top_result_lsa", "varchar(64)"},
-    {"Client_undo_lsa", "varchar(64)"},
-    {"Client_postpone_lsa", "varchar(64)"},
     {"Client_id", "int"},
     {"Client_type", "varchar(40)"},
     {"Client_info", "varchar(256)"},

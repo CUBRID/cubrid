@@ -72,9 +72,6 @@ static bool log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length,
 				       LOG_LSA * log_lsa,
 				       LOG_PAGE * log_page_p,
 				       LOG_ZIP * undo_unzip_ptr);
-static int log_rv_analysis_client_name (THREAD_ENTRY * thread_p, int tran_id,
-					LOG_LSA * log_lsa,
-					LOG_PAGE * log_page_p);
 static int log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id,
 				      LOG_LSA * log_lsa);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p,
@@ -89,53 +86,17 @@ static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id,
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id,
 				       LOG_LSA * log_lsa,
 				       LOG_PAGE * log_page_p);
-static int log_rv_analysis_client_user_undo_data (THREAD_ENTRY * thread_p,
-						  int tran_id,
-						  LOG_LSA * log_lsa);
-static int log_rv_analysis_client_user_postpone_data (THREAD_ENTRY * thread_p,
-						      int tran_id,
-						      LOG_LSA * log_lsa);
 static int log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id,
 					LOG_LSA * log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p,
 						 int tran_id,
 						 LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
-static int log_rv_analysis_commit_with_loose_ends (THREAD_ENTRY * thread_p,
-						   int tran_id,
-						   LOG_LSA * log_lsa,
-						   LOG_PAGE * log_page_p);
-static int log_rv_analysis_abort_with_loose_ends (THREAD_ENTRY * thread_p,
-						  int tran_id,
-						  LOG_LSA * log_lsa,
-						  LOG_PAGE * log_page_p);
 static int log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY *
 							thread_p, int tran_id,
 							LOG_LSA * log_lsa,
 							LOG_PAGE *
 							log_page_p);
-static int log_rv_analysis_commit_topope_with_loose_ends (THREAD_ENTRY *
-							  thread_p,
-							  int tran_id,
-							  LOG_LSA * log_lsa,
-							  LOG_PAGE *
-							  log_page_p);
-static int log_rv_analysis_abort_topope_with_loose_ends (THREAD_ENTRY *
-							 thread_p,
-							 int tran_id,
-							 LOG_LSA * log_lsa,
-							 LOG_PAGE *
-							 log_page_p);
-static int log_rv_analysis_run_next_client_undo (THREAD_ENTRY * thread_p,
-						 int tran_id,
-						 LOG_LSA * log_lsa,
-						 LOG_PAGE * log_page_p,
-						 LOG_LSA * check_point);
-static int log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
-						     int tran_id,
-						     LOG_LSA * log_lsa,
-						     LOG_PAGE * log_page_p,
-						     LOG_LSA * check_point);
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
 				     LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				     LOG_LSA * prev_lsa,
@@ -1016,57 +977,6 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 }
 
 /*
- * log_rv_analysis_client_name -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *   log_page_p(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_client_name (THREAD_ENTRY * thread_p, int tran_id,
-			     LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
-{
-  LOG_TDES *tdes;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it and assume that the transaction was active
-   * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statement will be find reading the
-   * rest of the log
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_client_name");
-      return ER_FAILED;
-    }
-
-  /* New tail and next to undo */
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
-
-  /*
-   * Need to assign the name of the client associated with the
-   * transaction
-   */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
-		      log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, LOG_USERNAME_MAX, log_lsa,
-				    log_page_p);
-  logtb_set_client_ids_all (&tdes->client, 0, NULL,
-			    (char *) log_page_p->area + log_lsa->offset, NULL,
-			    NULL, NULL, -1);
-
-  return NO_ERROR;
-}
-
-/*
  * log_rv_analysis_undo_redo -
  *
  * return: error code
@@ -1377,94 +1287,6 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id,
 }
 
 /*
- * log_rv_analysis_client_user_undo_data -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_client_user_undo_data (THREAD_ENTRY * thread_p, int tran_id,
-				       LOG_LSA * log_lsa)
-{
-  LOG_TDES *tdes;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it and assume that the transaction was active
-   * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statement will be find reading the
-   * rest of the log
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_client_user_undo_data");
-      return ER_FAILED;
-    }
-
-  /* New tail and next to undo */
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
-
-  /* First client undo ? */
-  if (LSA_ISNULL (&tdes->client_undo_lsa))
-    {
-      LSA_COPY (&tdes->client_undo_lsa, &tdes->tail_lsa);
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_client_user_postpone_data -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_client_user_postpone_data (THREAD_ENTRY * thread_p,
-					   int tran_id, LOG_LSA * log_lsa)
-{
-  LOG_TDES *tdes;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it and assume that the transaction was active
-   * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statement will be find reading the
-   * rest of the log
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_client_user_postpone_data");
-      return ER_FAILED;
-    }
-
-  /* New tail and next to undo */
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
-
-  /* First client postpone ? */
-  if (LSA_ISNULL (&tdes->client_posp_lsa))
-    {
-      LSA_COPY (&tdes->client_posp_lsa, &tdes->tail_lsa);
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * log_rv_analysis_will_commit -
  *
  * return: error code
@@ -1559,120 +1381,6 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id,
 }
 
 /*
- * log_rv_analysis_commit_with_loose_ends -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *   log_page_p(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_commit_with_loose_ends (THREAD_ENTRY * thread_p, int tran_id,
-					LOG_LSA * log_lsa,
-					LOG_PAGE * log_page_p)
-{
-  LOG_TDES *tdes;
-  struct log_start_client *start_client;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. The transaction was in the process of
-   * getting committed at this point.
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_commit_with_loose_ends");
-      return ER_FAILED;
-    }
-
-  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
-
-  /* Nothing to undo at server and client */
-  LSA_SET_NULL (&tdes->undo_nxlsa);
-  LSA_SET_NULL (&tdes->client_undo_lsa);
-
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-
-  /*
-   * Need to read the start postpone record to set the postpone address
-   * of the transaction
-   */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
-		      log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-				    sizeof (struct log_start_client), log_lsa,
-				    log_page_p);
-  start_client =
-    (struct log_start_client *) ((char *) log_page_p->area + log_lsa->offset);
-  LSA_COPY (&tdes->client_posp_lsa, &start_client->lsa);
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_abort_with_loose_ends -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *   log_page_p(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_abort_with_loose_ends (THREAD_ENTRY * thread_p, int tran_id,
-				       LOG_LSA * log_lsa,
-				       LOG_PAGE * log_page_p)
-{
-  LOG_TDES *tdes;
-  struct log_start_client *start_client;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. The transaction was in the process of
-   * abort at this time.. some client loose ends has not been aborted
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_abort_with_loose_ends");
-      return ER_FAILED;
-    }
-
-  tdes->state = TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
-
-  /* Nothing to undo at server */
-  LSA_SET_NULL (&tdes->undo_nxlsa);
-
-  /* Nothing to redo related to pospone actions at client and server */
-  LSA_SET_NULL (&tdes->client_posp_lsa);
-
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-
-  /*
-   * Need to read the start postpone record to set the postpone address
-   * of the transaction
-   */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
-		      log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-				    sizeof (struct log_start_client), log_lsa,
-				    log_page_p);
-  start_client =
-    (struct log_start_client *) ((char *) log_page_p->area + log_lsa->offset);
-  LSA_COPY (&tdes->client_undo_lsa, &start_client->lsa);
-
-  return NO_ERROR;
-}
-
-/*
  * log_rv_analysis_commit_topope_with_postpone -
  *
  * return: error code
@@ -1756,373 +1464,6 @@ log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p,
 	    &top_start_posp->lastparent_lsa);
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].posp_lsa,
 	    &top_start_posp->posp_lsa);
-  LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].client_undo_lsa);
-  LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].client_posp_lsa);
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_commit_topope_with_loose_ends -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *   log_page_p(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_commit_topope_with_loose_ends (THREAD_ENTRY * thread_p,
-					       int tran_id, LOG_LSA * log_lsa,
-					       LOG_PAGE * log_page_p)
-{
-  LOG_TDES *tdes;
-  struct log_topope_start_client *top_start_client;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. A top system operation was in the process
-   * of getting committed at this point.
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_commit_topope_with_loose_ends");
-      return ER_FAILED;
-    }
-
-  tdes->state = TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
-
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
-
-  /*
-   * Need to read the start client record to set the start address
-   * of top system operation
-   */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
-		      log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-				    sizeof (struct log_topope_start_client),
-				    log_lsa, log_page_p);
-  top_start_client =
-    ((struct log_topope_start_client *) ((char *) log_page_p->area +
-					 log_lsa->offset));
-
-  if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
-    {
-      if (logtb_realloc_topops_stack (tdes, 1) == NULL)
-	{
-	  /* Out of memory */
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rv_analysis_commit_topope_with_loose_ends");
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-    }
-
-  /*
-   * NOTE if tdes->topops.last >= 0, there is an already
-   * defined top system operation. However, I do not think so
-   * do to the nested fashion of top system operations. Outer
-   * top nested system operations will come later in the log.
-   */
-
-  if (tdes->topops.last == -1)
-    {
-      tdes->topops.last++;
-    }
-
-  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa,
-	    &top_start_client->lastparent_lsa);
-  LSA_COPY (&tdes->topops.stack[tdes->topops.last].client_posp_lsa,
-	    &top_start_client->lsa);
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_abort_topope_with_loose_ends -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *   log_page_p(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_abort_topope_with_loose_ends (THREAD_ENTRY * thread_p,
-					      int tran_id, LOG_LSA * log_lsa,
-					      LOG_PAGE * log_page_p)
-{
-  LOG_TDES *tdes;
-  struct log_topope_start_client *top_start_client;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. A top system operation was in the process
-   * of getting committed at this point.
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_abort_topope_with_loose_ends");
-      return ER_FAILED;
-    }
-
-  tdes->state = TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
-
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
-
-  /*
-   * Need to read the start client record to set the start address
-   * of top system operation
-   */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
-		      log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-				    sizeof (struct log_topope_start_client),
-				    log_lsa, log_page_p);
-  top_start_client =
-    ((struct log_topope_start_client *) ((char *) log_page_p->area +
-					 log_lsa->offset));
-
-  if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
-    {
-      if (logtb_realloc_topops_stack (tdes, 1) == NULL)
-	{
-	  /* Out of memory */
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rv_analysis_abort_topope_with_loose_ends");
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-    }
-
-  /*
-   * NOTE if tdes->topops.last >= 0, there is an already
-   * defined top system operation. However, I do not think so
-   * do to the nested fashion of top system operations. Outer
-   * top nested system operations will come later in the log.
-   */
-
-  if (tdes->topops.last == -1)
-    {
-      tdes->topops.last++;
-    }
-
-  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa,
-	    &top_start_client->lastparent_lsa);
-  LSA_COPY (&tdes->topops.stack[tdes->topops.last].client_undo_lsa,
-	    &top_start_client->lsa);
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_run_next_client_undo -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *   log_page_p(in/out):
- *   check_point(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_run_next_client_undo (THREAD_ENTRY * thread_p, int tran_id,
-				      LOG_LSA * log_lsa,
-				      LOG_PAGE * log_page_p,
-				      LOG_LSA * check_point)
-{
-  LOG_TDES *tdes;
-  struct log_run_client *run_client;
-
-
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_run_next_client_undo");
-      return ER_FAILED;
-    }
-
-  if (tdes->state != TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS
-      && (tdes->state !=
-	  TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS))
-    {
-      /*
-       * If we are comming from a checkpoint this is the result of a
-       * system error since the transaction must have been already in
-       * one of this states.
-       * If we are not comming from a checkpoint, it is likely that
-       * we are in a commit point of either a transactionor a top
-       * operation.
-       */
-      if (!LSA_ISNULL (check_point))
-	{
-	  er_log_debug
-	    (ARG_FILE_LINE,
-	     "log_recovery_analysis: SYSTEM ERROR\n"
-	     " Incorrect state = %s\n at log_rec at %lld|%d\n"
-	     " for transaction = %d (index %d).\n"
-	     " State should have been either of\n" " %s\n %s\n",
-	     log_state_string (tdes->state), (long long int) log_lsa->pageid,
-	     log_lsa->offset, tdes->trid, tdes->tran_index,
-	     log_state_string
-	     (TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS),
-	     log_state_string
-	     (TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS));
-	}
-      /*
-       * Continue the execution by guessing that the transaction has
-       * been committed
-       */
-      if (tdes->topops.last == -1)
-	{
-	  tdes->state = TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
-	}
-      else
-	{
-	  tdes->state =
-	    TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
-	}
-    }
-
-  /* Nothing to undo at server */
-  LSA_SET_NULL (&tdes->undo_nxlsa);
-
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-
-  /*
-   * Need to read the run client record to set the next client undo
-   * address of the transaction
-   */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
-		      log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_run_client),
-				    log_lsa, log_page_p);
-  run_client =
-    (struct log_run_client *) ((char *) log_page_p->area + log_lsa->offset);
-
-  if (tdes->topops.last == -1)
-    {
-      LSA_COPY (&tdes->client_undo_lsa, &run_client->nxlsa);
-    }
-  else
-    {
-      LSA_COPY (&tdes->topops.stack[tdes->topops.last].client_undo_lsa,
-		&run_client->nxlsa);
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_run_next_client_postpone -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *   log_page_p(in/out):
- *   check_point(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
-					  int tran_id, LOG_LSA * log_lsa,
-					  LOG_PAGE * log_page_p,
-					  LOG_LSA * check_point)
-{
-  LOG_TDES *tdes;
-  struct log_run_client *run_client;
-
-
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_analysis_run_next_client_postpone");
-      return ER_FAILED;
-    }
-
-  if ((tdes->state !=
-       TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
-      && (tdes->state !=
-	  TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS))
-    {
-      /*
-       * If we are comming from a checkpoint this is the result of a
-       * system error since the transaction must have been already in
-       * one of this states.
-       * If we are not comming from a checkpoint, it is likely that
-       * we are in a commit point of either a transactionor a top
-       * operation.
-       */
-      if (!LSA_ISNULL (check_point))
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"log_recovery_analysis: SYSTEM ERROR\n"
-			" Incorrect state = %s\n at log_rec at %lld|%d\n"
-			" for transaction = %d (index %d).\n"
-			" State should have been either of\n" " %s\n %s\n",
-			log_state_string (tdes->state),
-			(long long int) log_lsa->pageid,
-			log_lsa->offset, tdes->trid, tdes->tran_index,
-			log_state_string
-			(TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS),
-			log_state_string
-			(TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS));
-	}
-      /*
-       * Continue the execution by guessing that the transaction has
-       * been committed
-       */
-
-      if (tdes->topops.last == -1)
-	{
-	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
-	}
-      else
-	{
-	  tdes->state =
-	    TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
-	}
-    }
-
-  /* Nothing to undo */
-  LSA_SET_NULL (&tdes->undo_nxlsa);
-
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
-
-  /*
-   * Need to read the run client record to set the next client undo
-   * address of the transaction
-   */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
-		      log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_run_client),
-				    log_lsa, log_page_p);
-  run_client =
-    (struct log_run_client *) ((char *) log_page_p->area + log_lsa->offset);
-  if (tdes->topops.last == -1)
-    {
-      LSA_COPY (&tdes->client_posp_lsa, &run_client->nxlsa);
-    }
-  else
-    {
-      LSA_COPY (&tdes->topops.stack[tdes->topops.last].client_posp_lsa,
-		&run_client->nxlsa);
-    }
 
   return NO_ERROR;
 }
@@ -2479,8 +1820,6 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       LSA_COPY (&tdes->posp_nxlsa, &chkpt_one->posp_nxlsa);
       LSA_COPY (&tdes->savept_lsa, &chkpt_one->savept_lsa);
       LSA_COPY (&tdes->tail_topresult_lsa, &chkpt_one->tail_topresult_lsa);
-      LSA_COPY (&tdes->client_undo_lsa, &chkpt_one->client_undo_lsa);
-      LSA_COPY (&tdes->client_posp_lsa, &chkpt_one->client_posp_lsa);
       logtb_set_client_ids_all (&tdes->client, 0, NULL, chkpt_one->user_name,
 				NULL, NULL, NULL, -1);
       if (LOG_ISTRAN_2PC (tdes))
@@ -2565,10 +1904,6 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 		    &chkpt_topone->lastparent_lsa);
 	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].posp_lsa,
 		    &chkpt_topone->posp_lsa);
-	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].client_posp_lsa,
-		    &chkpt_topone->client_posp_lsa);
-	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].client_undo_lsa,
-		    &chkpt_topone->client_undo_lsa);
 	}
     }
 
@@ -2925,11 +2260,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 {
   switch (log_type)
     {
-    case LOG_CLIENT_NAME:
-      (void) log_rv_analysis_client_name (thread_p, tran_id, log_lsa,
-					  log_page_p);
-      break;
-
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
     case LOG_UNDO_DATA:
@@ -2960,16 +2290,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 					 log_page_p);
       break;
 
-    case LOG_CLIENT_USER_UNDO_DATA:
-      (void) log_rv_analysis_client_user_undo_data (thread_p, tran_id,
-						    log_lsa);
-      break;
-
-    case LOG_CLIENT_USER_POSTPONE_DATA:
-      (void) log_rv_analysis_client_user_postpone_data (thread_p, tran_id,
-							log_lsa);
-      break;
-
     case LOG_WILL_COMMIT:
       (void) log_rv_analysis_will_commit (thread_p, tran_id, log_lsa);
       break;
@@ -2979,44 +2299,10 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 						   log_page_p);
       break;
 
-    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
-      (void) log_rv_analysis_commit_with_loose_ends (thread_p, tran_id,
-						     log_lsa, log_page_p);
-      break;
-
-    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
-      (void) log_rv_analysis_abort_with_loose_ends (thread_p, tran_id,
-						    log_lsa, log_page_p);
-      break;
-
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
       (void) log_rv_analysis_commit_topope_with_postpone (thread_p, tran_id,
 							  log_lsa,
 							  log_page_p);
-      break;
-
-    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-      (void)
-	log_rv_analysis_commit_topope_with_loose_ends (thread_p, tran_id,
-						       log_lsa, log_page_p);
-      break;
-
-    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-      (void)
-	log_rv_analysis_abort_topope_with_loose_ends (thread_p, tran_id,
-						      log_lsa, log_page_p);
-      break;
-
-    case LOG_RUN_NEXT_CLIENT_UNDO:
-      (void) log_rv_analysis_run_next_client_undo (thread_p, tran_id, log_lsa,
-						   log_page_p,
-						   checkpoint_lsa);
-      break;
-
-    case LOG_RUN_NEXT_CLIENT_POSTPONE:
-      (void) log_rv_analysis_run_next_client_postpone (thread_p, tran_id,
-						       log_lsa, log_page_p,
-						       checkpoint_lsa);
       break;
 
     case LOG_COMMIT:
@@ -4737,11 +4023,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		}
 	      break;
 
-	    case LOG_RUN_NEXT_CLIENT_UNDO:
-	    case LOG_RUN_NEXT_CLIENT_POSTPONE:
-	      /* Client actions are not redone */
-	      break;
-
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	      tran_index = logtb_find_tran_index (thread_p, tran_id);
@@ -4823,18 +4104,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      break;
 
 	    case LOG_UNDO_DATA:
-	    case LOG_CLIENT_NAME:
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
-	    case LOG_CLIENT_USER_UNDO_DATA:
-	    case LOG_CLIENT_USER_POSTPONE_DATA:
 	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT_WITH_POSTPONE:
-	    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
-	    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
 	    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-	    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-	    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
 	    case LOG_COMMIT_TOPOPE:
 	    case LOG_ABORT_TOPOPE:
 	    case LOG_START_CHKPT:
@@ -4993,19 +4267,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
 		       LOG_COMMIT_WITH_POSTPONE, false);
 
-      /*
-       * Are there any postpone client actions that need to be done at the
-       * client machine ?
-       */
-      if (!LSA_ISNULL (&tdes->client_posp_lsa))
-	{
-	  log_append_commit_client_loose_ends (thread_p, tdes);
-	  /*
-	   * Now the client transaction manager should request the postpone
-	   * actions until all of them become exhausted.
-	   */
-	}
-      else if (tdes->coord == NULL)
+      if (tdes->coord == NULL)
 	{			/* If this is a local transaction */
 	  (void) log_complete (thread_p, tdes, LOG_COMMIT,
 			       LOG_DONT_NEED_NEWTRID);
@@ -5170,25 +4432,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  || tdes->state == TRAN_UNACTIVE_ABORTED)
 	      && LSA_ISNULL (&tdes->undo_nxlsa))
 	    {
-	      /*
-	       * May be nothing to do with this transaction
-	       *
-	       * Are there any loose ends to be done in the client ?
-	       */
-	      if (!LSA_ISNULL (&tdes->client_undo_lsa))
-		{
-		  log_append_abort_client_loose_ends (thread_p, tdes);
-		  /*
-		   * Now the client transaction manager should request all
-		   * client undo actions on the client machine
-		   */
-		}
-	      else
-		{
-		  (void) log_complete (thread_p, tdes, LOG_ABORT,
-				       LOG_DONT_NEED_NEWTRID);
-		  logtb_free_tran_index (thread_p, tran_index);
-		}
+	      (void) log_complete (thread_p, tdes, LOG_ABORT,
+				   LOG_DONT_NEED_NEWTRID);
+	      logtb_free_tran_index (thread_p, tran_index);
 	    }
 	}
     }
@@ -5449,14 +4695,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 				      tdes, undo_unzip_ptr);
 		  break;
 
-		case LOG_CLIENT_NAME:
 		case LOG_REDO_DATA:
 		case LOG_MVCC_REDO_DATA:
 		case LOG_DBEXTERN_REDO_DATA:
 		case LOG_DUMMY_HEAD_POSTPONE:
 		case LOG_POSTPONE:
-		case LOG_CLIENT_USER_UNDO_DATA:
-		case LOG_CLIENT_USER_POSTPONE_DATA:
 		case LOG_SAVEPOINT:
 		case LOG_REPLICATION_DATA:
 		case LOG_REPLICATION_STATEMENT:
@@ -5508,16 +4751,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  break;
 
 		case LOG_RUN_POSTPONE:
-		case LOG_RUN_NEXT_CLIENT_POSTPONE:
-		case LOG_RUN_NEXT_CLIENT_UNDO:
 		case LOG_WILL_COMMIT:
 		case LOG_COMMIT_WITH_POSTPONE:
-		case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
 		case LOG_COMMIT:
 		case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-		case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-		case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-		case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
 		case LOG_ABORT:
 		case LOG_START_CHKPT:
 		case LOG_END_CHKPT:
@@ -5597,34 +4834,20 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  /* Is this the end of transaction? */
 		  if (LSA_ISNULL (&prev_tranlsa))
 		    {
-		      /* Are there any loose ends to be done in the client ?
-		       */
-		      if (!LSA_ISNULL (&tdes->client_undo_lsa))
+		      /* Clear MVCCID */
+		      tdes->mvccinfo.id = MVCCID_NULL;
+
+		      (void) log_complete (thread_p, tdes, LOG_ABORT,
+					   LOG_DONT_NEED_NEWTRID);
+		      if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
 			{
-			  assert (!LOG_IS_VACUUM_WORKER_TRANID (tran_id));
-			  log_append_abort_client_loose_ends (thread_p, tdes);
-			  /*
-			   * Now the client transaction manager should request
-			   * all client undo actions on the client machine.
-			   */
+			  vacuum_rv_finish_worker_recovery (thread_p,
+							    tran_id);
 			}
 		      else
 			{
-			  /* Clear MVCCID */
-			  tdes->mvccinfo.id = MVCCID_NULL;
-
-			  (void) log_complete (thread_p, tdes, LOG_ABORT,
-					       LOG_DONT_NEED_NEWTRID);
-			  if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
-			    {
-			      vacuum_rv_finish_worker_recovery (thread_p,
-								tran_id);
-			    }
-			  else
-			    {
-			      logtb_free_tran_index (thread_p, tran_index);
-			      tdes = NULL;
-			    }
+			  logtb_free_tran_index (thread_p, tran_index);
+			  tdes = NULL;
 			}
 		    }
 		  else
@@ -6168,8 +5391,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
   struct log_dbout_redo *dbout_redo;	/* A external redo log record */
   struct log_savept *savept;	/* A savepoint log record */
   struct log_compensate *compensate;	/* Compensating log record */
-  struct log_client *client_postpone;	/* Client postpone log record */
-  struct log_client *client_undo;	/* Client undo log record */
   struct log_run_postpone *run_posp;	/* A run postpone action */
   struct log_chkpt *chkpt;	/* Checkpoint log record */
   struct log_2pc_start *start_2pc;	/* A 2PC start log record */
@@ -6239,13 +5460,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 		      log_pgptr);
   switch (type)
     {
-    case LOG_CLIENT_NAME:
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, LOG_USERNAME_MAX,
-					&log_lsa, log_pgptr);
-
-      LOG_READ_ADD_ALIGN (thread_p, LOG_USERNAME_MAX, &log_lsa, log_pgptr);
-      break;
-
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
       /* Read the DATA HEADER */
@@ -6382,45 +5596,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
       break;
 
-    case LOG_CLIENT_USER_UNDO_DATA:
-      /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-					sizeof (struct log_client),
-					&log_lsa, log_pgptr);
-      client_undo =
-	(struct log_client *) ((char *) log_pgptr->area + log_lsa.offset);
-      undo_length = client_undo->length;
-
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_client), &log_lsa,
-			  log_pgptr);
-      LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
-      break;
-
-    case LOG_CLIENT_USER_POSTPONE_DATA:
-      /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-					sizeof (struct log_client),
-					&log_lsa, log_pgptr);
-      client_postpone =
-	(struct log_client *) ((char *) log_pgptr->area + log_lsa.offset);
-      redo_length = client_postpone->length;
-
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_client), &log_lsa,
-			  log_pgptr);
-      LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
-      break;
-
-    case LOG_RUN_NEXT_CLIENT_UNDO:
-    case LOG_RUN_NEXT_CLIENT_POSTPONE:
-      /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-					sizeof (struct log_run_client),
-					&log_lsa, log_pgptr);
-
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_run_client),
-			  &log_lsa, log_pgptr);
-      break;
-
     case LOG_COMMIT_WITH_POSTPONE:
       /* Read the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
@@ -6428,17 +5603,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 					&log_lsa, log_pgptr);
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_start_postpone),
-			  &log_lsa, log_pgptr);
-      break;
-
-    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
-      /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-					sizeof (struct log_start_client),
-					&log_lsa, log_pgptr);
-
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_start_client),
 			  &log_lsa, log_pgptr);
       break;
 
@@ -6462,17 +5626,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 
       LOG_READ_ADD_ALIGN (thread_p,
 			  sizeof (struct log_topope_start_postpone),
-			  &log_lsa, log_pgptr);
-      break;
-
-    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-      /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT
-	(thread_p, sizeof (struct log_topope_start_client), &log_lsa,
-	 log_pgptr);
-
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_topope_start_client),
 			  &log_lsa, log_pgptr);
       break;
 
