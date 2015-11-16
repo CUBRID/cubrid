@@ -390,8 +390,10 @@ static void report_abnormal_host_status (int err_code);
 
 static int set_host_variables (DB_SESSION * session, int num_bind,
 			       DB_VALUE * in_values);
-static unsigned char set_extended_cas_type (DB_TYPE set_type,
+static unsigned char set_extended_cas_type (T_CCI_U_TYPE u_set_type,
 					    DB_TYPE db_type);
+static short encode_ext_type_to_short (T_BROKER_VERSION client_version,
+				       unsigned char cas_type);
 static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle,
 						T_NET_BUF * net_buf);
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle,
@@ -3730,7 +3732,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 	}
       else
 	{
-	  cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
+	  cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
 	}
 
       net_buf_cp_byte (net_buf, param_mode);
@@ -5781,7 +5783,7 @@ oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num,
 	    }
 	  else
 	    {
-	      cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
+	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
 	      precision = db_domain_precision (domain);
 	      scale = (short) db_domain_scale (domain);
 	      charset = db_domain_codeset (domain);
@@ -6187,7 +6189,10 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. domain */
-      add_res_data_short (net_buf, (short) attr_info.domain, 0, NULL);
+      add_res_data_short (net_buf,
+			  encode_ext_type_to_short (client_version,
+						    attr_info.domain),
+			  0, NULL);
 
       /* 3. scale */
       add_res_data_short (net_buf, (short) attr_info.scale, 0, NULL);
@@ -6359,7 +6364,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
       else
 	{
-	  cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
+	  cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
 	}
       add_res_data_short (net_buf, cas_type, 0, NULL);
 
@@ -6378,7 +6383,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	    }
 	  else
 	    {
-	      cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
+	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
 	    }
 
 	  sprintf (arg_str, "%s%d ", arg_str, cas_type);
@@ -7841,7 +7846,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	    }
 	  else
 	    {
-	      cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
+	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
 	      precision = db_domain_precision (domain);
 	      scale = (short) db_domain_scale (domain);
 	      charset = db_domain_codeset (domain);
@@ -8895,7 +8900,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern,
   int db_type;
   DB_DOMAIN *domain;
   DB_OBJECT *class_obj;
-  int set_type = 0;
+  int set_type = CCI_U_TYPE_UNKNOWN;
   int precision;
   short scale;
 
@@ -8919,7 +8924,8 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern,
     }
   else
     {
-      attr_table->domain = set_extended_cas_type (set_type, db_type);
+      attr_table->domain =
+	set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
       precision = db_domain_precision (domain);
       scale = (short) db_domain_scale (domain);
     }
@@ -10317,7 +10323,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
       else
 	{
-	  cas_type = set_extended_cas_type (DB_TYPE_NULL, db_type);
+	  cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
 	  precision = db_domain_precision (domain);
 	  scale = (short) db_domain_scale (domain);
 	  charset = db_domain_codeset (domain);
@@ -11124,20 +11130,17 @@ set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values)
  *			      TCCT TTTT : T = type bits, CC = collection bits
  *
  *   return: cas_type
- *   set_type(in): type from collection (if db_type is a collection)
+ *   set_type(in): cas type from collection (if db_type is a collection)
  *   db_type(in): basic type
  */
 static unsigned char
-set_extended_cas_type (DB_TYPE set_type, DB_TYPE db_type)
+set_extended_cas_type (T_CCI_U_TYPE u_set_type, DB_TYPE db_type)
 {
   unsigned char u_set_type_lsb, u_set_type_msb;
-  unsigned char u_set_type;
 
   if (TP_IS_SET_TYPE (db_type))
     {
       unsigned char cas_ext_type;
-
-      u_set_type = ux_db_type_to_cas_type (set_type);
 
       u_set_type_lsb = u_set_type & 0x1f;
       u_set_type_msb = (u_set_type & 0x20) << 2;
@@ -11156,4 +11159,29 @@ set_extended_cas_type (DB_TYPE set_type, DB_TYPE db_type)
   u_set_type = u_set_type_lsb | u_set_type_msb;
 
   return u_set_type;
+}
+
+static short
+encode_ext_type_to_short (T_BROKER_VERSION client_version,
+			  unsigned char cas_type)
+{
+  short ret_type;
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V7))
+    {
+      unsigned char msb_byte, lsb_byte;
+
+      msb_byte = cas_type & CCI_CODE_COLLECTION;
+      msb_byte |= CAS_TYPE_FIRST_BYTE_PROTOCOL_MASK;
+
+      lsb_byte = CCI_GET_COLLECTION_DOMAIN (cas_type);
+
+      ret_type = ((short) msb_byte << 8) | ((short) lsb_byte);
+    }
+  else
+    {
+      assert (cas_type < 0x80);
+      ret_type = (short) cas_type;
+    }
+
+  return ret_type;
 }

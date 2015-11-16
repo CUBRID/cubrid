@@ -2079,6 +2079,10 @@ public class UStatement {
 
 		byte realType[];
 		Short fetchedType;
+		Short type_msb_byte;
+		Short type_lsb_byte;
+		byte collectionFlags;
+		byte originalType;
 
 		switch (schemaType) {
 		case USchType.SCH_ATTRIBUTE:
@@ -2088,7 +2092,20 @@ public class UStatement {
 		case USchType.SCH_SUPERCLASS:
 		case USchType.SCH_SUBCLASS:
 			fetchedType = (Short) tuples[index].getAttribute(1);
-			realType = UColumnInfo.confirmType(fetchedType.byteValue(), (byte) 0);
+			
+			type_msb_byte = (short) (fetchedType & 0xff00);
+			type_msb_byte = (short) (type_msb_byte >> 8);
+			if (((short) type_msb_byte & MASK_TYPE_HAS_2_BYTES) == MASK_TYPE_HAS_2_BYTES) {
+				/* V7 protocol (extended type has two bytes) */
+				collectionFlags = (byte) (type_msb_byte.byteValue() & MASK_COLLECTION_FROM_TYPE);
+				type_lsb_byte = (short) (fetchedType & 0x00ff);
+				originalType = type_lsb_byte.byteValue();
+			} else {
+				collectionFlags = (byte) (fetchedType.byteValue() & MASK_COLLECTION_FROM_TYPE);
+				originalType = (byte) (fetchedType.byteValue() & MASK_TYPE_FROM_SINGLE_BYTE);
+			}
+
+			realType = UColumnInfo.confirmType(originalType, collectionFlags);
 			tuples[index].setAttribute(1, new Short((short) realType[0]));
 		}
 	}

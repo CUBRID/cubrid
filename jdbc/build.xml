@@ -91,7 +91,7 @@
     </target>
 
     <target name="compile-cubrid" depends="src-cubrid">
-        <javac destdir="${bin-cubrid}" source="1.5" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
+        <javac destdir="${bin-cubrid}" source="1.5" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source,vars" deprecation="off" includeantruntime="no">
             <src path="${src-cubrid}"/>
             <include name="**/*.java"/>
         </javac>
