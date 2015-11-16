@@ -914,8 +914,7 @@ net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type,
 	}
 
       assert (cas_type < 0x80);
-      cas_type &= 0x3f;
-      net_buf_cp_byte (net_buf, CCI_GET_COLLECTION_DOMAIN (cas_type));
+      net_buf_cp_byte (net_buf, cas_type);
     }
 
   return 0;
