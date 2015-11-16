@@ -204,8 +204,6 @@ struct file_recv_allocset_pages
   INT16 end_pages_offset;	/* Offset where the page table ends at ending
 				   vpid. */
   int num_pages;		/* Number of pages */
-  int num_holes;		/* Indicate the number of identifiers (pages or
-				   slots) that can be compacted */
 };
 
 typedef struct file_recv_shift_sector_table FILE_RECV_SHIFT_SECTOR_TABLE;
@@ -7104,6 +7102,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   FILE_RECV_ALLOCSET_PAGES recv_undo;
   FILE_RECV_ALLOCSET_PAGES recv_redo;
   int i, length;
+  INT32 undo_data, redo_data;
 
   (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
   (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
@@ -7223,7 +7222,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
 	  if (outptr > aid_ptr)
 	    {
-	      length = (int) ((npages > (outptr - aid_ptr)) ?
+	      length = (int) (((npages - i) > (outptr - aid_ptr)) ?
 			      (outptr - aid_ptr) : (npages - i));
 	      log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
 				    sizeof (npages) * length, logdata);
@@ -7246,14 +7245,15 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 			CAST_BUFLEN ((char *) aid_ptr - logdata), logdata);
 
   /* Update the allocation set for end of page table and number of pages.
-   * Similarly, the file header must be updated. Need to log the info... */
+   * Similarly, the file header must be updated. Need to log the info... 
+   * The number of holes does not changed.
+   */
 
   /* SAVE the information that is going to be change for UNDO purposes */
   recv_undo.curr_sectid = allocset->curr_sectid;
   recv_undo.end_pages_vpid = allocset->end_pages_vpid;
   recv_undo.end_pages_offset = allocset->end_pages_offset;
-  recv_undo.num_pages = allocset->num_pages;
-  recv_undo.num_holes = allocset->num_holes;
+  recv_undo.num_pages = -npages;
 
   /* Now CHANGE IT */
   allocset->end_pages_vpid = vpid;
@@ -7268,8 +7268,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   recv_redo.curr_sectid = allocset->curr_sectid;
   recv_redo.end_pages_vpid = allocset->end_pages_vpid;
   recv_redo.end_pages_offset = allocset->end_pages_offset;
-  recv_redo.num_pages = allocset->num_pages;
-  recv_redo.num_holes = allocset->num_holes;
+  recv_redo.num_pages = npages;
 
   /* Now log the changes to the allocation set and set the page where the
      allocation set resides as dirty */
@@ -7282,18 +7281,19 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   pgbuf_set_dirty (thread_p, allocset_pgptr, DONT_FREE);
 
-  /* Chnage the file header and log the change */
+  /* Change the file header and log the change */
 
-  npages += fhdr->num_user_pages;	/* Total pages.. the redo */
+  undo_data = -npages;
+  redo_data = npages;
   addr.pgptr = fhdr_pgptr;
   addr.offset = FILE_HEADER_OFFSET;
 
   log_append_undoredo_data (thread_p, RVFL_FHDR_ADD_PAGES, &addr,
 			    sizeof (fhdr->num_user_pages),
 			    sizeof (fhdr->num_user_pages),
-			    &fhdr->num_user_pages, &npages);
+			    &undo_data, &redo_data);
 
-  fhdr->num_user_pages = npages;
+  fhdr->num_user_pages += npages;
   pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
 
   return alloc_pageid;
@@ -14469,8 +14469,7 @@ file_rv_allocset_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   allocset->curr_sectid = rvpgs->curr_sectid;
   allocset->end_pages_vpid = rvpgs->end_pages_vpid;
   allocset->end_pages_offset = rvpgs->end_pages_offset;
-  allocset->num_pages = rvpgs->num_pages;
-  allocset->num_holes = rvpgs->num_holes;
+  allocset->num_pages += rvpgs->num_pages;
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -14491,9 +14490,8 @@ file_rv_allocset_dump_add_pages (FILE * fp, int length_ignore, void *data)
 
   rvpgs = (FILE_RECV_ALLOCSET_PAGES *) data;
 
-  fprintf (fp, " Num_user_pages = %d, Current_sectid = %d\n",
-	   rvpgs->num_pages, rvpgs->num_holes);
-  fprintf (fp, " Num_entries_to_compact = %d\n", rvpgs->num_holes);
+  fprintf (fp, " Npages = %d added, Current_sectid = %d\n",
+	   rvpgs->num_pages, rvpgs->curr_sectid);
   fprintf (fp, "Page Table   (End): Page = %d|%d Offset = %d\n",
 	   rvpgs->end_pages_vpid.volid, rvpgs->end_pages_vpid.pageid,
 	   rvpgs->end_pages_offset);
@@ -14513,7 +14511,7 @@ file_rv_fhdr_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
 
-  fhdr->num_user_pages = *(INT32 *) rcv->data;
+  fhdr->num_user_pages += *(INT32 *) rcv->data;
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -14529,7 +14527,7 @@ file_rv_fhdr_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 void
 file_rv_fhdr_dump_add_pages (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (fp, "Num_user_pages = %d\n", *(INT32 *) data);
+  fprintf (fp, "Num_user_pages added = %d\n", *(INT32 *) data);
 }
 
 /*
