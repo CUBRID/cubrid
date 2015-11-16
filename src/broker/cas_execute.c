@@ -242,46 +242,51 @@ static int fetch_privilege (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
 static int fetch_foreign_keys (T_SRV_HANDLE *, int, int, char, int,
 			       T_NET_BUF *, T_REQ_INFO *);
 static void add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size,
-				char type, int *net_size);
+				unsigned char ext_type, int *net_size);
 static void add_res_data_string (T_NET_BUF * net_buf, const char *str,
-				 int size, char type, int *net_size);
+				 int size, unsigned char ext_type,
+				 unsigned char charset, int *net_size);
 static void add_res_data_string_safe (T_NET_BUF * net_buf, const char *str,
-				      char type, int *net_size);
-static void add_res_data_int (T_NET_BUF * net_buf, int value, char type,
-			      int *net_size);
+				      unsigned char ext_type,
+				      unsigned char charset, int *net_size);
+static void add_res_data_int (T_NET_BUF * net_buf, int value,
+			      unsigned char ext_type, int *net_size);
 static void add_res_data_bigint (T_NET_BUF * net_buf, DB_BIGINT value,
-				 char type, int *net_size);
-static void add_res_data_short (T_NET_BUF * net_buf, short value, char type,
-				int *net_size);
-static void add_res_data_float (T_NET_BUF * net_buf, float value, char type,
-				int *net_size);
-static void add_res_data_double (T_NET_BUF * net_buf, double value, char type,
-				 int *net_size);
+				 unsigned char ext_type, int *net_size);
+static void add_res_data_short (T_NET_BUF * net_buf, short value,
+				unsigned char ext_type, int *net_size);
+static void add_res_data_float (T_NET_BUF * net_buf, float value,
+				unsigned char ext_type, int *net_size);
+static void add_res_data_double (T_NET_BUF * net_buf, double value,
+				 unsigned char ext_type, int *net_size);
 static void add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon,
 				    short day, short hh, short mm, short ss,
-				    char type, int *net_size);
+				    unsigned char ext_type, int *net_size);
 static void add_res_data_timestamptz (T_NET_BUF * net_buf, short yr,
 				      short mon, short day, short hh,
 				      short mm, short ss, char *tz_str,
-				      char type, int *net_size);
+				      unsigned char ext_type, int *net_size);
 static void add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon,
 				   short day, short hh, short mm, short ss,
-				   short ms, char type, int *net_size);
+				   short ms, unsigned char ext_type,
+				   int *net_size);
 static void add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon,
 				     short day, short hh, short mm, short ss,
-				     short ms, char *tz_str, char type,
-				     int *net_size);
+				     short ms, char *tz_str,
+				     unsigned char ext_type, int *net_size);
 static void add_res_data_time (T_NET_BUF * net_buf, short hh, short mm,
-			       short ss, char type, int *net_size);
+			       short ss, unsigned char ext_type,
+			       int *net_size);
 static void add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm,
-				 short ss, char *tz_str, char type,
-				 int *net_size);
+				 short ss, char *tz_str,
+				 unsigned char ext_type, int *net_size);
 static void add_res_data_date (T_NET_BUF * net_buf, short yr, short mon,
-			       short day, char type, int *net_size);
+			       short day, unsigned char ext_type,
+			       int *net_size);
 static void add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj,
-				 char type, int *net_size);
+				 unsigned char ext_type, int *net_size);
 static void add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob,
-				     char type, int *net_size);
+				     unsigned char ext_type, int *net_size);
 static void trigger_event_str (DB_TRIGGER_EVENT trig_event, char *buf);
 static void trigger_status_str (DB_TRIGGER_STATUS trig_status, char *buf);
 static void trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf);
@@ -4879,7 +4884,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 		  int max_col_size, char column_type_flag)
 {
   int data_size = 0;
-  char col_type;
+  unsigned char ext_col_type;
   bool client_support_tz = true;
 
   if (db_value_is_null (val) == true)
@@ -4888,19 +4893,22 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
       return NET_SIZE_INT;
     }
 
-  if (column_type_flag)
-    {
-      col_type = ux_db_type_to_cas_type (db_value_type (val));
-    }
-  else
-    {
-      col_type = 0;
-    }
-
-  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (cas_get_client_version (),
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version,
 					    PROTOCOL_V7))
     {
       client_support_tz = false;
+    }
+
+  /* set extended type for primary types;
+   * for collection types this values is set in switch-case code */
+  if (column_type_flag && !TP_IS_SET_TYPE (db_value_type (val)))
+    {
+      ext_col_type =
+	set_extended_cas_type (DB_TYPE_NULL, db_value_type (val));
+    }
+  else
+    {
+      ext_col_type = 0;
     }
 
   switch (db_value_type (val))
@@ -4912,7 +4920,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 
 	obj = db_get_object (val);
 	dbobj_to_casobj (obj, &cas_obj);
-	add_res_data_object (net_buf, &cas_obj, col_type, &data_size);
+	add_res_data_object (net_buf, &cas_obj, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_VARBIT:
@@ -4928,7 +4936,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	    length = MIN (length, max_col_size);
 	  }
 	/* do not append NULL terminator */
-	add_res_data_bytes (net_buf, bit, length, col_type, &data_size);
+	add_res_data_bytes (net_buf, bit, length, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_VARCHAR:
@@ -4977,7 +4985,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	      }
 	  }
 
-	add_res_data_string (net_buf, str, bytes_size, col_type, &data_size);
+	add_res_data_string (net_buf, str, bytes_size, ext_col_type,
+			     DB_GET_STRING_CODESET (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -5031,8 +5040,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	      }
 	  }
 
-	add_res_data_string (net_buf, nchar, bytes_size, col_type,
-			     &data_size);
+	add_res_data_string (net_buf, nchar, bytes_size, ext_col_type,
+			     DB_GET_STRING_CODESET (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -5084,7 +5093,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	      }
 	  }
 
-	add_res_data_string (net_buf, str, bytes_size, col_type, &data_size);
+	add_res_data_string (net_buf, str, bytes_size, ext_col_type,
+			     DB_GET_ENUM_CODESET (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -5098,42 +5108,42 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
       {
 	short smallint;
 	smallint = db_get_short (val);
-	add_res_data_short (net_buf, smallint, col_type, &data_size);
+	add_res_data_short (net_buf, smallint, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_INTEGER:
       {
 	int int_val;
 	int_val = db_get_int (val);
-	add_res_data_int (net_buf, int_val, col_type, &data_size);
+	add_res_data_int (net_buf, int_val, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_BIGINT:
       {
 	DB_BIGINT bigint_val;
 	bigint_val = db_get_bigint (val);
-	add_res_data_bigint (net_buf, bigint_val, col_type, &data_size);
+	add_res_data_bigint (net_buf, bigint_val, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_DOUBLE:
       {
 	double d_val;
 	d_val = db_get_double (val);
-	add_res_data_double (net_buf, d_val, col_type, &data_size);
+	add_res_data_double (net_buf, d_val, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_MONETARY:
       {
 	double d_val;
 	d_val = db_value_get_monetary_amount_as_double (val);
-	add_res_data_double (net_buf, d_val, col_type, &data_size);
+	add_res_data_double (net_buf, d_val, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_FLOAT:
       {
 	float f_val;
 	f_val = db_get_float (val);
-	add_res_data_float (net_buf, f_val, col_type, &data_size);
+	add_res_data_float (net_buf, f_val, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_DATE:
@@ -5143,7 +5153,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	db_date = db_get_date (val);
 	db_date_decode (db_date, &mon, &day, &yr);
 	add_res_data_date (net_buf, (short) yr, (short) mon, (short) day,
-			   col_type, &data_size);
+			   ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_TIME:
@@ -5153,7 +5163,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	time = db_get_time (val);
 	db_time_decode (time, &hour, &minute, &second);
 	add_res_data_time (net_buf, (short) hour, (short) minute,
-			   (short) second, col_type, &data_size);
+			   (short) second, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_TIMELTZ:
@@ -5203,13 +5213,13 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	if (client_support_tz == true)
 	  {
 	    add_res_data_timetz (net_buf, (short) hour, (short) minute,
-				 (short) second, tz_str, col_type,
+				 (short) second, tz_str, ext_col_type,
 				 &data_size);
 	  }
 	else
 	  {
 	    add_res_data_time (net_buf, (short) hour, (short) minute,
-			       (short) second, col_type, &data_size);
+			       (short) second, ext_col_type, &data_size);
 
 	  }
       }
@@ -5225,8 +5235,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	db_date_decode (&date, &mon, &day, &yr);
 	db_time_decode (&time, &hh, &mm, &ss);
 	add_res_data_timestamp (net_buf, (short) yr, (short) mon, (short) day,
-				(short) hh, (short) mm, (short) ss, col_type,
-				&data_size);
+				(short) hh, (short) mm, (short) ss,
+				ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_TIMESTAMPLTZ:
@@ -5280,14 +5290,14 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	  {
 	    add_res_data_timestamptz (net_buf, (short) yr, (short) mon,
 				      (short) day, (short) hh, (short) mm,
-				      (short) ss, tz_str, col_type,
+				      (short) ss, tz_str, ext_col_type,
 				      &data_size);
 	  }
 	else
 	  {
 	    add_res_data_timestamp (net_buf, (short) yr, (short) mon,
 				    (short) day, (short) hh, (short) mm,
-				    (short) ss, col_type, &data_size);
+				    (short) ss, ext_col_type, &data_size);
 	  }
       }
       break;
@@ -5299,7 +5309,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	db_datetime_decode (dt, &mon, &day, &yr, &hh, &mm, &ss, &ms);
 	add_res_data_datetime (net_buf, (short) yr, (short) mon, (short) day,
 			       (short) hh, (short) mm, (short) ss, (short) ms,
-			       col_type, &data_size);
+			       ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_DATETIMELTZ:
@@ -5357,14 +5367,14 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	  {
 	    add_res_data_datetimetz (net_buf, (short) yr, (short) mon,
 				     (short) day, (short) hh, (short) mm,
-				     (short) ss, (short) ms, tz_str, col_type,
-				     &data_size);
+				     (short) ss, (short) ms, tz_str,
+				     ext_col_type, &data_size);
 	  }
 	else
 	  {
 	    add_res_data_datetime (net_buf, (short) yr, (short) mon,
 				   (short) day, (short) hh, (short) mm,
-				   (short) ss, (short) ms, col_type,
+				   (short) ss, (short) ms, ext_col_type,
 				   &data_size);
 	  }
       }
@@ -5392,8 +5402,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 		strncpy (buf, str, sizeof (buf) - 1);
 		buf[sizeof (buf) - 1] = '\0';
 		ut_trim (buf);
-		add_res_data_string (net_buf, buf, strlen (buf), col_type,
-				     &data_size);
+		add_res_data_string (net_buf, buf, strlen (buf), ext_col_type,
+				     CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
 	      }
 	    else
 	      {
@@ -5414,6 +5424,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	int num_element;
 	char cas_type = CCI_U_TYPE_NULL;
 	char err_flag = 0;
+	char set_dbtype = DB_TYPE_NULL;
+	unsigned char charset = CAS_SCHEMA_DEFAULT_CHARSET;
 
 	set = db_get_set (val);
 
@@ -5431,8 +5443,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 		DB_DOMAIN *set_domain;
 		char element_type;
 		set_domain = db_col_domain (set);
-		element_type = get_set_domain (set_domain, NULL, NULL, NULL,
-					       NULL);
+		element_type = get_set_domain (set_domain, NULL, NULL,
+					       &set_dbtype, &charset);
 		if (element_type > 0)
 		  {
 		    cas_type = element_type;
@@ -5443,18 +5455,16 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 		for (i = 0; i < num_element; i++)
 		  {
 		    db_set_get (set, i, &(element[i]));
+		    set_dbtype = db_value_type (&(element[i]));
+		    charset = db_get_string_codeset (&(element[i]));
 		    if (i == 0 || cas_type == CCI_U_TYPE_NULL)
 		      {
-			cas_type =
-			  ux_db_type_to_cas_type (db_value_type
-						  (&(element[i])));
+			cas_type = ux_db_type_to_cas_type (set_dbtype);
 		      }
 		    else
 		      {
 			char tmp_type;
-			tmp_type =
-			  ux_db_type_to_cas_type (db_value_type
-						  (&(element[i])));
+			tmp_type = ux_db_type_to_cas_type (set_dbtype);
 			if (db_value_is_null (&(element[i])) == false
 			    && cas_type != tmp_type)
 			  {
@@ -5488,10 +5498,19 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	    set_data_size = 0;
 	    net_buf_cp_int (net_buf, set_data_size, &set_size_msg_offset);
 
-	    if (col_type)
+	    if (column_type_flag)
 	      {
-		net_buf_cp_byte (net_buf, col_type);
+		ext_col_type =
+		  set_extended_cas_type (set_dbtype, db_value_type (val));
+
+		net_buf_cp_cas_type_and_charset (net_buf, ext_col_type,
+						 charset);
 		set_data_size++;
+		if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+		    (net_buf->client_version, PROTOCOL_V7))
+		  {
+		    set_data_size++;
+		  }
 	      }
 
 	    net_buf_cp_byte (net_buf, cas_type);
@@ -5524,7 +5543,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	int h_id;
 
 	h_id = db_get_resultset (val);
-	add_res_data_int (net_buf, h_id, col_type, &data_size);
+	add_res_data_int (net_buf, h_id, ext_col_type, &data_size);
       }
       break;
 
@@ -5534,7 +5553,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	T_LOB_HANDLE cas_lob;
 
 	dblob_to_caslob (val, &cas_lob);
-	add_res_data_lob_handle (net_buf, &cas_lob, col_type, &data_size);
+	add_res_data_lob_handle (net_buf, &cas_lob, ext_col_type, &data_size);
       }
       break;
 
@@ -6036,7 +6055,8 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       /* 1. name */
       p = class_table[cursor_pos - 1].class_name;
-      add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+      add_res_data_string (net_buf, p, strlen (p), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. type */
       add_res_data_short (net_buf, class_table[cursor_pos - 1].class_type, 0,
@@ -6163,7 +6183,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       /* 1. attr name */
       p = attr_info.attr_name;
-      add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+      add_res_data_string (net_buf, p, strlen (p), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. domain */
       add_res_data_short (net_buf, (short) attr_info.domain, 0, NULL);
@@ -6190,7 +6211,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       default_value_string =
 	get_column_default_as_string (db_attr, &alloced_default_value_string);
       add_res_data_string (net_buf, default_value_string,
-			   strlen (default_value_string), 0, NULL);
+			   strlen (default_value_string), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       if (alloced_default_value_string)
 	{
@@ -6203,16 +6225,28 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       /* 11. class name */
       p = attr_info.class_name;
       if (p == NULL)
-	add_res_data_string (net_buf, "", 0, 0, NULL);
+	{
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       NULL);
+	}
       else
-	add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+	{
+	  add_res_data_string (net_buf, p, strlen (p), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	}
 
       /* 12. source class */
       p = attr_info.source_class;
       if (p == NULL)
-	add_res_data_string (net_buf, "", 0, 0, NULL);
+	{
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       NULL);
+	}
       else
-	add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+	{
+	  add_res_data_string (net_buf, p, strlen (p), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	}
 
       /* 13. is_key */
       add_res_data_short (net_buf, (short) attr_info.is_key, 0, NULL);
@@ -6221,11 +6255,13 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       p = attr_info.comment;
       if (p == NULL)
 	{
-	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	  add_res_data_string (net_buf, "", 0, 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	}
       else
 	{
-	  add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+	  add_res_data_string (net_buf, p, strlen (p), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	}
 
       db_value_clear (&val_class);
@@ -6309,7 +6345,8 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       /* 1. name */
       name = (char *) db_method_name (tmp_p);
-      add_res_data_string (net_buf, name, strlen (name), 0, NULL);
+      add_res_data_string (net_buf, name, strlen (name), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. ret domain */
       domain = db_method_arg_domain (tmp_p, 0);
@@ -6346,7 +6383,8 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  sprintf (arg_str, "%s%d ", arg_str, cas_type);
 	}
-      add_res_data_string (net_buf, arg_str, strlen (arg_str), 0, NULL);
+      add_res_data_string (net_buf, arg_str, strlen (arg_str), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       tuple_num++;
       cursor_pos++;
@@ -6415,7 +6453,8 @@ fetch_methfile (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       /* 1. name */
       name = (char *) db_methfile_name (tmp_p);
-      add_res_data_string (net_buf, name, strlen (name), 0, NULL);
+      add_res_data_string (net_buf, name, strlen (name), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       tuple_num++;
       cursor_pos++;
@@ -6499,11 +6538,12 @@ fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 			      0, NULL);
 
 	  /* 2. const name */
-	  add_res_data_string (net_buf, name, strlen (name), 0, NULL);
+	  add_res_data_string (net_buf, name, strlen (name), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
 	  /* 3. attr name */
 	  add_res_data_string (net_buf, attr_name, strlen (attr_name), 0,
-			       NULL);
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
 	  /* 4. num pages */
 	  add_res_data_int (net_buf, bt_total_pages, 0, NULL);
@@ -6518,7 +6558,8 @@ fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	  add_res_data_short (net_buf, j + 1, 0, NULL);
 
 	  /* 8. asc_desc */
-	  add_res_data_string (net_buf, asc_desc ? "D" : "A", 1, 0, NULL);
+	  add_res_data_string (net_buf, asc_desc ? "D" : "A", 1, 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
 	  tuple_num++;
 	  cursor_pos++;
@@ -6592,14 +6633,15 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       /* 1. name */
       if (db_trigger_name (tmp_p->op, &tmp_str) < 0)
 	{
-	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       NULL);
 	}
       else
 	{
 	  if (tmp_str != NULL)
 	    {
 	      add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0,
-				   NULL);
+				   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	      db_string_free (tmp_str);
 	    }
 	}
@@ -6613,7 +6655,8 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	{
 	  trigger_status_str (trig_status, str_buf);
 	}
-      add_res_data_string (net_buf, str_buf, strlen (str_buf), 0, NULL);
+      add_res_data_string (net_buf, str_buf, strlen (str_buf), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 3. event */
       if (db_trigger_event (tmp_p->op, &trig_event) < 0)
@@ -6624,12 +6667,14 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	{
 	  trigger_event_str (trig_event, str_buf);
 	}
-      add_res_data_string (net_buf, str_buf, strlen (str_buf), 0, NULL);
+      add_res_data_string (net_buf, str_buf, strlen (str_buf), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 4. target class */
       if (db_trigger_class (tmp_p->op, &target_class_obj) < 0)
 	{
-	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       NULL);
 	}
       else
 	{
@@ -6638,7 +6683,8 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	    {
 	      tmp_str = (char *) "";
 	    }
-	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0, NULL);
+	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	}
 
       /* 5. target attribute */
@@ -6646,11 +6692,13 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       if ((db_trigger_attribute (tmp_p->op, &tmp_str) < 0)
 	  || (tmp_str == NULL))
 	{
-	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       NULL);
 	}
       else
 	{
-	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0, NULL);
+	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	  db_string_free (tmp_str);
 	}
 
@@ -6663,17 +6711,20 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	{
 	  trigger_time_str (trig_time, str_buf);
 	}
-      add_res_data_string (net_buf, str_buf, strlen (str_buf), 0, NULL);
+      add_res_data_string (net_buf, str_buf, strlen (str_buf), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 7. action */
       tmp_str = NULL;
       if ((db_trigger_action (tmp_p->op, &tmp_str) < 0) || (tmp_str == NULL))
 	{
-	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       NULL);
 	}
       else
 	{
-	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0, NULL);
+	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	  db_string_free (tmp_str);
 	}
 
@@ -6691,18 +6742,21 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	{
 	  trigger_time_str (trig_time, str_buf);
 	}
-      add_res_data_string (net_buf, str_buf, strlen (str_buf), 0, NULL);
+      add_res_data_string (net_buf, str_buf, strlen (str_buf), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 10. condition */
       tmp_str = NULL;
       if ((db_trigger_condition (tmp_p->op, &tmp_str) < 0)
 	  || (tmp_str == NULL))
 	{
-	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       NULL);
 	}
       else
 	{
-	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0, NULL);
+	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	  db_string_free (tmp_str);
 	}
 
@@ -6710,11 +6764,13 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       tmp_str = NULL;
       if ((db_trigger_comment (tmp_p->op, &tmp_str) < 0) || (tmp_str == NULL))
 	{
-	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET,
+			       NULL);
 	}
       else
 	{
-	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0, NULL);
+	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0,
+			       CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	  db_string_free (tmp_str);
 	}
 
@@ -6783,7 +6839,8 @@ fetch_privilege (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       /* 1. name */
       p = priv_table[index].class_name;
-      add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+      add_res_data_string (net_buf, p, strlen (p), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. privilege */
       switch (priv_table[index].priv)
@@ -6813,7 +6870,8 @@ fetch_privilege (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	  p = "NONE";
 	  break;
 	}
-      add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+      add_res_data_string (net_buf, p, strlen (p), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 3. grantable */
       if (priv_table[index].grant)
@@ -6824,7 +6882,8 @@ fetch_privilege (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	{
 	  p = "NO";
 	}
-      add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+      add_res_data_string (net_buf, p, strlen (p), 0,
+			   CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       tuple_num++;
       cursor_pos++;
@@ -6866,16 +6925,20 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos,
       net_buf_cp_object (net_buf, &dummy_obj);
 
       /* 1. PKTABLE_NAME */
-      add_res_data_string_safe (net_buf, fk_res->pktable_name, 0, NULL);
+      add_res_data_string_safe (net_buf, fk_res->pktable_name, 0,
+				CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. PKCOLUMN_NAME */
-      add_res_data_string_safe (net_buf, fk_res->pkcolumn_name, 0, NULL);
+      add_res_data_string_safe (net_buf, fk_res->pkcolumn_name, 0,
+				CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 3. FKTABLE_NAME */
-      add_res_data_string_safe (net_buf, fk_res->fktable_name, 0, NULL);
+      add_res_data_string_safe (net_buf, fk_res->fktable_name, 0,
+				CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 4. FKCOLUMN_NAME */
-      add_res_data_string_safe (net_buf, fk_res->fkcolumn_name, 0, NULL);
+      add_res_data_string_safe (net_buf, fk_res->fkcolumn_name, 0,
+				CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 5. KEY_SEQ */
       add_res_data_short (net_buf, fk_res->key_seq, 0, NULL);
@@ -6887,10 +6950,12 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos,
       add_res_data_short (net_buf, fk_res->delete_action, 0, NULL);
 
       /* 8. FK_NAME */
-      add_res_data_string_safe (net_buf, fk_res->fk_name, 0, NULL);
+      add_res_data_string_safe (net_buf, fk_res->fk_name, 0,
+				CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 9. PK_NAME */
-      add_res_data_string_safe (net_buf, fk_res->pk_name, 0, NULL);
+      add_res_data_string_safe (net_buf, fk_res->pk_name, 0,
+				CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       cursor_pos++;
     }
@@ -6911,13 +6976,14 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos,
 }
 
 static void
-add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, char type,
-		    int *net_size)
+add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size,
+		    unsigned char ext_type, int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + size, NULL);	/* type */
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + size, NULL);	/* type */
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -6929,18 +6995,20 @@ add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, char type,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + size;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + size;
     }
 }
 
 static void
 add_res_data_string (T_NET_BUF * net_buf, const char *str, int size,
-		     char type, int *net_size)
+		     unsigned char ext_type, unsigned char charset,
+		     int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + size + 1, NULL);	/* type, NULL terminator */
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + size + 1, NULL);	/* type, NULL terminator */
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type, charset);
     }
   else
     {
@@ -6953,31 +7021,37 @@ add_res_data_string (T_NET_BUF * net_buf, const char *str, int size,
   if (net_size)
     {
       *net_size =
-	NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + size + NET_SIZE_BYTE;
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + size +
+	NET_SIZE_BYTE;
     }
 }
 
 static void
 add_res_data_string_safe (T_NET_BUF * net_buf, const char *str,
-			  char type, int *net_size)
+			  unsigned char ext_type, unsigned char charset,
+			  int *net_size)
 {
   if (str != NULL)
     {
-      add_res_data_string (net_buf, str, strlen (str), type, net_size);
+      add_res_data_string (net_buf, str, strlen (str), ext_type, charset,
+			   net_size);
     }
   else
     {
-      add_res_data_string (net_buf, "", 0, type, net_size);
+      add_res_data_string (net_buf, "", 0, ext_type, charset, net_size);
     }
 }
 
 static void
-add_res_data_int (T_NET_BUF * net_buf, int value, char type, int *net_size)
+add_res_data_int (T_NET_BUF * net_buf, int value, unsigned char ext_type,
+		  int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_INT, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_INT,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
       net_buf_cp_int (net_buf, value, NULL);
     }
   else
@@ -6988,18 +7062,22 @@ add_res_data_int (T_NET_BUF * net_buf, int value, char type, int *net_size)
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_INT;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	NET_SIZE_INT;
     }
 }
 
 static void
-add_res_data_bigint (T_NET_BUF * net_buf, DB_BIGINT value, char type,
-		     int *net_size)
+add_res_data_bigint (T_NET_BUF * net_buf, DB_BIGINT value,
+		     unsigned char ext_type, int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_BIGINT, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_BIGINT,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
       net_buf_cp_bigint (net_buf, value, NULL);
     }
   else
@@ -7010,18 +7088,22 @@ add_res_data_bigint (T_NET_BUF * net_buf, DB_BIGINT value, char type,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_BIGINT;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	NET_SIZE_BIGINT;
     }
 }
 
 static void
-add_res_data_short (T_NET_BUF * net_buf, short value, char type,
+add_res_data_short (T_NET_BUF * net_buf, short value, unsigned char ext_type,
 		    int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_SHORT, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_SHORT,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
       net_buf_cp_short (net_buf, value);
     }
   else
@@ -7032,18 +7114,22 @@ add_res_data_short (T_NET_BUF * net_buf, short value, char type,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_SHORT;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	NET_SIZE_SHORT;
     }
 }
 
 static void
-add_res_data_float (T_NET_BUF * net_buf, float value, char type,
+add_res_data_float (T_NET_BUF * net_buf, float value, unsigned char ext_type,
 		    int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_FLOAT, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_FLOAT,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
       net_buf_cp_float (net_buf, value);
     }
   else
@@ -7054,18 +7140,22 @@ add_res_data_float (T_NET_BUF * net_buf, float value, char type,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_FLOAT;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	NET_SIZE_FLOAT;
     }
 }
 
 static void
-add_res_data_double (T_NET_BUF * net_buf, double value, char type,
-		     int *net_size)
+add_res_data_double (T_NET_BUF * net_buf, double value,
+		     unsigned char ext_type, int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_DOUBLE, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_DOUBLE,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
       net_buf_cp_double (net_buf, value);
     }
   else
@@ -7076,19 +7166,23 @@ add_res_data_double (T_NET_BUF * net_buf, double value, char type,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_DOUBLE;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	NET_SIZE_DOUBLE;
     }
 }
 
 static void
 add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon, short day,
-			short hh, short mm, short ss, char type,
+			short hh, short mm, short ss, unsigned char ext_type,
 			int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_TIMESTAMP, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf,
+		      NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_TIMESTAMP, NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7104,7 +7198,7 @@ add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0)
+      *net_size = (NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0)
 		   + NET_SIZE_TIMESTAMP);
     }
 }
@@ -7112,17 +7206,19 @@ add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon, short day,
 static void
 add_res_data_timestamptz (T_NET_BUF * net_buf, short yr, short mon, short day,
 			  short hh, short mm, short ss, char *tz_str,
-			  char type, int *net_size)
+			  unsigned char ext_type, int *net_size)
 {
   int tz_size;
 
   tz_size = strlen (tz_str);
 
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, (NET_SIZE_BYTE + NET_SIZE_TIMESTAMP + tz_size
-				+ 1), NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf,
+		      (NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_TIMESTAMP +
+		       tz_size + 1), NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7141,20 +7237,22 @@ add_res_data_timestamptz (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0)
+      *net_size = (NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0)
 		   + NET_SIZE_TIMESTAMP + tz_size + 1);
     }
 }
 
 static void
 add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon, short day,
-		       short hh, short mm, short ss, short ms, char type,
-		       int *net_size)
+		       short hh, short mm, short ss, short ms,
+		       unsigned char ext_type, int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_DATETIME, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf,
+		      NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_DATETIME, NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7171,7 +7269,7 @@ add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0)
+      *net_size = (NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0)
 		   + NET_SIZE_DATETIME);
     }
 }
@@ -7179,18 +7277,21 @@ add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon, short day,
 static void
 add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon, short day,
 			 short hh, short mm, short ss, short ms, char *tz_str,
-			 char type, int *net_size)
+			 unsigned char ext_type, int *net_size)
 {
   int tz_size;
+  int net_buf_type_size = NET_BUF_TYPE_SIZE (net_buf);
 
   tz_size = strlen (tz_str);
 
-  if (type)
+
+  if (ext_type)
     {
       net_buf_cp_int (net_buf,
-		      (NET_SIZE_BYTE + NET_SIZE_DATETIME + tz_size + 1),
+		      (net_buf_type_size + NET_SIZE_DATETIME + tz_size + 1),
 		      NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7210,19 +7311,21 @@ add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0)
+      *net_size = (NET_SIZE_INT + (ext_type ? net_buf_type_size : 0)
 		   + NET_SIZE_DATETIME + tz_size + 1);
     }
 }
 
 static void
 add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss,
-		   char type, int *net_size)
+		   unsigned char ext_type, int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_TIME, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_TIME,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7235,23 +7338,27 @@ add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIME;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	NET_SIZE_TIME;
     }
 }
 
 static void
 add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm, short ss,
-		     char *tz_str, char type, int *net_size)
+		     char *tz_str, unsigned char ext_type, int *net_size)
 {
   int tz_size;
 
   tz_size = strlen (tz_str);
 
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_TIME + tz_size + 1,
-		      NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf,
+		      NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_TIME + tz_size +
+		      1, NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7267,19 +7374,22 @@ add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm, short ss,
 
   if (net_size)
     {
-      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIME
-		   + tz_size + 1);
+      *net_size =
+	(NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	 NET_SIZE_TIME + tz_size + 1);
     }
 }
 
 static void
 add_res_data_date (T_NET_BUF * net_buf, short yr, short mon, short day,
-		   char type, int *net_size)
+		   unsigned char ext_type, int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_DATE, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_DATE,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7292,18 +7402,22 @@ add_res_data_date (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_DATE;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	NET_SIZE_DATE;
     }
 }
 
 static void
-add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, char type,
-		     int *net_size)
+add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj,
+		     unsigned char ext_type, int *net_size)
 {
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_OBJECT, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_OBJECT,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7314,22 +7428,26 @@ add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, char type,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_OBJECT;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	NET_SIZE_OBJECT;
     }
 }
 
 static void
 add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob,
-			 char type, int *net_size)
+			 unsigned char ext_type, int *net_size)
 {
   int lob_handle_size = (NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT
 			 + lob->locator_size);
 
   /* db_type + lob_size + locator_size + locator including null character */
-  if (type)
+  if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + lob_handle_size, NULL);
-      net_buf_cp_byte (net_buf, type);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + lob_handle_size,
+		      NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type,
+				       CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
@@ -7338,7 +7456,9 @@ add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob,
   net_buf_cp_lob_handle (net_buf, lob);
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + lob_handle_size;
+      *net_size =
+	NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) +
+	lob_handle_size;
     }
 }
 

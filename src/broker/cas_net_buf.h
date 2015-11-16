@@ -86,6 +86,9 @@
 #define CHECK_NET_BUF_SIZE(n , size)                           \
   (NET_BUF_CURR_SIZE(n) < (size) ? 1 : 0)
 
+#define NET_BUF_TYPE_SIZE(net_buf) (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL \
+((net_buf)->client_version, PROTOCOL_V7) ? 2 * NET_SIZE_BYTE : NET_SIZE_BYTE)
+
 typedef struct t_net_buf T_NET_BUF;
 struct t_net_buf
 {

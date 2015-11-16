@@ -74,6 +74,7 @@ public class UStatement {
 	private final static byte MASK_TYPE_HAS_2_BYTES = (byte) 0200;
 	private final static byte MASK_TYPE_FROM_SINGLE_BYTE = (byte) 0037;
 	private final static byte MASK_CHARSET_FROM_TYPE = (byte) 0007;
+	private final static byte DEFAULT_CHARSET = (byte) 377;
 
 	private byte statementType;
 
@@ -1999,15 +2000,42 @@ public class UStatement {
 		return true;
 	}
 
-	private byte readTypeFromData(int index, UInputBuffer inBuffer)
+	private byte[] readTypeFromData(int index, UInputBuffer inBuffer)
 	        throws UJciException {
+		byte typeInfo[];
+		
+		typeInfo = new byte[4];
+		/* first two bytes are reserverd for type value */
+		typeInfo[2] = 0;  /* this holds how many bytes we read for type */
+		typeInfo[3] = DEFAULT_CHARSET;  /* this holds charset id */
 		if ((commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL)
 		        || (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_EVALUATE)
 		        || (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP)
 		        || (columnInfo[index].getColumnType() == UUType.U_TYPE_NULL)) {
-			return inBuffer.readByte();
+			byte collectionByte, setType;
+			
+			collectionByte = inBuffer.readByte();
+			if ((byte)(collectionByte & MASK_TYPE_HAS_2_BYTES) == 0) {
+				/* legacy protocol : we expect only simple type here */
+				typeInfo[0] = collectionByte;
+				typeInfo[2] = 1;
+			} else {
+				byte typeInfoColumn[];
+				byte charset;
+
+				charset = (byte) (collectionByte & MASK_CHARSET_FROM_TYPE);
+				collectionByte = (byte)(collectionByte & MASK_COLLECTION_FROM_TYPE); 
+				setType = inBuffer.readByte();
+				typeInfoColumn = UColumnInfo.confirmType(setType, collectionByte);
+				typeInfo[0] = typeInfoColumn[0];
+				typeInfo[1] = typeInfoColumn[1];
+				typeInfo[2] = 2;
+				typeInfo[3] = charset;
+			}
+		} else {
+			typeInfo[0] = UUType.U_TYPE_NULL;
 		}
-		return UUType.U_TYPE_NULL;
+		return typeInfo;
 	}
 
 	private void closeInternal() {
@@ -2069,18 +2097,26 @@ public class UStatement {
 	        throws UJciException {
 		int size;
 		int localType;
+		byte typeInfo[];
+		String charsetName;
 
 		size = inBuffer.readInt();
 		if (size <= 0)
 			return null;
 
-		localType = readTypeFromData(index, inBuffer);
+		typeInfo = readTypeFromData(index, inBuffer);
+		localType = typeInfo[0];
 		if (localType == UUType.U_TYPE_NULL)
 			localType = columnInfo[index].getColumnType();
-		else
-			size--;
+		
+		size = size - typeInfo[2];
+		if (typeInfo[3] == DEFAULT_CHARSET) {
+			charsetName = null;
+		} else {
+			charsetName = UJCIUtil.getJavaCharsetName ((byte)typeInfo[3]);
+		}
 
-		return (readData(inBuffer, localType, size, null));
+		return (readData(inBuffer, localType, size, charsetName));
 	}
 
 	private Object readData(UInputBuffer inBuffer, int dataType, int dataSize, String charsetName)
