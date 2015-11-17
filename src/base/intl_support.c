@@ -5901,3 +5901,413 @@ intl_get_money_esc_ISO_symbol (const DB_CURRENCY currency)
     }
   return moneysymbols_esc_iso_codes[currency];
 }
+
+/*
+ * intl_binary_to_utf8 - converts a buffer from binary to utf8, replacing 
+ *			 invalid UTF-8 sequences with '?'
+ *
+ *   return: 0 conversion ok, 1 conversion done, but invalid characters where
+ *	     found
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer;
+ *   out_size(out): size of string (NUL terminator not included)
+ *
+ *  Valid ranges:
+ *    - 1 byte : 00 - 7F
+ *    - 2 bytes: C2 - DF , 80 - BF		       (U +80 .. U+7FF)
+ *    - 3 bytes: E0	 , A0 - BF , 80 - BF	       (U +800 .. U+FFF)
+ *		 E1 - EC , 80 - BF , 80 - BF	       (U +1000 .. +CFFF)
+ *		 ED	 , 80 - 9F , 80 - BF	       (U +D000 .. +D7FF)
+ *		 EE - EF , 80 - BF , 80 - BF	       (U +E000 .. +FFFF)
+ *    - 4 bytes: F0	 , 90 - BF , 80 - BF , 80 - BF (U +10000 .. +3FFFF)
+ *		 F1 - F3 , 80 - BF , 80 - BF , 80 - BF (U +40000 .. +FFFFF)
+ *		 F4	 , 80 - 8F , 80 - BF , 80 - BF (U +100000 .. +10FFFF)
+ */
+int
+intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
+		     unsigned char **out_buf, int *out_size)
+{
+  const unsigned char *p = in_buf;
+  const unsigned char *p_end = NULL;
+  const unsigned char *curr_char = NULL;
+  bool has_invalid_chars = false;
+  unsigned char *p_out = NULL;
+  int status = 0;
+
+  p_out = (unsigned char *) *out_buf;
+  p_end = in_buf + in_size;
+
+  while (p < p_end)
+    {
+      curr_char = p;
+
+      if (*p < 0x80)
+	{
+	  *p_out++ = *p++;
+	  continue;
+	}
+
+      /* range 80 - BF is not valid UTF-8 first byte */
+      /* range C0 - C1 overlaps 1 byte 00 - 20 (2 byte overlongs) */
+      if (*p < 0xc2)
+	{
+	  *p_out++ = '?';
+	  p++;
+	  status = 1;
+	  continue;
+	}
+
+      /* check 2 bytes sequences */
+      /* 2 bytes sequence allowed : C2 - DF , 80 - BF */
+      if (UTF8_BYTE_IN_RANGE (*p, 0xc2, 0xdf))
+	{
+	  p++;
+	  if (p >= p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	      continue;
+	    }
+
+	  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+	    {
+	      *p_out++ = *(p - 1);
+	      *p_out++ = *p;
+	      p++;
+	      continue;
+	    }
+	  *p_out++ = '?';
+	  status = 1;
+	  continue;
+	}
+
+      /* check 3 bytes sequences */
+      /* 3 bytes sequence : E0   , A0 - BF , 80 - BF */
+      if (*p == 0xe0)
+	{
+	  p++;
+	  if (p >= p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	      continue;
+	    }
+
+	  if (UTF8_BYTE_IN_RANGE (*p, 0xa0, 0xbf))
+	    {
+	      p++;
+	      if (p >= p_end)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		  continue;
+		}
+
+	      if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		{
+		  *p_out++ = *(p - 2);
+		  *p_out++ = *(p - 1);
+		  *p_out++ = *p;
+		  p++;
+		  continue;
+		}
+	    }
+
+	  *p_out++ = '?';
+	  status = 1;
+	  continue;
+	}
+      /* 3 bytes sequence : E1 - EC , 80 - BF , 80 - BF */
+      /* 3 bytes sequence : EE - EF , 80 - BF , 80 - BF */
+      else if (UTF8_BYTE_IN_RANGE (*p, 0xe1, 0xec) ||
+	       UTF8_BYTE_IN_RANGE (*p, 0xee, 0xef))
+	{
+	  p++;
+	  if (p >= p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	      continue;
+	    }
+
+	  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+	    {
+	      p++;
+	      if (p >= p_end)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		  continue;
+		}
+
+	      if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		{
+		  *p_out++ = *(p - 2);
+		  *p_out++ = *(p - 1);
+		  *p_out++ = *p;
+		  p++;
+		  continue;
+		}
+	    }
+	  *p_out++ = '?';
+	  status = 1;
+	  continue;
+	}
+      /* 3 bytes sequence : ED   , 80 - 9F , 80 - BF */
+      else if (*p == 0xed)
+	{
+	  p++;
+	  if (p >= p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	      continue;
+	    }
+
+	  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0x9f))
+	    {
+	      p++;
+	      if (p >= p_end)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		  continue;
+		}
+
+	      if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		{
+		  *p_out++ = *(p - 2);
+		  *p_out++ = *(p - 1);
+		  *p_out++ = *p;
+		  p++;
+		  continue;
+		}
+	    }
+	  *p_out++ = '?';
+	  status = 1;
+	  continue;
+	}
+
+      /* 4 bytes sequence : F0   , 90 - BF , 80 - BF , 80 - BF */
+      if (*p == 0xf0)
+	{
+	  p++;
+	  if (p >= p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	      continue;
+	    }
+
+	  if (UTF8_BYTE_IN_RANGE (*p, 0x90, 0xbf))
+	    {
+	      p++;
+	      if (p >= p_end)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		  continue;
+		}
+
+	      if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		{
+		  p++;
+		  if (p >= p_end)
+		    {
+		      *p_out++ = '?';
+		      status = 1;
+		      continue;
+		    }
+
+		  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		    {
+		      *p_out++ = *(p - 3);
+		      *p_out++ = *(p - 2);
+		      *p_out++ = *(p - 1);
+		      *p_out++ = *p;
+		      p++;
+		      continue;
+		    }
+		}
+	    }
+	  *p_out++ = '?';
+	  status = 1;
+	  continue;
+	}
+      /* 4 bytes sequence : F1 - F3 , 80 - BF , 80 - BF , 80 - BF */
+      if (UTF8_BYTE_IN_RANGE (*p, 0xf1, 0xf3))
+	{
+	  p++;
+	  if (p >= p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	      continue;
+	    }
+
+	  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+	    {
+	      p++;
+	      if (p >= p_end)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		  continue;
+		}
+
+	      if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		{
+		  p++;
+		  if (p >= p_end)
+		    {
+		      *p_out++ = '?';
+		      status = 1;
+		    }
+
+		  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		    {
+		      *p_out++ = *(p - 3);
+		      *p_out++ = *(p - 2);
+		      *p_out++ = *(p - 1);
+		      *p_out++ = *p;
+		      p++;
+		      continue;
+		    }
+		}
+	    }
+	  *p_out++ = '?';
+	  status = 1;
+	  continue;
+	}
+      /* 4 bytes sequence : F4 , 80 - 8F , 80 - BF , 80 - BF */
+      else if (*p == 0xf4)
+	{
+	  p++;
+	  if (p >= p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	      continue;
+	    }
+
+	  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0x8f))
+	    {
+	      p++;
+	      if (p >= p_end)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		  continue;
+		}
+
+	      if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		{
+		  p++;
+		  if (p >= p_end)
+		    {
+		      *p_out++ = '?';
+		      status = 1;
+		      continue;
+		    }
+
+		  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
+		    {
+		      *p_out++ = *(p - 3);
+		      *p_out++ = *(p - 2);
+		      *p_out++ = *(p - 1);
+		      *p_out++ = *p;
+		      p++;
+		      continue;
+		    }
+		}
+	    }
+	  *p_out++ = '?';
+	  status = 1;
+	  continue;
+	}
+
+      assert (*p > 0xf4);
+      status = 1;
+    }
+
+  *out_size = p_out - *(out_buf);
+  return status;
+}
+
+/*
+ * intl_binary_to_euckr - converts a buffer from binary to euckr, replacing 
+ *			 invalid euckr sequences with '?'
+ *
+ *   return: 0 conversion ok, 1 conversion done, but invalid characters where
+ *	     found
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer;
+ *   out_size(out): size of string (NUL terminator not included)
+ *
+ *  Valid ranges:
+ *    - 1 byte : 00 - 8E ; 90 - A0
+ *    - 2 bytes: A1 - FE , 00 - FF
+ *    - 3 bytes: 8F	 , 00 - FF , 00 - FF
+ */
+int
+intl_binary_to_euckr (const unsigned char *in_buf, const int in_size,
+		      unsigned char **out_buf, int *out_size)
+{
+  const unsigned char *p = in_buf;
+  const unsigned char *p_end = NULL;
+  const unsigned char *curr_char = NULL;
+  unsigned char *p_out = NULL;
+  int status = 0;
+
+  p_out = (unsigned char *) *out_buf;
+  p_end = in_buf + in_size;
+
+  while (p < p_end)
+    {
+      curr_char = p;
+
+      if (*p < 0x80)
+	{
+	  *p_out++ = *p++;
+	  continue;
+	}
+
+      /* SS3 byte value starts a 3 bytes character */
+      if (*p == SS3)
+	{
+	  p++;
+	  p++;
+	  p++;
+	  if (p > p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	    }
+	  continue;
+	}
+
+      /* check 2 bytes sequences */
+      if (UTF8_BYTE_IN_RANGE (*p, 0xa1, 0xfe))
+	{
+	  p++;
+	  p++;
+	  if (p > p_end)
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	    }
+	  continue;
+	}
+
+      *p_out++ = '?';
+      p++;
+      status = 1;
+    }
+
+  *out_size = p_out - *(out_buf);
+  return status;
+}

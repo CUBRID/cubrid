@@ -9786,7 +9786,29 @@ qstr_coerce (const unsigned char *src,
       else
 	{
 	  assert (copy_size <= alloc_size);
-	  (void) memcpy ((char *) *dest, (char *) src, (int) copy_size);
+
+	  if (src_codeset == INTL_CODESET_RAW_BYTES
+	      && (INTL_CODESET_MULT (dest_codeset) > 1))
+	    {
+	      int conv_size = 0;
+
+	      if (dest_codeset == INTL_CODESET_UTF8)
+		{
+		  conv_status =
+		    intl_binary_to_utf8 (src, copy_size, dest, &conv_size);
+		}
+	      else
+		{
+		  assert (dest_codeset == INTL_CODESET_KSC5601_EUC);
+		  conv_status =
+		    intl_binary_to_euckr (src, copy_size, dest, &conv_size);
+		}
+	      copy_size = conv_size;
+	    }
+	  else
+	    {
+	      (void) memcpy ((char *) *dest, (char *) src, (int) copy_size);
+	    }
 	}
 
       end_of_string = (char *) qstr_pad_string ((unsigned char *)
