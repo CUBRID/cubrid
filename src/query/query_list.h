@@ -739,12 +739,12 @@ enum
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 
-#define IS_XASL_TRACE_TEXT(flag)    ((flag) & XASL_TRACE_TEXT)
-#define IS_XASL_TRACE_JSON(flag)    ((flag) & XASL_TRACE_JSON)
+#define IS_XASL_TRACE_TEXT(flag)    (((flag) & XASL_TRACE_TEXT) != 0)
+#define IS_XASL_TRACE_JSON(flag)    (((flag) & XASL_TRACE_JSON) != 0)
 
-#define IS_TRIGGER_INVOLVED(flag)   ((flag) & TRIGGER_IS_INVOLVED)
+#define IS_TRIGGER_INVOLVED(flag)   (((flag) & TRIGGER_IS_INVOLVED) != 0)
 
-#define IS_XASL_CACHE_PINNED_REFERENCE(flag)   ((flag) & XASL_CACHE_PINNED_REFERENCE)
+#define IS_XASL_CACHE_PINNED_REFERENCE(flag)   (((flag) & XASL_CACHE_PINNED_REFERENCE) != 0)
 
 typedef int QUERY_FLAG;
 
