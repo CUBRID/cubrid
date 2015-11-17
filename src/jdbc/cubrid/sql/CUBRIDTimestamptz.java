@@ -38,6 +38,7 @@ import cubrid.jdbc.driver.*;
 import java.text.SimpleDateFormat;
 import java.text.DateFormat;
 import java.util.TimeZone;
+import java.util.Calendar;
 
 public class CUBRIDTimestamptz extends CUBRIDTimestamp {
     private static final long serialVersionUID = 6217189754717078421L;
@@ -63,7 +64,12 @@ public class CUBRIDTimestamptz extends CUBRIDTimestamp {
 		if (timeinfo.isPM){
 			time += 43200000; // 12 hours in milliseconds
 		}
+		
+		Calendar cal = Calendar.getInstance();
+		int utcOffset = (cal.get(Calendar.ZONE_OFFSET) + cal.get(Calendar.DST_OFFSET));
 
+		time = time + utcOffset;
+		
 		setTime(time);
 		this.timezone = timeinfo.timezone;		
 		this.isDatetime = timeinfo.isDatetime;
@@ -79,7 +85,10 @@ public class CUBRIDTimestamptz extends CUBRIDTimestamp {
 	
 	public static CUBRIDTimestamptz valueOf(String str_timestamp, boolean isdt, String str_timezone) {
 		Timestamp tmptime = Timestamp.valueOf(str_timestamp);
-		CUBRIDTimestamptz cubrid_ts_tz = new CUBRIDTimestamptz(tmptime.getTime(), isdt, str_timezone);
+		Calendar cal = Calendar.getInstance();
+		int utcOffset = (cal.get(Calendar.ZONE_OFFSET) + cal.get(Calendar.DST_OFFSET));
+
+		CUBRIDTimestamptz cubrid_ts_tz = new CUBRIDTimestamptz(tmptime.getTime() + utcOffset, isdt, str_timezone);
 		return cubrid_ts_tz;
 	}
 
