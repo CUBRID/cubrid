@@ -1256,10 +1256,11 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 				     user_oid_p,
 				     context->is_xasl_pinned_reference);
 
-      if (cache_entry_p && !context->is_xasl_pinned_reference)
+      if (cache_entry_p)
 	{
 	  /* check recompilation threshold */
-	  if (qexec_RT_xasl_cache_ent (thread_p, cache_entry_p) == NO_ERROR)
+	  if (context->is_xasl_pinned_reference
+	      || qexec_RT_xasl_cache_ent (thread_p, cache_entry_p) == NO_ERROR)
 	    {
 	      XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
 	      if (stream->xasl_header)
@@ -1270,9 +1271,12 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 		}
 	    }
 
-	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
-							cache_entry_p, true,
-							false);
+	  if (!context->is_xasl_pinned_reference)
+	    {
+	      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+							    cache_entry_p, true,
+							    false);
+	    }
 	}
 
       return stream->xasl_id;
