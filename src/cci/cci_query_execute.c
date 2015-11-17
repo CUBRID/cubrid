@@ -2608,7 +2608,7 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   char *result_msg = NULL;
   int result_msg_size;
   int valsize = 0;
-  char type = 0;
+  unsigned char type = 0;
   char *ptr = NULL;
   net_buf_init (&net_buf);
 
@@ -2667,6 +2667,31 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   /* decode type */
   type = *ptr;
+
+  if (CCI_NET_TYPE_HAS_2BYTES (type))
+    {
+      unsigned char set_type;
+      T_CCI_U_EXT_TYPE u_ext_type;
+
+      /* type encoded on 2 bytes */
+      if (valsize <= NET_SIZE_BYTE)
+	{
+	  FREE_MEM (result_msg);
+	  return CCI_ER_NO_ERROR;
+	}
+
+      ptr++;
+      valsize--;
+
+      NET_STR_TO_BYTE (set_type, ptr);
+      u_ext_type = get_ext_utype_from_net_bytes (type, set_type);
+      type = CCI_GET_COLLECTION_DOMAIN (u_ext_type);
+    }
+  else
+    {
+      /* legacy server, type byte already read */
+    }
+
   if (type != CCI_U_TYPE_NUMERIC)
     {
       FREE_MEM (result_msg);
