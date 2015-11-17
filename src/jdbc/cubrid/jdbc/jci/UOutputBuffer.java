@@ -52,6 +52,7 @@ import cubrid.jdbc.util.ByteArrayBuffer;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimetz;
 import cubrid.sql.CUBRIDTimestamptz;
+import java.util.TimeZone;
 
 class UOutputBuffer {
 	private UConnection u_con;
@@ -204,7 +205,7 @@ class UOutputBuffer {
 
 	int addTimestamp(Timestamp value) throws IOException {
 		dataBuffer.writeInt(14);
-		writeTimestamp(value, false);
+		writeTimestamp(value, false, false);
 		return 18;
 	}
 
@@ -216,14 +217,21 @@ class UOutputBuffer {
 		timezone_len = timezone_str.length();
 
 		dataBuffer.writeInt(14 + timezone_len);
-		writeTimestamp(value, false);
+		writeTimestamp(value, false, true);
 		dataBuffer.write(timezone_str.getBytes(), 0, timezone_len);
 
 		return 4 + 14 + timezone_len;
 	}
 
-	private void writeTimestamp(Timestamp date, boolean withMili)
+	private void writeTimestamp(Timestamp date, boolean withMili, boolean isUTC)
 	        throws IOException {
+		TimeZone oldtimezone;
+
+		oldtimezone  = c.getTimeZone();
+		if (isUTC) {
+			c.setTimeZone(TimeZone.getTimeZone("UTC"));
+		}
+
 		c.setTime(date);
 		dataBuffer.writeShort(c.get(Calendar.YEAR));
 		dataBuffer.writeShort(c.get(Calendar.MONTH) + 1);
@@ -236,11 +244,15 @@ class UOutputBuffer {
 		} else {
 			dataBuffer.writeShort((short) 0);
 		}
+
+		if (isUTC) {
+			c.setTimeZone(oldtimezone);
+		}
 	}
 
 	int addDatetime(Timestamp value) throws IOException {
 		dataBuffer.writeInt(14);
-		writeTimestamp(value, true);
+		writeTimestamp(value, true, false);
 		return 18;
 	}
 
@@ -252,7 +264,7 @@ class UOutputBuffer {
 		timezone_len = timezone_str.length();
 
 		dataBuffer.writeInt(14 + timezone_len);
-		writeTimestamp(value, true);
+		writeTimestamp(value, true, true);
 		dataBuffer.write(timezone_str.getBytes(), 0, timezone_len);
 
 		return 4 + 14 + timezone_len;
