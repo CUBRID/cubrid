@@ -17078,6 +17078,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto exit;
 	}
 
+      if (parser->is_xasl_pinned_reference)
+	{
+	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
+	}
+
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
 
@@ -17132,6 +17137,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (err != NO_ERROR)
 	    {
 	      goto exit;
+	    }
+
+	  if (parser->is_xasl_pinned_reference)
+	    {
+	      query_flag |= XASL_CACHE_PINNED_REFERENCE;
 	    }
 
 	  query_flag |= NOT_FROM_RESULT_CACHE;
