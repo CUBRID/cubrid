@@ -2371,8 +2371,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
-    case LOG_UNLOCK_COMMIT:
-    case LOG_UNLOCK_ABORT:
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
       break;
@@ -4121,8 +4119,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    case LOG_DUMMY_CRASH_RECOVERY:
 	    case LOG_REPLICATION_DATA:
 	    case LOG_REPLICATION_STATEMENT:
-	    case LOG_UNLOCK_COMMIT:
-	    case LOG_UNLOCK_ABORT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_END_OF_LOG:
@@ -4270,7 +4266,8 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (tdes->coord == NULL)
 	{			/* If this is a local transaction */
 	  (void) log_complete (thread_p, tdes, LOG_COMMIT,
-			       LOG_DONT_NEED_NEWTRID);
+			       LOG_DONT_NEED_NEWTRID,
+			       LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
     }
@@ -4279,7 +4276,8 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (tdes->coord == NULL)
 	{
 	  (void) log_complete (thread_p, tdes, LOG_COMMIT,
-			       LOG_DONT_NEED_NEWTRID);
+			       LOG_DONT_NEED_NEWTRID,
+			       LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
     }
@@ -4433,7 +4431,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	      && LSA_ISNULL (&tdes->undo_nxlsa))
 	    {
 	      (void) log_complete (thread_p, tdes, LOG_ABORT,
-				   LOG_DONT_NEED_NEWTRID);
+				   LOG_DONT_NEED_NEWTRID,
+				   LOG_NEED_TO_WRITE_EOT_LOG);
 	      logtb_free_tran_index (thread_p, tran_index);
 	    }
 	}
@@ -4703,8 +4702,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_SAVEPOINT:
 		case LOG_REPLICATION_DATA:
 		case LOG_REPLICATION_STATEMENT:
-		case LOG_UNLOCK_COMMIT:
-		case LOG_UNLOCK_ABORT:
 		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_DUMMY_OVF_RECORD:
 		  /* Not for UNDO ... */
@@ -4783,7 +4780,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  tdes->mvccinfo.id = MVCCID_NULL;
 
 		  (void) log_complete (thread_p, tdes, LOG_ABORT,
-				       LOG_DONT_NEED_NEWTRID);
+				       LOG_DONT_NEED_NEWTRID,
+				       LOG_NEED_TO_WRITE_EOT_LOG);
 		  if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
 		    {
 		      vacuum_rv_finish_worker_recovery (thread_p, tran_id);
@@ -4815,7 +4813,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  tdes->mvccinfo.id = MVCCID_NULL;
 
 		  (void) log_complete (thread_p, tdes, LOG_ABORT,
-				       LOG_DONT_NEED_NEWTRID);
+				       LOG_DONT_NEED_NEWTRID,
+				       LOG_NEED_TO_WRITE_EOT_LOG);
 		  if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
 		    {
 		      vacuum_rv_finish_worker_recovery (thread_p, tran_id);
@@ -4838,7 +4837,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      tdes->mvccinfo.id = MVCCID_NULL;
 
 		      (void) log_complete (thread_p, tdes, LOG_ABORT,
-					   LOG_DONT_NEED_NEWTRID);
+					   LOG_DONT_NEED_NEWTRID,
+					   LOG_NEED_TO_WRITE_EOT_LOG);
 		      if (LOG_IS_VACUUM_WORKER_TRANID (tran_id))
 			{
 			  vacuum_rv_finish_worker_recovery (thread_p,
@@ -5732,8 +5732,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
-    case LOG_UNLOCK_COMMIT:
-    case LOG_UNLOCK_ABORT:
     case LOG_END_OF_LOG:
       break;
 

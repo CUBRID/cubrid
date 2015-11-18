@@ -248,11 +248,9 @@ struct la_commit
   LA_COMMIT *next;
   LA_COMMIT *prev;
 
-  int type;			/* transaction state -
-				 * LOG_COMMIT or LOG_UNLOCK_COMMIT */
+  int type;			/* transaction state - LOG_COMMIT */
   int tranid;			/* transaction id */
-  LOG_LSA log_lsa;		/* LSA of LOG_COMMIT or
-				 * LSA of LOG_UNLOCK_COMMIT */
+  LOG_LSA log_lsa;		/* LSA of LOG_COMMIT */
   time_t log_record_time;	/* commit time at the server site */
 };
 
@@ -512,11 +510,9 @@ static void la_clear_all_repl_and_commit_list (void);
 
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 			    LOG_LSA * lsa);
-static int la_add_unlock_commit_log (int tranid, LOG_LSA * lsa);
-static int la_add_abort_log (int tranid, LOG_LSA * lsa);
+static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa,
+					    int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
-static int la_set_commit_log (int tranid, int rectype, LOG_LSA * lsa,
-			      time_t log_record_time);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 			   int bound_bit_flag, DB_OTMPL * def,
 			   DB_VALUE * key, int offset_size);
@@ -3740,26 +3736,24 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 }
 
 /*
- * la_add_unlock_commit_log() - add the unlock_commit log to the
- *                                   commit list
+ * la_add_node_into_la_commit_list() - add a LA_COMMIT node into the commit list
  *   return: NO_ERROR or error code
  *   tranid: the target transaction id
  *   lsa   : the target LSA of the log
+ *   type  : the type of the log
+ *   eot_time : timestamp of EOT
  *
  * Note:
  *     APPLY thread traverses the transaction log pages, and finds out the
  *     REPLICATION LOG record. If it meets the REPLICATION LOG record,
  *     it adds that record to the apply list for later use.
- *     When the APPLY thread meets the LOG COMMIT record, it applies the
+ *     When the APPLY thread meets the LOG_COMMIT record, it applies the
  *     inserted REPLICAION LOG records into the slave.
- *     The APPLY thread applies transaction  not in regular sequence of
- *     LOG_COMMIT record, but in sequence of  LOG_UNLOCK_COMMIT record.
- *     When the APPLY thread meet the LOG_UNLOCK_COMMIT record, It doesn't
- *     apply  REPLICATION LOC record to the slave and insert REPLICATION LOC
- *     record into commit list.
+ *     The APPLY thread applies transaction with the order of LOG_COMMIT record.
  */
 static int
-la_add_unlock_commit_log (int tranid, LOG_LSA * lsa)
+la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type,
+				 time_t eot_time)
 {
   LA_COMMIT *commit;
   int error = NO_ERROR;
@@ -3771,9 +3765,11 @@ la_add_unlock_commit_log (int tranid, LOG_LSA * lsa)
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_COMMIT));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
   commit->prev = NULL;
   commit->next = NULL;
-  commit->type = LOG_UNLOCK_COMMIT;
+  commit->type = type;
+  commit->log_record_time = eot_time;
   LSA_COPY (&commit->log_lsa, lsa);
   commit->tranid = tranid;
 
@@ -3788,25 +3784,6 @@ la_add_unlock_commit_log (int tranid, LOG_LSA * lsa)
       la_Info.commit_tail->next = commit;
       la_Info.commit_tail = commit;
     }
-
-  return error;
-}
-
-static int
-la_add_abort_log (int tranid, LOG_LSA * lsa)
-{
-  int error = NO_ERROR;
-  LA_COMMIT *commit;
-
-  error = la_add_unlock_commit_log (tranid, lsa);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  commit = la_Info.commit_tail;	/* last commit log */
-  commit->type = LOG_ABORT;
-  commit->log_record_time = 0;
 
   return error;
 }
@@ -3849,49 +3826,6 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
   donetime = (struct log_donetime *) ((char *) pg->area + offset);
 
   return donetime->at_time;
-}
-
-/*
- * la_set_commit_log() - update the unlock_commit log to the commit list
- *   return: commit list count
- *   tranid : the target transaction id
- *   rectype : the target log record type (LOG_COMMIT_TOPOPE | LOG_COMMIT)
- *   lsa : the target LSA of the log
- *
- * Note:
- *     APPLY thread traverses the transaction log pages, and finds out the
- *     REPLICATION LOG record. If it meets the REPLICATION LOG record,
- *     it adds that record to the apply list for later use.
- *     When the APPLY thread meets the LOG COMMIT record, it applies the
- *     inserted REPLICAION LOG records into the slave.
- *     The APPLY thread applies transaction not in sequence of
- *     LOG_COMMIT record, but in regular sequence of LOG_UNLOCK_COMMIT record.
- *     When the APPLY thread meet the LOG_COMMIT record, It applies
- *     REPLICATION LOC record to the slave in regular sequence of commit list.
- *
- * NOTE
- */
-static int
-la_set_commit_log (int tranid, int rectype, LOG_LSA * lsa,
-		   time_t log_record_time)
-{
-  LA_COMMIT *commit;
-  int count = 0;
-
-  commit = la_Info.commit_tail;
-  while (commit)
-    {
-      if (commit->tranid == tranid)
-	{
-	  commit->type = rectype;
-	  commit->log_record_time = log_record_time;
-	  count++;
-	  break;
-	}
-      commit = commit->prev;
-    }
-
-  return count;
 }
 
 /*
@@ -6454,9 +6388,11 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
   int commit_list_count;
   struct log_ha_server_state *ha_server_state;
   char buffer[256];
+  time_t eot_time;
 
-  if (lrec->trid == NULL_TRANID ||
-      LSA_GT (&lrec->prev_tranlsa, final) || LSA_GT (&lrec->back_lsa, final))
+  if (lrec->trid == NULL_TRANID
+      || LSA_GT (&lrec->prev_tranlsa, final)
+      || LSA_GT (&lrec->back_lsa, final))
     {
       if (lrec->type != LOG_END_OF_LOG)
 	{
@@ -6476,8 +6412,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 
   if ((lrec->type != LOG_END_OF_LOG
        && lrec->type != LOG_DUMMY_HA_SERVER_STATE)
-      && (lrec->trid != LOG_SYSTEM_TRANID)
-      && (LSA_ISNULL (&lrec->prev_tranlsa)))
+      && lrec->trid != LOG_SYSTEM_TRANID && LSA_ISNULL (&lrec->prev_tranlsa))
     {
       apply = la_add_apply_list (lrec->trid);
       if (apply == NULL)
@@ -6539,27 +6474,12 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	}
       break;
 
-    case LOG_UNLOCK_COMMIT:
     case LOG_COMMIT_TOPOPE:
-      /* add the repl_list to the commit_list  */
-      error = la_add_unlock_commit_log (lrec->trid, final);
-      if (error != NO_ERROR)
-	{
-	  la_applier_need_shutdown = true;
-	  return error;
-	}
-
-      if (lrec->type != LOG_COMMIT_TOPOPE)
-	{
-	  break;
-	}
-
     case LOG_COMMIT:
       /* apply the replication log to the slave */
       if (LSA_GT (final, &la_Info.committed_lsa))
 	{
-	  time_t eot_time;
-
+	  /* add the repl_list to the commit_list */
 	  if (lrec->type == LOG_COMMIT_TOPOPE)
 	    {
 	      eot_time = 0;
@@ -6569,15 +6489,12 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	      eot_time = la_retrieve_eot_time (pg_ptr, final);
 	    }
 
-	  commit_list_count =
-	    la_set_commit_log (lrec->trid, lrec->type, final, eot_time);
-	  if (commit_list_count <= 0)
+	  error = la_add_node_into_la_commit_list (lrec->trid, final,
+						   lrec->type, eot_time);
+	  if (error != NO_ERROR)
 	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "Cannot find commit list with Trid %d LSA[%d:%d]",
-			    lrec->trid, final->pageid, final->offset);
-	      la_free_repl_items_by_tranid (lrec->trid);
-	      break;
+	      la_applier_need_shutdown = true;
+	      return error;
 	    }
 
 	  /* in case of delayed/time-bound replication */
@@ -6647,12 +6564,9 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	}
       break;
 
-      /* you have to check the ABORT LOG to avoid the memory leak */
-    case LOG_UNLOCK_ABORT:
-      break;
-
     case LOG_ABORT:
-      error = la_add_abort_log (lrec->trid, final);
+      error = la_add_node_into_la_commit_list (lrec->trid, final, LOG_ABORT,
+					       0);
       if (error != NO_ERROR)
 	{
 	  la_applier_need_shutdown = true;
@@ -6717,15 +6631,14 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       break;
     }				/* switch(lrec->type) */
 
-  /*
-   * if this is the final record of the archive log..
+  /* if this is the last record of the archive log..
    * we have to fetch the next page. So, increase the pageid,
    * but we don't know the exact offset of the next record.
    * the offset would be adjusted after getting the next log page
    */
-  if (lrec->forw_lsa.pageid == -1 ||
-      lrec->type <= LOG_SMALLER_LOGREC_TYPE ||
-      lrec->type >= LOG_LARGER_LOGREC_TYPE)
+  if (lrec->forw_lsa.pageid == -1
+      || lrec->type <= LOG_SMALLER_LOGREC_TYPE
+      || lrec->type >= LOG_LARGER_LOGREC_TYPE)
     {
       if (la_does_page_exist (final->pageid) == LA_PAGE_EXST_IN_ARCHIVE_LOG)
 	{

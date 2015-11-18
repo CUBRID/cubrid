@@ -431,6 +431,10 @@ typedef enum log_getnewtrid LOG_GETNEWTRID;
 enum log_getnewtrid
 { LOG_DONT_NEED_NEWTRID, LOG_NEED_NEWTRID };
 
+typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
+enum log_wrote_eot_log
+{ LOG_NEED_TO_WRITE_EOT_LOG, LOG_ALREADY_WROTE_EOT_LOG };
+
 /*
  * Specify up to int bits of permanent status indicators.
  * Restore in progress is the only one so far, the rest are reserved
@@ -1486,10 +1490,12 @@ enum log_rectype
 #endif
   LOG_REPLICATION_DATA = 39,	/* Replication log for insert, delete or update */
   LOG_REPLICATION_STATEMENT = 40,	/* Replication log for schema, index, trigger or system catalog updates */
+#if 0
   LOG_UNLOCK_COMMIT = 41,	/* for repl_agent to guarantee the order of */
   LOG_UNLOCK_ABORT = 42,	/* transaction commit, we append the unlock info.
 				   before calling lock_unlock_all()
 				 */
+#endif
   LOG_DIFF_UNDOREDO_DATA = 43,	/* diff undo redo data */
   LOG_DUMMY_HA_SERVER_STATE = 44,	/* HA server state */
   LOG_DUMMY_OVF_RECORD = 45,	/* indicator of the first part of an overflow record */

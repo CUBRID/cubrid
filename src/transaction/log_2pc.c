@@ -324,7 +324,7 @@ log_2pc_dump_participants (FILE * fp, int block_length,
  *              willing to commit, otherwise, false is returned.
  *
  *              Currently, our communication subsystem does not provide an
- *              asyncronous capabilities for multicasting. Once this is
+ *              asynchronous capabilities for multicasting. Once this is
  *              provided, the jobs of this function will change. For example,
  *              the collecting of votes will be done through interrupts, and
  *              so on.
@@ -352,7 +352,7 @@ log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
  *   block_particps_ids(in): An array of particpant ids. The length of each
  *                        element should be known by the callee.
  *
- * NOTE:Send the commit decison to participants which have not
+ * NOTE:Send the commit decision to participants which have not
  *              received the commit decision. This is found by looking to the
  *              particps_indices array. If the ith element of the array is 0,
  *              the ith participant needs to be informed, otherwise, it does
@@ -362,7 +362,7 @@ log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
  *              number.
  *
  *              Currently, our communication subsystem does not provide an
- *              asyncronous capabilities for multicasting. Once this is
+ *              asynchronous capabilities for multicasting. Once this is
  *              provided, the jobs of this function will change. For example,
  *              the collecting of votes will be done through interrupts, and
  *              so on.
@@ -395,7 +395,7 @@ log_2pc_send_commit_decision (int gtrid, int num_particps,
  *                        element should be known by the callee.
  *   collect(in): Wheater or not acks should be collected
  *
- * NOTE:Send the abort decison to participants which have not received
+ * NOTE:Send the abort decision to participants which have not received
  *              the abort decision and that they were willing to commit. This
  *              is found by looking to the particps_indices array. If the ith
  *              element of the array is 0, the ith participant needs to be
@@ -409,7 +409,7 @@ log_2pc_send_commit_decision (int gtrid, int num_particps,
  *              index number.
  *
  *              Currently, our communication subsystem does not provide an
- *              asyncronous capabilities for multicasting. Once this is
+ *              asynchronous capabilities for multicasting. Once this is
  *              provided, the jobs of this function will change. For example,
  *              the collecting of votes will be done through interrupts, and
  *              so on.
@@ -631,7 +631,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	  lock_unlock_all_shared_get_all_exclusive (thread_p, NULL);
 	}
 
-      /* Initilize the Acknowledgement vector to 0 */
+      /* Initialize the Acknowledgement vector to 0 */
       i = sizeof (int) * tdes->coord->num_particps;
 
       tdes->coord->ack_received = (int *) malloc (i);
@@ -701,7 +701,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /* Save the state.. so it can be reverted to the 2pc state .. */
       state = tdes->state;
       /* 2PC protocol does not support RETAIN LOCK */
-      (void) log_commit_local (thread_p, tdes, false);
+      (void) log_commit_local (thread_p, tdes, false, false);
 
       tdes->state = state;	/* Revert to 2PC state... */
       /*
@@ -714,7 +714,8 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					   tdes->coord->ack_received,
 					   tdes->coord->block_particps_ids);
       /* Check if all the acknowledgments have been received */
-      state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
+      state =
+	log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
     }
   else
     {
@@ -749,7 +750,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /* Save the state.. so it can be reverted to the 2pc state .. */
       state = tdes->state;
       /* 2PC protocol does not support RETAIN LOCK */
-      (void) log_abort_local (thread_p, tdes);
+      (void) log_abort_local (thread_p, tdes, false);
 
       if (tdes->state == TRAN_UNACTIVE_ABORTED)
 	{
@@ -792,7 +793,8 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					      false);
 	}
       /* Check if all the acknowledgments have been received */
-      state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
+      state =
+	log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
     }
 
   return state;
@@ -2077,8 +2079,8 @@ log_2pc_broadcast_decision_participant (THREAD_ENTRY * thread_p,
 					       block_particps_ids);
 	  if (tdes->coord->ack_received[particp_index] == true)
 	    {
-	      (void) log_complete (thread_p, tdes, LOG_COMMIT,
-				   LOG_DONT_NEED_NEWTRID);
+	      (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT,
+					   LOG_DONT_NEED_NEWTRID);
 	    }
 	}
       else
@@ -2103,8 +2105,8 @@ log_2pc_broadcast_decision_participant (THREAD_ENTRY * thread_p,
 					      true);
 	  if (tdes->coord->ack_received[particp_index] == true)
 	    {
-	      (void) log_complete (thread_p, tdes, LOG_ABORT,
-				   LOG_DONT_NEED_NEWTRID);
+	      (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT,
+					   LOG_DONT_NEED_NEWTRID);
 	    }
 	}			/* else */
 
@@ -2269,7 +2271,7 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   logpb_copy_from_log (thread_p, (char *) block_particps_ids,
 		       particp_id_length * num_particps, log_lsa, log_page_p);
 
-  /* Initilize the coordinator information */
+  /* Initialize the coordinator information */
   if (log_2pc_alloc_coord_info (tdes, num_particps,
 				particp_id_length,
 				block_particps_ids) == NULL)
@@ -2279,7 +2281,7 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       return ER_FAILED;
     }
 
-  /* Initilize the Acknowledgement vector to false since we do
+  /* Initialize the Acknowledgement vector to false since we do
    * not know what acknowledgments have already been received.
    * we need to continue reading the log
    */
@@ -2350,7 +2352,7 @@ log_2pc_expand_ack_list (THREAD_ENTRY * thread_p, int *ack_list,
       if (*size_ack_list == 0)
 	{
 	  /*
-	   * Initilize the temporary area. Assume no more than 10
+	   * Initialize the temporary area. Assume no more than 10
 	   * participants
 	   */
 	  *ack_count = 0;
@@ -2513,8 +2515,6 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p,
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
-    case LOG_UNLOCK_COMMIT:
-    case LOG_UNLOCK_ABORT:
     case LOG_END_OF_LOG:
       /*
        * Either the prepare to commit or start 2PC record should
@@ -2736,7 +2736,7 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   /*
    * The transaction has been declared as 2PC abort. We can execute
    * the LOCAL ABORT AND THE REMOTE ABORTS IN PARALLEL, however our
-   * communication subsystem does not support asyncronous communication
+   * communication subsystem does not support asynchronous communication
    * types. The abort of the participants is done after the local
    * abort is completed.
    */
@@ -2745,7 +2745,7 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   state = tdes->state;
 
   /* 2PC protocol does not support RETAIN LOCK */
-  (void) log_abort_local (thread_p, tdes);
+  (void) log_abort_local (thread_p, tdes, false);
 
   if (tdes->state == TRAN_UNACTIVE_ABORTED)
     {
@@ -2763,7 +2763,8 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 				      tdes->coord->ack_received,
 				      tdes->coord->block_particps_ids, true);
   /* Check if all the acknowledgements have been received */
-  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
+  (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT,
+			       LOG_DONT_NEED_NEWTRID);
 }
 
 /*
@@ -2787,7 +2788,7 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   /* First perform local commit;
    * 2PC protocol does not support RETAIN LOCK
    */
-  (void) log_commit_local (thread_p, tdes, false);
+  (void) log_commit_local (thread_p, tdes, false, false);
   tdes->state = state;		/* Revert to 2PC state... */
 
   /*
@@ -2800,7 +2801,8 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 				       tdes->coord->ack_received,
 				       tdes->coord->block_particps_ids);
   /* Check if all the acknowledgments have been received */
-  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
+  (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT,
+			       LOG_DONT_NEED_NEWTRID);
 }
 
 /*
@@ -2829,7 +2831,8 @@ log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p,
 				       tdes->coord->num_particps,
 				       tdes->coord->ack_received,
 				       tdes->coord->block_particps_ids);
-  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
+  (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT,
+			       LOG_DONT_NEED_NEWTRID);
 }
 
 /*
@@ -2859,7 +2862,8 @@ log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thread_p,
 				      tdes->coord->num_particps,
 				      tdes->coord->ack_received,
 				      tdes->coord->block_particps_ids, true);
-  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
+  (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT,
+			       LOG_DONT_NEED_NEWTRID);
 }
 
 /*

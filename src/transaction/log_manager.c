@@ -243,15 +243,27 @@ static void log_append_repl_info_internal (THREAD_ENTRY * thread_p,
 					   int with_lock);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p,
 					    LOG_TDES * tdes, bool is_commit);
-static void log_append_unlock_log_internal (THREAD_ENTRY * thread_p,
-					    LOG_TDES * tdes, int with_lock);
-static void log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
-static void log_append_unlock_log_with_lock (THREAD_ENTRY * thread_p,
-					     LOG_TDES * tdes);
-static void log_append_repl_info_and_unlock_log (THREAD_ENTRY * thread_p,
-						 LOG_TDES * tdes);
-static void log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				 LOG_RECTYPE iscommitted);
+static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p,
+						 LOG_TDES * tdes,
+						 LOG_LSA * commit_lsa);
+static void log_append_donetime_internal (THREAD_ENTRY * thread_p,
+					  LOG_TDES * tdes,
+					  LOG_LSA * eot_lsa,
+					  LOG_RECTYPE iscommitted,
+					  enum LOG_PRIOR_LSA_LOCK with_lock);
+static void log_change_tran_as_completed (THREAD_ENTRY * thread_p,
+					  LOG_TDES * tdes,
+					  LOG_RECTYPE iscommitted,
+					  LOG_LSA * lsa);
+static void log_append_commit_log_and_change_as_completed (THREAD_ENTRY *
+							   thread_p,
+							   LOG_TDES * tdes);
+static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p,
+					     LOG_TDES * tdes,
+					     LOG_LSA * commit_lsa);
+static void log_append_abort_log_and_change_as_completed (THREAD_ENTRY *
+							  thread_p,
+							  LOG_TDES * tdes);
 static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p,
 					  LOG_TDES * tdes,
 					  LOG_LSA * upto_lsa);
@@ -515,10 +527,6 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_REPLICATION_DATA";
     case LOG_REPLICATION_STATEMENT:
       return "LOG_REPLICATION_STATEMENT";
-    case LOG_UNLOCK_COMMIT:
-      return "LOG_UNLOCK_COMMIT";
-    case LOG_UNLOCK_ABORT:
-      return "LOG_UNLOCK_ABORT";
 
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
@@ -4707,63 +4715,55 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       tdes->append_repl_recidx = 0;
     }
 
-  if (tdes->append_repl_recidx < tdes->cur_repl_record)
+  /* there is any replication info */
+  while (tdes->append_repl_recidx < tdes->cur_repl_record)
     {
-      /* there is any replication info */
-      while (tdes->append_repl_recidx < tdes->cur_repl_record)
+      repl_rec = (LOG_REPL_RECORD *)
+	(&(tdes->repl_records[tdes->append_repl_recidx]));
+
+      if ((repl_rec->repl_type == LOG_REPLICATION_DATA
+	   || repl_rec->repl_type == LOG_REPLICATION_STATEMENT)
+	  && ((is_commit && repl_rec->must_flush != LOG_REPL_DONT_NEED_FLUSH)
+	      || repl_rec->must_flush == LOG_REPL_NEED_FLUSH))
 	{
-	  repl_rec = (LOG_REPL_RECORD *)
-	    (&(tdes->repl_records[tdes->append_repl_recidx]));
-
-	  if ((repl_rec->repl_type == LOG_REPLICATION_DATA
-	       || repl_rec->repl_type == LOG_REPLICATION_STATEMENT)
-	      &&
-	      ((is_commit
-		&& repl_rec->must_flush != LOG_REPL_DONT_NEED_FLUSH)
-	       || repl_rec->must_flush == LOG_REPL_NEED_FLUSH))
+	  node = prior_lsa_alloc_and_copy_data (thread_p,
+						repl_rec->repl_type,
+						RV_NOT_DEFINED, NULL,
+						repl_rec->length,
+						repl_rec->repl_data, 0, NULL);
+	  if (node == NULL)
 	    {
-	      node = prior_lsa_alloc_and_copy_data (thread_p,
-						    repl_rec->repl_type,
-						    RV_NOT_DEFINED, NULL,
-						    repl_rec->length,
-						    repl_rec->repl_data,
-						    0, NULL);
-	      if (node == NULL)
-		{
-		  assert (false);
-		  continue;
-		}
-
-	      log = (struct log_replication *) node->data_header;
-	      if (repl_rec->rcvindex == RVREPL_DATA_DELETE
-		  || repl_rec->rcvindex == RVREPL_STATEMENT)
-		{
-		  LSA_SET_NULL (&log->lsa);
-		}
-	      else
-		{
-		  LSA_COPY (&log->lsa, &repl_rec->lsa);
-		}
-	      log->length = repl_rec->length;
-	      log->rcvindex = repl_rec->rcvindex;
-
-	      if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
-		{
-		  (void) prior_lsa_next_record_with_lock (thread_p, node,
-							  tdes);
-		}
-	      else
-		{
-		  (void) prior_lsa_next_record (thread_p, node, tdes);
-		}
-
-	      repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
+	      assert (false);
+	      continue;
 	    }
 
-	  tdes->append_repl_recidx++;
-	}
-    }
+	  log = (struct log_replication *) node->data_header;
+	  if (repl_rec->rcvindex == RVREPL_DATA_DELETE
+	      || repl_rec->rcvindex == RVREPL_STATEMENT)
+	    {
+	      LSA_SET_NULL (&log->lsa);
+	    }
+	  else
+	    {
+	      LSA_COPY (&log->lsa, &repl_rec->lsa);
+	    }
+	  log->length = repl_rec->length;
+	  log->rcvindex = repl_rec->rcvindex;
 
+	  if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
+	    {
+	      (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
+	    }
+	  else
+	    {
+	      (void) prior_lsa_next_record (thread_p, node, tdes);
+	    }
+
+	  repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
+	}
+
+      tdes->append_repl_recidx++;
+    }
 }
 
 void
@@ -4783,141 +4783,182 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_append_unlock_log_internal - APPEND UNLOCK LOG
+ * log_append_repl_info_and_commit_log - APPEND REPL LOG ALONG WITH COMMIT LOG.
  *
- * return: nothing
+ * return: none
  *
- *   tdes(in):  State structure of transaction being committed/aborted.
- *   with_lock(in):
+ *   tdes(in): 
+ *   commit_lsa(out): LSA of commit log
  *
- * NOTE:critical section is set by its caller function.
+ * NOTE: Atomic write of replication log and commit log is crucial for replication
+ *       consistencies. When a commit log of others is written in the middle of 
+ *       one's replication and commit log, a restart of replication will break 
+ *       consistencies of slaves/replicas.
  */
 static void
-log_append_unlock_log_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				int with_lock)
-{
-  LOG_PRIOR_NODE *node;
-
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_UNLOCK_COMMIT,
-					RV_NOT_DEFINED, NULL,
-					0, NULL, 0, NULL);
-  if (node == NULL)
-    {
-      return;
-    }
-
-  if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
-    {
-      (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
-    }
-  else
-    {
-      (void) prior_lsa_next_record (thread_p, node, tdes);
-    }
-}
-
-static void
-log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  log_append_unlock_log_internal (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
-}
-
-static void
-log_append_unlock_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  log_append_unlock_log_internal (thread_p, tdes, LOG_PRIOR_LSA_WITH_LOCK);
-}
-
-static void
-log_append_repl_info_and_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				     LOG_LSA * commit_lsa)
 {
   int rv;
 
   rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
-  log_append_unlock_log_with_lock (thread_p, tdes);
+  log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
 
   pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
 }
 
 /*
- * log_append_donetime - APPEND COMMIT/ABORT LOG RECORD ALONG WITH TIME OF
+ * log_append_donetime_internal - APPEND COMMIT/ABORT LOG RECORD ALONG WITH TIME OF
  *                      TERMINATION.
  *
- * return: nothing
+ * return: none
  *
- *   tdes(in/out): State structure of transaction being committed/aborted.
- *   iscommitted(in): Is transaction been finished as committed ?
+ *   tdes(in): 
+ *   eot_lsa(out): LSA of COMMIT/ABORT log
+ *   iscommitted(in): Is transaction been finished as committed?
+ *   with_lock(in): whether it has mutex or not.
  *
  * NOTE: An append commit or abort record is recorded along with the
  *              current time as the termination time of the transaction.
  */
 static void
-log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-		     LOG_RECTYPE iscommitted)
+log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+			      LOG_LSA * eot_lsa,
+			      LOG_RECTYPE iscommitted,
+			      enum LOG_PRIOR_LSA_LOCK with_lock)
 {
   struct log_donetime *donetime;
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
+  LOG_LSA lsa;
+
+  eot_lsa->pageid = NULL_PAGEID;
+  eot_lsa->offset = NULL_OFFSET;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, iscommitted,
 					RV_NOT_DEFINED, NULL,
 					0, NULL, 0, NULL);
   if (node == NULL)
     {
+      /* FIXME */
       return;
     }
 
   donetime = (struct log_donetime *) node->data_header;
   donetime->at_time = time (NULL);
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
+    {
+      lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+    }
+  else
+    {
+      lsa = prior_lsa_next_record (thread_p, node, tdes);
+    }
 
-  /* END append */
+  LSA_COPY (eot_lsa, &lsa);
+}
+
+/*
+ * log_change_tran_as_completed - CHANGE THE STATE OF A TRANSACTION AS COMMITTED/ABORTED
+ *
+ * return: nothing
+ *
+ *   tdes(in/out): State structure of transaction being committed/aborted.
+ *   iscommitted(in): Is transaction been finished as committed ?
+ *   lsa(in): commit lsa to flush logs
+ *
+ */
+static void
+log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+			      LOG_RECTYPE iscommitted, LOG_LSA * lsa)
+{
   if (iscommitted == LOG_COMMIT)
     {
       tdes->state = TRAN_UNACTIVE_COMMITTED;
 
       log_Stat.commit_count++;
 
-      logpb_flush_pages (thread_p, &start_lsa);
-
-#if !defined(NDEBUG)
-      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
-	{
-	  char time_val[CTIME_MAX];
-
-	  time_t xxtime = time (NULL);
-	  (void) ctime_r (&xxtime, time_val);
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_FINISH_COMMIT),
-		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
-		   log_Gl.hdr.append_lsa.offset, time_val);
-	  fflush (stdout);
-	}
-#endif /* !NDEBUG */
+      logpb_flush_pages (thread_p, lsa);
     }
   else
     {
       tdes->state = TRAN_UNACTIVE_ABORTED;
-#if !defined(NDEBUG)
-      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
-	{
-	  char time_val[CTIME_MAX];
-
-	  time_t xxtime = time (NULL);
-	  (void) ctime_r (&xxtime, time_val);
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_FINISH_ABORT),
-		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
-		   log_Gl.hdr.append_lsa.offset, time_val);
-	  fflush (stdout);
-	}
-#endif /* !NDEBUG */
     }
+
+#if !defined (NDEBUG)
+  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
+    {
+      char time_val[CTIME_MAX];
+      time_t xxtime = time (NULL);
+
+      (void) ctime_r (&xxtime, time_val);
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       ((iscommitted == LOG_COMMIT)
+					? MSGCAT_LOG_FINISH_COMMIT
+					: MSGCAT_LOG_FINISH_ABORT)),
+	       tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
+	       log_Gl.hdr.append_lsa.offset, time_val);
+      fflush (stdout);
+    }
+#endif /* !NDEBUG */
+}
+
+/*
+ * log_append_commit_log_and_change_as_completed - APPEND COMMIT LOG RECORD ALONG WITH TIME OF
+ *                      TERMINATION AND CHANGE THE TRANSACTION STATE AS COMMITTED.
+ *
+ * return: nothing
+ *
+ *   tdes(in/out): State structure of transaction being committed.
+ */
+static void
+log_append_commit_log_and_change_as_completed (THREAD_ENTRY * thread_p,
+					       LOG_TDES * tdes)
+{
+  LOG_LSA commit_lsa;
+
+  log_append_donetime_internal (thread_p, tdes, &commit_lsa, LOG_COMMIT,
+				LOG_PRIOR_LSA_WITHOUT_LOCK);
+  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
+}
+
+/*
+ * log_append_commit_log_with_lock - APPEND COMMIT LOG RECORD ALONG WITH TIME OF
+ *                      TERMINATION WITH PRIOR LSA MUTEX.
+ *
+ * return: none
+ *
+ *   tdes(in/out): State structure of transaction being committed.
+ *   commit_lsa(out): LSA of commit log.
+ */
+static void
+log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				 LOG_LSA * commit_lsa)
+{
+  log_append_donetime_internal (thread_p, tdes, commit_lsa, LOG_COMMIT,
+				LOG_PRIOR_LSA_WITH_LOCK);
+}
+
+/*
+ * log_append_abort_log_and_change_as_completed - APPEND ABORT LOG RECORD ALONG WITH TIME OF
+ *                      TERMINATION AND CHANGE THE TRANSACTION STATE AS ABORTED.
+ *
+ * return: nothing
+ *
+ *   tdes(in/out): State structure of transaction being aborted.
+ */
+static void
+log_append_abort_log_and_change_as_completed (THREAD_ENTRY * thread_p,
+					      LOG_TDES * tdes)
+{
+  LOG_LSA abort_lsa;
+
+  log_append_donetime_internal (thread_p, tdes, &abort_lsa, LOG_ABORT,
+				LOG_PRIOR_LSA_WITHOUT_LOCK);
+  log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
 }
 
 /*
@@ -5692,6 +5733,7 @@ RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
  *   tdes(in/out): State structure of transaction of the log record
  *   retain_lock(in): false = release locks (default)
  *                    true  = retain locks
+ *   is_local_tran(in): Is a local transaction?
  *
  * NOTE:  Commit the current transaction locally. If there are postpone
  *	  actions, the transaction is declared committed_with_postpone_actions
@@ -5705,7 +5747,8 @@ RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
  *	  (i.e. notify if the transaction is completely committed or not).
  */
 TRAN_STATE
-log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
+log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock,
+		  bool is_local_tran)
 {
   if (tdes->num_pinned_xasl_cache_entries > 0)
     {
@@ -5730,11 +5773,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
    *    the changes. They will be definitely lost.
    */
   log_clear_lob_locator_list (thread_p, tdes, true, NULL);
+
   /* clear mvccid before releasing the locks.
-   * This operation must be done before
-   * do_postpone because it stores unique statistics for all B-trees and if an
-   * error occurs those operations and all operations of current transaction
-   * must be rolled back.
+   * This operation must be done before do_postpone because it stores 
+   * unique statistics for all B-trees and if an error occurs those operations 
+   * and all operations of current transaction must be rolled back.
    */
   logtb_complete_mvcc (thread_p, tdes, true);
 
@@ -5754,10 +5797,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
       log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa,
 		       LOG_COMMIT_WITH_POSTPONE, true);
 
-      /*
-       * The files created by this transaction are not new files any longer.
+      /* The files created by this transaction are not new files any longer.
        * Close any query cursors at this moment too.
-       * Release all locks
        */
       if (tdes->first_save_entry != NULL)
 	{
@@ -5773,21 +5814,42 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
 
-      if (!LOG_CHECK_LOG_APPLIER (thread_p)
-	  && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
-	  && log_does_allow_replication () == true)
+      if (is_local_tran)
 	{
-	  /* for the replication agent guarantee the order of transaction */
-	  log_append_repl_info_and_unlock_log (thread_p, tdes);
-	}
+	  /* To write unlock log before releasing locks for transactional consistencies.
+	   * When a transaction(T2) which is resumed by this committing transaction(T1)
+	   * commits and a crash happens before T1 completes, transaction 
+	   * consistencies will be broken because T1 will be aborted 
+	   * during restart recovery and T2 was already committed.
+	   */
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	      && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	      && log_does_allow_replication () == true)
+	    {
+	      /* for the replication agent guarantee the order of transaction */
+	      LOG_LSA commit_lsa;
 
-      if (retain_lock != true)
-	{
-	  lock_unlock_all (thread_p);
+	      log_append_repl_info_and_commit_log (thread_p, tdes,
+						   &commit_lsa);
+	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT,
+					    &commit_lsa);
+	    }
+	  else
+	    {
+	      log_append_commit_log_and_change_as_completed (thread_p, tdes);
+	    }
+
+	  if (retain_lock != true)
+	    {
+	      lock_unlock_all (thread_p);
+	    }
 	}
-      /* for page latch
-         pb_threshold_flush(0);
-       */
+      else
+	{
+	  /* Postpone appending replication and commit log and releasing locks 
+	   * to log_complete_for_2pc.
+	   */
+	}
     }
   else
     {
@@ -5814,25 +5876,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 	{
 	  lock_unlock_all (thread_p);
 	}
+
       tdes->state = TRAN_UNACTIVE_COMMITTED;
-      /* There is no need to create a new transaction identifier */
     }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-  /*
-   * Since the /M driver transaction group stuff is currently
-   * being maintained outside the transaction manager, we cannot
-   * check for leaked wfg entries of distributed transactions here.
-   */
-  if ((wfg_get_tran_entries (tdes->tran_index) > 0)
-      && !log_is_tran_distributed (tdes))
-    {
-      wfg_dump ();
-    }
-#endif
-
-  return (tdes->state);
-
+  return tdes->state;
 }
 
 /*
@@ -5841,6 +5889,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
  * return: state of abort operation
  *
  *   tdes(in/out): State structure of transaction of the log record
+ *   is_local_tran(in): Is a local transaction? (It is not used at this point)
  *
  * NOTE: Abort the current transaction locally.
  *	 When the transaction is declared as fully aborted, the locks acquired
@@ -5848,7 +5897,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
  *       This function is used for both local and coordinator transactions.
  */
 TRAN_STATE
-log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 {
   if (tdes->num_pinned_xasl_cache_entries > 0)
     {
@@ -5859,8 +5908,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   tdes->state = TRAN_UNACTIVE_ABORTED;
 
-  /*
-   * Delete only temporary files created on volumes with temporary purposes
+  /* Delete only temporary files created on volumes with temporary purposes
    * Temporary files created on volumes with permanent purposes
    * (e.g., generic) are cleaned by undo records.
    */
@@ -5871,9 +5919,13 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->num_new_tmp_tmp_files == 0);
 
   (void) file_typecache_clear ();
+
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
-      /* Transaction updated data */
+      /*
+       * Transaction updated data.
+       */
+
       log_rollback (thread_p, tdes, NULL);
 
       if (tdes->num_new_files > 0)
@@ -5893,6 +5945,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* clear mvccid before releasing the locks */
       logtb_complete_mvcc (thread_p, tdes, false);
 
+      /* It is safe to release locks here, since we already completed abort. */
       lock_unlock_all (thread_p);
     }
   else
@@ -5916,26 +5969,13 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       logtb_complete_mvcc (thread_p, tdes, false);
 
       lock_unlock_all (thread_p);
+
       /* There is no need to create a new transaction identifier */
     }
 
   log_clear_lob_locator_list (thread_p, tdes, false, NULL);
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-  /*
-   * Since the /M driver transaction group stuff is currently
-   * being maintained outside the transaction manager, we cannot
-   * check for leaked wfg entries of distributed transactions here.
-   */
-  if ((wfg_get_tran_entries (tdes->tran_index) > 0)
-      && !log_is_tran_distributed (tdes))
-    {
-      wfg_dump ();
-    }
-#endif
-
   return tdes->state;
-
 }
 
 /*
@@ -5980,8 +6020,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes)
       && LOG_ISRESTARTED ())
     {
-      /*
-       * May be a system error since transaction is not active.. cannot be
+      /* May be a system error since transaction is not active.. cannot be
        * committed
        */
 #if defined(CUBRID_DEBUG)
@@ -5996,8 +6035,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 
   if (tdes->topops.last >= 0)
     {
-      /*
-       * This is likely a system error since the transaction is being committed
+      /* This is likely a system error since the transaction is being committed
        * when there are system permanent operations attached to it. Commit those
        * operations too
        */
@@ -6025,11 +6063,10 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 
   if (log_clear_and_is_tran_distributed (tdes))
     {
-      /*
-       * This is the coordinator of a distributed transaction
+      /* This is the coordinator of a distributed transaction
        *
-       * If we are in prepare to commit mode. I cannot be the root coodinator,
-       * so the decsion has been taken at this moment by the root coordinator
+       * If we are in prepare to commit mode. I cannot be the root coordinator,
+       * so the decision has been taken at this moment by the root coordinator
        */
       if (LOG_ISTRAN_2PC_PREPARE (tdes))
 	{
@@ -6048,17 +6085,10 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
        * This is a local transaction or is a participant of a distributed
        * transaction
        */
-      state = log_commit_local (thread_p, tdes, retain_lock);
-      state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
+      state = log_commit_local (thread_p, tdes, retain_lock, true);
+      state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID,
+			    LOG_ALREADY_WROTE_EOT_LOG);
     }
-
-#if defined (CUBRID_DEBUG)
-  if (logtb_get_number_assigned_tran_indices () <= 2)
-    {
-      pgbuf_dump_if_any_fixed ();
-      (void) heap_classrepr_dump_anyfixed ();
-    }
-#endif /* CUBRID_DEBUG */
 
   if (log_No_logging)
     {
@@ -6184,16 +6214,10 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
        * transaction.
        * Perform the server rollback first.
        */
-      state = log_abort_local (thread_p, tdes);
-      state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
+      state = log_abort_local (thread_p, tdes, true);
+      state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID,
+			    LOG_NEED_TO_WRITE_EOT_LOG);
     }
-
-#if defined (CUBRID_DEBUG)
-  if (logtb_get_number_assigned_tran_indices () <= 2)
-    {
-      pgbuf_dump_if_any_fixed ();
-    }
-#endif /* CUBRID_DEBUG */
 
   mnt_tran_rollbacks (thread_p);
 
@@ -6320,10 +6344,124 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name,
  *   iscommitted(in): Is transaction been finished as committed ?
  *   get_newtrid(in):
  *
+ * NOTE: This function does not consider 2PC. 
+ *       Find the existing function as log_complete_for_2pc
  */
 TRAN_STATE
 log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-	      LOG_RECTYPE iscommitted, LOG_GETNEWTRID get_newtrid)
+	      LOG_RECTYPE iscommitted, LOG_GETNEWTRID get_newtrid,
+	      LOG_WRITE_EOT_LOG wrote_eot_log)
+{
+  TRAN_STATE state;		/* State of transaction */
+
+  assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
+
+  state = tdes->state;
+
+  /*
+   * DECLARE THE TRANSACTION AS COMPLETED
+   */
+
+  if (LSA_ISNULL (&tdes->tail_lsa))
+    {
+      /* Transaction did not update any data, thus we do not need to log a
+       * commit/abort log record.
+       */
+      if (iscommitted == LOG_COMMIT)
+	{
+	  state = TRAN_UNACTIVE_COMMITTED;
+	}
+      else
+	{
+	  state = TRAN_UNACTIVE_ABORTED;
+	}
+
+      logtb_clear_tdes (thread_p, tdes);
+    }
+  else
+    {
+      /*
+       * Transaction updated data 
+       */
+      if (wrote_eot_log == LOG_NEED_TO_WRITE_EOT_LOG)
+	{
+	  if (iscommitted == LOG_COMMIT)
+	    {
+	      log_append_commit_log_and_change_as_completed (thread_p, tdes);
+	    }
+	  else
+	    {
+	      log_append_abort_log_and_change_as_completed (thread_p, tdes);
+	    }
+
+	  state = tdes->state;
+	}
+      else
+	{
+	  assert (iscommitted == LOG_COMMIT
+		  && state == TRAN_UNACTIVE_COMMITTED);
+	}
+
+      /* Unblock global oldest active update. */
+      if (tdes->block_global_oldest_active_until_commit)
+	{
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
+	  tdes->block_global_oldest_active_until_commit = false;
+	  assert (ATOMIC_INC_32
+		  (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+	}
+
+#if defined (HAVE_ATOMIC_BUILTINS)
+      if (iscommitted == LOG_COMMIT)
+	{
+	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  volatile MVCCID *p_transaction_lowest_active_mvccid =
+	    LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
+
+	  if (*p_transaction_lowest_active_mvccid != MVCCID_NULL)
+	    {
+	      /* set transaction lowest active MVCCID to null to allow
+	       * VACUUM advancing
+	       */
+	      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
+	    }
+	}
+#endif
+
+      if (get_newtrid == LOG_NEED_NEWTRID)
+	{
+	  (void) logtb_get_new_tran_id (thread_p, tdes);
+	}
+
+      /* Finish the append operation and flush the log */
+    }
+
+  if (LOG_ISCHECKPOINT_TIME ())
+    {
+#if defined(SERVER_MODE)
+      logpb_do_checkpoint ();
+#else /* SERVER_MODE */
+      (void) logpb_checkpoint (thread_p);
+#endif /* SERVER_MODE */
+    }
+
+  return state;
+}
+
+/*
+ * log_complete_for_2pc - Complete in commit/abort mode the transaction whenever
+ *                      is possible otherwise trasfer it to another tran index
+ *
+ * return: state of transaction
+ *
+ *   tdes(in/out): State structure of transaction of the log record
+ *   iscommitted(in): Is transaction been finished as committed ?
+ *   get_newtrid(in):
+ *
+ */
+TRAN_STATE
+log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+		      LOG_RECTYPE iscommitted, LOG_GETNEWTRID get_newtrid)
 {
   TRAN_STATE state;		/* State of transaction */
   int new_tran_index;
@@ -6340,6 +6478,8 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_LSA start_lsa;
   int wait_msecs;
 
+  assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
+
   state = tdes->state;
 
   if (tdes->coord != NULL && tdes->coord->ack_received != NULL)
@@ -6349,142 +6489,147 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        * before declaring the transaction as finished.
        */
       for (i = 0; i < tdes->coord->num_particps; i++)
-	if (tdes->coord->ack_received[i] == false)
-	  {
-	    all_acks = false;
-	    /*
-	     * There are missing acknowledgments. The transaction cannot be
-	     * completed at this moment. If we are not in the restart recovery
-	     * process, the transaction is transfered to another transaction
-	     * index which is declared as a distributed loose end and a new
-	     * transaction is assigned to the client transaction index. The
-	     * transaction will be declared as fully completed once all
-	     * acknowledgment are received.
-	     */
-	    if (iscommitted != LOG_ABORT)
-	      {
-		/* Committed */
-		if (tdes->state !=
-		    TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
-		  {
-		    node = prior_lsa_alloc_and_copy_data (thread_p,
-							  LOG_2PC_COMMIT_INFORM_PARTICPS,
-							  RV_NOT_DEFINED,
-							  NULL,
-							  0, NULL, 0, NULL);
-		    if (node == NULL)
-		      {
-			assert (false);
-			return state;
-		      }
+	{
+	  if (tdes->coord->ack_received[i] == false)
+	    {
+	      all_acks = false;
+	      /*
+	       * There are missing acknowledgments. The transaction cannot be
+	       * completed at this moment. If we are not in the restart recovery
+	       * process, the transaction is transfered to another transaction
+	       * index which is declared as a distributed loose end and a new
+	       * transaction is assigned to the client transaction index. The
+	       * transaction will be declared as fully completed once all
+	       * acknowledgment are received.
+	       */
+	      if (iscommitted != LOG_ABORT)
+		{
+		  /* Committed */
+		  if (tdes->state !=
+		      TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+		    {
+		      node = prior_lsa_alloc_and_copy_data (thread_p,
+							    LOG_2PC_COMMIT_INFORM_PARTICPS,
+							    RV_NOT_DEFINED,
+							    NULL,
+							    0, NULL, 0, NULL);
+		      if (node == NULL)
+			{
+			  assert (false);
+			  return state;
+			}
 
-		    tdes->state =
-		      TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
-		    state = tdes->state;
+		      tdes->state =
+			TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
+		      state = tdes->state;
 
-		    start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+		      start_lsa =
+			prior_lsa_next_record (thread_p, node, tdes);
 
-		    logpb_flush_pages (thread_p, &start_lsa);
-		  }
-	      }
-	    else
-	      {
-		/* aborted */
-		if (tdes->state !=
-		    TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
-		  {
-		    node = prior_lsa_alloc_and_copy_data (thread_p,
-							  LOG_2PC_ABORT_INFORM_PARTICPS,
-							  RV_NOT_DEFINED,
-							  NULL,
-							  0, NULL, 0, NULL);
-		    if (node == NULL)
-		      {
-			assert (false);
-			return state;
-		      }
+		      logpb_flush_pages (thread_p, &start_lsa);
+		    }
+		}
+	      else
+		{
+		  /* aborted */
+		  if (tdes->state !=
+		      TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+		    {
+		      node = prior_lsa_alloc_and_copy_data (thread_p,
+							    LOG_2PC_ABORT_INFORM_PARTICPS,
+							    RV_NOT_DEFINED,
+							    NULL,
+							    0, NULL, 0, NULL);
+		      if (node == NULL)
+			{
+			  assert (false);
+			  return state;
+			}
 
-		    tdes->state =
-		      TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
-		    state = tdes->state;
+		      tdes->state =
+			TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
+		      state = tdes->state;
 
-		    start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+		      start_lsa =
+			prior_lsa_next_record (thread_p, node, tdes);
 
-		    logpb_flush_pages (thread_p, &start_lsa);
-		  }
-	      }
-	    /*
-	     * If this is not a loose end transaction and the system is not
-	     * in restart recovery, transfer the transaction to another
-	     * transaction index
-	     */
-	    if (LOG_ISRESTARTED () && tdes->isloose_end == false)
-	      {
-		wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
+		      logpb_flush_pages (thread_p, &start_lsa);
+		    }
+		}
+	      /*
+	       * If this is not a loose end transaction and the system is not
+	       * in restart recovery, transfer the transaction to another
+	       * transaction index
+	       */
+	      if (LOG_ISRESTARTED () && tdes->isloose_end == false)
+		{
+		  wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
 
-		if (wait_msecs > 0)
-		  {
-		    wait_msecs = wait_msecs * 1000;
-		  }
-		new_tran_index = logtb_assign_tran_index (thread_p,
-							  NULL_TRANID,
-							  TRAN_RECOVERY, NULL,
-							  NULL, wait_msecs,
-							  TRAN_SERIALIZABLE);
-		new_tdes = LOG_FIND_TDES (new_tran_index);
-		if (new_tran_index == NULL_TRAN_INDEX || new_tdes == NULL)
-		  {
-		    logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				       "log_fully_completed");
-		    return state;
-		  }
+		  if (wait_msecs > 0)
+		    {
+		      wait_msecs = wait_msecs * 1000;
+		    }
+		  new_tran_index = logtb_assign_tran_index (thread_p,
+							    NULL_TRANID,
+							    TRAN_RECOVERY,
+							    NULL, NULL,
+							    wait_msecs,
+							    TRAN_SERIALIZABLE);
+		  new_tdes = LOG_FIND_TDES (new_tran_index);
+		  if (new_tran_index == NULL_TRAN_INDEX || new_tdes == NULL)
+		    {
+		      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+					 "log_fully_completed");
+		      return state;
+		    }
 
-		/*
-		 * Copy of tdes structures, and then reset memory allocated fields
-		 * for only one the new or the old one.
-		 */
+		  /*
+		   * Copy of tdes structures, and then reset memory allocated fields
+		   * for only one the new or the old one.
+		   */
 
-		*new_tdes = *tdes;
-		new_tdes->tran_index = new_tran_index;
-		new_tdes->isloose_end = true;
-		/* new_tdes does not inherit topops fields */
-		new_tdes->topops.stack = NULL;
-		new_tdes->topops.last = -1;
-		new_tdes->topops.max = 0;
+		  *new_tdes = *tdes;
+		  new_tdes->tran_index = new_tran_index;
+		  new_tdes->isloose_end = true;
+		  /* new_tdes does not inherit topops fields */
+		  new_tdes->topops.stack = NULL;
+		  new_tdes->topops.last = -1;
+		  new_tdes->topops.max = 0;
 
-		/* The old one keep the coordinator/participant information */
-		tdes->coord = NULL;
+		  /* The old one keep the coordinator/participant information */
+		  tdes->coord = NULL;
 
-		TR_TABLE_CS_ENTER (thread_p);
-		log_Gl.trantable.num_coord_loose_end_indices++;
-		TR_TABLE_CS_EXIT (thread_p);
-		/*
-		 * Start a new transaction for our original transaction index.
-		 * Set the coordinator stuff to NULL, in our original index since
-		 * it has been transfer to another index. That is, distributed
-		 * information should be freed using the new transaction index.
-		 */
+		  TR_TABLE_CS_ENTER (thread_p);
+		  log_Gl.trantable.num_coord_loose_end_indices++;
+		  TR_TABLE_CS_EXIT (thread_p);
+		  /*
+		   * Start a new transaction for our original transaction index.
+		   * Set the coordinator stuff to NULL, in our original index since
+		   * it has been transfer to another index. That is, distributed
+		   * information should be freed using the new transaction index.
+		   */
 
-		/*
-		 * Go back to the old index
-		 */
+		  /*
+		   * Go back to the old index
+		   */
 
-		LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
+		  LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
 
-		(void) logtb_get_new_tran_id (thread_p, tdes);
-	      }
+		  (void) logtb_get_new_tran_id (thread_p, tdes);
+		}
 
-	    if (LOG_ISCHECKPOINT_TIME ())
-	      {
+	      if (LOG_ISCHECKPOINT_TIME ())
+		{
 #if defined(SERVER_MODE)
-		logpb_do_checkpoint ();
+		  logpb_do_checkpoint ();
 #else /* SERVER_MODE */
-		(void) logpb_checkpoint (thread_p);
+		  (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
-	      }
+		}
 
-	    return state;
-	  }
+	      return state;
+	    }
+	}
 
       /*
        * All acknowledgments of participants have been received, declare the
@@ -6548,12 +6693,43 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /*
        * Transaction updated data or this is a coordinator
        */
-      log_append_donetime (thread_p, tdes, iscommitted);
+      if (iscommitted == LOG_COMMIT)
+	{
+	  /* To write unlock log before releasing locks for transactional consistencies.
+	   * When a transaction(T2) which is resumed by this committing transaction(T1)
+	   * commits and a crash happens before T1 completes, transaction 
+	   * consistencies will be broken because T1 will be aborted 
+	   * during restart recovery and T2 was already committed.
+	   */
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+	      && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	      && log_does_allow_replication () == true)
+	    {
+	      /* for the replication agent guarantee the order of transaction */
+	      LOG_LSA commit_lsa;
+
+	      log_append_repl_info_and_commit_log (thread_p, tdes,
+						   &commit_lsa);
+	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT,
+					    &commit_lsa);
+	    }
+	  else
+	    {
+	      log_append_commit_log_and_change_as_completed (thread_p, tdes);
+	    }
+	}
+      else
+	{
+	  log_append_abort_log_and_change_as_completed (thread_p, tdes);
+	}
+
       state = tdes->state;
 
+      /* now releases locks */
+      lock_unlock_all (thread_p);
+
       /* Unblock global oldest active update. */
-      if ((iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT)
-	  && tdes->block_global_oldest_active_until_commit)
+      if (tdes->block_global_oldest_active_until_commit)
 	{
 	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
@@ -6567,6 +6743,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	  volatile MVCCID *p_transaction_lowest_active_mvccid =
 	    LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
+
 	  if (*p_transaction_lowest_active_mvccid != MVCCID_NULL)
 	    {
 	      /* set transaction lowest active MVCCID to null to allow
@@ -7847,8 +8024,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
-    case LOG_UNLOCK_COMMIT:
-    case LOG_UNLOCK_ABORT:
       fprintf (stdout, "\n");
       /* That is all for this kind of log record */
       break;
@@ -8823,8 +8998,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    case LOG_2PC_ABORT_INFORM_PARTICPS:
 	    case LOG_REPLICATION_DATA:
 	    case LOG_REPLICATION_STATEMENT:
-	    case LOG_UNLOCK_COMMIT:
-	    case LOG_UNLOCK_ABORT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	      break;
@@ -9225,8 +9398,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    case LOG_DUMMY_HEAD_POSTPONE:
 		    case LOG_REPLICATION_DATA:
 		    case LOG_REPLICATION_STATEMENT:
-		    case LOG_UNLOCK_COMMIT:
-		    case LOG_UNLOCK_ABORT:
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
 		      break;
