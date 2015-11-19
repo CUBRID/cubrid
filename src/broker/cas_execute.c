@@ -3465,6 +3465,10 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale,
     {
       *scale = 0;
     }
+  if (charset)
+    {
+      *charset = lang_charset ();
+    }
 
   ele_domain = db_domain_set (set_domain);
   for (; ele_domain; ele_domain = db_domain_next (ele_domain))

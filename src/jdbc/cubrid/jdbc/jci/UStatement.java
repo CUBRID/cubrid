@@ -74,7 +74,7 @@ public class UStatement {
 	private final static byte MASK_TYPE_HAS_2_BYTES = (byte) 0200;
 	private final static byte MASK_TYPE_FROM_SINGLE_BYTE = (byte) 0037;
 	private final static byte MASK_CHARSET_FROM_TYPE = (byte) 0007;
-	private final static byte DEFAULT_CHARSET = (byte) 377;
+	private final static byte DEFAULT_CHARSET = (byte) 0377;
 
 	private byte statementType;
 
@@ -2123,15 +2123,18 @@ public class UStatement {
 
 		typeInfo = readTypeFromData(index, inBuffer);
 		localType = typeInfo[0];
-		if (localType == UUType.U_TYPE_NULL)
+		if (localType == UUType.U_TYPE_NULL) {
 			localType = columnInfo[index].getColumnType();
-		
-		size = size - typeInfo[2];
-		if (typeInfo[3] == DEFAULT_CHARSET) {
-			charsetName = null;
+			charsetName = columnInfo[index].getColumnCharset();
 		} else {
-			charsetName = UJCIUtil.getJavaCharsetName ((byte)typeInfo[3]);
+			if (typeInfo[3] == DEFAULT_CHARSET) {
+				charsetName = null;
+			} else {
+				charsetName = UJCIUtil.getJavaCharsetName ((byte)typeInfo[3]);
+			}		
 		}
+
+		size = size - typeInfo[2];
 
 		return (readData(inBuffer, localType, size, charsetName));
 	}
