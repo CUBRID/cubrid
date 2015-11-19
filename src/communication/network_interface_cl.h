@@ -604,7 +604,6 @@ extern int csession_drop_session_variables (DB_VALUE * variables,
 					    const int count);
 
 extern int cvacuum (void);
-extern int log_invalidate_mvcc_snapshot (void);
 extern int log_get_mvcc_snapshot (void);
 extern int tran_lock_rep_read (LOCK lock_rr_tran);
 

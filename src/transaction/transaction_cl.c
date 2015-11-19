@@ -68,6 +68,7 @@ bool tm_Tran_async_ws = false;
 int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 bool tm_Tran_check_interrupt = false;
 int tm_Tran_ID = -1;
+int tm_Tran_invalidate_snapshot = 1;
 LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
 					 * lock twice.
 					 */

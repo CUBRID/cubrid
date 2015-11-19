@@ -190,6 +190,7 @@ css_send_request_to_server (char *host, int request, char *arg_buffer,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_request (entry->conn, (int) request, &rid,
 				    arg_buffer, (int) arg_buffer_size);
       if (css_Errno != NO_ERRORS)
@@ -197,6 +198,7 @@ css_send_request_to_server (char *host, int request, char *arg_buffer,
 	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
 	  return 0;
 	}
+      tm_Tran_invalidate_snapshot = 0;
     }
   else
     {
@@ -235,6 +237,7 @@ css_send_request_to_server_with_buffer (char *host, int request,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_request_with_data_buffer (entry->conn, request,
 						     &rid,
 						     arg_buffer,
@@ -243,6 +246,7 @@ css_send_request_to_server_with_buffer (char *host, int request,
 						     data_buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
+	  tm_Tran_invalidate_snapshot = 0;
 	  return (css_make_eid (entry->id, rid));
 	}
       else
@@ -285,12 +289,14 @@ css_send_req_to_server (char *host, int request,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_req_with_2_buffers (entry->conn, request, &rid,
 					       arg_buffer, arg_buffer_size,
 					       data_buffer, data_buffer_size,
 					       reply_buffer, reply_size);
       if (css_Errno == NO_ERRORS)
 	{
+	  tm_Tran_invalidate_snapshot = 0;
 	  return (css_make_eid (entry->id, rid));
 	}
       else
@@ -336,6 +342,7 @@ css_send_req_to_server_with_large_data (char *host, int request,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_req_with_large_buffer (entry->conn, request, &rid,
 						  arg_buffer, arg_buffer_size,
 						  data_buffer,
@@ -343,6 +350,7 @@ css_send_req_to_server_with_large_data (char *host, int request,
 						  reply_buffer, reply_size);
       if (css_Errno == NO_ERRORS)
 	{
+	  tm_Tran_invalidate_snapshot = 0;
 	  return (css_make_eid (entry->id, rid));
 	}
       else
@@ -390,6 +398,7 @@ css_send_req_to_server_2_data (char *host, int request,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_req_with_3_buffers (entry->conn, request, &rid,
 					       arg_buffer, arg_buffer_size,
 					       data1_buffer,
@@ -399,6 +408,7 @@ css_send_req_to_server_2_data (char *host, int request,
 					       reply_buffer, reply_size);
       if (css_Errno == NO_ERRORS)
 	{
+	  tm_Tran_invalidate_snapshot = 0;
 	  return (css_make_eid (entry->id, rid));
 	}
       else
@@ -432,10 +442,12 @@ css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_request_no_reply (entry->conn, request, &rid,
 					     arg_buffer, arg_buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
+	  tm_Tran_invalidate_snapshot = 0;
 	  return (css_make_eid (entry->id, rid));
 	}
       else
@@ -507,11 +519,13 @@ css_send_error_to_server (char *host, unsigned int eid,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       entry->conn->db_error = er_errid ();
       css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid),
 				  buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
+	  tm_Tran_invalidate_snapshot = 0;
 	  entry->conn->db_error = 0;
 	  return 0;
 	}
@@ -544,10 +558,12 @@ css_send_data_to_server (char *host, unsigned int eid,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid),
 				 buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
+	  tm_Tran_invalidate_snapshot = 0;
 	  return 0;
 	}
       else

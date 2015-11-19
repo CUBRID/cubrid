@@ -374,7 +374,7 @@ enum ha_log_applier_state
 /* TODO: 64Bit porting */
 #define HIGH16BITS(X) (((X) >> 16) & 0xffffL)
 #define LOW16BITS(X)  ((X) & 0xffffL)
-#define DEFAULT_HEADER_DATA {0,0,0,0,0,0,0,0,0}
+#define DEFAULT_HEADER_DATA {0,0,0,0,0,0,0,0,0,0}
 
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
@@ -391,6 +391,7 @@ struct packet_header
   int version;
   int host_id;
   int transaction_id;
+  int invalidate_snapshot;
   int request_id;
   int db_error;
   short function_code;
@@ -416,6 +417,7 @@ struct css_queue_entry
   int size;
   int rc;
   int transaction_id;
+  int invalidate_snapshot;
   int db_error;
 
 #if !defined(SERVER_MODE)
@@ -436,6 +438,7 @@ struct css_conn_entry
   unsigned short request_id;
   int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
   int transaction_id;
+  int invalidate_snapshot;
   int client_id;
   int db_error;
   bool in_transaction;		/* this client is in-transaction or out-of- */

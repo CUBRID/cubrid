@@ -930,10 +930,6 @@ net_server_init (void)
   req_p->processing_function = svacuum;
   req_p->name = "NET_SERVER_VACUUM";
 
-  req_p = &net_Requests[NET_SERVER_INVALIDATE_MVCC_SNAPSHOT];
-  req_p->processing_function = slogtb_invalidate_mvcc_snapshot;
-  req_p->name = "NET_SERVER_INVALIDATE_MVCC_SNAPSHOT";
-
   req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_get_mvcc_snapshot;
   req_p->name = "NET_SERVER_GET_MVCC_SNAPSHOT";
@@ -1178,6 +1174,10 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
       track_id = thread_rc_track_enter (thread_p);
 #endif
 
+      if (conn->invalidate_snapshot != 0)
+	{
+	  logtb_invalidate_snapshot_data (thread_p);
+	}
       (*func) (thread_p, rid, buffer, size);
 
 #if !defined(NDEBUG)

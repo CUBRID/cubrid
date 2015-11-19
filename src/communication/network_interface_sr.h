@@ -488,9 +488,6 @@ extern void slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
 						     int reqlen);
 extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		     int reqlen);
-extern void slogtb_invalidate_mvcc_snapshot (THREAD_ENTRY * thread_p,
-					     unsigned int rid, char *request,
-					     int reqlen);
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p,
 				      unsigned int rid, char *request,
 				      int reqlen);

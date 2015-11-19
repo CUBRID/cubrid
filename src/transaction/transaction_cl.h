@@ -60,6 +60,7 @@ extern bool tm_Tran_check_interrupt;
 extern bool tm_Use_OID_preflush;
 extern LOCK tm_Tran_rep_read_lock;
 extern LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version;
+extern int tm_Tran_invalidate_snapshot;
 
 extern void tran_cache_tran_settings (int tran_index, int lock_timeout,
 				      TRAN_ISOLATION tran_isolation);

@@ -4634,13 +4634,13 @@ start_get_mvcc_table:
 }
 
 /*
- * xlogtb_invalidate_snapshot_data () - Make sure MVCC is invalidated.
+ * logtb_invalidate_snapshot_data () - Make sure MVCC is invalidated.
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
  */
 int
-xlogtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p)
+logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p)
 {
   /* Get transaction descriptor */
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));

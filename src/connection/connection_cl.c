@@ -162,6 +162,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->buffer_queue = NULL;
   conn->error_queue = NULL;
   conn->transaction_id = -1;
+  conn->invalidate_snapshot = 1;
   conn->db_error = 0;
   conn->cnxn = NULL;
 }
@@ -343,6 +344,7 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
     {
       header.type = htonl (CLOSE_TYPE);
       header.transaction_id = htonl (conn->transaction_id);
+      header.invalidate_snapshot = htonl (conn->invalidate_snapshot);
       header.db_error = htonl (conn->db_error);
       /* timeout in milli-second in css_net_send() */
       css_net_send (conn, (char *) &header, sizeof (NET_HEADER), -1);
@@ -385,6 +387,7 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
     }
 
   conn->transaction_id = ntohl (local_header->transaction_id);
+  conn->invalidate_snapshot = ntohl (local_header->invalidate_snapshot);
   conn->db_error = (int) ntohl (local_header->db_error);
 
   return (rc);
@@ -1388,6 +1391,7 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id,
 
       *rc = data_q_entry_p->rc;
       conn->transaction_id = data_q_entry_p->transaction_id;
+      conn->invalidate_snapshot = data_q_entry_p->invalidate_snapshot;
       conn->db_error = data_q_entry_p->db_error;
       css_queue_remove_header_entry_ptr (&conn->data_queue, data_q_entry_p);
 
@@ -1491,6 +1495,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
       *request = ntohs (buffer->function_code);
       *buffer_size = ntohl (buffer->buffer_size);
       conn->transaction_id = request_q_entry_p->transaction_id;
+      conn->invalidate_snapshot = request_q_entry_p->invalidate_snapshot;
       conn->db_error = request_q_entry_p->db_error;
 
       /* This will remove both the entry and the buffer */

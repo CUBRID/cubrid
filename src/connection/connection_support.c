@@ -205,7 +205,7 @@ css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn,
 static void css_set_net_header (NET_HEADER * header_p, int type,
 				short function_code, int request_id,
 				int buffer_size, int transaction_id,
-				int db_error);
+				int invalidate_snapshot, int db_error);
 #if defined(SERVER_MODE)
 static char *css_trim_str (char *str);
 #endif
@@ -1556,7 +1556,7 @@ css_net_read_header (SOCKET fd, char *buffer, int *maxlen, int timeout)
 static void
 css_set_net_header (NET_HEADER * header_p, int type, short function_code,
 		    int request_id, int buffer_size, int transaction_id,
-		    int db_error)
+		    int invalidate_snapshot, int db_error)
 {
   header_p->type = htonl (type);
   header_p->function_code = htons (function_code);
@@ -1564,6 +1564,7 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code,
   header_p->buffer_size = htonl (buffer_size);
   header_p->transaction_id = htonl (transaction_id);
   header_p->db_error = htonl (db_error);
+  header_p->invalidate_snapshot = htonl (invalidate_snapshot);
 }
 
 /*
@@ -1595,7 +1596,8 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id, 
+		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && (reply_size > 0))
     {
@@ -1606,7 +1608,8 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
   if (arg_size > 0 && arg_buffer != NULL)
     {
       css_set_net_header (&data_header, DATA_TYPE, 0, *request_id,
-			  arg_size, conn->transaction_id, conn->db_error);
+			  arg_size, conn->transaction_id,
+			  conn->invalidate_snapshot, conn->db_error);
 
       return (css_net_send3 (conn,
 			     (char *) &local_header, sizeof (NET_HEADER),
@@ -1652,10 +1655,12 @@ css_send_request_no_reply (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&req_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id, conn->invalidate_snapshot,
+		      conn->db_error);
 
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id, conn->invalidate_snapshot,
+		      conn->db_error);
 
   return (css_net_send3 (conn,
 			 (char *) &req_header, sizeof (NET_HEADER),
@@ -1701,7 +1706,8 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id, conn->invalidate_snapshot,
+		      conn->db_error);
 
   if (reply_buffer && reply_size > 0)
     {
@@ -1710,10 +1716,12 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request,
     }
 
   css_set_net_header (&arg_header, DATA_TYPE, 0, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id,
-		      data_size, conn->transaction_id, conn->db_error);
+		      data_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send5 (conn,
 			 (char *) &local_header, sizeof (NET_HEADER),
@@ -1767,7 +1775,8 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && reply_size > 0)
     {
@@ -1776,13 +1785,16 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn, int request,
     }
 
   css_set_net_header (&arg_header, DATA_TYPE, 0, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&data1_header, DATA_TYPE, 0, *request_id,
-		      data1_size, conn->transaction_id, conn->db_error);
+		      data1_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&data2_header, DATA_TYPE, 0, *request_id,
-		      data2_size, conn->transaction_id, conn->db_error);
+		      data2_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send7 (conn,
 			 (char *) &local_header, sizeof (NET_HEADER),
@@ -1836,7 +1848,8 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id, conn->invalidate_snapshot,
+		      conn->db_error);
 
   if (reply_buffer && reply_size > 0)
     {
@@ -1860,7 +1873,8 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request,
     }
 
   css_set_net_header (&headers[0], DATA_TYPE, 0, *request_id,
-		      arg_size, conn->transaction_id, conn->db_error);
+		      arg_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
   buffer_array[0] = arg_buffer;
 
   for (i = 1; i < num_array; i++)
@@ -1876,7 +1890,7 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request,
 
       css_set_net_header (&headers[i], DATA_TYPE, 0, *request_id,
 			  send_data_size, conn->transaction_id,
-			  conn->db_error);
+			  conn->invalidate_snapshot, conn->db_error);
       buffer_array[i] = data_buffer;
 
       data_buffer += send_data_size;
@@ -1941,7 +1955,8 @@ css_send_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
     }
 
   css_set_net_header (&header, DATA_TYPE, 0, rid,
-		      buffer_size, conn->transaction_id, conn->db_error);
+		      buffer_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send2 (conn,
 			 (char *) &header, sizeof (NET_HEADER),
@@ -1973,10 +1988,12 @@ css_send_two_data (CSS_CONN_ENTRY * conn, unsigned short rid,
     }
 
   css_set_net_header (&header1, DATA_TYPE, 0, rid,
-		      buffer1_size, conn->transaction_id, conn->db_error);
+		      buffer1_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&header2, DATA_TYPE, 0, rid,
-		      buffer2_size, conn->transaction_id, conn->db_error);
+		      buffer2_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send4 (conn,
 			 (char *) &header1, sizeof (NET_HEADER),
@@ -2013,13 +2030,16 @@ css_send_three_data (CSS_CONN_ENTRY * conn, unsigned short rid,
     }
 
   css_set_net_header (&header1, DATA_TYPE, 0, rid,
-		      buffer1_size, conn->transaction_id, conn->db_error);
+		      buffer1_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&header2, DATA_TYPE, 0, rid,
-		      buffer2_size, conn->transaction_id, conn->db_error);
+		      buffer2_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&header3, DATA_TYPE, 0, rid,
-		      buffer3_size, conn->transaction_id, conn->db_error);
+		      buffer3_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send6 (conn,
 			 (char *) &header1, sizeof (NET_HEADER),
@@ -2063,16 +2083,20 @@ css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid,
     }
 
   css_set_net_header (&header1, DATA_TYPE, 0, rid,
-		      buffer1_size, conn->transaction_id, conn->db_error);
+		      buffer1_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&header2, DATA_TYPE, 0, rid,
-		      buffer2_size, conn->transaction_id, conn->db_error);
+		      buffer2_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&header3, DATA_TYPE, 0, rid,
-		      buffer3_size, conn->transaction_id, conn->db_error);
+		      buffer3_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&header4, DATA_TYPE, 0, rid,
-		      buffer4_size, conn->transaction_id, conn->db_error);
+		      buffer4_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send8 (conn,
 			 (char *) &header1, sizeof (NET_HEADER),
@@ -2118,7 +2142,7 @@ css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
     {
       css_set_net_header (&headers[i], DATA_TYPE, 0, rid,
 			  buffers_size[i], conn->transaction_id,
-			  conn->db_error);
+			  conn->invalidate_snapshot, conn->db_error);
     }
 
   rc = css_net_send_large_data (conn, headers, buffers, num_buffers);
@@ -2153,7 +2177,8 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
     }
 
   css_set_net_header (&header, ERROR_TYPE, 0, rid,
-		      buffer_size, conn->transaction_id, conn->db_error);
+		      buffer_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER),
 			 buffer, buffer_size));

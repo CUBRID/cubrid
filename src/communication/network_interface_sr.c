@@ -10391,39 +10391,6 @@ svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 }
 
 /*
- * slogtb_invalidate_mvcc_snapshot () - Invalidates MVCC Snapshot.
- *
- * return	 :
- * thread_p (in) :
- * rid (in)	 :
- * request (in)  :
- * reqlen (in)	 :
- */
-void
-slogtb_invalidate_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid,
-				 char *request, int reqlen)
-{
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = NULL;
-  int err;
-
-  err = xlogtb_invalidate_snapshot_data (thread_p);
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_pack_int (reply, err);
-
-  if (err != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  css_send_data_to_client (thread_p->conn_entry, rid,
-			   OR_ALIGNED_BUF_START (a_reply),
-			   OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
  * slogtb_get_mvcc_snapshot () - Get MVCC Snapshot.
  *
  * return	 :

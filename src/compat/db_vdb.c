@@ -4189,14 +4189,12 @@ db_invalidate_mvcc_snapshot_after_statement (void)
       return;
     }
 
-  /* TODO: Avoid doing a new request on server now. Find an alternative
-   *       way by saving invalidated snapshot on client and use first request
-   *       in next statement execution to invalidate on server.
+  /* set value of tm_Tran_invalidate_snapshot to 1 in order to invalidate
+   * the snapshot next time when we go to server.
    */
 
-  /* Invalidate snapshot on server */
-  log_invalidate_mvcc_snapshot ();
-
+  tm_Tran_invalidate_snapshot = 1;
+  
   /* Increment snapshot version in work space */
   ws_increment_mvcc_snapshot_version ();
 }

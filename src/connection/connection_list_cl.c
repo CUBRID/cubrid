@@ -46,12 +46,14 @@
 static CSS_QUEUE_ENTRY *css_make_queue_entry (unsigned int key, char *buffer,
 					      int size,
 					      CSS_QUEUE_ENTRY * next, int rc,
-					      int transid, int db_error);
+					      int transid,
+					      int invalidate_snapshot,
+					      int db_error);
 static void css_free_queue_entry (CSS_QUEUE_ENTRY * entry_p);
 static int css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor,
 				    unsigned short request_id, char *buffer,
 				    int buffer_size, int rc, int transid,
-				    int db_error);
+				    int invalidate_snapshot, int db_error);
 static bool css_is_request_aborted (CSS_CONN_ENTRY * conn,
 				    unsigned short request_id);
 static void css_queue_data_packet (CSS_CONN_ENTRY * conn,
@@ -75,12 +77,13 @@ static void css_process_abort_packet (CSS_CONN_ENTRY * conn,
  *   next(in):
  *   rc(in):
  *   transid(in):
+ *   invalidate_snapshot(in): true, if need to invalidate the snapshot
  *   db_error(in):
  */
 static CSS_QUEUE_ENTRY *
 css_make_queue_entry (unsigned int key, char *buffer, int size,
 		      CSS_QUEUE_ENTRY * next, int rc, int transid,
-		      int db_error)
+		      int invalidate_snapshot, int db_error)
 {
   CSS_QUEUE_ENTRY *entry_p;
 
@@ -96,6 +99,7 @@ css_make_queue_entry (unsigned int key, char *buffer, int size,
   entry_p->size = size;
   entry_p->rc = rc;
   entry_p->transaction_id = transid;
+  entry_p->invalidate_snapshot = invalidate_snapshot;
   entry_p->db_error = db_error;
 
   return entry_p;
@@ -150,6 +154,7 @@ css_find_queue_entry (CSS_QUEUE_ENTRY * header, unsigned int key)
  *   buffer_size(in):
  *   rc(in):
  *   transid(in):
+ *   invalidate_snapshot(in):
  *   db_error(in):
  *
  * Note: this will add an entry to the end of the header
@@ -157,12 +162,13 @@ css_find_queue_entry (CSS_QUEUE_ENTRY * header, unsigned int key)
 static int
 css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id,
 			 char *buffer, int buffer_size, int rc,
-			 int transid, int db_error)
+			 int transid, int invalidate_snapshot, int db_error)
 {
   CSS_QUEUE_ENTRY *enrty_p, *new_entry_p;
 
   new_entry_p = css_make_queue_entry (request_id, buffer, buffer_size, NULL,
-				      rc, transid, db_error);
+				      rc, transid, invalidate_snapshot,
+				      db_error);
   if (new_entry_p == NULL)
     {
       return CANT_ALLOC_BUFFER;
@@ -331,6 +337,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY ** queue_p,
     {
       return css_add_entry_to_header (queue_p, request_id, buffer, size,
 				      rc, conn->transaction_id,
+				      conn->invalidate_snapshot,
 				      conn->db_error);
     }
 
@@ -374,7 +381,9 @@ css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
       if (!css_is_request_aborted (conn, request_id))
 	{
 	  css_add_entry_to_header (queue_p, request_id, buffer, size,
-				   rc, conn->transaction_id, conn->db_error);
+				   rc, conn->transaction_id,
+				   conn->invalidate_snapshot,
+				   conn->db_error);
 	  return true;
 	}
     }
@@ -521,7 +530,9 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	  memcpy ((char *) temp, (char *) header, sizeof (NET_HEADER));
 	  css_add_entry_to_header (&conn->request_queue,
 				   request_id, (char *) temp, size, 0,
-				   conn->transaction_id, conn->db_error);
+				   conn->transaction_id,
+				   conn->invalidate_snapshot,
+				   conn->db_error);
 	}
     }
 }
@@ -542,7 +553,8 @@ css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id)
   if (css_find_queue_entry (conn->abort_queue, request_id) == NULL)
     {
       css_add_entry_to_header (&conn->abort_queue, request_id, NULL, 0, 0,
-			       conn->transaction_id, conn->db_error);
+			       conn->transaction_id, conn->invalidate_snapshot,
+			       conn->db_error);
     }
 }
 
@@ -580,6 +592,7 @@ css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn,
 			     int size)
 {
   conn->transaction_id = ntohl (header->transaction_id);
+  conn->invalidate_snapshot = ntohl (header->invalidate_snapshot);
   conn->db_error = (int) ntohl (header->db_error);
 
   switch (type)

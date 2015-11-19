@@ -10952,43 +10952,6 @@ cvacuum (void)
 }
 
 /*
- * log_invalidate_mvcc_snapshot () - Invalidate MVCC Snapshot to avoid further
- *				     usage.
- *
- * return : Error code.
- */
-int
-log_invalidate_mvcc_snapshot (void)
-{
-#if defined(CS_MODE)
-  char *reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  int err = NO_ERROR;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-  err = net_client_request (NET_SERVER_INVALIDATE_MVCC_SNAPSHOT, NULL, 0,
-			    reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			    NULL, 0, NULL, 0);
-  if (err != NO_ERROR)
-    {
-      or_unpack_int (reply, &err);
-    }
-
-  return err;
-#else /* !CS_MODE */
-  int err;
-
-  ENTER_SERVER ();
-
-  err = xlogtb_invalidate_snapshot_data (NULL);
-
-  EXIT_SERVER ();
-
-  return err;
-#endif /* CS_MODE */
-}
-
-/*
  * log_get_mvcc_snapshot () - Get MVCC snapshot on server.
  *
  * return : Error code.
