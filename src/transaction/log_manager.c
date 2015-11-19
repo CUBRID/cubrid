@@ -255,15 +255,13 @@ static void log_change_tran_as_completed (THREAD_ENTRY * thread_p,
 					  LOG_TDES * tdes,
 					  LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
-static void log_append_commit_log_and_change_as_completed (THREAD_ENTRY *
-							   thread_p,
-							   LOG_TDES * tdes);
+static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				   LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p,
 					     LOG_TDES * tdes,
 					     LOG_LSA * commit_lsa);
-static void log_append_abort_log_and_change_as_completed (THREAD_ENTRY *
-							  thread_p,
-							  LOG_TDES * tdes);
+static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				  LOG_LSA * abort_lsa);
 static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p,
 					  LOG_TDES * tdes,
 					  LOG_LSA * upto_lsa);
@@ -4907,22 +4905,19 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_append_commit_log_and_change_as_completed - APPEND COMMIT LOG RECORD ALONG WITH TIME OF
- *                      TERMINATION AND CHANGE THE TRANSACTION STATE AS COMMITTED.
+ * log_append_commit_log - APPEND COMMIT LOG RECORD ALONG WITH TIME OF TERMINATION.
  *
  * return: nothing
  *
  *   tdes(in/out): State structure of transaction being committed.
+ *   commit_lsa(out): LSA of commit log.
  */
 static void
-log_append_commit_log_and_change_as_completed (THREAD_ENTRY * thread_p,
-					       LOG_TDES * tdes)
+log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+		       LOG_LSA * commit_lsa)
 {
-  LOG_LSA commit_lsa;
-
-  log_append_donetime_internal (thread_p, tdes, &commit_lsa, LOG_COMMIT,
+  log_append_donetime_internal (thread_p, tdes, commit_lsa, LOG_COMMIT,
 				LOG_PRIOR_LSA_WITHOUT_LOCK);
-  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
 }
 
 /*
@@ -4943,22 +4938,19 @@ log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_append_abort_log_and_change_as_completed - APPEND ABORT LOG RECORD ALONG WITH TIME OF
- *                      TERMINATION AND CHANGE THE TRANSACTION STATE AS ABORTED.
+ * log_append_abort_log - APPEND ABORT LOG RECORD ALONG WITH TIME OF TERMINATION 
  *
  * return: nothing
  *
  *   tdes(in/out): State structure of transaction being aborted.
+ *   abort_lsa(out): LSA of abort log.
  */
 static void
-log_append_abort_log_and_change_as_completed (THREAD_ENTRY * thread_p,
-					      LOG_TDES * tdes)
+log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+		      LOG_LSA * abort_lsa)
 {
-  LOG_LSA abort_lsa;
-
-  log_append_donetime_internal (thread_p, tdes, &abort_lsa, LOG_ABORT,
+  log_append_donetime_internal (thread_p, tdes, abort_lsa, LOG_ABORT,
 				LOG_PRIOR_LSA_WITHOUT_LOCK);
-  log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
 }
 
 /*
@@ -5816,6 +5808,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock,
 
       if (is_local_tran)
 	{
+	  LOG_LSA commit_lsa;
+
 	  /* To write unlock log before releasing locks for transactional consistencies.
 	   * When a transaction(T2) which is resumed by this committing transaction(T1)
 	   * commits and a crash happens before T1 completes, transaction 
@@ -5827,22 +5821,22 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock,
 	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
-	      LOG_LSA commit_lsa;
-
 	      log_append_repl_info_and_commit_log (thread_p, tdes,
 						   &commit_lsa);
-	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT,
-					    &commit_lsa);
 	    }
 	  else
 	    {
-	      log_append_commit_log_and_change_as_completed (thread_p, tdes);
+	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
 
 	  if (retain_lock != true)
 	    {
 	      lock_unlock_all (thread_p);
 	    }
+
+	  /* Flush commit log and change the transaction state. */
+	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT,
+					&commit_lsa);
 	}
       else
 	{
@@ -6387,11 +6381,19 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	{
 	  if (iscommitted == LOG_COMMIT)
 	    {
-	      log_append_commit_log_and_change_as_completed (thread_p, tdes);
+	      LOG_LSA commit_lsa;
+
+	      log_append_commit_log (thread_p, tdes, &commit_lsa);
+	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT,
+					    &commit_lsa);
 	    }
 	  else
 	    {
-	      log_append_abort_log_and_change_as_completed (thread_p, tdes);
+	      LOG_LSA abort_lsa;
+
+	      log_append_abort_log (thread_p, tdes, &abort_lsa);
+	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT,
+					    &abort_lsa);
 	    }
 
 	  state = tdes->state;
@@ -6695,6 +6697,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        */
       if (iscommitted == LOG_COMMIT)
 	{
+	  LOG_LSA commit_lsa;
+
 	  /* To write unlock log before releasing locks for transactional consistencies.
 	   * When a transaction(T2) which is resumed by this committing transaction(T1)
 	   * commits and a crash happens before T1 completes, transaction 
@@ -6705,22 +6709,24 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	      && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
-	      /* for the replication agent guarantee the order of transaction */
-	      LOG_LSA commit_lsa;
-
 	      log_append_repl_info_and_commit_log (thread_p, tdes,
 						   &commit_lsa);
-	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT,
-					    &commit_lsa);
 	    }
 	  else
 	    {
-	      log_append_commit_log_and_change_as_completed (thread_p, tdes);
+	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
+
+	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT,
+					&commit_lsa);
 	}
       else
 	{
-	  log_append_abort_log_and_change_as_completed (thread_p, tdes);
+	  LOG_LSA abort_lsa;
+
+	  log_append_abort_log (thread_p, tdes, &abort_lsa);
+	  log_change_tran_as_completed (thread_p, tdes, LOG_ABORT,
+					&abort_lsa);
 	}
 
       state = tdes->state;
