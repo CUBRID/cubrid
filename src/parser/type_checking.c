@@ -407,6 +407,8 @@ static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser,
 						    PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser,
 					  PT_NODE * hv_node);
+static bool pt_cast_needs_wrap_for_collation (PT_NODE * node,
+					      const INTL_CODESET codeset);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -24009,7 +24011,8 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		       || node->data_type->info.data_type.units != codeset))
 		  || wrap_dt != NULL)
 	      && (node->node_type != PT_EXPR
-		  || node->info.expr.op != PT_CAST)
+		  || node->info.expr.op != PT_CAST
+		  || pt_cast_needs_wrap_for_collation (node, codeset))
 	      && node->node_type != PT_HOST_VAR)
 	    {
 	      if (wrap_dt == NULL)
@@ -26580,4 +26583,26 @@ pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node)
       parser_free_node (parser, hv_node->data_type);
       hv_node->data_type = pt_domain_to_data_type (parser, dom);
     }
+}
+
+static bool
+pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset)
+{
+  assert (node != NULL);
+  assert (node->node_type == PT_EXPR);
+  assert (node->info.expr.op == PT_CAST);
+
+  if (node->info.expr.arg1 != NULL
+      && node->info.expr.arg1->data_type != NULL
+      && node->info.expr.cast_type != NULL
+      && PT_HAS_COLLATION (node->info.expr.arg1->type_enum)
+      && PT_HAS_COLLATION (node->info.expr.cast_type->type_enum)
+      && node->info.expr.arg1->data_type->info.data_type.units !=
+      node->info.expr.cast_type->info.data_type.units
+      && node->info.expr.cast_type->info.data_type.units != codeset)
+    {
+      return true;
+    }
+
+  return false;
 }
