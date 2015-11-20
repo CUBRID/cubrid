@@ -1260,7 +1260,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 	{
 	  /* check recompilation threshold */
 	  if (context->is_xasl_pinned_reference
-	      || qexec_RT_xasl_cache_ent (thread_p, cache_entry_p) == NO_ERROR)
+	      || qexec_RT_xasl_cache_ent (thread_p,
+					  cache_entry_p) == NO_ERROR)
 	    {
 	      XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
 	      if (stream->xasl_header)
@@ -1274,8 +1275,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 	  if (!context->is_xasl_pinned_reference)
 	    {
 	      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
-							    cache_entry_p, true,
-							    false);
+							    cache_entry_p,
+							    true, false);
 	    }
 	}
 
@@ -3076,7 +3077,7 @@ void
 qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index,
 			 bool is_tran_died, bool is_abort)
 {
-  QMGR_QUERY_ENTRY *query_p, *p, *t;
+  QMGR_QUERY_ENTRY *query_p;
   QMGR_TRAN_ENTRY *tran_entry_p;
 #if defined (SERVER_MODE)
   int rv;
@@ -3097,8 +3098,6 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index,
 #endif
       return;
     }
-
-  p = NULL;
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
@@ -3192,24 +3191,33 @@ again:
 
   while (query_p)
     {
-      if (query_p->is_holdable && !is_abort && !is_tran_died)
+      if (query_p->is_holdable)
 	{
-	  /* this is a commit and we have to add the result to the holdable
-	     queries list */
-	  if (query_p->query_mode != QUERY_COMPLETED)
+	  if (is_abort || is_tran_died)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "query %d not completed !\n",
-			    query_p->query_id);
+	      /* Make sure query entry info is not leaked in session. */
+	      xsession_clear_query_entry_info (thread_p, query_p->query_id);
 	    }
 	  else
 	    {
-	      er_log_debug (ARG_FILE_LINE, "query %d is completed!\n",
-			    query_p->query_id);
+	      /* this is a commit and we have to add the result to the
+	       * holdable queries list.
+	       */
+	      if (query_p->query_mode != QUERY_COMPLETED)
+		{
+		  er_log_debug (ARG_FILE_LINE, "query %d not completed !\n",
+				query_p->query_id);
+		}
+	      else
+		{
+		  er_log_debug (ARG_FILE_LINE, "query %d is completed!\n",
+				query_p->query_id);
+		}
+	      xsession_store_query_entry_info (thread_p, query_p);
+	      /* reset result info */
+	      query_p->list_id = NULL;
+	      query_p->temp_vfid = NULL;
 	    }
-	  xsession_store_query_entry_info (thread_p, query_p);
-	  /* reset result info */
-	  query_p->list_id = NULL;
-	  query_p->temp_vfid = NULL;
 	}
       /* destroy the query result if not destroyed yet */
       if (query_p->list_id)
@@ -3241,25 +3249,21 @@ again:
 			"External volume deletion failed.\n");
 #endif
 	}
-      /* remove query entry */
-      t = query_p;
-      if (p == NULL)
-	{
-	  tran_entry_p->query_entry_list_p = query_p->next;
-	  query_p = tran_entry_p->query_entry_list_p;
-	}
-      else
-	{
-	  p->next = query_p->next;
-	  query_p = p->next;
-	}
-      qmgr_free_query_entry (thread_p, tran_entry_p, t);
-    }
 
-  if (tran_entry_p->query_entry_list_p == NULL)
-    {
-      tran_entry_p->trans_stat = QMGR_TRAN_TERMINATED;
+      /* end use of the list file of the cached result */
+      if (query_p->xasl_ent != NULL && query_p->list_ent != NULL)
+	{
+	  (void) qfile_end_use_of_list_cache_entry (thread_p,
+						    query_p->list_ent, false);
+	}
+
+      /* remove query entry */
+      tran_entry_p->query_entry_list_p = query_p->next;
+      qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
+      query_p = tran_entry_p->query_entry_list_p;
     }
+  assert (tran_entry_p->query_entry_list_p == NULL);
+  tran_entry_p->trans_stat = QMGR_TRAN_TERMINATED;
 
   qmgr_unlock_mutex (&tran_entry_p->lock);
 }

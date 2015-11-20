@@ -2547,9 +2547,23 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
   char *hostname;
   bool has_updated;
   int row_count = DB_ROW_COUNT_NOT_SET;
+  int n_query_ids = 0, i = 0;
+  QUERY_ID query_id;
 
   ptr = or_unpack_int (request, &xretain_lock);
-  (void) or_unpack_int (ptr, &row_count);
+  ptr = or_unpack_int (ptr, &row_count);
+
+  /* First end deferred queries */
+  ptr = or_unpack_int (ptr, &n_query_ids);
+  for (i = 0; i < n_query_ids; i++)
+    {
+      ptr = or_unpack_ptr (ptr, &query_id);
+      if (query_id > 0)
+	{
+	  (void) xqmgr_end_query (thread_p, query_id);
+	}
+    }
+
 
   retain_lock = (bool) xretain_lock;
 
@@ -6394,21 +6408,32 @@ sqmgr_end_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		 char *request, int reqlen)
 {
   QUERY_ID query_id;
-  int success = NO_ERROR;
+  int error_code = NO_ERROR;
+  int all_error_code = NO_ERROR;
+  int n_query_ids = 0, i = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_unpack_ptr (request, &query_id);
-  if (query_id > 0)
+  request = or_unpack_int (request, &n_query_ids);
+  for (i = 0; i < n_query_ids; i++)
     {
-      success = xqmgr_end_query (thread_p, query_id);
-      if (success != NO_ERROR)
+      request = or_unpack_ptr (request, &query_id);
+      if (query_id > 0)
 	{
-	  return_error_to_client (thread_p, rid);
+	  error_code = xqmgr_end_query (thread_p, query_id);
+	  if (error_code != NO_ERROR)
+	    {
+	      all_error_code = error_code;
+	      /* Continue to try to close as many queries as possible. */
+	    }
 	}
     }
+  if (all_error_code != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
 
-  (void) or_pack_int (reply, (int) success);
+  (void) or_pack_int (reply, all_error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }

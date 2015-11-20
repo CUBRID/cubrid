@@ -89,6 +89,12 @@
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
 
+#if defined (CS_MODE)
+#define NET_DEFER_END_QUERIES_MAX 5
+static QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
+static int net_Deferred_end_queries_count = 0;
+#endif /* CS_MODE */
+
 /*
  * Flag to indicate whether we've crossed the client/server boundary.
  * It really only comes into play in standalone.
@@ -2814,8 +2820,14 @@ tran_server_commit (bool retain_lock)
 #if defined(CS_MODE)
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
   int req_error, tran_state_int, reset_on_commit;
+  int i = 0;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE	/* retain_lock */
+		  + OR_INT_SIZE	/* row_count */
+		  + OR_INT_SIZE	/* count of end query requests */
+		  + OR_PTR_SIZE * NET_DEFER_END_QUERIES_MAX	/* query ids */
+		  + MAX_ALIGNMENT	/* aligmnent */
+    )a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
@@ -2823,13 +2835,24 @@ tran_server_commit (bool retain_lock)
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
-  row_count = db_get_row_count_cache ();
 
+  /* Pack retain_lock */
   ptr = or_pack_int (request, (int) retain_lock);
-  (void) or_pack_int (ptr, row_count);
+  /* Pack row_count */
+  row_count = db_get_row_count_cache ();
+  ptr = or_pack_int (ptr, row_count);
+  /* Pack query ids to end */
+  assert (net_Deferred_end_queries_count <= NET_DEFER_END_QUERIES_MAX);
+  ptr = or_pack_int (ptr, net_Deferred_end_queries_count);
+  for (i = 0; i < net_Deferred_end_queries_count; i++)
+    {
+      ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
+    }
+  net_Deferred_end_queries_count = 0;
+  assert (CAST_BUFLEN (ptr - request) <= OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error = net_client_request (NET_SERVER_TM_SERVER_COMMIT,
-				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  request, CAST_BUFLEN (ptr - request),
 				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				  NULL, 0, NULL, 0);
   if (!req_error)
@@ -2883,6 +2906,9 @@ tran_server_abort (void)
   char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* Queries will be aborted. */
+  net_Deferred_end_queries_count = 0;
 
   req_error = net_client_request (NET_SERVER_TM_SERVER_ABORT,
 				  NULL, 0,
@@ -7896,24 +7922,49 @@ qmgr_end_query (QUERY_ID query_id)
 {
 #if defined(CS_MODE)
   int status = ER_FAILED;
-  int req_error;
-  OR_ALIGNED_BUF (OR_PTR_SIZE) a_request;
-  char *request;
+  int req_error = NO_ERROR;
+  int i = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE	/* number of query ids */
+		  + OR_PTR_SIZE * NET_DEFER_END_QUERIES_MAX	/* query ids */
+		  + MAX_ALIGNMENT	/* alignment */
+    )a_request;
+  char *request = NULL, *ptr = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
+  char *reply = NULL;
+
+  net_Deferred_end_queries[net_Deferred_end_queries_count++] = query_id;
+  if (net_Deferred_end_queries_count < NET_DEFER_END_QUERIES_MAX)
+    {
+      /* Do not create a request for now. Defer it until
+       * NET_DEFER_END_QUERIES_MAX requests are collected or until
+       * commit/abort.
+       */
+      return NO_ERROR;
+    }
+  assert (net_Deferred_end_queries_count == NET_DEFER_END_QUERIES_MAX);
+  net_Deferred_end_queries_count = 0;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_ptr (request, query_id);
+  ptr = or_pack_int (request, NET_DEFER_END_QUERIES_MAX);
+  for (i = 0; i < NET_DEFER_END_QUERIES_MAX; i++)
+    {
+      ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
+    }
+  assert (CAST_BUFLEN (ptr - request) <= OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error = net_client_request (NET_SERVER_QM_QUERY_END,
-				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  request, CAST_BUFLEN (ptr - request),
 				  reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
 				  0, NULL, 0);
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
       or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = req_error;
     }
 
   return status;
