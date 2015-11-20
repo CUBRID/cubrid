@@ -334,9 +334,8 @@ abstract public class UGetTypeConvertedValue {
 										((CUBRIDTimestamptz) data).getTimezone());
 		else if (data instanceof String) {
 			try {
-				/* don't know how to parse a string with time and timezone */
-				return CUBRIDTimestamptz.valueOf((String) data, false, "");
-			} catch (IllegalArgumentException e) {
+				return new CUBRIDTimestamptz((String) data);
+			} catch (CUBRIDException e) {
 				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 			}
 		}
