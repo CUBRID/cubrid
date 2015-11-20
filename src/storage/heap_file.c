@@ -26812,6 +26812,16 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p,
 	}
     }
 
+  if (is_mvcc_op && insert_from_reorganize
+      && !heap_is_big_length (record_size)
+      && MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION))
+    {
+      MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header,
+			    OR_MVCC_FLAG_VALID_NEXT_VERSION);
+      MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header,
+			    OR_MVCC_FLAG_VALID_PARTITION_OID);
+    }
+
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
       /* for multipage records, set MVCC header size to maximum size */
@@ -31461,6 +31471,10 @@ heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes,
     {
       or_mvcc_get_header (p_recdes, &mvcc_rec_header);
       assert (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID));
+      assert (!MVCC_IS_FLAG_SET (&mvcc_rec_header,
+				 OR_MVCC_FLAG_VALID_NEXT_VERSION)
+	      && !MVCC_IS_FLAG_SET (&mvcc_rec_header,
+				    OR_MVCC_FLAG_VALID_PARTITION_OID));
 
       /* Add representation ID and flags field */
       redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
