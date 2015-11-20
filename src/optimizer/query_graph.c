@@ -2128,7 +2128,17 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
   /* only interesting in one predicate term; if 'term' has 'or_next', it was
      derived from OR term */
-  if (pt_expr->or_next == NULL)
+  /* also cases that are too complicated and unusual to consider here:
+   * (cond and/or cond) is true/false
+   * (cond and/or cond) =/!= (cond and/or cond).
+   */
+  if (pt_expr->or_next == NULL
+      && (pt_expr->info.expr.arg1 == NULL
+	  || (pt_expr->info.expr.arg1->next == NULL
+	      && pt_expr->info.expr.arg1->or_next == NULL))
+      && (pt_expr->info.expr.arg2 == NULL
+	  || (pt_expr->info.expr.arg2->next == NULL
+	      && pt_expr->info.expr.arg2->or_next == NULL)))
     {
       QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
 
@@ -2326,7 +2336,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      lhs_indexable = 0;
 	    }
 	}
-      if (lhs_indexable)
+      if (lhs_indexable && rhs_expr->next == NULL)
 	{
 
 	  if (op_type == PT_IS_IN || op_type == PT_EQ_SOME)
