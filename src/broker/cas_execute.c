@@ -4614,6 +4614,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
       }
       break;
     case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
       {
 	short yr, mon, day, hh, mm, ss;
 	DB_DATE date;
@@ -4667,6 +4668,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	err_code = db_make_datetime (&db_val, &dt);
       }
       break;
+    case CCI_U_TYPE_DATETIMELTZ:
     case CCI_U_TYPE_DATETIMETZ:
       {
 	short yr, mon, day, hh, mm, ss, ms;
