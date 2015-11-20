@@ -197,7 +197,7 @@ abstract public class UJCIUtil {
 
 		public final static Pattern pattern_time = Pattern.compile((format_1+"|"+format_2+"|"+format_3+"|"+format_4+"|"+format_5).toString());
 		public final static Pattern pattern_ampm = Pattern.compile("[aApP][mM][ \0]");
-		public final static Pattern pattern_millis = Pattern.compile(".");
+		public final static Pattern pattern_millis = Pattern.compile("[.]");
 	} 
 	
 	public static TimeInfo parseStringTime(String str_time) throws CUBRIDException {

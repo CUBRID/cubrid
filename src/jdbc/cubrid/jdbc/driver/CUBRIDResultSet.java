@@ -57,12 +57,14 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.TimeZone;
 
 import cubrid.jdbc.jci.UColumnInfo;
 import cubrid.jdbc.jci.UError;
 import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.UStatement;
 import cubrid.sql.CUBRIDOID;
+
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -1839,6 +1841,28 @@ public class CUBRIDResultSet implements ResultSet {
 			java.text.SimpleDateFormat format = new java.text.SimpleDateFormat(
 			        "MM/dd/yyyy");
 			strvalue = "'" + format.format((java.util.Date) value) + "'";
+		} else if (value instanceof cubrid.sql.CUBRIDTimestamptz) {
+			if (cubrid.sql.CUBRIDTimestamp.isTimestampType ((cubrid.sql.CUBRIDTimestamp) value)) {
+				java.text.SimpleDateFormat format = new java.text.SimpleDateFormat(
+			        "MM/dd/yyyy HH:mm:ss");
+				format.setTimeZone(TimeZone.getTimeZone("UTC")); 
+				strvalue = "'" + format.format(value) + " " + ((cubrid.sql.CUBRIDTimestamptz) value).getTimezone() + "'";
+			} else {
+				java.text.SimpleDateFormat format = new java.text.SimpleDateFormat(
+			        "MM/dd/yyyy HH:mm:ss.SSS");
+				format.setTimeZone(TimeZone.getTimeZone("UTC")); 
+				strvalue = "'" + format.format(value) + " " + ((cubrid.sql.CUBRIDTimestamptz) value).getTimezone() + "'";
+			}
+		} else if (value instanceof cubrid.sql.CUBRIDTimestamp) {
+			if (cubrid.sql.CUBRIDTimestamp.isTimestampType ((cubrid.sql.CUBRIDTimestamp) value)) {
+				java.text.SimpleDateFormat format = new java.text.SimpleDateFormat(
+			        "MM/dd/yyyy HH:mm:ss");
+				strvalue = "'" + format.format(value) + "'";
+			} else {
+				java.text.SimpleDateFormat format = new java.text.SimpleDateFormat(
+			        "MM/dd/yyyy HH:mm:ss.SSS");
+				strvalue = "'" + format.format(value) + "'";
+			}			
 		} else if (value instanceof java.sql.Timestamp) {
 			java.text.SimpleDateFormat format = new java.text.SimpleDateFormat(
 			        "MM/dd/yyyy HH:mm:ss");
