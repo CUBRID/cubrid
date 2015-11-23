@@ -1853,7 +1853,8 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       return NO_ERROR;
     }
 
-  entry = qexec_lookup_xasl_cache_ent (thread_p, alias_print, &user, false);
+  entry =
+    qexec_lookup_xasl_cache_ent (thread_p, alias_print, &user, false, false);
   if (entry == NULL)
     {
 #if defined (SESSION_DEBUG)

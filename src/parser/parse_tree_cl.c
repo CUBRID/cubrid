@@ -16647,6 +16647,7 @@ pt_init_value (PT_NODE * p)
   p->info.value.has_cs_introducer = false;
   p->info.value.is_collate_allowed = false;
   p->info.value.coll_modifier = 0;
+  p->info.value.host_var_index = -1;
   return p;
 }
 

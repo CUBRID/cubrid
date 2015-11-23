@@ -6556,7 +6556,16 @@ pt_create_param_for_value (PARSER_CONTEXT * parser, PT_NODE * value,
   host_var->data_type = parser_copy_tree (parser, value->data_type);
   host_var->info.host_var.var_type = PT_HOST_IN;
   host_var->info.host_var.str = pt_append_string (parser, NULL, "?");
-  host_var->info.host_var.index = host_var_index;
+  if (PT_IS_VALUE_NODE (value) && value->info.value.host_var_index != -1)
+    {
+      /* this value come from a host_var, we just need restore host_var. */
+      host_var->info.host_var.index = value->info.value.host_var_index;
+      assert (host_var->info.host_var.index < parser->host_var_count);
+    }
+  else
+    {
+      host_var->info.host_var.index = host_var_index;
+    }
 
   return host_var;
 }
@@ -6592,38 +6601,48 @@ pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value)
 
   PT_NODE_MOVE_NUMBER_OUTERLINK (host_var, value);
 
-  /* Expand parser->host_variables by realloc */
-  count_to_realloc = parser->host_var_count + parser->auto_param_count + 1;
-  /* We actually allocate around twice more than needed so that we don't do
-     useless copies too often. */
-  count_to_realloc = (count_to_realloc / 2) * 4;
-  if (count_to_realloc == 0)
+  if (PT_IS_VALUE_NODE (value) && value->info.value.host_var_index != -1)
     {
-      count_to_realloc = 1;
-    }
-  larger_host_variables = (DB_VALUE *)
-    realloc (parser->host_variables, count_to_realloc * sizeof (DB_VALUE));
-  if (larger_host_variables == NULL)
-    {
-      PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-      goto error_exit;
-    }
-  parser->host_variables = larger_host_variables;
-  ++parser->auto_param_count;
-  larger_host_variables = NULL;
-
-  /* Copy the DB_VALUE to parser->host_variables */
-  host_var_val = parser->host_variables + host_var->info.host_var.index;
-  val = pt_value_to_db (parser, value);
-  /* TODO Is it ok to ignore errors here? */
-  if (val != NULL)
-    {
-      (void) pr_clone_value (val, host_var_val);
+      /* this value come from a host_var, realloc is not needed. */
+      assert (host_var->info.host_var.index < parser->host_var_count);
     }
   else
     {
-      DB_MAKE_NULL (host_var_val);
+      /* Expand parser->host_variables by realloc */
+      count_to_realloc =
+	parser->host_var_count + parser->auto_param_count + 1;
+      /* We actually allocate around twice more than needed so that we don't do
+         useless copies too often. */
+      count_to_realloc = (count_to_realloc / 2) * 4;
+      if (count_to_realloc == 0)
+	{
+	  count_to_realloc = 1;
+	}
+      larger_host_variables = (DB_VALUE *)
+	realloc (parser->host_variables,
+		 count_to_realloc * sizeof (DB_VALUE));
+      if (larger_host_variables == NULL)
+	{
+	  PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  goto error_exit;
+	}
+      parser->host_variables = larger_host_variables;
+      ++parser->auto_param_count;
+      larger_host_variables = NULL;
+
+      /* Copy the DB_VALUE to parser->host_variables */
+      host_var_val = parser->host_variables + host_var->info.host_var.index;
+      val = pt_value_to_db (parser, value);
+      /* TODO Is it ok to ignore errors here? */
+      if (val != NULL)
+	{
+	  (void) pr_clone_value (val, host_var_val);
+	}
+      else
+	{
+	  DB_MAKE_NULL (host_var_val);
+	}
     }
   parser_free_tree (parser, value);
 

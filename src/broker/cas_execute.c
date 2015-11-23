@@ -976,7 +976,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
 
   if (flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
-      db_session_set_xasl_cache_pinned (session, true);
+      db_session_set_xasl_cache_pinned (session, true, false);
     }
 
   stmt_id = db_compile_statement (session);
@@ -1231,6 +1231,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
+  bool recompile = false;
 #ifndef LIBCAS_FOR_JSP
   char stmt_type;
 #endif /* !LIBCAS_FOR_JSP */
@@ -1252,6 +1253,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
        * and writes its plan to a temporary plan dump file.
        */
       srv_handle->is_prepared = FALSE;
+      recompile = true;
     }
 
   if (srv_handle->is_prepared == FALSE)
@@ -1310,7 +1312,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
       if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
 	{
-	  db_session_set_xasl_cache_pinned (session, true);
+	  db_session_set_xasl_cache_pinned (session, true, recompile);
 	}
 
       stmt_id = db_compile_statement (session);
@@ -1443,7 +1445,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
-      db_session_set_xasl_cache_pinned (session, false);
+      db_session_set_xasl_cache_pinned (session, false, false);
       srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
     }
   srv_handle->max_col_size = max_col_size;
@@ -1546,7 +1548,7 @@ execute_error:
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
-      db_session_set_xasl_cache_pinned (session, false);
+      db_session_set_xasl_cache_pinned (session, false, false);
       srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
     }
   if (srv_handle->auto_commit_mode)
@@ -1659,7 +1661,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	{
 	  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
 	    {
-	      db_session_set_xasl_cache_pinned (session, true);
+	      db_session_set_xasl_cache_pinned (session, true, false);
 	    }
 
 	  stmt_id = db_compile_statement (session);
@@ -1826,7 +1828,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
-      db_session_set_xasl_cache_pinned (session, false);
+      db_session_set_xasl_cache_pinned (session, false, false);
       srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
     }
   srv_handle->max_row = max_row;
@@ -1910,7 +1912,7 @@ execute_all_error:
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
-      db_session_set_xasl_cache_pinned (session, false);
+      db_session_set_xasl_cache_pinned (session, false, false);
       srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
     }
   if (srv_handle->auto_commit_mode)
@@ -2474,7 +2476,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	{
 	  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
 	    {
-	      db_session_set_xasl_cache_pinned (session, true);
+	      db_session_set_xasl_cache_pinned (session, true, false);
 	    }
 
 	  stmt_id = db_compile_statement (session);
@@ -2618,7 +2620,7 @@ return_success:
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
-      db_session_set_xasl_cache_pinned (session, false);
+      db_session_set_xasl_cache_pinned (session, false, false);
       srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
     }
 
@@ -2630,7 +2632,7 @@ execute_array_error:
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
-      db_session_set_xasl_cache_pinned (session, false);
+      db_session_set_xasl_cache_pinned (session, false, false);
       srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
     }
 

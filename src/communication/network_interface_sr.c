@@ -5525,7 +5525,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr;
   char *reply = NULL, *reply_buffer = NULL;
   int csserror, reply_buffer_size = 0, get_xasl_header = 0;
-  int xasl_cache_pinned = 0;
+  int xasl_cache_pinned = 0, recompile_xasl_cache_pinned = 0;
   OID user_oid;
   XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
@@ -5553,6 +5553,10 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
   /* unpack pinned xasl cache flag boolean */
   ptr = or_unpack_int (ptr, &xasl_cache_pinned);
   context.is_xasl_pinned_reference = (bool) xasl_cache_pinned;
+  /* unpack recompile flag boolean */
+  ptr = or_unpack_int (ptr, &recompile_xasl_cache_pinned);
+  context.recompile_xasl_pinned = (bool) recompile_xasl_cache_pinned;
+
 
   if (get_xasl_header)
     {

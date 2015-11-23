@@ -8427,6 +8427,8 @@ init_compile_context (PARSER_CONTEXT * parser)
   memset (&parser->context, 0x00, sizeof (COMPILE_CONTEXT));
   parser->context.is_xasl_pinned_reference =
     (bool) parser->is_xasl_pinned_reference;
+  parser->context.recompile_xasl_pinned =
+    (bool) parser->recompile_xasl_pinned;
 }
 
 /*

@@ -3150,6 +3150,9 @@ struct pt_value_info
 				 * the COLLATE modifier (the grammar context
 				 * in which is created allows it) */
   int coll_modifier;		/* collation modifier = collation + 1 */
+  int host_var_index;		/* save the host_var index which it comes
+				 * from. -1 means it is a normal value. it
+				 * does not come from any host_var. */
 };
 
 
@@ -3602,6 +3605,8 @@ struct compile_context
   char *sql_plan_text;		/* plans for this query */
   int sql_plan_alloc_size;	/* query_plan alloc size */
   bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
+  bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry
+				   has been pinned */
 };
 
 struct parser_context
@@ -3708,6 +3713,8 @@ struct parser_context
 					   cache again. This will happen when 
 					   a jdbc/cci driver retries to prepare/execute
 					   a query due to CAS_ER_STMT_POOLING. */
+  unsigned recompile_xasl_pinned:1;	/* set to 1 when recompile again even the xasl
+					   cache entry has been pinned */
   unsigned dont_collect_exec_stats:1;
   unsigned return_generated_keys:1;
   unsigned is_system_generated_stmt:1;

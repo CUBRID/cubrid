@@ -17476,6 +17476,7 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
  *   qstr(in)   :
  *   user_oid(in)       :
  *   is_pinned_reference (in):
+ *   recompile_xasl_pinned (in):
  *
  * NOTE : In SERVER_MODE. If a entry is found in the query string hash table,
  *        this function increases the fix count in the tran_fix_count_array
@@ -17488,7 +17489,8 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
  */
 XASL_CACHE_ENTRY *
 qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
-			     const OID * user_oid, bool is_pinned_reference)
+			     const OID * user_oid, bool is_pinned_reference,
+			     bool recompile_xasl_pinned)
 {
   XASL_CACHE_ENTRY *ent;
   XASL_QSTR_HT_KEY key;
@@ -17560,8 +17562,24 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 
 		  qexec_add_into_pinned_xasl_cache_list (thread_p, ent);
 		}
+
+	      ent->tran_fix_count_array[tran_index]++;
 	    }
-	  ent->tran_fix_count_array[tran_index]++;
+	  else
+	    {
+	      if (recompile_xasl_pinned)
+		{
+		  /* skip to increment ent->tran_fix_count_array[tran_index],
+		   * if xasl entry has been pinned in re-compile process */
+		  assert (is_pinned_reference);
+		  assert (ent->num_fixed_tran > 0
+			  && ent->num_pinned_tran > 0);
+		}
+	      else
+		{
+		  ent->tran_fix_count_array[tran_index]++;
+		}
+	    }
 
 	  assert (ent->tran_fix_count_array[tran_index] > 0);
 #endif

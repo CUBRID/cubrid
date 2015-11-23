@@ -11829,6 +11829,12 @@ pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node,
 		  value->info.value.print_collation = true;
 		  value->info.value.is_collate_allowed = true;
 		}
+	      if (pt_is_input_hostvar (node))
+		{
+		  /* save host_var index */
+		  value->info.value.host_var_index =
+		    node->info.host_var.index;
+		}
 	      PT_NODE_MOVE_NUMBER_OUTERLINK (value, node);
 	      parser_free_tree (parser, node);
 	      node = value;

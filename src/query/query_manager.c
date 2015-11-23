@@ -1254,7 +1254,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
       cache_entry_p =
 	qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text,
 				     user_oid_p,
-				     context->is_xasl_pinned_reference);
+				     context->is_xasl_pinned_reference,
+				     context->recompile_xasl_pinned);
 
       if (cache_entry_p)
 	{
@@ -1294,7 +1295,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
   cache_entry_p =
     qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text,
 				 user_oid_p,
-				 context->is_xasl_pinned_reference);
+				 context->is_xasl_pinned_reference,
+				 context->recompile_xasl_pinned);
   if (cache_entry_p)
     {
       er_log_debug (ARG_FILE_LINE,

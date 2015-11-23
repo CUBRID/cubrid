@@ -1231,7 +1231,9 @@ extern XASL_CACHE_ENTRY *qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p,
 						      const char *qstr,
 						      const OID * user_oid,
 						      bool
-						      is_pinned_reference);
+						      is_pinned_reference,
+						      bool
+						      recompile_xasl_pinned);
 extern XASL_CACHE_ENTRY *qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY *
 							     thread_p,
 							     const char *qstr,
