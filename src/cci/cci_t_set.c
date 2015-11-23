@@ -114,7 +114,7 @@ t_set_size (T_SET * set)
 int
 t_set_element_type (T_SET * set)
 {
-  return (CCI_GET_COLLECTION_DOMAIN (set->type));
+  return set->type;
 }
 
 int
