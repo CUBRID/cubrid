@@ -172,6 +172,7 @@ static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 					     LOG_LSA * ret_lsa,
 					     LOG_LSA *
 					     start_postpone_lsa,
+					     LOG_LSA * start_postpone_run_lsa,
 					     LOG_TDES * tdes);
 
 static void log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
@@ -4212,6 +4213,7 @@ static void
 log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   LOG_LSA first_postpone_to_apply;
+  LOG_LSA start_postpone_run_lsa;
 
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
@@ -4258,7 +4260,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	}
 
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
-					&tdes->posp_nxlsa, tdes);
+					NULL, &tdes->posp_nxlsa, tdes);
 
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
 		       LOG_COMMIT_WITH_POSTPONE, false);
@@ -4292,7 +4294,26 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
 					&tdes->topops.
 					stack[tdes->topops.last].posp_lsa,
-					tdes);
+					&start_postpone_run_lsa, tdes);
+
+      if (LSA_GT (&tdes->undo_nxlsa, &start_postpone_run_lsa))
+	{
+	  /* Transaction stopped in the middle of a logical postpone.
+	   * We must rollback it.
+	   */
+	  assert (tdes->topops.last >= 0);
+	  if (log_start_system_op (thread_p) == NULL)
+	    {
+	      assert_release (false);
+	      return;
+	    }
+	  /* We need to rollback up to start postpone run lsa before 
+	   * doing remaining postpone.
+	   */
+	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa,
+		    &start_postpone_run_lsa);
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
 
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
 		       LOG_COMMIT_TOPOPE_WITH_POSTPONE, false);
@@ -5785,6 +5806,7 @@ error:
  *
  *   ret_lsa(out):
  *   start_postpone_lsa(in):
+ *   start_postpone_run_lsa(out): run postpone lsa of start postpone
  *   tdes(in):
  *   pospone_type(in):
  *
@@ -5793,6 +5815,7 @@ static int
 log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 				  LOG_LSA * ret_lsa,
 				  LOG_LSA * start_postpone_lsa,
+				  LOG_LSA * start_postpone_run_lsa,
 				  LOG_TDES * tdes)
 {
   LOG_LSA end_postpone_lsa;
@@ -5802,6 +5825,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
   LOG_LSA log_lsa;
   LOG_LSA forward_lsa;
   LOG_LSA next_postpone_lsa;
+  LOG_LSA local_start_postpone_run_lsa;
   struct log_run_postpone *run_posp;
 
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -5838,6 +5862,11 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
     }
 
   LSA_SET_NULL (&next_postpone_lsa);
+  if (start_postpone_run_lsa)
+    {
+      LSA_SET_NULL (start_postpone_run_lsa);
+    }
+
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -5947,6 +5976,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 		  switch (log_rec->type)
 		    {
 		    case LOG_RUN_POSTPONE:
+		      LSA_COPY (&local_start_postpone_run_lsa, &log_lsa);
 		      LOG_READ_ADD_ALIGN (thread_p,
 					  sizeof (LOG_RECORD_HEADER),
 					  &log_lsa, log_pgptr);
@@ -5965,6 +5995,12 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 			   * next_postpone_lsa is the first postpone
 			   * to be applied.
 			   */
+			  if (start_postpone_run_lsa != NULL)
+			    {
+			      LSA_COPY (start_postpone_run_lsa,
+					&local_start_postpone_run_lsa);
+			    }
+
 			  start_postpone_lsa_wasapplied = true;
 			  isdone = true;
 			}

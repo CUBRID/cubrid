@@ -2204,6 +2204,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL,
 			    NULL, NULL, NULL, -1);
   tdes->block_global_oldest_active_until_commit = false;
+  tdes->modified_class_list = NULL;
 }
 
 /*

@@ -8667,9 +8667,7 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   INT32 undo_data, redo_data;
   FILE_RECV_DELETE_PAGES postpone_data;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  bool use_postpone =
-    !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
-    && tdes->topops.type != LOG_TOPOPS_POSTPONE;
+  bool use_postpone = tdes->topops.type != LOG_TOPOPS_POSTPONE;
   const PAGEID delete_pageid_value =
     use_postpone ? NULL_PAGEID_MARKED_DELETED : NULL_PAGEID;
   INT32 prealloc_mem[FILE_PREALLOC_MEMSIZE] = {
@@ -14663,9 +14661,7 @@ file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       fhdr->num_user_pages_mrkdelete -= rv_pages->deleted_npages;
       if (rv_pages->need_compaction == 1
 	  && fhdr->num_user_pages_mrkdelete == 0
-	  && log_is_in_crash_recovery () == false
-	  && (tdes != NULL
-	      && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
+	  && log_is_in_crash_recovery () == false)
 	{
 	  vpid = pgbuf_get_vpid_ptr (rcv->pgptr);
 	  vfid.volid = vpid->volid;
