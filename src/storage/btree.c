@@ -11791,6 +11791,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 #if !defined(NDEBUG)
   int p_level, q_level, r_level;
 #endif
+  BTREE_NODE_HEADER *q_header = NULL, *r_header = NULL;
 
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
@@ -11935,11 +11936,18 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			     sizeof (RECSET_HEADER), recset_length,
 			     &recset_header, recset_data);
 
-  /* increment lsa of the page to be deallocated */
+  /* Mark page as deallocated by setting its level to -1. This should cover
+   * cases when leaf page is re-fixed and used before its deallocation.
+   * See BTREE_IS_PAGE_VALID_LEAF.
+   */
   addr.vfid = NULL;
   addr.pgptr = Q;
   addr.offset = 0;
-  log_skip_logging_set_lsa (thread_p, &addr);
+  q_header = btree_get_node_header (Q);
+  assert (q_header != NULL);
+  log_append_undo_data (thread_p, RVBT_MARK_DEALLOC_PAGE, &addr,
+			sizeof (q_header->node_level), &q_header->node_level);
+  q_header->node_level = -1;
   pgbuf_set_dirty (thread_p, Q, DONT_FREE);
 
   /* Log the page R records for undo purposes on page P.
@@ -11982,11 +11990,18 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			     sizeof (RECSET_HEADER), recset_length,
 			     &recset_header, recset_data);
 
-  /* increment lsa of the page to be deallocated */
+  /* Mark page as deallocated by setting its level to -1. This should cover
+   * cases when leaf page is re-fixed and used before its deallocation.
+   * See BTREE_IS_PAGE_VALID_LEAF.
+   */
   addr.vfid = NULL;
   addr.pgptr = R;
   addr.offset = 0;
-  log_skip_logging_set_lsa (thread_p, &addr);
+  r_header = btree_get_node_header (R);
+  assert (r_header != NULL);
+  log_append_undo_data (thread_p, RVBT_MARK_DEALLOC_PAGE, &addr,
+			sizeof (r_header->node_level), &r_header->node_level);
+  r_header->node_level = -1;
   pgbuf_set_dirty (thread_p, R, DONT_FREE);
 
   /* update root page */
@@ -12553,13 +12568,19 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   pgbuf_set_dirty (thread_p, left_pg, DONT_FREE);
 
   /***********************************************************
-   ***  STEP 11: increment lsa of right page to be deallocated
-   ***           verify P, left, right
+   ***  STEP 11: Mark page as deallocated by setting its level to -1.
+   ***           This should cover cases when leaf page is re-fixed and used
+   ***           before its deallocation.
+   ***           See BTREE_IS_PAGE_VALID_LEAF.
    ***********************************************************/
   addr.vfid = NULL;
   addr.pgptr = right_pg;
   addr.offset = 0;
-  log_skip_logging_set_lsa (thread_p, &addr);
+  assert (right_header != NULL);
+  log_append_undo_data (thread_p, RVBT_MARK_DEALLOC_PAGE, &addr,
+			sizeof (right_header->node_level),
+			&right_header->node_level);
+  right_header->node_level = -1;
   pgbuf_set_dirty (thread_p, right_pg, DONT_FREE);
 
   mnt_bt_merges (thread_p);
@@ -40336,4 +40357,28 @@ btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page)
   assert (root_header != NULL);
 
   return root_header->creator_mvccid;
+}
+
+/*
+ * btree_rv_undo_mark_dealloc_page () - Undo marking index page as
+ *					deallocated by setting its level back.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  BTREE_NODE_HEADER *node_header = btree_get_node_header (rcv->pgptr);
+  if (node_header == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  assert (rcv->length == sizeof (node_header->node_level));
+  assert (sizeof (short) == sizeof (node_header->node_level));
+  node_header->node_level = *(short *) rcv->data;
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
 }

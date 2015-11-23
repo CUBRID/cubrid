@@ -1000,6 +1000,13 @@ struct rvfun RV_fun[] = {
    ehash_rv_init_dir_new_page_redo,
    NULL,
    NULL},
+
+  {RVBT_MARK_DEALLOC_PAGE,
+   "RVBT_MARK_DEALLOC_PAGE",
+   btree_rv_undo_mark_dealloc_page,
+   NULL,
+   NULL,
+   NULL}
 };
 
 /*

@@ -890,4 +890,7 @@ extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p,
 						    VPID * new_overflow_vpid,
 						    char **rv_undo_data_ptr,
 						    char **rv_redo_data_ptr);
+
+extern int btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p,
+					    LOG_RCV * rcv);
 #endif /* _BTREE_H_ */
