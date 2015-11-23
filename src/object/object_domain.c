@@ -4722,7 +4722,7 @@ int
 tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
 {
   DB_TYPE original_type, desired_type;
-  int original_length, desired_precision;
+  int original_length, original_size, desired_precision;
 
   original_type = DB_VALUE_DOMAIN_TYPE (val);
   if (!TP_IS_CHAR_BIT_TYPE (original_type))
@@ -4731,8 +4731,17 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
     }
 
   original_length = DB_GET_STRING_LENGTH (val);
+  original_size = DB_GET_STRING_SIZE (val);
   desired_type = TP_DOMAIN_TYPE (desired_domain);
   desired_precision = desired_domain->precision;
+
+  /* this condition covers both the cases when string conversion is needed, and
+   * when byte reinterpretation will be performed (destination charset = BINARY)
+   */
+  if (original_size > desired_precision)
+    {
+      return 0;
+    }
 
   if (TP_IS_CHAR_TYPE (original_type)
       && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (desired_domain)))
