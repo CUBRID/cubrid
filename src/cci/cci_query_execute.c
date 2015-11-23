@@ -241,6 +241,9 @@ static bool is_set_default_value_if_null (T_CON_HANDLE * con_handle,
 					  char bind_mode);
 static T_CCI_U_EXT_TYPE get_ext_utype_from_net_bytes (T_CCI_U_TYPE basic_type,
 						      T_CCI_U_TYPE set_type);
+static void confirm_schema_type_info (T_REQ_HANDLE * req_handle, int col_no,
+				      T_CCI_U_TYPE u_type, char *col_value_p,
+				      int data_size);
 
 
 /************************************************************************
@@ -1922,6 +1925,9 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no,
   u_type = get_basic_utype (u_ext_type);
 
   *indicator = 0;
+
+  confirm_schema_type_info (req_handle, col_no, u_type, col_value_p,
+			    data_size);
 
   switch (a_type)
     {
@@ -7592,4 +7598,30 @@ get_ext_utype_from_net_bytes (T_CCI_U_TYPE basic_type, T_CCI_U_TYPE set_type)
   ext_type = ext_type_msb | ext_type_cc | ext_type_lsb;
 
   return ext_type;
+}
+
+static void
+confirm_schema_type_info (T_REQ_HANDLE * req_handle, int col_no,
+			  T_CCI_U_TYPE u_type, char *col_value_p,
+			  int data_size)
+{
+#define SCHEMA_INFO_TYPE_COL_INDEX 2
+
+  if (req_handle->handle_type == HANDLE_SCHEMA_INFO
+      && col_no == SCHEMA_INFO_TYPE_COL_INDEX)
+    {
+      unsigned short value, net_val;
+      assert (u_type == CCI_U_TYPE_SHORT);
+      assert (data_size == NET_SIZE_SHORT);
+
+      NET_STR_TO_USHORT (value, col_value_p);
+
+      value = value & ~(CCI_CODE_COLLECTION << 8);
+      value = value & ~(CAS_TYPE_FIRST_BYTE_PROTOCOL_MASK << 8);
+
+      net_val = htons (value);
+      memcpy (col_value_p, (char *) &net_val, NET_SIZE_SHORT);
+    }
+
+#undef SCHEMA_INFO_TYPE_COL_INDEX
 }
