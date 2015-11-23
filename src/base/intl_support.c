@@ -6287,6 +6287,9 @@ intl_binary_to_euckr (const unsigned char *in_buf, const int in_size,
 	      *p_out++ = '?';
 	      status = 1;
 	    }
+	  *p_out++ = *(p - 3);
+	  *p_out++ = *(p - 2);
+	  *p_out++ = *(p - 1);
 	  continue;
 	}
 
@@ -6300,6 +6303,8 @@ intl_binary_to_euckr (const unsigned char *in_buf, const int in_size,
 	      *p_out++ = '?';
 	      status = 1;
 	    }
+	  *p_out++ = *(p - 2);
+	  *p_out++ = *(p - 1);
 	  continue;
 	}
 
