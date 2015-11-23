@@ -3119,7 +3119,8 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 				 DB_GET_OID (peek_dbval), NULL,
 				 &mvcc_last_record,
 				 &local_scancache, S_SELECT, COPY,
-				 NULL_CHN, &mvcc_updated_oid) != S_SUCCESS)
+				 NULL_CHN, &mvcc_updated_oid,
+				 LOG_WARNING_IF_DELETED) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS
 	      || er_errid () == ER_HEAP_UNKNOWN_OBJECT)

@@ -5369,7 +5369,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 					  &recdes,
 					  &hsidp->scan_range.scan_cache,
 					  is_peeking, NULL_CHN,
-					  &mvcc_reev_data, &updated_oid);
+					  &mvcc_reev_data, &updated_oid,
+					  LOG_WARNING_IF_DELETED);
 	      if (sp_scan == S_SUCCESS
 		  && mvcc_reev_data.filter_result == V_FALSE)
 		{
@@ -5424,7 +5425,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 						  &hsidp->scan_cache,
 						  is_peeking, NULL_CHN,
 						  &mvcc_reev_data,
-						  &updated_oid);
+						  &updated_oid,
+						  LOG_WARNING_IF_DELETED);
 		      if (sp_scan == S_SUCCESS
 			  && mvcc_reev_data.filter_result == V_FALSE)
 			{
@@ -5488,7 +5490,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 						  &hsidp->scan_cache,
 						  is_peeking, NULL_CHN,
 						  &mvcc_reev_data,
-						  &updated_oid);
+						  &updated_oid,
+						  LOG_WARNING_IF_DELETED);
 		      if (sp_scan == S_SUCCESS
 			  && mvcc_reev_data.filter_result == V_FALSE)
 			{
@@ -6457,7 +6460,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       sp_scan =
 	heap_mvcc_get_for_delete (thread_p, isidp->curr_oidp, NULL, &recdes,
 				  &isidp->scan_cache, scan_id->fixed,
-				  NULL_CHN, &mvcc_reev_data, &updated_oid);
+				  NULL_CHN, &mvcc_reev_data, &updated_oid,
+				  LOG_WARNING_IF_DELETED);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)
@@ -7174,7 +7178,8 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (heap_mvcc_get_visible (thread_p, DB_GET_OID (p_dbvalue), NULL,
 				     NULL, &scan_cache, S_SELECT, COPY,
 				     NULL_CHN,
-				     &mvcc_updated_oid) != S_SUCCESS)
+				     &mvcc_updated_oid,
+				     LOG_WARNING_IF_DELETED) != S_SUCCESS)
 	    {
 	      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS
 		  || er_errid () == ER_HEAP_UNKNOWN_OBJECT)

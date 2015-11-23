@@ -503,20 +503,26 @@ extern SCAN_CODE heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid,
 					HEAP_SCANCACHE * scan_cache,
 					SCAN_OPERATION_TYPE op_type,
 					int ispeeking, int old_chn,
-					OID * updated_oid);
+					OID * updated_oid,
+					NON_EXISTENT_HANDLING
+					non_ex_handling_type);
 extern SCAN_CODE heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid,
 					   OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache,
 					   int ispeeking, int old_chn,
 					   struct mvcc_reev_data
-					   *mvcc_reev_data, OID * update_oid);
+					   *mvcc_reev_data, OID * update_oid,
+					   NON_EXISTENT_HANDLING
+					   non_ex_handling_type);
 extern SCAN_CODE heap_get_with_class_oid (THREAD_ENTRY * thread_p,
 					  OID * class_oid, const OID * oid,
 					  RECDES * recdes,
 					  HEAP_SCANCACHE * scan_cache,
 					  SCAN_OPERATION_TYPE
 					  scan_operation_type, int ispeeking,
-					  OID * updated_oid);
+					  OID * updated_oid,
+					  NON_EXISTENT_HANDLING
+					  non_ex_handling_type);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
 				     const OID * oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid,

@@ -13284,7 +13284,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       /* fetch the object and the class oid */
       if (heap_get_with_class_oid (thread_p, &cls_oid, dbvaloid,
 				   &oRec, &scan_cache, scan_operation_type,
-				   PEEK, NULL) != S_SUCCESS)
+				   PEEK, NULL, LOG_ERROR_IF_DELETED)
+	  != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
@@ -13982,7 +13983,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		heap_mvcc_get_for_delete (thread_p, oid, class_oid,
 					  NULL, &scan_cache,
 					  COPY, NULL_CHN, p_mvcc_reev_data,
-					  &updated_oid);
+					  &updated_oid,
+					  LOG_WARNING_IF_DELETED);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();

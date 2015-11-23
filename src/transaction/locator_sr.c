@@ -2732,7 +2732,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
       scan =
 	heap_mvcc_get_for_delete (thread_p, oid, class_oid, &assign->recdes,
 				  assign->ptr_scancache, COPY, chn, NULL,
-				  &updated_oid);
+				  &updated_oid, LOG_ERROR_IF_DELETED);
     }
   else
     {
@@ -2745,7 +2745,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
       scan =
 	heap_mvcc_get_visible (thread_p, oid, class_oid, &assign->recdes,
 			       assign->ptr_scancache, op_type, COPY, chn,
-			       &updated_oid);
+			       &updated_oid, LOG_ERROR_IF_DELETED);
     }
 
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END)
@@ -4093,7 +4093,8 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p,
       scan =
 	heap_get_with_class_oid (thread_p, &class_oid,
 				 &lockset->objects[ref_num].oid, &peek_recdes,
-				 &scan_cache, S_SELECT, PEEK, NULL);
+				 &scan_cache, S_SELECT, PEEK, NULL,
+				 LOG_WARNING_IF_DELETED);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_EXIST
@@ -5233,7 +5234,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 		    heap_mvcc_get_for_delete (thread_p, oid_ptr,
 					      &fkref->self_oid,
 					      &recdes, &scan_cache, COPY,
-					      NULL_CHN, NULL, &updated_oid);
+					      NULL_CHN, NULL, &updated_oid,
+					      LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -5615,7 +5617,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 		    heap_mvcc_get_for_delete (thread_p, oid_ptr,
 					      &fkref->self_oid, &recdes,
 					      &scan_cache, COPY, NULL_CHN,
-					      NULL, &updated_oid);
+					      NULL, &updated_oid,
+					      LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -6611,7 +6614,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 						  &copy_recdes,
 						  local_scan_cache, COPY,
 						  NULL_CHN, mvcc_reev_data,
-						  &updated_oid);
+						  &updated_oid,
+						  LOG_ERROR_IF_DELETED);
 		    }
 		  else
 		    {
@@ -6621,7 +6625,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 						  &copy_recdes,
 						  local_scan_cache, COPY,
 						  NULL_CHN, mvcc_reev_data,
-						  &updated_oid);
+						  &updated_oid,
+						  LOG_ERROR_IF_DELETED);
 		    }
 		}
 	      else
@@ -7260,13 +7265,14 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
       scan_code =
 	heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes,
 				  scan_cache, COPY, NULL_CHN, mvcc_reev_data,
-				  &updated_oid);
+				  &updated_oid, LOG_WARNING_IF_DELETED);
     }
   else
     {
       scan_code =
 	heap_get_with_class_oid (thread_p, &class_oid, oid, &copy_recdes,
-				 scan_cache, S_SELECT, COPY, NULL);
+				 scan_cache, S_SELECT, COPY, NULL,
+				 LOG_WARNING_IF_DELETED);
       assert ((lock_get_object_lock (oid, &class_oid,
 				     LOG_FIND_THREAD_TRAN_INDEX (thread_p))
 	       >= X_LOCK)
@@ -8783,7 +8789,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      scan =
 		heap_mvcc_get_for_delete (thread_p, oid, &class_oid,
 					  &copy_recdes, scan_cache, COPY,
-					  NULL_CHN, NULL, &updated_oid);
+					  NULL_CHN, NULL, &updated_oid,
+					  LOG_ERROR_IF_DELETED);
 	    }
 	  else
 	    {

@@ -1090,7 +1090,9 @@ static SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY *
 							int old_chn,
 							MVCC_REEV_DATA *
 							mvcc_reev_data,
-							OID * updated_oid);
+							OID * updated_oid,
+							NON_EXISTENT_HANDLING
+							non_ex_handling_type);
 static SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p,
 						      OID * oid,
 						      OID * forward_oid,
@@ -8928,17 +8930,22 @@ end:
  * updated_oid (in)	 : Pointer to updated OID: If not null and if the
  *			   object has been updated, it will save the OID of
  *			   the updated version.
+ * non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the 
+ *				ER_HEAP_UNKNOWN_OBJECT error to log
+ *                            - LOG_WARNING_IF_DELETED: set only warning
  */
 SCAN_CODE
 heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 		       RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 		       SCAN_OPERATION_TYPE op_type, int ispeeking,
-		       int old_chn, OID * updated_oid)
+		       int old_chn, OID * updated_oid,
+		       NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   return heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid,
 						recdes, scan_cache, op_type,
 						ispeeking, old_chn, NULL,
-						updated_oid);
+						updated_oid,
+						non_ex_handling_type);
 }
 
 /*
@@ -8954,17 +8961,22 @@ heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
  * old_chn (in)	       : CHN of known record data.
  * mvcc_reev_data (in) : MVCC reevaluation data.
  * update_oid (out)    : OID of selected version for delete.
+ * non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the 
+ *				ER_HEAP_UNKNOWN_OBJECT error to log
+ *                            - LOG_WARNING_IF_DELETED: set only warning
  */
 SCAN_CODE
 heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 			  RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 			  int ispeeking, int old_chn,
-			  MVCC_REEV_DATA * mvcc_reev_data, OID * update_oid)
+			  MVCC_REEV_DATA * mvcc_reev_data, OID * update_oid,
+			  NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   return heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid,
 						recdes, scan_cache, S_DELETE,
 						ispeeking, old_chn,
-						mvcc_reev_data, update_oid);
+						mvcc_reev_data, update_oid,
+						non_ex_handling_type);
 }
 
 /*
@@ -8995,6 +9007,9 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
  *			it was not updated.
  * updated_oid (out)  : OID of selected version if it is different than the
  *			original version.
+ * non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the 
+ *				ER_HEAP_UNKNOWN_OBJECT error to log
+ *                            - LOG_WARNING_IF_DELETED: set only warning
  *
  * NOTE: This function starts with one object version (given by OID) and must
  *	 obtain the right version depending on operation type.
@@ -9026,7 +9041,9 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
 				       SCAN_OPERATION_TYPE op_type,
 				       int ispeeking, int old_chn,
 				       MVCC_REEV_DATA * mvcc_reev_data,
-				       OID * updated_oid)
+				       OID * updated_oid,
+				       NON_EXISTENT_HANDLING
+				       non_ex_handling_type)
 {
   OID current_oid;		/* Current oid being processed. */
   OID forward_oid;		/* Forward OID - used for
@@ -9407,10 +9424,12 @@ start_current_version:
 		      scan_code = S_DOESNT_EXIST;
 		      goto end;
 		    }
-		  if (MVCC_IS_FLAG_SET
-		      (&mvcc_header, OR_MVCC_FLAG_VALID_DELID)
-		      && MVCC_IS_REC_DELETED_BY_ME (thread_p, &mvcc_header)
-		      && is_system_class == true)
+		  if (non_ex_handling_type == LOG_WARNING_IF_DELETED
+		      || (MVCC_IS_FLAG_SET
+			  (&mvcc_header, OR_MVCC_FLAG_VALID_DELID)
+			  && MVCC_IS_REC_DELETED_BY_ME (thread_p,
+							&mvcc_header)
+			  && is_system_class == true))
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 			      ER_HEAP_UNKNOWN_OBJECT, 3, current_oid.volid,
@@ -10681,7 +10700,8 @@ heap_get_with_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
 			 const OID * oid, RECDES * recdes,
 			 HEAP_SCANCACHE * scan_cache,
 			 SCAN_OPERATION_TYPE scan_operation_type,
-			 int ispeeking, OID * updated_oid)
+			 int ispeeking, OID * updated_oid,
+			 NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   SCAN_CODE scan;
 
@@ -10696,7 +10716,7 @@ heap_get_with_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
     heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, recdes,
 					   scan_cache, scan_operation_type,
 					   ispeeking, NULL_CHN, NULL,
-					   updated_oid);
+					   updated_oid, non_ex_handling_type);
   if (scan != S_SUCCESS)
     {
       OID_SET_NULL (class_oid);
@@ -12060,7 +12080,8 @@ heap_does_exist_visible (THREAD_ENTRY * thread_p, OID * class_oid,
   scan =
     heap_mvcc_lock_and_get_object_version (thread_p, (OID *) oid, class_oid,
 					   NULL, &scan_cache, S_SELECT, PEEK,
-					   NULL_CHN, NULL, NULL);
+					   NULL_CHN, NULL, NULL,
+					   LOG_ERROR_IF_DELETED);
   heap_scancache_end (thread_p, &scan_cache);
   if (scan != S_SUCCESS)
     {
@@ -12473,7 +12494,7 @@ SCAN_CODE
 heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 {
   return heap_get_with_class_oid (thread_p, class_oid, oid, NULL, NULL,
-				  S_SELECT, PEEK, NULL);
+				  S_SELECT, PEEK, NULL, LOG_ERROR_IF_DELETED);
 }
 
 /*
@@ -12544,7 +12565,8 @@ heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid,
   scan_code =
     heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, NULL,
 					   &scan_cache, scan_operation_type,
-					   PEEK, NULL_CHN, NULL, updated_oid);
+					   PEEK, NULL_CHN, NULL, updated_oid,
+					   LOG_WARNING_IF_DELETED);
   /* End scan cache before anything else. */
   heap_scancache_end (thread_p, &scan_cache);
 
@@ -12626,7 +12648,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,
 
   if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes,
 			       &scan_cache, S_SELECT, PEEK,
-			       NULL) == S_SUCCESS)
+			       NULL, LOG_ERROR_IF_DELETED) == S_SUCCESS)
     {
       /* Make sure that this is a class */
       if (oid_is_root (&root_oid))
@@ -12697,7 +12719,7 @@ heap_get_class_name_of_instance (THREAD_ENTRY * thread_p,
 
   if (heap_get_with_class_oid (thread_p, &class_oid, inst_oid, NULL,
 			       &scan_cache, S_SELECT, PEEK,
-			       NULL) == S_SUCCESS)
+			       NULL, LOG_ERROR_IF_DELETED) == S_SUCCESS)
     {
       if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK,
 		    NULL_CHN) == S_SUCCESS)
@@ -12756,7 +12778,7 @@ heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p, const OID * oid,
   heap_scancache_quick_start (&scan_cache);
   if (heap_get_with_class_oid (thread_p, &class_oid, oid, &recdes,
 			       &scan_cache, S_SELECT, PEEK,
-			       NULL) == S_SUCCESS)
+			       NULL, LOG_ERROR_IF_DELETED) == S_SUCCESS)
     {
       /*
        * If oid is a class, get its name, otherwise, get the name of its class
@@ -13900,7 +13922,8 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid,
 							 &local_scancache,
 							 S_SELECT, COPY,
 							 NULL_CHN, NULL,
-							 &mvcc_updated_oid)
+							 &mvcc_updated_oid,
+							 LOG_WARNING_IF_DELETED)
 		  != S_SUCCESS)
 		{
 		  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS
@@ -13908,6 +13931,8 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid,
 		    {
 		      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 		      heap_scancache_end (thread_p, &local_scancache);
+		      /* make the deleted OID NULL to avoid future operations */
+		      DB_MAKE_NULL (&(value->dbvalue));
 		      continue;
 		    }
 		  heap_scancache_end (thread_p, &local_scancache);
@@ -14322,7 +14347,7 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes,
 			       &scan_cache, S_SELECT, PEEK,
-			       NULL) != S_SUCCESS)
+			       NULL, LOG_ERROR_IF_DELETED) != S_SUCCESS)
     {
       error = ER_FAILED;
       goto cleanup;
@@ -25001,7 +25026,8 @@ heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
   scan_code =
     heap_mvcc_lock_and_get_object_version (thread_p, oid, NULL, NULL,
 					   &scan_cache, scan_operation_type,
-					   true, NULL_CHN, NULL, locked_oid);
+					   true, NULL_CHN, NULL, locked_oid,
+					   LOG_ERROR_IF_DELETED);
   if (scan_code == S_ERROR)
     {
       ASSERT_ERROR ();

@@ -739,8 +739,8 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
       /* The object has been deleted */
       if (do_Trigger_involved == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
-		  oid->volid, oid->pageid, oid->slotid);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT,
+		  3, oid->volid, oid->pageid, oid->slotid);
 	}
       error_code = ER_FAILED;
       goto end;
@@ -1141,7 +1141,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
 	  else
 	    {
 	      /* The object has been deleted */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
 		      oid->slotid);
 	      error_code = ER_HEAP_UNKNOWN_OBJECT;
@@ -1363,7 +1363,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
 	    {
 	      /* The object has been deleted */
 	      oid = ws_oid (mop);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
 		      oid->slotid);
 	      error_code = ER_HEAP_UNKNOWN_OBJECT;

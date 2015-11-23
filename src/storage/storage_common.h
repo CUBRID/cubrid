@@ -730,6 +730,17 @@ typedef enum
   BTREE_NODE_INFO_COUNT
 } BTREE_NODE_INFO_ID;
 
+typedef enum
+{
+  LOG_ERROR_IF_DELETED,		/* set error when locking deleted objects */
+  LOG_WARNING_IF_DELETED	/* set warning when locking deleted objects 
+				 * - the case when it is expected and accepted
+				 *   to find a deleted object; for example when
+				 *   er_clear() is used afterwards if
+				 *   ER_HEAP_UNKNOWN_OBJECT is set in er_errid
+				 */
+} NON_EXISTENT_HANDLING;
+
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);
 extern INT16 db_log_page_size (void);

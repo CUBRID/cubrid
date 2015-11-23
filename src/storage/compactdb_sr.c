@@ -234,7 +234,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
   scan_code =
     heap_mvcc_get_for_delete (thread_p, oid, &upd_scancache->node.class_oid,
 			      &copy_recdes, upd_scancache, COPY, NULL_CHN,
-			      NULL, &updated_oid);
+			      NULL, &updated_oid, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
