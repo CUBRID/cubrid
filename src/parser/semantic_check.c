@@ -327,6 +327,9 @@ static void pt_check_unique_attr (PARSER_CONTEXT * parser,
 				  PT_NODE_TYPE att_type);
 static void pt_check_function_index_expr (PARSER_CONTEXT * parser,
 					  PT_NODE * node);
+static PT_NODE *pt_check_function_index_expr_pre (PARSER_CONTEXT * parser,
+						  PT_NODE * node, void *arg,
+						  int *continue_walk);
 static void pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_replace_names_in_update_values (PARSER_CONTEXT * parser,
 						   PT_NODE * update);
@@ -16255,6 +16258,14 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (pt_is_function_index_expr (parser, col->info.sort_spec.expr,
 					 true))
 	    {
+	      (void) parser_walk_tree (parser, col->info.sort_spec.expr,
+				       pt_check_function_index_expr_pre, NULL,
+				       NULL, NULL);
+	      if (pt_has_error (parser))
+		{
+		  /* Stop. */
+		  return;
+		}
 	      node->info.index.function_expr = parser_copy_tree (parser, col);
 	      node->info.index.func_pos = i;
 	      rem = col;
@@ -16302,6 +16313,35 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
     }
+}
+
+/*
+ * pt_check_function_index_expr_pre () - Helper function to check function
+ *					 index semantic correctness.
+ *
+ * return		  : Current node.
+ * parser (in)		  : Parser context.
+ * node (in)		  : Current node.
+ * arg (in/out)		  : Not used.
+ * continue_walk (in/out) : Walker argument to know when to stop advancing.
+ */
+static PT_NODE *
+pt_check_function_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
+				  void *arg, int *continue_walk)
+{
+  assert (continue_walk != NULL);
+
+  if (*continue_walk == PT_STOP_WALK || node == NULL)
+    {
+      return node;
+    }
+  if (node->node_type == PT_NAME && PT_IS_LTZ_TYPE (node->type_enum))
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_NO_LTZ_IN_FUNCTION_FILTER_INDEX);
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
 }
 
 /*
@@ -16810,6 +16850,12 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  && node->info.name.meta_class != PT_NORMAL)
 	{
 	  /* valid expression, nothing to do */
+	  info->is_valid_expr = false;
+	}
+      else if (PT_IS_LTZ_TYPE (node->type_enum))
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_NO_LTZ_IN_FUNCTION_FILTER_INDEX);
 	  info->is_valid_expr = false;
 	}
       else if (info->has_keys_in_expression == false)

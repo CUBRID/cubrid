@@ -1711,6 +1711,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 291 Subquery is not allowed in ORDER BY FOR clause.
 292 Invalid use of aggregate functions.
 293 Value must be strictly increasing for each partition.
+294 Cannot use function or filter indexes on local timezone typed columns.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

@@ -266,6 +266,11 @@
 	   ((t) == PT_TYPE_DATETIMETZ)	  || \
 	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
 
+#define PT_IS_LTZ_TYPE(t) \
+  ((t) == PT_TYPE_TIMELTZ \
+   || (t) == PT_TYPE_TIMESTAMPLTZ \
+   || (t) == PT_TYPE_DATETIMELTZ)
+
 #define PT_IS_PRIMITIVE_TYPE(t) \
         ( (((t) == PT_TYPE_OBJECT) || \
 	   ((t) == PT_TYPE_NONE))  ? false : true )
