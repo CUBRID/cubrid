@@ -9010,13 +9010,13 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 	    case LOG_RUN_POSTPONE:
 	    case LOG_COMMIT_WITH_POSTPONE:
+	    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
 	      /* Undo of postpone system operation. End here. */
 	      LSA_SET_NULL (&prev_tranlsa);
 	      break;
 
 	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT:
-	    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
 	    case LOG_ABORT:
 	    case LOG_2PC_COMMIT_DECISION:
 	    case LOG_2PC_COMMIT_INFORM_PARTICPS:
