@@ -148,6 +148,7 @@ extern "C"
     char prepare_flag;
     char execute_flag;
     char handle_type;
+    char handle_sub_type;
     char updatable_flag;
     char *sql_text;
     int max_row;

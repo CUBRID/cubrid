@@ -526,6 +526,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   FREE_MEM (result_msg);
 
   req_handle->handle_type = HANDLE_PREPARE;
+  req_handle->handle_sub_type = 0;
   req_handle->server_handle_id = result_code;
   req_handle->cur_fetch_tuple_index = -1;
   if ((flag & CCI_PREPARE_UPDATABLE) != 0)
@@ -995,6 +996,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     }
 
   req_handle->handle_type = HANDLE_PREPARE;
+  req_handle->handle_sub_type = 0;
   req_handle->server_handle_id = result_code;
   req_handle->cur_fetch_tuple_index = -1;
   if ((prepare_flag & CCI_PREPARE_UPDATABLE) != 0)
@@ -2063,6 +2065,7 @@ qe_schema_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     return err_code;
 
   req_handle->handle_type = HANDLE_SCHEMA_INFO;
+  req_handle->handle_sub_type = type;
   req_handle->server_handle_id = result_code;
   req_handle->cur_fetch_tuple_index = -1;
   req_handle->cursor_pos = 0;
@@ -2127,6 +2130,7 @@ qe_oid_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     }
 
   req_handle->handle_type = HANDLE_OID_GET;
+  req_handle->handle_sub_type = 0;
   req_handle->msg_buf = result_msg;
   return 0;
 }
@@ -2551,6 +2555,7 @@ qe_col_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     }
 
   req_handle->handle_type = HANDLE_COL_GET;
+  req_handle->handle_sub_type = 0;
   req_handle->msg_buf = result_msg;
   req_handle->cursor_pos = 0;
 
@@ -5167,6 +5172,7 @@ out_rs_info_decode (char *buf, int *size, T_REQ_HANDLE * req_handle)
 
   req_handle->server_handle_id = out_srv_handle_id;
   req_handle->handle_type = HANDLE_PREPARE;
+  req_handle->handle_sub_type = 0;
   req_handle->num_tuple = max_row;
   req_handle->num_col_info = num_col_info;
   req_handle->col_info = col_info;
@@ -7608,6 +7614,8 @@ confirm_schema_type_info (T_REQ_HANDLE * req_handle, int col_no,
 #define SCHEMA_INFO_TYPE_COL_INDEX 2
 
   if (req_handle->handle_type == HANDLE_SCHEMA_INFO
+      && (req_handle->handle_sub_type == CCI_SCH_ATTRIBUTE
+	  || req_handle->handle_sub_type == CCI_SCH_CLASS_ATTRIBUTE)
       && col_no == SCHEMA_INFO_TYPE_COL_INDEX)
     {
       unsigned short value, net_val;
