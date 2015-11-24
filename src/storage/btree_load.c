@@ -230,7 +230,6 @@ btree_get_node_header (PAGE_PTR page_ptr)
   header = (BTREE_NODE_HEADER *) header_record.data;
   if (header != NULL)
     {
-      assert (header->node_level > 0);
       assert (header->max_key_len >= 0);
     }
 
@@ -2017,7 +2016,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   root_header->creator_mvccid = MVCCID_NULL;
 #endif /* SA_MODE */
 
