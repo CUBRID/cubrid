@@ -12642,12 +12642,69 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 	    }
 	  else
 	    {
+	      bool rhs_is_collection_with_str = false;
+	      PT_NODE *cast_dt = NULL;
+
 	      assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum)
 				|| lhs->type_enum == PT_TYPE_NUMERIC)
 			      || lhs->data_type != NULL);
+
+	      if (PT_IS_COLLECTION_TYPE (rhs->type_enum)
+		  && lhs->data_type == NULL && rhs->data_type != NULL)
+		{
+		  PT_NODE *dt_element;
+
+		  dt_element = rhs->data_type;
+
+		  while (dt_element != NULL)
+		    {
+		      if (PT_IS_CHAR_STRING_TYPE (dt_element->type_enum))
+			{
+			  rhs_is_collection_with_str = true;
+			  break;
+			}
+		      dt_element = dt_element->next;
+		    }
+		}
+
+	      if (PT_IS_COLLECTION_TYPE (lhs->type_enum)
+		  && PT_IS_COLLECTION_TYPE (rhs->type_enum)
+		  && lhs->data_type == NULL
+		  && rhs_is_collection_with_str == true)
+		{
+		  PT_NODE *dt_element;
+
+		  /* create a data type for lhs with with string having DB charset */
+		  cast_dt = parser_copy_tree_list (parser, rhs->data_type);
+
+		  dt_element = cast_dt;
+
+		  while (dt_element != NULL)
+		    {
+		      if (PT_IS_CHAR_STRING_TYPE (dt_element->type_enum))
+			{
+			  dt_element->info.data_type.collation_id =
+			    LANG_SYS_COLLATION;
+			  dt_element->info.data_type.units = lang_charset ();
+			  dt_element->info.data_type.collation_flag =
+			    TP_DOMAIN_COLL_NORMAL;
+			}
+		      dt_element = dt_element->next;
+		    }
+		}
+	      else
+		{
+		  cast_dt = lhs->data_type;
+		}
+
 	      rhs =
 		pt_wrap_with_cast_op (parser, rhs, lhs->type_enum, 0, 0,
-				      lhs->data_type);
+				      cast_dt);
+	      if (cast_dt != NULL && cast_dt != lhs->data_type)
+		{
+		  parser_free_tree (parser, cast_dt);
+		  cast_dt = NULL;
+		}
 	      /* the call to pt_wrap_with_cast_op might fail because
 	         a call to allocate memory failed. In this case, the error
 	         message is set by the calls inside pt_wrap_with_cast_op and
