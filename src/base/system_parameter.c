@@ -617,6 +617,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PB_SEQUENTIAL_VICTIM_FLUSH "data_buffer_sequential_victim_flush"
 
+#define PRM_NAME_LOG_UNIQUE_STATS "log_unique_stats"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
 /*
@@ -2055,6 +2057,10 @@ static bool prm_examine_client_cached_locks_flag = 0;
 bool PRM_PB_SEQUENTIAL_VICTIM_FLUSH = false;
 static bool prm_pb_sequential_victim_flush_default = false;
 static unsigned int prm_pb_sequential_victim_flush_flag = 0;
+
+bool PRM_LOG_UNIQUE_STATS = false;
+static bool prm_log_unique_stats_default = false;
+static unsigned int prm_log_unique_stats_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4953,7 +4959,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_LOG_UNIQUE_STATS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_log_unique_stats_flag,
+   (void *) &prm_log_unique_stats_default,
+   (void *) &PRM_LOG_UNIQUE_STATS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

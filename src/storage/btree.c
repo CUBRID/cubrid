@@ -16878,6 +16878,22 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p,
 
 	  /* set the root page as dirty page */
 	  pgbuf_set_dirty (thread_p, root, DONT_FREE);
+
+	  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS) == true)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "Reflect unique statistics to index (%d, %d|%d):"
+			     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n",
+			     unique_stat_info->btid.root_pageid,
+			     unique_stat_info->btid.vfid.volid,
+			     unique_stat_info->btid.vfid.fileid,
+			     unique_stat_info->unique_stats.num_nulls,
+			     unique_stat_info->unique_stats.num_oids,
+			     unique_stat_info->unique_stats.num_keys,
+			     (long long int)
+			     unique_stat_info->last_log_lsa.pageid,
+			     (int) unique_stat_info->last_log_lsa.offset);
+	    }
 	}
     }
 
@@ -25571,6 +25587,18 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
       (thread_p, &btid, -num_oids, -num_nulls, -num_keys, false) != NO_ERROR)
     {
       goto error;
+    }
+
+  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "Recover unique statistics for index (%d, %d|%d): "
+		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n",
+		     btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
+		     num_nulls, num_oids, num_keys,
+		     (long long int)
+		     log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
+		     (int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.offset);
     }
 
   return NO_ERROR;
