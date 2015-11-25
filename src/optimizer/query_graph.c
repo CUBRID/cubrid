@@ -2134,11 +2134,9 @@ qo_analyze_term (QO_TERM * term, int term_type)
    */
   if (pt_expr->or_next == NULL
       && (pt_expr->info.expr.arg1 == NULL
-	  || (pt_expr->info.expr.arg1->next == NULL
-	      && pt_expr->info.expr.arg1->or_next == NULL))
+	  || pt_expr->info.expr.arg1->next == NULL)
       && (pt_expr->info.expr.arg2 == NULL
-	  || (pt_expr->info.expr.arg2->next == NULL
-	      && pt_expr->info.expr.arg2->or_next == NULL)))
+	  || pt_expr->info.expr.arg2->next == NULL))
     {
       QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
 
