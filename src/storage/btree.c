@@ -12585,7 +12585,6 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, left_pg);
-  btree_verify_node (thread_p, btid, right_pg);
 #endif
 
   /***********************************************************
