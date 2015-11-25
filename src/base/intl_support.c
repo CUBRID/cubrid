@@ -5906,8 +5906,6 @@ intl_get_money_esc_ISO_symbol (const DB_CURRENCY currency)
  * intl_binary_to_utf8 - converts a buffer from binary to utf8, replacing 
  *			 invalid UTF-8 sequences with '?'
  *
- *   return: 0 conversion ok, 1 conversion done, but invalid characters where
- *	     found
  *   in_buf(in): buffer
  *   in_size(in): size of input string (NUL terminator not included)
  *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
@@ -5925,7 +5923,7 @@ intl_get_money_esc_ISO_symbol (const DB_CURRENCY currency)
  *		 F1 - F3 , 80 - BF , 80 - BF , 80 - BF (U +40000 .. +FFFFF)
  *		 F4	 , 80 - 8F , 80 - BF , 80 - BF (U +100000 .. +10FFFF)
  */
-int
+void
 intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		     unsigned char **out_buf, int *out_size)
 {
@@ -5934,7 +5932,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
   const unsigned char *curr_char = NULL;
   bool has_invalid_chars = false;
   unsigned char *p_out = NULL;
-  int status = 0;
 
   p_out = (unsigned char *) *out_buf;
   p_end = in_buf + in_size;
@@ -5955,7 +5952,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	{
 	  *p_out++ = '?';
 	  p++;
-	  status = 1;
 	  continue;
 	}
 
@@ -5967,7 +5963,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  if (p >= p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
 	      continue;
 	    }
 
@@ -5978,8 +5973,8 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	      p++;
 	      continue;
 	    }
+	  p++;
 	  *p_out++ = '?';
-	  status = 1;
 	  continue;
 	}
 
@@ -5991,7 +5986,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  if (p >= p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
 	      continue;
 	    }
 
@@ -6001,7 +5995,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	      if (p >= p_end)
 		{
 		  *p_out++ = '?';
-		  status = 1;
 		  continue;
 		}
 
@@ -6014,9 +6007,11 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		  continue;
 		}
 	    }
-
-	  *p_out++ = '?';
-	  status = 1;
+	  p++;
+	  if (p < p_end)
+	    {
+	      *p_out++ = '?';
+	    }
 	  continue;
 	}
       /* 3 bytes sequence : E1 - EC , 80 - BF , 80 - BF */
@@ -6028,7 +6023,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  if (p >= p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
 	      continue;
 	    }
 
@@ -6038,7 +6032,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	      if (p >= p_end)
 		{
 		  *p_out++ = '?';
-		  status = 1;
 		  continue;
 		}
 
@@ -6051,8 +6044,8 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		  continue;
 		}
 	    }
+	  p++;
 	  *p_out++ = '?';
-	  status = 1;
 	  continue;
 	}
       /* 3 bytes sequence : ED   , 80 - 9F , 80 - BF */
@@ -6062,7 +6055,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  if (p >= p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
 	      continue;
 	    }
 
@@ -6072,7 +6064,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	      if (p >= p_end)
 		{
 		  *p_out++ = '?';
-		  status = 1;
 		  continue;
 		}
 
@@ -6085,8 +6076,8 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		  continue;
 		}
 	    }
+	  p++;
 	  *p_out++ = '?';
-	  status = 1;
 	  continue;
 	}
 
@@ -6097,7 +6088,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  if (p >= p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
 	      continue;
 	    }
 
@@ -6107,7 +6097,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	      if (p >= p_end)
 		{
 		  *p_out++ = '?';
-		  status = 1;
 		  continue;
 		}
 
@@ -6117,7 +6106,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		  if (p >= p_end)
 		    {
 		      *p_out++ = '?';
-		      status = 1;
 		      continue;
 		    }
 
@@ -6132,8 +6120,8 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		    }
 		}
 	    }
+	  p++;
 	  *p_out++ = '?';
-	  status = 1;
 	  continue;
 	}
       /* 4 bytes sequence : F1 - F3 , 80 - BF , 80 - BF , 80 - BF */
@@ -6143,7 +6131,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  if (p >= p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
 	      continue;
 	    }
 
@@ -6153,7 +6140,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	      if (p >= p_end)
 		{
 		  *p_out++ = '?';
-		  status = 1;
 		  continue;
 		}
 
@@ -6163,7 +6149,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		  if (p >= p_end)
 		    {
 		      *p_out++ = '?';
-		      status = 1;
+		      continue;
 		    }
 
 		  if (UTF8_BYTE_IN_RANGE (*p, 0x80, 0xbf))
@@ -6177,8 +6163,8 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		    }
 		}
 	    }
+	  p++;
 	  *p_out++ = '?';
-	  status = 1;
 	  continue;
 	}
       /* 4 bytes sequence : F4 , 80 - 8F , 80 - BF , 80 - BF */
@@ -6188,7 +6174,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  if (p >= p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
 	      continue;
 	    }
 
@@ -6198,7 +6183,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	      if (p >= p_end)
 		{
 		  *p_out++ = '?';
-		  status = 1;
 		  continue;
 		}
 
@@ -6208,7 +6192,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		  if (p >= p_end)
 		    {
 		      *p_out++ = '?';
-		      status = 1;
 		      continue;
 		    }
 
@@ -6223,25 +6206,21 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 		    }
 		}
 	    }
+	  p++;
 	  *p_out++ = '?';
-	  status = 1;
 	  continue;
 	}
 
       assert (*p > 0xf4);
-      status = 1;
     }
 
   *out_size = p_out - *(out_buf);
-  return status;
 }
 
 /*
  * intl_binary_to_euckr - converts a buffer from binary to euckr, replacing 
  *			 invalid euckr sequences with '?'
  *
- *   return: 0 conversion ok, 1 conversion done, but invalid characters where
- *	     found
  *   in_buf(in): buffer
  *   in_size(in): size of input string (NUL terminator not included)
  *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
@@ -6253,7 +6232,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
  *    - 2 bytes: A1 - FE , 00 - FF
  *    - 3 bytes: 8F	 , 00 - FF , 00 - FF
  */
-int
+void
 intl_binary_to_euckr (const unsigned char *in_buf, const int in_size,
 		      unsigned char **out_buf, int *out_size)
 {
@@ -6261,7 +6240,6 @@ intl_binary_to_euckr (const unsigned char *in_buf, const int in_size,
   const unsigned char *p_end = NULL;
   const unsigned char *curr_char = NULL;
   unsigned char *p_out = NULL;
-  int status = 0;
 
   p_out = (unsigned char *) *out_buf;
   p_end = in_buf + in_size;
@@ -6285,7 +6263,7 @@ intl_binary_to_euckr (const unsigned char *in_buf, const int in_size,
 	  if (p > p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
+	      continue;
 	    }
 	  *p_out++ = *(p - 3);
 	  *p_out++ = *(p - 2);
@@ -6301,18 +6279,15 @@ intl_binary_to_euckr (const unsigned char *in_buf, const int in_size,
 	  if (p > p_end)
 	    {
 	      *p_out++ = '?';
-	      status = 1;
+	      continue;
 	    }
 	  *p_out++ = *(p - 2);
 	  *p_out++ = *(p - 1);
 	  continue;
 	}
-
-      *p_out++ = '?';
       p++;
-      status = 1;
+      *p_out++ = '?';
     }
 
   *out_size = p_out - *(out_buf);
-  return status;
 }

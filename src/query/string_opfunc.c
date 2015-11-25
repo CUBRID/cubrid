@@ -9794,14 +9794,12 @@ qstr_coerce (const unsigned char *src,
 
 	      if (dest_codeset == INTL_CODESET_UTF8)
 		{
-		  conv_status =
-		    intl_binary_to_utf8 (src, copy_size, dest, &conv_size);
+		  intl_binary_to_utf8 (src, copy_size, dest, &conv_size);
 		}
 	      else
 		{
 		  assert (dest_codeset == INTL_CODESET_KSC5601_EUC);
-		  conv_status =
-		    intl_binary_to_euckr (src, copy_size, dest, &conv_size);
+		  intl_binary_to_euckr (src, copy_size, dest, &conv_size);
 		}
 	      copy_size = conv_size;
 	    }
