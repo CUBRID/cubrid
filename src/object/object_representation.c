@@ -8257,7 +8257,7 @@ or_unpack_db_value_array (char *buffer, DB_VALUE ** val, int *count)
 char *
 or_pack_ptr (char *ptr, UINTPTR ptrval)
 {
-  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+  ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
 
   OR_PUT_PTR (ptr, ptrval);
   return (ptr + OR_PTR_SIZE);
@@ -8272,7 +8272,7 @@ or_pack_ptr (char *ptr, UINTPTR ptrval)
 char *
 or_unpack_ptr (char *ptr, UINTPTR * ptrval)
 {
-  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+  ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
 
   *ptrval = OR_GET_PTR (ptr);
   return (ptr + OR_PTR_SIZE);

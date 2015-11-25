@@ -58,6 +58,11 @@
 #define LONG_ALIGNMENT          sizeof(long)
 #define FLOAT_ALIGNMENT         sizeof(float)
 #define DOUBLE_ALIGNMENT        sizeof(double)
+#if __WORDSIZE == 32
+#define PTR_ALIGNMENT		4
+#else
+#define PTR_ALIGNMENT		8
+#endif
 #define MAX_ALIGNMENT           DOUBLE_ALIGNMENT
 
 #if defined(NDEBUG)
