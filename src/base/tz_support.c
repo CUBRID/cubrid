@@ -165,6 +165,8 @@ static bool is_in_overlap_interval (const TZ_TIME_TYPE time_type,
 				    const full_date_t offset_rule_diff,
 				    const full_date_t gmt_diff,
 				    const int save_time_diff);
+static int get_year_to_apply_rule (const int src_year,
+				   const TZ_DS_RULE * ds_rule);
 #if defined (LINUX)
 static int find_timezone_from_clock (char *timezone_name, int buf_len);
 static int find_timezone_from_localtime (char *timezone_name, int buf_len);
@@ -225,15 +227,13 @@ static const int days_up_to_month[] =
     v = *aux;							\
   } while (0)
 
-
-#define APPLY_NEXT_OFF_RULE()						  \
-  do {									  \
-      prev_off_rule = curr_off_rule;					  \
-      curr_off_rule = next_off_rule;					  \
-      next_off_rule = NULL;						  \
-      curr_offset_id++;							  \
-    } while(0)
-
+#define APPLY_NEXT_OFF_RULE()					\
+  do {								\
+    prev_off_rule = curr_off_rule;				\
+    curr_off_rule = next_off_rule;				\
+    next_off_rule = offset_rules[offset_rule_counter++];	\
+    curr_offset_id++;						\
+  } while (0)
 
 /*
  * tz_load_library - loads the timezone specific DLL/so
@@ -2828,22 +2828,7 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset,
 	  continue;
 	}
 
-      if (src_year <= curr_ds_rule->to_year)
-	{
-	  if (src_year >= curr_ds_rule->from_year)
-	    {
-	      year_to_apply_rule = src_year;
-	    }
-	  else
-	    {
-	      year_to_apply_rule = curr_ds_rule->from_year;
-	    }
-	}
-      else
-	{
-	  year_to_apply_rule = src_year - 1;
-	}
-
+      year_to_apply_rule = get_year_to_apply_rule (src_year, curr_ds_rule);
       er_status = tz_get_ds_change_julian_date_diff (src_julian_date,
 						     curr_ds_rule,
 						     year_to_apply_rule,
@@ -3201,6 +3186,40 @@ is_in_overlap_interval (const TZ_TIME_TYPE time_type,
 }
 
 /*
+ * get_year_to_apply_rule() - Computes the year in which to apply a daylight
+ *			      saving rule given the source year
+ *			      
+ *															  
+ * Returns: the year in which to apply the daylight saving rule
+ * src_year(in): source year
+ * ds_rule(in): daylight saving rule
+ * 
+ */
+static int
+get_year_to_apply_rule (const int src_year, const TZ_DS_RULE * ds_rule)
+{
+  int year_to_apply_rule;
+
+  if (src_year <= ds_rule->to_year)
+    {
+      if (src_year >= ds_rule->from_year)
+	{
+	  year_to_apply_rule = src_year;
+	}
+      else
+	{
+	  year_to_apply_rule = ds_rule->from_year;
+	}
+    }
+  else
+    {
+      year_to_apply_rule = src_year - 1;
+    }
+
+  return year_to_apply_rule;
+}
+
+/*
  * tz_datetime_utc_conv () - 
  *
  * Return: error code
@@ -3244,12 +3263,14 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
   bool applying_is_in_leap_interval = false;
   int save_time = 0, src_offset_curr_off_rule = 0;
   int src_offset_prev_off_rule = 0;
-  full_date_t leap_offset_rule_interval = 0;
+  int leap_offset_rule_interval = 0;
   int prev_rule_julian_date = 0, prev_rule_time_sec = 0;
   bool try_offset_rule_overlap = false;
   int second_best_applying_ds_id = -1;
   full_date_t second_best_applying_date_diff = -1;
   TZ_DS_RULE *second_best_applying_ds_rule = NULL;
+  int offset_rule_counter = 0;
+  TZ_OFFSET_RULE *offset_rules[2] = { NULL };
 
   if (tz_info->type == TZ_REGION_OFFSET)
     {
@@ -3322,9 +3343,16 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info,
 	      assert (curr_offset_id < timezone->gmt_off_rule_count - 1);
 	      assert (timezone->gmt_off_rule_start + curr_offset_id + 1
 		      < tzd->offset_rule_count);
-	      next_off_rule =
-		&(tzd->offset_rules[timezone->gmt_off_rule_start
-				    + curr_offset_id + 1]);
+	      next_off_rule = &(tzd->offset_rules[timezone->gmt_off_rule_start
+						  + curr_offset_id + 1]);
+	      if (timezone->gmt_off_rule_start + curr_offset_id + 2
+		  < tzd->offset_rule_count)
+		{
+		  offset_rules[0] =
+		    &(tzd->
+		      offset_rules[timezone->gmt_off_rule_start +
+				   curr_offset_id + 2]);
+		}
 	    }
 	  /* rule found */
 	  break;
@@ -3440,9 +3468,9 @@ detect_dst:
 		  || strcasecmp (curr_off_rule->save_format,
 				 tz_info->zone.dst_str) != 0))
 	    {
-	      if (next_off_rule == NULL)
+	      if (next_off_rule == NULL || try_offset_rule_overlap == true)
 		{
-		  err_status = ER_TZ_DST_NOT_SUPPORTED;
+		  err_status = ER_TZ_INVALID_COMBINATION;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
@@ -3588,22 +3616,7 @@ detect_dst:
 	  continue;
 	}
 
-      if (src_year <= curr_ds_rule->to_year)
-	{
-	  if (src_year >= curr_ds_rule->from_year)
-	    {
-	      year_to_apply_rule = src_year;
-	    }
-	  else
-	    {
-	      year_to_apply_rule = curr_ds_rule->from_year;
-	    }
-	}
-      else
-	{
-	  year_to_apply_rule = src_year - 1;
-	}
-
+      year_to_apply_rule = get_year_to_apply_rule (src_year, curr_ds_rule);
       err_status = tz_get_ds_change_julian_date_diff (src_julian_date,
 						      curr_ds_rule,
 						      year_to_apply_rule,
@@ -3628,6 +3641,10 @@ detect_dst:
 	  full_date_t ds_rule_date = 0;
 	  full_date_t utc_src_offset = 0;
 	  int save_time = 0;
+	  bool at_time_type_is_utc = false;
+	  int ds_rule_time_offset_curr_off_rule = 0, add_save_time = 0;
+	  int ds_rule_time_offset_prev_off_rule = 0;
+	  int add_leap_offset_rule_interval = 0;
 
 	  /* there may be an ambiguity :
 	   * check the time deviation of a date before current candidate
@@ -3652,7 +3669,137 @@ detect_dst:
 					     + ds_ruleset->index_start]);
 	      save_time = wall_ds_rule->save_time;
 	    }
+	  else if (prev_off_rule != NULL)
+	    {
+	      err_status =
+		get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						  &save_time);
+	      if (err_status != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      add_leap_offset_rule_interval = leap_offset_rule_interval;
+	    }
 
+	  if (curr_ds_rule->at_time_type == TZ_TIME_TYPE_UTC)
+	    {
+	      at_time_type_is_utc = true;
+	    }
+
+	  if (wall_ds_rule != NULL && prev_off_rule != NULL)
+	    {
+	      bool utc_time = false;
+	      int ds_rule_time_offset;
+	      full_date_t date_diff;
+	      int wall_rule_julian_date;
+	      int add_save_time = 0;
+	      int year_to_apply_rule;
+
+	      year_to_apply_rule =
+		get_year_to_apply_rule (src_year, wall_ds_rule);
+	      err_status =
+		tz_get_ds_change_julian_date_diff (wall_safe_julian_date,
+						   wall_ds_rule,
+						   year_to_apply_rule,
+						   &wall_rule_julian_date,
+						   &date_diff);
+	      if (err_status != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      if (date_diff < 0)
+		{
+		  year_to_apply_rule = year_to_apply_rule - 1;
+		  err_status = tz_get_ds_change_julian_date_diff (0,
+								  wall_ds_rule,
+								  year_to_apply_rule,
+								  &wall_rule_julian_date,
+								  NULL);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		}
+
+	      if (wall_ds_rule->at_time_type == TZ_TIME_TYPE_UTC)
+		{
+		  utc_time = true;
+		}
+
+	      ds_rule_time_offset =
+		tz_offset (utc_time, prev_off_rule->until_time_type,
+			   gmt_std_offset_sec, 0);
+	      date_diff = FULL_DATE (wall_rule_julian_date,
+				     wall_ds_rule->at_time +
+				     ds_rule_time_offset) -
+		FULL_DATE (prev_rule_julian_date, prev_rule_time_sec);
+
+	      if (date_diff < 0)
+		{
+		  int prev_rule_save_time;
+
+		  err_status =
+		    get_saving_time_from_offset_rule (prev_off_rule, tzd,
+						      &prev_rule_save_time);
+		  if (err_status != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+
+		  ds_rule_time_offset =
+		    tz_offset (at_time_type_is_utc,
+			       prev_off_rule->until_time_type,
+			       gmt_std_offset_sec, save_time);
+		  if (curr_ds_rule->at_time_type == TZ_TIME_TYPE_LOCAL_STD)
+		    {
+		      add_save_time = save_time;
+		    }
+
+		  if (FULL_DATE (ds_rule_julian_date,
+				 curr_ds_rule->at_time + add_save_time
+				 + ds_rule_time_offset)
+		      <= FULL_DATE (prev_rule_julian_date,
+				    prev_rule_time_sec))
+		    {
+		      save_time = prev_rule_save_time;
+		      add_leap_offset_rule_interval =
+			leap_offset_rule_interval;
+		    }
+		}
+	    }
+
+	  if (curr_ds_rule->at_time_type == TZ_TIME_TYPE_LOCAL_STD)
+	    {
+	      add_save_time = save_time;
+	    }
+
+	  if (prev_off_rule != NULL)
+	    {
+	      ds_rule_time_offset_prev_off_rule =
+		tz_offset (at_time_type_is_utc,
+			   prev_off_rule->until_time_type, gmt_std_offset_sec,
+			   save_time);
+	      if (FULL_DATE
+		  (ds_rule_julian_date,
+		   curr_ds_rule->at_time + add_save_time +
+		   ds_rule_time_offset_prev_off_rule) >
+		  FULL_DATE (prev_rule_julian_date, prev_rule_time_sec))
+		{
+		  add_leap_offset_rule_interval = 0;
+		}
+	    }
+
+	  ds_rule_time_offset_curr_off_rule =
+	    tz_offset (at_time_type_is_utc, curr_off_rule->until_time_type,
+		       gmt_std_offset_sec, save_time);
+
+	  if (FULL_DATE (ds_rule_julian_date,
+			 curr_ds_rule->at_time + add_save_time
+			 + ds_rule_time_offset_curr_off_rule)
+	      >= FULL_DATE (rule_julian_date, rule_time_sec))
+	    {
+	      continue;
+	    }
 
 	  /* the difference between the input date and the rule date
 	   * must be made in the same time reference, in our case
@@ -3674,6 +3821,7 @@ detect_dst:
 	       * standard time */
 	      ds_time_offset = curr_ds_rule->save_time - save_time;
 	    }
+	  ds_time_offset += add_leap_offset_rule_interval;
 
 	  if (src_is_utc == true)
 	    {
@@ -3686,6 +3834,7 @@ detect_dst:
 	  else
 	    {
 	      leap_interval = save_time - curr_ds_rule->save_time;
+	      leap_interval -= add_leap_offset_rule_interval;
 	    }
 
 	  ds_rule_date = FULL_DATE (ds_rule_julian_date, ds_time_offset +
@@ -3890,7 +4039,7 @@ detect_dst:
 					tz_info->zone.dst_str,
 					ds_ruleset->default_abrev) == false)
 	    {
-	      if (next_off_rule == NULL)
+	      if (next_off_rule == NULL || try_offset_rule_overlap == true)
 		{
 		  err_status = ER_TZ_INVALID_COMBINATION;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
@@ -4022,7 +4171,7 @@ detect_dst:
 					   ds_ruleset->default_abrev)
 	      == false)
 	    {
-	      if (next_off_rule == NULL)
+	      if (next_off_rule == NULL || try_offset_rule_overlap == true)
 		{
 		  err_status = ER_TZ_INVALID_DST;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);

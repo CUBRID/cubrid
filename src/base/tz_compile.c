@@ -2305,7 +2305,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
 			      "SAVE column", col_save);
 	  goto exit;
 	}
-      val_read *= 60;
+      val_read *= 3600;
     }
   else if (tz_str_to_seconds (col_save, &val_read, &str_cursor, false)
 	   != NO_ERROR)
