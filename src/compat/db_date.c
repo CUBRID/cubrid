@@ -3371,7 +3371,8 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 			    NULL);
   if (p)
     {
-      char const *q;
+      char const *q, *r;
+      char sep_ch = '0';
 
       syntax_check = NULL;
 
@@ -3384,11 +3385,22 @@ db_date_parse_datetime_parts (char const *str, int str_len,
       /* parse the time portion in the string */
       q =
 	parse_mtime_separated (p, strend, &datetime->time, &syntax_check,
-			       NULL, NULL, has_explicit_msec, true);
+			       NULL, &sep_ch, has_explicit_msec, true);
       if (q)
 	{
 	  if (has_explicit_time)
 	    {
+	      r = q;
+	      while (r < strend && ((*r == sep_ch) || (char_isdigit (*r))))
+		{
+		  r++;
+		}
+	      if ((r < strend) && (!char_isspace (*r)))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_TIMESTAMP_CONVERSION, 0);
+		  return ER_TIMESTAMP_CONVERSION;
+		}
 	      *has_explicit_time = true;
 	    }
 

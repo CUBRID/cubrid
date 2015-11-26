@@ -6679,9 +6679,8 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
 					    DB_GET_STRING_SIZE (left),
 					    &ldatetime, &is_explicit_time,
 					    NULL, NULL, NULL);
-	    if (error != NO_ERROR || is_explicit_time)
+	    if (error != NO_ERROR)
 	      {
-
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			ER_TIME_CONVERSION, 0);
 		error = ER_TIME_CONVERSION;
