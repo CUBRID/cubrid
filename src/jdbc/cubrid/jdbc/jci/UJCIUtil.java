@@ -245,6 +245,7 @@ abstract public class UJCIUtil {
 	public static String getJavaCharsetName(byte cubridCharset){
 		switch (cubridCharset){
 		case 0: return "ASCII";
+		case 2: return "BINARY";
 		case 3: return "ISO8859_1";
 		case 4: return "EUC_KR";
 		case 5: return "UTF8";
