@@ -1319,7 +1319,7 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      || statement->info.query.q.select.having	/* aggregate */
 	      || statement->info.query.q.select.connect_by	/* HQ */
 	      || statement->info.query.q.select.from == NULL	/* no spec */
-	    )
+	      || PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_READ_ONLY))	/* system generated read-only */
 	    {
 	      local &= PT_NOT_UPDATABLE;
 	    }

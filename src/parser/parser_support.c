@@ -7523,6 +7523,8 @@ pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser,
       return NULL;
     }
 
+  PT_SELECT_INFO_SET_FLAG (outer_node, PT_SELECT_INFO_READ_ONLY);
+
   outer_node->info.query.q.select.list =
     parser_append_node (val_node, outer_node->info.query.q.select.list);
   inner_select->info.query.is_subquery = PT_IS_SUBQUERY;
@@ -9217,6 +9219,8 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
       return NULL;
     }
 
+  PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_READ_ONLY);
+
   value = parser_new_node (parser, PT_VALUE);
   if (value == NULL)
     {
@@ -9639,6 +9643,8 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser,
       return NULL;
     }
 
+  PT_SELECT_INFO_SET_FLAG (select, PT_SELECT_INFO_READ_ONLY);
+
   /*
    * SELECT 'table_name' as TABLE, 'create table ...' as CREATE TABLE
    *      FROM db_root
@@ -9650,7 +9656,6 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser,
   (void) pt_add_table_name_to_from_list (parser, select, "db_root", NULL,
 					 DB_AUTH_SELECT);
   return select;
-
 }
 
 /*
@@ -10100,6 +10105,8 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
     {
       return NULL;
     }
+
+  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_READ_ONLY);
 
   /* ------ SELECT list    ------- */
   /*
@@ -10694,6 +10701,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
     }
 
   PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_IDX_SCHEMA);
+  PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_READ_ONLY);
+
   intl_identifier_lower (original_cls_id->info.name.original,
 			 lower_table_name);
 
@@ -12690,6 +12699,8 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
     {
       return NULL;
     }
+
+  PT_SELECT_INFO_SET_FLAG (select, PT_SELECT_INFO_READ_ONLY);
 
   trace_func =
     parser_make_expression (parser, PT_TRACE_STATS, NULL, NULL, NULL);
