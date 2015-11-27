@@ -19429,6 +19429,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   has_order_siblings_by = xasl->orderby_list ? 1 : 0;
   connect_by = &xasl->proc.connect_by;
+  lfscan_id_lst2tmp.status = S_CLOSED;
   input_lfscan_id.status = S_CLOSED;
   lfscan_id.status = S_CLOSED;
 
@@ -20108,6 +20109,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (has_order_siblings_by)
     {
+      qfile_close_scan (thread_p, &lfscan_id_lst2tmp);
       qfile_close_list (thread_p, listfile2_tmp);
       qfile_destroy_list (thread_p, listfile2_tmp);
       QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
@@ -20253,6 +20255,7 @@ exit_on_error:
 
   if (listfile2_tmp)
     {
+      qfile_close_scan (thread_p, &lfscan_id_lst2tmp);
       qfile_close_list (thread_p, listfile2_tmp);
       qfile_destroy_list (thread_p, listfile2_tmp);
       QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
