@@ -1124,7 +1124,7 @@ usage: %s dump_tz [OPTION]\n\
 valid options:\n\
   -c, --list-countries      shows the list of countries currently supported\n\
   -l, --leap-seconds	    shows the list of the leap seconds\n\
-  -s, --summary		    shows a summary of dump timezone data\n\  
+  -s, --summary		    shows a summary of dump timezone data\n\
   -z, --list-zones          shows the list of timezones currently supported\n\
   -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
                             to a timezone having the supplied ZONE_ID or for\n\
@@ -1177,7 +1177,7 @@ usage: %1$s vacuumdb [OPTION] database-name\n\
 valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n
-  
+
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Failed to load table names in %1$s.\n
 2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n

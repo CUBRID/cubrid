@@ -1170,7 +1170,7 @@ usage: %1$s vacuumdb [OPTION] database-name\n\
 valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n
-  
+
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Failed to load table names in %1$s.\n
 2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
