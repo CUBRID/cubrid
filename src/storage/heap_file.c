@@ -27741,6 +27741,24 @@ heap_delete_bigone (THREAD_ENTRY * thread_p,
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
+      if (context->home_page_watcher_p->page_was_unfixed)
+	{
+	  /*
+	   * Need to get the record again, since record may have changed
+	   * by other transactions (INSID removed by VACUUM, page compact).
+	   * The object was already locked, so the record size may be the
+	   * same or smaller (INSID removed by VACUUM). 
+	   */
+	  int is_peeking = (context->home_recdes.area_size
+			    >= context->home_recdes.length) ? COPY : PEEK;
+	  if (spage_get_record (context->home_page_watcher_p->pgptr,
+				context->oid.slotid, &context->home_recdes,
+				is_peeking) != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr,
 				&context->hfid.vfid, &context->oid,
@@ -27886,13 +27904,16 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	      return ER_FAILED;
 	    }
 
-	  /* re-peek forward record descriptor; forward page may have been
-	     unfixed by previous pgbuf_ordered_fix() call */
-	  if (spage_get_record (context->forward_page_watcher_p->pgptr,
-				forward_oid.slotid, &forward_recdes,
-				PEEK) != S_SUCCESS)
+	  if (context->forward_page_watcher_p->page_was_unfixed)
 	    {
-	      return ER_FAILED;
+	      /* re-peek forward record descriptor; forward page may have been
+	         unfixed by previous pgbuf_ordered_fix() call */
+	      if (spage_get_record (context->forward_page_watcher_p->pgptr,
+				    forward_oid.slotid, &forward_recdes,
+				    PEEK) != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
 	    }
 	}
 
@@ -28008,6 +28029,24 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	{
 	  LOG_DATA_ADDR home_addr;
 
+	  if (context->home_page_watcher_p->page_was_unfixed)
+	    {
+	      /*
+	       * Need to get the record again, since record may have changed
+	       * by other transactions (INSID removed by VACUUM, page compact).
+	       * The object was already locked, so the record size may be the
+	       * same or smaller (INSID removed by VACUUM). 
+	       */
+	      int is_peeking = (context->home_recdes.area_size
+				>= context->home_recdes.length) ? COPY : PEEK;
+	      if (spage_get_record
+		  (context->home_page_watcher_p->pgptr, context->oid.slotid,
+		   &context->home_recdes, is_peeking) != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
 	  /* log operation */
 	  home_addr.vfid = &context->hfid.vfid;
 	  home_addr.pgptr = context->home_page_watcher_p->pgptr;
@@ -28087,6 +28126,18 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 	{
 	  LOG_DATA_ADDR forward_addr;
 
+	  /* re-peek forward record descriptor; forward page may have been
+	     unfixed by previous pgbuf_ordered_fix() call */
+	  if (context->forward_page_watcher_p->page_was_unfixed)
+	    {
+	      if (spage_get_record (context->forward_page_watcher_p->pgptr,
+				    forward_oid.slotid, &forward_recdes,
+				    PEEK) != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
 	  /* operation logging */
 	  forward_addr.vfid = &context->hfid.vfid;
 	  forward_addr.pgptr = context->forward_page_watcher_p->pgptr;
@@ -28121,6 +28172,23 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
+      if (context->home_page_watcher_p->page_was_unfixed)
+	{
+	  /*
+	   * Need to get the record again, since record may have changed
+	   * by other transactions (INSID removed by VACUUM, page compact).
+	   * The object was already locked, so the record size may be the
+	   * same or smaller (INSID removed by VACUUM). 
+	   */
+	  int is_peeking = (context->home_recdes.area_size
+			    >= context->home_recdes.length) ? COPY : PEEK;
+	  if (spage_get_record (context->home_page_watcher_p->pgptr,
+				context->oid.slotid, &context->home_recdes,
+				is_peeking) != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	}
       /*
        * Delete home record
        */
@@ -28143,6 +28211,17 @@ heap_delete_relocation (THREAD_ENTRY * thread_p,
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
+      if (context->forward_page_watcher_p->page_was_unfixed)
+	{
+	  /* re-peek forward record descriptor; forward page may have been
+	     unfixed by previous pgbuf_ordered_fix() call */
+	  if (spage_get_record (context->forward_page_watcher_p->pgptr,
+				forward_oid.slotid, &forward_recdes,
+				PEEK) != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	}
       /*
        * Delete forward record
        */
@@ -28195,6 +28274,24 @@ heap_delete_home (THREAD_ENTRY * thread_p,
   assert (context->type == HEAP_OPERATION_DELETE);
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
+
+  if (context->home_page_watcher_p->page_was_unfixed)
+    {
+      /*
+       * Need to get the record again, since record may have changed
+       * by other transactions (INSID removed by VACUUM, page compact).
+       * The object was already locked, so the record size may be the
+       * same or smaller (INSID removed by VACUUM). 
+       */
+      int is_peeking = (context->home_recdes.area_size
+			>= context->home_recdes.length) ? COPY : PEEK;
+      if (spage_get_record
+	  (context->home_page_watcher_p->pgptr, context->oid.slotid,
+	   &context->home_recdes, is_peeking) != S_SUCCESS)
+	{
+	  return ER_FAILED;
+	}
+    }
 
   /* operation */
   if (is_mvcc_op)
@@ -28310,6 +28407,24 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 						     partition_link));
 
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+	  if (context->home_page_watcher_p->page_was_unfixed)
+	    {
+	      /*
+	       * Need to get the record again, since record may have changed
+	       * by other transactions (INSID removed by VACUUM, page compact).
+	       * The object was already locked, so the record size may be the
+	       * same or smaller (INSID removed by VACUUM). 
+	       */
+	      int is_peeking = (context->home_recdes.area_size
+				>= context->home_recdes.length) ? COPY : PEEK;
+	      if (spage_get_record (context->home_page_watcher_p->pgptr,
+				    context->oid.slotid, &context->home_recdes,
+				    is_peeking) != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+	    }
 
 	  /* log relocation */
 	  rec_address.pgptr = context->home_page_watcher_p->pgptr;
@@ -28579,6 +28694,24 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	{
 	  RECDES old_home_recdes;
 	  OID old_overflow_oid[2];
+
+	  if (context->home_page_watcher_p->page_was_unfixed)
+	    {
+	      /*
+	       * Need to get the record again, since record may have changed
+	       * by other transactions (INSID removed by VACUUM, page compact).
+	       * The object was already locked, so the record size may be the
+	       * same or smaller (INSID removed by VACUUM). 
+	       */
+	      int is_peeking = (context->home_recdes.area_size
+				>= context->home_recdes.length) ? COPY : PEEK;
+	      if (spage_get_record
+		  (context->home_page_watcher_p->pgptr, context->oid.slotid,
+		   &context->home_recdes, is_peeking) != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+	    }
 
 	  /* keep a copy of old home recdes for logging purposes */
 	  old_home_recdes = context->home_recdes;
@@ -28884,6 +29017,23 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
        */
       if (update_old_home)
 	{
+	  if (context->home_page_watcher_p->page_was_unfixed)
+	    {
+	      /*
+	       * Need to get the record again, since record may have changed
+	       * by other transactions (INSID removed by VACUUM, page compact).
+	       * The object was already locked, so the record size may be the
+	       * same or smaller (INSID removed by VACUUM). 
+	       */
+	      int is_peeking = (context->home_recdes.area_size
+				>= context->home_recdes.length) ? COPY : PEEK;
+	      if (spage_get_record
+		  (context->home_page_watcher_p->pgptr, context->oid.slotid,
+		   &context->home_recdes, is_peeking) != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+	    }
 	  /* log operation */
 	  heap_log_update_physical (thread_p,
 				    context->home_page_watcher_p->pgptr,
@@ -28905,6 +29055,20 @@ heap_update_relocation (THREAD_ENTRY * thread_p,
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
 
+      if (update_old_forward || remove_old_forward)
+	{
+	  if (context->forward_page_watcher_p->page_was_unfixed)
+	    {
+	      if (spage_get_record (context->forward_page_watcher_p->pgptr,
+				    forward_oid.slotid, &forward_recdes,
+				    COPY) != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+	      /* re-peek forward record descriptor; forward page may have been
+	         unfixed by previous pgbuf_ordered_fix() call */
+	    }
+	}
       /*
        * Update old forward record (if necessary)
        */
@@ -29123,6 +29287,26 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+      if ((home_page_updated_recdes_p->type == REC_RELOCATION
+	   || home_page_updated_recdes_p->type == REC_BIGONE)
+	  && context->home_page_watcher_p->page_was_unfixed)
+	{
+	  /*
+	   * Need to get the record again, since record may have changed
+	   * by other transactions (INSID removed by VACUUM, page compact).
+	   * The object was already locked, so the record size may be the
+	   * same or smaller (INSID removed by VACUUM). 
+	   */
+	  int is_peeking = (context->home_recdes.area_size
+			    >= context->home_recdes.length) ? COPY : PEEK;
+	  if (spage_get_record (context->home_page_watcher_p->pgptr,
+				context->oid.slotid, &context->home_recdes,
+				is_peeking) != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	}
 
       /* log operation */
       heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr,
