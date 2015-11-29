@@ -153,21 +153,28 @@
 /* OVERFLOW CHECK MACROS */
 
 #define OR_CHECK_ASSIGN_OVERFLOW(dest, src) \
-  ( ((src) > 0 && (dest) < 0) || ((src) < 0 && (dest) > 0) )
+  (((src) > 0 && (dest) < 0) || ((src) < 0 && (dest) > 0))
+#define OR_CHECK_ADD_OVERFLOW(a, b, c) \
+  (((a) > 0 && (b) > 0 && (c) < 0) \
+   || ((a) < 0 && (b) < 0 && (c) >= 0))
+#define OR_CHECK_UNS_ADD_OVERFLOW(a, b, c) \
+  (c) < (a) || (c) < (b)
+#define OR_CHECK_SUB_UNDERFLOW(a, b, c) \
+  (((a) < (b) && (c) > 0) \
+   || ((a) > (b) && (c) < 0))
+#define OR_CHECK_UNS_SUB_UNDERFLOW(a, b, c) \
+  (b) > (a)
+#define OR_CHECK_MULT_OVERFLOW(a, b, c) \
+  (((b) == 0) ? ((c) != 0) : ((c) / (b) != (a)))
+#define OR_CHECK_SHORT_DIV_OVERFLOW(a, b) \
+  ((a) == DB_INT16_MIN && (b) == -1)
+#define OR_CHECK_INT_DIV_OVERFLOW(a, b) \
+  ((a) == DB_INT32_MIN && (b) == -1)
+#define OR_CHECK_BIGINT_DIV_OVERFLOW(a, b) \
+  ((a) == DB_BIGINT_MIN && (b) == -1)
 
-#define OR_CHECK_ADD_OVERFLOW(a,b,c) \
-  (((a) > 0 && (b) > 0 && (c) < 0) || ((a) < 0 && (b) < 0 && (c) >= 0))
-#define OR_CHECK_UNS_ADD_OVERFLOW(a,b,c) 	(c) < (a) || (c) < (b)
-#define OR_CHECK_SUB_UNDERFLOW(a,b,c) \
-  (((a) < (b) && (c) > 0) || ((a) > (b) && (c) < 0))
-#define OR_CHECK_UNS_SUB_UNDERFLOW(a,b,c)	(b) > (a)
-#define OR_CHECK_MULT_OVERFLOW(a,b,c)  (((b)==0)?((c)!=0):((c)/(b)!=(a)))
-#define OR_CHECK_SHORT_DIV_OVERFLOW(a,b) ((a) == DB_INT16_MIN && (b) == -1)
-#define OR_CHECK_INT_DIV_OVERFLOW(a,b) ((a) == DB_INT32_MIN && (b) == -1)
-#define OR_CHECK_BIGINT_DIV_OVERFLOW(a,b) ((a) == DB_BIGINT_MIN && (b) == -1)
-
-#define OR_CHECK_SHORT_OVERFLOW(i)  ((i) > DB_INT16_MAX || (i) < DB_INT16_MIN )
-#define OR_CHECK_INT_OVERFLOW(i)    ((i) > DB_INT32_MAX || (i) < DB_INT32_MIN )
+#define OR_CHECK_SHORT_OVERFLOW(i)  ((i) > DB_INT16_MAX || (i) < DB_INT16_MIN)
+#define OR_CHECK_INT_OVERFLOW(i)    ((i) > DB_INT32_MAX || (i) < DB_INT32_MIN)
 #define OR_CHECK_BIGINT_OVERFLOW(i) ((i) > DB_BIGINT_MAX || (i) < DB_BIGINT_MIN)
 #define OR_CHECK_USHRT_OVERFLOW(i)  ((i) > DB_UINT16_MAX || (i) < 0)
 #define OR_CHECK_UINT_OVERFLOW(i)   ((i) > DB_UINT32_MAX || (i) < 0)
@@ -177,31 +184,40 @@
 
 /* PACK/UNPACK MACROS */
 
-#define OR_GET_BYTE(ptr)	(*(unsigned char *)((char *)(ptr)))
-#define OR_GET_SHORT(ptr)       ((short)ntohs(*(short *)((char *)(ptr))))
-#define OR_GET_INT(ptr) 	((int)ntohl(*(int *)((char *)(ptr))))
-#define OR_GET_FLOAT(ptr, value) ntohf((float *)((char *)(ptr)),(float *)value)
+#define OR_GET_BYTE(ptr) \
+  (*(unsigned char *) ((char *) (ptr)))
+#define OR_GET_SHORT(ptr) \
+  ((short) ntohs (*(short *) ((char *) (ptr))))
+#define OR_GET_INT(ptr) \
+  ((int) ntohl (*(int *) ((char *) (ptr))))
+#define OR_GET_FLOAT(ptr, value) \
+  ntohf ((float *) ((char *) (ptr)), (float *) (value))
 #define OR_GET_DOUBLE(ptr, value) \
    do { \
      double packed_value; \
-     memcpy(&packed_value, ptr, OR_DOUBLE_SIZE); \
-     ntohd(&packed_value, (double*) value); \
+     memcpy (&packed_value, ptr, OR_DOUBLE_SIZE); \
+     ntohd (&packed_value, (double *) (value)); \
    } while (0)
-#define OR_GET_STRING(ptr)	((char *)((char *)(ptr)))
+#define OR_GET_STRING(ptr) \
+  ((char *) ((char *) (ptr)))
 
-#define OR_PUT_BYTE(ptr, val)	(*((unsigned char *)(ptr))=(unsigned char)(val))
-#define OR_PUT_SHORT(ptr, val)	(*(short *)((char *)(ptr)) = htons((short)(val)))
-#define OR_PUT_INT(ptr, val) 	(*(int *)((char *)(ptr)) = htonl((int)(val)))
-#define OR_PUT_FLOAT(ptr, value) htonf((float *)((char *)(ptr)),(float *)(value))
+#define OR_PUT_BYTE(ptr, val) \
+  (*((unsigned char *) (ptr)) = (unsigned char) (val))
+#define OR_PUT_SHORT(ptr, val) \
+  (*(short *) ((char *) (ptr)) = htons ((short) (val)))
+#define OR_PUT_INT(ptr, val) \
+  (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
+#define OR_PUT_FLOAT(ptr, value) \
+  htonf ((float *) ((char *) (ptr)), (float *) (value))
 #define OR_PUT_DOUBLE(ptr, value) \
    do { \
      double packed_value; \
-     htond(&packed_value, (double *)(value)); \
-     memcpy(ptr, &packed_value, OR_DOUBLE_SIZE); \
+     htond (&packed_value, (double *) (value)); \
+     memcpy (ptr, &packed_value, OR_DOUBLE_SIZE); \
    } while (0)
 
-#define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT(ptr)	/* 4byte */
-#define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT(ptr, val);	/* 4byte */
+#define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
+#define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT (ptr, val)	/* 4byte */
 
 #define OR_PUT_OFFSET(ptr, val) \
   OR_PUT_OFFSET_INTERNAL(ptr, val, BIG_VAR_OFFSET_SIZE)
@@ -213,7 +229,7 @@
         OR_PUT_BYTE(ptr, val); \
       } \
     else if (offset_size == OR_SHORT_SIZE) \
-      {                               \
+      { \
         OR_PUT_SHORT(ptr, val); \
       } \
     else if (offset_size == OR_INT_SIZE) \
@@ -223,34 +239,31 @@
   } while (0)
 
 #define OR_GET_OFFSET(ptr) \
-  OR_GET_OFFSET_INTERNAL(ptr, BIG_VAR_OFFSET_SIZE)
+  OR_GET_OFFSET_INTERNAL (ptr, BIG_VAR_OFFSET_SIZE)
 
 #define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
-  (offset_size == OR_BYTE_SIZE) ? \
-  OR_GET_BYTE(ptr) \
-  : \
-  ((offset_size == OR_SHORT_SIZE) ? \
-  OR_GET_SHORT(ptr) \
-  : \
-  OR_GET_INT(ptr))
-
+  (offset_size == OR_BYTE_SIZE) \
+   ? OR_GET_BYTE (ptr) \
+   : ((offset_size == OR_SHORT_SIZE) \
+      ? OR_GET_SHORT (ptr) : OR_GET_INT (ptr))
 
 #define OR_MOVE_MONETARY(src, dst) \
   do { \
-      OR_MOVE_DOUBLE(src, dst); \
-      ((DB_MONETARY *)dst)->type = ((DB_MONETARY *)src)->type; \
+    OR_MOVE_DOUBLE (src, dst); \
+    ((DB_MONETARY *) dst)->type = ((DB_MONETARY *) src)->type; \
   } while (0)
 
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
 
-#define swap64(x)  ((((unsigned long long) (x)&(0x00000000000000FFULL))<<56) \
-                   |(((unsigned long long) (x)&(0xFF00000000000000ULL))>>56) \
-                   |(((unsigned long long) (x)&(0x000000000000FF00ULL))<<40) \
-                   |(((unsigned long long) (x)&(0x00FF000000000000ULL))>>40) \
-                   |(((unsigned long long) (x)&(0x0000000000FF0000ULL))<<24) \
-                   |(((unsigned long long) (x)&(0x0000FF0000000000ULL))>>24) \
-                   |(((unsigned long long) (x)&(0x00000000FF000000ULL))<<8)  \
-                   |(((unsigned long long) (x)&(0x000000FF00000000ULL))>>8))
+#define swap64(x)  \
+  ((((unsigned long long) (x) & (0x00000000000000FFULL)) << 56) \
+   | (((unsigned long long) (x) & (0xFF00000000000000ULL)) >> 56) \
+   | (((unsigned long long) (x) & (0x000000000000FF00ULL)) << 40) \
+   | (((unsigned long long) (x) & (0x00FF000000000000ULL)) >> 40) \
+   | (((unsigned long long) (x) & (0x0000000000FF0000ULL)) << 24) \
+   | (((unsigned long long) (x) & (0x0000FF0000000000ULL)) >> 24) \
+   | (((unsigned long long) (x) & (0x00000000FF000000ULL)) << 8) \
+   | (((unsigned long long) (x) & (0x000000FF00000000ULL)) >> 8))
 
 #else /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
 #define swap64(x)        (x)
@@ -258,267 +271,264 @@
 
 #if __WORDSIZE == 32
 #define OR_PTR_SIZE             4
-#define OR_PUT_PTR(ptr, val)    OR_PUT_INT((ptr), (val))
-#define OR_GET_PTR(ptr)         OR_GET_INT((ptr))
+#define OR_PUT_PTR(ptr, val)    OR_PUT_INT ((ptr), (val))
+#define OR_GET_PTR(ptr)         OR_GET_INT ((ptr))
 #else /* __WORDSIZE == 32 */
 #define OR_PTR_SIZE             8
-#define OR_PUT_PTR(ptr, val)    (*(UINTPTR *)((char *)(ptr)) = swap64((UINTPTR)val))
-#define OR_GET_PTR(ptr)         ((UINTPTR)swap64(*(UINTPTR *)((char *)(ptr))))
+#define OR_PUT_PTR(ptr, val)    (*(UINTPTR *) ((char *) (ptr)) = swap64 ((UINTPTR) val))
+#define OR_GET_PTR(ptr)         ((UINTPTR) swap64 (*(UINTPTR *) ((char *) (ptr))))
 #endif /* __WORDSIZE == 32 */
 
 #define OR_INT64_SIZE           8
 
 /* EXTENDED TYPES */
 
-#define OR_PUT_BIGINT(ptr, val)  OR_PUT_INT64(ptr, val)
-#define OR_GET_BIGINT(ptr, val)  OR_GET_INT64(ptr, val)
+#define OR_PUT_BIGINT(ptr, val)  OR_PUT_INT64 (ptr, val)
+#define OR_GET_BIGINT(ptr, val)  OR_GET_INT64 (ptr, val)
 
 #define OR_GET_INT64(ptr, val) \
-   do { \
-     INT64 packed_value; \
-     memcpy(&packed_value, ptr, OR_INT64_SIZE); \
-     *((INT64*)(val)) = ((INT64)swap64(packed_value)); \
-   } while (0)
+  do { \
+    INT64 packed_value; \
+    memcpy (&packed_value, ptr, OR_INT64_SIZE); \
+    *((INT64*) (val)) = ((INT64) swap64 (packed_value)); \
+  } while (0)
 
 #define OR_PUT_INT64(ptr, val) \
-   do { \
-     INT64 packed_value; \
-     packed_value = ((INT64)swap64(*(INT64*)val)); \
-     memcpy(ptr, &packed_value, OR_INT64_SIZE);\
-   } while (0)
+  do { \
+    INT64 packed_value; \
+    packed_value = ((INT64) swap64 (*(INT64*) val)); \
+    memcpy (ptr, &packed_value, OR_INT64_SIZE);\
+  } while (0)
 
 #define OR_GET_TIME(ptr, value) \
-  *((DB_TIME *)(value)) = OR_GET_INT(ptr)
+  *((DB_TIME *) (value)) = OR_GET_INT (ptr)
 
 #define OR_PUT_TIME(ptr, value) \
-  OR_PUT_INT(ptr, *((DB_TIME *)(value)))
+  OR_PUT_INT (ptr, *((DB_TIME *) (value)))
 
 #define OR_GET_TIMETZ(ptr, time_tz) \
-   do { \
-     (time_tz)->time = OR_GET_INT((char *)(ptr)); \
-     (time_tz)->tz_id = OR_GET_INT(((char *)(ptr)) + OR_TIMETZ_TZID); \
-   } while (0)
+  do { \
+    (time_tz)->time = OR_GET_INT ((char *) (ptr)); \
+    (time_tz)->tz_id = OR_GET_INT (((char *) (ptr)) + OR_TIMETZ_TZID); \
+  } while (0)
 
 #define OR_PUT_TIMETZ(ptr, time_tz) \
-   do { \
-     OR_PUT_INT(((char *)ptr), (time_tz)->time); \
-     OR_PUT_INT(((char *)ptr) + OR_TIMETZ_TZID, (time_tz)->tz_id); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) ptr), (time_tz)->time); \
+    OR_PUT_INT (((char *) ptr) + OR_TIMETZ_TZID, (time_tz)->tz_id); \
+  } while (0)
 
 #define OR_GET_UTIME(ptr, value) \
-   *((DB_UTIME *)(value)) = OR_GET_INT(ptr)
+  *((DB_UTIME *) (value)) = OR_GET_INT (ptr)
 
 #define OR_PUT_UTIME(ptr, value) \
-   OR_PUT_INT(ptr,   *((DB_UTIME *)(value)))
+  OR_PUT_INT (ptr, *((DB_UTIME *) (value)))
 
 #define OR_GET_TIMESTAMPTZ(ptr, ts_tz) \
-   do { \
-     (ts_tz)->timestamp = OR_GET_INT((char *)(ptr)); \
-     (ts_tz)->tz_id = OR_GET_INT(((char *)(ptr)) \
-	+ OR_TIMESTAMPTZ_TZID); \
-   } while (0)
+  do { \
+    (ts_tz)->timestamp = OR_GET_INT ((char *) (ptr)); \
+    (ts_tz)->tz_id = OR_GET_INT (((char *) (ptr)) + OR_TIMESTAMPTZ_TZID); \
+  } while (0)
 
 #define OR_PUT_TIMESTAMPTZ(ptr, ts_tz) \
-   do { \
-     OR_PUT_INT(((char *)ptr), (ts_tz)->timestamp); \
-     OR_PUT_INT(((char *)ptr) + OR_TIMESTAMPTZ_TZID, (ts_tz)->tz_id); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) ptr), (ts_tz)->timestamp); \
+    OR_PUT_INT (((char *) ptr) + OR_TIMESTAMPTZ_TZID, (ts_tz)->tz_id); \
+  } while (0)
 
 #define OR_GET_DATE(ptr, value) \
-   *((DB_DATE *)(value)) = OR_GET_INT(ptr)
+  *((DB_DATE *) (value)) = OR_GET_INT (ptr)
 
 #define OR_PUT_DATE(ptr, value) \
-   OR_PUT_INT(ptr, *((DB_DATE *)(value)))
+  OR_PUT_INT (ptr, *((DB_DATE *) (value)))
 
 #define OR_GET_DATETIME(ptr, datetime) \
-   do { \
-     (datetime)->date = OR_GET_INT(((char *)(ptr)) + OR_DATETIME_DATE); \
-     (datetime)->time = OR_GET_INT(((char *)(ptr)) + OR_DATETIME_TIME); \
-   } while (0)
+  do { \
+    (datetime)->date = OR_GET_INT (((char *) (ptr)) + OR_DATETIME_DATE); \
+    (datetime)->time = OR_GET_INT (((char *) (ptr)) + OR_DATETIME_TIME); \
+  } while (0)
 
 #define OR_PUT_DATETIME(ptr, datetime) \
-   do { \
-     OR_PUT_INT(((char *)ptr) + OR_DATETIME_DATE, (datetime)->date); \
-     OR_PUT_INT(((char *)ptr) + OR_DATETIME_TIME, (datetime)->time); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *)ptr) + OR_DATETIME_DATE, (datetime)->date); \
+    OR_PUT_INT (((char *)ptr) + OR_DATETIME_TIME, (datetime)->time); \
+  } while (0)
 
 #define OR_GET_DATETIMETZ(ptr, datetimetz) \
-   do { \
-     OR_GET_DATETIME ((char *)ptr, \
-		      &((DB_DATETIMETZ *)datetimetz)->datetime); \
-     (datetimetz)->tz_id = OR_GET_INT(((char *)(ptr))  \
-	+ OR_DATETIMETZ_TZID); \
-   } while (0)
+  do { \
+    OR_GET_DATETIME ((char *) ptr, \
+		     &((DB_DATETIMETZ *) datetimetz)->datetime); \
+    (datetimetz)->tz_id = OR_GET_INT (((char *) (ptr)) + OR_DATETIMETZ_TZID); \
+  } while (0)
 
 #define OR_PUT_DATETIMETZ(ptr, datetimetz) \
-   do { \
-     OR_PUT_DATETIME(((char *)ptr), \
-		     &((DB_DATETIMETZ *)datetimetz)->datetime); \
-     OR_PUT_INT(((char *)ptr) + OR_DATETIMETZ_TZID, \
-		(datetimetz)->tz_id); \
-   } while (0)
+  do { \
+    OR_PUT_DATETIME (((char *) ptr), \
+		     &((DB_DATETIMETZ *) datetimetz)->datetime); \
+    OR_PUT_INT (((char *) ptr) + OR_DATETIMETZ_TZID, (datetimetz)->tz_id); \
+  } while (0)
 
 #define OR_GET_MONETARY(ptr, value) \
-   do { \
-     double pack_value; \
-     (value)->type = (DB_CURRENCY) OR_GET_INT(((char *)(ptr)) + OR_MONETARY_TYPE); \
-     memcpy((char *)(&pack_value), ((char *)(ptr)) + OR_MONETARY_AMOUNT, OR_DOUBLE_SIZE); \
-     OR_GET_DOUBLE(&pack_value, &(value)->amount);                                 \
-   } while (0)
+  do { \
+    double pack_value; \
+    (value)->type = (DB_CURRENCY) OR_GET_INT (((char *) (ptr)) + OR_MONETARY_TYPE); \
+    memcpy ((char *) (&pack_value), ((char *) (ptr)) + OR_MONETARY_AMOUNT, OR_DOUBLE_SIZE); \
+    OR_GET_DOUBLE (&pack_value, &(value)->amount); \
+  } while (0)
 
 #define OR_GET_CURRENCY_TYPE(ptr) \
-  (DB_CURRENCY) OR_GET_INT(((char *)(ptr)) + OR_MONETARY_TYPE)
+  (DB_CURRENCY) OR_GET_INT (((char *) (ptr)) + OR_MONETARY_TYPE)
 
 #define OR_PUT_MONETARY(ptr, value) \
-   do { \
-     double pack_value;         \
-     OR_PUT_INT(((char *)(ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
-     OR_PUT_DOUBLE(&pack_value, &((value)->amount));                      \
-     memcpy(((char *)(ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \
-   } while (0)
+  do { \
+    double pack_value; \
+    OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
+    OR_PUT_DOUBLE (&pack_value, &((value)->amount)); \
+    memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \
+  } while (0)
 
 /* DISK IDENTIFIERS */
 
 #define OR_GET_OID(ptr, oid) \
-   do { \
-     (oid)->pageid = OR_GET_INT(((char *)(ptr)) + OR_OID_PAGEID); \
-     (oid)->slotid = OR_GET_SHORT(((char *)(ptr)) + OR_OID_SLOTID); \
-     (oid)->volid  = OR_GET_SHORT(((char *)(ptr)) + OR_OID_VOLID); \
-   } while (0)
+  do { \
+    (oid)->pageid = OR_GET_INT (((char *) (ptr)) + OR_OID_PAGEID); \
+    (oid)->slotid = OR_GET_SHORT (((char *) (ptr)) + OR_OID_SLOTID); \
+    (oid)->volid  = OR_GET_SHORT (((char *) (ptr)) + OR_OID_VOLID); \
+  } while (0)
 
 #define OR_PUT_OID(ptr, oid) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_OID_PAGEID, (oid)->pageid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_OID_SLOTID, (oid)->slotid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_OID_VOLID, (oid)->volid); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_OID_PAGEID, (oid)->pageid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_OID_SLOTID, (oid)->slotid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_OID_VOLID, (oid)->volid); \
+  } while (0)
 
 #define OR_GET_VPID(ptr, vpid) \
-   do { \
-     (vpid)->pageid = OR_GET_INT(((char *)(ptr)) + OR_VPID_PAGEID); \
-     (vpid)->volid = OR_GET_SHORT(((char *)(ptr)) + OR_VPID_VOLID); \
-   } while (0)
+  do { \
+    (vpid)->pageid = OR_GET_INT (((char *) (ptr)) + OR_VPID_PAGEID); \
+    (vpid)->volid = OR_GET_SHORT (((char *) (ptr)) + OR_VPID_VOLID); \
+  } while (0)
 
 #define OR_PUT_VPID(ptr, vpid) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_VPID_PAGEID, (vpid)->pageid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_VPID_VOLID, (vpid)->volid); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_VPID_PAGEID, (vpid)->pageid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_VPID_VOLID, (vpid)->volid); \
+  } while (0)
 #define OR_PUT_VPID_ALIGNED(ptr, vpid) \
   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_VPID_PAGEID, (vpid)->pageid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_VPID_VOLID, (vpid)->volid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_VPID_SIZE, 0); \
-   } while (0)
+    OR_PUT_INT (((char *) (ptr)) + OR_VPID_PAGEID, (vpid)->pageid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_VPID_VOLID, (vpid)->volid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_VPID_SIZE, 0); \
+  } while (0)
 
 #define OR_PUT_NULL_OID(ptr) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_OID_PAGEID,   NULL_PAGEID); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_OID_SLOTID, 0); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_OID_VOLID,  0); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_OID_PAGEID, NULL_PAGEID); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_OID_SLOTID, 0); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_OID_VOLID,  0); \
+  } while (0)
 
 #define OR_GET_LOID(ptr, loid) \
-   do { \
-     (loid)->vpid.pageid = OR_GET_INT(((char *)(ptr)) + OR_LOID_VPID_PAGEID); \
-     (loid)->vpid.volid  = OR_GET_SHORT(((char *)(ptr)) + OR_LOID_VPID_VOLID); \
-     (loid)->vfid.volid  = OR_GET_SHORT(((char *)(ptr)) + OR_LOID_VFID_VOLID); \
-     (loid)->vfid.fileid = OR_GET_INT(((char *)(ptr)) + OR_LOID_VFID_FILEID); \
-   } while (0)
+  do { \
+    (loid)->vpid.pageid = OR_GET_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID); \
+    (loid)->vpid.volid  = OR_GET_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID); \
+    (loid)->vfid.volid  = OR_GET_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID); \
+    (loid)->vfid.fileid = OR_GET_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID); \
+  } while (0)
 
 #define OR_PUT_LOID(ptr, loid) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_LOID_VPID_PAGEID,  (loid)->vpid.pageid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_LOID_VPID_VOLID, (loid)->vpid.volid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_LOID_VFID_VOLID, (loid)->vfid.volid); \
-     OR_PUT_INT(((char *)(ptr)) + OR_LOID_VFID_FILEID,  (loid)->vfid.fileid); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID,  (loid)->vpid.pageid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID, (loid)->vpid.volid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID, (loid)->vfid.volid); \
+    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID,  (loid)->vfid.fileid); \
+  } while (0)
 
 #define OR_PUT_NULL_LOID(ptr) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_LOID_VPID_PAGEID,  -1); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_LOID_VPID_VOLID, -1); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_LOID_VFID_VOLID, -1); \
-     OR_PUT_INT(((char *)(ptr)) + OR_LOID_VFID_FILEID,  -1); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID,  -1); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID, -1); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID, -1); \
+    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID,  -1); \
+  } while (0)
 
 #define OR_GET_HFID(ptr, hfid) \
-   do { \
-     (hfid)->hpgid       = OR_GET_INT(((char *)(ptr)) + OR_HFID_PAGEID); \
-     (hfid)->vfid.fileid = OR_GET_INT(((char *)(ptr)) + OR_HFID_VFID_FILEID); \
-     (hfid)->vfid.volid  = OR_GET_INT(((char *)(ptr)) + OR_HFID_VFID_VOLID); \
-   } while (0)
+  do { \
+    (hfid)->hpgid = OR_GET_INT (((char *) (ptr)) + OR_HFID_PAGEID); \
+    (hfid)->vfid.fileid = OR_GET_INT (((char *) (ptr)) + OR_HFID_VFID_FILEID); \
+    (hfid)->vfid.volid = OR_GET_INT (((char *) (ptr)) + OR_HFID_VFID_VOLID); \
+  } while (0)
 
 #define OR_PUT_HFID(ptr, hfid) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_HFID_PAGEID,      (hfid)->hpgid); \
-     OR_PUT_INT(((char *)(ptr)) + OR_HFID_VFID_FILEID, (hfid)->vfid.fileid); \
-     OR_PUT_INT(((char *)(ptr)) + OR_HFID_VFID_VOLID,  (hfid)->vfid.volid); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_HFID_PAGEID, (hfid)->hpgid); \
+    OR_PUT_INT (((char *) (ptr)) + OR_HFID_VFID_FILEID, (hfid)->vfid.fileid); \
+    OR_PUT_INT (((char *) (ptr)) + OR_HFID_VFID_VOLID, (hfid)->vfid.volid); \
+  } while (0)
 
 #define OR_PUT_NULL_HFID(ptr) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_HFID_PAGEID,      -1); \
-     OR_PUT_INT(((char *)(ptr)) + OR_HFID_VFID_FILEID, -1); \
-     OR_PUT_INT(((char *)(ptr)) + OR_HFID_VFID_VOLID,  -1); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_HFID_PAGEID, -1); \
+    OR_PUT_INT (((char *) (ptr)) + OR_HFID_VFID_FILEID, -1); \
+    OR_PUT_INT (((char *) (ptr)) + OR_HFID_VFID_VOLID, -1); \
+  } while (0)
 
 #define OR_GET_BTID(ptr, btid) \
-   do { \
-     (btid)->root_pageid     = OR_GET_INT(((char *)(ptr)) + OR_BTID_PAGEID); \
-     (btid)->vfid.fileid = OR_GET_INT(((char *)(ptr)) + OR_BTID_VFID_FILEID); \
-     (btid)->vfid.volid  = OR_GET_SHORT(((char *)(ptr)) + OR_BTID_VFID_VOLID); \
-   } while (0)
+  do { \
+    (btid)->root_pageid = OR_GET_INT (((char *) (ptr)) + OR_BTID_PAGEID); \
+    (btid)->vfid.fileid = OR_GET_INT (((char *) (ptr)) + OR_BTID_VFID_FILEID); \
+    (btid)->vfid.volid  = OR_GET_SHORT (((char *) (ptr)) + OR_BTID_VFID_VOLID); \
+  } while (0)
 
 #define OR_PUT_BTID(ptr, btid) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_BTID_PAGEID,       (btid)->root_pageid); \
-     OR_PUT_INT(((char *)(ptr)) + OR_BTID_VFID_FILEID,  (btid)->vfid.fileid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_BTID_VFID_VOLID, (btid)->vfid.volid); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_BTID_PAGEID, (btid)->root_pageid); \
+    OR_PUT_INT (((char *) (ptr)) + OR_BTID_VFID_FILEID, (btid)->vfid.fileid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_BTID_VFID_VOLID, (btid)->vfid.volid); \
+  } while (0)
 
 #define OR_PUT_NULL_BTID(ptr) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_BTID_PAGEID,       NULL_PAGEID); \
-     OR_PUT_INT(((char *)(ptr)) + OR_BTID_VFID_FILEID,  NULL_FILEID); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_BTID_VFID_VOLID, NULL_VOLID); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_BTID_PAGEID, NULL_PAGEID); \
+    OR_PUT_INT (((char *) (ptr)) + OR_BTID_VFID_FILEID, NULL_FILEID); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_BTID_VFID_VOLID, NULL_VOLID); \
+  } while (0)
 
 #define OR_GET_EHID(ptr, ehid) \
-   do { \
-     (ehid)->vfid.volid  = OR_GET_INT(((char *)(ptr)) + OR_EHID_VOLID); \
-     (ehid)->vfid.fileid = OR_GET_INT(((char *)(ptr)) + OR_EHID_FILEID); \
-     (ehid)->pageid = OR_GET_INT(((char *)(ptr)) + OR_EHID_PAGEID); \
-   } while (0)
+  do { \
+    (ehid)->vfid.volid = OR_GET_INT (((char *) (ptr)) + OR_EHID_VOLID); \
+    (ehid)->vfid.fileid = OR_GET_INT (((char *) (ptr)) + OR_EHID_FILEID); \
+    (ehid)->pageid = OR_GET_INT (((char *) (ptr)) + OR_EHID_PAGEID); \
+  } while (0)
 
 #define OR_PUT_EHID(ptr, ehid) \
-   do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_EHID_VOLID,  (ehid)->vfid.volid); \
-     OR_PUT_INT(((char *)(ptr)) + OR_EHID_FILEID, (ehid)->vfid.fileid); \
-     OR_PUT_INT(((char *)(ptr)) + OR_EHID_PAGEID, (ehid)->pageid); \
-   } while (0)
+  do { \
+    OR_PUT_INT (((char *) (ptr)) + OR_EHID_VOLID,  (ehid)->vfid.volid); \
+    OR_PUT_INT (((char *) (ptr)) + OR_EHID_FILEID, (ehid)->vfid.fileid); \
+    OR_PUT_INT (((char *) (ptr)) + OR_EHID_PAGEID, (ehid)->pageid); \
+  } while (0)
 
 #define OR_GET_LOG_LSA(ptr, lsa) \
-   do { \
-     INT64 value;\
-     OR_GET_INT64(((char *)(ptr)) + OR_LOG_LSA_PAGEID, &value); \
-     (lsa)->pageid  = value; \
-     (lsa)->offset  = OR_GET_SHORT(((char *)(ptr)) + OR_LOG_LSA_OFFSET); \
-   } while (0)
+  do { \
+    INT64 value; \
+    OR_GET_INT64 (((char *) (ptr)) + OR_LOG_LSA_PAGEID, &value); \
+    (lsa)->pageid = value; \
+    (lsa)->offset = OR_GET_SHORT (((char *) (ptr)) + OR_LOG_LSA_OFFSET); \
+  } while (0)
 
 #define OR_PUT_LOG_LSA(ptr, lsa) \
-   do { \
-     INT64 pageid = (lsa)->pageid;\
-     OR_PUT_INT64(((char *)(ptr)) + OR_LOG_LSA_PAGEID, &pageid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_LOG_LSA_OFFSET, (lsa)->offset); \
-   } while (0)
+  do { \
+    INT64 pageid = (lsa)->pageid; \
+    OR_PUT_INT64 (((char *) (ptr)) + OR_LOG_LSA_PAGEID, &pageid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_LOG_LSA_OFFSET, (lsa)->offset); \
+  } while (0)
 
 #define OR_PUT_NULL_LOG_LSA(ptr) \
-   do { \
-     INT64 pageid = -1;\
-     OR_PUT_INT64(((char *)(ptr)) + OR_LOG_LSA_PAGEID, &pageid); \
-     OR_PUT_SHORT(((char *)(ptr)) + OR_LOG_LSA_OFFSET, -1); \
-   } while (0)
+  do { \
+    INT64 pageid = -1; \
+    OR_PUT_INT64 (((char *) (ptr)) + OR_LOG_LSA_PAGEID, &pageid); \
+    OR_PUT_SHORT (((char *) (ptr)) + OR_LOG_LSA_OFFSET, -1); \
+  } while (0)
 
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
@@ -526,43 +536,36 @@
  */
 
 #define OR_VAR_TABLE_SIZE(vars) \
-  (OR_VAR_TABLE_SIZE_INTERNAL(vars, BIG_VAR_OFFSET_SIZE))
+  (OR_VAR_TABLE_SIZE_INTERNAL (vars, BIG_VAR_OFFSET_SIZE))
 
 #define OR_VAR_TABLE_SIZE_INTERNAL(vars, offset_size) \
-  (((vars) == 0) ? 0 : DB_ALIGN((offset_size * ((vars) + 1)),INT_ALIGNMENT))
+  (((vars) == 0) ? 0 : DB_ALIGN ((offset_size * ((vars) + 1)), INT_ALIGNMENT))
 
 #define OR_VAR_TABLE_ELEMENT_PTR(table, index, offset_size) \
-  ((offset_size == OR_BYTE_SIZE) ? \
-  (&((char*)(table))[(index)]) \
-  : \
-  ((offset_size == OR_SHORT_SIZE) ? \
-  ((char*)(&((short *)(table))[(index)]))\
-  : \
-  ((char*)(&((int *)(table))[(index)]))\
-  ) \
-  )
+  ((offset_size == OR_BYTE_SIZE) \
+   ? (&((char *) (table))[(index)]) \
+   : ((offset_size == OR_SHORT_SIZE) \
+      ? ((char *) (&((short *) (table))[(index)])) \
+      : ((char *) (&((int *) (table))[(index)]))))
 
 #define OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, offset_size) \
-  ((offset_size == OR_BYTE_SIZE) ? \
-  (OR_GET_BYTE(OR_VAR_TABLE_ELEMENT_PTR(table, index, offset_size))) \
-  : \
-  ((offset_size == OR_SHORT_SIZE) ? \
-  (OR_GET_SHORT(OR_VAR_TABLE_ELEMENT_PTR(table, index, offset_size))) \
-  : \
-  (OR_GET_INT(OR_VAR_TABLE_ELEMENT_PTR(table, index, offset_size))) \
-  ))
+  ((offset_size == OR_BYTE_SIZE) \
+   ? (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+   : ((offset_size == OR_SHORT_SIZE) \
+      ? (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+      : (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))))
 
 #define OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, offset_size) \
-  (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, (index) + 1, offset_size) - \
-   OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, (index), offset_size))
+  (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (table, (index) + 1, offset_size) \
+   - OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (table, (index), offset_size))
 
 /* ATTRIBUTE LOCATION */
 
 #define OR_FIXED_ATTRIBUTES_OFFSET(ptr, nvars) \
-   (OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(ptr, nvars, BIG_VAR_OFFSET_SIZE))
+  (OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL (ptr, nvars, BIG_VAR_OFFSET_SIZE))
 
 #define OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(ptr, nvars, offset_size) \
-   (OR_HEADER_SIZE (ptr) + OR_VAR_TABLE_SIZE_INTERNAL (nvars, offset_size))
+  (OR_HEADER_SIZE (ptr) + OR_VAR_TABLE_SIZE_INTERNAL (nvars, offset_size))
 
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
@@ -577,7 +580,7 @@
 #define OR_MVCC_INSERT_HEADER_SIZE  16
 
 #define OR_NON_MVCC_HEADER_SIZE	      (8)	/* two integers */
-#define OR_HEADER_SIZE(ptr) (or_header_size ((char *)ptr))
+#define OR_HEADER_SIZE(ptr) (or_header_size ((char *) (ptr)))
 
 /* representation offset in MVCC and non-MVCC. In MVCC the representation
  * contains flags that allow to compute header size and CHN offset.
@@ -636,76 +639,65 @@
 /* OBJECT HEADER ACCESS MACROS */
 
 #define OR_GET_REPID(ptr) \
-  ((OR_GET_INT((ptr) + OR_REP_OFFSET)) & ~OR_BOUND_BIT_FLAG & ~OR_OFFSET_SIZE_FLAG)
+  ((OR_GET_INT ((ptr) + OR_REP_OFFSET)) & ~OR_BOUND_BIT_FLAG & ~OR_OFFSET_SIZE_FLAG)
 
 #define OR_GET_BOUND_BIT_FLAG(ptr) \
-  ((OR_GET_INT((ptr) + OR_REP_OFFSET)) & OR_BOUND_BIT_FLAG)
+  ((OR_GET_INT ((ptr) + OR_REP_OFFSET)) & OR_BOUND_BIT_FLAG)
 
 #define OR_GET_NON_MVCC_CHN(ptr) \
-  (OR_GET_INT((ptr) + OR_NON_MVCC_CHN_OFFSET))
+  (OR_GET_INT ((ptr) + OR_NON_MVCC_CHN_OFFSET))
 
 #define OR_GET_OFFSET_SIZE(ptr) \
-  ((((OR_GET_INT(((char*)ptr) + OR_REP_OFFSET)) & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE) ? \
-     OR_BYTE_SIZE \
-     : \
-     ((((OR_GET_INT(((char*)ptr) + OR_REP_OFFSET)) & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_2BYTE) ? \
-     OR_SHORT_SIZE \
-     : \
-     OR_INT_SIZE))
+  ((((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE) \
+     ? OR_BYTE_SIZE \
+     : ((((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_2BYTE) \
+          ? OR_SHORT_SIZE : OR_INT_SIZE))
 
 #define OR_SET_VAR_OFFSET_SIZE(val, offset_size) \
-  ((offset_size == OR_BYTE_SIZE) ? \
-  (val |= OR_OFFSET_SIZE_1BYTE) \
-  : \
-  ((offset_size == OR_SHORT_SIZE) ? \
-  (val |= OR_OFFSET_SIZE_2BYTE) \
-  : \
-  (val |= OR_OFFSET_SIZE_4BYTE) \
-  ))
+  (((offset_size) == OR_BYTE_SIZE) \
+   ? ((val) |= OR_OFFSET_SIZE_1BYTE) \
+   : (((offset_size) == OR_SHORT_SIZE) \
+      ? ((val) |= OR_OFFSET_SIZE_2BYTE) \
+      : ((val) |= OR_OFFSET_SIZE_4BYTE)))
 
 /* MVCC OBJECT HEADER ACCESS MACROS */
-#define OR_GET_MVCC_INSERT_ID(ptr, mvcc_flags, valp)  \
+#define OR_GET_MVCC_INSERT_ID(ptr, mvcc_flags, valp) \
   do { \
     if (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) == 0) \
       {	\
-	*valp = MVCCID_ALL_VISIBLE;  \
+	*(valp) = MVCCID_ALL_VISIBLE; \
       }	\
-    else  \
+    else \
       {	\
-	OR_GET_BIGINT(((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE, valp); \
+	OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE, (valp)); \
       }	\
   } while (0)
 
 #define OR_GET_MVCC_DELETE_ID(ptr, mvcc_flags, valp)  \
-  (((mvcc_flags & OR_MVCC_FLAG_VALID_DELID) == 0) ? MVCCID_NULL \
-  :  \
-  ((mvcc_flags & OR_MVCC_FLAG_VALID_INSID) ? \
-  (OR_GET_BIGINT(((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE, valp)) \
-  :  \
-  ((OR_GET_BIGINT(((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE, valp)))))
+  ((((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) == 0) \
+    ? MVCCID_NULL \
+    : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
+       ? (OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE, (valp))) \
+       : ((OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE, (valp))))))
 
 #define OR_GET_MVCC_REPID(ptr)	\
   ((OR_GET_INT(((char *) (ptr)) + OR_REP_OFFSET)) \
    & OR_MVCC_REPID_MASK)
 
 /* in MVCC, chn follow by rep_id and/or ins_id depending by flags */
-#define OR_GET_MVCC_CHN(ptr, mvcc_flags)  \
-  ((mvcc_flags & OR_MVCC_FLAG_VALID_DELID) ? NULL_CHN \
-   :  \
-   ((mvcc_flags & OR_MVCC_FLAG_VALID_INSID) ? \
-    (OR_GET_INT(((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE)) \
-    :  \
-    ((OR_GET_INT(((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE))) \
-   )  \
-  )
+#define OR_GET_MVCC_CHN(ptr, mvcc_flags) \
+  (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) \
+   ? NULL_CHN \
+   : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
+      ? (OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE)) \
+      : ((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE)))))
 
 #define OR_GET_MVCC_CHN_OFFSET(mvcc_flags) \
-  ((mvcc_flags & OR_MVCC_FLAG_VALID_DELID) ? -1 \
-    :  \
-    ((mvcc_flags & OR_MVCC_FLAG_VALID_INSID) ? \
-    (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE) \
-    :  \
-    (OR_REP_OFFSET + OR_MVCC_REP_SIZE)))
+  (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) \
+   ? -1 \
+   : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
+      ? (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE) \
+      : (OR_REP_OFFSET + OR_MVCC_REP_SIZE)))
 
 #define OR_GET_MVCC_FLAG(ptr) \
   (((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) \
@@ -717,37 +709,46 @@
 /* VARIABLE OFFSET TABLE ACCESSORS */
 
 #define OR_GET_OBJECT_VAR_TABLE(obj) \
-  ((short *)(((char *)(obj)) + OR_HEADER_SIZE((char *)obj)))
+  ((short *) (((char *) (obj)) + OR_HEADER_SIZE ((char *) (obj))))
 
 #define OR_VAR_ELEMENT_PTR(obj, index) \
-  (OR_VAR_TABLE_ELEMENT_PTR(OR_GET_OBJECT_VAR_TABLE(obj), index, OR_GET_OFFSET_SIZE(obj)))
+  (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (obj), index, OR_GET_OFFSET_SIZE (obj)))
 
 #define OR_VAR_OFFSET(obj, index) \
   (OR_HEADER_SIZE (obj)	\
-   + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(OR_GET_OBJECT_VAR_TABLE(obj), index, OR_GET_OFFSET_SIZE(obj)))
+   + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (OR_GET_OBJECT_VAR_TABLE (obj), \
+                                           index, OR_GET_OFFSET_SIZE (obj)))
 
 #define OR_VAR_IS_NULL(obj, index) \
-  ((OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(OR_GET_OBJECT_VAR_TABLE(obj), index, OR_GET_OFFSET_SIZE(obj))) ? 0 : 1)
+  ((OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL (OR_GET_OBJECT_VAR_TABLE (obj), \
+                                          index, OR_GET_OFFSET_SIZE (obj))) ? 0 : 1)
 
-#define OR_VAR_LENGTH(length, obj, index, n_variables)            \
-  do {                                                            \
-    int _this_offset, _next_offset, _temp_offset, _nth_var;       \
-    _this_offset = OR_VAR_OFFSET(obj, index);                     \
-    _next_offset = OR_VAR_OFFSET(obj, index + 1);                 \
-    if ((length = _next_offset - _this_offset) != 0) {            \
-      _next_offset = 0;                                           \
-      for (_nth_var = 0; _nth_var <= n_variables; _nth_var++) {   \
-        _temp_offset = OR_VAR_OFFSET(obj, _nth_var);              \
-        if (_temp_offset > _this_offset ) {                       \
-          if (_next_offset == 0)                                  \
-            _next_offset = _temp_offset;                          \
-          else if (_temp_offset < _next_offset)                   \
-            _next_offset = _temp_offset;                          \
-        }                                                         \
-      }                                                           \
-      length = _next_offset - _this_offset;                       \
-  }                                                               \
-} while(0)
+#define OR_VAR_LENGTH(length, obj, index, n_variables) \
+  do { \
+    int _this_offset, _next_offset, _temp_offset, _nth_var; \
+    _this_offset = OR_VAR_OFFSET(obj, index); \
+    _next_offset = OR_VAR_OFFSET(obj, index + 1); \
+    if ((length = _next_offset - _this_offset) != 0) \
+      { \
+        _next_offset = 0; \
+        for (_nth_var = 0; _nth_var <= n_variables; _nth_var++) \
+          { \
+            _temp_offset = OR_VAR_OFFSET(obj, _nth_var); \
+            if (_temp_offset > _this_offset ) \
+              { \
+                if (_next_offset == 0) \
+                  { \
+                    _next_offset = _temp_offset; \
+                  } \
+                else if (_temp_offset < _next_offset) \
+                  { \
+                    _next_offset = _temp_offset; \
+		  } \
+              } \
+          } \
+        length = _next_offset - _this_offset; \
+      } \
+  } while (0)
 
 /*
  * BOUND BIT ACCESSORS.
@@ -757,41 +758,43 @@
 #define OR_BOUND_BIT_WORDS(count) (((count) + 31) >> 5)
 #define OR_BOUND_BIT_BYTES(count) ((((count) + 31) >> 5) * 4)
 
-#define OR_BOUND_BIT_MASK(element) (1 << ((int)(element) & 7))
+#define OR_BOUND_BIT_MASK(element) (1 << ((int) (element) & 7))
 
 #define OR_GET_BOUND_BIT_BYTE(bitptr, element) \
-  ((char *)(bitptr) + ((int)(element) >> 3))
+  ((char *) (bitptr) + ((int) (element) >> 3))
 
 #define OR_GET_BOUND_BIT(bitptr, element) \
-  ((*OR_GET_BOUND_BIT_BYTE(bitptr, element)) & OR_BOUND_BIT_MASK(element))
+  ((*OR_GET_BOUND_BIT_BYTE ((bitptr), (element))) & OR_BOUND_BIT_MASK ((element)))
 
 #define OR_GET_BOUND_BITS(obj, nvars, fsize) \
-  (char *)(((char *)(obj)) + OR_HEADER_SIZE ((char *)(obj)) + OR_VAR_TABLE_SIZE_INTERNAL(nvars, OR_GET_OFFSET_SIZE(obj)) + fsize)
+  (char *) (((char *) (obj)) \
+            + OR_HEADER_SIZE ((char *) (obj)) \
+            + OR_VAR_TABLE_SIZE_INTERNAL ((nvars), OR_GET_OFFSET_SIZE (obj)) + (fsize))
 
 /* These are the most useful ones if we're only testing a single attribute */
 
 #define OR_FIXED_ATT_IS_BOUND(obj, nvars, fsize, position) \
-  (!OR_GET_BOUND_BIT_FLAG(obj) || \
-   OR_GET_BOUND_BIT(OR_GET_BOUND_BITS(obj, nvars, fsize), position))
+  (!OR_GET_BOUND_BIT_FLAG (obj) \
+   || OR_GET_BOUND_BIT (OR_GET_BOUND_BITS (obj, nvars, fsize), position))
 
 #define OR_FIXED_ATT_IS_UNBOUND(obj, nvars, fsize, position) \
-  (OR_GET_BOUND_BIT_FLAG(obj) && \
-   !OR_GET_BOUND_BIT(OR_GET_BOUND_BITS(obj, nvars, fsize), position))
+  (OR_GET_BOUND_BIT_FLAG (obj) \
+   && !OR_GET_BOUND_BIT (OR_GET_BOUND_BITS (obj, nvars, fsize), position))
 
 #define OR_ENABLE_BOUND_BIT(bitptr, element) \
-  *OR_GET_BOUND_BIT_BYTE(bitptr, element) = \
-    *OR_GET_BOUND_BIT_BYTE(bitptr, element) | OR_BOUND_BIT_MASK(element)
+  *OR_GET_BOUND_BIT_BYTE (bitptr, element) = \
+    *OR_GET_BOUND_BIT_BYTE (bitptr, element) | OR_BOUND_BIT_MASK (element)
 
 #define OR_CLEAR_BOUND_BIT(bitptr, element) \
-  *OR_GET_BOUND_BIT_BYTE(bitptr, element) = \
-    *OR_GET_BOUND_BIT_BYTE(bitptr, element) & ~OR_BOUND_BIT_MASK(element)
+  *OR_GET_BOUND_BIT_BYTE (bitptr, element) = \
+    *OR_GET_BOUND_BIT_BYTE (bitptr, element) & ~OR_BOUND_BIT_MASK (element)
 
 /* SET HEADER */
 
-#define OR_SET_HEADER_SIZE 		8
-#define OR_SET_SIZE_OFFSET         	4
+#define OR_SET_HEADER_SIZE 8
+#define OR_SET_SIZE_OFFSET 4
 /* optional header extension if the full domain is present */
-#define OR_SET_DOMAIN_SIZE_OFFSET	8
+#define OR_SET_DOMAIN_SIZE_OFFSET 8
 
 /* Set header fields.
    These constants are used to construct and decompose the set header word. */
@@ -805,39 +808,39 @@
 #define OR_SET_COMMON_SUB_BIT	0x100000
 
 #define OR_SET_TYPE(setptr) \
-  (DB_TYPE) ((OR_GET_INT((char *)(setptr))) & OR_SET_TYPE_MASK)
+  (DB_TYPE) ((OR_GET_INT ((char *) (setptr))) & OR_SET_TYPE_MASK)
 
 #define OR_SET_ELEMENT_TYPE(setptr)  \
-  (DB_TYPE) ((OR_GET_INT((char *)(setptr)) & OR_SET_ETYPE_MASK) >> \
-             OR_SET_ETYPE_SHIFT)
+  (DB_TYPE) ((OR_GET_INT ((char *) (setptr)) & OR_SET_ETYPE_MASK) \
+             >> OR_SET_ETYPE_SHIFT)
 
 #define OR_SET_HAS_BOUND_BITS(setptr) \
-  (OR_GET_INT((char *)(setptr)) & OR_SET_BOUND_BIT)
+  (OR_GET_INT ((char *) (setptr)) & OR_SET_BOUND_BIT)
 
 #define OR_SET_HAS_OFFSET_TABLE(setptr) \
-  (OR_GET_INT((char *)(setptr)) & OR_SET_VARIABLE_BIT)
+  (OR_GET_INT ((char *) (setptr)) & OR_SET_VARIABLE_BIT)
 
 #define OR_SET_HAS_DOMAIN(setptr) \
-  (OR_GET_INT((char *)(setptr)) & OR_SET_DOMAIN_BIT)
+  (OR_GET_INT ((char *) (setptr)) & OR_SET_DOMAIN_BIT)
 
 #define OR_SET_HAS_ELEMENT_TAGS(setptr) \
-  (OR_GET_INT((char *)(setptr)) & OR_SET_TAG_BIT)
+  (OR_GET_INT ((char *) (setptr)) & OR_SET_TAG_BIT)
 
 #define OR_SET_ELEMENT_COUNT(setptr) \
-  ((OR_GET_INT((char *)(setptr) + OR_SET_SIZE_OFFSET)))
+  ((OR_GET_INT ((char *) (setptr) + OR_SET_SIZE_OFFSET)))
 
 #define OR_SET_DOMAIN_SIZE(setptr) \
-  ((OR_GET_INT((char *)(setptr) + OR_SET_DOMAIN_SIZE_OFFSET)))
+  ((OR_GET_INT ((char *) (setptr) + OR_SET_DOMAIN_SIZE_OFFSET)))
 
 /*
  * SET VARIABLE OFFSET TABLE ACCESSORS.
  * Should make sure that the set actually has one before using.
  */
 #define OR_GET_SET_VAR_TABLE(setptr) \
-  ((int *)((char *)(setptr) + OR_SET_HEADER_SIZE))
+  ((int *) ((char *) (setptr) + OR_SET_HEADER_SIZE))
 
 #define OR_SET_ELEMENT_OFFSET(setptr, element) \
-  (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(OR_GET_SET_VAR_TABLE(setptr), element, BIG_VAR_OFFSET_SIZE))
+  (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (OR_GET_SET_VAR_TABLE (setptr), element, BIG_VAR_OFFSET_SIZE))
 
 /*
  * SET BOUND BIT ACCESSORS
@@ -848,38 +851,38 @@
  */
 
 #define OR_GET_SET_BOUND_BITS(setptr) \
-  (int *)((char *)(setptr) + OR_SET_HEADER_SIZE)
+  (int *) ((char *) (setptr) + OR_SET_HEADER_SIZE)
 
 /* MIDXKEY HEADER */
 
 #define OR_MULTI_BOUND_BIT_BYTES(count)  (((count) + 7) >> 3)
 
-#define OR_MULTI_BOUND_BIT_MASK(element) (1 << ((int)(element) & 7))
+#define OR_MULTI_BOUND_BIT_MASK(element) (1 << ((int) (element) & 7))
 
-#define OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element)       \
-        ((char *)(bitptr) + ((int)(element) >> 3))
+#define OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element) \
+  ((char *)(bitptr) + ((int)(element) >> 3))
 
-#define OR_MULTI_GET_BOUND_BIT(bitptr, element)            \
-        ((*OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element)) & \
-         OR_MULTI_BOUND_BIT_MASK(element))
+#define OR_MULTI_GET_BOUND_BIT(bitptr, element) \
+  ((*OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element)) \
+   & OR_MULTI_BOUND_BIT_MASK(element))
 
-#define OR_MULTI_GET_BOUND_BITS(bitptr, fsize)             \
-        (char *)(((char *)(bitptr)) + fsize)
+#define OR_MULTI_GET_BOUND_BITS(bitptr, fsize) \
+  (char *) (((char *) (bitptr)) + fsize)
 
-#define OR_MULTI_ATT_IS_BOUND(bitptr, element)             \
-         OR_MULTI_GET_BOUND_BIT(bitptr, element)
-#define OR_MULTI_ATT_IS_UNBOUND(bitptr, element)           \
-        (!OR_MULTI_GET_BOUND_BIT(bitptr, element))
+#define OR_MULTI_ATT_IS_BOUND(bitptr, element) \
+  OR_MULTI_GET_BOUND_BIT(bitptr, element)
+#define OR_MULTI_ATT_IS_UNBOUND(bitptr, element) \
+  (!OR_MULTI_GET_BOUND_BIT (bitptr, element))
 
-#define OR_MULTI_ENABLE_BOUND_BIT(bitptr, element)         \
-        *OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element) =    \
-          *OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element) |  \
-          OR_MULTI_BOUND_BIT_MASK(element)
+#define OR_MULTI_ENABLE_BOUND_BIT(bitptr, element) \
+  *OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
+  = (*OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
+     | OR_MULTI_BOUND_BIT_MASK (element))
 
-#define OR_MULTI_CLEAR_BOUND_BIT(bitptr, element)          \
-        *OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element) =    \
-          *OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element) &  \
-          ~OR_MULTI_BOUND_BIT_MASK(element)
+#define OR_MULTI_CLEAR_BOUND_BIT(bitptr, element) \
+  *OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
+  = (*OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
+     & ~OR_MULTI_BOUND_BIT_MASK (element))
 
 
 
@@ -903,7 +906,7 @@
 /* VARIABLE HEADER */
 #define OR_VARIABLE_HEADER_SIZE 4
 
-#define OR_GET_VARIABLE_TYPE(ptr) (OR_GET_INT((int *)(ptr)))
+#define OR_GET_VARIABLE_TYPE(ptr) (OR_GET_INT ((int *) (ptr)))
 
 
 /* class */
@@ -1211,28 +1214,30 @@ struct or_varinfo
 #if __WORDSIZE == 32
 
 #define OR_ALIGNED_BUF(size) \
-union { \
-  double dummy; \
-  char buf[(size) + MAX_ALIGNMENT]; \
-}
+union \
+  { \
+    double dummy; \
+    char buf[(size) + MAX_ALIGNMENT]; \
+  }
 
 #define OR_ALIGNED_BUF_START(abuf) (PTR_ALIGN (abuf.buf, MAX_ALIGNMENT))
-#define OR_ALIGNED_BUF_SIZE(abuf) (sizeof(abuf.buf) - MAX_ALIGNMENT)
+#define OR_ALIGNED_BUF_SIZE(abuf) (sizeof (abuf.buf) - MAX_ALIGNMENT)
 
 #else /* __WORDSIZE == 32 */
 
 #define OR_ALIGNED_BUF(size) \
-union { \
-  double dummy; \
-  char buf[(size)]; \
-}
+union \
+  { \
+    double dummy; \
+    char buf[(size)]; \
+  }
 
 #define OR_ALIGNED_BUF_START(abuf) (abuf.buf)
-#define OR_ALIGNED_BUF_SIZE(abuf) (sizeof(abuf.buf))
+#define OR_ALIGNED_BUF_SIZE(abuf) (sizeof (abuf.buf))
 
 #endif
 
-#define OR_INFINITE_POINTER ((void *)(~((UINTPTR)0UL)))
+#define OR_INFINITE_POINTER ((void *) (~((UINTPTR) 0UL)))
 
 typedef struct or_buf OR_BUF;
 struct or_buf
@@ -1247,28 +1252,31 @@ struct or_buf
 
 /* TODO: LP64 check DB_INT32_MAX */
 
-#define OR_BUF_INIT(buf, data, size)                                        \
-        (buf).buffer = (buf).ptr = (data);                                  \
-        (buf).endptr = ((size) <= 0 || (size) == DB_INT32_MAX) ?            \
-                       (char*) OR_INFINITE_POINTER : (data) + (size);               \
-        (buf).error_abort = 0;                                              \
-        (buf).fixups = NULL;
+#define OR_BUF_INIT(buf, data, size) \
+  do { \
+    (buf).buffer = (buf).ptr = (data); \
+    (buf).endptr = ((size) <= 0 || (size) == DB_INT32_MAX) \
+                    ? (char *) OR_INFINITE_POINTER : (data) + (size); \
+    (buf).error_abort = 0; \
+    (buf).fixups = NULL; \
+  } while (0)
 
-#define OR_BUF_INIT2(buf, data, size)                                       \
-        (buf).buffer = (buf).ptr = (data);                                  \
-        (buf).endptr = ((size) <= 0 || (size) == DB_INT32_MAX) ?            \
-                       (char*) OR_INFINITE_POINTER : (data) + (size);               \
-        (buf).error_abort = 1;                                              \
-        (buf).fixups = NULL;
+#define OR_BUF_INIT2(buf, data, size) \
+  do { \
+    (buf).buffer = (buf).ptr = (data); \
+    (buf).endptr = ((size) <= 0 || (size) == DB_INT32_MAX) \
+                    ? (char *) OR_INFINITE_POINTER : (data) + (size); \
+    (buf).error_abort = 1; \
+    (buf).fixups = NULL; \
+  } while (0)
 
 /* Need to translate types of DB_TYPE_OBJECT into DB_TYPE_OID in server-side */
-#define OR_PACK_DOMAIN_OBJECT_TO_OID(p, d, o, n)                           \
-    or_pack_domain((p),                                                    \
-                   TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT ? &tp_Oid_domain : (d), \
-                   (o), (n))
+#define OR_PACK_DOMAIN_OBJECT_TO_OID(p, d, o, n) \
+  or_pack_domain ((p), \
+                  TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT ? &tp_Oid_domain : (d), \
+                  (o), (n))
 
-
-#define ASSERT_ALIGN(ptr, alignment) (assert (PTR_ALIGN(ptr, alignment) == ptr))
+#define ASSERT_ALIGN(ptr, alignment) (assert (PTR_ALIGN (ptr, alignment) == ptr))
 
 extern int or_rep_id (RECDES * record);
 extern int or_set_rep_id (RECDES * record, int repid);
