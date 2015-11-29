@@ -2771,7 +2771,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_COALESCE:
       {
 	DB_VALUE *src;
-	bool need_free = false;
 	TP_DOMAIN *target_domain;
 
 	target_domain = regu_var->domain;
@@ -2799,7 +2798,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
+	    target_domain = tp_infer_common_domain (arg1, arg2);
 	  }
 
 	src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
@@ -2809,16 +2808,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  {
 	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src,
 					    target_domain);
-	    if (need_free)
-	      {
-		tp_domain_free (target_domain);
-	      }
 	    goto error;
-	  }
-
-	if (need_free)
-	  {
-	    tp_domain_free (target_domain);
 	  }
       }
       break;
@@ -2826,7 +2816,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       {
 	DB_VALUE *src;
 	TP_DOMAIN *target_domain;
-	bool need_free = false;
 
 	target_domain = regu_var->domain;
 
@@ -2857,25 +2846,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
+	    target_domain = tp_infer_common_domain (arg1, arg2);
 
 	    arg3 = NULL;
 	    if (peek_third)
 	      {
-		bool need_tmp_domain_free;
 		TP_DOMAIN *tmp_domain;
 
 		arg3 = tp_domain_resolve_value (peek_third, &tmp_arg3);
-		tmp_domain =
-		  tp_infer_common_domain (target_domain, arg3,
-					  &need_tmp_domain_free);
+		tmp_domain = tp_infer_common_domain (target_domain, arg3);
 
-		if (need_free)
-		  {
-		    tp_domain_free (target_domain);
-		  }
 		target_domain = tmp_domain;
-		need_free = need_tmp_domain_free;
 	      }
 	  }
 
@@ -2887,11 +2868,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 				      vd, NULL, obj_oid, tpl,
 				      &peek_third) != NO_ERROR)
 		  {
-		    if (need_free)
-		      {
-			tp_domain_free (target_domain);
-		      }
-
 		    goto error;
 		  }
 	      }
@@ -2905,10 +2881,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 				      vd, NULL, obj_oid, tpl,
 				      &peek_right) != NO_ERROR)
 		  {
-		    if (need_free)
-		      {
-			tp_domain_free (target_domain);
-		      }
 		    goto error;
 		  }
 	      }
@@ -2923,16 +2895,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src,
 					    target_domain);
 
-	    if (need_free)
-	      {
-		tp_domain_free (target_domain);
-	      }
 	    goto error;
-	  }
-
-	if (need_free)
-	  {
-	    tp_domain_free (target_domain);
 	  }
       }
       break;
@@ -3435,7 +3398,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_NULLIF:		/* when a = b then null else a end */
       {
 	TP_DOMAIN *target_domain;
-	bool need_free = false;
 	bool can_compare = false;
 	int cmp_res = DB_UNK;
 
@@ -3452,7 +3414,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
+	    target_domain = tp_infer_common_domain (arg1, arg2);
 	  }
 
 	cmp_res = tp_value_compare_with_error (peek_left, peek_right, 1, 0,
@@ -3463,10 +3425,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  }
 	else if (cmp_res == DB_UNK && can_compare == false)
 	  {
-	    if (need_free)
-	      {
-		tp_domain_free (target_domain);
-	      }
 	    goto error;
 	  }
 	else
@@ -3478,17 +3436,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      {
 		(void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
 						peek_left, target_domain);
-		if (need_free)
-		  {
-		    tp_domain_free (target_domain);
-		  }
 		goto error;
 	      }
-	  }
-
-	if (need_free)
-	  {
-	    tp_domain_free (target_domain);
 	  }
       }
       break;
@@ -3505,7 +3454,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       {
 	int cmp_result;
 	TP_DOMAIN *target_domain;
-	bool need_free = false;
 	bool can_compare = false;
 
 	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0,
@@ -3544,7 +3492,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
+	    target_domain = tp_infer_common_domain (arg1, arg2);
 	  }
 
 	dom_status =
@@ -3554,16 +3502,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  {
 	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
 					    arithptr->value, target_domain);
-	    if (need_free)
-	      {
-		tp_domain_free (target_domain);
-	      }
 	    goto error;
-	  }
-
-	if (need_free)
-	  {
-	    tp_domain_free (target_domain);
 	  }
 	break;
       }
@@ -3572,7 +3511,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       {
 	int cmp_result;
 	TP_DOMAIN *target_domain;
-	bool need_free = false;
 	bool can_compare = false;
 
 	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0,
@@ -3611,7 +3549,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
+	    target_domain = tp_infer_common_domain (arg1, arg2);
 	  }
 
 	dom_status =
@@ -3621,16 +3559,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  {
 	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
 					    arithptr->value, target_domain);
-	    if (need_free)
-	      {
-		tp_domain_free (target_domain);
-	      }
 	    goto error;
-	  }
-
-	if (need_free)
-	  {
-	    tp_domain_free (target_domain);
 	  }
 	break;
       }
