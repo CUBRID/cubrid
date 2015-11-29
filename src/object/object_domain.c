@@ -12344,23 +12344,17 @@ tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest,
  *
  *   arg1(in):
  *   arg2(in):
- *   need_free(in):
  *
  *  Note :
  */
 TP_DOMAIN *
-tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2, bool * need_free)
+tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 {
   TP_DOMAIN *target_domain;
   DB_TYPE arg1_type, arg2_type, common_type;
   bool need_to_domain_update = false;
 
-  assert (arg1 && arg2 && need_free);
-
-  if (need_free)
-    {
-      *need_free = true;
-    }
+  assert (arg1 && arg2);
 
   arg1_type = arg1->type->id;
   arg2_type = arg2->type->id;
@@ -12404,10 +12398,6 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2, bool * need_free)
     {
       common_type = DB_TYPE_VARCHAR;
       target_domain = db_type_to_db_domain (common_type);
-      if (need_free)
-	{
-	  *need_free = false;
-	}
     }
 
   if (need_to_domain_update)
@@ -12445,6 +12435,7 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2, bool * need_free)
 	}
     }
 
+  target_domain = tp_domain_cache (target_domain);
   return target_domain;
 }
 

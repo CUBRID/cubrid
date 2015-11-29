@@ -15312,7 +15312,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       {
 	DB_VALUE *src;
 	TP_DOMAIN *target_domain = NULL;
-	bool need_free = false;
 	PT_NODE *target_node;
 
 	if (typ == DB_TYPE_VARIABLE)
@@ -15323,8 +15322,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	    arg1_domain = tp_domain_resolve_value (arg1, &tmp_arg1_domain);
 	    arg2_domain = tp_domain_resolve_value (arg2, &tmp_arg2_domain);
 
-	    target_domain = tp_infer_common_domain (arg1_domain,
-						    arg2_domain, &need_free);
+	    target_domain = tp_infer_common_domain (arg1_domain, arg2_domain);
 	  }
 	else
 	  {
@@ -15345,11 +15343,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	if (tp_value_cast (src, result, target_domain,
 			   false) != DOMAIN_COMPATIBLE)
 	  {
-	    if (need_free)
-	      {
-		tp_domain_free (target_domain);
-	      }
-
 	    rTyp =
 	      (PT_TYPE_ENUM) pt_db_to_type_enum (target_domain->type->id);
 	    PT_ERRORmf2 (parser, target_node, MSGCAT_SET_PARSER_SEMANTIC,
@@ -15358,11 +15351,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			 pt_show_type_enum (rTyp));
 
 	    return 0;
-	  }
-
-	if (need_free)
-	  {
-	    tp_domain_free (target_domain);
 	  }
       }
       return 1;
@@ -15373,7 +15361,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	PT_NODE *target_node;
 	TP_DOMAIN *target_domain = NULL;
 	TP_DOMAIN *tmp_domain = NULL;
-	bool need_free = false, need_tmp_domain_free = false;
 
 	if (typ == DB_TYPE_VARIABLE)
 	  {
@@ -15384,11 +15371,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	    arg2_domain = tp_domain_resolve_value (arg2, &tmp_arg2_domain);
 	    arg3_domain = tp_domain_resolve_value (arg3, &tmp_arg3_domain);
 
-	    tmp_domain = tp_infer_common_domain (arg1_domain,
-						 arg2_domain,
-						 &need_tmp_domain_free);
-	    target_domain = tp_infer_common_domain (tmp_domain,
-						    arg3_domain, &need_free);
+	    tmp_domain = tp_infer_common_domain (arg1_domain, arg2_domain);
+	    target_domain = tp_infer_common_domain (tmp_domain, arg3_domain);
 	  }
 	else
 	  {
@@ -15409,15 +15393,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	if (tp_value_cast (src, result, target_domain,
 			   false) != DOMAIN_COMPATIBLE)
 	  {
-	    if (need_free)
-	      {
-		tp_domain_free (target_domain);
-	      }
-	    if (need_tmp_domain_free)
-	      {
-		tp_domain_free (tmp_domain);
-	      }
-
 	    rTyp =
 	      (PT_TYPE_ENUM) pt_db_to_type_enum (target_domain->type->id);
 	    PT_ERRORmf2 (parser, target_node, MSGCAT_SET_PARSER_SEMANTIC,
@@ -15425,15 +15400,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			 pt_short_print (parser, target_node),
 			 pt_show_type_enum (rTyp));
 	    return 0;
-	  }
-
-	if (need_free)
-	  {
-	    tp_domain_free (target_domain);
-	  }
-	if (need_tmp_domain_free)
-	  {
-	    tp_domain_free (tmp_domain);
 	  }
       }
       return 1;
