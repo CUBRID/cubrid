@@ -12759,7 +12759,7 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  return BTREE_MERGE_FORCE;
 	}
-      else if (R_used < DB_PAGESIZE)
+      else if (R_used + CAN_MERGE_WHEN_EMPTY < DB_PAGESIZE)
 	{
 	  return BTREE_MERGE_TRY;
 	}
@@ -12791,7 +12791,7 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  return BTREE_MERGE_FORCE;
 	}
-      else if (L_used < DB_PAGESIZE)
+      else if (L_used + CAN_MERGE_WHEN_EMPTY < DB_PAGESIZE)
 	{
 	  return BTREE_MERGE_TRY;
 	}
