@@ -1209,7 +1209,8 @@ file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
 
   delete_list = NULL;
 
-  if (csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
+  if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) !=
+      NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1277,10 +1278,6 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
   int tran_index = NULL_TRAN_INDEX;
   LOG_TDES *tdes = NULL;
 
-  if (csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
@@ -1289,8 +1286,34 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
       return ER_FAILED;
     }
 
+  if (tdes->num_new_files <= 0)
+    {
+      /* nothing to clear */
+#if !defined (NDEBUG)
+      assert (tdes->num_new_tmp_files <= 0
+	      && tdes->num_new_tmp_tmp_files <= 0);
+
+      /* confirm the file does not exists in mht */
+      key.tran_index = tran_index;
+      VFID_COPY (&key.vfid, vfid);
+
+      csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT);
+
+      entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
+      assert (entry == NULL);
+
+      csect_exit (thread_p, CSECT_FILE_NEWFILE);
+#endif
+      return NO_ERROR;
+    }
+
   key.tran_index = tran_index;
   VFID_COPY (&key.vfid, vfid);
+
+  if (csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
   if (entry == NULL)
@@ -1308,7 +1331,9 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       tdes->num_new_tmp_tmp_files--;
     }
+
   tdes->num_new_files--;
+
   /* remove it from the table */
   mht_rem (file_Tracker->newfiles.mht, &key, NULL, NULL);
 
@@ -1330,6 +1355,7 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       file_Tracker->newfiles.tail = entry->prev;
     }
+
   /* we don't need this entry anymore */
   free_and_init (entry);
 

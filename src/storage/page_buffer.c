@@ -7163,7 +7163,9 @@ static int
 pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #endif				/* NDEBUG */
 {
-  THREAD_ENTRY *thrd_entry;
+  THREAD_ENTRY *thrd_entry = NULL;
+  THREAD_ENTRY *prev_thrd_entry = NULL;
+  THREAD_ENTRY *next_thrd_entry = NULL;
 
   /* the caller is holding bufptr->BCB_mutex */
 
@@ -7190,13 +7192,24 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       /* PGBUF_NO_LATCH => PGBUF_LATCH_READ, PGBUF_LATCH_WRITE
          there cannot be any blocked PGBUF_LATCH_FLUSH, PGBUF_LATCH_VICTIM */
-      while ((thrd_entry = bufptr->next_wait_thrd) != NULL)
+
+      for (thrd_entry = bufptr->next_wait_thrd; thrd_entry != NULL;
+	   thrd_entry = next_thrd_entry)
 	{
+	  next_thrd_entry = thrd_entry->next_wait_thrd;
+
 	  /* if thrd_entry->request_latch_mode is PGBUF_NO_LATCH,
 	     it means the corresponding thread has been waken up by timeout. */
 	  if (thrd_entry->request_latch_mode == PGBUF_NO_LATCH)
 	    {
-	      bufptr->next_wait_thrd = thrd_entry->next_wait_thrd;
+	      if (prev_thrd_entry == NULL)
+		{
+		  bufptr->next_wait_thrd = next_thrd_entry;
+		}
+	      else
+		{
+		  prev_thrd_entry->next_wait_thrd = next_thrd_entry;
+		}
 	      thrd_entry->next_wait_thrd = NULL;
 	      continue;
 	    }
@@ -7205,8 +7218,8 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	      || (bufptr->latch_mode == PGBUF_LATCH_READ
 		  && thrd_entry->request_latch_mode == PGBUF_LATCH_READ))
 	    {
-
 	      (void) thread_lock_entry (thrd_entry);
+
 	      if (thrd_entry->request_latch_mode != PGBUF_NO_LATCH)
 		{
 		  /* grant the request */
@@ -7218,7 +7231,14 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 		   */
 
 		  /* remove thrd_entry from BCB waiting queue. */
-		  bufptr->next_wait_thrd = thrd_entry->next_wait_thrd;
+		  if (prev_thrd_entry == NULL)
+		    {
+		      bufptr->next_wait_thrd = next_thrd_entry;
+		    }
+		  else
+		    {
+		      prev_thrd_entry->next_wait_thrd = next_thrd_entry;
+		    }
 		  thrd_entry->next_wait_thrd = NULL;
 
 		  /* wake up the thread */
@@ -7226,8 +7246,23 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 		}
 	      else
 		{
+		  if (prev_thrd_entry == NULL)
+		    {
+		      bufptr->next_wait_thrd = next_thrd_entry;
+		    }
+		  else
+		    {
+		      prev_thrd_entry->next_wait_thrd = next_thrd_entry;
+		    }
+		  thrd_entry->next_wait_thrd = NULL;
 		  (void) thread_unlock_entry (thrd_entry);
 		}
+	    }
+	  else if (bufptr->latch_mode == PGBUF_LATCH_READ)
+	    {
+	      /* Look for other readers. */
+	      prev_thrd_entry = thrd_entry;
+	      continue;
 	    }
 	  else
 	    {
