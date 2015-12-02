@@ -4296,7 +4296,8 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 					stack[tdes->topops.last].posp_lsa,
 					&start_postpone_run_lsa, tdes);
 
-      if (LSA_GT (&tdes->undo_nxlsa, &start_postpone_run_lsa))
+      if (!LSA_ISNULL (&start_postpone_run_lsa)
+	  && LSA_GT (&tdes->undo_nxlsa, &start_postpone_run_lsa))
 	{
 	  /* Transaction stopped in the middle of a logical postpone.
 	   * We must rollback it.
