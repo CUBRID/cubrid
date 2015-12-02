@@ -2449,6 +2449,8 @@ qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p,
 	      qfile_set_dirty_page (thread_p, prev_page_p, FREE,
 				    list_id_p->tfile_vfid);
 	    }
+	  qmgr_free_old_page_and_init (thread_p, ovf_page_p,
+				       input_list_id_p->tfile_vfid);
 	  return ER_FAILED;
 	}
 
