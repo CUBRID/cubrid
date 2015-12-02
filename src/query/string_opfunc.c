@@ -318,7 +318,8 @@ static int lob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 
 static int make_number_to_char (const INTL_LANG lang, char *num_string,
 				char *format_str, int *length,
-				DB_CURRENCY currency, char **result_str);
+				DB_CURRENCY currency, char **result_str,
+				INTL_CODESET codeset);
 static int make_scientific_notation (char *src_string, int cipher);
 static int roundoff (const INTL_LANG lang, char *src_string, int flag,
 		     int *cipher, char *format);
@@ -18391,7 +18392,7 @@ number_to_char (const DB_VALUE * src_value,
 	    case N_FORMAT:
 	      if (make_number_to_char (number_lang_id, cs, format_str_ptr,
 				       &token_length, currency,
-				       &res_ptr) != NO_ERROR)
+				       &res_ptr, codeset) != NO_ERROR)
 		{
 		  error_status = ER_QSTR_INVALID_FORMAT;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -18411,7 +18412,8 @@ number_to_char (const DB_VALUE * src_value,
 		  if (intl_is_currency_symbol (&(res_ptr[i]), &currency,
 					       &symbol_size,
 					       CURRENCY_CHECK_MODE_CONSOLE |
-					       CURRENCY_CHECK_MODE_UTF8))
+					       CURRENCY_CHECK_MODE_UTF8 |
+					       CURRENCY_CHECK_MODE_ISO88591))
 		    {
 		      i += symbol_size;
 		    }
@@ -18698,7 +18700,7 @@ lob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 static int
 make_number_to_char (const INTL_LANG lang, char *num_string,
 		     char *format_str, int *length, DB_CURRENCY currency,
-		     char **result_str)
+		     char **result_str, INTL_CODESET codeset)
 {
   int flag_sign = 1;
   int leadingzero = false;
@@ -18759,7 +18761,7 @@ make_number_to_char (const INTL_LANG lang, char *num_string,
   /*              Check currency          */
   if (char_tolower (*format_str) == 'c')
     {
-      const char *money_symbol = intl_get_money_symbol (currency);
+      const char *money_symbol = intl_get_money_symbol (currency, codeset);
 
       strcpy (res_str, money_symbol);
       res_str += strlen (money_symbol);
@@ -19841,7 +19843,8 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token,
 
 	    if (intl_is_currency_symbol (src, &currency, &symbol_size,
 					 CURRENCY_CHECK_MODE_CONSOLE |
-					 CURRENCY_CHECK_MODE_UTF8))
+					 CURRENCY_CHECK_MODE_UTF8 |
+					 CURRENCY_CHECK_MODE_ISO88591))
 	      {
 		src += symbol_size;
 		(*token_length) += symbol_size;

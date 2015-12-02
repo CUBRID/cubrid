@@ -175,7 +175,8 @@ enum currency_check_mode
   CURRENCY_CHECK_MODE_UTF8 = 0x2,
   CURRENCY_CHECK_MODE_GRAMMAR = 0x4,
   CURRENCY_CHECK_MODE_ISO = 0x8,
-  CURRENCY_CHECK_MODE_ESC_ISO = 0x10
+  CURRENCY_CHECK_MODE_ESC_ISO = 0x10,
+  CURRENCY_CHECK_MODE_ISO88591 = 0x16
 };
 
 /* map of lengths of UTF-8 characters */
@@ -393,11 +394,14 @@ extern "C"
 				       DB_CURRENCY * currency,
 				       int *symbol_size,
 				       const CURRENCY_CHECK_MODE check_mode);
-  extern char *intl_get_money_symbol (const DB_CURRENCY currency);
+  extern char *intl_get_money_symbol (const DB_CURRENCY currency,
+				      INTL_CODESET codeset);
   extern char *intl_get_money_ISO_symbol (const DB_CURRENCY currency);
   extern char *intl_get_money_esc_ISO_symbol (const DB_CURRENCY currency);
   extern char *intl_get_money_symbol_console (const DB_CURRENCY currency);
   extern char *intl_get_money_symbol_grammar (const DB_CURRENCY currency);
+  extern char *intl_get_money_UTF8_symbol (const DB_CURRENCY currency);
+  extern char *intl_get_money_ISO88591_symbol (const DB_CURRENCY currency);
   extern int intl_get_currency_symbol_position (const DB_CURRENCY currency);
   extern int intl_count_utf8_chars (unsigned char *s, int length_in_bytes);
   extern bool intl_check_utf8 (const unsigned char *buf,

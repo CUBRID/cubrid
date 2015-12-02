@@ -5692,6 +5692,36 @@ static char moneysymbols_esc_iso_codes[][5] = {
 				 * before this */
 };
 
+/* ISO88591 encoding of money symbols - maps to DB_CURRENCY enum type */
+static char moneysymbols_iso88591_codes[][4] = {
+  "$",				/* dollar sign */
+  "\xa5",			/* japanese yen */
+  "\xa3",			/* british pound */
+  "KRW",			/* Korean won */
+  "TL",			/* turkish lira */
+  "KHR",			/* cambodian riel */
+  "CNY",			/* chinese renminbi */
+  "INR",			/* indian rupee */
+  "RUB",			/* russian ruble */
+  "AUD",			/* australian dollar */
+  "CAD",			/* canadian dollar */
+  "BRL",			/* brasilian real */
+  "RON",			/* romanian leu */
+  "EUR",			/* euro */
+  "CHF",			/* swiss franc */
+  "DKK",			/* danish krone */
+  "NOK",			/* norwegian krone */
+  "BGN",			/* bulgarian lev */
+  "VND",			/* vietnamese dong */
+  "CZK",			/* Czech koruna */
+  "PLN",			/* Polish zloty */
+  "SEK",			/* Swedish krona */
+  "HRK",			/* Croatian kuna */
+  "RSD",			/* serbian dinar */
+  ""				/* generic currency symbol - add new symbols
+				 * before this */
+};
+
 /*
  * intl_is_currency_symbol() - check if a string matches a currency
  *                             symbol (UTF-8)
@@ -5800,6 +5830,25 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 	}
     }
 
+  if (check_mode & CURRENCY_CHECK_MODE_ISO88591)
+    {
+      for (sym_currency = 0;
+	   src_len > 0
+	   && sym_currency < (int) DIM (moneysymbols_iso88591_codes);
+	   sym_currency++)
+	{
+	  int symbol_len = strlen (moneysymbols_iso88591_codes[sym_currency]);
+	  if (src_len >= symbol_len && symbol_len > 0 &&
+	      !memcmp (src, moneysymbols_iso88591_codes[sym_currency],
+		       symbol_len))
+	    {
+	      *currency = (DB_CURRENCY) sym_currency;
+	      *symbol_size = symbol_len;
+	      return (*currency == DB_CURRENCY_NULL) ? false : true;
+	    }
+	}
+    }
+
   return false;
 }
 
@@ -5807,15 +5856,20 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
  * intl_get_money_symbol() - returns a string representing the currency symbol
  *   return: currency symbol
  *   currency(int): currency code
+ *   codeset (in): required codeset
  */
 char *
-intl_get_money_symbol (const DB_CURRENCY currency)
+intl_get_money_symbol (const DB_CURRENCY currency, INTL_CODESET codeset)
 {
-  if (currency >= (int) DIM (moneysymbols_utf8))
+  switch (codeset)
     {
-      return moneysymbols_utf8[DB_CURRENCY_NULL];
+    case INTL_CODESET_ISO88591:
+      return intl_get_money_ISO88591_symbol (currency);
+    case INTL_CODESET_UTF8:
+      return intl_get_money_UTF8_symbol (currency);
+    default:
+      return intl_get_money_symbol_console (currency);
     }
-  return moneysymbols_utf8[currency];
 }
 
 /*
@@ -5879,7 +5933,7 @@ intl_get_currency_symbol_position (const DB_CURRENCY currency)
 char *
 intl_get_money_ISO_symbol (const DB_CURRENCY currency)
 {
-  if (currency >= (int) DIM (moneysymbols_utf8))
+  if (currency >= (int) DIM (moneysymbols_iso_codes))
     {
       return moneysymbols_iso_codes[DB_CURRENCY_NULL];
     }
@@ -5900,6 +5954,38 @@ intl_get_money_esc_ISO_symbol (const DB_CURRENCY currency)
       return moneysymbols_esc_iso_codes[DB_CURRENCY_NULL];
     }
   return moneysymbols_esc_iso_codes[currency];
+}
+
+/*
+ * intl_get_money_UTF8_symbol() - returns a string representing the currency
+ *				 UTF8 symbol, as a 3 letter string.
+ *   return: currency UTF8 symbol
+ *   currency(int): currency code
+ */
+char *
+intl_get_money_UTF8_symbol (const DB_CURRENCY currency)
+{
+  if (currency >= (int) DIM (moneysymbols_utf8))
+    {
+      return moneysymbols_utf8[DB_CURRENCY_NULL];
+    }
+  return moneysymbols_utf8[currency];
+}
+
+/*
+ * intl_get_money_ISO88591_symbol() - returns a string representing the currency
+ *				 ISO88591 symbol, as a 3 letter string.
+ *   return: currency ISO88591 symbol
+ *   currency(int): currency code
+ */
+char *
+intl_get_money_ISO88591_symbol (const DB_CURRENCY currency)
+{
+  if (currency >= (int) DIM (moneysymbols_iso88591_codes))
+    {
+      return moneysymbols_iso88591_codes[DB_CURRENCY_NULL];
+    }
+  return moneysymbols_iso88591_codes[currency];
 }
 
 /*
