@@ -98,6 +98,7 @@ static const TZ_FILE_DESCRIPTOR tz_files[] = {
   {TZF_RULES, "northamerica"},
   {TZF_RULES, "southamerica"},
   {TZF_RULES, "etcetera"},
+  {TZF_RULES, "pacificnew"},
   {TZF_BACKWARD, "backward"},
   {TZF_LEAP, "leapseconds"},
 #if defined(WINDOWS)
