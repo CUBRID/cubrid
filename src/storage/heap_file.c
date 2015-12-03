@@ -811,7 +811,6 @@ static PAGE_PTR heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 PAGE_PTR hdr_pgptr,
 				 HEAP_HDR_STATS * heap_hdr, int needed_space,
 				 HEAP_SCANCACHE * scan_cache,
-				 FILE_IS_NEW_FILE isfile_new,
 				 PGBUF_WATCHER * new_pg_watcher);
 static VPID *heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid);
@@ -3455,20 +3454,7 @@ heap_stats_update_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
   RECDES recdes;		/* Header record descriptor */
   LOG_DATA_ADDR addr;		/* Address of logging data */
   int i, best;
-  FILE_IS_NEW_FILE is_new_file;
   int ret = NO_ERROR;
-
-  is_new_file = file_is_new_file (thread_p, &(hfid->vfid));
-  if (is_new_file == FILE_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (is_new_file == FILE_NEW_FILE
-      && log_is_tran_in_system_op (thread_p) == true)
-    {
-      return NO_ERROR;
-    }
 
   /* Retrieve the header of heap */
   vpid.volid = hfid->vfid.volid;
@@ -3993,7 +3979,6 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
   int total_space;
   int try_find, try_sync;
   int num_pages_found;
-  FILE_IS_NEW_FILE is_new_file = FILE_ERROR;
   float other_high_best_ratio;
   PGBUF_WATCHER hdr_page_watcher;
 
@@ -4119,22 +4104,6 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	{
 	  assert (HFID_EQ (hfid, &scan_cache->node.hfid));
 	  assert (scan_cache->file_type != FILE_UNKNOWN_TYPE);
-	  assert (scan_cache->is_new_file != FILE_ERROR);
-	  assert (scan_cache->is_new_file
-		  == file_is_new_file (thread_p, &hfid->vfid));
-
-	  is_new_file = scan_cache->is_new_file;
-	}
-      else
-	{
-	  is_new_file = file_is_new_file (thread_p, &(hfid->vfid));
-	}
-      if (is_new_file == FILE_NEW_FILE
-	  && log_is_tran_in_system_op (thread_p) == true)
-	{
-	  addr_hdr.pgptr = hdr_page_watcher.pgptr;
-	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
-				sizeof (*heap_hdr), heap_hdr);
 	}
 
       hdr_vpidp = pgbuf_get_vpid_ptr (hdr_page_watcher.pgptr);
@@ -4176,34 +4145,9 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
        * Set the head to the index with the smallest free space, which may not
        * be accurate.
        */
-
-      if (scan_cache != NULL)
-	{
-	  assert (scan_cache->is_new_file != FILE_ERROR);
-	  is_new_file = scan_cache->is_new_file;
-	}
-      else
-	{
-	  is_new_file = file_is_new_file (thread_p, &(hfid->vfid));
-	}
-      if (is_new_file == FILE_ERROR)
-	{
-	  assert_release (false);
-	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
-	  return NULL;
-	}
-
-      if (is_new_file == FILE_NEW_FILE
-	  && log_is_tran_in_system_op (thread_p) == true)
-	{
-	  addr_hdr.pgptr = hdr_page_watcher.pgptr;
-	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
-				sizeof (*heap_hdr), heap_hdr);
-	}
-
       pg_watcher->pgptr =
 	heap_vpid_alloc (thread_p, hfid, hdr_page_watcher.pgptr, heap_hdr,
-			 total_space, scan_cache, is_new_file, pg_watcher);
+			 total_space, scan_cache, pg_watcher);
       assert (pg_watcher->pgptr != NULL || er_errid () == ER_INTERRUPTED
 	      || er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE);
     }
@@ -4892,7 +4836,7 @@ static PAGE_PTR
 heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 		 PAGE_PTR hdr_pgptr, HEAP_HDR_STATS * heap_hdr,
 		 int needed_space, HEAP_SCANCACHE * scan_cache,
-		 FILE_IS_NEW_FILE isfile_new, PGBUF_WATCHER * new_pg_watcher)
+		 PGBUF_WATCHER * new_pg_watcher)
 {
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data */
@@ -5017,15 +4961,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
    * The added page will be used later by other insert operation.
    */
 
-  if (isfile_new == FILE_NEW_FILE && file_type != FILE_TMP
-      && file_type != FILE_TMP_TMP && logtb_is_current_active (thread_p))
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-    }
-  else
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-    }
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
   return new_pg_watcher->pgptr;	/* new_pgptr is lock and fetch */
 }
@@ -6893,29 +6829,12 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid,
   int ret = NO_ERROR;
   int free_space;
   int npages, nrecords, rec_length;
-  FILE_IS_NEW_FILE is_new_file;
   bool need_update;
   PGBUF_WATCHER hdr_page_watcher;
   PGBUF_WATCHER curr_page_watcher;
 
   PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
   PGBUF_INIT_WATCHER (&curr_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-
-  is_new_file = file_is_new_file (thread_p, &hfid->vfid);
-  if (is_new_file == FILE_ERROR)
-    {
-      goto exit_on_error;
-    }
-  if (is_new_file == FILE_NEW_FILE)
-    {
-      /*
-       * This function should not be called for new files. It should work for
-       * new files but it was only intended to be used by a compactdb tool
-       * that does not operate on new classes.
-       */
-      assert (false);
-      goto exit_on_error;
-    }
 
   addr.vfid = &hfid->vfid;
   addr.pgptr = NULL;
@@ -7231,16 +7150,8 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid,
 				    sizeof (*heap_hdr), heap_hdr);
 	      pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
 
-	      if (file_is_new_file (thread_p, &(hfid->vfid)) == FILE_NEW_FILE)
-		{
-		  log_end_system_op (thread_p,
-				     LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-		}
-	      else
-		{
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-		  (void) file_new_declare_as_old (thread_p, ovf_vfid);
-		}
+	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      (void) file_new_declare_as_old (thread_p, ovf_vfid);
 	    }
 	  else
 	    {
@@ -7594,7 +7505,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
       HFID_SET_NULL (&scan_cache->node.hfid);
       scan_cache->node.hfid.vfid.volid = NULL_VOLID;
       scan_cache->file_type = FILE_UNKNOWN_TYPE;
-      scan_cache->is_new_file = FILE_ERROR;
     }
   else
     {
@@ -7622,11 +7532,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
       scan_cache->node.hfid.hpgid = hfid->hpgid;
       scan_cache->file_type = file_get_type (thread_p, &hfid->vfid);
       if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
-	{
-	  goto exit_on_error;
-	}
-      scan_cache->is_new_file = file_is_new_file (thread_p, &hfid->vfid);
-      if (scan_cache->is_new_file == FILE_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -7662,7 +7567,6 @@ exit_on_error:
   scan_cache->num_btids = 0;
   scan_cache->index_stat_info = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
-  scan_cache->is_new_file = FILE_ERROR;
   scan_cache->debug_initpattern = 0;
   scan_cache->mvcc_snapshot = NULL;
   scan_cache->partition_list = NULL;
@@ -7884,12 +7788,6 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p,
 	{
 	  return ER_FAILED;
 	}
-      scan_cache->is_new_file = file_is_new_file (thread_p, &hfid->vfid);
-      if (scan_cache->is_new_file == FILE_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
     }
 
   scan_cache->page_latch = X_LOCK;
@@ -7977,7 +7875,6 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache,
   scan_cache->num_btids = 0;
   scan_cache->index_stat_info = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
-  scan_cache->is_new_file = FILE_ERROR;
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = NULL;
   scan_cache->partition_list = NULL;
@@ -8055,7 +7952,6 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p,
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
-  scan_cache->is_new_file = FILE_ERROR;
   scan_cache->debug_initpattern = 0;
 
   return ret;
@@ -10873,10 +10769,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	   */
 	  if (scan_cache != NULL)
 	    {
-	      assert (scan_cache->is_new_file
-		      == file_is_new_file (thread_p,
-					   &(scan_cache->node.hfid.vfid)));
-
 	      if (scan_cache->cache_last_fix_page == true
 		  && scan_cache->page_watcher.pgptr != NULL)
 		{
@@ -26566,9 +26458,6 @@ heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     {
       assert (HFID_EQ (&context->hfid, &context->scan_cache_p->node.hfid));
       assert (context->scan_cache_p->file_type != FILE_UNKNOWN_TYPE);
-      assert (context->scan_cache_p->is_new_file != FILE_ERROR);
-      assert (context->scan_cache_p->is_new_file ==
-	      file_is_new_file (thread_p, &context->hfid.vfid));
 
       return context->scan_cache_p->file_type;
     }
@@ -28419,7 +28308,8 @@ heap_delete_home (THREAD_ENTRY * thread_p,
 	      int is_peeking = (context->home_recdes.area_size
 				>= context->home_recdes.length) ? COPY : PEEK;
 	      if (spage_get_record (context->home_page_watcher_p->pgptr,
-				    context->oid.slotid, &context->home_recdes,
+				    context->oid.slotid,
+				    &context->home_recdes,
 				    is_peeking) != S_SUCCESS)
 		{
 		  return ER_FAILED;

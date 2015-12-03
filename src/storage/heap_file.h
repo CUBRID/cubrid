@@ -162,9 +162,6 @@ struct heap_scancache
 				 * scanned. Can be FILE_HEAP or
 				 * FILE_HEAP_REUSE_SLOTS
 				 */
-  FILE_IS_NEW_FILE is_new_file;	/* check for bestspace cache
-				 * and logging of new file
-				 */
   MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
   HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file
 						 * information for partition
