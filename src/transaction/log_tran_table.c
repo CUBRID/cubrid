@@ -7105,6 +7105,17 @@ logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid,
 		&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
     }
 
+  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "Update stats for index (%d, %d|%d) to nulls=%d, "
+		     "oids=%d, keys=%d. LSA=%lld|%d.\n",
+		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid,
+		     num_nulls, num_oids, num_keys,
+		     (long long int) stats->last_log_lsa.pageid,
+		     (int) stats->last_log_lsa.offset);
+    }
+
   stats->unique_stats.num_oids = num_oids;
   stats->unique_stats.num_nulls = num_nulls;
   stats->unique_stats.num_keys = num_keys;
@@ -7208,6 +7219,19 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
       /* Here we assume that we are at recovery stage */
       LSA_COPY (&stats->last_log_lsa,
 		&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
+    }
+
+  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "Update stats for index (%d, %d|%d) by nulls=%d, "
+		     "oids=%d, keys=%d to nulls=%d, oids=%d, keys=%d. "
+		     "LSA=%lld|%d.\n",
+		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid,
+		     null_delta, oid_delta, key_delta,
+		     num_nulls, num_oids, num_keys,
+		     (long long int) stats->last_log_lsa.pageid,
+		     (int) stats->last_log_lsa.offset);
     }
 
   stats->unique_stats.num_oids = num_oids;

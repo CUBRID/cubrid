@@ -25592,7 +25592,7 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "Recover unique statistics for index (%d, %d|%d): "
+		     "Recover undo unique statistics for index (%d, %d|%d): "
 		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n",
 		     btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
 		     num_nulls, num_oids, num_keys,
@@ -25655,6 +25655,18 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
       (thread_p, &btid, num_oids, num_nulls, num_keys, false) != NO_ERROR)
     {
       goto error;
+    }
+
+  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "Recover redo unique statistics for index (%d, %d|%d): "
+		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n",
+		     btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
+		     num_nulls, num_oids, num_keys,
+		     (long long int)
+		     log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
+		     (int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.offset);
     }
 
   return NO_ERROR;
