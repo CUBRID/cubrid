@@ -2851,6 +2851,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   int tran_index;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa = LSA_INITIALIZER;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -2980,8 +2981,23 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     {
       return;
     }
+  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+    {
+      /* Cache postpone log record. Redo data must be saved before calling
+       * prior_lsa_next_record, which may free this prior node.
+       */
+      vacuum_cache_log_postpone_redo_data (thread_p, node->data_header,
+					   node->rdata, node->rlength);
+    }
 
-  (void) prior_lsa_next_record (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+    {
+      /* Cache postpone log record. An entry for this postpone log record
+       * was already created and we also need to save its LSA.
+       */
+      vacuum_cache_log_postpone_lsa (thread_p, &start_lsa);
+    }
 
   /* Set address early in case there is a crash, because of skip_head */
   if (tdes->topops.last >= 0)
@@ -4684,7 +4700,6 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
-  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -9272,6 +9287,12 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	  assert (tdes->topops.last >= 0);
 	  log_append_topope_commit_postpone (thread_p, tdes,
 					     start_postpone_lsa);
+	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	      && vacuum_do_postpone_from_cache (thread_p, start_postpone_lsa))
+	    {
+	      /* Do postpone was run from cached postpone entries. */
+	      return;
+	    }
 	}
     }
   else
@@ -9511,11 +9532,9 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 		     LOG_PAGE * log_pgptr)
 {
   LOG_LSA ref_lsa;		/* The address of a postpone record    */
-  struct log_redo *redo;	/* A redo log record                   */
-  LOG_RCV rcv;			/* Recovery structure for execution    */
-  VPID rcv_vpid;		/* Location of data to redo            */
-  LOG_RCVINDEX rcvindex;	/* The recovery index                  */
-  LOG_DATA_ADDR rvaddr;
+  struct log_redo redo;		/* A redo log record                   */
+  int rcv_length = 0;
+  char *rcv_data = NULL;
   char *area = NULL;
 
   LSA_COPY (&ref_lsa, log_lsa);
@@ -9526,15 +9545,73 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo),
 				    log_lsa, log_pgptr);
 
-  redo = (struct log_redo *) ((char *) log_pgptr->area + log_lsa->offset);
+  redo = *((struct log_redo *) ((char *) log_pgptr->area + log_lsa->offset));
+
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), log_lsa, log_pgptr);
+
+  /* GET AFTER DATA */
+
+  /*
+   * If data is contained in only one buffer, pass pointer
+   * directly. Otherwise, allocate a contiguous area, copy the
+   * data and pass this area. At the end deallocate the area
+   */
+  if (log_lsa->offset + redo.length < (int) LOGAREA_SIZE)
+    {
+      rcv_data = (char *) log_pgptr->area + log_lsa->offset;
+    }
+  else
+    {
+      /* Need to copy the data into a contiguous area */
+      area = (char *) malloc (redo.length);
+      if (area == NULL)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_run_postpone_op");
+
+	  return ER_FAILED;
+	}
+
+      /* Copy the data */
+      logpb_copy_from_log (thread_p, area, redo.length, log_lsa, log_pgptr);
+      rcv_data = area;
+    }
+
+  (void) log_execute_run_postpone (thread_p, &ref_lsa, &redo, rcv_data);
+
+  if (area != NULL)
+    {
+      free_and_init (area);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * log_execute_run_postpone () - Execute run postpone.
+ *
+ * return	      : Error code.
+ * thread_p (in)      : Thread entry.
+ * log_lsa (in)	      : Postpone log LSA.
+ * redo (in)	      : Redo log data.
+ * redo_rcv_data (in) : Redo recovery data.
+ */
+int
+log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
+			  struct log_redo *redo, char *redo_rcv_data)
+{
+  int error_code = NO_ERROR;
+  LOG_RCV rcv;			/* Recovery structure for execution    */
+  VPID rcv_vpid;		/* Location of data to redo            */
+  LOG_RCVINDEX rcvindex;	/* The recovery index                  */
+  LOG_DATA_ADDR rvaddr;
 
   rcvindex = redo->data.rcvindex;
   rcv_vpid.volid = redo->data.volid;
   rcv_vpid.pageid = redo->data.pageid;
   rcv.offset = redo->data.offset;
   rcv.length = redo->length;
-
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), log_lsa, log_pgptr);
+  rcv.data = redo_rcv_data;
 
   if (rcvindex == RVVAC_DROPPED_FILE_ADD
       || rcvindex == RVFL_POSTPONE_DESTROY_FILE)
@@ -9551,46 +9628,13 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	  return NO_ERROR;
 	}
 
-      rcv.pgptr = pgbuf_fix_with_retry (thread_p, &rcv_vpid, OLD_PAGE,
-					PGBUF_LATCH_WRITE, 10);
+      rcv.pgptr =
+	pgbuf_fix_with_retry (thread_p, &rcv_vpid, OLD_PAGE,
+			      PGBUF_LATCH_WRITE, 10);
     }
-
-  /* GET AFTER DATA */
-
-  /*
-   * If data is contained in only one buffer, pass pointer
-   * directly. Otherwise, allocate a contiguous area, copy the
-   * data and pass this area. At the end deallocate the area
-   */
 
   rvaddr.offset = rcv.offset;
   rvaddr.pgptr = rcv.pgptr;
-
-  if (log_lsa->offset + rcv.length < (int) LOGAREA_SIZE)
-    {
-      rcv.data = (char *) log_pgptr->area + log_lsa->offset;
-    }
-  else
-    {
-      /* Need to copy the data into a contiguous area */
-      area = (char *) malloc (rcv.length);
-      if (area == NULL)
-	{
-	  if (rcv.pgptr != NULL)
-	    {
-	      pgbuf_unfix (thread_p, rcv.pgptr);
-	    }
-
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_run_postpone_op");
-
-	  return ER_FAILED;
-	}
-
-      /* Copy the data */
-      logpb_copy_from_log (thread_p, area, rcv.length, log_lsa, log_pgptr);
-      rcv.data = area;
-    }
 
   /*
    * if rcvindex is RVDK_IDDEALLOC_WITH_VOLHEADER,
@@ -9602,18 +9646,21 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
   /* Now call the REDO recovery function */
   if (rcv.pgptr != NULL
-      || (rcv_vpid.volid == NULL_VOLID && rcv_vpid.pageid == NULL_PAGEID))
+      || (redo->data.volid == NULL_VOLID && redo->data.pageid == NULL_PAGEID))
     {
       if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
 	{
-	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, &ref_lsa);
+	  error_code =
+	    disk_rv_alloctable_with_volheader (thread_p, &rcv, log_lsa);
+	  assert (error_code == NO_ERROR);
 	}
       else if (rcvindex == RVVAC_DROPPED_FILE_ADD)
 	{
 	  /* We don't know yet in which page the dropped file will end up so
 	   * we have to do a special call here.
 	   */
-	  (void) vacuum_notify_dropped_file (thread_p, &rcv, &ref_lsa);
+	  error_code = vacuum_notify_dropped_file (thread_p, &rcv, log_lsa);
+	  assert (error_code == NO_ERROR);
 	}
       else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
 	{
@@ -9621,14 +9668,12 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
 			     "POSTPONE_DEBUG: Run postpone of drop file for ",
-			     "%lld|%d.\n", (long long int) ref_lsa.pageid,
-			     (int) ref_lsa.offset);
+			     "%lld|%d.\n", (long long int) log_lsa->pageid,
+			     (int) log_lsa->offset);
 	    }
-	  LSA_COPY (&rcv.reference_lsa, &ref_lsa);
-	  if ((*RV_fun[rcvindex].redofun) (thread_p, &rcv) != NO_ERROR)
-	    {
-	      assert_release (false);
-	    }
+	  LSA_COPY (&rcv.reference_lsa, log_lsa);
+	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+	  assert (error_code == NO_ERROR);
 	}
       else
 	{
@@ -9638,10 +9683,11 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	   */
 	  log_append_run_postpone (thread_p, rcvindex,
 				   &rvaddr, &rcv_vpid,
-				   rcv.length, rcv.data, &ref_lsa);
+				   rcv.length, rcv.data, log_lsa);
 
 	  /* Now call the REDO recovery function */
-	  (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+	  assert (error_code == NO_ERROR);
 	}
     }
   else
@@ -9650,13 +9696,10 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
        * Unable to fetch page of volume... May need media recovery
        * on such page
        */
+      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
 	      1, fileio_get_volume_label (rcv_vpid.volid, PEEK));
-    }
-
-  if (area != NULL)
-    {
-      free_and_init (area);
+      error_code = ER_LOG_MAYNEED_MEDIA_RECOVERY;
     }
 
   if (rcv.pgptr != NULL)
@@ -9664,7 +9707,7 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       pgbuf_unfix (thread_p, rcv.pgptr);
     }
 
-  return NO_ERROR;
+  return error_code;
 }
 
 /*

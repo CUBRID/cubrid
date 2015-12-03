@@ -887,6 +887,10 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
 #if defined (SERVER_MODE)
       vacuum_Workers[i].prefetch_log_buffer = NULL;
 #endif /* SERVER_MODE */
+      vacuum_Workers[i].postpone_cache_status = VACUUM_CACHE_POSTPONE_NO;
+      vacuum_Workers[i].postpone_redo_data_ptr = NULL;
+      vacuum_Workers[i].postpone_redo_data_buffer = NULL;
+      vacuum_Workers[i].postpone_cached_entries_count = 0;
     }
 
   /* Allocate transaction descriptors for vacuum workers. */
@@ -3697,6 +3701,17 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
     }
   worker->undo_data_buffer_capacity = IO_PAGESIZE;
 
+  worker->postpone_redo_data_buffer = (char *) malloc (IO_PAGESIZE);
+  if (worker->postpone_redo_data_buffer == NULL)
+    {
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
+		     "VACUUM ERROR: Could not allocate "
+		     "postpone_redo_data_buffer.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "vacuum_assign_worker");
+      goto error;
+    }
+
 #if defined (SERVER_MODE)
   /* Save worker to thread entry */
   thread_p->vacuum_worker = worker;
@@ -3757,6 +3772,10 @@ vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info)
   if (worker_info->undo_data_buffer != NULL)
     {
       free_and_init (worker_info->undo_data_buffer);
+    }
+  if (worker_info->postpone_redo_data_buffer != NULL)
+    {
+      free_and_init (worker_info->postpone_redo_data_buffer);
     }
   if (worker_info->tdes != NULL)
     {
@@ -8636,4 +8655,216 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
+}
+
+/*
+ * vacuum_cache_log_postpone_redo_data () - Cache redo data for log postpone
+ *					    of vacuum operation.
+ *
+ * return		: Void.
+ * thread_p (in)	: Thread entry.
+ * data_header (in)	: Recovery data header (struct log_redo).
+ * rcv_data (in)	: Recovery redo data.
+ * rcv_data_length (in) : Recovery data size.
+ */
+void
+vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p,
+				     char *data_header, char *rcv_data,
+				     int rcv_data_length)
+{
+#if defined (SERVER_MODE)
+  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_CACHE_POSTPONE_ENTRY *new_entry = NULL;
+  int total_data_size = 0;
+
+  assert (worker != NULL);
+  assert (data_header != NULL);
+  assert (rcv_data_length == 0 || rcv_data != NULL);
+
+  if (worker->postpone_cache_status == VACUUM_CACHE_POSTPONE_OVERFLOW)
+    {
+      /* Cannot cache postpones. */
+      return;
+    }
+
+  if (worker->postpone_cache_status == VACUUM_CACHE_POSTPONE_NO)
+    {
+      /* Initialize data to cache postpones. */
+      worker->postpone_cached_entries_count = 0;
+      worker->postpone_redo_data_ptr = worker->postpone_redo_data_buffer;
+      worker->postpone_cache_status = VACUUM_CACHE_POSTPONE_YES;
+    }
+
+  assert (worker->postpone_cached_entries_count
+	  <= VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT);
+  assert (worker->postpone_redo_data_ptr != NULL);
+  assert (worker->postpone_redo_data_ptr
+	  >= worker->postpone_redo_data_buffer);
+  assert (CAST_BUFLEN (worker->postpone_redo_data_ptr
+		       - worker->postpone_redo_data_buffer) <= IO_PAGESIZE);
+  ASSERT_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
+
+  if (worker->postpone_cached_entries_count
+      == VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT)
+    {
+      /* Could not store all postpone records. */
+      worker->postpone_cache_status = VACUUM_CACHE_POSTPONE_OVERFLOW;
+      return;
+    }
+
+  /* Check if recovery data fits in preallocated buffer. */
+  total_data_size =
+    CAST_BUFLEN (worker->postpone_redo_data_ptr
+		 - worker->postpone_redo_data_buffer);
+  total_data_size += sizeof (struct log_redo);
+  total_data_size += rcv_data_length;
+  total_data_size += 2 * MAX_ALIGNMENT;
+  if (total_data_size > IO_PAGESIZE)
+    {
+      /* Cannot store all recovery data. */
+      worker->postpone_cache_status = VACUUM_CACHE_POSTPONE_OVERFLOW;
+      return;
+    }
+
+  /* Cache a new postpone log record entry. */
+  new_entry =
+    &worker->postpone_cached_entries[worker->postpone_cached_entries_count];
+  new_entry->redo_data = worker->postpone_redo_data_ptr;
+
+  /* Cache struct log_redo from data_header */
+  memcpy (worker->postpone_redo_data_ptr, data_header,
+	  sizeof (struct log_redo));
+  worker->postpone_redo_data_ptr += sizeof (struct log_redo);
+  worker->postpone_redo_data_ptr =
+    PTR_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
+
+  /* Cache recovery data. */
+  assert (((struct log_redo *) data_header)->length == rcv_data_length);
+  if (rcv_data_length > 0)
+    {
+      memcpy (worker->postpone_redo_data_ptr, rcv_data, rcv_data_length);
+      worker->postpone_redo_data_ptr += rcv_data_length;
+      worker->postpone_redo_data_ptr =
+	PTR_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
+    }
+
+  /* LSA will be saved later. */
+  LSA_SET_NULL (&new_entry->lsa);
+#endif /* SERVER_MODE */
+}
+
+/*
+ * vacuum_cache_log_postpone_lsa () - Save LSA of postpone operations.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * lsa (in)	 : Log postpone LSA.
+ *
+ * NOTE: This saves LSA after a new entry and its redo data have already been
+ *	 added. They couldn't both be added in the same step.
+ */
+void
+vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
+{
+#if defined (SERVER_MODE)
+  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_CACHE_POSTPONE_ENTRY *new_entry = NULL;
+
+  assert (lsa != NULL && !LSA_ISNULL (lsa));
+  assert (worker != NULL);
+  assert (worker->postpone_cache_status != VACUUM_CACHE_POSTPONE_NO);
+
+  if (worker->postpone_cache_status == VACUUM_CACHE_POSTPONE_OVERFLOW)
+    {
+      return;
+    }
+  assert (worker->postpone_cached_entries_count >= 0);
+  assert (worker->postpone_cached_entries_count
+	  < VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT);
+  new_entry =
+    &worker->postpone_cached_entries[worker->postpone_cached_entries_count];
+  LSA_COPY (&new_entry->lsa, lsa);
+
+  /* Now that all needed data is saved, increment cached entries counter. */
+  worker->postpone_cached_entries_count++;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * vacuum_do_postpone_from_cache () - Do postpone from vacuum worker's cached
+ *				      postpone entries.
+ *
+ * return		   : True if postpone was run from cached entries,
+ *			     false otherwise.
+ * thread_p (in)	   : Thread entry.
+ * start_postpone_lsa (in) : Start postpone LSA.
+ */
+bool
+vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p,
+			       LOG_LSA * start_postpone_lsa)
+{
+#if defined (SERVER_MODE)
+  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_CACHE_POSTPONE_ENTRY *entry = NULL;
+  struct log_redo *redo = NULL;
+  char *rcv_data = NULL;
+  int i;
+  int start_index = -1;
+
+  assert (start_postpone_lsa != NULL && !LSA_ISNULL (start_postpone_lsa));
+  assert (worker != NULL);
+  assert (worker->postpone_cache_status != VACUUM_CACHE_POSTPONE_NO);
+
+  if (worker->postpone_cache_status == VACUUM_CACHE_POSTPONE_OVERFLOW)
+    {
+      /* Cache is not usable. */
+      worker->postpone_cache_status = VACUUM_CACHE_POSTPONE_NO;
+      return false;
+    }
+  /* First cached postpone entry at start_postpone_lsa. */
+  for (i = 0; i < worker->postpone_cached_entries_count; i++)
+    {
+      entry = &worker->postpone_cached_entries[i];
+      if (LSA_EQ (&entry->lsa, start_postpone_lsa))
+	{
+	  /* Found start lsa. */
+	  start_index = i;
+	  break;
+	}
+    }
+  if (start_index < 0)
+    {
+      /* Start LSA was not found. Unexpected situation. */
+      assert (false);
+      return false;
+    }
+
+  /* Run all postpones after start_index. */
+  for (i = start_index; i < worker->postpone_cached_entries_count; i++)
+    {
+      entry = &worker->postpone_cached_entries[i];
+      /* Get redo data header. */
+      redo = (struct log_redo *) entry->redo_data;
+      /* Get recovery data. */
+      rcv_data = entry->redo_data + sizeof (struct log_redo);
+      rcv_data = PTR_ALIGN (rcv_data, MAX_ALIGNMENT);
+      (void) log_execute_run_postpone (thread_p, &entry->lsa, redo, rcv_data);
+    }
+  /* Finished running postpones. */
+  if (start_index == 0)
+    {
+      /* All postpone entries were run. */
+      worker->postpone_cache_status = VACUUM_CACHE_POSTPONE_NO;
+    }
+  else
+    {
+      /* Only some postpone entries were run. Update the number of entries
+       * which should be run on next commit.
+       */
+      worker->postpone_cached_entries_count = start_index;
+    }
+  return true;
+#else /* !SERVER_MODE */
+  return false;
+#endif /* !SERVER_MODE */
 }

@@ -87,9 +87,9 @@ extern bool vacuum_Master_is_process_log_phase;
 /* number of log pages in each vacuum block */
 #define VACUUM_LOG_BLOCK_PAGES_DEFAULT 31
 
-/* pretch log modes :
+/* prefetch log modes :
  * 0 : vacuum master thread is performing prefetch in a shared buffer
- * 1 : each vacuum worker performs pretech in its own buffer */
+ * 1 : each vacuum worker performs prefetch in its own buffer */
 #define VACUUM_PREFETCH_LOG_MODE_MASTER 0
 #define VACUUM_PREFETCH_LOG_MODE_WORKERS 1
 
@@ -118,6 +118,24 @@ struct vacuum_heap_object
   OID oid;			/* Object OID. */
 };
 
+typedef enum vacuum_cache_postpone_status VACUUM_CACHE_POSTPONE_STATUS;
+enum vacuum_cache_postpone_status
+{
+  VACUUM_CACHE_POSTPONE_NO,
+  VACUUM_CACHE_POSTPONE_YES,
+  VACUUM_CACHE_POSTPONE_OVERFLOW
+};
+
+/* Forward definition */
+struct log_redo;
+typedef struct vacuum_cache_postpone_entry VACUUM_CACHE_POSTPONE_ENTRY;
+struct vacuum_cache_postpone_entry
+{
+  LOG_LSA lsa;
+  char *redo_data;
+};
+#define VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT 10
+
 /* VACUUM_WORKER - Vacuum worker information */
 typedef struct vacuum_worker VACUUM_WORKER;
 struct vacuum_worker
@@ -141,6 +159,17 @@ struct vacuum_worker
 
   char *undo_data_buffer;	/* Buffer to save log undo data */
   int undo_data_buffer_capacity;	/* Capacity of log undo data buffer */
+
+  /* Caches postpones to avoid reading them from log after commit top
+   * operation with postpone. Otherwise, log critical section may be required
+   * which will slow the access on merged index nodes.
+   */
+  VACUUM_CACHE_POSTPONE_STATUS postpone_cache_status;
+  char *postpone_redo_data_buffer;
+  char *postpone_redo_data_ptr;
+    VACUUM_CACHE_POSTPONE_ENTRY
+    postpone_cached_entries[VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT];
+  int postpone_cached_entries_count;
 
 #if defined (SERVER_MODE)
   char *prefetch_log_buffer;	/* buffer for prefetching log pages */
@@ -389,4 +418,12 @@ extern int vacuum_heap_page (THREAD_ENTRY * thread_p,
 			     int n_heap_objects, MVCCID threshold_mvccid,
 			     bool reusable, bool was_interrupted);
 
+extern void vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p,
+						 char *data_header,
+						 char *rcv_data,
+						 int rcv_data_length);
+extern void vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p,
+					   LOG_LSA * lsa);
+extern bool vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p,
+					   LOG_LSA * start_postpone_lsa);
 #endif /* _VACUUM_H_ */
