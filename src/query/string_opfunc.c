@@ -334,7 +334,8 @@ static int make_number (char *src, char *last_src, INTL_CODESET codeset,
 			const int precision, const int scale,
 			const INTL_LANG number_lang_id);
 static int get_number_token (const INTL_LANG lang, char *fsp, int *length,
-			     char *last_position, char **next_fsp);
+			     char *last_position, char **next_fsp,
+			     INTL_CODESET codeset);
 static int get_next_format (char *sp, const INTL_CODESET codeset,
 			    DB_TYPE str_type, int *format_length,
 			    char **next_pos);
@@ -16839,6 +16840,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
   bool dummy;
   int number_lang_id;
   TP_DOMAIN *domain;
+  INTL_CODESET format_codeset;
 
   assert (src_str != (DB_VALUE *) NULL);
   assert (result_num != (DB_VALUE *) NULL);
@@ -16922,6 +16924,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
 	    }
 	  format_str_ptr = initial_buf_format;
 	  last_format = format_str_ptr + strlen (format_str_ptr);
+	  format_codeset = DB_GET_STRING_CODESET (format_str);
 	}
       else
 	{
@@ -17013,7 +17016,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
     {
       cur_format =
 	get_number_token (number_lang_id, format_str_ptr, &token_length,
-			  last_format, &next_fsp);
+			  last_format, &next_fsp, format_codeset);
       switch (cur_format)
 	{
 	case N_FORMAT:
@@ -18386,7 +18389,7 @@ number_to_char (const DB_VALUE * src_value,
 	{
 	  cur_format = get_number_token (number_lang_id, format_str_ptr,
 					 &token_length, last_format,
-					 &next_fsp);
+					 &next_fsp, codeset);
 	  switch (cur_format)
 	    {
 	    case N_FORMAT:
@@ -20048,7 +20051,7 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token,
  */
 static int
 get_number_token (const INTL_LANG lang, char *fsp, int *length,
-		  char *last_position, char **next_fsp)
+		  char *last_position, char **next_fsp, INTL_CODESET codeset)
 {
   const char fraction_symbol = lang_digit_fractional_symbol (lang);
   const char digit_grouping_symbol = lang_digit_grouping_symbol (lang);
@@ -20108,6 +20111,21 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length,
 	}
       *next_fsp = &fsp[*length];
       return N_SPACE;
+
+    case (char) 0xa1:
+      if (codeset == INTL_CODESET_KSC5601_EUC
+	  && (&fsp[*length + 1]) < last_position
+	  && fsp[*length + 1] == (char) 0xa1)
+	{
+	  while ((&fsp[*length + 1]) < last_position
+		 && fsp[*length] == (char) 0xa1
+		 && fsp[*length + 1] == (char) 0xa1)
+	    {
+	      *length += 2;
+	    }
+	  *next_fsp = &fsp[*length];
+	  return N_SPACE;
+	}
 
     case '"':
       *length += 1;
