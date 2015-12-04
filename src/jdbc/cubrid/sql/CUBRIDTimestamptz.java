@@ -93,7 +93,7 @@ public class CUBRIDTimestamptz extends CUBRIDTimestamp {
 	}
 
 
-	public String toString() {
+	private String timestamptoString() {
 		SimpleDateFormat df;
 		int millis = this.getNanos() / 1000000;
 		String millisString ="";
@@ -110,15 +110,46 @@ public class CUBRIDTimestamptz extends CUBRIDTimestamp {
 			millisString = String.format("%01d", millis / 100);
 		}
 			
+		return df.format(this) + millisString;
+	}
+
+	public String toString() {
 		if (timezone.isEmpty()) {
-			return df.format(this) + millisString;
+			return timestamptoString();
 		}
 		else {
-			return df.format(this) + millisString + " " + timezone;
+			return timestamptoString() + " " + timezone;
 		}
 	}
 
 	public String getTimezone() {
 		return timezone;
 	}
+	
+	public long getUnixTime () {
+		String dateString = timestamptoString ();
+		String adjustedTimezone;
+		
+		java.util.Date parsedDate;
+		
+		if (timezone.charAt(0) == '+' || timezone.charAt(0) == '-') {
+			adjustedTimezone = "GMT" + timezone;
+		} else if (timezone.indexOf(" ") > 0) {
+			adjustedTimezone = timezone.substring(timezone.indexOf(" ") + 1);
+		} else {
+			adjustedTimezone = timezone;
+		}
+
+		dateString = timestamptoString () + " " + adjustedTimezone;
+        	DateFormat dateFormatLocal = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS z");
+        	try {
+			parsedDate = dateFormatLocal.parse(dateString);
+		} catch (java.text.ParseException e) {
+			return -1;
+		}
+
+		return parsedDate.getTime();
+
+	}
+
 }
