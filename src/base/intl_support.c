@@ -5333,7 +5333,7 @@ intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size,
     {
       unicode_cp = intl_utf8_to_cp (p_in, p_end - p_in, &next_utf8);
 
-      if ((unicode_cp <= 0x1F) || (unicode_cp > 0xFF)
+      if ((unicode_cp > 0xFF)
 	  || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
 	{
 	  *p_out++ = '?';
@@ -5698,7 +5698,7 @@ static char moneysymbols_iso88591_codes[][4] = {
   "\xa5",			/* japanese yen */
   "\xa3",			/* british pound */
   "KRW",			/* Korean won */
-  "TL",			/* turkish lira */
+  "TL",				/* turkish lira */
   "KHR",			/* cambodian riel */
   "CNY",			/* chinese renminbi */
   "INR",			/* indian rupee */
