@@ -6999,21 +6999,21 @@ logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
 }
 
 /*
- * logtb_update_global_unique_stats_by_abs () - updates the global unique
- *						statistics associated with the
- *						given btid by absolute values
+ * logtb_rv_update_global_unique_stats_by_abs () - updates the global unique
+ *						   statistics associated with
+ *						   the given btid by absolute
+ *						   values. used for recovery.
  *   return: error code
  *   thread_p  (in) :
  *   btid (in) : the btree id for which the statistics will be updated
  *   num_oids (in) : the new number of oids 
  *   num_nulls (in) : the new number of nulls
  *   num_keys (in) : the new number of keys
- *   log (in) : true if we need to log the changes
  */
 int
-logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid,
-					 int num_oids, int num_nulls,
-					 int num_keys, bool log)
+logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p,
+					    BTID * btid, int num_oids,
+					    int num_nulls, int num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -7029,73 +7029,7 @@ logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid,
       return ER_FAILED;
     }
 
-  if (stats->unique_stats.num_oids == num_oids
-      && stats->unique_stats.num_nulls == num_nulls
-      && stats->unique_stats.num_keys == num_keys)
-    {
-      pthread_mutex_unlock (&stats->mutex);
-      return NO_ERROR;
-    }
-
-  if (log)
-    {
-      RECDES undo_rec, redo_rec;
-      char undo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
-			BTREE_MAX_ALIGN], *datap = NULL;
-      char redo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
-			BTREE_MAX_ALIGN];
-      int null_delta, oid_delta, key_delta;
-
-      null_delta = num_nulls - stats->unique_stats.num_nulls;
-      oid_delta = num_oids - stats->unique_stats.num_oids;
-      key_delta = num_keys - stats->unique_stats.num_keys;
-
-      /* although we don't change the btree header, we still need to log here
-       * the new values of statistics so that they can be recovered at recover
-       * stage
-       */
-
-      undo_rec.data = NULL;
-      undo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
-      undo_rec.data = PTR_ALIGN (undo_rec_buf, BTREE_MAX_ALIGN);
-
-      undo_rec.length = 0;
-      datap = (char *) undo_rec.data;
-      OR_PUT_BTID (datap, btid);
-      datap += OR_BTID_ALIGNED_SIZE;
-      OR_PUT_INT (datap, null_delta);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, oid_delta);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, key_delta);
-      datap += OR_INT_SIZE;
-      undo_rec.length = CAST_BUFLEN (datap - undo_rec.data);
-
-      redo_rec.data = NULL;
-      redo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
-      redo_rec.data = PTR_ALIGN (redo_rec_buf, BTREE_MAX_ALIGN);
-
-      redo_rec.length = 0;
-      datap = (char *) redo_rec.data;
-      OR_PUT_BTID (datap, btid);
-      datap += OR_BTID_ALIGNED_SIZE;
-      OR_PUT_INT (datap, num_nulls);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, num_oids);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, num_keys);
-      datap += OR_INT_SIZE;
-      redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
-
-      log_append_undoredo_data2 (thread_p,
-				 RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL,
-				 NULL, HEADER, undo_rec.length,
-				 redo_rec.length, undo_rec.data,
-				 redo_rec.data);
-
-      LSA_COPY (&stats->last_log_lsa, &tdes->tail_lsa);
-    }
-  else if (!LSA_ISNULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa))
+  if (!LSA_ISNULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa))
     {
       /* Here we assume that we are at recovery stage */
       LSA_COPY (&stats->last_log_lsa,

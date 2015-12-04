@@ -2628,10 +2628,12 @@ extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY *
 extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p,
 					  BTID * btid, int *num_oids,
 					  int *num_nulls, int *num_keys);
-extern int logtb_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p,
-						    BTID * btid, int num_oids,
-						    int num_nulls,
-						    int num_keys, bool log);
+extern int logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY *
+						       thread_p,
+						       BTID * btid,
+						       int num_oids,
+						       int num_nulls,
+						       int num_keys);
 extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
 						      BTID * btid,
 						      int oid_delta,

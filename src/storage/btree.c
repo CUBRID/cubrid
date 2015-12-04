@@ -25652,8 +25652,8 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p,
       /* The B-tree was already deleted */
       return NO_ERROR;
     }
-  if (logtb_update_global_unique_stats_by_abs
-      (thread_p, &btid, num_oids, num_nulls, num_keys, false) != NO_ERROR)
+  if (logtb_rv_update_global_unique_stats_by_abs
+      (thread_p, &btid, num_oids, num_nulls, num_keys) != NO_ERROR)
     {
       goto error;
     }
@@ -34475,8 +34475,8 @@ btree_rv_undo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       datap += OR_INT_SIZE;
 
       ret =
-	logtb_update_global_unique_stats_by_abs (thread_p, &btid, num_oids,
-						 num_nulls, num_keys, false);
+	logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, num_oids,
+						    num_nulls, num_keys);
       if (ret != NO_ERROR)
 	{
 	  goto error;
