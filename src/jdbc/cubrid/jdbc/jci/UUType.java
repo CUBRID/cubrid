@@ -43,6 +43,7 @@ import java.sql.Timestamp;
 
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
+import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimetz;
@@ -191,6 +192,8 @@ abstract public class UUType {
 			return UUType.U_TYPE_CLOB;
 		else if (value instanceof Object[])
 			return UUType.U_TYPE_SEQUENCE;
+		else if (value instanceof CUBRIDBinaryString)
+			return UUType.U_TYPE_VARCHAR;
 		else
 			return UUType.U_TYPE_NULL;
 	}

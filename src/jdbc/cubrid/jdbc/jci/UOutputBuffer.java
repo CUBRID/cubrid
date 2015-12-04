@@ -48,6 +48,7 @@ import javax.transaction.xa.Xid;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDLobHandle;
+import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.util.ByteArrayBuffer;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimetz;
@@ -132,6 +133,13 @@ class UOutputBuffer {
 		dataBuffer.write(b, 0, b.length);
 		dataBuffer.writeByte((byte) 0);
 		return b.length + 5;
+	}
+
+	int addBinaryString(CUBRIDBinaryString binary_string) {
+		dataBuffer.writeInt(binary_string.length + 1);
+		dataBuffer.write(binary_string.getBytes(), 0, binary_string.length);
+		dataBuffer.writeByte((byte) 0);
+		return binary_string.length + 5;
 	}
 
 	int addDouble(double value) throws IOException {
@@ -341,12 +349,16 @@ class UOutputBuffer {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
-			if (value == null) {
-				stringData = "";
+			if (value instanceof CUBRIDBinaryString) {
+				return addBinaryString((CUBRIDBinaryString) value);
 			} else {
-				stringData = UGetTypeConvertedValue.getString(value);
+				if (value == null) {
+					stringData = "";
+				} else {
+					stringData = UGetTypeConvertedValue.getString(value);
+				}
+			    	return addStringWithNull(stringData);
 			}
-		    	return addStringWithNull(stringData);
 		case UUType.U_TYPE_NUMERIC:
 			if (value == null) {
 				stringData = "";
