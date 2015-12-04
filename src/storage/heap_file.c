@@ -11973,7 +11973,7 @@ heap_does_exist_visible (THREAD_ENTRY * thread_p, OID * class_oid,
     heap_mvcc_lock_and_get_object_version (thread_p, (OID *) oid, class_oid,
 					   NULL, &scan_cache, S_SELECT, PEEK,
 					   NULL_CHN, NULL, NULL,
-					   LOG_ERROR_IF_DELETED);
+					   LOG_WARNING_IF_DELETED);
   heap_scancache_end (thread_p, &scan_cache);
   if (scan != S_SUCCESS)
     {
