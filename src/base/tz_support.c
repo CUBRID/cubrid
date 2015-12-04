@@ -3821,7 +3821,10 @@ detect_dst:
 	       * standard time */
 	      ds_time_offset = curr_ds_rule->save_time - save_time;
 	    }
-	  ds_time_offset += add_leap_offset_rule_interval;
+	  if (curr_ds_rule->at_time_type != TZ_TIME_TYPE_UTC)
+	    {
+	      ds_time_offset += add_leap_offset_rule_interval;
+	    }
 
 	  if (src_is_utc == true)
 	    {
