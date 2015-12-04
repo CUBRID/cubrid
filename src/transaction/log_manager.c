@@ -4469,7 +4469,8 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 {
   bool canskip = false;
   bool has_undolog;
-  FILE_TYPE ftype;
+  FILE_TYPE ftype = FILE_UNKNOWN_TYPE;
+  FILE_IS_NEW_FILE is_new_file = FILE_ERROR;
 
   /*
    * Some log record types (rcvindex) should never be skipped.
@@ -4497,45 +4498,52 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
    * temporary files.
    */
 
-  if ((addr->pgptr != NULL && pgbuf_is_lsa_temporary (addr->pgptr) == true))
+  if (addr->pgptr != NULL && pgbuf_is_lsa_temporary (addr->pgptr) == true)
     {
       return true;
     }
 
   if (addr->pgptr == NULL && addr->vfid != NULL)
     {
-      /* TODO: need to access ftype directly from somewhere... PERFORMANCE */
-      ftype = file_get_type (thread_p, addr->vfid);
-      if (ftype == FILE_TMP || ftype == FILE_TMP_TMP)
+      /* TODO: more optimization is required */
+      is_new_file = file_is_new_file_ext (thread_p, addr->vfid, &ftype,
+					  &has_undolog);
+      if (ftype == FILE_TEMP)
 	{
 	  return true;
 	}
     }
 
-  if (addr->vfid != NULL
-      && file_is_new_file_with_has_undolog (thread_p, addr->vfid,
-					    &has_undolog) == FILE_NEW_FILE
-      && has_undolog == false)
+  if (addr->vfid != NULL)
     {
-      /*
-       * We may be able to skip undo logging if we are not in a savepoint or
-       * a top system operation.
-       */
-      if (tdes->topops.last < 0 && LSA_ISNULL (&tdes->savept_lsa))
+      if (is_new_file == FILE_ERROR)
 	{
-	  canskip = true;
+	  is_new_file = file_is_new_file_ext (thread_p, addr->vfid, &ftype,
+					      &has_undolog);
 	}
-      else
+
+      if (is_new_file == FILE_NEW_FILE && has_undolog == false)
 	{
 	  /*
-	   * We cannot skip the undo logging. In addition we must declare that
-	   * logging must be done on this file from now on, otherwise, we may
-	   * not be able to rollback properly. For example:
-	   * insert (without top op), delete (with top op),
-	   * insert (without top op), rollback. We may not be able to undo the
-	   * delete due to lack of space.
+	   * We may be able to skip undo logging if we are not in a savepoint or
+	   * a top system operation.
 	   */
-	  (void) file_new_set_has_undolog (thread_p, addr->vfid);
+	  if (tdes->topops.last < 0 && LSA_ISNULL (&tdes->savept_lsa))
+	    {
+	      canskip = true;
+	    }
+	  else
+	    {
+	      /*
+	       * We cannot skip the undo logging. In addition we must declare that
+	       * logging must be done on this file from now on, otherwise, we may
+	       * not be able to rollback properly. For example:
+	       * insert (without top op), delete (with top op),
+	       * insert (without top op), rollback. We may not be able to undo the
+	       * delete due to lack of space.
+	       */
+	      (void) file_new_set_has_undolog (thread_p, addr->vfid);
+	    }
 	}
     }
 
@@ -5789,11 +5797,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock,
   logtb_complete_mvcc (thread_p, tdes, true);
 
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
-  if (tdes->num_new_tmp_files + tdes->num_new_tmp_tmp_files > 0)
+  if (tdes->num_new_temp_files > 0)
     {
-      (void) file_new_destroy_all_tmp (thread_p, FILE_EITHER_TMP);
+      (void) file_new_destroy_all_tmp (thread_p, FILE_TEMP);
     }
-  assert (tdes->num_new_tmp_files == 0 && tdes->num_new_tmp_tmp_files == 0);
+  assert (tdes->num_new_temp_files == 0);
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
@@ -5921,11 +5929,11 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
    * Temporary files created on volumes with permanent purposes
    * (e.g., generic) are cleaned by undo records.
    */
-  if (tdes->num_new_tmp_tmp_files > 0)
+  if (tdes->num_new_temp_files > 0)
     {
-      (void) file_new_destroy_all_tmp (thread_p, FILE_TMP_TMP);
+      (void) file_new_destroy_all_tmp (thread_p, FILE_TEMP);
     }
-  assert (tdes->num_new_tmp_tmp_files == 0);
+  assert (tdes->num_new_temp_files == 0);
 
   (void) file_typecache_clear ();
 

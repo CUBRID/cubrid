@@ -5952,9 +5952,9 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   unsigned short alignment;
 
   alignment = BTREE_MAX_ALIGN;
-  if (file_alloc_pages
-      (thread_p, &(btid->sys_btid->vfid), vpid, 1, near_vpid,
-       btree_initialize_new_page, (void *) (&alignment)) == NULL)
+  if (file_alloc_pages (thread_p, &(btid->sys_btid->vfid), vpid, 1, near_vpid,
+			btree_initialize_new_page,
+			(void *) (&alignment)) == NULL)
     {
       return NULL;
     }
@@ -5994,7 +5994,8 @@ btree_dealloc_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid)
       return ER_FAILED;
     }
 
-  error = file_dealloc_page (thread_p, &btid->sys_btid->vfid, vpid);
+  error = file_dealloc_page (thread_p, &btid->sys_btid->vfid, vpid,
+			     FILE_BTREE);
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
@@ -16082,14 +16083,14 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key,
   pgbuf_unfix_and_init (thread_p, L_page);
   pgbuf_unfix_and_init (thread_p, R_page);
 
-  if (file_dealloc_page (thread_p, &btid->sys_btid->vfid, &L_vpid) !=
-      NO_ERROR)
+  if (file_dealloc_page (thread_p, &btid->sys_btid->vfid, &L_vpid, FILE_BTREE)
+      != NO_ERROR)
     {
       assert (false);
     }
 
-  if (file_dealloc_page (thread_p, &btid->sys_btid->vfid, &R_vpid) !=
-      NO_ERROR)
+  if (file_dealloc_page (thread_p, &btid->sys_btid->vfid, &R_vpid, FILE_BTREE)
+      != NO_ERROR)
     {
       assert (false);
     }
@@ -20436,8 +20437,8 @@ btree_rv_newpage_undo_alloc (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
   pageid_struct = (PAGEID_STRUCT *) recv->data;
 
-  ret =
-    file_dealloc_page (thread_p, &pageid_struct->vfid, &pageid_struct->vpid);
+  ret = file_dealloc_page (thread_p, &pageid_struct->vfid,
+			   &pageid_struct->vpid, FILE_BTREE);
 
   assert (ret == NO_ERROR);
 
@@ -37648,9 +37649,8 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key,
 	}
 
       /* Deallocate page. */
-      error_code =
-	file_dealloc_page (thread_p, &btid_int->sys_btid->vfid,
-			   &overflow_vpid);
+      error_code = file_dealloc_page (thread_p, &btid_int->sys_btid->vfid,
+				      &overflow_vpid, FILE_BTREE);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

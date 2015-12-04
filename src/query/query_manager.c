@@ -1764,7 +1764,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p,
       /* Adjust XASL flag for query result cache.
          For the last list file(QFILE_LIST_ID) as the query result,
          the permanent query result file(FILE_QUERY_AREA) rather than
-         temporary file(FILE_EITHER_TMP) will be created
+         temporary file(FILE_TEMP) will be created
          if and only if XASL_TO_BE_CACHED flag is set. */
       if (qmgr_is_allowed_result_cache (flag))
 	{
@@ -3673,7 +3673,7 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
 	  vpid_p->pageid = NULL_PAGEID;
 	  return NULL;
 	}
-      tfile_vfid_p->temp_file_type = FILE_EITHER_TMP;
+      tfile_vfid_p->temp_file_type = FILE_TEMP;
       tfile_vfid_p->last_free_page_index =
 	file_get_numpages (thread_p, &tfile_vfid_p->temp_vfid) - 1;
     }
@@ -3926,7 +3926,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p,
 
   /* initialize tfile_vfid */
   VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
-  tfile_vfid_p->temp_file_type = FILE_EITHER_TMP;
+  tfile_vfid_p->temp_file_type = FILE_TEMP;
   tfile_vfid_p->curr_free_page_index = 0;
   tfile_vfid_p->last_free_page_index = -1;
   tfile_vfid_p->vpid_index = -1;
@@ -4561,7 +4561,7 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
       /* Adjust XASL flag for query result cache.
          For the last list file(QFILE_LIST_ID) as the query result,
          the permanent query result file(FILE_QUERY_AREA) rather than
-         temporary file(FILE_EITHER_TMP) will be created
+         temporary file(FILE_TEMP) will be created
          if and only if XASL_TO_BE_CACHED flag is set. */
       if (qmgr_is_allowed_result_cache (flag))
 	{

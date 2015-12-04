@@ -749,7 +749,8 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p,
 		      PGBUF_UNCONDITIONAL_LATCH);
   if (page_p == NULL)
     {
-      (void) file_dealloc_page (thread_p, &catalog_Id.vfid, page_id_p);
+      (void) file_dealloc_page (thread_p, &catalog_Id.vfid, page_id_p,
+				FILE_CATALOG);
       return NULL;
     }
 
@@ -1841,7 +1842,8 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 	CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
 
       pgbuf_unfix_and_init (thread_p, overflow_page_p);
-      file_dealloc_page (thread_p, &catalog_Id.vfid, &overflow_vpid);
+      file_dealloc_page (thread_p, &catalog_Id.vfid, &overflow_vpid,
+			 FILE_CATALOG);
       overflow_vpid = new_overflow_vpid;
     }
 
@@ -3036,8 +3038,8 @@ catalog_reclaim_space (THREAD_ENTRY * thread_p)
 	      /* page is empty: has only header record; so deallocate it */
 	      pgbuf_unfix_and_init (thread_p, page_p);
 
-	      if (file_dealloc_page (thread_p, &catalog_Id.vfid, &vpid) !=
-		  NO_ERROR)
+	      if (file_dealloc_page (thread_p, &catalog_Id.vfid, &vpid,
+				     FILE_CATALOG) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -6255,7 +6257,7 @@ catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p,
   catalog_clear_hash_table ();
 
   vpid_p = (VPID *) recv_p->data;
-  (void) file_dealloc_page (thread_p, &catalog_Id.vfid, vpid_p);
+  (void) file_dealloc_page (thread_p, &catalog_Id.vfid, vpid_p, FILE_CATALOG);
 
   return NO_ERROR;
 }

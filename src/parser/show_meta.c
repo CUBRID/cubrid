@@ -642,7 +642,6 @@ metadata_of_tran_tables (void)
     {"Modified_class_list", "varchar(20)"},
     {"Num_new_files", "int"},
     {"Num_new_temp_files", "int"},
-    {"Num_new_temp_temp_files", "int"},
     {"Waiting_for_res", "varchar(20)"},
     {"Has_deadlock_priority", "int"},
     {"Suppress_replication", "int"},

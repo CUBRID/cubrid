@@ -468,10 +468,16 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 
 exit_on_error:
 
-  for (i = 0; i < npages; i++)
-    {
-      (void) file_dealloc_page (thread_p, ovf_vfid, &vpids[i]);
-    }
+  {
+    FILE_TYPE file_type;
+
+    file_type = file_get_type_by_fhdr_pgptr (thread_p, ovf_vfid,
+					     vfid_fhdr_pgptr);
+    for (i = 0; i < npages; i++)
+      {
+	(void) file_dealloc_page (thread_p, ovf_vfid, &vpids[i], file_type);
+      }
+  }
 
   if (vpids != vpids_buffer)
     {
@@ -831,8 +837,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 
 	      pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
-	      if (file_dealloc_page (thread_p, ovf_vfid, &tmp_vpid) !=
-		  NO_ERROR)
+	      /* TODO: clarify file_type */
+	      if (file_dealloc_page (thread_p, ovf_vfid, &tmp_vpid,
+				     FILE_UNKNOWN_TYPE) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -865,7 +872,8 @@ overflow_delete_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   /* Unfix page. */
   pgbuf_unfix_and_init (thread_p, pgptr);
 
-  ret = file_dealloc_page (thread_p, ovf_vfid, vpid);
+  /* TODO: clarify file_type */
+  ret = file_dealloc_page (thread_p, ovf_vfid, vpid, FILE_UNKNOWN_TYPE);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -1407,7 +1415,9 @@ overflow_rv_newpage_logical_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   OVERFLOW_RECV_LINKS *newpg;
 
   newpg = (OVERFLOW_RECV_LINKS *) rcv->data;
-  (void) file_dealloc_page (thread_p, &newpg->ovf_vfid, &newpg->new_vpid);
+  /* TODO: clarify file_type */
+  (void) file_dealloc_page (thread_p, &newpg->ovf_vfid, &newpg->new_vpid,
+			    FILE_UNKNOWN_TYPE);
   return NO_ERROR;
 }
 

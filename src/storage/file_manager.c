@@ -292,9 +292,7 @@ static FILE_TRACKER_CACHE file_Tracker_cache = {
    -1,				/* FILE_DROPPED_FILES */
    -1,				/* FILE_VACUUM_DATA */
    -1,				/* FILE_QUERY_AREA */
-   -1,				/* FILE_TMP */
-   -1,				/* FILE_TMP_TMP */
-   -1,				/* FILE_EITHER_TMP */
+   -1,				/* FILE_TEMP */
    -1,				/* FILE_UNKNOWN_TYPE */
    0 /* FILE_HEAP_REUSE_SLOTS - do not mark, just destroy */ },
   {NULL,			/* FILE_TRACKER */
@@ -309,9 +307,7 @@ static FILE_TRACKER_CACHE file_Tracker_cache = {
    NULL,			/* FILE_DROPPED_FILES */
    NULL,			/* FILE_VACUUM_DATA */
    NULL,			/* FILE_QUERY_AREA */
-   NULL,			/* FILE_TMP */
-   NULL,			/* FILE_TMP_TMP */
-   NULL,			/* FILE_EITHER_TMP */
+   NULL,			/* FILE_TEMP */
    NULL,			/* FILE_UNKNOWN_TYPE */
    NULL /* FILE_HEAP_REUSE_SLOTS - do not mark, just destroy */ },
   {NULL, NULL, NULL}
@@ -348,9 +344,6 @@ static INT16 file_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
 static int file_new_declare_as_old_internal (THREAD_ENTRY * thread_p,
 					     const VFID * vfid, int tran_id,
 					     bool hold_csect);
-static FILE_IS_NEW_FILE file_isnew_with_type (THREAD_ENTRY * thread_p,
-					      const VFID * vfid,
-					      FILE_TYPE * file_type);
 static INT32 file_find_good_maxpages (THREAD_ENTRY * thread_p,
 				      FILE_TYPE file_type);
 static int file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
@@ -558,16 +551,15 @@ static int file_mark_deleted_file_list_add (VFID * vfid,
 static int file_mark_deleted_file_list_remove (VFID * vfid,
 					       const FILE_TYPE file_type);
 
-static int file_reset_contiguous_temporary_pages (THREAD_ENTRY * thread_p,
-						  INT16 volid, INT32 pageid,
-						  INT32 num_pages,
-						  bool reset_to_temp);
 static DISK_ISVALID file_check_deleted (THREAD_ENTRY * thread_p,
 					const VFID * vfid);
 
 static FILE_TYPE file_type_cache_check (const VFID * vfid);
 static int file_type_cache_add_entry (const VFID * vfid, FILE_TYPE type);
 static int file_type_cache_entry_remove (const VFID * vfid);
+static FILE_TYPE file_get_type_internal (THREAD_ENTRY * thread_p,
+					 const VFID * vfid,
+					 PAGE_PTR fhdr_pgptr);
 
 static int file_tmpfile_cache_initialize (void);
 static int file_tmpfile_cache_finalize (void);
@@ -904,13 +896,9 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
   csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   tdes = LOG_FIND_TDES (tran_index);
-  if (file_type == FILE_TMP)
+  if (file_type == FILE_TEMP)
     {
-      tdes->num_new_tmp_files++;
-    }
-  else if (file_type == FILE_TMP_TMP)
-    {
-      tdes->num_new_tmp_tmp_files++;
+      tdes->num_new_temp_files++;
     }
   tdes->num_new_files++;
 
@@ -996,13 +984,9 @@ file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 	   */
 	  (void) mht_rem (file_Tracker->newfiles.mht, tmp, NULL, NULL);
 
-	  if (tmp->file_type == FILE_TMP)
+	  if (tmp->file_type == FILE_TEMP)
 	    {
-	      tdes->num_new_tmp_files--;
-	    }
-	  else if (tmp->file_type == FILE_TMP_TMP)
-	    {
-	      tdes->num_new_tmp_tmp_files--;
+	      tdes->num_new_temp_files--;
 	    }
 	  tdes->num_new_files--;
 
@@ -1064,29 +1048,34 @@ file_new_declare_as_old (THREAD_ENTRY * thread_p, const VFID * vfid)
 FILE_IS_NEW_FILE
 file_is_new_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  bool ignore;
+  FILE_TYPE dummy_ftype;
+  bool dummy_has_undolog;
 
-  return file_is_new_file_with_has_undolog (thread_p, vfid, &ignore);
+  return file_is_new_file_ext (thread_p, vfid, &dummy_ftype,
+			       &dummy_has_undolog);
 }
 
 /*
- * file_isnew_with_type () - Find out if the file is a newly created file
+ * file_is_new_file_ext () - Find out if the file is a newly created file
  *   return: file_type is set to the files type or error
  *   vfid(in): Complete file identifier (i.e., Volume_id + file_id)
  *   file_type(out): return the file's type
+ *   has_undolog(out):
  *
  * Note: A newly created file is one that has been created by an active
- *       transaction. As a side-effect, also return an existing file's type.
+ *       transaction. As a side-effect, also return an existing file's type
+ *       and has_undolog flag.
  */
-static FILE_IS_NEW_FILE
-file_isnew_with_type (THREAD_ENTRY * thread_p, const VFID * vfid,
-		      FILE_TYPE * file_type)
+FILE_IS_NEW_FILE
+file_is_new_file_ext (THREAD_ENTRY * thread_p, const VFID * vfid,
+		      FILE_TYPE * file_type, bool * has_undolog)
 {
   FILE_NEWFILE *entry;
   FILE_NEW_FILES_HASH_KEY key;
   FILE_IS_NEW_FILE newfile = FILE_OLD_FILE;
 
   *file_type = FILE_UNKNOWN_TYPE;
+  *has_undolog = false;
 
   VFID_COPY (&key.vfid, vfid);
   key.tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -1101,50 +1090,6 @@ file_isnew_with_type (THREAD_ENTRY * thread_p, const VFID * vfid,
     {
       newfile = FILE_NEW_FILE;
       *file_type = entry->file_type;
-    }
-
-  csect_exit (thread_p, CSECT_FILE_NEWFILE);
-
-  return newfile;
-}
-
-/*
- * file_is_new_file_with_has_undolog () - Find out if the file is a newly created file
- *   return: FILE_NEW_FILE if new file, FILE_OLD_FILE if not a new file,
- *           or FILE_ERROR
- *   vfid(in): Complete file identifier (i.e., Volume_id + file_id)
- *   has_undolog(in):
- *
- * Note: A newly created file is one that has been created by an active
- *       transaction. Indicate also if undo logging has been done on this file.
- *
- *       We are assuming that files are not created too frequently. If this
- *       assumption is not correct, it is better to define a hash table to
- *       find out whether or not a file is a new one.
- */
-FILE_IS_NEW_FILE
-file_is_new_file_with_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid,
-				   bool * has_undolog)
-{
-  FILE_NEWFILE *entry;
-  FILE_NEW_FILES_HASH_KEY key;
-  FILE_IS_NEW_FILE newfile = FILE_OLD_FILE;
-
-  *has_undolog = false;
-
-  VFID_COPY (&key.vfid, vfid);
-  key.tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) !=
-      NO_ERROR)
-    {
-      return FILE_ERROR;
-    }
-
-  entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
-  if (entry != NULL)
-    {
-      newfile = FILE_NEW_FILE;
       *has_undolog = entry->has_undolog;
     }
 
@@ -1225,12 +1170,10 @@ file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
       /* Get next entry before current entry is invalidated */
       next_entry = entry->next;
 
-      if (entry->tran_index == tran_index
-	  && (entry->file_type == FILE_TMP
-	      || entry->file_type == FILE_TMP_TMP
-	      || entry->file_type == FILE_EITHER_TMP)
-	  && (tmp_type == FILE_EITHER_TMP || tmp_type == entry->file_type))
+      if (entry->tran_index == tran_index && tmp_type == entry->file_type)
 	{
+	  assert (entry->file_type == FILE_TEMP);
+
 	  p = (FILE_NEWFILE *) malloc (sizeof (*entry));
 	  if (p == NULL)
 	    {
@@ -1290,14 +1233,17 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       /* nothing to clear */
 #if !defined (NDEBUG)
-      assert (tdes->num_new_tmp_files <= 0
-	      && tdes->num_new_tmp_tmp_files <= 0);
+      assert (tdes->num_new_temp_files <= 0);
 
       /* confirm the file does not exists in mht */
       key.tran_index = tran_index;
       VFID_COPY (&key.vfid, vfid);
 
-      csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT);
+      if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) !=
+	  NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
 
       entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
       assert (entry == NULL);
@@ -1323,13 +1269,9 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
 
   /* decrement temporary files counter */
-  if (entry->file_type == FILE_TMP)
+  if (entry->file_type == FILE_TEMP)
     {
-      tdes->num_new_tmp_files--;
-    }
-  else if (entry->file_type == FILE_TMP_TMP)
-    {
-      tdes->num_new_tmp_tmp_files--;
+      tdes->num_new_temp_files--;
     }
 
   tdes->num_new_files--;
@@ -1398,7 +1340,7 @@ file_dump_all_newfiles (THREAD_ENTRY * thread_p, FILE * fp, bool tmptmp_only)
 		      file_type_to_string (entry->file_type),
 		      entry->has_undolog, entry->tran_index, entry->next,
 		      entry->prev);
-      if (tmptmp_only == false || entry->file_type == FILE_TMP_TMP)
+      if (tmptmp_only == false || entry->file_type == FILE_TEMP)
 	{
 	  ret = file_dump (thread_p, fp, &entry->vfid);
 	  if (ret != NO_ERROR)
@@ -1447,11 +1389,8 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "VACUUM DATA";
     case FILE_QUERY_AREA:
       return "QUERY_AREA";
-    case FILE_TMP:
-    case FILE_EITHER_TMP:
+    case FILE_TEMP:
       return "TEMPORARILY";
-    case FILE_TMP_TMP:
-      return "TEMPORARILY ON TEMPORARILY VOLUME";
     case FILE_UNKNOWN_TYPE:
       return "UNKNOWN";
     case FILE_HEAP_REUSE_SLOTS:
@@ -1490,13 +1429,8 @@ file_get_primary_vol_purpose (FILE_TYPE ftype)
       purpose = DISK_PERMVOL_INDEX_PURPOSE;
       break;
 
-    case FILE_TMP_TMP:
-      purpose = DISK_TEMPVOL_TEMP_PURPOSE;
-      break;
-
+    case FILE_TEMP:
     case FILE_QUERY_AREA:
-    case FILE_EITHER_TMP:
-    case FILE_TMP:
       purpose = DISK_EITHER_TEMP_PURPOSE;
       break;
 
@@ -1540,10 +1474,8 @@ file_get_disk_page_type (FILE_TYPE ftype)
       page_type = DISK_PAGE_INDEX_TYPE;
       break;
 
-    case FILE_TMP_TMP:
+    case FILE_TEMP:
     case FILE_QUERY_AREA:
-    case FILE_EITHER_TMP:
-    case FILE_TMP:
       page_type = DISK_PAGE_TEMP_TYPE;
       break;
 
@@ -1618,12 +1550,8 @@ file_find_good_maxpages (THREAD_ENTRY * thread_p, FILE_TYPE file_type)
     case FILE_BTREE_OVERFLOW_KEY:
       return disk_get_max_numpages (thread_p, DISK_PERMVOL_INDEX_PURPOSE);
 
-    case FILE_TMP_TMP:
-      return disk_get_max_numpages (thread_p, DISK_TEMPVOL_TEMP_PURPOSE);
-
+    case FILE_TEMP:
     case FILE_QUERY_AREA:
-    case FILE_EITHER_TMP:
-    case FILE_TMP:
       /* Either a permanent or temporary volume with temporary purposes */
       return disk_get_max_numpages (thread_p, DISK_EITHER_TEMP_PURPOSE);
 
@@ -1722,46 +1650,6 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
   INT32 original_hint_pageid;
   bool old_check_interrupt;
 
-  /*
-   * If the file is of type FILE_TMP, it can have allocated pages which are
-   * from permanent or temporary volumes. Its file table pages must be from
-   * a permanent volume since they need to be logged to release pages of
-   * permanent volumes
-   */
-
-  if (file_type == FILE_TMP)
-    {
-      INT32 free_pages, total_pages;
-      INT16 nvols;
-
-      /* Avoid creating new permanent volumes to keep track of temp pages */
-
-      if ((disk_get_all_total_free_numpages (thread_p,
-					     DISK_PERMVOL_DATA_PURPOSE,
-					     &nvols, &total_pages,
-					     &free_pages) > 0
-	   && free_pages > num_ftb_pages)
-	  || (disk_get_all_total_free_numpages (thread_p,
-						DISK_PERMVOL_GENERIC_PURPOSE,
-						&nvols, &total_pages,
-						&free_pages) > 0
-	      && free_pages > num_ftb_pages))
-	{
-	  file_type = FILE_TRACKER;
-	}
-      else
-	{
-	  total_pages = prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
-	  if (total_pages > 0)
-	    {
-	      total_pages *= (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE);
-	    }
-
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, total_pages);
-	  return ER_FAILED;
-	}
-    }
 
   original_hint_volid = hint_volid;
   original_hint_pageid = hint_pageid;
@@ -2314,7 +2202,7 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 		  return ER_FAILED;
 		}
 	      addr.pgptr = NULL;
-	      (void) file_dealloc_page (thread_p, vfid, &tmp_vpid);
+	      (void) file_dealloc_page (thread_p, vfid, &tmp_vpid, file_type);
 	    }
 	}
     }
@@ -2621,11 +2509,8 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp,
 	case FILE_DROPPED_FILES:
 	case FILE_VACUUM_DATA:
 	case FILE_QUERY_AREA:
-	case FILE_TMP:
-	case FILE_TMP_TMP:
+	case FILE_TEMP:
 	case FILE_UNKNOWN_TYPE:
-	  /* This does not really exist */
-	case FILE_EITHER_TMP:
 	  /* This does not really exist */
 	default:
 	  /* Dump the first part */
@@ -2937,7 +2822,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 
       assert (file_get_numpages (thread_p, vfid) == 0);
 
-      if (*file_type != FILE_TMP_TMP && *file_type != FILE_QUERY_AREA)
+      if (*file_type != FILE_TEMP && *file_type != FILE_QUERY_AREA)
 	{
 	  addr.vfid = NULL;
 	  addr.pgptr = NULL;
@@ -2987,14 +2872,9 @@ VFID *
 file_create_tmp (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 		 const void *file_des)
 {
-  FILE_TYPE file_type = FILE_EITHER_TMP;
+  FILE_TYPE file_type = FILE_TEMP;
 
-  if (file_tmpfile_cache_get (thread_p, vfid, FILE_TMP_TMP))
-    {
-      return vfid;
-    }
-
-  if (file_tmpfile_cache_get (thread_p, vfid, FILE_TMP))
+  if (file_tmpfile_cache_get (thread_p, vfid, FILE_TEMP))
     {
       return vfid;
     }
@@ -3017,7 +2897,7 @@ VFID *
 file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid,
 			  INT32 exp_numpages, const void *file_des)
 {
-  FILE_TYPE file_type = FILE_EITHER_TMP;
+  FILE_TYPE file_type = FILE_TEMP;
 
   return file_create_tmp_internal (thread_p, vfid, &file_type, exp_numpages,
 				   file_des);
@@ -3259,23 +3139,25 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 	}
     }
 
-  if (*file_type == FILE_EITHER_TMP)
+  if (*file_type == FILE_TEMP)
     {
       vol_purpose = xdisk_get_purpose (thread_p, vfid->volid);
       if (vol_purpose == DISK_UNKNOWN_PURPOSE)
 	{
 	  goto exit_on_error;
 	}
+
       if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE
 	  || vol_purpose == DISK_PERMVOL_TEMP_PURPOSE)
 	{
 	  /* Use volumes with temporary purposes only for every single page of
 	     this file */
-	  *file_type = FILE_TMP_TMP;
+	  *file_type = FILE_TEMP;
 	}
       else
 	{
-	  *file_type = FILE_TMP;
+	  assert (0);
+	  goto exit_on_error;
 	}
     }
 
@@ -3290,8 +3172,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 
   if (exp_numpages > DISK_SECTOR_NPAGES)
     {
-      if (*file_type == FILE_TMP || *file_type == FILE_TMP_TMP ||
-	  *file_type == FILE_QUERY_AREA)
+      if (*file_type == FILE_TEMP || *file_type == FILE_QUERY_AREA)
 	{
 	  /* We are going to allocate the special sector */
 	  nsects = 1;
@@ -3382,8 +3263,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 
   if (nsects > 1)
     {
-      if (*file_type == FILE_TMP || *file_type == FILE_TMP_TMP ||
-	  *file_type == FILE_QUERY_AREA)
+      if (*file_type == FILE_TEMP || *file_type == FILE_QUERY_AREA)
 	{
 	  /* We are going to allocate the special sector */
 	  sectid = disk_alloc_special_sector ();
@@ -3816,7 +3696,7 @@ file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   file_type = fhdr->type;
 
-  if ((file_type == FILE_TMP_TMP || file_type == FILE_QUERY_AREA)
+  if ((file_type == FILE_TEMP || file_type == FILE_QUERY_AREA)
       && fhdr->num_user_pages <
       prm_get_integer_value (PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE))
     {
@@ -3902,11 +3782,6 @@ file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 				   * Deallocate as much as we can.
 				   */
 
-				  /*
-				   * In the case of temporary file on permanent
-				   * volumes (i.e., FILE_TMP), set all the pages
-				   * as permanent
-				   */
 				  pgbuf_invalidate_temporary_file
 				    (allocset->volid, batch_firstid,
 				     batch_ndealloc, true);
@@ -3928,8 +3803,6 @@ file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 		    {
 		      /* Deallocate any accumulated pages */
 
-		      /* In the case of temporary file on permanent volumes
-		         (i.e., FILE_TMP), set all the pages as permanent */
 		      pgbuf_invalidate_temporary_file (allocset->volid,
 						       batch_firstid,
 						       batch_ndealloc, true);
@@ -3980,7 +3853,7 @@ file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 	    }
 	}
 
-      assert (file_type == FILE_TMP_TMP || file_type == FILE_QUERY_AREA);
+      assert (file_type == FILE_TEMP || file_type == FILE_QUERY_AREA);
 
       pb_invalid_temp_called = true;
 
@@ -4288,25 +4161,7 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
 			       * as much as we can.
 			       */
 
-			      /*
-			       * In the case of temporary file on permanent
-			       * volumes (i.e., FILE_TMP), set all the pages as
-			       * permanent
-			       */
-
-			      if (file_type == FILE_TMP)
-				{
-				  ret = file_reset_contiguous_temporary_pages
-				    (thread_p, allocset->volid, batch_firstid,
-				     batch_ndealloc, false);
-				  if (ret != NO_ERROR)
-				    {
-				      pgbuf_unfix_and_init (thread_p, pgptr);
-				      goto exit_on_error;
-				    }
-				}
-
-			      if (file_type == FILE_TMP_TMP
+			      if (file_type == FILE_TEMP
 				  && !pb_invalid_temp_called)
 				{
 				  pgbuf_invalidate_temporary_file
@@ -4336,25 +4191,7 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
 		{
 		  /* Deallocate any accumulated pages */
 
-		  /* In the case of temporary file on permanent volumes
-		     (i.e., FILE_TMP), set all the pages as permanent */
-		  if (file_type == FILE_TMP)
-		    {
-		      ret =
-			file_reset_contiguous_temporary_pages (thread_p,
-							       allocset->
-							       volid,
-							       batch_firstid,
-							       batch_ndealloc,
-							       false);
-		      if (ret != NO_ERROR)
-			{
-			  pgbuf_unfix_and_init (thread_p, pgptr);
-			  goto exit_on_error;
-			}
-		    }
-
-		  if (file_type == FILE_TMP_TMP && !pb_invalid_temp_called)
+		  if (file_type == FILE_TEMP && !pb_invalid_temp_called)
 		    {
 		      pgbuf_invalidate_temporary_file (allocset->volid,
 						       batch_firstid,
@@ -4639,83 +4476,30 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   /* Now deallocate the file header page */
 
-  if ((file_type == FILE_TMP || file_type == FILE_TMP_TMP)
-      && logtb_is_current_active (thread_p) == true)
+  if (file_type == FILE_TEMP && logtb_is_current_active (thread_p) == true)
     {
-      if (file_type == FILE_TMP)
+      /*
+       * This is a TEMPORARY FILE allocated on volumes with temporary
+       * purposes. The file can be completely removed, including its header
+       * page at this moment since there are not any log records associated
+       * with it.
+       */
+      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
+
+      /* remove header page */
+      if (disk_dealloc_page (thread_p, vfid->volid, vfid->fileid,
+			     1, page_type) != NO_ERROR)
 	{
-	  addr.vfid = NULL;
-	  addr.pgptr = fhdr_pgptr;
-	  addr.offset = FILE_HEADER_OFFSET;
-
-	  log_append_undo_data (thread_p, RVFL_FHDR, &addr,
-				FILE_SIZEOF_FHDR_WITH_DES_COMMENTS (fhdr),
-				fhdr);
-
-	  /* Now reset the page */
-
-	  fhdr->num_table_vpids = 1;
-	  VPID_SET_NULL (&fhdr->next_table_vpid);
-	  fhdr->last_table_vpid.volid = vfid->volid;
-	  fhdr->last_table_vpid.pageid = vfid->fileid;
-	  fhdr->num_user_pages = 0;
-	  fhdr->num_user_pages_mrkdelete = 0;
-	  fhdr->num_allocsets = 0;
-	  allocset = &fhdr->allocset;
-	  allocset->volid = NULL_VOLID;
-	  allocset->num_sects = 0;
-	  allocset->num_pages = 0;
-	  allocset->curr_sectid = NULL_SECTID;
-	  allocset->num_holes = 0;
-	  VPID_SET_NULL (&allocset->start_sects_vpid);
-	  VPID_SET_NULL (&allocset->end_sects_vpid);
-	  VPID_SET_NULL (&allocset->start_pages_vpid);
-	  VPID_SET_NULL (&allocset->end_pages_vpid);
-	  VPID_SET_NULL (&allocset->next_allocset_vpid);
-	  allocset->start_sects_offset = NULL_OFFSET;
-	  allocset->end_sects_offset = NULL_OFFSET;
-	  allocset->start_pages_offset = NULL_OFFSET;
-	  allocset->end_pages_offset = NULL_OFFSET;
-	  allocset->next_allocset_offset = NULL_OFFSET;
-
-	  log_append_redo_data (thread_p, RVFL_FHDR, &addr,
-				FILE_SIZEOF_FHDR_WITH_DES_COMMENTS (fhdr),
-				fhdr);
-	  addr.vfid = vfid;
-	  pgbuf_set_dirty (thread_p, fhdr_pgptr, FREE);
-	  fhdr_pgptr = NULL;
-
-	  if (log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT) !=
-	      TRAN_UNACTIVE_COMMITTED)
-	    {
-	      goto exit_on_error;
-	    }
+	  goto exit_on_error;
 	}
-      else
+
+      if (log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT) !=
+	  TRAN_UNACTIVE_COMMITTED)
 	{
-	  /*
-	   * This is a TEMPORARY FILE allocated on volumes with temporary
-	   * purposes. The file can be completely removed, including its header
-	   * page at this moment since there are not any log records associated
-	   * with it.
-	   */
-	  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-	  /* remove header page */
-	  if (disk_dealloc_page (thread_p, vfid->volid, vfid->fileid,
-				 1, page_type) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  if (log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT) !=
-	      TRAN_UNACTIVE_COMMITTED)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  (void) file_new_declare_as_old (thread_p, vfid);
+	  goto exit_on_error;
 	}
+
+      (void) file_new_declare_as_old (thread_p, vfid);
     }
   else
     {
@@ -5036,6 +4820,34 @@ file_typecache_clear (void)
 }
 
 /*
+ * file_get_type_internal () - helper function to retrieve file_type
+ *   return: file_type
+ *   vfid(in): Complete file identifier
+ *   fhdr_pgptr(in): file header pgptr
+ */
+static FILE_TYPE
+file_get_type_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
+			PAGE_PTR fhdr_pgptr)
+{
+  FILE_HEADER *fhdr;
+  FILE_TYPE file_type;
+
+  assert (fhdr_pgptr != NULL);
+
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
+  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
+  file_type = fhdr->type;
+
+  if (file_type_cache_add_entry (vfid, file_type) != NO_ERROR)
+    {
+      file_type = FILE_UNKNOWN_TYPE;
+    }
+
+  return file_type;
+}
+
+/*
  * file_get_type () - Find type of the given file
  *   return: file_type
  *   vfid(in): Complete file identifier
@@ -5044,12 +4856,10 @@ FILE_TYPE
 file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   PAGE_PTR fhdr_pgptr = NULL;
-  FILE_HEADER *fhdr;
   VPID vpid;
   FILE_TYPE file_type;
 
-  /*
-   * First check to see if this is something we've already looked at
+  /* First check to see if this is something we've already looked at
    * recently.  If so, it will save us having to pgbuf_fix the header,
    * which can reduce the pressure on the page buffer pool.
    */
@@ -5069,16 +4879,38 @@ file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
       return FILE_UNKNOWN_TYPE;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-  file_type = fhdr->type;
-  if (file_type_cache_add_entry (vfid, file_type) != NO_ERROR)
-    {
-      file_type = FILE_UNKNOWN_TYPE;
-    }
+  file_type = file_get_type_internal (thread_p, vfid, fhdr_pgptr);
 
   pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
+
+  return file_type;
+}
+
+/*
+ * file_get_type_by_fhdr_pgptr () - Find type of the given file by fhdr pgptr
+ *   return: file_type
+ *   vfid(in): Complete file identifier
+ *   fhdr_pgtr(in): file hdr pgptr
+ */
+FILE_TYPE
+file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid,
+			     PAGE_PTR fhdr_pgptr)
+{
+  FILE_TYPE file_type;
+
+  assert (fhdr_pgptr != NULL);
+
+  /* First check to see if this is something we've already looked at
+   * recently.  If so, it will save us having to pgbuf_fix the header,
+   * which can reduce the pressure on the page buffer pool.
+   */
+  file_type = file_type_cache_check (vfid);
+  if (file_type != FILE_UNKNOWN_TYPE)
+    {
+      return file_type;
+    }
+
+  file_type = file_get_type_internal (thread_p, vfid, fhdr_pgptr);
 
   return file_type;
 }
@@ -6086,7 +5918,7 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   addr.pgptr = NULL;
   addr.offset = -1;
 
-  if (fhdr->type == FILE_TMP || fhdr->type == FILE_TMP_TMP)
+  if (fhdr->type == FILE_TEMP)
     {
       special = true;
     }
@@ -6788,7 +6620,7 @@ file_debug_maybe_newset (PAGE_PTR fhdr_pgptr, FILE_HEADER * fhdr,
 					 * description
 					 */
 
-  if (fhdr->type == FILE_TMP || fhdr->type == FILE_TMP_TMP)
+  if (fhdr->type == FILE_TEMP)
     {
       return;
     }
@@ -7556,21 +7388,6 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   pgbuf_unfix_and_init (thread_p, allocset_pgptr);
 
-  /* In the case of temporary file on permanent volumes (i.e., FILE_TMP), set
-     all the pages as temporary to avoid logging for temporary files. */
-
-  if (fhdr->type == FILE_TMP && alloc_pageid != NULL_PAGEID)
-    {
-      if (file_reset_contiguous_temporary_pages (thread_p,
-						 first_new_vpid->volid,
-						 first_new_vpid->pageid,
-						 npages, true) != NO_ERROR)
-	{
-	  alloc_pageid = NULL_PAGEID;
-	  answer = FILE_ALLOCSET_ALLOC_ERROR;
-	}
-    }
-
   mnt_file_page_allocs (thread_p, npages);
 
   return answer;
@@ -7725,7 +7542,7 @@ file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   file_type = fhdr->type;
 
-  if (fhdr->type == FILE_TMP || fhdr->type == FILE_TMP_TMP)
+  if (fhdr->type == FILE_TEMP)
     {
       old_val = thread_set_check_interrupt (thread_p, false);
       restore_check_interrupt = true;
@@ -7772,7 +7589,7 @@ file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
       if (allocstate == FILE_ALLOCSET_ALLOC_ZERO
 	  && er_errid () != ER_INTERRUPTED)
 	{
-	  if (fhdr->type == FILE_TMP || fhdr->type == FILE_TMP_TMP)
+	  if (fhdr->type == FILE_TEMP)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME, 2,
@@ -7813,7 +7630,7 @@ file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 	}
 
       if (isfile_new == FILE_NEW_FILE
-	  && file_type != FILE_TMP && file_type != FILE_TMP_TMP
+	  && file_type != FILE_TEMP
 	  && logtb_is_current_active (thread_p) == true)
 	{
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -7961,7 +7778,7 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
 
   file_type = fhdr->type;
 
-  if (file_type == FILE_TMP || file_type == FILE_TMP_TMP)
+  if (file_type == FILE_TEMP)
     {
       old_val = thread_set_check_interrupt (thread_p, false);
       restore_check_interrupt = true;
@@ -7977,8 +7794,7 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
   VPID_SET_NULL (first_alloc_vpid);
   *first_alloc_nthpage = fhdr->num_user_pages;
 
-  is_tmp_file = ((file_type == FILE_TMP || file_type == FILE_TMP_TMP
-		  || file_type == FILE_EITHER_TMP
+  is_tmp_file = ((file_type == FILE_TEMP
 		  || file_type == FILE_QUERY_AREA) ? true : false);
 
   while (npages > 0)
@@ -8075,7 +7891,7 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
       if (allocstate == FILE_ALLOCSET_ALLOC_ZERO
 	  && er_errid () != ER_INTERRUPTED)
 	{
-	  if (fhdr->type == FILE_TMP || fhdr->type == FILE_TMP_TMP)
+	  if (fhdr->type == FILE_TEMP)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME, 2,
@@ -8117,8 +7933,7 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
     }
 
   if (isfile_new == FILE_NEW_FILE
-      && file_type != FILE_TMP && file_type != FILE_TMP_TMP
-      && logtb_is_current_active (thread_p) == true)
+      && file_type != FILE_TEMP && logtb_is_current_active (thread_p) == true)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
     }
@@ -8256,7 +8071,7 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   file_type = fhdr->type;
 
-  if (file_type == FILE_TMP || file_type == FILE_TMP_TMP)
+  if (file_type == FILE_TEMP)
     {
       old_val = thread_set_check_interrupt (thread_p, false);
       restore_check_interrupt = true;
@@ -8332,8 +8147,7 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
     }
 
   if (isfile_new == FILE_NEW_FILE
-      && file_type != FILE_TMP && file_type != FILE_TMP_TMP
-      && logtb_is_current_active (thread_p) == true)
+      && file_type != FILE_TEMP && logtb_is_current_active (thread_p) == true)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
     }
@@ -8590,16 +8404,6 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p,
     }
 
   old_val = thread_set_check_interrupt (thread_p, false);
-
-  /* In the case of temporary file on permanent volumes
-     (i.e., FILE_TMP), set all the pages as permanent */
-
-  if (fhdr->type == FILE_TMP)
-    {
-      ret = file_reset_contiguous_temporary_pages (thread_p, allocset->volid,
-						   *first_aid_ptr,
-						   ncont_page_entries, false);
-    }
 
   if (ret == NO_ERROR)
     {
@@ -8962,7 +8766,7 @@ exit_on_error:
  */
 int
 file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
-		   VPID * dealloc_vpid)
+		   VPID * dealloc_vpid, FILE_TYPE file_type)
 {
   FILE_ALLOCSET *allocset;
   VPID allocset_vpid;
@@ -8972,9 +8776,11 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
   FILE_IS_NEW_FILE isfile_new;
   DISK_ISVALID isfound = DISK_INVALID;
   int ret;
-  FILE_TYPE file_type;
+  FILE_TYPE file_type_from_cache;
   bool old_val = false;
   bool restore_check_interrupt = false;
+  bool retrieve_from_cache;
+  bool dummy_has_undo_log;
   bool rv;
 
   if (FI_TEST (thread_p,
@@ -8983,45 +8789,78 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
       return ER_FAILED;
     }
 
-  isfile_new = file_isnew_with_type (thread_p, vfid, &file_type);
-  if (isfile_new == FILE_ERROR)
+#if defined (NDEBUG)
+  /* Release build: access cache only when caller does not provide file_type */
+  retrieve_from_cahe = (file_type == FILE_UKNOWN_TYPE);
+#else
+  /* Debugging build: always check */
+  retrieve_from_cache = true;
+#endif
+
+  if (retrieve_from_cache)
     {
-      return ER_FAILED;
+      isfile_new = file_is_new_file_ext (thread_p, vfid,
+					 &file_type_from_cache,
+					 &dummy_has_undo_log);
+      if (isfile_new == FILE_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      assert (file_type == FILE_UNKNOWN_TYPE
+	      || (file_type != FILE_TEMP && file_type_from_cache != FILE_TEMP)
+	      || (file_type == FILE_TEMP
+		  && file_type_from_cache == FILE_TEMP));
+
+      file_type = file_type_from_cache;
     }
 
-  if (logtb_is_current_active (thread_p) == false
-      && isfile_new == FILE_NEW_FILE && file_type != FILE_TMP_TMP)
+  if (logtb_is_current_active (thread_p) == false && file_type != FILE_TEMP)
     {
-      /*
-       * Pages of new files are removed by disk manager during the rollback
-       * process that we are currently executing (i.e., the transaction is not
-       * active at this moment).
-       * Don't need undo we are undoing!
-       */
-
-      LOG_DATA_ADDR addr;
-
-      addr.vfid = vfid;
-      addr.offset = -1;
-
-      addr.pgptr = pgbuf_fix (thread_p, dealloc_vpid, OLD_PAGE,
-			      PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (addr.pgptr != NULL)
+      if (retrieve_from_cache == false)
 	{
-	  log_append_redo_data (thread_p, RVFL_LOGICAL_NOOP, &addr, 0, NULL);
-	  /* Even though this is a noop, we have to mark the page dirty
-	   * in order to keep the expensive pgbuf_unfix checks from
-	   * complaining.
-	   */
-	  /* As of now, if there is no logic flaw and if transaction
-	   * successfully commits, the page should no longer be used (until
-	   * reallocated) and its BCB can be invalidated.
-	   */
-	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-	  pgbuf_invalidate (thread_p, addr.pgptr);
-	  addr.pgptr = NULL;
+	  isfile_new = file_is_new_file (thread_p, vfid);
+	  if (isfile_new == FILE_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
-      return NO_ERROR;
+
+      if (isfile_new == FILE_NEW_FILE)
+	{
+	  /*
+	   * Pages of new files are removed by disk manager during the rollback
+	   * process that we are currently executing (i.e., the transaction is not
+	   * active at this moment).
+	   * Don't need undo we are undoing!
+	   */
+
+	  LOG_DATA_ADDR addr;
+
+	  addr.vfid = vfid;
+	  addr.offset = -1;
+
+	  addr.pgptr = pgbuf_fix (thread_p, dealloc_vpid, OLD_PAGE,
+				  PGBUF_LATCH_WRITE,
+				  PGBUF_UNCONDITIONAL_LATCH);
+	  if (addr.pgptr != NULL)
+	    {
+	      log_append_redo_data (thread_p, RVFL_LOGICAL_NOOP, &addr, 0,
+				    NULL);
+	      /* Even though this is a noop, we have to mark the page dirty
+	       * in order to keep the expensive pgbuf_unfix checks from
+	       * complaining.
+	       */
+	      /* As of now, if there is no logic flaw and if transaction
+	       * successfully commits, the page should no longer be used (until
+	       * reallocated) and its BCB can be invalidated.
+	       */
+	      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+	      pgbuf_invalidate (thread_p, addr.pgptr);
+	      addr.pgptr = NULL;
+	    }
+	  return NO_ERROR;
+	}
     }
 
   /*
@@ -9035,7 +8874,7 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
       return ER_FAILED;
     }
 
-  if (file_type == FILE_TMP || file_type == FILE_TMP_TMP)
+  if (file_type == FILE_TEMP)
     {
       old_val = thread_set_check_interrupt (thread_p, false);
       restore_check_interrupt = true;
@@ -12028,61 +11867,6 @@ exit_on_error:
   return ret;
 }
 
-/*
- * file_reset_contiguous_temporary_pages () - Reset LSA of pages of temporary
- *                                          files on permanent volumes as
- *                                          temporary or permanent
- *   return: NO_ERROR
- *   volid(in): The permanent volume where pages are declared as temporary
- *              or permanent
- *   pageid(in): The page in the volume
- *   num_pages(in): Number of contiguous pages to reset
- *   reset_to_temp(in): Wheater to reset to temp or permanent
- *
- * Note: Reset the log sequence address of pages of temporary files on
- *       permanent volumes which are dedicated not for temporary use (i.e.,
- *       files of type FILE_TMP) as either temporary of permanent. The pages are
- *       declared as temporary when they are allocated to the file and as
- *       permanent when they are deallocated. This is done to avoid logging
- *       from temporary files. Watch out for temporary extendible hash which
- *       perform logging.
- */
-static int
-file_reset_contiguous_temporary_pages (THREAD_ENTRY * thread_p, INT16 volid,
-				       INT32 pageid, INT32 num_pages,
-				       bool reset_to_temp)
-{
-  PAGE_PTR pgptr = NULL;
-  VPID vpid;
-  int i;
-
-  vpid.volid = volid;
-
-  for (i = 0; i < num_pages; i++)
-    {
-      vpid.pageid = pageid + i;
-      pgptr = pgbuf_fix (thread_p, &vpid, NEW_PAGE, PGBUF_LATCH_WRITE,
-			 PGBUF_UNCONDITIONAL_LATCH);
-      if (pgptr == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      if (reset_to_temp == true)
-	{
-	  pgbuf_set_lsa_as_temporary (thread_p, pgptr);
-	}
-      else
-	{
-	  pgbuf_set_lsa_as_permanent (thread_p, pgptr);
-	}
-      pgbuf_invalidate (thread_p, pgptr);
-      pgptr = NULL;
-    }
-
-  return NO_ERROR;
-}
-
 /* Tracker related functions */
 
 /*
@@ -13833,11 +13617,6 @@ file_create_hint_numpages (THREAD_ENTRY * thread_p, INT32 exp_numpages,
 {
   int i;
 
-  if (file_type == FILE_TMP)
-    {
-      file_type = FILE_EITHER_TMP;
-    }
-
   if (exp_numpages <= 0)
     {
       exp_numpages = 1;
@@ -15017,7 +14796,7 @@ file_tmpfile_cache_get (THREAD_ENTRY * thread_p, VFID * vfid,
 }
 
 /*
- * ffileut_tempfile_into_cache () -
+ * file_tmpfile_cache_put () -
  *   return:
  *   vfid(in):
  *   file_type(in):
@@ -15081,9 +14860,7 @@ file_descriptor_get_length (const FILE_TYPE file_type)
     case FILE_TRACKER:
     case FILE_CATALOG:
     case FILE_QUERY_AREA:
-    case FILE_TMP:
-    case FILE_TMP_TMP:
-    case FILE_EITHER_TMP:
+    case FILE_TEMP:
     case FILE_UNKNOWN_TYPE:
     default:
       return 0;
@@ -15150,9 +14927,7 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
       break;
     case FILE_CATALOG:
     case FILE_QUERY_AREA:
-    case FILE_TMP:
-    case FILE_TMP_TMP:
-    case FILE_EITHER_TMP:
+    case FILE_TEMP:
     case FILE_UNKNOWN_TYPE:
     case FILE_DROPPED_FILES:
     case FILE_VACUUM_DATA:

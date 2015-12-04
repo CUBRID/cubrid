@@ -597,7 +597,7 @@ largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid,
 			PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
-      (void) file_dealloc_page (thread_p, &loid->vfid, vpid);
+      (void) file_dealloc_page (thread_p, &loid->vfid, vpid, FILE_LONGDATA);
       return NULL;
     }
 
@@ -796,7 +796,8 @@ largeobjmgr_deallocset_restof_free_pages (THREAD_ENTRY * thread_p,
 	}
 
       ret = file_dealloc_page (thread_p, &alloc_p->loid->vfid,
-			       &alloc_p->cached_nthvpids[alloc_p->nxcache]);
+			       &alloc_p->cached_nthvpids[alloc_p->nxcache],
+			       FILE_LONGDATA);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -1192,7 +1193,7 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
 	      /* Page has become empty */
 	      pgbuf_unfix_and_init (thread_p, page_ptr);
 	      ret = file_dealloc_page (thread_p, &loid->vfid,
-				       &dir_entry_p->u.vpid);
+				       &dir_entry_p->u.vpid, FILE_LONGDATA);
 	      if (ret != NO_ERROR)
 		{
 		  return ret;
@@ -2435,7 +2436,8 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 		      pgbuf_set_dirty (thread_p, temp_page_ptr, FREE);
 		      temp_page_ptr = NULL;
 		      ret = file_dealloc_page (thread_p, &loid->vfid,
-					       &cur_temp_dir_entry_p->u.vpid);
+					       &cur_temp_dir_entry_p->u.vpid,
+					       FILE_LONGDATA);
 		      if (ret != NO_ERROR)
 			{
 			  goto exit_on_error;
@@ -3081,7 +3083,8 @@ largeobjmgr_rv_get_newpage_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
 
   vfid = (VFID *) recv->data;
-  (void) file_dealloc_page (thread_p, vfid, pgbuf_get_vpid_ptr (recv->pgptr));
+  (void) file_dealloc_page (thread_p, vfid, pgbuf_get_vpid_ptr (recv->pgptr),
+			    FILE_LONGDATA);
 
   return NO_ERROR;
 }

@@ -333,12 +333,13 @@ struct heap_stats_entry
 	} \
     } \
   while (false)
+
 #define HEAP_PAGE_GET_VACUUM_STATUS(chain) \
-  (((chain)->flags & HEAP_PAGE_FLAG_VACUUM_STATUS_MASK) == 0 ? \
-   HEAP_PAGE_VACUUM_NONE : \
-   (((chain)->flags & HEAP_PAGE_FLAG_VACUUM_STATUS_MASK) \
-     == HEAP_PAGE_FLAG_VACUUM_ONCE ? \
-    HEAP_PAGE_VACUUM_ONCE : HEAP_PAGE_VACUUM_UNKNOWN))
+  (((chain)->flags & HEAP_PAGE_FLAG_VACUUM_STATUS_MASK) == 0 \
+   ? HEAP_PAGE_VACUUM_NONE \
+   : ((((chain)->flags & HEAP_PAGE_FLAG_VACUUM_STATUS_MASK) \
+        == HEAP_PAGE_FLAG_VACUUM_ONCE) \
+      ? HEAP_PAGE_VACUUM_ONCE : HEAP_PAGE_VACUUM_UNKNOWN))
 
 typedef struct heap_chain HEAP_CHAIN;
 struct heap_chain
@@ -5229,7 +5230,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
   /* Free the page to be deallocated and deallocate the page */
   pgbuf_ordered_unfix (thread_p, &rm_pg_watcher);
 
-  if (file_dealloc_page (thread_p, &hfid->vfid, rm_vpid) != NO_ERROR)
+  if (file_dealloc_page (thread_p, &hfid->vfid, rm_vpid, FILE_HEAP)
+      != NO_ERROR)
     {
       goto error;
     }
@@ -5564,7 +5566,8 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr,
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
   /* Deallocate current page. */
-  if (file_dealloc_page (thread_p, &hfid->vfid, &page_vpid) != NO_ERROR)
+  if (file_dealloc_page (thread_p, &hfid->vfid, &page_vpid, FILE_HEAP)
+      != NO_ERROR)
     {
       ASSERT_ERROR ();
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,

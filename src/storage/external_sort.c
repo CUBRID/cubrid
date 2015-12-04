@@ -1648,7 +1648,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 	  error =
 	    file_create_hint_numpages (thread_p, file_pg_cnt_est *
 				       (sort_param->tot_tempfiles -
-					sort_param->half_files), FILE_TMP);
+					sort_param->half_files), FILE_TEMP);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;

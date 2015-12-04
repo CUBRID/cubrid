@@ -42,58 +42,66 @@
 #include "thread.h"
 #endif /* SERVER_MODE */
 
-#define LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT                              \
-        ((ssize_t) ((DB_PAGESIZE - sizeof (LARGEOBJMGR_DIRHEADER))    \
-                    / sizeof(LARGEOBJMGR_DIRMAP_ENTRY)))
+#define LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT \
+  ((ssize_t) ((DB_PAGESIZE - sizeof (LARGEOBJMGR_DIRHEADER)) \
+              / sizeof(LARGEOBJMGR_DIRMAP_ENTRY)))
 
 #define LARGEOBJMGR_MAX_DIRENTRY_CNT \
-        ((ssize_t) ((DB_PAGESIZE - sizeof (LARGEOBJMGR_DIRHEADER))   \
-                    / sizeof (LARGEOBJMGR_DIRENTRY)))
+  ((ssize_t) ((DB_PAGESIZE - sizeof (LARGEOBJMGR_DIRHEADER)) \
+              / sizeof (LARGEOBJMGR_DIRENTRY)))
 
 /* Set dir. index entry to be empty */
 #define LARGEOBJMGR_SET_EMPTY_DIRMAP_ENTRY(ent) \
-do {\
-  VPID_SET_NULL(&((ent)->vpid));\
-  (ent)->length = 0;\
-} while(0)
+  do \
+    { \
+      VPID_SET_NULL (&((ent)->vpid)); \
+      (ent)->length = 0; \
+    } \
+  while (0)
 
 /* Empty/Unused dir. index entry */
 #define LARGEOBJMGR_ISEMPTY_DIRMAP_ENTRY(ent)  \
-  (VPID_ISNULL(&((ent)->vpid)) && (ent)->length == 0)
+  (VPID_ISNULL (&((ent)->vpid)) && (ent)->length == 0)
 
 /* Copy directory index entry */
-#define LARGEOBJMGR_COPY_DIRMAP_ENTRY(ent1,ent2)\
-do {\
-  (ent1)->vpid.volid = (ent2)->vpid.volid;\
-  (ent1)->vpid.pageid = (ent2)->vpid.pageid;\
-  (ent1)->length = (ent2)->length;\
-} while(0)
+#define LARGEOBJMGR_COPY_DIRMAP_ENTRY(ent1,ent2) \
+  do \
+    { \
+      (ent1)->vpid.volid = (ent2)->vpid.volid; \
+      (ent1)->vpid.pageid = (ent2)->vpid.pageid; \
+      (ent1)->length = (ent2)->length; \
+    } \
+  while (0)
 
 /* Initialize directory state information */
-#define LARGEOBJMGR_INIT_DIRSTATE(ds)   \
-do {\
-     (ds)->opr_mode = -1; \
-     (ds)->index_level = -1; \
-     (ds)->pos = S_BEFORE; \
-     (ds)->tot_length = -1; \
-     (ds)->lo_offset = -1;\
-     (ds)->goodvpid_fordata.volid = NULL_VOLID;\
-     (ds)->goodvpid_fordata.pageid = NULL_PAGEID;\
-     (ds)->firstdir.pgptr = NULL;\
-     (ds)->firstdir.idx = -1;\
-     (ds)->firstdir.idxptr = NULL;\
-     (ds)->firstdir.hdr   = NULL;\
-     (ds)->curdir.pgptr = NULL;\
-     (ds)->curdir.idx = -1; \
-     (ds)->curdir.idxptr = NULL;\
-     (ds)->curdir.hdr   = NULL;\
-     } while(0)
+#define LARGEOBJMGR_INIT_DIRSTATE(ds) \
+  do \
+    { \
+      (ds)->opr_mode = -1; \
+      (ds)->index_level = -1; \
+      (ds)->pos = S_BEFORE; \
+      (ds)->tot_length = -1; \
+      (ds)->lo_offset = -1; \
+      (ds)->goodvpid_fordata.volid = NULL_VOLID; \
+      (ds)->goodvpid_fordata.pageid = NULL_PAGEID; \
+      (ds)->firstdir.pgptr = NULL; \
+      (ds)->firstdir.idx = -1; \
+      (ds)->firstdir.idxptr = NULL; \
+      (ds)->firstdir.hdr = NULL; \
+      (ds)->curdir.pgptr = NULL; \
+      (ds)->curdir.idx = -1;  \
+      (ds)->curdir.idxptr = NULL; \
+      (ds)->curdir.hdr = NULL; \
+    } \
+  while (0)
 
 
 /* Scan modes */
 #define LARGEOBJMGR_SCAN_MODE(mode) \
-  ((mode) == LARGEOBJMGR_READ_MODE     || (mode) == LARGEOBJMGR_DELETE_MODE || \
-   (mode) == LARGEOBJMGR_TRUNCATE_MODE || (mode) == LARGEOBJMGR_COMPRESS_MODE)
+  ((mode) == LARGEOBJMGR_READ_MODE \
+   || (mode) == LARGEOBJMGR_DELETE_MODE \
+   || (mode) == LARGEOBJMGR_TRUNCATE_MODE \
+   || (mode) == LARGEOBJMGR_COMPRESS_MODE)
 
 /* Recovery structures */
 
@@ -365,7 +373,8 @@ largeobjmgr_dir_allocpage (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 			PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
-      (void) file_dealloc_page (thread_p, &ds->curdir.hdr->loid.vfid, vpid);
+      (void) file_dealloc_page (thread_p, &ds->curdir.hdr->loid.vfid, vpid,
+				FILE_LONGDATA);
       return NULL;
     }
 
@@ -1227,7 +1236,8 @@ largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   ds->curdir.pgptr = NULL;
   ds->curdir.hdr = NULL;
   ds->curdir.idx = -1;
-  ret = file_dealloc_page (thread_p, &ds->firstdir.hdr->loid.vfid, &cur_vpid);
+  ret = file_dealloc_page (thread_p, &ds->firstdir.hdr->loid.vfid, &cur_vpid,
+			   FILE_LONGDATA);
   if (ret != NO_ERROR)
     {
       if (!VPID_ISNULL (&prev_vpid))
@@ -4002,7 +4012,7 @@ largeobjmgr_rv_dir_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
 
   (void) file_dealloc_page (thread_p, (VFID *) recv->data,
-			    pgbuf_get_vpid_ptr (recv->pgptr));
+			    pgbuf_get_vpid_ptr (recv->pgptr), FILE_LONGDATA);
 
   return NO_ERROR;
 }

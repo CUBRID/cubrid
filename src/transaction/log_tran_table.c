@@ -1036,8 +1036,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
-  tdes->num_new_tmp_files = 0;
-  tdes->num_new_tmp_tmp_files = 0;
+  tdes->num_new_temp_files = 0;
   tdes->num_pinned_xasl_cache_entries = 0;
   RB_INIT (&tdes->lob_locator_root);
 }
@@ -2068,8 +2067,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
-  tdes->num_new_tmp_files = 0;
-  tdes->num_new_tmp_tmp_files = 0;
+  tdes->num_new_temp_files = 0;
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
@@ -2160,8 +2158,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
-  tdes->num_new_tmp_files = 0;
-  tdes->num_new_tmp_tmp_files = 0;
+  tdes->num_new_temp_files = 0;
   tdes->num_pinned_xasl_cache_entries = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
@@ -7436,7 +7433,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
   void *ptr_val;
   LOG_TDES *tdes;
   DB_VALUE *vals = NULL;
-  const int num_cols = 48;
+  const int num_cols = 47;
 
   *ptr = NULL;
 
@@ -7737,12 +7734,8 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
       db_make_int (&vals[idx], tdes->num_new_files);
       idx++;
 
-      /* Num_new_temp_files */
-      db_make_int (&vals[idx], tdes->num_new_tmp_files);
-      idx++;
-
       /* Num_new_temp_temp_files */
-      db_make_int (&vals[idx], tdes->num_new_tmp_tmp_files);
+      db_make_int (&vals[idx], tdes->num_new_temp_files);
       idx++;
 
       /* Waiting_for_res */

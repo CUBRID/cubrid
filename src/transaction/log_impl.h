@@ -995,8 +995,7 @@ struct log_tdes
   void *first_save_entry;	/* first save entry for the transaction */
 
   int num_new_files;		/* # of new files created */
-  int num_new_tmp_files;	/* # of new FILE_TMP files created */
-  int num_new_tmp_tmp_files;	/* # of new FILE_TMP_TMP files created */
+  int num_new_temp_files;	/* # of new FILE_TEMP files created */
   int suppress_replication;	/* suppress writing replication logs when flag is set */
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or

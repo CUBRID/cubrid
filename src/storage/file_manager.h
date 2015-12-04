@@ -50,10 +50,9 @@ typedef enum
   FILE_DROPPED_FILES,
   FILE_VACUUM_DATA,
   FILE_QUERY_AREA,
-  FILE_TMP,
-  FILE_TMP_TMP,
-  FILE_EITHER_TMP,
-  FILE_UNKNOWN_TYPE,
+  FILE_TEMP,
+  /* FIXME: temporarily keep the same id to use existing databases */
+  FILE_UNKNOWN_TYPE = FILE_TEMP + 3,
   FILE_HEAP_REUSE_SLOTS,
   FILE_LAST = FILE_HEAP_REUSE_SLOTS
 } FILE_TYPE;
@@ -73,23 +72,26 @@ enum FILE_SYSTEM_OP
 
 /* Set a vfid with values of volid and fileid */
 #define VFID_SET(vfid_ptr, volid_value, fileid_value) \
-  do {						      \
-    (vfid_ptr)->volid  = (volid_value);		      \
-    (vfid_ptr)->fileid = (fileid_value);	      \
-  } while(0)
+  do { \
+    (vfid_ptr)->volid  = (volid_value); \
+    (vfid_ptr)->fileid = (fileid_value); \
+  } while (0)
 
 /* Set the vpid to an invalid one */
-#define VFID_SET_NULL(vfid_ptr) VFID_SET(vfid_ptr, NULL_VOLID, NULL_FILEID)
+#define VFID_SET_NULL(vfid_ptr) \
+  VFID_SET (vfid_ptr, NULL_VOLID, NULL_FILEID)
 
 /* Copy a vfid1 with the values of another vfid2 */
-#define VFID_COPY(vfid_ptr1, vfid_ptr2) *(vfid_ptr1) = *(vfid_ptr2)
+#define VFID_COPY(vfid_ptr1, vfid_ptr2) \
+  *(vfid_ptr1) = *(vfid_ptr2)
 
-#define VFID_ISNULL(vfid_ptr) ((vfid_ptr)->fileid == NULL_FILEID)
+#define VFID_ISNULL(vfid_ptr) \
+  ((vfid_ptr)->fileid == NULL_FILEID)
 
 #define VFID_EQ(vfid_ptr1, vfid_ptr2) \
-  ((vfid_ptr1) == (vfid_ptr2) || \
-   ((vfid_ptr1)->fileid == (vfid_ptr2)->fileid && \
-    (vfid_ptr1)->volid  == (vfid_ptr2)->volid))
+  ((vfid_ptr1) == (vfid_ptr2) \
+   || ((vfid_ptr1)->fileid == (vfid_ptr2)->fileid \
+       && (vfid_ptr1)->volid  == (vfid_ptr2)->volid))
 
 /* Heap file descriptor */
 typedef struct file_heap_des FILE_HEAP_DES;
@@ -231,11 +233,11 @@ extern int file_manager_finalize (THREAD_ENTRY * thread_p);
 
 extern FILE_IS_NEW_FILE file_is_new_file (THREAD_ENTRY * thread_p,
 					  const VFID * vfid);
-extern FILE_IS_NEW_FILE file_is_new_file_with_has_undolog (THREAD_ENTRY *
-							   thread_p,
-							   const VFID * vfid,
-							   bool *
-							   has_undolog);
+extern FILE_IS_NEW_FILE file_is_new_file_ext (THREAD_ENTRY *
+					      thread_p,
+					      const VFID * vfid,
+					      FILE_TYPE * file_type,
+					      bool * has_undolog);
 extern int file_new_declare_as_old (THREAD_ENTRY * thread_p,
 				    const VFID * vfid);
 extern int file_new_set_has_undolog (THREAD_ENTRY * thread_p,
@@ -275,6 +277,9 @@ extern int file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid,
 extern bool file_does_marked_as_deleted (THREAD_ENTRY * thread_p,
 					 const VFID * vfid);
 extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern FILE_TYPE file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p,
+					      const VFID * vfid,
+					      PAGE_PTR fhdr_pgptr);
 extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid,
 				void *area_des, int maxsize);
 extern INT32 file_get_numpages (THREAD_ENTRY * thread_p, const VFID * vfid);
@@ -371,7 +376,7 @@ extern VPID *file_alloc_pages_at_volid (THREAD_ENTRY * thread_p,
 						     INT32 npages,
 						     void *args), void *args);
 extern int file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
-			      VPID * dealloc_vpid);
+			      VPID * dealloc_vpid, FILE_TYPE file_type);
 extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p,
 				      const VFID * vfid,
 				      INT32 keep_first_npages);

@@ -2058,7 +2058,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
        * will be deleted on page resource release at the end.
        */
       ret = file_dealloc_page (thread_p, &load_args->btid->sys_btid->vfid,
-			       &load_args->nleaf.vpid);
+			       &load_args->nleaf.vpid, FILE_BTREE);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -2224,7 +2224,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
 			PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
-      (void) file_dealloc_page (thread_p, &btid->vfid, page_id);
+      (void) file_dealloc_page (thread_p, &btid->vfid, page_id, FILE_BTREE);
       return NULL;
     }				/* if */
   (*used_pgcnt)++;
