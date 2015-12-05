@@ -8791,7 +8791,7 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 
 #if defined (NDEBUG)
   /* Release build: access cache only when caller does not provide file_type */
-  retrieve_from_cahe = (file_type == FILE_UKNOWN_TYPE);
+  retrieve_from_cache = (file_type == FILE_UNKNOWN_TYPE);
 #else
   /* Debugging build: always check */
   retrieve_from_cache = true;
