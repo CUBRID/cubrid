@@ -613,87 +613,6 @@ AS_IF([test "$with_aio" = "yes"],
 	SYS_LIBS="$SYS_LIBS -lrt"])
 AC_MSG_RESULT([$with_aio])
 
-AC_MSG_CHECKING([for mysql client library version 5.1])
-AC_ARG_WITH([mysql51],
-	AS_HELP_STRING([--with-mysql51=PATH],
-		[for CAS for MySQL @<:@default=builtin@:>@]),
-	[with_mysql51=$withval],
-	[with_mysql51=builtin])
-
-case "$with_mysql51" in
-	yes|builtin)
-		if test -d "$srcdir/external/mysqlclient/5.1" && test "$enable_64bit" == "yes"; then
-			AC_CONFIG_SUBDIRS([external/mysqlclient/5.1])
-			MYSQL51_LIB_PATH="-L\$(top_builddir)/external/mysqlclient/5.1/lib"
-			MYSQL51_INC_PATH="-I\$(top_builddir)/external/mysqlclient/5.1/include"
-		else
-			with_mysql51=no
-		fi
-		;;
-	no)
-		;;
-	*)
-		MYSQL51_LIB_PATH="-L$with_mysql/lib"
-		MYSQL51_INC_PATH="-I$with_mysql/include"
-		;;
-esac
-AM_CONDITIONAL([BUILD_CAS_FOR_MYSQL51], [test "$with_mysql51" != "no"])
-AC_MSG_RESULT([$with_mysql51])
-
-AC_MSG_CHECKING([for mysql client library version 6.1])
-AC_ARG_WITH([mysql],
-	AS_HELP_STRING([--with-mysql=PATH],
-		[for CAS for MySQL @<:@default=builtin@:>@]),
-	[with_mysql=$withval],
-	[with_mysql=builtin])
-
-case "$with_mysql" in
-	yes|builtin)
-		if test -d "$srcdir/external/mysqlclient/6.1" && test "$enable_64bit" == "yes"; then
-			AC_CONFIG_SUBDIRS([external/mysqlclient/6.1])
-			MYSQL_LIB_PATH="-L\$(top_builddir)/external/mysqlclient/6.1/lib"
-			MYSQL_INC_PATH="-I\$(top_builddir)/external/mysqlclient/6.1/include"
-		else
-			with_mysql=no
-		fi
-		;;
-	no)
-		;;
-	*)
-		MYSQL_LIB_PATH="-L$with_mysql/lib"
-		MYSQL_INC_PATH="-I$with_mysql/include"
-		;;
-esac
-AM_CONDITIONAL([BUILD_CAS_FOR_MYSQL], [test "$with_mysql" != "no"])
-AC_MSG_RESULT([$with_mysql])
-
-AC_MSG_CHECKING([for oracle client library])
-AC_ARG_WITH([oracle],
-	AS_HELP_STRING([--with-oracle=PATH],
-		[for CAS for Oracle @<:@default=builtin@:>@]),
-	[with_oracle=$withval],
-	[with_oracle=builtin])
-AS_IF([test "$with_cci_only" = "yes"], [with_oracle=no])
-case "$with_oracle" in
-	yes|builtin)
-		if test -d "$srcdir/external/oracleclient" -a "$enable_64bit" = "yes"; then
-			AC_CONFIG_SUBDIRS([external/oracleclient])
-			ORACLE_LIB_PATH="-L\$(top_builddir)/external/lib"
-			ORACLE_INC_PATH="-I\$(top_builddir)/external/include/oracleclient"
-		else
-			with_oracle=no
-		fi
-		;;
-	no)
-		;;
-	*)
-		ORACLE_LIB_PATH="-L$with_oracle/lib"
-		ORACLE_INC_PATH="-I$with_oracle/include"
-		;;
-esac
-AM_CONDITIONAL([BUILD_CAS_FOR_ORACLE], [test "$with_oracle" != "no"])
-AC_MSG_RESULT([$with_oracle])
-
 AC_MSG_CHECKING([for cubrid manager server])
 AC_ARG_WITH([cmserver],
 	AS_HELP_STRING([--with-cmserver=PATH],
@@ -1050,7 +969,7 @@ AS_IF([test "$with_cci_only" = "yes"],
 	EXTRA_DIST_SUBDIRS=""
 	CUBRID_LOGDIR=""
 	CUBRID_TMPDIR=""],
-	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales tools timezones $OPTIONAL_DIR"
+	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cm_common conf msg demo contrib locales tools timezones $OPTIONAL_DIR"
 	EXTRA_DIST_SUBDIRS="debian win src"])
 
 AC_SUBST([BUILD_NUMBER])
@@ -1089,12 +1008,6 @@ AC_SUBST([CUBRID_TMPDIR])
 AC_SUBST([CUBRID_TZ_DIR])
 AC_SUBST([NBASE_T_LIB_PATH])
 AC_SUBST([NBASE_T_INC_PATH])
-AC_SUBST([MYSQL51_LIB_PATH])
-AC_SUBST([MYSQL51_INC_PATH])
-AC_SUBST([MYSQL_LIB_PATH])
-AC_SUBST([MYSQL_INC_PATH])
-AC_SUBST([ORACLE_LIB_PATH])
-AC_SUBST([ORACLE_INC_PATH])
 AC_SUBST([BISON])
 AC_SUBST([BUILD_SUBDIRS])
 AC_SUBST([EXTRA_DIST_SUBDIRS])
@@ -1144,8 +1057,6 @@ AS_IF([test "$with_cci_only" = "no"],
 	contrib/Makefile
 	jdbc/Makefile
 	java/Makefile
-	cas4mysql/Makefile
-	cas4oracle/Makefile
 	locales/Makefile
 	locales/loclib/Makefile
 	locales/data/Makefile

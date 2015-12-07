@@ -23,34 +23,18 @@ JDBC_SRC_DIR = $(SRC)/jdbc
 
 DRIVER_CUBRID = JDBC-@BUILD_NUMBER@-cubrid.jar
 
-if BUILD_CAS_FOR_MYSQL
-  DRIVER_MYSQL = JDBC-@BUILD_NUMBER@-cubrid-mysql.jar
-else
-if BUILD_CAS_FOR_MYSQL51
-  DRIVER_MYSQL = JDBC-@BUILD_NUMBER@-cubrid-mysql.jar
-else
-  DRIVER_MYSQL =
-endif
-endif
-
-if BUILD_CAS_FOR_ORACLE
-  DRIVER_ORACLE = JDBC-@BUILD_NUMBER@-cubrid-oracle.jar
-else
-  DRIVER_ORACLE =
-endif
-
 VERSION_FILE = CUBRID-JDBC-@BUILD_NUMBER@
 
 EXTRA_DIST = build.xml
 
 jdbcdir = @CUBRID_JDBCDIR@
-jdbc_DATA = $(DRIVER_CUBRID) $(DRIVER_MYSQL) $(DRIVER_ORACLE)
+jdbc_DATA = $(DRIVER_CUBRID)
 
 BUILT_SOURCES = src/$(VERSION_FILE) \
-	$(DRIVER_CUBRID) $(DRIVER_MYSQL) $(DRIVER_ORACLE)
+	$(DRIVER_CUBRID)
 
 CLEANFILES = src/$(VERSION_FILE) \
-	$(DRIVER_CUBRID) $(DRIVER_MYSQL) $(DRIVER_ORACLE)
+	$(DRIVER_CUBRID)
 
 src/$(VERSION_FILE):
 	mkdir -p src
@@ -58,12 +42,6 @@ src/$(VERSION_FILE):
 
 $(DRIVER_CUBRID):
 	@ANT@ dist-cubrid -buildfile ${top_srcdir}/jdbc/build.xml -Dbasedir=. -Dversion=@BUILD_NUMBER@ -Dsrc=${JDBC_SRC_DIR}
-
-$(DRIVER_MYSQL): $(DRIVER_CUBRID)
-	@ANT@ dist-mysql -buildfile ${top_srcdir}/jdbc/build.xml -Dbasedir=. -Dversion=@BUILD_NUMBER@ -Dsrc=${JDBC_SRC_DIR}
-
-$(DRIVER_ORACLE): $(DRIVER_CUBRID)
-	@ANT@ dist-oracle -buildfile ${top_srcdir}/jdbc/build.xml -Dbasedir=. -Dversion=@BUILD_NUMBER@ -Dsrc=${JDBC_SRC_DIR}
 
 install-data-hook:
 	test -z "$(DESTDIR)$(jdbcdir)" || mkdir -p "$(DESTDIR)$(jdbcdir)"
