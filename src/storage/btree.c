@@ -27831,6 +27831,16 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       ASSERT_ERROR ();
       return error_code;
     }
+  if (bts->force_restart_from_root)
+    {
+      /* Scan is not yet started. Descending scan failed to position on
+       * first key. Restart scan.
+       */
+      assert (bts->use_desc_index);
+      btree_scan_clear_key (bts);
+      bts->key_status = BTS_KEY_IS_NOT_VERIFIED;
+      return NO_ERROR;
+    }
 
   /* Start scanning */
   bts->is_scan_started = true;
