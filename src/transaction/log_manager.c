@@ -4503,47 +4503,53 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return true;
     }
 
-  if (addr->pgptr == NULL && addr->vfid != NULL)
+  if (addr->vfid == NULL || VFID_ISNULL (addr->vfid))
     {
-      /* TODO: more optimization is required */
-      is_new_file = file_is_new_file_ext (thread_p, addr->vfid, &ftype,
-					  &has_undolog);
+      return false;
+    }
+
+  /* Check if temporary file. */
+  if (addr->pgptr == NULL && tdes->num_new_temp_files > 0)
+    {
+      is_new_file =
+	file_is_new_file_ext (thread_p, addr->vfid, &ftype, &has_undolog);
+      assert (is_new_file != FILE_ERROR);
       if (ftype == FILE_TEMP)
 	{
 	  return true;
 	}
     }
-
-  if (addr->vfid != NULL)
+  /* Check if new file. */
+  if (tdes->num_new_files <= 0)
     {
-      if (is_new_file == FILE_ERROR)
+      return false;
+    }
+  if (is_new_file == FILE_ERROR)
+    {
+      is_new_file =
+	file_is_new_file_ext (thread_p, addr->vfid, &ftype, &has_undolog);
+    }
+  if (is_new_file == FILE_NEW_FILE && has_undolog == false)
+    {
+      /*
+       * We may be able to skip undo logging if we are not in a savepoint or
+       * a top system operation.
+       */
+      if (tdes->topops.last < 0 && LSA_ISNULL (&tdes->savept_lsa))
 	{
-	  is_new_file = file_is_new_file_ext (thread_p, addr->vfid, &ftype,
-					      &has_undolog);
+	  canskip = true;
 	}
-
-      if (is_new_file == FILE_NEW_FILE && has_undolog == false)
+      else
 	{
 	  /*
-	   * We may be able to skip undo logging if we are not in a savepoint or
-	   * a top system operation.
+	   * We cannot skip the undo logging. In addition we must declare that
+	   * logging must be done on this file from now on, otherwise, we may
+	   * not be able to rollback properly. For example:
+	   * insert (without top op), delete (with top op),
+	   * insert (without top op), rollback. We may not be able to undo the
+	   * delete due to lack of space.
 	   */
-	  if (tdes->topops.last < 0 && LSA_ISNULL (&tdes->savept_lsa))
-	    {
-	      canskip = true;
-	    }
-	  else
-	    {
-	      /*
-	       * We cannot skip the undo logging. In addition we must declare that
-	       * logging must be done on this file from now on, otherwise, we may
-	       * not be able to rollback properly. For example:
-	       * insert (without top op), delete (with top op),
-	       * insert (without top op), rollback. We may not be able to undo the
-	       * delete due to lack of space.
-	       */
-	      (void) file_new_set_has_undolog (thread_p, addr->vfid);
-	    }
+	  (void) file_new_set_has_undolog (thread_p, addr->vfid);
 	}
     }
 
