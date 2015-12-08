@@ -1718,6 +1718,32 @@ lang_currency ()
 }
 
 /*
+ * lang_locale_currency - Returns language currency for a language
+ *   return: language currency identifier
+ */
+DB_CURRENCY
+lang_locale_currency (const char *locale_str)
+{
+  int i;
+
+  if (!lang_Language_initialized)
+    {
+      assert (false);
+      return DB_CURRENCY_NULL;
+    }
+
+  for (i = 0; i < lang_Count_locales; i++)
+    {
+      if (strcasecmp (lang_Loaded_locales[i]->lang_name, locale_str) == 0)
+	{
+	  return lang_Loaded_locales[i]->default_currency_code;
+	}
+    }
+
+  return lang_currency ();
+}
+
+/*
  * lang_charset - Returns language charset per env settings
  *   return: language charset
  */

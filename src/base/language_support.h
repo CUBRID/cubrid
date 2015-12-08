@@ -285,6 +285,7 @@ extern "C"
   extern INTL_LANG lang_id (void);
   extern INTL_CODESET lang_charset (void);
   extern DB_CURRENCY lang_currency (void);
+  extern DB_CURRENCY lang_locale_currency (const char *locale_str);
   extern const char *lang_currency_symbol (DB_CURRENCY curr);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern int lang_char_mem_size (const char *p);

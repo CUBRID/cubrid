@@ -18150,7 +18150,7 @@ number_to_char (const DB_VALUE * src_value,
   bool dummy;
   const INTL_CODESET codeset = TP_DOMAIN_CODESET (domain);
   const int collation_id = TP_DOMAIN_COLLATION (domain);
-  DB_CURRENCY currency = lang_currency ();
+  DB_CURRENCY currency = DB_CURRENCY_NULL;
 
   assert (src_value != (DB_VALUE *) NULL);
   assert (result_str != (DB_VALUE *) NULL);
@@ -18174,6 +18174,8 @@ number_to_char (const DB_VALUE * src_value,
 					       &has_user_format, &dummy);
   fraction_symbol = lang_digit_fractional_symbol (number_lang_id);
   digit_grouping_symbol = lang_digit_grouping_symbol (number_lang_id);
+  currency =
+    lang_locale_currency (lang_get_lang_name_from_id (number_lang_id));
 
   switch (DB_VALUE_TYPE (src_value))
     {
