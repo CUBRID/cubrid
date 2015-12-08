@@ -9185,7 +9185,7 @@ start_current_version:
     heap_prepare_get_record (thread_p, &current_oid, &current_class_oid,
 			     &forward_oid, &partition_class_oid,
 			     &home_page_watcher, &fwd_page_watcher, &type,
-			     PGBUF_LATCH_READ, false);
+			     PGBUF_LATCH_READ, false, non_ex_handling_type);
   if (scan_code != S_SUCCESS)
     {
       /* Stop here. */
@@ -9966,6 +9966,10 @@ error:
  * fwd_page_watcher (in/out) : Heap page of REC_NEWHOME in case of REC_RELOCATION,
  *			   first overflow page in case of REC_BIGONE.
  * record_type (out)	 : Record type.
+ * non_ex_handling_type (in): Handling type for deleted objects
+ *			      - LOG_ERROR_IF_DELETED: write the 
+ *				ER_HEAP_UNKNOWN_OBJECT error to log
+ *                            - LOG_WARNING_IF_DELETED: set only warning
  *
  *  Note : the caller should manage the page unfix of both home and forward
  *	   pages (even in case of error, there may be pages latched).
@@ -9987,7 +9991,8 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
 			 PGBUF_WATCHER * home_page_watcher,
 			 PGBUF_WATCHER * fwd_page_watcher,
 			 INT16 * record_type, PGBUF_LATCH_MODE latch_mode,
-			 bool is_heap_scan)
+			 bool is_heap_scan,
+			 NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   SPAGE_SLOT *slot_p = NULL;
   VPID home_vpid;
@@ -10324,7 +10329,8 @@ try_again:
 #endif /* SA_MODE */
 
       if (OID_EQ (class_oid, oid_Root_class_oid)
-	  || OID_EQ (class_oid, oid_User_class_oid))
+	  || OID_EQ (class_oid, oid_User_class_oid)
+	  || non_ex_handling_type == LOG_WARNING_IF_DELETED)
 	{
 	  /* A deleted class record, corresponding to a deleted class can be
 	   * accessed through catalog update operations on another class.
@@ -23028,7 +23034,7 @@ heap_scan_get_record (THREAD_ENTRY * thread_p, const OID oid, OID * class_oid,
   scan =
     heap_prepare_get_record (thread_p, &oid, class_oid, &forward_oid,
 			     NULL, home_pg_watcher, &fwd_pg_watcher, &type,
-			     PGBUF_LATCH_READ, true);
+			     PGBUF_LATCH_READ, true, LOG_ERROR_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -23331,7 +23337,7 @@ try_again:
       if (heap_prepare_get_record
 	  (thread_p, oid, class_oid, forward_oid, &partition_class_oid,
 	   home_page_watcher, fwd_page_watcher, record_type,
-	   PGBUF_LATCH_READ, false) != S_SUCCESS)
+	   PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != S_SUCCESS)
 	{
 	  goto error;
 	}
@@ -25129,7 +25135,7 @@ start_current_version:
     heap_prepare_get_record (thread_p, &current_oid, &current_class_oid,
 			     &forward_oid, &partition_oid,
 			     &home_page_watcher, &fwd_page_watcher, &type,
-			     PGBUF_LATCH_READ, false);
+			     PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
       /* next version might be deleted. This case is expected and removal
@@ -25392,7 +25398,7 @@ retry:
     heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid,
 			     &partition_oid, home_page_watcher,
 			     &fwd_page_watcher, &type, PGBUF_LATCH_WRITE,
-			     false);
+			     false, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
       /* Stop here. */

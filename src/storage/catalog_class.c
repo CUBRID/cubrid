@@ -4664,8 +4664,8 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid,
   assert (oid != NULL && need_mvcc_update != NULL);
   if (heap_prepare_get_record (thread_p, oid, NULL, &forward_oid, NULL,
 			       &home_page_watcher, &fwd_page_watcher,
-			       &record_type, PGBUF_LATCH_READ, false)
-      != S_SUCCESS)
+			       &record_type, PGBUF_LATCH_READ, false,
+			       LOG_ERROR_IF_DELETED) != S_SUCCESS)
     {
       goto error;
     }

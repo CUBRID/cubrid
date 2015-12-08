@@ -2732,7 +2732,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
       scan =
 	heap_mvcc_get_for_delete (thread_p, oid, class_oid, &assign->recdes,
 				  assign->ptr_scancache, COPY, chn, NULL,
-				  &updated_oid, LOG_ERROR_IF_DELETED);
+				  &updated_oid, LOG_WARNING_IF_DELETED);
     }
   else
     {
@@ -2745,7 +2745,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p,
       scan =
 	heap_mvcc_get_visible (thread_p, oid, class_oid, &assign->recdes,
 			       assign->ptr_scancache, op_type, COPY, chn,
-			       &updated_oid, LOG_ERROR_IF_DELETED);
+			       &updated_oid, LOG_WARNING_IF_DELETED);
     }
 
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END)
