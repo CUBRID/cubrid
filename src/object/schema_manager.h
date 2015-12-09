@@ -271,7 +271,9 @@ extern unsigned int sm_local_schema_version (void);
 extern void sm_bump_local_schema_version (void);
 extern unsigned int sm_global_schema_version (void);
 extern void sm_bump_global_schema_version (void);
-extern struct parser_context *sm_virtual_queries (DB_OBJECT * class_object);
+extern struct parser_context *sm_virtual_queries (struct parser_context
+						  *parser,
+						  DB_OBJECT * class_object);
 
 
 extern int sm_flush_objects (MOP obj);

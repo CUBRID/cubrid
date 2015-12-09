@@ -5734,7 +5734,7 @@ mq_fetch_subqueries (PARSER_CONTEXT * parser, PT_NODE * class_)
       return NULL;
     }
 
-  query_cache = sm_virtual_queries (class_object);
+  query_cache = sm_virtual_queries (parser, class_object);
 
   if (query_cache && query_cache->view_cache)
     {
@@ -6486,6 +6486,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
       PT_INTERNAL_ERROR (parser, "parser_alloc");
       return NULL;
     }
+  symbols->nested_views = NULL;
 
   if (!ws_is_same_object (owner, me))
     {
@@ -11033,7 +11034,7 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser,
       return NULL;
     }
 
-  *qry_cache = query_cache = sm_virtual_queries (class_object);
+  *qry_cache = query_cache = sm_virtual_queries (parser, class_object);
 
   if (query_cache && query_cache->view_cache)
     {
@@ -11299,7 +11300,7 @@ mq_fetch_attributes (PARSER_CONTEXT * parser, PT_NODE * class_)
       return NULL;
     }
 
-  query_cache = sm_virtual_queries (class_object);
+  query_cache = sm_virtual_queries (parser, class_object);
 
   if (query_cache)
     {

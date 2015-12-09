@@ -1704,6 +1704,7 @@ typedef struct pt_non_groupby_col_info PT_NON_GROUPBY_COL_INFO;
 typedef struct pt_host_vars PT_HOST_VARS;
 typedef struct cursor_id PT_CURSOR_ID;
 typedef struct qfile_list_id PT_LIST_ID;
+typedef struct nested_view_version_info NESTED_VIEW_VERSION_INFO;
 typedef struct view_cache_info VIEW_CACHE_INFO;
 typedef struct semantic_chk_info SEMANTIC_CHK_INFO;
 typedef struct parser_hint PT_HINT;
@@ -1763,6 +1764,15 @@ struct semantic_chk_info
   bool system_class;		/* system class(es) is(are) referenced */
 };
 
+struct nested_view_version_info
+{
+  DB_OBJECT *class_object;	/* the nested view's class object */
+  unsigned int virtual_cache_local_schema_id;
+  unsigned int virtual_cache_global_schema_id;
+  unsigned int virtual_cache_snapshot_version;
+  NESTED_VIEW_VERSION_INFO *next;
+};
+
 struct view_cache_info
 {
   PT_NODE *attrs;
@@ -1776,6 +1786,7 @@ struct view_cache_info
   char **expressions;
   int number_of_attrs;
   DB_AUTH authorization;
+  NESTED_VIEW_VERSION_INFO *nested_views;
 };
 
 struct parser_hint

@@ -507,6 +507,11 @@ static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT *
 						     SM_ATTRIBUTE * new_atts);
 
 static int sm_truncate_using_delete (MOP class_mop);
+static int sm_save_nested_view_versions (PARSER_CONTEXT * parser,
+					 DB_OBJECT * class_object,
+					 SM_CLASS * class_);
+static bool sm_is_nested_view_recached (PARSER_CONTEXT * parser);
+
 #if 0
 static int sm_truncate_using_destroy_heap (MOP class_mop);
 #endif
@@ -6490,13 +6495,128 @@ sm_bump_global_schema_version (void)
 }
 
 /*
+ * sm_save_nested_view_versions() --  save nested view versions into view_cache
+ *   return: 
+ *   parser(in): outer parser
+ *   class_object(in): the db object of nested view
+ *   class_(in): the SM_CLASS of nested view
+ */
+int
+sm_save_nested_view_versions (PARSER_CONTEXT * parser,
+			      DB_OBJECT * class_object, SM_CLASS * class_)
+{
+  VIEW_CACHE_INFO *info;
+  NESTED_VIEW_VERSION_INFO *nested_view, *new_nested_view;
+
+  info = (VIEW_CACHE_INFO *) parser->view_cache;
+  if (info == NULL)
+    {
+      /* not in a vlew */
+      return NO_ERROR;
+    }
+
+  /* avoid duplication */
+  for (nested_view = info->nested_views; nested_view != NULL;
+       nested_view = nested_view->next)
+    {
+      if (nested_view->class_object == class_object)
+	{
+	  assert_release (nested_view->virtual_cache_local_schema_id ==
+			  class_->virtual_cache_local_schema_id);
+	  assert_release (nested_view->virtual_cache_global_schema_id ==
+			  class_->virtual_cache_global_schema_id);
+	  assert_release (nested_view->virtual_cache_snapshot_version ==
+			  class_->virtual_cache_snapshot_version);
+
+	  return NO_ERROR;
+	}
+    }
+
+  new_nested_view =
+    (NESTED_VIEW_VERSION_INFO *) parser_alloc (parser,
+					       sizeof
+					       (NESTED_VIEW_VERSION_INFO));
+  if (new_nested_view == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (NESTED_VIEW_VERSION_INFO));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  new_nested_view->class_object = class_object;
+  new_nested_view->virtual_cache_local_schema_id =
+    class_->virtual_cache_local_schema_id;
+  new_nested_view->virtual_cache_global_schema_id =
+    class_->virtual_cache_global_schema_id;
+  new_nested_view->virtual_cache_snapshot_version =
+    class_->virtual_cache_snapshot_version;
+
+  new_nested_view->next = info->nested_views;
+  info->nested_views = new_nested_view;
+
+  return NO_ERROR;
+}
+
+/*
+ * sm_is_nested_view_recached() -- check whether the nested view recached or changed.
+ *   return: true if one of nested view reached or changed.
+ *   parser(in):
+ */
+static bool
+sm_is_nested_view_recached (PARSER_CONTEXT * parser)
+{
+  VIEW_CACHE_INFO *info;
+  NESTED_VIEW_VERSION_INFO *nested_view;
+  SM_CLASS *class_;
+
+  info = (VIEW_CACHE_INFO *) parser->view_cache;
+  assert_release (info != NULL);
+
+  for (nested_view = info->nested_views; nested_view != NULL;
+       nested_view = nested_view->next)
+    {
+      if (au_fetch_class_force
+	  (nested_view->class_object, &class_, AU_FETCH_READ) != NO_ERROR)
+	{
+	  return true;
+	}
+
+      if (class_->virtual_query_cache == NULL)
+	{
+	  return true;
+	}
+      else
+	{
+	  if ((nested_view->virtual_cache_local_schema_id !=
+	       class_->virtual_cache_local_schema_id)
+	      || (nested_view->virtual_cache_global_schema_id !=
+		  class_->virtual_cache_global_schema_id)
+	      || (nested_view->virtual_cache_snapshot_version !=
+		  class_->virtual_cache_snapshot_version))
+	    {
+	      return true;
+	    }
+
+	  if (sm_is_nested_view_recached (class_->virtual_query_cache))
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+
+/*
  * sm_virtual_queries() - Frees a session for a class.
  *   return: SM_CLASS pointer, with valid virtual query cache a class db_object
+ *   parser(in): the outer parser
  *   class_object(in):
  */
 
 struct parser_context *
-sm_virtual_queries (DB_OBJECT * class_object)
+sm_virtual_queries (PARSER_CONTEXT * parser, DB_OBJECT * class_object)
 {
   SM_CLASS *cl;
   PARSER_CONTEXT *cache = NULL, *tmp = NULL, *old_cache = NULL;
@@ -6510,7 +6630,35 @@ sm_virtual_queries (DB_OBJECT * class_object)
 
   (void) ws_pin (class_object, 1);
 
-  if (cl->virtual_query_cache != NULL
+  if (cl->virtual_query_cache != NULL)
+    {
+      if (cl->virtual_cache_local_schema_id != sm_local_schema_version ())
+	{
+	  /* Always recache if current client bumped schema version. */
+	  recache = true;
+	}
+      else if ((cl->virtual_cache_global_schema_id
+		!= sm_global_schema_version ())
+	       && (cl->virtual_cache_snapshot_version
+		   != ws_get_mvcc_snapshot_version ()))
+	{
+	  /* Recache if somebody else bumped schema version and if we are
+	   * not protected by current snapshot.
+	   * We don't want to recache virtual queries already cached in
+	   * current statement preparation (most of all, because we can cause
+	   * terrible damage).
+	   * For RR, it also helps keeping cached virtual queries for the
+	   * entire transaction.
+	   */
+	  recache = true;
+	}
+      else if (sm_is_nested_view_recached (cl->virtual_query_cache))
+	{
+	  recache = true;
+	}
+    }
+
+  if (!recache && cl->virtual_query_cache != NULL
       && cl->virtual_query_cache->view_cache != NULL
       && cl->virtual_query_cache->view_cache->vquery_for_query != NULL)
     {
@@ -6546,27 +6694,7 @@ sm_virtual_queries (DB_OBJECT * class_object)
 	  /* Recache (I don't know what the case means. */
 	  recache = true;
 	}
-      else if (cl->virtual_cache_local_schema_id
-	       != sm_local_schema_version ())
-	{
-	  /* Always recache if current client bumped schema version. */
-	  recache = true;
-	}
-      else if ((cl->virtual_cache_global_schema_id
-		!= sm_global_schema_version ())
-	       && (cl->virtual_cache_snapshot_version
-		   != ws_get_mvcc_snapshot_version ()))
-	{
-	  /* Recache if somebody else bumped schema version and if we are
-	   * not protected by current snapshot.
-	   * We don't want to recache virtual queries already cached in
-	   * current statement preparation (most of all, because we can cause
-	   * terrible damage).
-	   * For RR, it also helps keeping cached virtual queries for the
-	   * entire transaction.
-	   */
-	  recache = true;
-	}
+
       if (recache)
 	{
 	  old_cache = cl->virtual_query_cache;
@@ -6615,6 +6743,8 @@ sm_virtual_queries (DB_OBJECT * class_object)
       cl->virtual_cache_global_schema_id = sm_global_schema_version ();
       cl->virtual_cache_snapshot_version = ws_get_mvcc_snapshot_version ();
     }
+
+  sm_save_nested_view_versions (parser, class_object, cl);
 
   cache = cl->virtual_query_cache;
 
@@ -11385,10 +11515,10 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
    * back out to the property list.  This is where the promotion of
    * attribute name references to ids references happens.
    */
-  if (classobj_put_index_id (&(class_->properties), con->type, con->name, 
-			     con->attributes, con->asc_desc, 
-			     con->attrs_prefix_length, &(con->index_btid), 
-			     con->filter_predicate, con->fk_info, NULL, 
+  if (classobj_put_index_id (&(class_->properties), con->type, con->name,
+			     con->attributes, con->asc_desc,
+			     con->attrs_prefix_length, &(con->index_btid),
+			     con->filter_predicate, con->fk_info, NULL,
 			     con->func_index_info, con->comment) != NO_ERROR)
     {
       return error;
