@@ -27837,6 +27837,9 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
        * first key. Restart scan.
        */
       assert (bts->use_desc_index);
+      assert (bts->C_page == NULL);
+
+      VPID_SET_NULL (&bts->C_vpid);
       btree_scan_clear_key (bts);
       bts->key_status = BTS_KEY_IS_NOT_VERIFIED;
       return NO_ERROR;
