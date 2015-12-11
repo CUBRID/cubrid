@@ -1071,121 +1071,121 @@ prefetchlogdb: サーバーからのログページをプリフェッチしま�
   -L, --log-path=PATH         コピーされたログボリュームのディレクトリパス\n
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
-59 Invalid generation mode supplied.\n
-60 Invalid or corrupt input folder.\n
+59 無効な生成モードを供給しました。\n
+60 無効または破損した入力フォルダ。\n
 61 \
-gen_tz: Generate source files containing timezone data to be compiled into\n\
-        a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+gen_tz: 共有ライブラリにコンパイルするタイムゾーンデータが含まれている\n\
+        ソースファイルを生成します。\n\
+使い方: %s gen_tz [OPTION]\n\
+        %s gen_tz -g extend [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -i, --input-folder    path to an input folder containing a version of\n\
-                        IANA's timezone database files.\n\
-                        Default: $CUBRID/timezones/tzdata\n\
-  -g, --gen-mode=TYPE   controls the output of gen_tz, based on the TYPE:\n\
+オプション:\n\
+  -i, --input-folder    IANAのタイムゾーンデータベースファイルのバージョンが\n\
+                        含まれている入力フォルダへのパス。\n\
+                        デフォルト: $CUBRID/timezones/tzdata\n\
+  -g, --gen-mode=TYPE   gen_tzの出力を制御します、TYPEに基づいて:\n\
                         TYPE:\n\
-                        1. NEW (default) : generate timezone source file(s) for\n\
-                        the shared library with no regard to previous versions;\n\
-                        also generate a source file containing all countries\n\
-                        and timezone names (intended for developer use, to\n\
-                        be integrated into future CUBRID versions).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removeds if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+                        1. NEW (デフォルト) : 以前のバージョンに関わらず、共有\n\
+                        ライブラリのタイムゾーンソースファイルを生成します; \n\
+                        また、すべての国とタイムゾーン名を含むソースファイルを\n\
+                        生成します（開発者の使用を目的と将来のCUBRIDのバージョンに\n\
+                        統合されるように）。\n\
+                        2. EXTEND : 入力フォルダからのデータを使用して、\n\
+                        タイムゾーンのソースファイルを生成します; CUBRIDに\n\
+                        エンコードタイムゾーンIDが保持されます; 入力ファイルで\n\
+                        見つかった新しいタイムゾーンは、2次ソース・ファイルに\n\
+                        追加され、何もない場合にも生成されます; GMTオフセットと\n\
+                        夏時間の情報が更新されたり、新しいタイムゾーンとして追加\n\
+                        されます; タイムゾーンがCUBRIDにエンコードされて入った\n\
+                        場合、まったく削除されません, 関連データは、既存の\n\
+                        タイムゾーンのライブラリから取得されます。すべての\n\
+                        タイムゾーン名を含む新しいCファイルが生成され、新しい\n\
+                        タイムゾーンのライブラリを使用する前には、CUBRID\n\
+                        ソースファイルフォルダに含まれている必要があります。\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
-59 The supplied zone ID is out of range. Use -z to see all\n\
- timezones and their IDs.\n
+59 供給されたゾーンIDは範囲を超えました。すべてのタイムゾーンとそのIDを\n\
+ 表示するには「-z」を使用してください。\n
 60 \
-dump_tz: Display timezone related information.\n\
-usage: %s dump_tz [OPTION]\n\
+dump_tz: タイムゾーンに関する情報を表示します。\n\
+使い方: %s dump_tz [OPTION]\n\
 \n\
-valid options:\n\
-  -c, --list-countries      shows the list of countries currently supported\n\
-  -l, --leap-seconds	    shows the list of the leap seconds\n\
-  -s, --summary		    shows a summary of dump timezone data\n\
-  -z, --list-zones          shows the list of timezones currently supported\n\
-  -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
-                            to a timezone having the supplied ZONE_ID or for\n\
-                            ALL timzones. The ID of a timezone can be obtained\n\
-                            from the list displayed using the -z option.\n
+オプション:\n\
+  -c, --list-countries      サポートされている国のリストを示しています\n\
+  -l, --leap-seconds        うるう秒のリストを示しています\n\
+  -s, --summary             ダンプされたタイムゾーンのデータの概要を示します\n\
+  -z, --list-zones          サポートされるタイムゾーンのリストを示しています。\n\
+  -d, --zone-id=ZONE_ID|ALL 指定されたZONE IDまたはすべてのタイムゾーンに\n\
+                            関する情報を表示します。タイムゾーンのIDは、\n\
+                            -zオプションで表示されたリストから得る\n\
+                            ことができます。\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
-20 Restoreslave cancelled or an error occurred.\n
-21 Database restore has been completed. But failed to initialize applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
-22 The database name or the host name was not configured for HA.\n
-23 Wrong value '%1$s' for state of backup source node.\n
+20 Restoreslaveはキャンセル、またはエラーが発生しました。\n
+21 データベースの復元が完了しています。しかしapplyinfo初期化に失敗しました。(db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
+22 データベース名またはホスト名がHA用に設定されていません。\n
+23 バックアップ元のノードの状態に間違った値'%1$s'。\n
 60 \
-restoreslave: Restore a slave database.\n\
-usage: %1$s restoreslave [OPTION] database-name\n\
+restoreslave: スレーブデータベースを復元します。\n\
+使い方: %1$s restoreslave [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -s, --source-state=STATE          state of backup source node; mandatory\n\
-                                    STATE may be 'master', 'slave', or 'replica'\n\
-  -m, --master-host-name=NAME       host name of the current master node; mandatory\n\
-      --list                        display a list of backup volumes without restoring\n\
-  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
-  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+オプション:\n\
+  -s, --source-state=STATE          バックアップソースノードの状態; 必須\n\
+                                    STATE値は'master'、'slave'または'replica'です。\n\
+  -m, --master-host-name=NAME       現在のマスタノードのホスト名; 必須\n\
+      --list                        復元せずにバックアップボリュームのリストを表示\n\
+  -B, --backup-file-path=PATH       PATHには、バックアップボリュームのディレクトリを復元することを意味します\n\
+  -o, --output-file=FILE            FILEに出力メッセージをリダイレクトします; デフォルト: none\n\
+  -u, --use-database-location-path  データベース・ロケーション・ファイルで指定したパスにデータベースとログボリュームを復元します\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
-31 Cannot remove system volume or the first volume (Volid : %1$d).\n
-32 Cannot find the volume (Volid : %1$d).\n
-33 There are too many Volids (Max Volids : %1$d).\n
-34 Invalid Volid(%1$s).\n
+21 次のボリュームを削除する準備ができました:\n\n
+22 続行しますか？ (Y/N)
+31 システムボリュームまたは最初のボリュームを削除することはできません (Volid : %1$d).\n
+32 ボリュームを見つけることができません (Volid : %1$d).\n
+33 Volidsが多すぎます (Max Volids : %1$d).\n
+34 無効なVolid(%1$s).\n
 60 \
-delvoldb: Remove a empty volume-file of the database.\n\
-usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+delvoldb: データベースの空のボリューム・ファイルを削除します。\n\
+使い方: %1$s delvoldb [OPTION] database-name -i Volid\n\
 \n\
-valid options:\n\
-  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
-  -f, --force                      remove the volume without a prompt for verification\n\
-  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
-  -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+オプション\n\
+  -c, --clear-cache                一時テンペボリュームにキャッシュされたすべてのファイルを削除します\n\
+  -f, --force                      確認せずにボリュームを削除します\n\
+  -p, --dba-password=PASS          DBAユーザのパスワード; 指定しない場合はプロンプトが表示されます\n\
+  -S, --SA-mode                    stand-aloneモードの実行\n\
+  -C, --CS-mode                    client-serverモードの実行\n
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
-20 Vacuumdb is temporary not available for client-server mode\n
-21 The vacuum operation failed\n
+20 Vacuumdbはclient-serverモードで一時的に利用することができません\n
+21 vacuum操作に失敗しました\n
 60 \
-vacuumdb: Vacuums dead records from database.\n\
-usage: %1$s vacuumdb [OPTION] database-name\n\
+vacuumdb: データベースから死亡レコードを掃除。\n\
+使い方: %1$s vacuumdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+オプション:\n\
+  -S, --SA-mode                stand-aloneモードの実行\n\
+  -C, --CS-mode                client-serverモードの実行\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
-1 Failed to load table names in %1$s.\n
-2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
-58 HA feature is not supported in this platform.\n
-59 checksumdb cannot run as standalone mode.\n
+1 %1$sからテーブル名の読み込みに失敗しました。\n
+2 checksumdbはHAアクティブなサーバー上で実行する必要があります。 %1$s (現在の状態: %2$s)\n
+58 HA機能はこのプラットフォームではサポートされません。\n
+59 checksumdbはスタンドアロンモードで実行することはできません。\n
 60 \
-checksumdb: check replication integrity.\n\
-usage: %1$s checksumdb [OPTION] database-name@hostname\n\
+checksumdb: レプリケーションの整合性を確認します。\n\
+使い方: %1$s checksumdb [OPTION] database-name@hostname\n\
 \n\
-valid options:\n\
-  -c, --chunk-size=NUMBER       the number of rows to select for each checksum calculation\n\
-                                default: 500 rows, minimum: 100 rows\n\
-  -s, --sleep=NUMBER            sleep time between checksum calculation; default: 100 ms\n\
-  -i, --include-class-file=FILE input FILE of table names to include\n\
-  -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
-  -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
-  -r, --report-only             report replication integrity based on checksum calculation\n\
-                                any options except --table-name will be ignored\n\
-      --resume                  resume calculating checksum\n\
-      --schema-only             check only schema consistency\n\
-      --cont-on-error           continue on calculation error\n
+オプション:\n\
+  -c, --chunk-size=NUMBER       各チェックサムの計算に必要なselect行数\n\
+                                デフォルト: 500 行, 最小: 100 行\n\
+  -s, --sleep=NUMBER            チェックサム計算の間のスリープ時間; デフォルト: 100 ms\n\
+  -i, --include-class-file=FILE FILE内のテーブル名が含まれます。\n\
+  -e, --exclude-class-file=FILE FILE内のテーブル名が除外されます。-iまたは-eを使用することができますが、どちらか一方。\n\
+  -t, --timeout=NUMBER          ミリ秒単位のクエリタイムアウト; デフォルト: 1000 ms\n\
+  -n, --table-name=NAME         チェックサムの結果を格納するテーブル名; デフォルト: db_ha_checksums\n\
+  -r, --report-only             チェックサムの計算に基づいたレプリケーションの整合性を報告します。\n\
+                                --table-name以外のすべてのオプションは無視されます。\n\
+      --resume                  チェックサムの計算を再開\n\
+      --schema-only             スキーマ整合性のみをチェックします。\n\
+      --cont-on-error           計算エラーが発生したときに継続\n

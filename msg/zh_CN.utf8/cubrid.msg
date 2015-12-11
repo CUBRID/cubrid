@@ -1218,48 +1218,48 @@ $ LOADDB
 1149 无法在卷 %2$d 中找到页 %1$d.
 1150 上下文需要兼容的排序规则.
 1151 卷 %2$d 的页 %1$d 不是一个 slotted 页.
-1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Attempt to use 'zero date'.
-1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
-1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
-1156 MVCC can't get snapshot
-1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurrent updates
-1159 Timezone compile error: %s
-1160 Timezone library loader error: %s
-1161 Timezone conversion error.
-1162 Invalid or missing timezone.
-1163 Invalid or missing daylight saving time.
-1164 Daylight saving time is not supported with this timezone.
-1165 Invalid combination of date, time, timezone and daylight specifier.
-1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 Comment string cannot have more than 1024 bytes.
-1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 Failed to flush replication items (error code : %1$d).
-1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Invalid percentile value %1$f, should be between 0 and 1.
-1173 Percentile value changed in the same group.
-1174 Inheriting from a partitioned table is not allowed.
-1175 Geographic timezone is not allowed without date context.
-1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Found not vacuumed entries in heap.
-1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
-1181 Manual vacuum is disabled for client-server mode.
-1182 Could not refix page %1$d,%2$d, previous error was %3$d.
-1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
-1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
-1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
-1186 checksumdb: %1$s (error code: %2$d).
-1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Dropping an active user '%1$s' is not allowed.
-1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Stand-alone vacuum execution is started.
-1191 Stand-alone vacuum execution is ended.
-1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1152 只有拥有者或DBA成员才允许结束这个事务 (%1$d).
+1153 试图用"零日期".
+1154 MVCC的行 %1$d|%2$d|%3$d 不满足重新估值(reevaluation)的条件.
+1155 删除MVCC无效的行: %1$d|%2$d|%3$d.
+1156 MVCC无法获得快照(snapshot).
+1157 在MVCC中，隔离级别必须是 'read committed', 'repeatable read' 或 'serializable'.
+1158 由于并发更新导致可串行化 (Serializable) 冲突.
+1159 时区编译错误: %s
+1160 时区库装载错误: %s
+1161 时区转换错误.
+1162 时区无效或缺失.
+1163 夏令时无效或缺失.
+1164 此时区不支持夏令时.
+1165 日期, 时间, 时区和夏令时无效的组合.
+1166 指定的日期和时间组合不存在(在夏令时间隔期间).
+1167 注释字符串不能超过1024字节.
+1168 不能更新表 (%1$s) 上的统计信息, 因为有一个锁不是立即授予的.
+1169 分区键 (Partition key) 属性必须出现在索引键 (index key) 中.
+1170 不能刷新复制(replication)项(错误号: %1$d).
+1171 卷 %1$d 不空, 因此不能删除.
+1172 无效的百分比值 %1$f, 应该在 0 和 1 之间.
+1173 同一个组的百分比值改变了.
+1174 不允许从一个分区表继承.
+1175 不允许地理时区没有日期上下文.
+1176 对卷 %2$d 的页 %1$d 的锁升级失败.
+1177 时区数据不兼容: %1$s 的校验和不同于 %2$s.
+1178 试图释放一个未分配的条目或者在锁空闲位图(lock free bitmap)中进行两次释放.
+1179 堆中发现未清空的条目.
+1180 发现未清空的OID. 类 %2$s 上的索引 %1$s (CLASS_OID: %3$d|%4$d|%5$d).
+1181 客户端服务器模式中禁用手动清空 (vacuum).
+1182 不能再固定(refix)页 %1$d,%2$d, 前面的错误是 %3$d.
+1183 当试图固定(fix)页vpid (%1$d,%2$d) 的时候出错, 在前面的已固定的(fixed)页vpid (%3$d,%4$d): %5$s 中发现了不一致性.
+1184 当试图访问 OID:%1$d,%2$d,%3$d 的时候，检测到页上有太多的并发改变.
+1185 当试图固定(fix)页 %3$d,%4$d 的时候, 有意外的页再固定(refix)在页 %1$d,%2$d 上.
+1186 checksumdb: %1$s (错误号: %2$d).
+1187 无效地访问页 %1$d,%2$d , 此页是一个删除的堆的一部分.
+1188 不允许删除一个活动的用户 '%1$s'.
+1189 指定的日期和时间组合不存在 (在时区偏移规则转换期间).
+1190 独立清空(Stand-alone vacuum) 开始执行.
+1191 独立清空(Stand-alone vacuum) 执行结束.
+1192 值 %1$zu 的精度超过了允许的最大值 %2$d.
+1193 处理的分区表达式的长度超过了允许的最大值(%1$d).
 1194 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1411,11 +1411,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 120 非法使用index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 不正确的使用 UNION 和 ORDER BY
 122 期待 ON. 外连接需要连接条件.
-123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
-124 invalid use of dbtimezone\n dbtimezone
-125 invalid use of sessiontimezone\n sessiontimezone
-126 Maximum length of a class/vclass comment is %1$d bytes.
-127 Maximum length of a comment is %1$d bytes.
+123 非法使用时区\n 设置时区 'timezone_val' 或设置时间区域'timezone_val'
+124 非法使用 dbtimezone\n dbtimezone
+125 非法使用 sessiontimezone\n sessiontimezone
+126 一个class或vclass的comment的最大长度是 %1$d 字节.
+127 一个comment的最大长度是 %1$d 字节.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1707,11 +1707,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 未知参数 '%1$s'.
 288 无法删除所有分区表, 使用 DROP TABLE 代替.
 289 在此上下文的表达式中不允许包含 '%1$s'.
-290 Transaction id is not an integer.
-291 Subquery is not allowed in ORDER BY FOR clause.
-292 Invalid use of aggregate functions.
-293 Value must be strictly increasing for each partition.
-294 Cannot use function or filter indexes on local timezone typed columns.
+290 事务id不是一个整数.
+291 子查询不允许出现在 ORDER BY FOR 字句中.
+292 非法使用聚集函数.
+293 每一个分区的值都必须是严格递增的.
+294 在本地时区类型的列上不能使用函数或索引筛选(filter indexes).
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
@@ -1792,8 +1792,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 只有拥有者或DBA才能修改目标序列的定义.
 78 不允许用户修改由auto increment约束创建的序列对象.
 79 无效的隔离等级: %1$s 结构(schema), %2$s 实例.
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 MVCC中的隔离级别值必须是 'read committed', 'repeatable read' 或 'serializable'.
+81 '%1$s' 是一个 'auto_increment' 对象, 不允许改变成一个序列.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 无效的缓存 ***
@@ -1885,8 +1885,8 @@ $set 14 MSGCAT_SET_LOCK
 42 , %1$d %2$s
 43 对象类型: 类(%1$2d|%2$6d|%3$4d)的索引关键字 = %4$s.\n
 44 索引名: %1$s\n
-45 Object type: Generic object for Repeatable Read consistency.\n
-46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
+45 对象类型: 可重复读一致性的通用对象.\n
+46 MVCC信息: 插入 ID = %1$s, 删除 ID = %2$s.\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

@@ -1215,51 +1215,51 @@ $ LOADDB
 1146 ボリューム識別子%1$dは存在しません。
 1147 XASLストリームキャッシュのサイズ「%1$d」はMAX「%2$d」を超えています。すべてのキャッシュエントリが使用されているので新しいエントリが追加されますが何も犠牲にされていない。
 1148 フィルタ述語ストリームキャッシュ「%1$d個」の大きさは最大値「%2$d」を超えています。すべてのキャッシュエントリが使用されているので新しいエントリが追加されますが何も犠牲にされていない。
-1149 ボリューム%2$dのページ%1$dを見つかりませんん。
+1149 ボリューム%2$dのページ%1$dを見つかりません。
 1150 コンテキストは、互換性のある照合順序を必要とします。
 1151 ボリューム%2$dのページ%1$dは、slotted pageではありません。
-1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Attempt to use 'zero date'.
-1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
-1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
-1156 MVCC can't get snapshot
-1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurrent updates
-1159 Timezone compile error: %s
-1160 Timezone library loader error: %s
-1161 Timezone conversion error.
-1162 Invalid or missing timezone.
-1163 Invalid or missing daylight saving time.
-1164 Daylight saving time is not supported with this timezone.
-1165 Invalid combination of date, time, timezone and daylight specifier.
-1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 Comment string cannot have more than 1024 bytes.
-1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 Failed to flush replication items (error code : %1$d).
-1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Invalid percentile value %1$f, should be between 0 and 1.
-1173 Percentile value changed in the same group.
-1174 Inheriting from a partitioned table is not allowed.
-1175 Geographic timezone is not allowed without date context.
-1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Found not vacuumed entries in heap.
-1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
-1181 Manual vacuum is disabled for client-server mode.
-1182 Could not refix page %1$d,%2$d, previous error was %3$d.
-1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
-1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
-1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
-1186 checksumdb: %1$s (error code: %2$d).
-1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Dropping an active user '%1$s' is not allowed.
-1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Stand-alone vacuum execution is started.
-1191 Stand-alone vacuum execution is ended.
-1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1152 オーナーまたはDBAメンバーだけがトランジェクソン(%1$d)を殺すことができます。
+1153 「zero date」を使用しようとします。
+1154 MVCC行%1$d|%2$d|%3$dは再評価を満たしていません。
+1155 削除のためのMVCC無効行：%1$d|%2$d|%3$d.
+1156 MVCCは、スナップショットを取得することはできません。
+1157 MVCCで分離レベルの値は、「read committed」、「repeatable read」または「serializable」でなければなりません。
+1158 同時更新のためにシリアライズ可能対立。
+1159 タイムゾーンのコンパイルエラー：%s
+1160 タイムゾーンのライブラリのローダーエラー：%s
+1161 タイムゾーンの変換エラー。
+1162 無効なまたは不足しているタイムゾーン。
+1163 無効なまたは不足している夏時間。
+1164 夏時間は、このタイムゾーンではサポートされません。
+1165 日付、時刻、タイムゾーンと夏時間の指定の組み合わせが無効です。
+1166 日付と時刻の指定された組み合わせは、（夏時間の期間中に）存在しません。
+1167 コメント文字列が1024バイト以上を超えることはできません。
+1168 ロックが即時に付与されないため、表(%1$s)上の統計を更新することができません。
+1169 パーティションキーの属性は、索引キーに存在する必要があります。
+1170 複製項目をフラッシュに失敗しました (エラーコード：%1$d)。
+1171 ボリューム%1$dが空ではないので、除去することができません。
+1172 無効なパーセンタイル値%1$fは、0と1の間でなければなりません。
+1173 パーセンタイル値は、同じグループに変更しました。
+1174 パーティション表から継承することはできません。
+1175 地理タイムゾーンは、日付のコンテキストなしで許可されていません。
+1176 ボリューム%2$dのページ%1$dのラッチを推進するに失敗しました。
+1177 互換性のないタイムゾーンデータ：%1$sは%2$sの異なるチェックサムを持っています。
+1178 ロックフリーのビットマップ内の割り当てられていないエントリを解放しようとしました。
+1179 ヒープで掃除がされていないエントリが見つかりました。
+1180 真空掃除がされていないOIDを見つけました。INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
+1181 手動の真空掃除はクライアント・サーバモードで禁止されました。
+1182 ページ%1$d、%2$dをフィックスし直すことができませんでした、以前のエラーが%3$dでした。
+1183 vpid「%1$d、%2$d」を固定しようとするときにエラーが発生しました、その前のVPID「%3$d、%4$d」固定で不一致があることを発見しました：%5$s。
+1184 OID：%1$d,%2$d,%3$dにアクセスするときにあまりにも多くのページの並行修正が検出されました。
+1185 page %3$d、%4$dを固定しようとしたときに、予期しないページ、%1$d、%2$dの再固定が発生しました。
+1186 checksumdb: %1$s「エラーコード：%2$d」。
+1187 ページ%1$d、%2$dに無効なアクセスです、そのページは削除されたヒープの一部です。
+1188 アクティブユーザー「%1$s」を削除することができません。
+1189 存在しない日付と時刻の指定された組み合わせ（タイムゾーンの移行中には、ルールをオフセット）。
+1190 スタンドアローンの真空掃引の実行が開始されます。
+1191 スタンドアロン真空スイープの実行が終了しました。
+1192 %1$zuの値の精度は最大許容%2$dを超えていました。
+1193 処理されたパーティション式の長さが許容される最大「%1$d」を超えていました。
 1194 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1411,11 +1411,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 120 正しくないindex_prefixの使い方です。\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 正しくないUNIONとORDER BYの使い方です。
 122 キーワードONが必要です。外部ジョインには、ジョインの条件が必要です。
-123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
-124 invalid use of dbtimezone\n dbtimezone
-125 invalid use of sessiontimezone\n sessiontimezone
-126 Maximum length of a class/vclass comment is %1$d bytes.
-127 Maximum length of a comment is %1$d bytes.
+123 timezoneの使用が無効です\n set timezone 'timezone_val' または set time zone 'timezone_val'
+124 dbtimezoneの使用が無効です\n dbtimezone
+125 sessiontimezoneの使用が無効です\n sessiontimezone
+126 class/vclassコメントの最大長は%1$dバイトです。
+127 コメントの最大長は%1$dバイトです。
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。
@@ -1707,11 +1707,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 「%1$s」パラメーターは正しくありません。
 288 すべてのパーティションを削除することはできません、代わりにDROP TABLEを使用してください。
 289 %1$sの式はこのコンテキストでは許可されません。
-290 Transaction id is not an integer.
-291 Subquery is not allowed in ORDER BY FOR clause.
-292 Invalid use of aggregate functions.
-293 Value must be strictly increasing for each partition.
-294 Cannot use function or filter indexes on local timezone typed columns.
+290 トランザクションIDは整数ではありません。
+291 サブクエリは「ORDER BY FOR」の節で許可されていません。
+292 集計関数の使用が無効です。
+293 値は厳密に各パーティションに増加しなければなりません。
+294 ローカルタイムゾーン型指定された列に関数やフィルタ索引を使用することはできません。
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。
@@ -1792,8 +1792,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 オーナーやDBAだけが対象シリアルの定義が変更(Alter)できます。
 78 「Auto increment」制約条件で作られたシリアルオブジェクトは自由に変更できません。
 79 正しくないアイソレーションレベル: 「%1$s」スキーマ、「%2$s」オブジェクト。
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 MVCCで分離レベルの値は、「read committed」、「repeatable read」または「serializable」でなければなりません。
+81 「%1$s」は「auto_increment」オブジェクトです。これはシリアルように変更することが許可されていません。
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 正しくないキャッシュ ***
@@ -1885,8 +1885,8 @@ $set 14 MSGCAT_SET_LOCK
 42 , %1$d %2$s
 43 ロック対象: クラスのインデックスキー(%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 インデックス名: %1$s\n
-45 Object type: Generic object for Repeatable Read consistency.\n
-46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
+45 オブジェクトタイプ：「Repeatable Read」の一貫性のための一般的なオブジェクト。\n
+46 MVCC情報: insert ID = %1$s, delete ID = %2$s.\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

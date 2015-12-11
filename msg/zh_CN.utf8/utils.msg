@@ -1072,121 +1072,111 @@ prefetchlogdb: 从服务器中预取日志页.\n\
   -L, --log-path=PATH         指定拷贝日志卷的路径为 PATH\n
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
-59 Invalid generation mode supplied.\n
-60 Invalid or corrupt input folder.\n
+59 提供的生成模式无效.\n
+60 无效的或损坏的输入文件夹.\n
 61 \
-gen_tz: Generate source files containing timezone data to be compiled into\n\
-        a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+gen_tz: 生成包含时区数据的源文件并编译成一个共享库.\n\
+用法: %s gen_tz [选项]\n\
+       %s gen_tz -g extend [选项] 数据库名\n\
 \n\
-valid options:\n\
-  -i, --input-folder    path to an input folder containing a version of\n\
-                        IANA's timezone database files.\n\
-                        Default: $CUBRID/timezones/tzdata\n\
-  -g, --gen-mode=TYPE   controls the output of gen_tz, based on the TYPE:\n\
-                        TYPE:\n\
-                        1. NEW (default) : generate timezone source file(s) for\n\
-                        the shared library with no regard to previous versions;\n\
-                        also generate a source file containing all countries\n\
-                        and timezone names (intended for developer use, to\n\
-                        be integrated into future CUBRID versions).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removeds if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+可用选项:\n\
+  -i, --input-folder    指定一个输入文件夹的路径，文件夹必须包含一个IANA的时区\n\
+                        数据库文件版本.\n\
+                        默认: $CUBRID/timezones/tzdata\n\
+  -g, --gen-mode=TYPE   gen_tz基于此类型控制输出:\n\
+                        类型:\n\
+                        1. NEW (默认): 不考虑之前的版本，直接生成共享库所需的时\n\
+                        区源文件; 也会生成包含所有国家和时区名字的源文件 (只为\n\
+                        开发者使用, 将来会集成到CUBRID新版本中).\n\
+                        2. EXTEND: 用输入文件夹中的数据生成时区源文件; 已经编\n\
+                        入CUBRID中的时区ID会被保留; 输入文件夹中找到的新的时区\n\
+                        会被增加到第二个源文件(如果没有也会生成)中; GMT偏移和\n\
+                        夏令时信息会被更新(或者为新的时区增加); 如果已编入CUBRID\n\
+                        的时区在输入文件中缺失, 该时区也绝不会被移除, 其相关的\n\
+                        数据会从已存在的时区库中恢复. 新时区库使用之前, 必须确\n\
+                        保新生成的包含所有时区名字的C文件已经存放到了CUBRID的源\n\
+                        代码文件夹中.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
-59 The supplied zone ID is out of range. Use -z to see all\n\
- timezones and their IDs.\n
+59 提供的区域ID超出了范围, 用 -z 可以查看所有的时区和它们的ID.\n
 60 \
-dump_tz: Display timezone related information.\n\
-usage: %s dump_tz [OPTION]\n\
+dump_tz: 显示时区相关的信息.\n\
+用法: %s dump_tz [选项]\n\
 \n\
-valid options:\n\
-  -c, --list-countries      shows the list of countries currently supported\n\
-  -l, --leap-seconds	    shows the list of the leap seconds\n\
-  -s, --summary		    shows a summary of dump timezone data\n\
-  -z, --list-zones          shows the list of timezones currently supported\n\
-  -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
-                            to a timezone having the supplied ZONE_ID or for\n\
-                            ALL timzones. The ID of a timezone can be obtained\n\
-                            from the list displayed using the -z option.\n
+可用选项:\n\
+  -c, --list-countries      显示当前支持的国家的列表\n\
+  -l, --leap-seconds	    显示闰秒的列表\n\
+  -s, --summary		    显示时区数据的转储信息摘要\n\
+  -z, --list-zones          显示当前支持的时区的列表\n\
+  -d, --zone-id=ZONE_ID|ALL 显示与指定的ZONE_ID相关的或者所有的可用的时区信息.\n\
+                            时区的ID可以从 -z 选项显示的列表中获取.\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
-20 Restoreslave cancelled or an error occurred.\n
-21 Database restore has been completed. But failed to initialize applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
-22 The database name or the host name was not configured for HA.\n
-23 Wrong value '%1$s' for state of backup source node.\n
+20 Restoreslave取消了或者有一个错误发生了.\n
+21 数据库恢复已经完成. 但是没能初始化applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
+22 没有为HA配置数据库名或者主机名.\n
+23 备份源节点的状态的值错误 '%1$s'.\n
 60 \
-restoreslave: Restore a slave database.\n\
-usage: %1$s restoreslave [OPTION] database-name\n\
+restoreslave: 恢复一个从数据库.\n\
+用法: %1$s restoreslave [选项] 数据库名\n\
 \n\
-valid options:\n\
-  -s, --source-state=STATE          state of backup source node; mandatory\n\
-                                    STATE may be 'master', 'slave', or 'replica'\n\
-  -m, --master-host-name=NAME       host name of the current master node; mandatory\n\
-      --list                        display a list of backup volumes without restoring\n\
-  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
-  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+可用选项:\n\
+  -s, --source-state=STATE          指定备份源节点的状态; 强制选项\n\
+                                    状态可以是 'master', 'slave', 或 'replica'\n\
+  -m, --master-host-name=NAME       指定当前主节点的主机名; 强制选项\n\
+      --list                        显示一个未恢复的备份卷的列表\n\
+  -B, --backup-file-path=PATH       指定一个将被恢复的备份卷的路径\n\
+  -o, --output-file=FILE            重定向输出信息到FILE; 默认: 无\n\
+  -u, --use-database-location-path  恢复数据库和日志卷到数据库位置文件指定的路径\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
-31 Cannot remove system volume or the first volume (Volid : %1$d).\n
-32 Cannot find the volume (Volid : %1$d).\n
-33 There are too many Volids (Max Volids : %1$d).\n
-34 Invalid Volid(%1$s).\n
+21 准备删除下面的卷:\n\n
+22 你希望继续吗? (Y/N)
+31 不能删除系统卷或者第一个卷 (Volid : %1$d).\n
+32 找不到卷 (Volid : %1$d).\n
+33 有太多的Volid (Volid的最大值: %1$d).\n
+34 无效的 Volid(%1$s).\n
 60 \
-delvoldb: Remove a empty volume-file of the database.\n\
-usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+delvoldb: 删除一个空的数据库卷文件.\n\
+用法: %1$s delvoldb [选项] 数据库名 -i Volid\n\
 \n\
-valid options:\n\
-  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
-  -f, --force                      remove the volume without a prompt for verification\n\
-  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
-  -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+可用选项:\n\
+  -c, --clear-cache                清除临时卷中所有的缓存文件\n\
+  -f, --force                      不提示验证直接删除卷\n\
+  -p, --dba-password=PASS          DBA用户密码; 如果未指定会提示\n\
+  -S, --SA-mode                    单机模式执行\n\
+  -C, --CS-mode                    客户端-服务器模式执行\n
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
-20 Vacuumdb is temporary not available for client-server mode\n
-21 The vacuum operation failed\n
+20 Vacuumdb 对于客户端-服务器模式临时不可用\n
+21 清空(vacuum)操作失败\n
 60 \
-vacuumdb: Vacuums dead records from database.\n\
-usage: %1$s vacuumdb [OPTION] database-name\n\
+vacuumdb: 清空(vacuum)数据库中的死记录.\n\
+用法: %1$s vacuumdb [选项] 数据库名\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+可用选项:\n\
+  -S, --SA-mode                单机模式执行\n\
+  -C, --CS-mode                客户端-服务器模式执行\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
-1 Failed to load table names in %1$s.\n
-2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
-58 HA feature is not supported in this platform.\n
-59 checksumdb cannot run as standalone mode.\n
+1 在 %1$s 中装载表名字失败.\n
+2 checksumdb 必须运行在一个HA活动服务器上. %1$s (当前状态: %2$s)\n
+58 HA 特性在这个平台上不被支持.\n
+59 checksumdb 无法以单机模式运行.\n
 60 \
-checksumdb: check replication integrity.\n\
-usage: %1$s checksumdb [OPTION] database-name@hostname\n\
+checksumdb: 检查复制完整性.\n\
+用法: %1$s checksumdb [选项] 数据库名@主机名\n\
 \n\
-valid options:\n\
-  -c, --chunk-size=NUMBER       the number of rows to select for each checksum calculation\n\
-                                default: 500 rows, minimum: 100 rows\n\
-  -s, --sleep=NUMBER            sleep time between checksum calculation; default: 100 ms\n\
-  -i, --include-class-file=FILE input FILE of table names to include\n\
-  -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
-  -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
-  -r, --report-only             report replication integrity based on checksum calculation\n\
-                                any options except --table-name will be ignored\n\
-      --resume                  resume calculating checksum\n\
-      --schema-only             check only schema consistency\n\
-      --cont-on-error           continue on calculation error\n
+可用选项:\n\
+  -c, --chunk-size=NUMBER       指定为每一次校验和计算选择的行数\n\
+                                默认: 500 行, 最小值: 100 行\n\
+  -s, --sleep=NUMBER            指定两次校验和计算之间的休眠时间; 默认: 100 毫秒\n\
+  -i, --include-class-file=FILE 指定要包含的表名的文件\n\
+  -e, --exclude-class-file=FILE 指定要排除的表名的文件; -i 或者 -e 只能用其一, 不能同时使用.\n\
+  -t, --timeout=NUMBER          查询超时(毫秒计); 默认: 1000 毫秒\n\
+  -n, --table-name=NAME         保存校验和结果的表名; 默认: db_ha_checksums\n\
+  -r, --report-only             报告基于校验和计算的复制完整性\n\
+                                除--table-name之外的其它选项将被忽略\n\
+      --resume                  重新开始计算校验和\n\
+      --schema-only             只检查结构(schema)的一致性\n\
+      --cont-on-error           计算过程中遇到错误时仍然继续\n
