@@ -5404,7 +5404,7 @@ clogin_user (const char *username)
 
   pack_const_string_with_length (request, username, username_len);
 
-  req_error = net_client_request (NET_SERVER_LOGIN_USER, request, req_len,
+  req_error = net_client_request (NET_SERVER_AU_LOGIN_USER, request, req_len,
 				  OR_ALIGNED_BUF_START (a_reply),
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
 				  NULL, 0);
@@ -7124,10 +7124,11 @@ btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids,
       ptr = or_pack_value (ptr, &keys[i]);
     }
 
-  req_error = net_client_request2 (NET_SERVER_FIND_MULTI_UNIQUES, request,
-				   req_size, OR_ALIGNED_BUF_START (a_reply),
-				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				   &area, &area_size);
+  req_error =
+    net_client_request2 (NET_SERVER_BTREE_FIND_MULTI_UNIQUES, request,
+			 req_size, OR_ALIGNED_BUF_START (a_reply),
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area,
+			 &area_size);
   if (req_error != NO_ERROR)
     {
       result = BTREE_ERROR_OCCURRED;

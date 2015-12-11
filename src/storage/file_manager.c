@@ -84,8 +84,8 @@ static int rv;
 
 #define NULL_PAGEID_MARKED_DELETED (NULL_PAGEID - 1)
 
-#define FILE_TYPE_CACHE_SIZE 10
-#define FILE_NEXPECTED_NEW_FILES 53	/* Prime number */
+#define FILE_TYPE_CACHE_SIZE 512
+#define FILE_NEXPECTED_NEW_FILES 509	/* Prime number */
 #define FILE_PREALLOC_MEMSIZE 20
 #define FILE_DESTROY_NUM_MARKED 10
 

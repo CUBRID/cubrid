@@ -20273,20 +20273,6 @@ heap_rv_mvcc_redo_delete_newhome (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * heap_rv_redo_delete_newhome () - Redo the deletion of a new home object
- *   return: int
- *   rcv(in): Recovery structure
- *
- * Note: Redo the deletion of an object.
- * The NEW HOME OID is reused since it is not the real OID.
- */
-int
-heap_rv_redo_delete_newhome (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  return heap_rv_undo_insert (thread_p, rcv);
-}
-
-/*
  * heap_rv_redo_mark_reusable_slot () - Marks a deleted slot as reusable; used
  *                                      as a postponed log operation and a
  *                                      REDO function
@@ -20360,28 +20346,6 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return er_errid ();
     }
   spage_update_record_type (thread_p, rcv->pgptr, slotid, recdes.type);
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-
-  return NO_ERROR;
-}
-
-/*
- * heap_rv_undoredo_update_type () - Recover the type of the object/record. used either for
- *                        undo or redo
- *   return: int
- *   rcv(in): Recovery structure
- *
- * Note: Recover an update to an object in a slotted page
- */
-int
-heap_rv_undoredo_update_type (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  INT16 slotid;
-  INT16 type;
-
-  slotid = rcv->offset;
-  type = *(INT16 *) (rcv->data);
-  spage_update_record_type (thread_p, rcv->pgptr, slotid, type);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;

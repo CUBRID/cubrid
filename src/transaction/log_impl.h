@@ -1578,7 +1578,6 @@ enum log_repl_flush
   ((rcvindex) == RVVAC_LOG_BLOCK_APPEND	\
    || (rcvindex) == RVVAC_LOG_BLOCK_REMOVE \
    || (rcvindex) == RVVAC_LOG_BLOCK_SAVE \
-   || (rcvindex) == RVVAC_UPDATE_OLDEST_MVCCID \
    || (rcvindex) == RVVAC_START_OR_END_JOB \
    || (rcvindex) == RVVAC_COMPLETE)
 

@@ -815,13 +815,9 @@ extern int heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv);
 extern int heap_rv_mvcc_redo_delete_newhome (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
-extern int heap_rv_redo_delete_newhome (THREAD_ENTRY * thread_p,
-					LOG_RCV * rcv);
 extern int heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
 extern int heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int heap_rv_undoredo_update_type (THREAD_ENTRY * thread_p,
-					 LOG_RCV * rcv);
 extern int heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv);
