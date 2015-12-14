@@ -28989,7 +28989,6 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p,
     {
       /* Start processing key with an overflow page. */
       /* Overflow VPID is already set. */
-      assert (!VPID_ISNULL (&overflow_vpid));
       /* Assume key will be entirely processed. It will be changed if it
        * interrupted again.
        */
