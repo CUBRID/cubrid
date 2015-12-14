@@ -10151,7 +10151,14 @@ try_again:
 	       */
 	      if (try_count++ < try_max)
 		{
+		  home_page_watcher->page_was_unfixed = false;
 		  goto try_again;
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
+			  forward_vpid.pageid);
 		}
 
 	      goto error;
@@ -10217,16 +10224,8 @@ try_again:
 	  /* Pages successfully fixed. */
 	  if (home_page_watcher->page_was_unfixed)
 	    {
-	      /* Home_page/forward_page are both fixed. However, since home page
-	       * was unfixed, record may have changed (record type has changed
-	       * or just the relocation link).
-	       * Go back and repeat steps (if nothing was changed, pages are
-	       * already fixed).
-	       */
-	      if (try_count++ < try_max)
-		{
-		  goto try_again;
-		}
+	      /* This is not expected. */
+	      assert (false);
 	      goto error;
 	    }
 	  return S_SUCCESS;
