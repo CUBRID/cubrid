@@ -124,7 +124,6 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
-    checksumdb\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -182,6 +181,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     gen_tz\n\
     dump_tz\n\
     vacuumdb\n\
+    checksumdb\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -229,11 +229,11 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 사용법: %2$s heartbeat <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start          [데이터베이스 이름]\n\
-    stop           [-h <호스트 이름>] [-i] [데이터베이스 이름]\n\
-    copylogdb      <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
-    applylogdb     <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
-    replication    <start|stop> <노드 이름>\n\
+    start         [데이터베이스 이름]\n\
+    stop          [-h <호스트 이름>] [-i] [데이터베이스 이름]\n\
+    copylogdb     <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
+    applylogdb    <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
+    replication   <start|stop> <노드 이름>\n\
     status         [-v] [-h <호스트 이름>]\n\
     reload\n
 31 '%1$s' 인자가 필요 없습니다.\n
@@ -364,7 +364,6 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 19 서버 %1$s를 찾을 수 없습니다
 20 마스터 서버는 %1$d 분 내에 shutdown 합니다\n
 21 Heartbeat 기능이 비활성화 되었습니다. 모든 서버 프로세스들의 종료과정이 완료될때 까지 잠시 기다리십시오.\n
-
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 출력 파일 '%1$s' 을(를) 열 수 없습니다\n
@@ -577,7 +576,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' 명령을 사용하십시�
   -c, --server-mode=NAME           해당 데이터베이스 서버의 HA 모드 출력\n\
   -N, --node-list                  CUBRID heartbeat에 의해 관리되는 노드 조회\n\
   -L, --process-list               CUBRID heartbeat에 의해 관리되는 로컬 프로세스 정보 조회\n\
-  -c, --ping-host                  CUBRID heartbeat를 위한 ping 호스트 정보 조회\n\
+  -p, --ping-host                  CUBRID heartbeat를 위한 ping 호스트 정보 조회\n\
   -D, --dereg-process=PID          대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
   -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
   -V, --verbose                    많은 상태 메시지 출력; 기본값: 출력하지 않음\n
@@ -1070,72 +1069,62 @@ valid options:\n\
   -L, --log-path=PATH         복사된 로그 볼륨의 디렉터리 PATH\n
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
-59 Invalid generation mode supplied.\n
-60 Invalid or corrupt input folder.\n
+59 유효하지 않은 생성 모드가 지정되었습니다.\n
+60 유효하지 않거나 변질된 입력 폴더입니다.\n
 61 \
-gen_tz: Generate source files containing timezone data to be compiled into\n\
-        a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+gen_tz: 타임존 데이터를 포함하는 소스 파일을 생성하여 공유 라이브러리로 컴파일\n\
+사용법: %s gen_tz [옵션]\n\
+       %s gen_tz -g extend [옵션] database-name\n\
 \n\
 valid options:\n\
-  -i, --input-folder    path to an input folder containing a version of\n\
-                        IANA's timezone database files.\n\
-                        Default: $CUBRID/timezones/tzdata\n\
-  -g, --gen-mode=TYPE   controls the output of gen_tz, based on the TYPE:\n\
+  -i, --input-folder    IANA 타임존 데이터베이스 파일을 포함하는 입력 디렉터리 경로\n\
+                        기본값: $CUBRID/timezones/tzdata\n\
+  -g, --gen-mode=TYPE   TYPE에 따라서 gen_tz의 출력을 조절:\n\
                         TYPE:\n\
-                        1. NEW (default) : generate timezone source file(s) for\n\
-                        the shared library with no regard to previous versions;\n\
-                        also generate a source file containing all countries\n\
-                        and timezone names (intended for developer use, to\n\
-                        be integrated into future CUBRID versions).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removeds if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+                        1. NEW (기본값) : 기존 버전에 대한 고려없이 공유 라이브러리를 위한 소스 파일 생성;\n\
+                        또한 모든 국가와 타임존 이름을 포함하도록 소스 파일을 생성\n\
+                        (개발자가 사용하는 것을 의도, 향후 CUBRID 버전에 통합 예정).\n\
+                        2. EXTEND : 입력된 디렉터리의 데이터를 사용하지 타임존 소스 파일을 생성;\n\
+                        기존에 CUBRID에 인코딩된 타임존 식별자는 보존됨;\n\
+                        입력 파일에서 발견된 새로운 타임존은 생성될 이차 소스 파일에 추가됨;\n\
+                        GMT 오프셋과 일광 절약 시간제 정보는 갱신되거나 새로운 타임존의 경우는 추가됨;\n\
+                        기존 인코딩된 타임존이 입력 파일에 포함되어 있지 않으면 해당 타임존은 제거되지 않으며,\n\
+                        해당 데이터는 기존 타임존 라이브러리에서 검색됨.\n\
+                        전체 타임존 이름을 모두 포함하는 새로운 C 파일이 생성되며,\n\
+                        이는 새로운 타임존 라이브러리가 사용되기 이전에 CUBRID 소스 파일 디렉터리에 반드시 포함되어야 한다.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
-59 The supplied zone ID is out of range. Use -z to see all\n\
- timezones and their IDs.\n
+59 유효하지 않은 타임존 식별자가 주어졌습니다. 전체 타임존과 해당 식별자를 확인하기 위해서 -z를 사용하세요\n
 60 \
-dump_tz: Display timezone related information.\n\
-usage: %s dump_tz [OPTION]\n\
+dump_tz: 타임존 관련 정보를 출력\n\
+usage: %s dump_tz [옵션]\n\
 \n\
 valid options:\n\
-  -c, --list-countries      shows the list of countries currently supported\n\
-  -l, --leap-seconds	    shows the list of the leap seconds\n\
-  -s, --summary		    shows a summary of dump timezone data\n\
-  -z, --list-zones          shows the list of timezones currently supported\n\
-  -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
-                            to a timezone having the supplied ZONE_ID or for\n\
-                            ALL timzones. The ID of a timezone can be obtained\n\
-                            from the list displayed using the -z option.\n
+  -c, --list-countries      현재 지원하는 국가의 리스트를 출력\n\
+  -l, --leap-seconds	    윤초 리스트를 출력\n\
+  -s, --summary		    타임존 데이터에 대한 요약 정보 출력\n\
+  -z, --list-zones          현재 지원하는 타임존 리스트를 출력\n\
+  -d, --zone-id=ZONE_ID|ALL 주어진 ZONE_ID를 가지는 타임존과 관련된 사용 가능한 타임존 정보 또는 \n\
+                            모든 타임존 정보를 출력.\n\
+                            타임존의 식별자는 -z 옵션이 출력하는 리스트를 통해서 확인할 수 있음.\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
-20 Restoreslave cancelled or an error occurred.\n
-21 Database restore has been completed. But failed to initialize applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
-22 The database name or the host name was not configured for HA.\n
-23 Wrong value '%1$s' for state of backup source node.\n
+20 Restoreslave 실행이 취소되거나 에러가 발생했습니다.\n
+21 데이터베이스 복원이 완료되었으나, 관련 정보 초기화 실패했습니다. (데이터베이스 생성 시간='%1$s', 페이지=%2$lld, 오프셋=%3$d)\n
+22 데이터베이스나 호스트가 HA 구성되어 있지 않습니다.\n
+23 유효하지 않은 백업 소스 노드 값 '%1$s' 입니다.\n
 60 \
-restoreslave: Restore a slave database.\n\
-usage: %1$s restoreslave [OPTION] database-name\n\
+restoreslave: 슬레이브 데이터베이스 복원.\n\
+usage: %1$s restoreslave [옵션] database-name\n\
 \n\
 valid options:\n\
-  -s, --source-state=STATE          state of backup source node; mandatory\n\
-                                    STATE may be 'master', 'slave', or 'replica'\n\
-  -m, --master-host-name=NAME       host name of the current master node; mandatory\n\
-      --list                        display a list of backup volumes without restoring\n\
-  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
-  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+  -s, --source-state=STATE          백업 소스 노드 상태; 필수\n\
+                                    STATE는 'master', 'slave' 또는 'replica'\n\
+  -m, --master-host-name=NAME       현재 마스터 노드의 호스트 이름; 필수\n\
+      --list                        실제 복원하지 않고 백업 볼륨의 리스트만 출력\n\
+  -B, --backup-file-path=PATH       복원할 백업 볼륨의 디렉터리 경로\n\
+  -o, --output-file=FILE            출력 메시지를 FILE로 변경; 기본값: 없음\n\
+  -u, --use-database-location-path  데이터베이스와 로그 볼륨을 데이터베이스 경로 파일에 명시된 경로로 복원\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n
@@ -1156,35 +1145,35 @@ valid options:\n\
   -C, --CS-mode                    client-server mode execution\n
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
-20 Vacuumdb is temporary not available for client-server mode\n
-21 The vacuum operation failed\n
+20 Vacuumdb는 현재 클라이언트 서버 모드에서 지원되지 않습니다.\n
+21 vacuum 작업 실패\n
 60 \
-vacuumdb: Vacuums dead records from database.\n\
-usage: %1$s vacuumdb [OPTION] database-name\n\
+vacuumdb: 사용되지 않는 레코드를 데이터베이스에서 정리\n\
+usage: %1$s vacuumdb [옵션] database-name\n\
 \n\
 valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+  -S, --SA-mode                독립 모드 실행\n\
+  -C, --CS-mode                클라이언트 서버 모드 실행\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
-1 Failed to load table names in %1$s.\n
-2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
-58 HA feature is not supported in this platform.\n
-59 checksumdb cannot run as standalone mode.\n
+1 %1$s으로부터 테이블 이름 로딩 실패.\n
+2 checksumdb는 반드시 HA active 서버에서 실행해야 합니다. %1$s (현재 상태: %2$s)\n
+58 HA 기능이 제공되지 않는 플랫폼입니다.\n
+59 checksumdb는 독립 모드로 실행할 수 없습니다.\n
 60 \
-checksumdb: check replication integrity.\n\
-usage: %1$s checksumdb [OPTION] database-name@hostname\n\
+checksumdb: 복제 일관성 검사\n\
+usage: %1$s checksumdb [옵션] database-name@hostname\n\
 \n\
 valid options:\n\
-  -c, --chunk-size=NUMBER       the number of rows to select for each checksum calculation\n\
-                                default: 500 rows, minimum: 100 rows\n\
-  -s, --sleep=NUMBER            sleep time between checksum calculation; default: 100 ms\n\
-  -i, --include-class-file=FILE input FILE of table names to include\n\
-  -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
-  -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
-  -r, --report-only             report replication integrity based on checksum calculation\n\
-                                any options except --table-name will be ignored\n\
-      --resume                  resume calculating checksum\n\
-      --schema-only             check only schema consistency\n\
-      --cont-on-error           continue on calculation error\n
+  -c, --chunk-size=NUMBER       체크섬 계산 단위가 될 레코드 수\n\
+                                기본값: 500 레코드, 최소: 100 레코드\n\
+  -s, --sleep=NUMBER            체크섬 계산 중의 sleep 시간; 기본값: 100 ms\n\
+  -i, --include-class-file=FILE 포함시킬 테이블을 지정하는 입력 파일\n\
+  -e, --exclude-class-file=FILE 제외시킬 테이블을 지정하는 입력 파일; -i 또는 -e 하나만 명시 가능, 동시 지정 불가\n\
+  -t, --timeout=NUMBER          밀리초 단위 쿼리 타임 아웃; 기본값: 1000 ms\n\
+  -n, --table-name=NAME         체크섬 결과를 저장할 테이블 이름; 기본값: db_ha_checksums\n\
+  -r, --report-only             체크섬 계산을 기반하여 복제 일관성 상태 보고\n\
+                                --table-name 옵션 외에 다른 옵션은 모두 무시됨\n\
+      --resume                  체크섬 계산 복귀\n\
+      --schema-only             스키마 일관성만 검사\n\
+      --cont-on-error           계산 오류 발생해도 계속 진행\n

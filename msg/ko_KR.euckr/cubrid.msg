@@ -1215,51 +1215,51 @@ $ LOADDB
 1146 볼륨 식별자 %1$d이(가) 존재하지 않습니다.
 1147 XASL stream 캐시의 현재크기(%1$d)가 최대크기(%2$d)를 초과합니다. 캐시의 엔트리가 모두 사용중이기 때문에 엔트리를 제거하지 못하고 새로운 엔트리가 추가되었습니다.
 1148 Filter predicate stream 캐시의 현재크기(%1$d)가 최대크기(%2$d)를 초과합니다. 캐시의 엔트리가 모두 사용중이기 때문에 엔트리를 제거하지 못하고 새로운 엔트리가 추가되었습니다.
-1149 Cannot find the page %1$d of volume %2$d.
-1150 Context requires compatible collations.
-1151 The page %1$d of volume %2$d is not a slotted page.
-1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
+1149 %2$d 볼륨의 %1$d 페이지를 찾을 수 없습니다.
+1150 호환되지 않는 콜레이션이 명시되었습니다.
+1151 %2$d 볼륨의 %1$d 페이지는 slotted page가 아닙니다.
+1152 소유자나 DBA 그룹의 멤버만이 트랜잭션 (%1$d)을 중단시킬 수 있습니다.
 1153 'zero date'를 사용할 수 없습니다.
-1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
-1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
-1156 MVCC can't get snapshot
-1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurrent updates
-1159 Timezone compile error: %s
-1160 Timezone library loader error: %s
-1161 Timezone conversion error.
-1162 Invalid or missing timezone.
-1163 Invalid or missing daylight saving time.
-1164 Daylight saving time is not supported with this timezone.
-1165 Invalid combination of date, time, timezone and daylight specifier.
-1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 Comment string cannot have more than 1024 bytes.
-1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 Failed to flush replication items (error code : %1$d).
-1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Invalid percentile value %1$f, should be between 0 and 1.
-1173 Percentile value changed in the same group.
-1174 Inheriting from a partitioned table is not allowed.
-1175 Geographic timezone is not allowed without date context.
-1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Found not vacuumed entries in heap.
-1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
-1181 Manual vacuum is disabled for client-server mode.
-1182 Could not refix page %1$d,%2$d, previous error was %3$d.
-1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
-1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
-1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
-1186 checksumdb: %1$s (error code: %2$d).
-1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Dropping an active user '%1$s' is not allowed.
-1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Stand-alone vacuum execution is started.
-1191 Stand-alone vacuum execution is ended.
-1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1154 %1$d|%2$d|%3$d 레코드는 산술식 재평가를 만족하지 않습니다.
+1155 %1$d|%2$d|%3$d은 삭제할 수 없는 레코드입니다.
+1156 MVCC snapshot을 얻을 수 없습니다.
+1157 트랜잭션 격리도는 'read committed', 'repeatable read', 'serializable' 중의 하나여야 합니다.
+1158 직렬성을 위배하는 트랜잭션들의 업데이트가 발견되었습니다.
+1159 타임존 컴파일 에러: %s
+1160 타임존 라이브러리 로더 에러: %s
+1161 타임존 변환 에러.
+1162 적절하지 않거나 존재하지 않는 타임존.
+1163 적절하지 않거나 존재하지 않는 일광 절약 시간제.
+1164 해당 타임존에서는 일광 절약 시간제를 지원하지 않습니다.
+1165 적절하지 않은 날짜, 시간, 타임존 또는 일광 절약 시간제 명시자입니다. 
+1166 명시된 날짜와 시간 조합은 일광 절약 시간제 내에 존재하지 않습니다.
+1167 커맨트 문자열은 최대 1024 바이트까지 허용됩니다.
+1168 테이블 (%1$s)에 대한 잠금을 획득할 수 없어서 해당 테이블에 대한 통계를 업데이트할 수 없습니다.
+1169 분할 키가 반드시 인덱스 키에 포함되어야 합니다.
+1170 복제 아이템을 쓸 수 없습니다. (에러: %1$d)
+1171 %1$d 볼륨의 일부 페이지가 사용중이라서 삭제할 수 없습니다.
+1172 %1$f는 유효하지 않은 percentile 값입니다. 0부터 1사이의 값이어야 합니다.
+1173 Percentile 값이 한 그룹 내에서 변경되어서는 안됩니다.
+1174 분할 테이블을 상속하는 것은 허용되지 않습니다.
+1175 날짜 없이 지리적 시간대를 사용하는 것은 허용되지 않습니다.
+1176 %2$d 볼륨의 %1$d 페이지에 대한 페이지 래치 모드 승급 실패
+1177 호환되지 않는 타임존 데이터: %1$s은 %2$s과 다른 체크섬을 가집니다.
+1178 lock free bitmap 상에서 할당되지 않은 엔트리를 해제하거나 중복 해제가 발생했습니다.
+1179 heap에서 정리되지 않은 이전 엔트리가 발견되었습니다.
+1180 정리되지 않은 OID가 발견되었습니다. 테이블 %2$s(CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s.
+1181 서버 모드에서는 수동 vacuum 작업은 허용되지 않습니다.
+1182 페이지(%1$d,%2$d)를 다시 읽을 수 없습니다. 이전 에러: %3$d.
+1183 vpid (%1$d,%2$d)을 읽는 과정 중에 이전에 읽은 vpid (%3$d,%4$d) 간에 불일치가 발생했습니다.: %5$s.
+1184 OID:%1$d,%2$d,%3$d을 접근하는 과정 중에 동시에 너무 많은 페이지 변경 요청이 있습니다.
+1185 페이지 (%3$d,%4$d)을 읽는 과정 중에 예상치 못한 페이지(%1$d,%2$d) 접근이 발생했습니다.
+1186 checksumdb: %1$s (에러 코드: %2$d).
+1187 삭제된 힙 페이지(%1$d,%2$d)에 대한 잘못된 접근입니다.
+1188 현재 사용중인 사용자 계정 '%1%s'은 삭제할 수 없습니다.
+1189 명시된 날짜와 시간 조합은 존재하지 않습니다.
+1190 독립 모드의 vacuum 작업 시작
+1191 독립 모드의 vacuum 작업 종료
+1192 %1$zu의 값 정밀도가 최대 허용치인 %2$s를 초과했습니다.
+1193 분할 표현식의 길이가 최대 허용치인 %1$s를 초과했습니다.
 1194 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1409,13 +1409,13 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 118 잘못된 형식의 collation 함수입니다.\n  COLLATION ( expression )\n
 119 잘못된 형식의 clob_to_char 함수입니다.\n  CLOB_TO_CHAR ( expression [using charset] )\n
 120 잘못된 형식의 index_prefix 함수입니다.\n  INDEX_PREFIX ( expression, expression, expression )\n
-121 Expecting ON. Outer Joins require join condition.
-122 Incorrect usage of UNION and ORDER BY
-123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
-124 invalid use of dbtimezone\n dbtimezone
-125 invalid use of sessiontimezone\n sessiontimezone
-126 Maximum length of a class/vclass comment is %1$d bytes.
-127 Maximum length of a comment is %1$d bytes.
+121 잘못 사용된 UNION과 ORDER BY 형식입니다.
+122 ON 절이 요구됩니다. 외부 조인은 조인 조건식을 필요로 합니다.
+123 잘못된 형식의 타임존\n set timezone 'timezone_val' 또는 set time zone 'timezone_val'
+124 잘못된 형식의 dbtimezone\n dbtimezone
+125 잘못된 형식의 sessiontimezone\n sessiontimezone
+126 테이블과 뷰 커맨트의 최대 길이는 %1$d 바이트입니다.
+127 커맨트의 최대 길이는 %1$d 바이트입니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1698,7 +1698,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 278 뷰에 속해있는 하나의 테이블에 대해서만 업데이트 할 수 있습니다.
 279 Multiple insert target은 허용되지 않습니다.
 280 '%1$s' 타입은 뷰클래스이며, cascade constraint를 통한 뷰클래스의 drop은 허용되지 않습니다.
-281 "FOR UPDATE" 절은 "GROUP BY" 절, "DISTINCT" 연산자, "aggregate" 함수와 함께 부질의, UNION질의에서 사용될 수 없습니다.
+281 "FOR UPDATE" 절은 "GROUP BY" 절, "DISTINCT" 연산자, "aggregate" 함수와 함께 부질의, UNION 질의에서 사용될 수 없습니다.
 282 %2$d번째 인자는 %1$s이어야 합니다.
 283 너무 많은 인자가 사용되었습니다.
 284 인자의 개수가 적습니다. %1$d개의 인자가 필요합니다.
@@ -1706,12 +1706,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 286 %1$s 인자가 누락되었습니다.
 287 %1$s은(는) 알 수 없는 인자입니다.
 288 분할 테이블 내의 모든 분할을 제거하는 것은 허용되지 않습니다. 'DROP TABLE' 구문을 사용하십시오.
-289 The expression including %1$s is not allowed in this context.
-290 Transaction id is not an integer.
-291 Subquery is not allowed in ORDER BY FOR clause.
-292 Invalid use of aggregate functions.
-293 Value must be strictly increasing for each partition.
-294 Cannot use function or filter indexes on local timezone typed columns.
+289 %1$s를 포함한 표현식은 현재 구문에서 허용되지 않습니다.
+290 주어진 트랜잭션 구별자가 정수가 아닙니다.
+291 ORDER BY FOR 절에는 부질의를 사용할 수 없습니다.
+292 잘못된 집계 함수입니다.
+293 분할 경계값은 각 분할에 대해서 항상 증가해야 합니다.
+294 local timezone 타입에 대해서 함수 인덱스나 필터링된 인덱스를 사용할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
@@ -1792,8 +1792,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 소유자나 DBA만이 대상 시리얼의 정의를 변경(Alter)할 수 있습니다. 
 78 Auto increment 제약 조건으로 생성된 시리얼 객체는 임의로 변경할 수 없습니다. 
 79 유효하지 않은 Isolation 수준: %1$s 스키마, %2$s 객체.
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 트랜잭션 격리도는 'read committed', 'repeatable read', 'serializable' 중의 하나여야 합니다.
+81 '%1$s'은 auto_increment 객체로서 serial 객체처럼 변경할 수 없습니다.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 잘못된 캐시 ***
