@@ -6389,6 +6389,35 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   return NO_ERROR;
 }
 
+/*
+ * disk_rv_alloctable_with_volheader () - deallocate from volume header
+ *
+ *   return:
+ *   rcv(in): Recovery structure
+ *   ref_lsa): referred lsa
+ * 
+ * Note: This function is called currently only at recovery phase
+*/
+void
+disk_deallocate_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
+			   LOG_LSA * ref_lsa)
+{
+  VPID vhdr_vpid;
+  LOG_DATA_ADDR vhdr_addr;
+
+  vhdr_vpid.volid = pgbuf_get_volume_id (rcv->pgptr);
+  vhdr_vpid.pageid = pgbuf_get_page_id (rcv->pgptr);
+  assert (vhdr_vpid.pageid == DISK_VOLHEADER_PAGE);
+
+  (void) disk_rv_alloctable_vhdr_only (thread_p, rcv, DISK_ALLOCTABLE_CLEAR);
+
+  vhdr_addr.offset = 0;
+  vhdr_addr.pgptr = rcv->pgptr;
+
+  log_append_run_postpone (thread_p, RVDK_IDDEALLOC_VHDR_ONLY,
+			   &vhdr_addr, &vhdr_vpid, rcv->length, rcv->data,
+			   ref_lsa);
+}
 
 /*
  * disk_rv_alloctable_with_volheader () - Redo (undo) update of allocation

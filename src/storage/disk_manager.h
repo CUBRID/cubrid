@@ -322,6 +322,8 @@ extern void disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore,
 					void *data);
 extern int disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_rv_dump_link (FILE * fp, int length_ignore, void *data);
+extern void disk_deallocate_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
+				       LOG_LSA * ref_lsa);
 extern int disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv,
 					      LOG_LSA * ref_lsa);

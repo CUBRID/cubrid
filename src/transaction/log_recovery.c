@@ -173,8 +173,13 @@ static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 					     LOG_LSA *
 					     start_postpone_lsa,
 					     LOG_LSA * start_postpone_run_lsa,
+					     LOG_LSA *
+					     partial_dealloc_vol_header_lsa,
 					     LOG_TDES * tdes);
-
+static int log_recovery_complete_partial_page_deallocation (THREAD_ENTRY *
+							    thread_p,
+							    LOG_LSA *
+							    partial_dealloc_lsa);
 static void log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p,
 					     LOG_LSA * mvcc_op_lsa,
 					     MVCCID mvccid,
@@ -4214,6 +4219,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   LOG_LSA first_postpone_to_apply;
   LOG_LSA start_postpone_run_lsa;
+  LOG_LSA partial_dealloc_vol_page_lsa;
 
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
@@ -4230,6 +4236,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
   LSA_SET_NULL (&first_postpone_to_apply);
+  LSA_SET_NULL (&partial_dealloc_vol_page_lsa);
 
   if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT
       || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
@@ -4260,7 +4267,14 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	}
 
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
-					NULL, &tdes->posp_nxlsa, tdes);
+					&tdes->posp_nxlsa, NULL,
+					&partial_dealloc_vol_page_lsa, tdes);
+
+      if (!LSA_ISNULL (&partial_dealloc_vol_page_lsa))
+	{
+	  (void) log_recovery_complete_partial_page_deallocation
+	    (thread_p, &partial_dealloc_vol_page_lsa);
+	}
 
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
 		       LOG_COMMIT_WITH_POSTPONE, false);
@@ -4294,7 +4308,8 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
 					&tdes->topops.
 					stack[tdes->topops.last].posp_lsa,
-					&start_postpone_run_lsa, tdes);
+					&start_postpone_run_lsa,
+					&partial_dealloc_vol_page_lsa, tdes);
 
       if (!LSA_ISNULL (&start_postpone_run_lsa)
 	  && LSA_GT (&tdes->undo_nxlsa, &start_postpone_run_lsa))
@@ -4314,6 +4329,12 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa,
 		    &start_postpone_run_lsa);
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
+
+      if (!LSA_ISNULL (&partial_dealloc_vol_page_lsa))
+	{
+	  (void) log_recovery_complete_partial_page_deallocation
+	    (thread_p, &partial_dealloc_vol_page_lsa);
 	}
 
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
@@ -5808,8 +5829,8 @@ error:
  *   ret_lsa(out):
  *   start_postpone_lsa(in):
  *   start_postpone_run_lsa(out): run postpone lsa of start postpone
+ *   partial_dealloc_vol_page_lsa(out): partial deallocation volume page log lsa
  *   tdes(in):
- *   pospone_type(in):
  *
  */
 static int
@@ -5817,6 +5838,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 				  LOG_LSA * ret_lsa,
 				  LOG_LSA * start_postpone_lsa,
 				  LOG_LSA * start_postpone_run_lsa,
+				  LOG_LSA * partial_dealloc_vol_page_lsa,
 				  LOG_TDES * tdes)
 {
   LOG_LSA end_postpone_lsa;
@@ -5844,7 +5866,8 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
   struct log_topop_result *topop_result = NULL;
   bool found_commit_with_postpone = false;
 
-  assert (ret_lsa && start_postpone_lsa && tdes);
+  assert (ret_lsa && start_postpone_lsa && tdes
+	  && partial_dealloc_vol_page_lsa);
 
   LSA_SET_NULL (ret_lsa);
 
@@ -5868,6 +5891,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
       LSA_SET_NULL (start_postpone_run_lsa);
     }
 
+  LSA_SET_NULL (partial_dealloc_vol_page_lsa);
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -5996,14 +6020,48 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
 			   * next_postpone_lsa is the first postpone
 			   * to be applied.
 			   */
-			  if (start_postpone_run_lsa != NULL)
-			    {
-			      LSA_COPY (start_postpone_run_lsa,
-					&local_start_postpone_run_lsa);
-			    }
 
-			  start_postpone_lsa_wasapplied = true;
-			  isdone = true;
+			  if (!LSA_ISNULL (partial_dealloc_vol_page_lsa))
+			    {
+			      if ((run_posp->data.rcvindex
+				   == RVDK_IDDEALLOC_VHDR_ONLY)
+				  && LSA_EQ (&run_posp->ref_lsa,
+					     partial_dealloc_vol_page_lsa))
+				{
+				  /* volume page deallocation completed */
+				  LSA_SET_NULL (partial_dealloc_vol_page_lsa);
+				}
+
+			      isdone = true;
+			    }
+			  else
+			    {
+			      if (start_postpone_run_lsa != NULL)
+				{
+				  LSA_COPY (start_postpone_run_lsa,
+					    &local_start_postpone_run_lsa);
+				}
+
+			      start_postpone_lsa_wasapplied = true;
+
+			      if (run_posp->data.rcvindex
+				  == RVDK_IDDEALLOC_BITMAP_ONLY)
+				{
+				  /* need to check atomicity of volume
+				   * page deallocation.
+				   * run postpone for
+				   * RVDK_IDDEALLOC_BITMAP_ONLY found.
+				   * search run postpone for 
+				   * RVDK_IDDEALLOC_VHDR_ONLY                              
+				   */
+				  LSA_COPY (partial_dealloc_vol_page_lsa,
+					    &run_posp->ref_lsa);
+				}
+			      else
+				{
+				  isdone = true;
+				}
+			    }
 			}
 		      break;
 
@@ -6099,6 +6157,117 @@ end:
     }
 
   return NO_ERROR;
+}
+
+/*
+ * log_recovery_complete_partial_page_deallocation () - Complete
+ *					partial page deallocation
+ *
+ * return			: Void.
+ * thread_p (in)		: Thread entry.
+ * partial_dealloc_lsa (in)	: Partial page deallocation log lsa
+ *
+ * NOTE: The function is called at recovery only
+ */
+static int
+log_recovery_complete_partial_page_deallocation (THREAD_ENTRY * thread_p,
+						 LOG_LSA *
+						 partial_dealloc_lsa)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
+  struct log_redo redo;		/* A redo log record                   */
+  int rcv_length = 0;
+  char *rcv_data = NULL;
+  char *area = NULL;
+  int error_code = NO_ERROR;
+  LOG_RCV rcv;			/* Recovery structure for execution    */
+  VPID rcv_vpid;		/* Location of data to redo            */
+  LOG_RCVINDEX rcvindex;	/* The recovery index                  */
+  LOG_LSA log_lsa;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  LSA_COPY (&log_lsa, partial_dealloc_lsa);
+  if (logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr) == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_complete_partial_page_deallocation");
+      goto end;
+    }
+
+  /* Get the DATA HEADER */
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa,
+		      log_pgptr);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo),
+				    &log_lsa, log_pgptr);
+
+  redo = *((struct log_redo *) ((char *) log_pgptr->area + log_lsa.offset));
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), &log_lsa,
+		      log_pgptr);
+
+  if (log_lsa.offset + redo.length < (int) LOGAREA_SIZE)
+    {
+      rcv_data = (char *) log_pgptr->area + log_lsa.offset;
+    }
+  else
+    {
+      /* Need to copy the data into a contiguous area */
+      area = (char *) malloc (redo.length);
+      if (area == NULL)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_recovery_complete_partial_page_deallocation");
+
+	  goto end;
+	}
+
+      /* Copy the data */
+      logpb_copy_from_log (thread_p, area, redo.length, &log_lsa, log_pgptr);
+      rcv_data = area;
+    }
+
+  rcvindex = redo.data.rcvindex;
+  rcv.offset = 0;
+  rcv.length = redo.length;
+  rcv.data = rcv_data;
+  assert (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER);
+
+  rcv_vpid.volid = redo.data.volid;
+  rcv_vpid.pageid = DISK_VOLHEADER_PAGE;
+
+  rcv.pgptr =
+    pgbuf_fix_with_retry (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			  10);
+  if (rcv.pgptr == NULL)
+    {
+      goto end;
+    }
+
+  disk_deallocate_volheader (thread_p, &rcv, partial_dealloc_lsa);
+
+  if (rcv.pgptr != NULL)
+    {
+      pgbuf_unfix (thread_p, rcv.pgptr);
+    }
+
+  if (area != NULL)
+    {
+      free_and_init (area);
+    }
+
+  return NO_ERROR;
+
+end:
+
+  if (area != NULL)
+    {
+      free_and_init (area);
+    }
+
+  return ER_FAILED;
 }
 
 /*
