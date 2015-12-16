@@ -1217,49 +1217,49 @@ $ LOADDB
 1148 Dimensiunea predicatului de filtrare serializat(%1$d) depăseşte dimensiunea maximă permisă(%2$d). O intrare nouă este adaugată în cache deşi nu există victime, deoarece toate intrările din cache sunt folosite.
 1149 Pagina %1$d a volumului %2$d nu poate fi găsită.
 1150 Contextul necesită colaţii compatibile.
-1151 The page %1$d of volume %2$d is not a slotted page.
-1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Attempt to use 'zero date'.
-1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
-1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
-1156 MVCC can't get snapshot
-1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurrent updates
-1159 Timezone compile error: %s
-1160 Timezone library loader error: %s
-1161 Timezone conversion error.
-1162 Invalid or missing timezone.
-1163 Invalid or missing daylight saving time.
-1164 Daylight saving time is not supported with this timezone.
-1165 Invalid combination of date, time, timezone and daylight specifier.
-1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 Comment string cannot have more than 1024 bytes.
-1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 Failed to flush replication items (error code : %1$d).
-1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Invalid percentile value %1$f, should be between 0 and 1.
-1173 Percentile value changed in the same group.
-1174 Inheriting from a partitioned table is not allowed.
-1175 Geographic timezone is not allowed without date context.
-1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Found not vacuumed entries in heap.
-1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
-1181 Manual vacuum is disabled for client-server mode.
-1182 Could not refix page %1$d,%2$d, previous error was %3$d.
-1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
-1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
-1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
+1151 Pagina %1$d din volumul %2$d nu conține slot-uri.
+1152 Doar posesorul sau un membru al grupului DBA poate opri o tranzacție (%1$d).
+1153 Utilizare 'zero date'.
+1154 Linia MVCC %1$d|%2$d|%3$d nu satisface reevaluarea.
+1155 Linie MVCC invalidă pentru ștergere: %1$d|%2$d|%3$d.
+1156 MVCC nu poate obține snapshot.
+1157 Nivelul de izolare MVCC trebuie să fie 'read committed', 'repeatable read' sau 'serializable'.
+1158 Conflict de serializare produs de update-uri concurente.
+1159 Eroare de compilare timezone: %s.
+1160 Eroare încărcare librărie timezone: %s.
+1161 Eroare conversie timezone.
+1162 Timezone invalid sau inexistent.
+1163 Daylight saving time invalid sau inexistent.
+1164 Daylight saving time incompatibil cu timezone.
+1165 Configurație greșită de dată, timp, timezone și specificator daylight.
+1166 Configurație inexistentă de timp, dată (în timpul intervalului daylight saving).
+1167 Dimensiunea comentariului nu poate depăși 1024 bytes.
+1168 Nu se pot actualiza statisticile pentru tabelul (%1$s), nu se poate seta lock.
+1169 Cheia index trebuie să conțină atributele cheii de partiționare.
+1170 Operația de flush pentru informații de replicare nu a reușit (cod eroare : %1$d).
+1171 Volumul %1$d nu poate fi înlăturat cât timp nu este liber.
+1172 Percentilă invalidă %1$f, trebuie să fie între 0 și 1.
+1173 Valoarea percentilă a fost modificată în cadrul grupului.
+1174 Moștenirea dintr-un tabel partiționat nu este permisă.
+1175 Un time zone geografic este permis doar cu informații despre dată.
+1176 Promovarea latch pentru pagina %1$d din volumul %2$d nu a reușit.
+1177 Date timezone incompatibile: checksum diferit între %1$s și %2$s.
+1178 Dealocare instanță nealocată încă, sau dublă dealocare, din lock free bitmap.
+1179 S-au identificat intrări în heap neprocesate de vacuum.
+1180 S-au identificat OID-uri neprocesate de vacuum. INDEX %1$s pe CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
+1181 Vacuum manual este dezactivat în modul client-server.
+1182 Nu s-a putut refixa pagina %1$d,%2$d, eroare anterioară: %3$d.
+1183 Eroare la fixare vpid (%1$d,%2$d), au fost găsite inconsistențe în vpid-uri anterioare (%3$d,%4$d): %5$s.
+1184 S-a detectat depășirea limitei de modificări concurente ale paginilor, la accesarea OID:%1$d,%2$d,%3$d.
+1185 Refixare neprevăzută pentru pagina %1$d,%2$d, în timpul fixării paginii %3$d,%4$d.
 1186 checksumdb: %1$s (error code: %2$d).
-1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Dropping an active user '%1$s' is not allowed.
-1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Stand-alone vacuum execution is started.
-1191 Stand-alone vacuum execution is ended.
-1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1187 Accesare invalidă a paginii %1$d,%2$d, care făcea parte dintr-un heap șters.
+1188 Nu este permisă ștergerea unui user activ ('%1$s').
+1189 Nu există combinația specificată de dată și timp (pe parcursul tranziției între reguli timezone).
+1190 Stand-alone vacuum a început.
+1191 Stand-alone vacuum s-a finalizat.
+1192 Valoarea %1$zu depășește maximul permis %2$d.
+1193 După procesare, lungimea expresiei de partiționare depășește lungimea maximă(%1$d).
 1194 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1410,12 +1410,12 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 119 utilizare invalidă a lui clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 120 utilizare invalidă a lui index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 Utilizare invalidă a UNION şi ORDER BY.
-122 Expecting ON. Outer Joins require join condition.
-123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
-124 invalid use of dbtimezone\n dbtimezone
-125 invalid use of sessiontimezone\n sessiontimezone
-126 Maximum length of a class/vclass comment is %1$d bytes.
-127 Maximum length of a comment is %1$d bytes.
+122 Se așteaptă o condiție ON. Outer Join necesită o condiție pentru join.
+123 utilizare invalidă a setului timezone\n, 'timezone_val' sau setare invalidă 'timezone_val'
+124 utilizare invalidă a dbtimezone\n dbtimezone
+125 utilizare invalidă a sessiontimezone sessiontimezone\n
+126 Lungimea maximă a comentariilor class/vclass este %1$d bytes.
+127 Lungimea maximă a comentariilor este %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
@@ -1697,21 +1697,21 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 277 Pentru funcţia '%1$s', clauza ORDER BY este invalidă.
 278 O singură tabelă din interiorul unei vizualizări poate fi actualizată.
 279 Inserarea în mai multe tabele nu este permisă.
-280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
-281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
-282 Expects %1$s in argument position %2$d.
-283 Too many arguments specified.
-284 Too few arguments, need %1$d arguments.
-285 Expects %1$s for argument %2$s.
-286 Argument %1$s is missing.
-287 Unknown argument %1$s.
+280 Tipul '%1$s' este vclass, ștergerea vclass cu constrângeri cascade nu este permisă.
+281 Clauza FOR UPDATE nu poate fi folosită în subqueries, unions, împreună cu clauza GROUP BY , operatorul DISTINCT sau funcții de agregare.
+282 Se așteaptă %1$s în poziția argumentului %2$d.
+283 Prea multe argumente specificate.
+284 Prea puține argumente specificate, sunt necesare %1$d argumente.
+285 Se așteaptă %1$s pentru argumentul %2$s.
+286 Argumentul %1$s nu este precizat.
+287 Argument necunoscut %1$s.
 288 Nu se pot şterge toate partiţiile, folosiţi DROP TABLE în schimb.
-289 The expression including %1$s is not allowed in this context.
-290 Transaction id is not an integer.
-291 Subquery is not allowed in ORDER BY FOR clause.
-292 Invalid use of aggregate functions.
-293 Value must be strictly increasing for each partition.
-294 Cannot use function or filter indexes on local timezone typed columns.
+289 Expresia ce include %1$s nu este permisă în acest context.
+290 Id-ul tranzacției nu este de tip integer.
+291 Nu este permis un subquery în clauza ORDER BY FOR.
+292 Utilizare invalidă a funcțiilor de agregare.
+293 Valoarea trebuie să fie strict crescătoare pentru fiecare partiție.
+294 Nu se pot folosi function sau filter indexes pe coloane timezone.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.
@@ -1792,8 +1792,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 Numai proprietarul sau un DBA poate schimba definiţia serialului.
 78 Nu este permis utilizatorilor să modifice un obiect serial creat de o constrângere AUTO INCREMENT.
 79 Nivel de izolare invalid; schema: %1$s, instanţe: %2$s.
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 Nivelul de izolare MVCC trebuie să fie 'read committed', 'repeatable read' sau'serializable'.
+81 '%1$s' este un obiect 'auto_increment', care nu poate fi modificat ca serial.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalid ***

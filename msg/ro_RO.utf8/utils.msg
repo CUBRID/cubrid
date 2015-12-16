@@ -656,16 +656,16 @@ opţiuni valide:\n\
   -r, --repair                   repară inconsistenţele detectate\n\
   -i, --input-class-file=FIŞIER  fişier de intrare cu numele claselor\n\
                                  implicit: se verifică toate clasele\n\
-  -I, --index-name             index name that will be checked only\n\
-                               default: check all indices\n\
+  -I, --index-name             numele singurului index care va fi verificat\n\
+                               default: se verifică toții indecşii\n\
       --check-prev-link        verifică doar legăturile predecesor ale indecşilor\n\
       --repair-prev-link       repararea legăturilor predecesor ale indecşilor\n\
-      --check-file-tracker     check all allocated pages of file\n\
-      --check-heap             check all pages of heap files\n\
-      --check-catalog          check catalog consistency\n\
-      --check-btree            check all btree indices\n\
-      --check-class-name       check class name consistency\n\
-      --check-btree-entries    check entries of btree consistency\n
+      --check-file-tracker     verifică toate paginile alocate din fișier\n\
+      --check-heap             verifică toate paginile din fișierele heap\n\
+      --check-catalog          verifică consistența catalogului\n\
+      --check-btree            verifică toți indecşii btree\n\
+      --check-class-name       verifică consistența class name\n\
+      --check-btree-entries    verifică consistența intrărilor din btree\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
@@ -1088,127 +1088,136 @@ $set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
 59 prefetchlogdb nu poate rula în modul de execuţie independent.\n
 60 \
 prefetchlogdb: Pre-citirea paginilor de log de la server.\n\
-usage: %1$s prefetchlogdb [OPTION] nume-baza-de-date\n\
+utilizare: %1$s prefetchlogdb [OPTION] nume-bază-de-date\n\
 \n\
-valid options:\n\
-  -L, --log-path=CALE         calea catre directorul pentru volume de log copiate\n
+opțiuni valide:\n\
+  -L, --log-path=CALE         calea către directorul pentru volume de log copiate\n
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
-59 Invalid generation mode supplied.\n
-60 Invalid or corrupt input folder.\n
+59 Modul de generare introdus este invalid.\n
+60 Folder-ul input este invalid sau corupt.\n
 61 \
-gen_tz: Generate source files containing timezone data to be compiled into\n\
-        a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
+gen_tz: Generează fișiere ce conțin informații timezone, pentru a fi compilate\n\
+        într-o librărie shared.\n\
+utilizare: %s gen_tz [OPTION]\n\
        %s gen_tz -g extend [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -i, --input-folder    path to an input folder containing a version of\n\
-                        IANA's timezone database files.\n\
-                        Default: $CUBRID/timezones/tzdata\n\
-  -g, --gen-mode=TYPE   controls the output of gen_tz, based on the TYPE:\n\
-                        TYPE:\n\
-                        1. NEW (default) : generate timezone source file(s) for\n\
-                        the shared library with no regard to previous versions;\n\
-                        also generate a source file containing all countries\n\
-                        and timezone names (intended for developer use, to\n\
-                        be integrated into future CUBRID versions).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removeds if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+opțiuni valide:\n\
+  -i, --input-folder    calea pentru un fișier input ce conține o versiune a\n\
+                        fișierelor cu IANA timezone.\n\
+                        Implicit: $CUBRID/timezones/tzdata\n\
+  -g, --gen-mode=TIP    controlează ieșirea de la gen_tz, in funcție de TIP:\n\
+                        TIP:\n\
+                        1. NEW (implicit) : generează fișierele timezone pentru\n\
+                        librăria shared, fără nicio asociere cu versiunile\n\
+                        anterioare; deasemenea generează un fișier cu toate\n\
+                        țările și denumirile timezone.\n\
+                        2. EXTEND : generează fișierele timezone folosind\n\
+                        datele din fișierul input; id-urile timezone actuale\n\
+                        din CUBRID sunt păstrate; deasemenea este generat un\n\
+                        fișier timezone secundar cu noile timezone-uri din\n\
+                        fișierul input; offset-urile GMT și informațiile\n\
+                        daylight saving sunt actualizate (sau adăugate, pentru\n\
+                        fiecare timezone nou); vechile timezone-uri integrate\n\
+                        deja în CUBRID nu sunt înlăturate, chiar dacă nu există\n\
+                        în fișierul input.\n\
+                        Este generat un nou fișier C, ce conține toate\n\
+                        denumirile timezone, care trebuie inclus în fișierele\n                        
+                        sursă CUBRID, înainte ca noua librarie timezone să\n\
+                        poată fi folosită.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
-59 The supplied zone ID is out of range. Use -z to see all\n\
- timezones and their IDs.\n
+59 ID-ul de zonă introdus este în afara intervalului acceptat. Folosește -z\n\
+ pentru afișare timezeone-uri și ID-uri valide\n
 60 \
-dump_tz: Display timezone related information.\n\
-usage: %s dump_tz [OPTION]\n\
+dump_tz: Afișare informații suplimentare timezone.\n\
+utilizare: %s dump_tz [OPTION]\n\
 \n\
-valid options:\n\
-  -c, --list-countries      shows the list of countries currently supported\n\
-  -l, --leap-seconds	    shows the list of the leap seconds\n\
-  -s, --summary		    shows a summary of dump timezone data\n\
-  -z, --list-zones          shows the list of timezones currently supported\n\
-  -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
-                            to a timezone having the supplied ZONE_ID or for\n\
-                            ALL timzones. The ID of a timezone can be obtained\n\
-                            from the list displayed using the -z option.\n
+opțiuni valide:\n\
+  -c, --list-countries      afișare listă completă de țări suportate\n\
+  -l, --leap-seconds	    afișare listă de leap seconds\n\
+  -s, --summary		    afișare sumar informații timezone\n\
+  -z, --list-zones          afișare listă de timezone-uri suportate\n\
+  -d, --zone-id=ID_ZONA|ALL afișare informații disponibile referitoare la\n\
+                            un timezone cu ID_ZONA specificat sau toate\n\
+                            timezone-urile disponibile(ALL). ID-ul unei zone\n\
+                            poate fi obținut folosind opțiunea -z.\n\
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
-20 Restoreslave cancelled or an error occurred.\n
-21 Database restore has been completed. But failed to initialize applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
-22 The database name or the host name was not configured for HA.\n
-23 Wrong value '%1$s' for state of backup source node.\n
+20 Restaurare nod slave anulată sau a apărut o eroare.\n\
+21 Restaurarea bazei de date este completă. Nu s-a reușit inițializarea\n\
+ applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n\
+22 Numele bazei de date sau denumirea host nu au fost configurate pentru HA.\n\
+23 Valoare greșită, '%1$s', pentru tipul nodului sursă din backup.\n
 60 \
-restoreslave: Restore a slave database.\n\
-usage: %1$s restoreslave [OPTION] database-name\n\
+restoreslave: Restaurează o bază de date slave.\n\
+utilizare: %1$s restoreslave [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -s, --source-state=STATE          state of backup source node; mandatory\n\
-                                    STATE may be 'master', 'slave', or 'replica'\n\
-  -m, --master-host-name=NAME       host name of the current master node; mandatory\n\
-      --list                        display a list of backup volumes without restoring\n\
-  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
-  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+opțiuni valide:\n\
+  -s, --source-state=TIP            tipul nodului sursă din backup; obligatoriu\n\
+                                    TIP poate fi 'master', 'slave' sau 'replica'\n\
+  -m, --master-host-name=NUME       denumire host pentru nodul master curent; obligatoriu\n\
+      --list                        afișează o listă de volume backup fără restaurare\n\
+  -B, --backup-file-path=CALE       setează calea către un director de volume backup\n\
+                                    ce urmează să fie restaurare\n\
+  -o, --output-file=FISIER          transmitere mesaje produse în FISIER;\n\
+  -u, --use-database-location-path  restaurează baza de date și volumele de log\n\
+                                    în calea specificată în fișierul cu locațiile\n\
+                                    bazelor de date\n\
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
-31 Cannot remove system volume or the first volume (Volid : %1$d).\n
-32 Cannot find the volume (Volid : %1$d).\n
-33 There are too many Volids (Max Volids : %1$d).\n
-34 Invalid Volid(%1$s).\n
+21 Urmează să fie șterse următoarele volume:\n\n
+22 Doriți să continuați? (Y/N)
+31 Nu se poate șterge volumul de sistem sau primul volum (Volid : %1$d).\n
+32 Nu s-a găsit volumul (Volid : %1$d).\n
+33 S-a depășit numărul maxim de id-uri volum (Max Volids : %1$d).\n
+34 Volid invalid(%1$s).\n
 60 \
-delvoldb: Remove a empty volume-file of the database.\n\
-usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+delvoldb: Șterge un volum liber din memorie.\n\
+utilizare: %1$s delvoldb [OPTION] database-name -i Volid\n\
 \n\
-valid options:\n\
-  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
-  -f, --force                      remove the volume without a prompt for verification\n\
-  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
-  -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+opțiuni valide:\n\
+  -c, --clear-cache                șterge toate fișierele cache din volumul temporar\n\
+  -f, --force                      șterge un volum fără o confirmare\n\
+  -p, --dba-password=              parola DBA; obligatoriu\n\
+  -S, --SA-mode                    execuție în modul stand-alone\n\
+  -C, --CS-mode                    execuție în modul client-server\n
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
-20 Vacuumdb is temporary not available for client-server mode\n
-21 The vacuum operation failed\n
+20 Momentan, vacuumdb nu este disponibil în modul client-server \n
+21 Operația de vacuum nu a reușit\n
 60 \
-vacuumdb: Vacuums dead records from database.\n\
-usage: %1$s vacuumdb [OPTION] database-name\n\
+vacuumdb: Șterge înregistrări nenecesare din baza de date\n\
+utilizare: %1$s vacuumdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+opțiuni valide:\n\
+  -S, --SA-mode                execuție în modul stand-alone\n\
+  -C, --CS-mode                execuție în modul client-server\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
-1 Failed to load table names in %1$s.\n
-2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
-58 HA feature is not supported in this platform.\n
-59 checksumdb cannot run as standalone mode.\n
+1 Încărcarea numelor tabelelor nu a reușit în %1$s.\n
+2 checksumdb poate fi rulat doar pe un server activ HA. %1$s (status curent: %2$s)\n
+58 opțiunea HA nu este disponibilă pe această platformă.\n
+59 checksumdb nu poate fi rulat în modul stand-alone.\n
 60 \
-checksumdb: check replication integrity.\n\
-usage: %1$s checksumdb [OPTION] database-name@hostname\n\
+checksumdb: verifică integritatea replicării în HA.\n\
+utilizare: %1$s checksumdb [OPTION] database-name@hostname\n\
 \n\
-valid options:\n\
-  -c, --chunk-size=NUMBER       the number of rows to select for each checksum calculation\n\
-                                default: 500 rows, minimum: 100 rows\n\
-  -s, --sleep=NUMBER            sleep time between checksum calculation; default: 100 ms\n\
-  -i, --include-class-file=FILE input FILE of table names to include\n\
-  -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
-  -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
-  -r, --report-only             report replication integrity based on checksum calculation\n\
-                                any options except --table-name will be ignored\n\
-      --resume                  resume calculating checksum\n\
-      --schema-only             check only schema consistency\n\
-      --cont-on-error           continue on calculation error\n
+opțiuni valide:\n\
+  -c, --chunk-size=NUMĂR        numărul de linii selectate la fiecare rulare checksum;\n\
+                                implicit: 500 linii, minim: 100 linii\n\
+  -s, --sleep=NUMĂR             sleep time între calculele checksum; implicit: 100 ms\n\
+  -i, --include-class-file=FILE fișier de intrare ce conține toate numele\n\
+                                tabelelor ce vor fi verificate\n\
+  -e, --exclude-class-file=FILE fișier de intrare ce conține numele tabelelor\n\
+                                ce vor fi excluse la verificare;\n\
+                                -i și -e nu pot fi folosite simultan\n\
+  -t, --timeout=NUMĂR           numărul de milisecunde până la timeout;\n\
+                                implicit: 1000 ms\n\
+  -n, --table-name=NUME         numele tabelului unude vor fi salvate rezultatele;\n\
+                                implicit: db_ha_checksums\n\
+  -r, --report-only             raportare informații rezultate în urma checksum\n\
+                                toate opțiunile diferite de --table-name sunt ignorate\n\
+      --resume                  reluare checksum\n\
+      --schema-only             verificare doar consistență schemă\n\
+      --cont-on-error           ignorare erori de calcul\n
