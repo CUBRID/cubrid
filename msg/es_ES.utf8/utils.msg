@@ -1072,121 +1072,121 @@ opciones validas:\n\
   -L, --log-path=PATH         directorio PATH para volumenes de registro copiados\n
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
-59 Invalid generation mode supplied.\n
-60 Invalid or corrupt input folder.\n
+59 Modo invalido de generacion suministrado.\n
+60 Carpeta de entradas invalida o corrupta.\n
 61 \
-gen_tz: Generate source files containing timezone data to be compiled into\n\
-        a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
+gen_tz: Generar archivos fuente conteniendo datos de zona horaria a ser compilados dentro de\n\
+        una biblioteca compartida.\n\
+uso: %s gen_tz [OPTION]\n\
        %s gen_tz -g extend [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -i, --input-folder    path to an input folder containing a version of\n\
-                        IANA's timezone database files.\n\
+opciones validas:\n\
+  -i, --input-folder    camino hacia una carpeta de entradas conteniendo una version de\n\
+                       	archivos de zona horaria de la base de datos de IANA.\n\
                         Default: $CUBRID/timezones/tzdata\n\
-  -g, --gen-mode=TYPE   controls the output of gen_tz, based on the TYPE:\n\
+  -g, --gen-mode=TYPE   controla el resultado de gen_tz, basado en TYPE:\n\
                         TYPE:\n\
-                        1. NEW (default) : generate timezone source file(s) for\n\
-                        the shared library with no regard to previous versions;\n\
-                        also generate a source file containing all countries\n\
-                        and timezone names (intended for developer use, to\n\
-                        be integrated into future CUBRID versions).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removeds if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+                        1. NEW (default) : generar archivo(s) fuente de zona horaria para\n\
+                        la biblioteca compartida sin referencia a versiones anteriores;\n\
+                        tambien generar un archivo fuente conteniendo todos los paises\n\
+                        y nombres de zona horaria (destinado para el uso de desarolladores, a\n\
+                        ser integrado dentro futuras versiones  de CUBRID).\n\
+                        2. EXTEND : generar archivo(s) fuente de zona horaria utilizando los\n\
+                        datos de la carpeta de entradas; indices de zona horaria codificados dentro de\n\
+                        CUBRID son preservados; zonas horarias nuevas encontradas en los archivos\n\
+                        de entrada son agregadas al archivo fuente secundario que es\n\
+                        tambien generado; la informacion relacionada al horario de verano y a los GMT offsets\n\
+                        es actualizada (o agregada, para zonas horarias nuevas);\n\
+                        zonas horarias no son eliminadas nunca si una zona horaria codificada dentro de\n\
+                        CUBRID falta en los archivos de entrada, los datos\n\
+                        asociados son recuperados de la biblioteca de zona horaria existente.\n\
+                        Un nuevo archivo C conteniendo todos los nombres de zona horaria es generado,\n\
+                        y tiene que ser incluido en la carpeta CUBRID de archivos fuente\n\
+                        antes de que la nueva biblioteca de zona horaria pueda ser utilizada.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
-59 The supplied zone ID is out of range. Use -z to see all\n\
- timezones and their IDs.\n
+59 El identificador de zona suministrado es fuera de rango. Utilizar -z para ver todas\n\
+ las zonas horarias y sus identificadores.\n
 60 \
-dump_tz: Display timezone related information.\n\
-usage: %s dump_tz [OPTION]\n\
+dump_tz: Mostrar informacion relacionada a la zona horaria.\n\
+uso: %s dump_tz [OPTION]\n\
 \n\
-valid options:\n\
-  -c, --list-countries      shows the list of countries currently supported\n\
-  -l, --leap-seconds	    shows the list of the leap seconds\n\
-  -s, --summary		    shows a summary of dump timezone data\n\
-  -z, --list-zones          shows the list of timezones currently supported\n\
-  -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
-                            to a timezone having the supplied ZONE_ID or for\n\
-                            ALL timzones. The ID of a timezone can be obtained\n\
-                            from the list displayed using the -z option.\n
+opciones validas:\n\
+  -c, --list-countries      mostar la lista de paises actualmente soportada\n\
+  -l, --leap-seconds	    mostrar la lista de segundas leap\n\
+  -s, --summary		    mostrar un resumen de los datos de zona horaria\n\
+  -z, --list-zones          mostrar una lista de zonas horarias actualmente soportadas\n\
+  -d, --zone-id=ZONE_ID|ALL mostrar la informacion disponible relacionada a la zona horaria\n\
+                            a una zona horaria que tiene el ZONE_ID suministrado o para\n\
+                            TODAS zonas horarias. El identificador de una zona horaria puede ser obtenido\n\
+                            de la lista mostrada utilizando la opcion -z.\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
-20 Restoreslave cancelled or an error occurred.\n
-21 Database restore has been completed. But failed to initialize applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
-22 The database name or the host name was not configured for HA.\n
-23 Wrong value '%1$s' for state of backup source node.\n
+20 Restoreslave cancelado o un error ha ocurrido.\n
+21 La restauracion de la base de datos ha sido finalizada. Fallo al inicializar applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
+22 El nombre de la base de datos o el nombre de host no ha sido configurado para HA.\n
+23 Valor incorrecto '%1$s' para el estado del nodo fuente de backup.\n
 60 \
-restoreslave: Restore a slave database.\n\
-usage: %1$s restoreslave [OPTION] database-name\n\
+restoreslave: Restaurar una base de datos esclava.\n\
+uso: %1$s restoreslave [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -s, --source-state=STATE          state of backup source node; mandatory\n\
-                                    STATE may be 'master', 'slave', or 'replica'\n\
-  -m, --master-host-name=NAME       host name of the current master node; mandatory\n\
-      --list                        display a list of backup volumes without restoring\n\
-  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
-  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+opciones validas:\n\
+  -s, --source-state=STATE          estado del nodo fuente de backup; obligatorio\n\
+                                    STATE puede ser 'master', 'slave', o 'replica'\n\
+  -m, --master-host-name=NAME       nombre de host del nodo amo actual; obligatorio\n\
+      --list                        mostrar una lista de volumenes de backup sin restaurar\n\
+  -B, --backup-file-path=PATH       PATH es una carpeta de volumenes de backup a ser restaurados\n\
+  -o, --output-file=FILE            redirigir los mensajes de salida hacia FILE; default: none\n\
+  -u, --use-database-location-path  restaurar la base de datos y los volumenes de registro (log) en el camino especificado dentro del archivo de localizacion de la base de datos\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
-31 Cannot remove system volume or the first volume (Volid : %1$d).\n
-32 Cannot find the volume (Volid : %1$d).\n
-33 There are too many Volids (Max Volids : %1$d).\n
-34 Invalid Volid(%1$s).\n
+21 Listo para eliminar los siguentes volumenes:\n\n
+22 Desea continuar? (Y/N)
+31 No se puede eliminar el volumen de sistema o el primer volumen (Volid : %1$d).\n
+32 No se puede encontrar volumen (Volid : %1$d).\n
+33 Son demasiados Volids (Max Volids : %1$d).\n
+34 Volid (%1$s) invalido.\n
 60 \
-delvoldb: Remove a empty volume-file of the database.\n\
-usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+delvoldb: Eliminar un archivo-volumen vacio de la base de datos.\n\
+uso: %1$s delvoldb [OPTION] database-name -i Volid\n\
 \n\
-valid options:\n\
-  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
-  -f, --force                      remove the volume without a prompt for verification\n\
-  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
-  -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+opciones validas:\n\
+  -c, --clear-cache                borrar todos los archivos de cache en el volumen temporal temp\n\
+  -f, --force                      eliminar el volumen sin una verificacion pronta\n\
+  -p, --dba-password=PASS          clave del usuario DBA; mostrara si no especifica\n\
+  -S, --SA-mode                    modo de ejecucion stand-alone\n\
+  -C, --CS-mode                    modo de ejecucion cliente-servidor\n
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
-20 Vacuumdb is temporary not available for client-server mode\n
-21 The vacuum operation failed\n
+20 Vacuumdb no disponible temporalmente para modo cliente-servidor\n
+21 La operacion de aspirar ha fallado\n
 60 \
-vacuumdb: Vacuums dead records from database.\n\
-usage: %1$s vacuumdb [OPTION] database-name\n\
+vacuumdb: Aspira registros muertos de la base de datos.\n\
+uso: %1$s vacuumdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+opciones validas:\n\
+  -S, --SA-mode                modo de ejecucion stand-alone\n\
+  -C, --CS-mode                modo de ejecucion cliente-servidor\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
-1 Failed to load table names in %1$s.\n
-2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
-58 HA feature is not supported in this platform.\n
-59 checksumdb cannot run as standalone mode.\n
+1 Fallo al cargar los nombres de tablas en %1$s.\n
+2 checksumdb tiene que ejecutar en un servidor de HA activo. %1$s (estado actual: %2$s)\n
+58 Caracteristica HA no soportada en esta plataforma.\n
+59 checksumdb no puede ejecutar como modo stand-alone.\n
 60 \
-checksumdb: check replication integrity.\n\
-usage: %1$s checksumdb [OPTION] database-name@hostname\n\
+checksumdb: verifica la integridad de la replicacion.\n\
+uso: %1$s checksumdb [OPTION] database-name@hostname\n\
 \n\
-valid options:\n\
-  -c, --chunk-size=NUMBER       the number of rows to select for each checksum calculation\n\
-                                default: 500 rows, minimum: 100 rows\n\
-  -s, --sleep=NUMBER            sleep time between checksum calculation; default: 100 ms\n\
-  -i, --include-class-file=FILE input FILE of table names to include\n\
-  -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
-  -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
-  -r, --report-only             report replication integrity based on checksum calculation\n\
-                                any options except --table-name will be ignored\n\
-      --resume                  resume calculating checksum\n\
-      --schema-only             check only schema consistency\n\
-      --cont-on-error           continue on calculation error\n
+opciones validas:\n\
+  -c, --chunk-size=NUMBER       el numero de filas a seleccionar para cada calculo de checksum\n\
+                                default: 500 filas, minimo: 100 filas\n\
+  -s, --sleep=NUMBER            sleep time entre los calculos de checksum; default: 100 ms\n\
+  -i, --include-class-file=FILE archivo de entrada de los nombres de tabla a ser incluidos\n\
+  -e, --exclude-class-file=FILE archivo de entrada de los nombres de tabla a ser excluidos; o -i o -e pueden ser utilizados, no ambos\n\
+  -t, --timeout=NUMBER          tiempo de expera de la consulta (query) en milisegundos; default: 1000 ms\n\
+  -n, --table-name=NAME         nombre de tabla para guardar los resultados de la checksum; default: db_ha_checksums\n\
+  -r, --report-only             reportar integridad de la replicacion en base al calculo de checksum\n\
+                                cualquier opcion excepto a --table-name va a ser ignorada\n\
+      --resume                  reanudar calculo de checksum\n\
+      --schema-only             verificar solo la consistencia de la esquema\n\
+      --cont-on-error           continuar en error de calculo\n
