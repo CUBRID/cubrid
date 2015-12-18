@@ -638,16 +638,16 @@ geçerli seçenekler:\n\
   -r, --repair                 tutarsızlık bulunduğu zaman onar\n\
   -i, --input-class-file=FILE  sınıf adları girişi FILE\n\
                                varsayılan: tüm sınıfları kontrol edin\n\
-  -I, --index-name             index name that will be checked only\n\
-                               default: check all indices\n\
-      --check-prev-link        check only previous links of indices\n\
+ -I, --index-name              sadece kontrol edilecektir endeks adı\n\
+                               varsayılan: tüm endeksleri kontrol\n\
+      --check-prev-link        endekslerinin yalnızca önceki bağlantıları kontrol\n\
       --repair-prev-link       önceki indeks bağlantıları onar\n\
-      --check-file-tracker     check all allocated pages of file\n\
-      --check-heap             check all pages of heap files\n\
-      --check-catalog          check catalog consistency\n\
-      --check-btree            check all btree indices\n\
-      --check-class-name       check class name consistency\n\
-      --check-btree-entries    check entries of btree consistency\n
+      --check-file-tracker     dosyanın tüm ayrılan sayfalarını kontrol\n\
+      --check-heap             yığın dosyaların tüm sayfalarını kontrol\n\
+      --check-catalog          katalog tutarlılığını denetlemek\n\
+      --check-btree            tüm btree endeksleri kontrol\n\
+      --check-class-name       sınıf ismi tutarlılığını denetlemek\n\
+      --check-btree-entries    btree girdilerini kontrol\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
@@ -902,7 +902,7 @@ geçerli seçenekler:\n\
   -L, --log-path=PATH         Kopyalanan log yoğunlukları için dizin PATH\n\
   -m, --mode=MODE             çalışma modu, varsayılan: sync\n\
                               MODE: sync veya semisync veya async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n 
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA şifrenizi girin:
@@ -945,7 +945,7 @@ geçerli seçenekler:\n\
   -L, --copied-log-path=PATH  Kopyalanan log yoğunlukların path; görüntü kopyalanan log bilgileri \n\
   -p, --page=ID               sayfa id; varsayılan: 0 \n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı bırakmak\n\
-  -i, --interval=S            print information every S secs\n
+  -i, --interval=S            her S saniye bilgilerini yazdırmak\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb bağımsız modu olarak çalıştıramazsınız.\n
@@ -1072,121 +1072,115 @@ Geçerli seçenekler:\n\
   -L, --log-path=PATH         kopyalan günlük hacımler için dizin yolu.\n
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
-59 Invalid generation mode supplied.\n
-60 Invalid or corrupt input folder.\n
+59 Geçersiz nesil modu verilir.\n
+60 Geçersiz veya bozuk girdi klasörü.\n
 61 \
-gen_tz: Generate source files containing timezone data to be compiled into\n\
-        a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+gen_tz: Saat dilimi verileri ile kaynak dosyaları oluşturun paylaşılan kütüphane\n\
+        derlenmiş için\n\
+kullanım: %s gen_tz [OPTION]\n\
+          %s gen_tz -g extend [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -i, --input-folder    path to an input folder containing a version of\n\
-                        IANA's timezone database files.\n\
-                        Default: $CUBRID/timezones/tzdata\n\
-  -g, --gen-mode=TYPE   controls the output of gen_tz, based on the TYPE:\n\
+geçerli seçenekler:\n\
+  -i, --input-folder    Bir IANA saat dilimi sürümünü içeren giriş klasörünün yolunu.\n\
+                        varsayılan: $CUBRID/timezones/tzdata\n\
+  -g, --gen-mode=TYPE   gen_tz çıktısı, TYPE kontrol eder:\n\
                         TYPE:\n\
-                        1. NEW (default) : generate timezone source file(s) for\n\
-                        the shared library with no regard to previous versions;\n\
-                        also generate a source file containing all countries\n\
-                        and timezone names (intended for developer use, to\n\
-                        be integrated into future CUBRID versions).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removeds if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+                        1. NEW (varsayılan) : önceki sürümlere göre hiçbir konuda ortak\n\
+                        kitaplığının saat dilimi kaynak dosya (lar) oluşturmak;\n\
+                        ayrıca tüm ülkeleri ve zaman dilimi isimleri içeren bir kaynak dosyası\n\
+                        oluşturmak (geliştirici kullanılmak üzere tasarlanmıştır, gelecekteki\n\
+                        CUBRID sürümleri entegre edilecek).\n\
+                        2. EXTEND : giriş klasöründen verileri kullanarak, saat diliminin kaynak\n\
+                        dosya (lar) oluşturmak; CUBRID içine kodlanmış saat diliminin ID-leri korunur;\n\
+                        yeni dilimleri ikincil bir kaynak oluşturmak; GMT uzaklıklar ve yaz saati\n\
+                        bilgisi güncellenir (ya da yeni saat dilimlerinde  için eklendi);\n\
+                        CUBRID kodlanmış bir saat diliminin girdi dosyaları eksik ise saat dilimlerinde\n\
+                        kaldırıldı asla, ilişkili veriler mevcut saat diliminin kütüphanesinden alınır.\n\
+                        Tüm saat diliminin adlarını içeren yeni bir C dosyası oluşturulur ve yeni\n\
+                        saat diliminin kütüphanesi kullanılabilir önce CUBRID kaynak dosya klasöründe\n\
+                        dahil edilmelidir.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
-59 The supplied zone ID is out of range. Use -z to see all\n\
- timezones and their IDs.\n
+59 Verilen saat diliminin İD aralığının dışında. Tüm saat dilimlerini ve bunların İD görmek için -z kullanın.\n
 60 \
-dump_tz: Display timezone related information.\n\
-usage: %s dump_tz [OPTION]\n\
+dump_tz: göster saat diliminin ilgili bilgileri.\n\
+kullanım: %s dump_tz [OPTION]\n\
 \n\
-valid options:\n\
-  -c, --list-countries      shows the list of countries currently supported\n\
-  -l, --leap-seconds	    shows the list of the leap seconds\n\
-  -s, --summary		    shows a summary of dump timezone data\n\
-  -z, --list-zones          shows the list of timezones currently supported\n\
-  -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
-                            to a timezone having the supplied ZONE_ID or for\n\
-                            ALL timzones. The ID of a timezone can be obtained\n\
-                            from the list displayed using the -z option.\n
+geçerli seçenekler:\n\
+  -c, --list-countries      ülkelerin listesi şu anda desteklenen gösterir\n\
+  -l, --leap-seconds	    sıçrama saniye listesini gösterir\n\
+  -s, --summary		        döküm saat diliminin verilerinin bir özetini gösterir\n\
+  -z, --list-zones          saat dilimlerinde listesi şu anda desteklenen gösterir\n\
+  -d, --zone-id=ZONE_ID|ALL Verilen ZONE_ID olan bir saat dilimine göre veya ALL saat dilimine\n\
+                            göre ilgili mevcut bilgilerini gösterir. Bir saat diliminin İD\n\
+                            -z seçeneği kullanılarak görüntülenen listeden elde edilebilir.\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
-20 Restoreslave cancelled or an error occurred.\n
-21 Database restore has been completed. But failed to initialize applyinfo. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
-22 The database name or the host name was not configured for HA.\n
-23 Wrong value '%1$s' for state of backup source node.\n
+20 Restoreslave iptal veya bir hata oluştu.\n
+21 Veritabanı tamamlandı geri. Ama applyinfo başlatılamadı. (db_creation_time='%1$s', pageid=%2$lld, offset=%3$d)\n
+22 Veritabanı adı veya hostname HA için yapılandırılmamış.\n
+23 Yedekleme kaynak düğümün devlet için yanlış değeri '%1$s'.\n
 60 \
-restoreslave: Restore a slave database.\n\
-usage: %1$s restoreslave [OPTION] database-name\n\
+restoreslave: Bir köle veritabanını geri yükleyin.\n\
+kullanım: %1$s restoreslave [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -s, --source-state=STATE          state of backup source node; mandatory\n\
-                                    STATE may be 'master', 'slave', or 'replica'\n\
-  -m, --master-host-name=NAME       host name of the current master node; mandatory\n\
-      --list                        display a list of backup volumes without restoring\n\
-  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
-  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+geçerli seçenekler:\n\
+  -s, --source-state=STATE          yedekleme kaynak düğümün devlet;\n\
+                                    zorunlu STATE 'master', 'slave' ya da 'replica' olabilir\n\
+  -m, --master-host-name=NAME       geçerli ana düğümün hostname;\n\
+      --list                        zorunlu görüntüleme geri yüklemeden yedek hacimlerinin listesi\n\
+  -B, --backup-file-path=PATH       PATH yedekleme ciltlik bir dizin restore edilecek olan\n\
+  -o, --output-file=FILE            FILE çıktı iletileri yönlendirmek; varsayılan: yok\n\
+  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yolu veritabanı ve log birimlar geri\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
-31 Cannot remove system volume or the first volume (Volid : %1$d).\n
-32 Cannot find the volume (Volid : %1$d).\n
-33 There are too many Volids (Max Volids : %1$d).\n
-34 Invalid Volid(%1$s).\n
+21 Aşağıdaki birimlerini kaldırmak için hazır:\n\n
+22 Devam etmek istiyor musunuz? (Y/N)
+31 Sistem birimi ya da ilk hacmi silemezsiniz (Volid : %1$d).\n
+32 Birimi bulamıyor (Volid : %1$d).\n
+33 Çok fazla Volids var (Max Volids : %1$d).\n
+34 Geçersiz Volid (%1$s).\n
 60 \
-delvoldb: Remove a empty volume-file of the database.\n\
-usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+delvoldb: Veritabanı boş birim dosyasını kaldırın.\n\
+kullanım: %1$s delvoldb [OPTION] database-name -i Volid\n\
 \n\
-valid options:\n\
-  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
-  -f, --force                      remove the volume without a prompt for verification\n\
-  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
-  -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+geçerli seçenekler:\n\
+  -c, --clear-cache                geçici birimdeki tüm önbelleğe alınmış dosyaları temizlemek\n\
+  -f, --force                      doğrulama için bir istemi olmadan birimni kaldırmak\n\
+  -p, --dba-password=PASS          DBA kullanıcı şifresi; belirtmek yoksa isteyecektir\n\
+  -S, --SA-mode                    stand-alone mod yürütme\n\
+  -C, --CS-mode                    client-server mod yürütme\n
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
-20 Vacuumdb is temporary not available for client-server mode\n
-21 The vacuum operation failed\n
+20 Vacuumdb istemci-sunucu modunda geçici olarak kullanılamaz\n
+21 Vakum işlemi başarısız oldu\n
 60 \
-vacuumdb: Vacuums dead records from database.\n\
-usage: %1$s vacuumdb [OPTION] database-name\n\
+vacuumdb: Veritabanından ölü kayıtları temizler.\n\
+kullanım: %1$s vacuumdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+geçerli seçenekler:\n\
+  -S, --SA-mode                stand-alone mod yürütme\n\
+  -C, --CS-mode                client-server mod yürütme\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
-1 Failed to load table names in %1$s.\n
-2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
-58 HA feature is not supported in this platform.\n
-59 checksumdb cannot run as standalone mode.\n
+1 %1$s içinde tablo adlarını yüklenemedi.\n
+2 checksumdb bir HA aktif sunucu üzerinde çalıştırmak gerekir. %1$s (güncel durum: %2$s)\n
+58 HA özelliği bu platformda desteklenmiyor.\n
+59 checksumdb stand-alone modu olarak çalıştıramazsınız.\n
 60 \
-checksumdb: check replication integrity.\n\
-usage: %1$s checksumdb [OPTION] database-name@hostname\n\
+checksumdb: çoğaltma bütünlüğünü kontrol edin.\n\
+kullanım: %1$s checksumdb [OPTION] database-name@hostname\n\
 \n\
-valid options:\n\
-  -c, --chunk-size=NUMBER       the number of rows to select for each checksum calculation\n\
-                                default: 500 rows, minimum: 100 rows\n\
-  -s, --sleep=NUMBER            sleep time between checksum calculation; default: 100 ms\n\
-  -i, --include-class-file=FILE input FILE of table names to include\n\
-  -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
-  -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
-  -r, --report-only             report replication integrity based on checksum calculation\n\
-                                any options except --table-name will be ignored\n\
-      --resume                  resume calculating checksum\n\
-      --schema-only             check only schema consistency\n\
-      --cont-on-error           continue on calculation error\n
+geçerli seçenekler:\n\
+  -c, --chunk-size=NUMBER       satır sayısı her sağlama hesaplama için seçmek için\n\
+                                varsayılan: 500 satır, düşük: 100 satır\n\
+  -s, --sleep=NUMBER            sağlama hesaplama arasındaki süreyi uyku; varsayılan: 100 ms\n\
+  -i, --include-class-file=FILE tablo adları giriş FILE dahil\n\
+  -e, --exclude-class-file=FILE tablo adları giriş FILE dışlamak için; ya da -i ya -e ikisi birden kullanılabilir\n\
+  -t, --timeout=NUMBER          milisaniye cinsinden sorgu zaman aşımı; varsayılan: 1000 ms\n\
+  -n, --table-name=NAME         tablo adı sağlama sonuçları kaydetmek; varsayılan: db_ha_checksums\n\
+  -r, --report-only             checksum hesaplama dayalı rapor çoğaltma bütünlüğü\n\
+                                --table-name dışında herhangi bir seçenek göz ardı edilecektir\n\
+      --resume                  checksum hesaplanması devam\n\
+      --schema-only             sadece şema tutarlılığını denetlemek\n\
+      --cont-on-error           hesaplama hatası devam\n

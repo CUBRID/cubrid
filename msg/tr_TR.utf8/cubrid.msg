@@ -1089,15 +1089,15 @@ $ LOADDB
 1020 Harici dosya "%1$s" bulunamadı.
 1021 Bir deadlock döngüsü algılandı. %1$s.
 1022 İndeksin önek uzunluğu için geçersiz değer "%1$d".
-1023 log applier filter: %1$s.
-1024 log writer: failed to get log page(s) starting from page id %1$lld.
-1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
-1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
+1023 uygulamak filteri log: %1$s.
+1024 yazar log: sayfa id %1$lld başlayarak sayfa (lar) log alınamadı.
+1025 HA gecikme bilgisi: Çoğaltma gecikmesi (%1$d saniye) sınırı aştı (%2$d saniye).
+1026 HA gecikme bilgisi: Çoğaltma gecikmesi (%1$d sn) kabul edilebilir bir seviyeye (%2$d saniye) aşağıda azalır.
 1027 uygulayıcı log: '%2$s' için '%1$s' durum onayı değiştirme başarısız oldu.
 1028 uygulayıcı log: arşiv log beklenmedik EOF kaydı. LSA: %1$lld|%2$d.
 1029 uygulayıcı log: geçersiz çoğaltma log page/offset. sayfa HDR: %1$1lld|%2$d, final: %3$lld|%4$d, ekleme LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha dosya durumu: %9$d, is end-of-log: %10$d.
 1030 uygulayıcı log: geçersiz çoğaltma kayıt. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, önceki tran LSA: %8$lld|%9$d, tür: %10$d.
-1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s.
+1031 uygulayıcı log: aşağıdaki ifadeyi uygulamak başarısız oldu. sınıf: "%1$s", ifade: "%2$s", server hatası: %3$d, %4$s.
 1032 uygulayıcı log: ekleme çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", anahtar: "%2$s", İç hata: %3$d, %4$s
 1033 uygulayıcı log: güncelleme çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", anahtar: "%2$s", İç hata: %3$d, %4$s
 1034 uygulayıcı log: silme çoğaltma log uygulanması başarısız oldu. sınıfı:  "%1$s", anahtar: "%2$s", İç hata: %3$d, %4$s
@@ -1168,8 +1168,8 @@ $ LOADDB
 1099 DDL açıklaması konfigürasyon tarafından izin verilmemiştir (block_ddl_statement=yes).\n SQL Text: %1$s
 1100 Jümlelerde görülmeyen konumun ifadesi dış boyutlar tarafından izin verilmez(block_nowhere_statement=yes)
 1101 Kullanılmayan hata kodu.
-1102 Unknown system parameter or bad value.
-1103 Cannot change system parameter.
+1102 Bilinmeyen sistem parametresi ya da kötü bir değer.
+1103 Sistem parametresini değiştirilemiyor.
 1104 Yavaş sorgula (%1$d msec)\n%2$s.
 1105 İç hata: kirli nesnenin temizlenmesi kısmi başarısız
 1106 Kaynak tablosunda çoklu satırlar hedef tabloda aynı satır ile uyumlu.
@@ -1218,48 +1218,48 @@ $ LOADDB
 1149 %2$d hacımın %1$d sayfa bulunmaktadır.
 1150 İçerik uyumlu karşılaştırma gerektirmektedir.
 1151 %2$d hacımın %1$d sayfa yuva donanımlı değildir.
-1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Attempt to use 'zero date'.
-1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
-1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
-1156 MVCC can't get snapshot
-1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurrent updates
-1159 Timezone compile error: %s
-1160 Timezone library loader error: %s
-1161 Timezone conversion error.
-1162 Invalid or missing timezone.
-1163 Invalid or missing daylight saving time.
-1164 Daylight saving time is not supported with this timezone.
-1165 Invalid combination of date, time, timezone and daylight specifier.
-1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 Comment string cannot have more than 1024 bytes.
-1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 Failed to flush replication items (error code : %1$d).
-1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Invalid percentile value %1$f, should be between 0 and 1.
-1173 Percentile value changed in the same group.
-1174 Inheriting from a partitioned table is not allowed.
-1175 Geographic timezone is not allowed without date context.
-1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Found not vacuumed entries in heap.
-1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
-1181 Manual vacuum is disabled for client-server mode.
-1182 Could not refix page %1$d,%2$d, previous error was %3$d.
-1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
-1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
-1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
-1186 checksumdb: %1$s (error code: %2$d).
-1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Dropping an active user '%1$s' is not allowed.
-1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Stand-alone vacuum execution is started.
-1191 Stand-alone vacuum execution is ended.
-1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1152 Sadece sahibi veya DBA grubunun bir üyesi işlem (%1$d) öldürmek için izin.
+1153 'Sıfır tarih' kullanmayı deneyin.
+1154 MVCC satır %1$d|%2$d|%3$d yeniden değerlendirilmesi tatmin etmez.
+1155 Silme için geçersiz MVCC satır: %1$d|%2$d|%3$d.
+1156 MVCC snapshot alınamıyor.
+1157 MVCC yalıtım düzeyi içinde 'read committed', 'repeatable read' veya 'serializable' değer olmalıdır.
+1158 Nedeniyle eşzamanlı güncellemeleri serializable çatışma.
+1159 Saat dilimi derleme hatası: %s
+1160 Saat dilimi kitaplık yükleyici hatası: %s
+1161 Saat dilimi dönüşüm hatası.
+1162 Geçersiz veya eksik saat dilimi.
+1163 Geçersiz veya eksik yaz saati.
+1164 Bu saat dilimi yaz saati desteklemiyor.
+1165 Geçersiz tarih, zaman, saat dilimi ve yaz saati kombinasyonu.
+1166 Tarih ve saat belirtilen kombinasyonu (yaz saati aralığı boyunca) yoktur.
+1167 Yorum dizesi 1024'ten fazla bayt olamaz.
+1168 Tablonun (%1$s) ilgili istatistikleri güncelleştirilemiyor çünkü onun kilidinin hemen verilmeyen.
+1169 Bölüm anahtar özellikler dizin anahtarın ait olmalıdır.
+1170 Çoğaltma öğeleri floş için başarısız oldu (hata kodu: %1$d).
+1171 Birim %1$d boş değil, bu yüzden kaldırılamaz.
+1172 Geçersiz yüzdelik değeri %1$f, 0 ve 1 arasında olmalıdır.
+1173 Yüzdelik değer aynı grupta değişti.
+1174 Bölümlenmiş bir tablo devralmasını izin verilmez.
+1175 Coğrafi saat dilimi tarihi bağlam olmadan izin verilmez.
+1176 Sayfa %1$d ve birim %d mandal promosyon başarısız oldu.
+1177 Uyumsuz saat dilimi veriler: %1$s ve %2$s farklı sağlama vardır.
+1178 Kilit serbest bitmapteki giriş serbest bırakan olamaz.
+1179 Değil vakumlu giriş yığın.
+1180 Değil vakumlu neslener: INDEKS %1$s SıNıF %2$s ÜZERINDE (CLASS_OID: %3$d|%4$d|%5$d).
+1181 Manuel vakum istemci-sunucu modunda devre dışı bırakılır.
+1182 Sayfayı %1$d,%2$d tekrar takmak olamazdı, önceki hata %3$d oldu.
+1183 VPID (%1$d,%2$d) takmak çalışırken hata, daha önce takılı VPID (%3$d,%4$d) tutarsızlık bulundu: %5$s.
+1184 OID (%1$d,%2$d,%3$d) erişmek için çalışırken, çok sayıda eşzamanlı sayfa değişiklikleri tespit edildi.
+1185 Sayfa %3$d,%4$d takmak için çalışırken, sayfa %1$d,%2$d yeniden takılı beklenmedik.
+1186 checksumdb: %1$s (hata kodu: %2$d).
+1187 Silinen yığın parçası sayfasında %1$d,%2$d geçersiz erişim olduğu.
+1188 Aktif '%1$s' kullanıcı bırakma izin verilmez.
+1189 Tarih ve saat belirtilen kombinasyonu yoktur (saat diliminin geçişi sırasında kurallarını ofset).
+1190 Stand-alone vakum yürütme başlatılır.
+1191 Stand-alone vakum yürütme sona erer.
+1192 Değeri hassas %1$zu izin verilen maksimum %2$d aşıyor.
+1193 İşlenmiş bölüm ifade uzunluğu izin verilen sınırı (%1$d) aşıyor.
 1194 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1300,122 +1300,122 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 9 Güncelleştirme ayrıcalığı maddesinin öznitelik "(%1$s)" belirlemek durumu grant/revoke edemezsiniz.
 10 '%1$s' anahtar kelime kullanımı geçersiz , beklenen %2$s.
 11 Token boyu çok uzun.
-12 invalid data type
-13 invalid attach statement\n  attach_statement: ATTACH unsigned_integer
-14 invalid prepare statement\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
-15 invalid execute statement\n  execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
-16 invalid scope statement\n  scope_statement: SCOPE trigger_action { FROM table_spec_list }
-17 invalid set system parameter\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
-18 invalid set transaction\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
-19 invalid set trigger trace\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
-20 invalid set trigger depth\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
-21 invalid set optimization level\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
-22 invalid set optimization cost\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
-23 invalid get optimization level\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
-24 invalid get optimization cost\n  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-25 invalid get transaction isol\n  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
-26 invalid get transaction lock\n  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
-27 invalid get trigger trace\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
-28 invalid get trigger depth\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
-29 invalid get stat\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-30 invalid create index\n  CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
-31 invalid create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
-32 invalid create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
-33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 invalid create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 invalid create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
-36 invalid groups\n  groups spec: GROUPS identifier {, identifier}*
-37 invalid members\n  member spec: MEMBERS identifier {, identifier}*
-38 invalid password\n  password spec: PASSWORD 'STRING'
-39 missing authorized command list\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
-40 missing class spec list
-41 missing identifier list
-42 missing expression
-43 invalid identifier
-44 invalid use of substring\n  SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
-45 invalid use of trim\n  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
-46 invalid use of cast\n  CAST ( expression AS data_type )
-47 function add_months needs two parameters
-48 octet_length needs one parameter
-49 bit_length needs one parameter
-50 lower needs one parameter
-51 upper needs one parameter
-52 translate needs three parameters
-53 replace needs two or three parameters
-54 invalid use of to_number\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
-55 string bind operator is not '|' but '||'
-56 invalid alter statement
-57 invalid drop statement
-58 invalid create statement
-59 invalid relational operator
-60 equal operator is not '==' but '='
-61 not equal operator is not '!=' but '<>'
-62 invalid minus value (or minus value in list)
-63 duplicated reference rule
-64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
-65 Invalid unsigned integer %1$s.
-66 IF needs three parameters: the first must be a logical expression, the second and third must be expressions evaluating to either a numeric or a string type.
-67 IFNULL needs two parameters which must be expressions evaluating to either a numeric or a string type.
-68 invalid use of isnull\n  ISNULL ( expression )
-69 invalid use of left\n  LEFT ( str , len )
-70 invalid use of right\n  RIGHT ( str , len )
-71 invalid use of mod\n MOD( expression, expression )
-72 invalid use of adddate\n ADDDATE( expression, expression )
-73 invalid use of date_add\n DATE_ADD( expression, INTERVAL expression unit)
-74 invalid use of subdate\n SUBDATE( expression, expression )
-75 invalid use of date_sub\n DATE_SUB( expression, INTERVAL expression unit)
-76 invalid use of user / system_user\n USER() / SYSTEM_USER()
-77 invalid use of timestamp\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
-78 invalid use of database\n DATABASE()
-79 invalid use of current_time\n CURRENT_TIME()
-80 invalid use of current_date\n CURRENT_DATE()
-81 invalid use of current_timestamp\n CURRENT_TIMESTAMP()
-82 invalid use of now\n NOW()
-83 invalid use of default\n DEFAULT(column_name)
-84 invalid use of date\n DATE(expression)
-85 invalid use of localtime\n LOCALTIME()
-86 invalid use of localtimestamp\n LOCALTIMESTAMP()
-87 invalid use of schema\n SCHEMA()
-88 invalid use of truncate\n TRUNCATE( expression, expression )
-89 invalid use of str_to_date\n STR_TO_DATE( expression, string_literal )
-90 invalid use of current_datetime\n CURRENT_DATETIME()
-91 invalid use of insert\n INSERT( expression, expression , expression, expression )
-92 invalid use of elt\n ELT(expression [, expression]...)
-93 invalid use of year\n YEAR( expression )
-94 invalid use of month\n MONTH( expression )
-95 invalid use of day\n DAY( expression )
-96 invalid use of hour\n HOUR( expression )
-97 invalid use of minute\n MINUTE( expression )
-98 invalid use of second\n SECOND( expression )
-99 invalid use of quarter\n QUARTER( expression )
-100 invalid use of week\n WEEK( expression ), WEEK( expression, expression)
-101 invalid use of time\n TIME(expression)
-102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
+12 geçersiz veri türü
+13 geçersiz bir bildirimde ATTACH\n  attach_statement: ATTACH unsigned_integer
+14 geçersiz bir bildirimde PREPARE\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
+15 geçersiz bir bildirimde EXECUTE\n  execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
+16 geçersiz bir bildirimde SCOPE\n  scope_statement: SCOPE trigger_action { FROM table_spec_list }
+17 geçersiz set system parameter\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
+18 geçersiz set transaction\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
+19 geçersiz set trigger trace\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
+20 geçersiz set trigger depth\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
+21 geçersiz set optimization level\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
+22 geçersiz set optimization cost\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
+23 geçersiz get optimization level\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+24 geçersiz get optimization cost\n  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+25 geçersiz get transaction isol\n  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+26 geçersiz get transaction lock\n  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
+27 geçersiz get trigger trace\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
+28 geçersiz get trigger depth\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
+29 geçersiz get stat\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+30 geçersiz create index\n  CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
+31 geçersiz create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
+32 geçersiz create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
+33 geçersiz create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
+34 geçersiz create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
+35 geçersiz create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+36 geçersiz groups\n  groups spec: GROUPS identifier {, identifier}*
+37 geçersiz members\n  member spec: MEMBERS identifier {, identifier}*
+38 geçersiz password\n  password spec: PASSWORD 'STRING'
+39 authorized command liste eksik\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
+40 eksik sınıf belirli liste
+41 eksik tanımlayıcı listesi
+42 eksik ifade
+43 geçersiz tanımlayıcı
+44 substring geçersiz kullanımı\n  SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
+45 trim geçersiz kullanımı\n  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
+46 cast geçersiz kullanımı\n  CAST ( expression AS data_type )
+47 fonksiyon add_months iki parametre ihtiyacı
+48 octet_length bir parametre ihtiyacı
+49 bit_length bir parametre ihtiyacı
+50 lower bir parametre ihtiyacı
+51 upper bir parametre ihtiyacı
+52 translate üç parametre ihtiyacı
+53 replace iki veya üç parametre ihtiyacı
+54 to_number geçersiz kullanımı\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
+55 '|' string bağlaması operatörü değil ama '||'
+56 alter geçersiz ifadesi
+57 drop geçersiz ifadesi
+58 create geçersiz ifadesi
+59 geçersiz ilişkisel operatör
+60 eşit operatörü '==' değil ama '='
+61 eşit değil operatör değil '! =' ama '<>'
+62 geçersiz eksi değeri (veya listede eksi değer)
+63 çoğaltılamaz referans kuralı
+64 SYS_CONNECT_BY_PATH iki parametre ihtiyacı ve ikinci değişmez bir dize olmalıdır.
+65 Geçersiz işaretsiz tamsayı %1$s.
+66 IF üç parametre ihtiyaçları: İlk mantıklı bir ifadesi olmalıdır, ikinci ve üçüncü sayısal ya da dize türü birine değerlendiren ifadeler olmalıdır.
+67 IFNULL sayısal ya da dize türü birine değerlendiren ifadeler olmalıdır iki parametre gerekiyor.
+68 isnull geçersiz kullanımı\n  ISNULL ( expression )
+69 left geçersiz kullanımı\n  LEFT ( str , len )
+70 right geçersiz kullanımı\n  RIGHT ( str , len )
+71 mod geçersiz kullanımı\n MOD( expression, expression )
+72 adddate geçersiz kullanımı\n ADDDATE( expression, expression )
+73 date_add geçersiz kullanımı\n DATE_ADD( expression, INTERVAL expression unit)
+74 subdate geçersiz kullanımı\n SUBDATE( expression, expression )
+75 date_sub geçersiz kullanımı\n DATE_SUB( expression, INTERVAL expression unit)
+76 user geçersiz kullanımı/ system_user\n USER() / SYSTEM_USER()
+77 timestamp geçersiz kullanımı\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
+78 database geçersiz kullanımı\n DATABASE()
+79 current_time geçersiz kullanımı\n CURRENT_TIME()
+80 current_date geçersiz kullanımı\n CURRENT_DATE()
+81 current_timestamp geçersiz kullanımı\n CURRENT_TIMESTAMP()
+82 now geçersiz kullanımı\n NOW()
+83 default geçersiz kullanımı\n DEFAULT(column_name)
+84 date geçersiz kullanımı\n DATE(expression)
+85 localtime geçersiz kullanımı\n LOCALTIME()
+86 localtimestamp geçersiz kullanımı\n LOCALTIMESTAMP()
+87 schema geçersiz kullanımı\n SCHEMA()
+88 truncate geçersiz kullanımı\n TRUNCATE( expression, expression )
+89 str_to_date geçersiz kullanımı\n STR_TO_DATE( expression, string_literal )
+90 current_datetime geçersiz kullanımı\n CURRENT_DATETIME()
+91 insert geçersiz kullanımı\n INSERT( expression, expression , expression, expression )
+92 elt geçersiz kullanımı\n ELT(expression [, expression]...)
+93 year geçersiz kullanımı\n YEAR( expression )
+94 month geçersiz kullanımı\n MONTH( expression )
+95 day geçersiz kullanımı\n DAY( expression )
+96 hour geçersiz kullanımı\n HOUR( expression )
+97 minute geçersiz kullanımı\n MINUTE( expression )
+98 second geçersiz kullanımı\n SECOND( expression )
+99 quarter geçersiz kullanımı\n QUARTER( expression )
+100 week geçersiz kullanımı\n WEEK( expression ), WEEK( expression, expression)
+101 time geçersiz kullanımı\n TIME(expression)
+102 group_concat geçersiz kullanımı\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 Dizin ipuçlarının geçersiz kullanımı
 104 Bit dizgesinin uzunluğu en fazla %1$d bittir.
 105 Sözdizim hatası: unexpected
-106 , expecting '{'
-107 , expecting SELECT or '('
-108 , expecting
-109 unexpected
-110 END OF STATEMENT
-111 In line %1$d, column %2$d before '%3$c%4$s'\n
-112 In line %1$d, column %2$d before %3$s\n
-113 before ' %1$s'\n
-114 before END OF STATEMENT\n
+106 , bekliyor '{'
+107 , bekliyor SELECT veya '('
+108 , bekliyor
+109 beklenmedik
+110 IFADESININ SONUNA
+111 Çizgide %1$d, sütununda %2$d önce '%3$c%4$s'\n
+112 Çizgide %1$d, sütununda %2$d önce %3$s\n
+113 önce ' %1$s'\n
+114 önce IFADESININ SONUNA\n
 115 Geçersiz grup\n adı: SET NAMES charset [COLLATE collation]\n
-116 invalid use of chr\n  CHR ( number [using charset] )\n
+116 chr geçersiz kullanımı\n  CHR ( number [using charset] )\n
 117 Karakter kümesi kullanımı geçersiz \n CHARSET ( expression )\n
 118 derlemenin geçersiz kullanımı \n COLLATION ( expression )\n
 119 clob_to_char geçersiz kullanımı\n CLOB_TO_CHAR ( expression [using charset] )\n
 120 index_prefix geçersiz kullanımı\n INDEX_PREFIX ( expression, expression, expression )\n
 121 UNION ve ORDER BY kullanımı hatalıdır.
 122 ON beklemektir. Harici join için join durumu gereklidir.
-123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
-124 invalid use of dbtimezone\n dbtimezone
-125 invalid use of sessiontimezone\n sessiontimezone
-126 Maximum length of a class/vclass comment is %1$d bytes.
-127 Maximum length of a comment is %1$d bytes.
+123 timezone geçersiz kullanımı\n set timezone 'timezone_val' or set time zone 'timezone_val'
+124 dbtimezone geçersiz kullanımı\n dbtimezone
+125 sessiontimezone geçersiz kullanımı\n sessiontimezone
+126 Bir class/vclass yorumun maksimum uzunluğu %1$d byte.
+127 Bir yorumun maksimum uzunluğu %1$d byte.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1707,11 +1707,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 Bilinmeyen argüman %1$s.
 288 Tüm bölümleri kaldırmaktan yerine DROP TABLE kullanmaktadır.
 289 Ifadesine dahil %1$s bu bağlamda yasaktır.
-290 Transaction id is not an integer.
-291 Subquery is not allowed in ORDER BY FOR clause.
-292 Invalid use of aggregate functions.
-293 Value must be strictly increasing for each partition.
-294 Cannot use function or filter indexes on local timezone typed columns.
+290 Transaction ID bir tamsayı değil.
+291 Yan ORDER BY FOR tümcesinde, alt sorgusu izin verilmez.
+292 Toplama işlevlerinin kullanımı geçersiz.
+293 Değeri kesinlikle her bölüm için artan olmalıdır.
+294 Yerel saat dilimi yazdığınız sütunlarda işlev veya filtre indeksleri kullanılamaz.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
@@ -1770,7 +1770,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 55 Kullanıcı şifresi %1$s içinde null olmamalıdır.
 56 Boş açıklamaya çeviri yerleştirin.
 57 Boş açıklamaya çeviri güncelleyin.
-58 Delete translates to empty statement.
+58 DELETE boş açıklamada çevirir.
 59 Ingres 1 Ocak 1582 öncesi tarihleri ​​(%1$s) desteklemiyor.
 60 Kaynaklar sorgu üretiminde bitmiş.
 61 Sorgu verimi sonuçsuz, böylece değişken '%1$s' ayarlı değil.
@@ -1792,8 +1792,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 Sahibi veya DBA yalnızca hedef seri tanımını değiştirebilir.
 78 Kullanıcılar otomatik artış kısıtlaması tarafından oluşturulan seri nesneyi değiştirmek için izin verilmez.
 79 Geçersiz yalıtım düzeyi: %1$s şema, %2$s örnekleri.
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 MVCC tecrit seviye değerlerini 'read committed', 'repeatable read' ya da 'serializable' olması gerekir.
+81 '%1$s' bir 'auto_increment' nesne olduğunu, seri olarak değiştirilebilir izin verilmez.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** geçersiz önbellek ***
@@ -1885,7 +1885,7 @@ $set 14 MSGCAT_SET_LOCK
 42 , %1$d %2$s
 43 Hedef türü: Düzeyinin dizin anahtar cümlesi  (%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 Dizin adı: %1$s\n
-45 Object type: Generic object for Repeatable Read consistency.\n
+45 Nesne türü: Repeatable Read tutarlılık için Genel nesnesi.\n
 46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
 
 $set 15 MSGCAT_SET_IO
@@ -1973,9 +1973,9 @@ Bu yerde bu veritabanınızın kullanılmayan yedekleme yoğunlukları silinecek
 geçerli yedeğe düzeyi yüksek ve de dahil olmak üzere.\n
 20 Devam etmek için 'y' veya iptal etmek için herhangi bir diğer tuşa basın.\n
 21 Veritabanı yedeklemesi kullanıcı tarafından iptal edildi.\n
-22 DELETE POSTPONED: Archives %1$d %2$s to\n \
+22 DELETE POSTPONED: Arşivler %1$d %2$s ila\n \
         %3$d %4$s \n \
-        are no longer needed unless a restore from current backup occurs.\n
+        artık geçerli yedekten geri yükleme meydana gelmedikçe ihtiyaç vardır.\n
 23 Daha yeni bir yedeğini daha önceden DELETE POSTPONED işaretli arşivlerinde yayımladı.\n
 24 YORUM: Log arşivi %1$s artık daha güncel bağlı DELETE POSTPONED değil\n \
    bir veritabanı ortamı kilitlenme gerçekleşmediği sürece bu yüzden yedekleme gerekli değildir.\n
