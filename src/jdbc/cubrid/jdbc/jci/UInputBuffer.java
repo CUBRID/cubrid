@@ -46,6 +46,7 @@ import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDXid;
 import cubrid.jdbc.driver.CUBRIDException;
+import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
@@ -233,6 +234,25 @@ class UInputBuffer {
 			stringData = new String(buffer, position, size - 1);
 		}
 
+
+		position += size;
+
+		return stringData;
+	}
+
+	CUBRIDBinaryString readBinaryString(int size) throws UJciException {
+		byte[] byteArray;
+
+		if (size <= 0)
+			return null;
+
+		if (position + size > capacity) {
+		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		}
+
+		byteArray = java.util.Arrays.copyOfRange (buffer, position, position + size - 1);
+		
+		CUBRIDBinaryString stringData = new CUBRIDBinaryString (byteArray);
 
 		position += size;
 

@@ -50,6 +50,7 @@ import java.util.HashMap;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
+import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimetz;
 import cubrid.sql.CUBRIDTimestamptz;
@@ -2148,7 +2149,11 @@ public class UStatement {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
-			return inBuffer.readString(dataSize, charsetName);
+			if (charsetName.equals("BINARY")) {
+				return inBuffer.readBinaryString (dataSize);
+			} else {
+				return inBuffer.readString(dataSize, charsetName);
+			}
 		case UUType.U_TYPE_NUMERIC:
 			return new BigDecimal(inBuffer.readString(dataSize,
 			        UJCIManager.sysCharsetName));

@@ -44,4 +44,15 @@ public class CUBRIDBinaryString {
 	public byte[] getBytes() {
 		return bytes;
 	}
+
+
+	public String toString() {
+		String result = "";
+
+		for (int i = 0; i < length; i++) {
+			result += String.format("%02X ", (byte) bytes[i]);
+		}
+
+		return result;
+	}
 }
