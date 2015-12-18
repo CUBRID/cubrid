@@ -1217,49 +1217,49 @@ $ LOADDB
 1148 Die Größe der Filterprädikat Strom-Cache(%1$d) überschreitet das Maximum(%2$d). Neuer Eintrag hinzugefügt wird, obwohl nichts zu Opfern, weil alle Cache-Einträge verwendet werden.
 1149 Kann nicht finden die Seite %1$d von Volumen %2$d.
 1150 Kontext erfordert kompatible Sortierungen.
-1151 The page %1$d of volume %2$d is not a slotted page.
-1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Attempt to use 'zero date'.
-1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
-1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
-1156 MVCC can't get snapshot
-1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurrent updates
-1159 Timezone compile error: %s
-1160 Timezone library loader error: %s
-1161 Timezone conversion error.
-1162 Invalid or missing timezone.
-1163 Invalid or missing daylight saving time.
-1164 Daylight saving time is not supported with this timezone.
-1165 Invalid combination of date, time, timezone and daylight specifier.
-1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 Comment string cannot have more than 1024 bytes.
-1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 Failed to flush replication items (error code : %1$d).
-1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Invalid percentile value %1$f, should be between 0 and 1.
-1173 Percentile value changed in the same group.
-1174 Inheriting from a partitioned table is not allowed.
-1175 Geographic timezone is not allowed without date context.
-1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Found not vacuumed entries in heap.
-1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
-1181 Manual vacuum is disabled for client-server mode.
-1182 Could not refix page %1$d,%2$d, previous error was %3$d.
-1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
-1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
-1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
-1186 checksumdb: %1$s (error code: %2$d).
-1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Dropping an active user '%1$s' is not allowed.
-1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Stand-alone vacuum execution is started.
-1191 Stand-alone vacuum execution is ended.
-1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1151 Die Seite %1$d Volumen %2$d ist kein geschlitzten Seite.
+1152 Das Eigentümerrecht oder ein DBA Mitgliedergruppe ist nur erlaubt, um die Transaktion (%1$d) zu töten.
+1153 Es wurde versucht zero datum zu verwenden.
+1154 MVCC Zeile %1$d | %2$d | %3$d erfullt nicht die Neubewertung.
+1155 MVCC ungültige Zeile löschen: %1$d | %2$d | %3$d.
+1156 MVCC nicht snapshot erhalten
+1157 MVCC Isolationsstufe mussen 'read committed', 'repeatable read' oder 'serialisierbar'..
+1158 Serializable Konflikt aufgrund Aktualisierungen gleichzeitige
+1159 Zeitzone kompilieren Fehler: %s
+1160 Zeitzone Bibliothek loader error: %s
+1161 Zeitzone Konvertierungsfehler.
+1162 Ungültige oder fehlende Zeitzone.
+1163 ungultigen oder fehlenden Tagslicht spartezeit.
+1164 Tageslicht ist nicht mit dieser Zeitzone unterstützt.
+1165 Ungültige Kombination von Datum, Uhrzeit, Zeitzone und Sommerangabe.
+1166 Die angegebene Kombination von Datum und Zeit existieren nicht (während der Sommerzeit-Intervall).
+1167 Kommentar String kann nicht mehr als 1024 Byte.
+1168 Kann Statistiken über Tabelle (%1$s) zu aktualisieren, da eine Sperre nicht sofort erteilt wird.
+1169 Verteilungsschlüssel Attribute müssen in der Indexschlüssel vorhanden sein.
+1170 Fehler beim Replikations Artikel (Fehlercode: %1$d) zu spülen.
+1171 Das Volumen %1$d nicht leer ist, so dass es nicht entfernt werden kann.
+1172 Ungültige Perzentil-Wert %1$f, sollte zwischen 0 und 1 sein.
+1173 Perzentil-Wert verändert in der gleichen Gruppe.
+1174 Erben von einer partitionierten Tabelle ist nicht erlaubt.
+1175 Geographic Zeitzone ist ohne Datum Kontext erlaubt.
+1176 Latch Promotion für Seite %1$d Volumen %2$d fehlgeschlagen.
+1177 Inkompatible Zeitzone Daten: %1$s hat unterschiedliche Prüfsumme aus %2$s.
+1178 Es wurde versucht, einen nicht zugeordneten Ein- oder Doppel kostenlos im Schloss frei Bitmap zu befreien.
+1179 Gefunden nicht vakuumiert Einträge im Heap.
+1180 Gefunden nicht vakuumiert OIDs. INDEX %1$s auf Klassen %2$s (CLASS_OID: %3$d | %4$d | %5$d).
+1181 Manuelle Vakuum wird für Client-Server-Modus deaktiviert.
+1182 konnte nicht refix Seite %1$d,%2$d, vorherige Fehler war %3$d.
+1183 Fehler beim beheben VPID (%1$d,%2$d), fand Inkonsistenz in zuvor festgelegten VPID (%3$d,%4$d): %5$s.
+1184 Zu viele gleichzeitige Seite Änderungen erkannt beim Versuch, Zugang OID: %1$d,%2$d,%3$d.
+1185 Unerwarteter Seite refix auf Seite %1$d,%2$d, bei dem Versuch, zu beheben Seite %3$d,%4$d.
+1186 checksumdb: %1$s (Fehlercode: %2$d).
+1187 Unzulässiger Zugriff auf Seite %1$d, %2$d, die Teil eines gelöschten Haufen war.
+1188 Löschen eines aktiven Benutzer '%1$s' ist nicht erlaubt.
+1189 Die angegebene Kombination von Datum und Zeit nicht existieren (beim Übergang von der Zeitzonen-Regeln).
+1190 Stand-alone-Vakuumausführung wird gestartet.
+1191 Stand-alone-Vakuumausführung wird beendet.
+1192 Value Genauigkeit von %1$zu überschreitet maximal zulässige %2$d.
+1193 Die Länge der bearbeiteten Partitionsausdruck die maximal zulässige (%1$d) übersteigt.
 1194 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1410,12 +1410,12 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 119 Ungültige Nutzung des clob_to_char\n CLOB_TO_CHAR ( expression [using charset] )\n
 120 Ungültige Nutzung des index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 Die falsche Verwendung von UNION und ORDER BY
-122 Expecting ON. Outer Joins require join condition.
-123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
-124 invalid use of dbtimezone\n dbtimezone
-125 invalid use of sessiontimezone\n sessiontimezone
-126 Maximum length of a class/vclass comment is %1$d bytes.
-127 Maximum length of a comment is %1$d bytes.
+122 ON erwartet. Outer-Joins bedürfen der Join-Bedingung.
+123 ungültige Verwendung von Zeitzone \n set timezone 'timezone_val' oder set time zone 'timezone_val'
+124 ungültige Verwendung von dbtimezone\n dbtimezone
+125 ungültige Verwendung von sessiontimezone\n sessiontimezone
+126 Maximale Länge einer class/vclass Kommentar ist %1$d bytes.
+127 Maximale Länge eines Kommentars ist %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.
@@ -1695,23 +1695,23 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 275 Funktion '%1$s' muss eine ORDER BY Klausel haben.
 276 Für die Funktion '%1$s', die Anzahl der Argumenten ist nicht gleich der Anzahl der ORDER BY Spalten.
 277 Für Funktion '%1$s', die ORDER BY Klausel ist ungültig.
-278 Only one table within a view can be updated.
-279 Multiple insert targets not allowed.
-280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
-281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
-282 Expects %1$s in argument position %2$d.
-283 Too many arguments specified.
-284 Too few arguments, need %1$d arguments.
-285 Expects %1$s for argument %2$s.
-286 Argument %1$s is missing.
-287 Unknown argument %1$s.
+278 nur eine tabelle innerhalb einer VIEW aktualisiert werden kann.
+279 Mehrfacheinsatz Ziele nicht erlaubt.
+280 "%1$s" Typ vclass ist, Tropfen vclass mit Kaskaden Einschränkungen ist nicht erlaubt.
+281 Die FOR UPDATE-Klausel kann nicht in Unterabfragen, Gewerkschaften verwendet werden, mit GROUP BY-Klausel, DISTINCT-Operator, Aggregatfunktionen.
+282 erwartet von %1$s in Argument Position %2$d.
+283 Zu viele Argumente angegeben.
+284 Zu wenig Argumente, Argumente %1$d müssen.
+285 erwartet von %1$s für Argument %2$s.
+286 Argument %1$s fehlt.
+287 Unbekannt Argument %1$s.
 288 Kann nicht alle Partitionen zu entfernen, verwenden Sie stattdessen DROP TABLE.
-289 The expression including %1$s is not allowed in this context.
-290 Transaction id is not an integer.
-291 Subquery is not allowed in ORDER BY FOR clause.
-292 Invalid use of aggregate functions.
-293 Value must be strictly increasing for each partition.
-294 Cannot use function or filter indexes on local timezone typed columns.
+289 Der Ausdruck einschließlich %1$s ist in diesem Kontext nicht erlaubt.
+290 Transaction-ID keine ganze Zahl ist.
+291 Unterabfrage nicht in ORDER BY FOR-Klausel zulässig.
+292 Ungültige Verwendung von Aggregatfunktionen.
+293 Der Wert muss streng monoton wachsend werden für jede Partition.
+294 Kann nicht mit Funktion oder Filter Indizes auf Zeitzone Variante Spalten eingegeben.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.
@@ -1792,8 +1792,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 Nur der Eigner oder DBA darf die Definition des Ziel-Serials ändern.
 78 Es ist Benutzers nicht erlaubt, ein von einer auto-inkrement Einschränkung  erstelltes Serial-Objekt zu ändern.
 79 Ungültiges Isolationslevel: %1$s Schema, %2$s Instanzen.
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 Isolation Pegelwert in MVCC muss 'read committed', 'repeatable read' oder 'serializable'.
+81 '%1$s' ist ein 'auto_increment' Objekt, das nicht erlaubt als serielle verändert werden wird.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Ungültiges Cache ***
