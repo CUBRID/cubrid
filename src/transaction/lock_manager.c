@@ -3531,11 +3531,33 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index,
   UINT64 lock_wait_time;
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
+#if defined(ENABLE_SYSTEMTAP)
+  OID *class_oid_for_marker_p, *oid_for_marker_p;
+#endif /* ENABLE_SYSTEMTAP */
+
   assert (!OID_ISNULL (oid));
   assert (class_oid == NULL || !OID_ISNULL (class_oid));
 
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_LOCK_ACQUIRE_START (oid, class_oid, lock);
+  if (class_oid == NULL)
+    {
+      class_oid_for_marker_p = &oid_Null_oid;
+    }
+  else
+    {
+      class_oid_for_marker_p = class_oid;
+    }
+
+  if (oid == NULL)
+    {
+      oid_for_marker_p = &oid_Null_oid;
+    }
+  else
+    {
+      oid_for_marker_p = oid;
+    }
+
+  CUBRID_LOCK_ACQUIRE_START (oid_for_marker_p, class_oid_for_marker_p, lock);
 #endif /* ENABLE_SYSTEMTAP */
 
   if (thread_p == NULL)
@@ -4350,7 +4372,8 @@ lock_conversion_treatement:
 
 end:
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, ret_val != LK_GRANTED);
+  CUBRID_LOCK_ACQUIRE_END (oid_for_marker_p, class_oid_for_marker_p, lock,
+			   ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
 
   return ret_val;
