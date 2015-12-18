@@ -1100,7 +1100,7 @@ valid options:\n\
                         files are added to the secondary source file that is\n\
                         also generated; GMT offsets and daylight saving\n\
                         information is updated (or added, for new timezones);\n\
-                        timezones are never removeds if a timezone encoded into\n\
+                        timezones are never removed if a timezone encoded into\n\
                         CUBRID is missing from the input files, the associated\n\
                         data is retrieved from the existing timezone library.\n\
                         A new C file containing all timezone names is generated,\n\
@@ -1121,7 +1121,7 @@ valid options:\n\
   -z, --list-zones          shows the list of timezones currently supported\n\
   -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
                             to a timezone having the supplied ZONE_ID or for\n\
-                            ALL timzones. The ID of a timezone can be obtained\n\
+                            ALL timezones. The ID of a timezone can be obtained\n\
                             from the list displayed using the -z option.\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE

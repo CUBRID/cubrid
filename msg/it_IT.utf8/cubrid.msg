@@ -1089,15 +1089,15 @@ $ LOADDB
 1020 File esterno "%1$s" non è stato trovato.
 1021 Un ciclo di deadlock viene rilevato. %1$s.
 1022 Valore "%1$d" non valido per lunghezza del prefisso dell'index.
-1023 log applier filter: %1$s.
-1024 log writer: failed to get log page(s) starting from page id %1$lld.
-1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
-1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
+1023 Filtro dell'log applier: %1$s.
+1024 log writer: non è riuscito a ottenere la pagina di log a partire da pagina id %1$lld.
+1025 HA delay info: Il ritardo di replica (%1$d secs) ha superato il limite (%2$d secs).
+1026 HA delay info: Il ritardo di replica (%1$d secs) è diminuito di sotto del livello accettabile (%2$d secs).
 1027 log applier: non è riuscito a cambiare stato dell'applicare dal '%1$s' a '%2$s'.
 1028 log applier: voce EOF imprevisto nel log dei transazioni. LSA: %1$lld|%2$d.
 1029 log applier: offset/pagina non valida del log di replicazione . HDR della pagina: %1$1lld|%2$d, final: %3$lld|%4$d, Append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, stato del file HA: %9$d, is end-of-log: %10$d.
 1030 log applier: voce di replicazione don valida. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s. 
+1031 log applier: impossibile applicare la seguente istruzione. class: "%1$s", statement: "%2$s", errore del server: %3$d, %4$s.
 1032 log applier: non riuscito ad applicare il log del replicazione della schema. classe: "%1$s", chiave: "%2$s", Errore del server: %3$d, %4$s
 1033 log applier: non riuscito ad applicare il log del replicazione dell'UPDATE. classe: "%1$s", chiave: "%2$s", Errore del server: %3$d, %4$s
 1034 log applier: non riuscito ad applicare il log del replicazione del DELETE. classe: "%1$s", chiave: "%2$s", Errore del server: %3$d, %4$s
@@ -1198,7 +1198,7 @@ $ LOADDB
 1129 Recupero log è finito.
 1130 Transazione viene interrotta perché numero di lock counts supera il valore %1$d.
 1131 Errore interno: La pagina %1$d di volume "%2$s" potrebbe essere danneggiata.\n%3$s
-1132 Encryption library failure: %1$s
+1132 Fallimento libreria di crittografia: %1$s
 1133 Copylogdb per %1$s esiste già.
 1134 Applylogdb per %1$s esiste già.
 1135 Un link precedente di B+tree(%1$s) è danneggiato: vpid = (%2$d, %3$d)
@@ -1217,49 +1217,49 @@ $ LOADDB
 1148 Le dimensioni del filter predicate stream cache(%1$d) supera il max(%2$d). È stata aggiunta una nuova voce anche se nulla è vittimizzato perché tutte le voci della cache sono già utilizzate.
 1149 Impossibile trovare la pagina %1$d del volume %2$d.
 1150 Contesto richiede collations compatibili.
-1151 The page %1$d of volume %2$d is not a slotted page.
-1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Attempt to use 'zero date'.
-1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
-1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
-1156 MVCC can't get snapshot
-1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurrent updates
-1159 Timezone compile error: %s
-1160 Timezone library loader error: %s
-1161 Timezone conversion error.
-1162 Invalid or missing timezone.
-1163 Invalid or missing daylight saving time.
-1164 Daylight saving time is not supported with this timezone.
-1165 Invalid combination of date, time, timezone and daylight specifier.
-1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 Comment string cannot have more than 1024 bytes.
-1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 Failed to flush replication items (error code : %1$d).
-1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Invalid percentile value %1$f, should be between 0 and 1.
-1173 Percentile value changed in the same group.
-1174 Inheriting from a partitioned table is not allowed.
-1175 Geographic timezone is not allowed without date context.
-1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Found not vacuumed entries in heap.
-1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
-1181 Manual vacuum is disabled for client-server mode.
-1182 Could not refix page %1$d,%2$d, previous error was %3$d.
-1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
-1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
-1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
-1186 checksumdb: %1$s (error code: %2$d).
-1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Dropping an active user '%1$s' is not allowed.
-1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Stand-alone vacuum execution is started.
-1191 Stand-alone vacuum execution is ended.
-1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1151 La pagina %1$d del volume %2$d non è una pagina slotted.
+1152 È consentito solo al proprietario o ad un membro del gruppo DBA di fermare l'operazione (%1$d).
+1153 Tentativo di utilizzare 'zero date'.
+1154 MVCC row %1$d|%2$d|%3$d non soddisfa rivalutazione.
+1155 MVCC riga non valido per eliminazione: %1$d|%2$d|%3$d.
+1156 MVCC non è possibile ottenere un'snapshot
+1157 Valore del livello di isolamento in MVCC deve essere 'read committed', 'repeatable read' o 'serializable'.
+1158 Serializzabile conflitto a causa di aggiornamenti simultanei
+1159 Errore di compilazione di fuso orario: %s
+1160 Errore di caricare libreria di fuso orario: %s
+1161 Errore di conversione del fuso orario.
+1162 Fuso orario non valido o manca.
+1163 Ora legale non valido o mancante.
+1164 L'ora legale non è supportata con questo fuso orario.
+1165 Combinazione non valida di identificatore di data, ora, fuso orario e del giorno.
+1166 La combinazione di data e ora specificata non esiste (durante l'intervallo di ora legale).
+1167 Commento stringa non può avere più di 1024 bytes.
+1168 Impossibile aggiornare le statistiche sulla tabella (%1$s) perché un blocco non viene immediatamente concesso.
+1169 Attributi chiave di partizione devono essere presenti nella chiave di indice.
+1170 Impossibile svuotare articoli di replica (codice di errore : %1$d).
+1171 Il volume %1$d non è vuoto, quindi non può essere rimosso.
+1172 Valore percentile non valido %1$f, dovrebbe essere compreso tra 0 e 1.
+1173 Valore percentile modificato nello stesso gruppo.
+1174 Ereditare da una tabella partizionata non è consentito.
+1175 Fuso orario non è consentito senza contesto data.
+1176 Promozione fermo per la pagina %1$d di volume %2$d non riuscita.
+1177 Dati di fuso orario incompatibile: %1$s ha checksum diverso da %2$s.
+1178 Lock-free bitmap entrata è già deallocata.
+1179 Vacuum mancato oggetti di heap.
+1180 Vacuum mancato oggetti. INDICE %1$s SULLA CLASSE %2$s (CLASS_OID: %3$d|%4$d|%5$d).
+1181 Manual vacuum è disattivato per la modalità client-server.
+1182 Impossibile rifissare pagina %1$d,%2$d, precedente errore era %3$d.
+1183 Errore durante il tentativo di risolvere vpid (%1$d,%2$d), incoerenza trovato in precedentemente fissato vpid (%3$d,%4$d): %5$s.
+1184 Troppe modifiche simultanee della pagina rilevate durante il tentativo di accedere OID:%1$d,%2$d,%3$d.
+1185 Imprevisto pagina refix nella pagina %1$d,%2$d, durante il tentativo di risolvere la pagina %3$d,%4$d.
+1186 checksumdb: %1$s (codice errore: %2$d).
+1187 Accesso non valido a pagina %1$d,%2$d che faceva parte di un heap canccellato.
+1188 Eliminazione di un utente attivo '%1$s' non è consentito.
+1189 La combinazione specifica di data e ora non esiste (durante la transizione del fuso orario regole di compensazione).
+1190 Stand-alone vacuum esecuzione viene avviato.
+1191 Stand-alone vacuum esecuzione è finita.
+1192 La precisione di valore di %1$zu supera il massimo consentito %2$d
+1193 La lunghezza dell'espressione partizione trasformati supera il massimo consentito(%1$d).
 1194 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1410,12 +1410,12 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 119 utilizzo non valido del clob_to_char\n CLOB_TO_CHAR ( expression [using charset] )\n
 120 utilizzo non valido del index_prefix\n INDEX_PREFIX ( expression, expression, expression )\n
 121 Uso scorretto di UNION e ORDER BY
-122 Expecting ON. Outer Joins require join condition.
-123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
-124 invalid use of dbtimezone\n dbtimezone
-125 invalid use of sessiontimezone\n sessiontimezone
-126 Maximum length of a class/vclass comment is %1$d bytes.
-127 Maximum length of a comment is %1$d bytes.
+122 Aspettavo ON. Outer Joins richiedono join condition.
+123 uso non valido di timezone\n set timezone 'timezone_val' o set time zone 'timezone_val'
+124 uso non valido di dbtimezone\n dbtimezone
+125 uso non valido di sessiontimezone\n sessiontimezone
+126 Lunghezza massima di class/vclass comment è %1$d bytes.
+127 Lunghezza massima di un commento è %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.
@@ -1695,23 +1695,23 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 275 Funzione '%1$s' deve avere la clausola ORDER BY.
 276 Per la funzione '%1$s', il numero di argomenti non corrisponde al numero di colonne ORDER BY.
 277 Per la funzione '%1$s', la clausola ORDER BY non è valida.
-278 Only one table within a view can be updated.
-279 Multiple insert targets not allowed.
-280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
-281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
-282 Expects %1$s in argument position %2$d.
-283 Too many arguments specified.
-284 Too few arguments, need %1$d arguments.
-285 Expects %1$s for argument %2$s.
-286 Argument %1$s is missing.
-287 Unknown argument %1$s.
-288 Cannot remove all partitions, use DROP TABLE instead.
-289 The expression including %1$s is not allowed in this context.
-290 Transaction id is not an integer.
-291 Subquery is not allowed in ORDER BY FOR clause.
-292 Invalid use of aggregate functions.
-293 Value must be strictly increasing for each partition.
-294 Cannot use function or filter indexes on local timezone typed columns.
+278 Solo una tabella all'interno di una vista può essere aggiornato.
+279 Obiettivi multipli insert non ammessi.
+280 '%1$s' tipo è vclass, drop vclass con vincoli cascata non è permesso.
+281 Il FOR UPDATE clause non può essere utilizzato in subqueries, unions, con GROUP BY clause, DISTINCT operator, funzioni di aggregazione.
+282 Aspettavo %1$s nella posizione dell'argomento %2$d.
+283 Troppi argomenti specificati.
+284 Troppo pochi argomenti, ha bisogno di %1$d argomenti.
+285 Aspettavo %1$s per argomento %2$s.
+286 Argomento %1$s manca.
+287 Argomento sconosciuto %1$s.
+288 Impossibile rimuovere tutte le partizioni, utilizzare DROP TABLE invece.
+289 L'espressione, tra cui %1$s  non è consentito in questo contesto.
+290 Id transazione non è un intero.
+291 Subquery non è consentito a ORDER BY FOR clause.
+292 Utilizzo non valido di funzioni di aggregazione.
+293 Il valore deve essere strettamente crescente per ogni partizione.
+294 Non è possibile utilizzare gli indici di funzione o di filtro su colonne fuso orario locale.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.
@@ -1792,8 +1792,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 Il proprietario o DBA può modificare la definizione di target di serial.
 78 Non é permesso agli utenti di modificare l'oggetto serial creato da un vincolo di incremento automatico.
 79 Livello di isolamento non valido, schema %1$s, istanze %2$s.
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 Valore del livello isolation in MVCC deve essere 'read committed', 'repeatable read' o 'serializable'.
+81 '%1$s' è un 'auto_increment' oggetto, che non può essere modificato come un seriale.
 
 
 $set 11 MSGCAT_SET_AUTHORIZATION
@@ -1886,7 +1886,7 @@ $set 14 MSGCAT_SET_LOCK
 42 , %1$d %2$s
 43 Tipo di oggetto: chiave dell'index di classe (%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 Nome dell'index: %1$s\n
-45 Object type: Generic object for Repeatable Read consistency.\n
+45 Tipo di oggetto: oggetto generico per Repeatable Read consistency.\n
 46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
 
 $set 15 MSGCAT_SET_IO

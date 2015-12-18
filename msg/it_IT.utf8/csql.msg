@@ -40,8 +40,8 @@ opzioni valide:\n\
   -c, --command=ARG            commandi-CSQL\n\
   -l, --line-output            ogni valore visualizzato in una riga\n\
   -r, --read-only              modalità read-only\n\
-  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
-  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
+  -t, --plain-output           visualizzare i risultati in un formato script-friendly (funziona solo con - c e -i)\n\
+  -N, --skip-column-names      non visualizzare i nomi delle colonne nei risultati (funziona solo con - c e -i)\n\
       --string-width           visualizzare ogni colonna che è un tipo stringa in questa larghezza\n\
       --no-auto-commit         disattivare modalità di esecuzione auto-commit\n\
       --no-pager               non utilizzare pager\n\
@@ -179,14 +179,14 @@ $ messaggi di aiuto csql
    ;LINe-output [ON/OFF]        - abilitare/disabilitare la visualizzazione di ogni valore in una riga\n\
    ;HISTORYList                 - visualizzare l'elenco delle query eseguite.\n\
    ;HISTORYRead <history_num>   - leggere la voce del numero storia in buffer dei comandi.\n\
-   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;TRAce [ON/OFF] [text/json]  - attivare/disattivare sql auto trace.\n\
    ;HElp                        - visualizza questo messaggio di aiuto.\n\n
 
 232 <Vincoli> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
 \tschema [class-name]    - informazioni sullo schema\n\
 \ttrigger [trigger-name] - informazioni di trigger\n\
-\tdeferred               - deferred trigger information\n\
+\tdeferred               - informazioni dell'deferred trigger\n\
 \tworkspace              - informazioni dell'workspace\n\
 \tlock                   - informazioni di lock (modalità client-server)\n\
 \tstats class-name       - informazioni statistiche di classe\n\
