@@ -1217,49 +1217,49 @@ $ LOADDB
 1148 La taille de filtre prédicat flux cache(%1$d) dépasse le maximum(%2$d). Nouvelle entrée est ajoutée bien que rien est victime parce que toutes les entrées du cache sont utilisées.
 1149 Impossible de trouver la page %1$d du volume %2$d.
 1150 Contexte oblige à avoir classements compatibles.
-1151 The page %1$d of volume %2$d is not a slotted page.
-1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Attempt to use 'zero date'.
-1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
-1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
-1156 MVCC can't get snapshot
-1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-1158 Serializable conflict due to concurrent updates
-1159 Timezone compile error: %s
-1160 Timezone library loader error: %s
-1161 Timezone conversion error.
-1162 Invalid or missing timezone.
-1163 Invalid or missing daylight saving time.
-1164 Daylight saving time is not supported with this timezone.
-1165 Invalid combination of date, time, timezone and daylight specifier.
-1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 Comment string cannot have more than 1024 bytes.
-1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 Failed to flush replication items (error code : %1$d).
-1171 The volume %1$d is not empty, so it cannot be removed.
-1172 Invalid percentile value %1$f, should be between 0 and 1.
-1173 Percentile value changed in the same group.
-1174 Inheriting from a partitioned table is not allowed.
-1175 Geographic timezone is not allowed without date context.
-1176 Latch promotion for page %1$d of volume %2$d failed.
-1177 Incompatible timezone data: %1$s has different checksum from %2$s.
-1178 Attempt to free an unallocated entry or double free in lock free bitmap.
-1179 Found not vacuumed entries in heap.
-1180 Found not vacuumed OIDs. INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).
-1181 Manual vacuum is disabled for client-server mode.
-1182 Could not refix page %1$d,%2$d, previous error was %3$d.
-1183 Error while trying to fix vpid (%1$d,%2$d), found inconsistency in previously fixed vpid (%3$d,%4$d): %5$s.
-1184 Too many concurrent page changes detected while trying to access OID:%1$d,%2$d,%3$d.
-1185 Unexpected page refix on page %1$d,%2$d, while trying to fix page %3$d,%4$d.
-1186 checksumdb: %1$s (error code: %2$d).
-1187 Invalid access on page %1$d,%2$d which was part of a deleted heap.
-1188 Dropping an active user '%1$s' is not allowed.
-1189 The specified combination of date and time do not exist (during transition of timezone offset rules).
-1190 Stand-alone vacuum execution is started.
-1191 Stand-alone vacuum execution is ended.
-1192 Value's precision of %1$zu exceeds maximum allowed %2$d
-1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
+1151 La page %1$d du volume %2$d non est pas une page fendue.
+1152 Seulement le propriétaire ou un membre du groupe DBA ont le droit de terminer la transaction (%1$d).
+1153 Essai d'utiliser la 'date zéro'.
+1154 MVCC ligne %1$d|%2$d|%3$d ne satisfait pas la réévaluation.
+1155 MVCC ligne pas valide pour suppression: %1$d|%2$d|%3$d.
+1156 MVCC ne peut pas obtenir le snapshot.
+1157 Le niveau d'isolation dans MVCC doit être 'read committed', 'repeatable read' ou 'serializable'.
+1158 Mises à jour simultanées provoque un conflit de 'serializable'.
+1159 Erreur compilation fuseau horaire: %s
+1160 Erreur du chargeur logithèque fuseau horaire: %s
+1161 Erreur conversion fuseau horaire.
+1162 Fuseau horaire erroné ou manquant.
+1163 Heure d'été erronée ou manquante.
+1164 L'heure d'été n'est pas supportée avec ce fuseau horaire.
+1165 Combinaison non valide de spécificateurs pour la date, l'heure, le fuseau horaire et l'heure d'été.
+1166 La combinaison spécifiée de la date et de l'heure non existe pas (pendant l'intervalle d'heure d'été).
+1167 La chaîne de caractères commentaire ne peut pas avoir plus de 1024 octets.
+1168 Incapable de mettre à jour les statistiques de la table (%1$s) parce qu'un verrou non est pas immédiatement accordé.
+1169 Les attributs de la clé de partition doivent être présents dans la clé d'index.
+1170 Échoué d'écrire les articles de réplication (code erreur : %1$d).
+1171 Le volume %1$d n'est pas vide, alors il ne peut pas être enlevé.
+1172 Valeur procentuelle %1$f non valide, devrait être comprise entre 0 et 1.
+1173 Valeur procentuelle a changé dans le même groupe.
+1174 Hériter à partir d'une table partitionnée non est pas permis.
+1175 Fuseau horaire géographique non est pas permis sans le contexte de la date.
+1176 Promotion du loquet pour page %1$d du volume %2$d a échoué.
+1177 Données fuseau horaire incompatibles: %1$s a une somme de contrôle différente de %2$s.
+1178 Essai de libérer une entrée non alloué ou double libérer dans un lock free bitmap.
+1179 Détection des entrées non nettoyées dans le tas.
+1180 Rencontré des OID  non nettoyées. INDEX %1$s EN CLASSE %2$s (CLASS_OID: %3$d|%4$d|%5$d).
+1181 Nettoyage manuel est désactivé pour le mode client-serveur.
+1182 Pas possible de re-loquer la page %1$d,%2$d, l'erreur précédente a été %3$d.
+1183 Erreur pendant l'essai de loquer vpid (%1$d,%2$d), rencontré inconsistance dans le vpid (%3$d,%4$d) préalablement loquet: %5$s.
+1184 Trop de changements simultanées à la page lors de l'accès à l'OID: %1$d,%2$d,%3$d.
+1185 Re-loquer de la page pas attendu sur la page %1$d,%2$d, pendant l'essaye de loquer la page %3$d,%4$d.
+1186 checksumdb: %1$s (code d'erreur: %2$d).
+1187 Accès non valide sur la page %1$d,%2$d la quelle faisait partie d'un tas supprimé. 
+1188 Suppression d'un utilisateur actif '%1$s' non est pas autorisée.
+1189 La combinaison spécifiée de date et d'heure non existé pas (durant la transition des règles du décalage fuseau horaire).
+1190 Exécution de nettoyage autonome est démarré.
+1191 Exécution de nettoyage autonome est terminé.
+1192 La précision de la valeur de %1$zu dépasse le maximum autorisé %2$d.
+1193 La dimension de l'expression de partition traité dépasse le maximum autorisé(%1$d).
 1194 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1410,12 +1410,12 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 119 utilisation invalide du clob_to_char\n CLOB_TO_CHAR ( expression [using charset] )\n
 120 utilisation invalide du index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 Utilisation incorrecte de UNION et ORDER BY.
-122 Expecting ON. Outer Joins require join condition.
-123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
-124 invalid use of dbtimezone\n dbtimezone
-125 invalid use of sessiontimezone\n sessiontimezone
-126 Maximum length of a class/vclass comment is %1$d bytes.
-127 Maximum length of a comment is %1$d bytes.
+122 Expectant ON. Outer Joins nécessitent une condition de jointure.
+123 Utilisation non valide de fuseau horaire\n set timezone 'timezone_val' or set time zone 'timezone_val'
+124 Utilisation non valide de dbtimezone\n dbtimezone
+125 Utilisation non valide de sessiontimezone\n sessiontimezone
+126 La dimension maximale d'un commentaire class/vclass est %1$d octets.
+127 La dimension maximale d'un commentaire est %1$d octets.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.
@@ -1695,23 +1695,23 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 275 La fonction '%1$s' doit avoir la clause ORDER BY.
 276 Pour la fonction '%1$s', le nombre d'arguments ne correspond pas au nombre de colonnes ORDER BY.
 277 Pour la fonction '%1$s', la clause ORDER BY n'est pas valide.
-278 Only one table within a view can be updated.
-279 Multiple insert targets not allowed.
-280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
-281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
-282 Expects %1$s in argument position %2$d.
-283 Too many arguments specified.
-284 Too few arguments, need %1$d arguments.
-285 Expects %1$s for argument %2$s.
-286 Argument %1$s is missing.
-287 Unknown argument %1$s.
-288 Vous ne pouvez pas supprimer toutes les partitions, utilisez DROP TABLE.
-289 The expression including %1$s is not allowed in this context.
-290 Transaction id is not an integer.
-291 Subquery is not allowed in ORDER BY FOR clause.
-292 Invalid use of aggregate functions.
-293 Value must be strictly increasing for each partition.
-294 Cannot use function or filter indexes on local timezone typed columns.
+278 Une seule table, à l'intérieur d'une vue, peut être mise à jour.
+279 Multiples cibles d'insertion pas autorisées.
+280 '%1$s' est de type vclass, supprimer vclass avec des contraintes en cascade n'est pas autorisée.
+281 La FOR UPDATE clause ne peut pas être utilisé dans les sous-requêtes, unions, avec des clauses GROUP BY, l'opérateur DISTINCT, des fonctionnes d'agrégation.
+282 Attend %1$s dans la position %2$d de l'argument.
+283 Trop d'arguments spécifiés.
+284 Trop peu d'arguments, nécessite %1$d arguments. 
+285 Attend %1$s pour l'argument %2$s.
+286 L'argument %1$s est manquant.
+287 Argument %1$s pas reconnu.
+288 Impossible de supprimer toutes les partitions, utilisez DROP TABLE à la place.
+289 L'expression incluant %1$s non est pas permise dans ce contexte.
+290 L'ID de la transaction non est pas un entier.
+291 Sous-requête non est pas autorise dans une clause ORDER BY FOR.
+292 Usage non valide de fonctions d'agrégation.
+293 La valeur doit être strictement croissante pour chaque partition.
+294 Impossible d'utiliser des index de fonction ou de filtre pour les colonnes avec local timezone type.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.
