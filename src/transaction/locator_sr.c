@@ -9287,36 +9287,41 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 				     (error_code != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
 	    }
-	  else if (use_mvcc == true)
-	    {
-	      /* in MVCC logical deletion means MVCC DEL_ID insertion */
-	      error_code =
-		btree_mvcc_delete (thread_p, &btid, key_dbvalue, class_oid,
-				   inst_oid, op_type, unique_stat_info,
-				   &dummy_unique, p_mvcc_rec_header);
-	    }
 	  else
 	    {
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_DELETE_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      error_code =
-		btree_physical_delete (thread_p, &btid, key_dbvalue, inst_oid,
-				       class_oid, &dummy_unique, op_type,
-				       unique_stat_info);
-	      if (error_code != NO_ERROR)
+	      if (use_mvcc == true)
 		{
-		  ASSERT_ERROR ();
+		  /* in MVCC logical deletion means MVCC DEL_ID insertion */
+		  error_code =
+		    btree_mvcc_delete (thread_p, &btid, key_dbvalue,
+				       class_oid, inst_oid, op_type,
+				       unique_stat_info, &dummy_unique,
+				       p_mvcc_rec_header);
+		}
+	      else
+		{
+		  error_code =
+		    btree_physical_delete (thread_p, &btid, key_dbvalue,
+					   inst_oid, class_oid, &dummy_unique,
+					   op_type, unique_stat_info);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
 
 #if defined(ENABLE_SYSTEMTAP)
-		  CUBRID_IDX_DELETE_END (classname, index->btname, 1);
+		      CUBRID_IDX_DELETE_END (classname, index->btname, 1);
 #endif /* ENABLE_SYSTEMTAP */
 
-		  goto error;
+		      goto error;
+		    }
 		}
 #if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_IDX_DELETE_END (classname, index->btname, 0);
+	      CUBRID_IDX_DELETE_END (classname, index->btname,
+				     (error_code != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
 
 	    }
