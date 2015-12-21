@@ -2319,6 +2319,12 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
   ER_MSG *er_entry_p;
   static bool doing_er_start = false;
 
+  if (er_Hasalready_initiated == false)
+    {
+      /* do not print debug info */
+      return;
+    }
+
   thread_p = thread_get_thread_entry_info ();
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -2858,6 +2864,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec,
 	  class_ = 's';
 	  break;
 	default:
+	  assert (0);
 	  er_log_debug (ARG_FILE_LINE, er_Cached_msg[ER_LOG_UNKNOWN_CODE],
 			code);
 	  break;
