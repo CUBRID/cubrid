@@ -25,7 +25,6 @@ scp_option="-l 131072"		# default - limit : 16M*1024*8=131072
 #################################################################################
 # automatic - DO NOT CHANGE !!!
 prog_name="ha_make_slavedb.sh"
-repl_log_home_abs=
 master_host=
 slave_host=
 replica_hosts=
@@ -277,7 +276,6 @@ function init_conf()
 		fi
 	fi
 	repl_log_home=${repl_log_home%%/}
-	repl_log_home_abs=$(readlink -f $repl_log_home)
 	backup_dest_path=${backup_dest_path%%/}
 	backup_dest_path=$(readlink -f $backup_dest_path)
 	
@@ -812,7 +810,7 @@ function copy_active_log_from_master()
 		return $SUCCESS
 	fi
 	
-	repl_log_path=$repl_log_home_abs/${db_name}_${master_host}
+	repl_log_path=$(readlink -f $repl_log_home)/${db_name}_${master_host}
 
 	# 1. remove old replication log.
 	echo -ne "\n - 1. remove old replication log.\n\n"
