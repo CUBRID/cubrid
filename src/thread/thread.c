@@ -5448,6 +5448,7 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
   THREAD_RC_TRACK *track;
   THREAD_RC_METER *meter;
   int enter_mode = -1;
+  static bool report_track_cs_overflow = false;
 
   if (thread_p == NULL)
     {
@@ -5598,8 +5599,9 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 		  MAX (meter->m_hold_buf_size, cs_idx + 1);
 		assert (meter->m_hold_buf_size <= ONE_K);
 	      }
-	    else
+	    else if (report_track_cs_overflow == false)
 	      {
+		report_track_cs_overflow = true;	/* report only once */
 		er_log_debug (ARG_FILE_LINE,
 			      "thread_rc_track_meter: hold_buf overflow: "
 			      "buf_size=%d, idx=%d",
