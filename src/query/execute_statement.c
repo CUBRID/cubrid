@@ -15441,6 +15441,12 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
+  if (statement->sql_user_text == NULL || statement->sql_user_text_len == 0)
+    {
+      /* this should be loaddb. */
+      return NO_ERROR;
+    }
+
   switch (statement->node_type)
     {
     case PT_CREATE_ENTITY:
@@ -15592,9 +15598,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
-
-  assert_release (statement->sql_user_text != NULL
-		  && statement->sql_user_text_len > 0);
 
   /* it may contain multiple statements */
   if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
