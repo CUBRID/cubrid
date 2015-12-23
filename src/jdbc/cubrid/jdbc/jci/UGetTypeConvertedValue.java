@@ -47,6 +47,7 @@ import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
 import cubrid.sql.CUBRIDTimetz;
+import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDException;
 
 abstract public class UGetTypeConvertedValue {
@@ -256,6 +257,8 @@ abstract public class UGetTypeConvertedValue {
 	    return UGetTypeConvertedValue.getHexaDecimalString((byte[]) data);
 	} else if ((data instanceof Blob) || (data instanceof Clob)) {
 	    return data.toString();
+	} else if (data instanceof CUBRIDBinaryString) {
+	    return (((CUBRIDBinaryString) data).toString());
 	}
 	throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
     }
