@@ -73,7 +73,7 @@ bin_PROGRAMS = \
 compat_PROGRAMS = \
 	addvoldb backupdb checkdb commdb compactdb copydb \
 	createdb deletedb installdb killtran loaddb lockdb \
-	optimizedb renamedb restoredb spacedb sqlx unloaddb get_disk_compat \
+	optimizedb renamedb restoredb spacedb sqlx unloaddb \
 	convert_password
 
 addvoldb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
@@ -95,9 +95,6 @@ deletedb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 installdb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 
 killtran_SOURCES = $(EXECUTABLE_DIR)/util_front.c
-
-get_disk_compat_SOURCES = $(EXECUTABLE_DIR)/get_disk_compat.c
-get_disk_compat_LDADD = @SA_LIB@
 
 convert_password_SOURCES = $(EXECUTABLE_DIR)/convert_password.c
 convert_password_LDADD = @SA_LIB@
