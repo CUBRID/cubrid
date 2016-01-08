@@ -1558,13 +1558,19 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code,
 		    int request_id, int buffer_size, int transaction_id,
 		    int invalidate_snapshot, int db_error)
 {
+  unsigned short flags = 0;
   header_p->type = htonl (type);
   header_p->function_code = htons (function_code);
   header_p->request_id = htonl (request_id);
   header_p->buffer_size = htonl (buffer_size);
   header_p->transaction_id = htonl (transaction_id);
   header_p->db_error = htonl (db_error);
-  header_p->invalidate_snapshot = htonl (invalidate_snapshot);
+
+  if (invalidate_snapshot)
+    {
+      flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
+    }
+  header_p->flags = htonl (flags);
 }
 
 /*
@@ -1596,7 +1602,7 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, 
+		      arg_size, conn->transaction_id,
 		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && (reply_size > 0))
@@ -1655,12 +1661,12 @@ css_send_request_no_reply (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&req_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, conn->invalidate_snapshot,
-		      conn->db_error);
+		      arg_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id,
-		      arg_size, conn->transaction_id, conn->invalidate_snapshot,
-		      conn->db_error);
+		      arg_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send3 (conn,
 			 (char *) &req_header, sizeof (NET_HEADER),
@@ -1706,8 +1712,8 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, conn->invalidate_snapshot,
-		      conn->db_error);
+		      arg_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && reply_size > 0)
     {
@@ -1848,8 +1854,8 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request,
 
   *request_id = css_get_request_id (conn);
   css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id,
-		      arg_size, conn->transaction_id, conn->invalidate_snapshot,
-		      conn->db_error);
+		      arg_size, conn->transaction_id,
+		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && reply_size > 0)
     {

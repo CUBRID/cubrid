@@ -1481,11 +1481,17 @@ static int
 css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
+  unsigned short flags = 0;
 
   header.type = htonl (ABORT_TYPE);
   header.request_id = htonl (rid);
   header.transaction_id = htonl (conn->transaction_id);
-  header.invalidate_snapshot = htonl (conn->invalidate_snapshot);
+
+  if (conn->invalidate_snapshot)
+    {
+      flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
+    }
+  header.flags = htons (flags);
   header.db_error = htonl (conn->db_error);
 
   /* timeout in milli-second in css_net_send() */
@@ -1543,6 +1549,7 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
 {
   int buffer_size;
   int rc = 0;
+  unsigned short flags = 0;
 
   buffer_size = sizeof (NET_HEADER);
 
@@ -1563,8 +1570,11 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
     }
 
   conn->transaction_id = ntohl (local_header->transaction_id);
-  conn->invalidate_snapshot = ntohl (local_header->invalidate_snapshot);
   conn->db_error = (int) ntohl (local_header->db_error);
+
+  flags = ntohs (local_header->flags);
+  conn->invalidate_snapshot =
+    flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
 
   return (rc);
 }
@@ -2002,6 +2012,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
 		  int size)
 {
   THREAD_ENTRY *wait_thrd = NULL, *p, *next;
+  unsigned short flags = 0;
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
@@ -2011,8 +2022,12 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
   conn->transaction_id = ntohl (header->transaction_id);
-  conn->invalidate_snapshot = ntohl (header->invalidate_snapshot);
   conn->db_error = (int) ntohl (header->db_error);
+
+  flags = ntohs (header->flags);
+  conn->invalidate_snapshot =
+    flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+
 
   switch (type)
     {
@@ -2239,8 +2254,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	    {
 	      css_add_queue_entry (conn, &conn->data_queue, request_id, NULL,
 				   0, rc, conn->transaction_id,
-				   conn->invalidate_snapshot,
-				   conn->db_error);
+				   conn->invalidate_snapshot, conn->db_error);
 	      return;
 	    }
 	}

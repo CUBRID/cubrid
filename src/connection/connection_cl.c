@@ -334,6 +334,7 @@ int
 css_send_close_request (CSS_CONN_ENTRY * conn)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
+  unsigned short flags;
 
   if (!conn || conn->status == CONN_CLOSED)
     {
@@ -344,7 +345,12 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
     {
       header.type = htonl (CLOSE_TYPE);
       header.transaction_id = htonl (conn->transaction_id);
-      header.invalidate_snapshot = htonl (conn->invalidate_snapshot);
+      flags = 0;
+      if (conn->invalidate_snapshot)
+	{
+	  flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
+	}
+      header.flags = ntohs (flags);
       header.db_error = htonl (conn->db_error);
       /* timeout in milli-second in css_net_send() */
       css_net_send (conn, (char *) &header, sizeof (NET_HEADER), -1);
@@ -369,6 +375,7 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
 {
   int buffer_size;
   int rc = 0;
+  unsigned short flags = 0;
 
   buffer_size = sizeof (NET_HEADER);
 
@@ -387,7 +394,9 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
     }
 
   conn->transaction_id = ntohl (local_header->transaction_id);
-  conn->invalidate_snapshot = ntohl (local_header->invalidate_snapshot);
+  flags = ntohs (local_header->flags);
+  conn->invalidate_snapshot =
+    flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
   conn->db_error = (int) ntohl (local_header->db_error);
 
   return (rc);
