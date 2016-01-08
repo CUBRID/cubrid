@@ -10001,7 +10001,6 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid,
   SCAN_CODE scan = S_SUCCESS;
   int try_count = 0;
   int try_max = 1;
-  DISK_ISVALID oid_is_valid;
   int ret;
   bool is_system_class = false;
 
@@ -28339,6 +28338,7 @@ heap_delete_home (THREAD_ENTRY * thread_p,
     }
   else
     {
+      int rc;
       bool is_reusable = heap_is_reusable_oid (context->file_type);
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -28352,13 +28352,15 @@ heap_delete_home (THREAD_ENTRY * thread_p,
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical deletion */
-      return heap_delete_physical (thread_p, &context->hfid,
-				   context->home_page_watcher_p->pgptr,
-				   &context->oid);
+      rc = heap_delete_physical (thread_p, &context->hfid,
+				 context->home_page_watcher_p->pgptr,
+				 &context->oid);
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       mnt_heap_home_deletes (thread_p);
+
+      return rc;
     }
 
   /* all ok */
