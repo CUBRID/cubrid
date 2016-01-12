@@ -19617,6 +19617,8 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
   _s -= s;
   _ms -= ms;
 
+  days[2] = LEAP (_y) ? 29 : 28;
+
   /* time */
   _s += _ms / 1000;
   _ms %= 1000;
