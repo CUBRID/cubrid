@@ -1518,6 +1518,11 @@ static int btree_search_nonleaf_page (THREAD_ENTRY * thread_p,
 static int btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				   PAGE_PTR page_ptr, DB_VALUE * key,
 				   BTREE_SEARCH_KEY_HELPER * search_key);
+static int btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p,
+					      BTID_INT * btid_int,
+					      PAGE_PTR leaf, DB_VALUE * key,
+					      BTREE_SEARCH_KEY_HELPER *
+					      search_key);
 static int xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int btree_get_subtree_stats (THREAD_ENTRY * thread_p,
@@ -6210,6 +6215,160 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 }
 
 /*
+ * btree_leaf_is_key_between_min_max () - Output if key is between first and
+ *					  last key in page. Function is useful
+ *					  to decide to resume with leaf page
+ *					  after it was unfixed.
+ *
+ * return	    : Error code.
+ * thread_p (in)    : Thread entry.
+ * btid_int (in)    : B-tree info.
+ * leaf (in)	    : Leaf page.
+ * key (in)	    : Searched key.
+ * search_key (out) : Output result of search.
+ */
+static int
+btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p,
+				   BTID_INT * btid_int, PAGE_PTR leaf,
+				   DB_VALUE * key,
+				   BTREE_SEARCH_KEY_HELPER * search_key)
+{
+  DB_VALUE border_key;
+  RECDES border_record;
+  BTREE_NODE_HEADER *node_header = NULL;
+  LEAF_REC dummy_leaf_rec;
+  int dummy_offset;
+  bool clear_key = false;
+  int error_code = NO_ERROR;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
+  int key_count = 0;
+
+  /* Assert expected arguments */
+  assert (btid_int != NULL);
+  assert (leaf != NULL);
+  assert (key != NULL && !DB_IS_NULL (key));
+
+  if (DB_VALUE_DOMAIN_TYPE (key) != DB_TYPE_MIDXKEY)
+    {
+      /* We don't need to do the early check. Output search key result
+       * BTREE_KEY_BETWEEN to force a normal search.
+       */
+      search_key->result = BTREE_KEY_BETWEEN;
+      return NO_ERROR;
+    }
+
+  search_key->result = BTREE_KEY_NOTFOUND;
+  node_header = btree_get_node_header (leaf);
+  if (node_header == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  key_count = btree_node_number_of_keys (leaf);
+  if (key_count < 1)
+    {
+      /* Too few keys to decide. */
+      return NO_ERROR;
+    }
+
+  /*
+   * Compare with first key in page.
+   */
+  /* Read record and get key. */
+  DB_MAKE_NULL (&border_key);
+
+  if (spage_get_record (leaf, 1, &border_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  error_code =
+    btree_read_record (thread_p, btid_int, leaf, &border_record, &border_key,
+		       &dummy_leaf_rec, BTREE_LEAF_NODE, &clear_key,
+		       &dummy_offset, PEEK_KEY_VALUE, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* Compare with first key. */
+  c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
+  btree_clear_key_value (&clear_key, &border_key);
+  if (c == DB_EQ)
+    {
+      if (btree_leaf_is_flaged (&border_record, BTREE_LEAF_RECORD_FENCE))
+	{
+	  /* Let btree_search_leaf_page find the key, if it exists. */
+	  search_key->result = BTREE_KEY_BETWEEN;
+	}
+      else
+	{
+	  /* Key found. */
+	  search_key->result = BTREE_KEY_FOUND;
+	  search_key->slotid = 1;
+	}
+      return NO_ERROR;
+    }
+  else if (c != DB_GT)
+    {
+      /* Not bigger than first key. */
+      search_key->result = (c == DB_LT) ? BTREE_KEY_SMALLER : BTREE_KEY_FOUND;
+      return NO_ERROR;
+    }
+  else if (key_count == 1)
+    {
+      search_key->result = BTREE_KEY_BIGGER;
+      return NO_ERROR;
+    }
+
+  /*
+   * Compare with last key in page.
+   */
+  /* Read record and get key. */
+  if (spage_get_record (leaf, key_count, &border_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  error_code =
+    btree_read_record (thread_p, btid_int, leaf, &border_record, &border_key,
+		       &dummy_leaf_rec, BTREE_LEAF_NODE, &clear_key,
+		       &dummy_offset, PEEK_KEY_VALUE, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  /* Compare with last key. */
+  c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
+  btree_clear_key_value (&clear_key, &border_key);
+  if (c == DB_EQ)
+    {
+      if (btree_leaf_is_flaged (&border_record, BTREE_LEAF_RECORD_FENCE))
+	{
+	  search_key->result = BTREE_KEY_BIGGER;
+	}
+      else
+	{
+	  search_key->result = BTREE_KEY_FOUND;
+	  search_key->slotid = key_count;
+	}
+      return NO_ERROR;
+    }
+  else if (c != DB_LT)
+    {
+      /* Not smaller than last key. */
+      search_key->result = (c == DB_GT) ? BTREE_KEY_BIGGER : BTREE_KEY_FOUND;
+      return NO_ERROR;
+    }
+
+  /* Key is between first and last key in leaf page. */
+  search_key->result = BTREE_KEY_BETWEEN;
+  return NO_ERROR;
+}
+
+/*
  * btree_search_leaf_page () - Search key in page and return result.
  *   return	      : Error code.
  *   btid (in)	      : B-tree info.
@@ -6283,6 +6442,34 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
   left_start_col = right_start_col = n_prefix;
 
+#if !defined (NDEBUG)
+  if (key_cnt > 0 && DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY
+      && n_prefix > 0)
+    {
+      /* We need to make sure the key is between the values of fence keys.
+       * Otherwise, the optimized midxkey compare that skips columns may
+       * be broken.
+       */
+      BTREE_SEARCH_KEY_HELPER debug_search_key;
+      BTREE_NODE_HEADER *node_header = btree_get_node_header (page_ptr);
+      error =
+	btree_leaf_is_key_between_min_max (thread_p, btid, page_ptr, key,
+					   &debug_search_key);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+
+      assert (debug_search_key.result == BTREE_KEY_FOUND
+	      || debug_search_key.result == BTREE_KEY_BETWEEN
+	      || (debug_search_key.result == BTREE_KEY_SMALLER
+		  && VPID_ISNULL (&node_header->prev_vpid))
+	      || (debug_search_key.result == BTREE_KEY_BIGGER
+		  && VPID_ISNULL (&node_header->next_vpid)));
+    }
+#endif /* !NDEBUG */
+
   /*
    * binary search the node to find if the key exists and in which record it
    * exists, or if it doesn't exist , the in which record it should have been
@@ -6311,12 +6498,12 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  assert (false);
 	  return ER_FAILED;
 	}
-      error = btree_read_record_without_decompression (thread_p, btid, &rec,
-						       &temp_key,
-						       &leaf_pnt,
-						       BTREE_LEAF_NODE,
-						       &clear_key, &offset,
-						       PEEK_KEY_VALUE);
+      error =
+	btree_read_record_without_decompression (thread_p, btid, &rec,
+						 &temp_key, &leaf_pnt,
+						 BTREE_LEAF_NODE,
+						 &clear_key, &offset,
+						 PEEK_KEY_VALUE);
       if (error != NO_ERROR)
 	{
 	  /* Error! */
@@ -15284,6 +15471,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   assert (!VPID_ISNULL (P_vpid));
   assert (!VPID_ISNULL (Q_vpid));
   assert (!VPID_ISNULL (R_vpid));
+  assert (pgbuf_get_latch_mode (P) == PGBUF_LATCH_WRITE);
+  assert (pgbuf_get_latch_mode (Q) == PGBUF_LATCH_WRITE);
+  assert (pgbuf_get_latch_mode (R) == PGBUF_LATCH_WRITE);
 
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
@@ -27089,15 +27279,28 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       *restart = true;
       return NO_ERROR;
     }
-  /* Page is a b-tree leaf. */
 
-  /* Search key. */
+  /* Page is a b-tree leaf. */
+  /* Make sure key still belongs to the page. */
   error_code =
-    btree_search_leaf_page (thread_p, btid_int, *leaf_page, key, search_key);
+    btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, key,
+				       search_key);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
+    }
+  if (search_key->result == BTREE_KEY_BETWEEN)
+    {
+      /* Search key to find slot. */
+      error_code =
+	btree_search_leaf_page (thread_p, btid_int, *leaf_page, key,
+				search_key);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
     }
   switch (search_key->result)
     {
@@ -27905,17 +28108,31 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (BTREE_IS_PAGE_VALID_LEAF (thread_p, bts->C_page))
 	{
 	  /* Page is still a valid leaf page. Check if key still exists. */
-
 	  /* Is key still in this page? */
 	  error_code =
-	    btree_search_leaf_page (thread_p, &bts->btid_int, bts->C_page,
-				    &bts->cur_key, &search_key);
+	    btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int,
+					       bts->C_page, &bts->cur_key,
+					       &search_key);
 	  if (error_code != NO_ERROR)
 	    {
 	      /* Error! */
 	      pgbuf_unfix_and_init (thread_p, bts->C_page);
 	      ASSERT_ERROR ();
 	      return error_code;
+	    }
+	  if (search_key.result == BTREE_KEY_BETWEEN)
+	    {
+	      /* We need to find slot of key. */
+	      error_code =
+		btree_search_leaf_page (thread_p, &bts->btid_int, bts->C_page,
+					&bts->cur_key, &search_key);
+	      if (error_code != NO_ERROR)
+		{
+		  /* Error! */
+		  pgbuf_unfix_and_init (thread_p, bts->C_page);
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
 	    }
 	  switch (search_key.result)
 	    {
@@ -27960,6 +28177,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	    default:
 	      /* Unexpected. */
 	      assert (false);
+	      pgbuf_unfix_and_init (thread_p, bts->C_page);
 	      return ER_FAILED;
 	    }
 	}
@@ -28396,13 +28614,26 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p,
 
   /* Normally, key is found in current page. */
   error_code =
-    btree_search_leaf_page (thread_p, &bts->btid_int, bts->C_page,
-			    &bts->cur_key, &search_key);
+    btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, bts->C_page,
+				       &bts->cur_key, &search_key);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       pgbuf_unfix_and_init (thread_p, prev_leaf);
       return error_code;
+    }
+  if (search_key.result == BTREE_KEY_BETWEEN)
+    {
+      /* Search to find slot. */
+      error_code =
+	btree_search_leaf_page (thread_p, &bts->btid_int, bts->C_page,
+				&bts->cur_key, &search_key);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, prev_leaf);
+	  return error_code;
+	}
     }
   switch (search_key.result)
     {
@@ -28463,8 +28694,27 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p,
   /* Unfix current page. */
   pgbuf_unfix_and_init (thread_p, bts->C_page);
   error_code =
-    btree_search_leaf_page (thread_p, &bts->btid_int, prev_leaf,
-			    &bts->cur_key, &search_key);
+    btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, prev_leaf,
+				       &bts->cur_key, &search_key);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, prev_leaf);
+      return error_code;
+    }
+  if (search_key.result == BTREE_KEY_BETWEEN)
+    {
+      /* Search to find slot. */
+      error_code =
+	btree_search_leaf_page (thread_p, &bts->btid_int, prev_leaf,
+				&bts->cur_key, &search_key);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, prev_leaf);
+	  return error_code;
+	}
+    }
   switch (search_key.result)
     {
     case BTREE_KEY_BIGGER:
@@ -30243,6 +30493,9 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 	  goto error;
 	}
       /* Root fixed. */
+      /* Reset other flags relevant for traversal. */
+      insert_helper->is_crt_node_write_latched = false;
+      insert_helper->need_update_max_key_len = false;
       return NO_ERROR;
     }
   assert (*root_page != NULL);
@@ -30420,7 +30673,6 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
 	    }
-	  insert_helper->is_crt_node_write_latched = true;
 	}
       else if (error_code != NO_ERROR)
 	{
@@ -30432,6 +30684,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid,
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto error;
 	}
+      /* Root is write latched. */
+      insert_helper->is_crt_node_write_latched = true;
       /* Check that overflow key file was not created by another. */
       if (VFID_ISNULL (&btid_int->ovfid))
 	{
@@ -30817,10 +31071,14 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
 	    }
+	  assert (pgbuf_get_latch_mode (*crt_page) == PGBUF_LATCH_WRITE);
+	  insert_helper->is_crt_node_write_latched = true;
 	}
 
       if (need_update_max_key_len)
 	{
+	  assert (pgbuf_get_latch_mode (*crt_page) == PGBUF_LATCH_WRITE);
+
 	  /* Update max key length. */
 	  node_header->max_key_len = insert_helper->key_len_in_page;
 	  error_code =
@@ -30860,6 +31118,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 
       if (need_split)
 	{
+	  assert (pgbuf_get_latch_mode (*crt_page) == PGBUF_LATCH_WRITE);
+
 	  /* Split root node. */
 	  assert (key_count >= 3);
 
@@ -30950,11 +31210,12 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	   * The child is hinted by btree_split_root through advance_vpid.
 	   */
 	  pgbuf_unfix_and_init (thread_p, *crt_page);
+	  insert_helper->is_crt_node_write_latched = false;	/* because of unfix */
+
 	  /* Which child? */
 	  if (VPID_EQ (&advance_vpid, &new_page_vpid1))
 	    {
 	      /* Go to new page 1. */
-
 	      /* Unfix the other child. */
 	      pgbuf_unfix_and_init (thread_p, new_page2);
 
@@ -30970,11 +31231,11 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	       * promotion on current node.
 	       */
 	      insert_helper->is_crt_node_write_latched = true;
+	      assert (pgbuf_get_latch_mode (*crt_page) == PGBUF_LATCH_WRITE);
 	    }
 	  else if (VPID_EQ (&advance_vpid, &new_page_vpid2))
 	    {
 	      /* Go to new page 1. */
-
 	      /* Unfix the other child. */
 	      pgbuf_unfix_and_init (thread_p, new_page1);
 
@@ -30987,6 +31248,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	      new_page2 = NULL;
 
 	      insert_helper->is_crt_node_write_latched = true;
+	      assert (pgbuf_get_latch_mode (*crt_page) == PGBUF_LATCH_WRITE);
 	    }
 	  else
 	    {
@@ -31009,10 +31271,9 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	      assert (false);
 	      goto error;
 	    }
-	  node_type =
-	    (node_header->node_level ==
-	     1) ? BTREE_LEAF_NODE : BTREE_NON_LEAF_NODE;
 
+	  node_type = ((node_header->node_level == 1)
+		       ? BTREE_LEAF_NODE : BTREE_NON_LEAF_NODE);
 	  insert_helper->is_root = false;
 	}
       assert (node_type != BTREE_LEAF_NODE
@@ -31052,7 +31313,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   /* If next child is leaf, it must be treated differently. See NOTE 2,3 from
    * the big comment.
    */
-  is_child_leaf = node_header->node_level == 2;
+  is_child_leaf = (node_header->node_level == 2);
 
   /* Find and fix the child to advance to. Use write latch if the child is
    * leaf or if it is already known that it will require an update of max key
@@ -31108,10 +31369,20 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (!insert_helper->need_update_max_key_len
 	  || insert_helper->is_crt_node_write_latched);
 
+  /* Make sure page is write latched if insert_helper indicates it is.
+   * Otherwise, we may do write-mode operations on read-latched page.
+   * If insert_helper doesn't indicate the page is write-latched and it is,
+   * all we risk to do is an unnecessary promote call.
+   */
+  assert ((!insert_helper->is_crt_node_write_latched
+	   && insert_helper->nonleaf_latch_mode != PGBUF_LATCH_WRITE)
+	  || (pgbuf_get_latch_mode (*crt_page) == PGBUF_LATCH_WRITE));
+
   /* Is updating max key length necessary? True if:
    * 1. Parent node already needed an update
    *    (insert_helper->need_update_max_key_len is set to true).
-   * 2. Current node*/
+   * 2. Current node.
+   */
   need_update_max_key_len =
     insert_helper->need_update_max_key_len
     || (is_new_key_possible
@@ -31154,6 +31425,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  *restart = true;
 	  pgbuf_unfix_and_init (thread_p, child_page);
 	  pgbuf_unfix_and_init (thread_p, *crt_page);
+	  insert_helper->is_crt_node_write_latched = false;
 	  return NO_ERROR;
 	}
       else if (error_code != NO_ERROR)
@@ -31166,6 +31438,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto error;
 	}
+      assert (pgbuf_get_latch_mode (*crt_page) == PGBUF_LATCH_WRITE);
+      insert_helper->is_crt_node_write_latched = true;
     }
 
   /* Do we need to promote child node latch mode? It must currently be read
@@ -31188,6 +31462,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  *restart = true;
 	  pgbuf_unfix_and_init (thread_p, child_page);
 	  pgbuf_unfix_and_init (thread_p, *crt_page);
+	  insert_helper->is_crt_node_write_latched = false;
 	  return NO_ERROR;
 	}
       else if (error_code != NO_ERROR)
@@ -31278,9 +31553,10 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (insert_helper->log_operations)
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "BTREE_INSERT: Split node %d|%d max keylen %d of "
-			 "index (%d, %d|%d).\n",
+			 "BTREE_INSERT: Split node %d|%d, new page (%d|%d), "
+			 "max keylen %d of index (%d, %d|%d).\n",
 			 child_vpid.volid, child_vpid.pageid,
+			 new_page_vpid1.volid, new_page_vpid1.pageid,
 			 node_header->max_key_len,
 			 btid_int->sys_btid->root_pageid,
 			 btid_int->sys_btid->vfid.volid,
@@ -31620,6 +31896,7 @@ exit:
     {
       db_private_free_and_init (thread_p, insert_helper->rv_keyval_data);
     }
+  insert_helper->rv_keyval_data = NULL;
 
   BTREE_PERF_TRACK_TIME (thread_p, insert_helper);
   return error_code;
